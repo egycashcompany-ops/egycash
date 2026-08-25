@@ -18,7 +18,14 @@ import {
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { Badge, Button, DataTable, FilterBar, Pagination, type Column } from '../../../../shared/ui';
+import {
+  Badge,
+  Button,
+  DataTable,
+  FilterBar,
+  Pagination,
+  type Column,
+} from '../../../../shared/ui';
 import { Select } from '../../../../shared/ui/form';
 import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
@@ -113,9 +120,7 @@ export const TemplatesListPage = (): JSX.Element => {
           </Badge>
           {/* Said on the list, not only on the detail screen: it is the reason the row has no
               deactivate control, and a reader should not have to open it to find that out. */}
-          {row.isProtected && (
-            <Badge tone="info">{t('systemAdmin.templates.protected')}</Badge>
-          )}
+          {row.isProtected && <Badge tone="info">{t('systemAdmin.templates.protected')}</Badge>}
         </span>
       ),
     },

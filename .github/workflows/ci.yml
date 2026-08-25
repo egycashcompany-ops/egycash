@@ -44,8 +44,19 @@ jobs:
       - name: Automation template packages parse against their contract (A-9a)
         run: node scripts/automation-templates.mjs
 
-      - name: Test
-        run: npm run test --workspaces --if-present
+      # One step per workspace rather than `--workspaces`. That form runs every workspace and
+      # reports the aggregate at the end, so a failure in an early workspace ends up buried under
+      # thousands of lines from the ones that ran after it — the log tail shows a passing suite and
+      # the step name says only "Test". Split, the step name is the diagnosis and the failing
+      # output is the last thing in the log.
+      - name: Test — contracts
+        run: npm run test -w packages/contracts
+
+      - name: Test — api
+        run: npm run test -w apps/api
+
+      - name: Test — web
+        run: npm run test -w apps/web
 
       - name: Build
         run: npm run build

@@ -426,8 +426,8 @@ export const useFixedRoster = () =>
   useQuery({ queryKey: fixedRosterKey, queryFn: api.getFixedRoster });
 
 // The save answers with the refreshed board in the same round-trip, so the cache is replaced
-// directly — no refetch between save and repaint. A failed save invalidates instead: the usual
-// cause of a 409 is a board gone stale under the user.
+// directly — no refetch between save and repaint. A FAILED save deliberately re-reads nothing;
+// see `onError` below for why a refusal is the worst moment to replace the board.
 export const useSaveFixedRoster = () => {
   const qc = useQueryClient();
   return useMutation({
@@ -438,7 +438,14 @@ export const useSaveFixedRoster = () => {
         drivers: board.drivers,
       } satisfies FleetFixedRosterDto);
     },
-    onError: () => void qc.invalidateQueries({ queryKey: fixedRosterKey }),
+    // Deliberately NOT an invalidate. A refusal is the moment the reader most needs their work:
+    // re-reading the board would hand the page a new `saved` array, the draft would reset to it,
+    // and the drags that caused the refusal would vanish along with the chance to fix them. The
+    // handler stays defined even though it does nothing — that is what opts this mutation out of
+    // the GLOBAL error toast (query-client.ts), leaving the page's own catch as the one message.
+    onError: () => {
+      /* keep the draft — the refusal is about the payload, not about the board being stale */
+    },
   });
 };
 

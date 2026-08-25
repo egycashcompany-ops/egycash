@@ -40,7 +40,10 @@ const snapshot = (doc: NotificationTemplateDoc) => ({
 });
 
 class NotificationTemplateService {
-  async create(input: CreateNotificationTemplate, by: string | null): Promise<NotificationTemplateDoc> {
+  async create(
+    input: CreateNotificationTemplate,
+    by: string | null,
+  ): Promise<NotificationTemplateDoc> {
     const doc = await notificationTemplateRepository.createFirstVersion({
       key: input.key,
       category: input.category,
@@ -67,6 +70,11 @@ class NotificationTemplateService {
     const existing = await notificationTemplateRepository.findLatestByKey(input.key);
     if (existing !== null) return existing;
     return this.create(input, null);
+  }
+
+  /** The current version of a template, or null when the key has never been seeded. */
+  async findLatest(key: string): Promise<NotificationTemplateDoc | null> {
+    return notificationTemplateRepository.findLatestByKey(key);
   }
 
   async getVersion(id: string): Promise<NotificationTemplateDoc> {
@@ -98,8 +106,18 @@ class NotificationTemplateService {
     };
   }
 
-  /** Every edit publishes a new version (§3) — never mutates the current one in place. */
-  async update(id: string, input: UpdateNotificationTemplate, by: string): Promise<NotificationTemplateDoc> {
+  /**
+   * Every edit publishes a new version (§3) — never mutates the current one in place.
+   *
+   * `by` is nullable for the same reason `create`'s is: a version the PLATFORM authors has no
+   * human behind it. A seed repairing its own template is exactly that, and inventing an actor id
+   * for it would put a fabricated person in the audit trail.
+   */
+  async update(
+    id: string,
+    input: UpdateNotificationTemplate,
+    by: string | null,
+  ): Promise<NotificationTemplateDoc> {
     const before = await this.getVersion(id);
     if (input.status === 'inactive' && isProtectedTemplateKey(before.key)) {
       // G-1. `notify()` refuses an inactive template, so switching one of these off does not
@@ -118,7 +136,9 @@ class NotificationTemplateService {
       channels: input.channels ?? before.channels,
       variables: input.variables ?? before.variables,
       defaultExpiryHours:
-        input.defaultExpiryHours === undefined ? before.defaultExpiryHours : input.defaultExpiryHours,
+        input.defaultExpiryHours === undefined
+          ? before.defaultExpiryHours
+          : input.defaultExpiryHours,
       status: input.status ?? before.status,
     };
     // G-2 on the version about to be STORED. The schema checks what it was sent; a partial edit
@@ -130,12 +150,15 @@ class NotificationTemplateService {
       variables: merged.variables,
     });
     if (disagreement !== null) {
-      throw new ValidationError([{ field: 'body', code: 'INVALID', message: disagreement }], disagreement);
+      throw new ValidationError(
+        [{ field: 'body', code: 'INVALID', message: disagreement }],
+        disagreement,
+      );
     }
 
     const next = await notificationTemplateRepository.createNextVersion(before.key, {
       ...merged,
-      createdBy: new Types.ObjectId(by),
+      createdBy: by === null ? null : new Types.ObjectId(by),
       createdAt: new Date(),
     });
     await auditService.record({
@@ -158,7 +181,12 @@ class NotificationTemplateService {
   }
 
   /** Sends a rendered preview to the caller only — never persisted as a real Notification. */
-  async testSend(ctx: AuthContext, id: string, data: Record<string, string>, channel: string): Promise<void> {
+  async testSend(
+    ctx: AuthContext,
+    id: string,
+    data: Record<string, string>,
+    channel: string,
+  ): Promise<void> {
     const template = await this.getVersion(id);
     if (!template.channels.includes(channel as (typeof template.channels)[number])) {
       throw new NotFoundError(`Template "${template.key}" does not support channel "${channel}"`);
@@ -166,12 +194,17 @@ class NotificationTemplateService {
     validateVariables(template.variables, data);
     const rendered = renderTemplate({ subject: template.subject, body: template.body }, data);
     const adapter = getChannelAdapter(channel);
-    if (adapter === undefined) throw new NotFoundError(`No adapter registered for channel "${channel}"`);
+    if (adapter === undefined)
+      throw new NotFoundError(`No adapter registered for channel "${channel}"`);
 
     const ephemeral: NotificationDoc = {
       _id: new Types.ObjectId(),
       recipientUserId: new Types.ObjectId(ctx.userId),
-      entityRef: { moduleId: 'platform', entityType: 'notificationTemplate', entityId: template.key },
+      entityRef: {
+        moduleId: 'platform',
+        entityType: 'notificationTemplate',
+        entityId: template.key,
+      },
       templateKey: template.key,
       templateVersion: template.version,
       category: template.category,

@@ -536,6 +536,14 @@ class UserService {
     return userRepository.getById(id, scope);
   }
 
+  /**
+   * The reading language of each of these accounts — the seam an announcement addresses its two
+   * halves through (see `userRepository.localesAmong`).
+   */
+  async localesAmong(userIds: readonly string[]): Promise<Map<string, 'ar' | 'en'>> {
+    return userRepository.localesAmong(userIds);
+  }
+
   async findByEmail(email: string): Promise<UserDoc | null> {
     return userRepository.findByEmail(email);
   }

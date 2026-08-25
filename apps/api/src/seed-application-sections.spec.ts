@@ -68,8 +68,9 @@ describe('the parse itself', () => {
   // Guards every assertion below: an empty set satisfies "no duplicates" and "all covered".
   it('found the navigation rows and the sections', () => {
     expect(NAV_ROUTES.length).toBeGreaterThan(15);
-    expect(HR_SECTIONS.length).toBe(5);
+    expect(HR_SECTIONS.length).toBe(6);
     expect(HR_SECTIONS.map((s) => s.en)).toEqual([
+      'Communication',
       'Recruitment',
       'Employees',
       'Employee File',

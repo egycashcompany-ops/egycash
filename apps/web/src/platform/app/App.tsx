@@ -26,6 +26,8 @@ const LeaveManagementRoutes = lazy(() => import('../../modules/hr/leave-manageme
 const AttendanceRoutes = lazy(() => import('../../modules/hr/attendance/routes'));
 const PayrollRoutes = lazy(() => import('../../modules/hr/payroll/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
+const AnnouncementRoutes = lazy(() => import('../../modules/hr/announcements/routes'));
+const NotificationRuleRoutes = lazy(() => import('../../modules/hr/notification-rules/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const OperationsRoutes = lazy(() => import('../../modules/operations/routes'));
 const AtmRoutes = lazy(() => import('../../modules/atm/routes'));
@@ -48,6 +50,7 @@ const PublicApplyPage = lazy(() =>
   })),
 );
 const AccountRoutes = lazy(() => import('../account/routes'));
+const NotificationRoutes = lazy(() => import('../notifications/routes'));
 
 const useDirection = (): void => {
   const { locale, dir } = useAppSelector((state) => state.locale);
@@ -190,6 +193,55 @@ export const App = (): JSX.Element => {
                 }
               >
                 <LeaveManagementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/announcements/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <AnnouncementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/notification-rules/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <NotificationRuleRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        {/* The inbox a push lands on. Every account has one; the server scopes it to the caller. */}
+        <Route
+          path="/notifications/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <NotificationRoutes />
               </Suspense>
             </RequireAuth>
           }

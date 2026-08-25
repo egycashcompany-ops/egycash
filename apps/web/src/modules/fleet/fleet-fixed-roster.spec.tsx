@@ -113,6 +113,17 @@ const render = ({ permissions = ALL, route = '/fleet/fixed-roster', qc = client(
   );
 
 const t = (key: string): string => translate('ar', key);
+/** The table body — where the vehicles and their crews live. */
+const tbody = (markup: string): string =>
+  markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+/** The header cells, in document order — the column contract. */
+const headers = (markup: string): string[] =>
+  [
+    ...markup
+      .slice(markup.indexOf('<thead'), markup.indexOf('</thead>'))
+      .matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g),
+  ].map((m) => (m[1] as string).replace(/<[^>]*>/g, '').trim());
+
 /** Every element that declares itself a drop zone, by the vehicle:slot it stands for. */
 const dropZones = (markup: string): string[] =>
   [...markup.matchAll(/data-drop-zone="([^"]*)"/g)].map((m) => m[1] as string);
@@ -137,6 +148,42 @@ describe('the fixed-crew screen', () => {
     ]);
     expect(markup).toContain(t('fleet.odometer.fields.driver1'));
     expect(markup).toContain(t('fleet.odometer.fields.driver2'));
+  });
+
+  it('is a TABLE with the seven roster columns, in this order', () => {
+    // The screen reads as another Fleet roster board, so the column list is the daily board's
+    // own — minus its date, which this one does not have.
+    expect(headers(render())).toEqual([
+      t('fleet.odometer.columns.vehicle'),
+      t('fleet.vehicles.columns.status'),
+      t('fleet.roster.fields.mission'),
+      t('fleet.odometer.fields.driver1'),
+      t('fleet.odometer.fields.driver2'),
+      t('fleet.attendance.fields.notes'),
+      t('fleet.vehicles.columns.actions'),
+    ]);
+  });
+
+  it('names each vehicle by code and plate, as the daily board does', () => {
+    const body = tbody(render());
+    expect(body).toContain('150');
+    expect(body).toContain('س ص 150');
+  });
+
+  it('leaves mission and notes as an honest dash — a standing crew stores neither', () => {
+    // §2.7b is the two driver slots and nothing else. The columns are there for the likeness;
+    // inventing a value for a fact the row does not hold would be worse than the dash.
+    expect(tbody(render())).toContain('—');
+    expect(SOURCE).toMatch(/key: 'mission',[\s\S]{0,120}render: \(\) => dash/);
+    expect(SOURCE).toMatch(/key: 'notes',[\s\S]{0,120}render: \(\) => dash/);
+  });
+
+  it('contains its own horizontal overflow — the page never scrolls sideways for it', () => {
+    // `DataTable` wraps itself in `overflow-x-auto`; using it is what keeps 390px honest.
+    expect(SOURCE, 'the board is the shared table').toContain('<DataTable');
+    expect(readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8')).toContain(
+      'overflow-x-auto',
+    );
   });
 
   it('asks for a driver in an empty slot instead of showing a blank box', () => {
@@ -206,12 +253,13 @@ describe('what the fixed crew is not', () => {
   });
 });
 
-// ── 2b. The audit: assignment must not make a driver DISAPPEAR ──────────────
+// ── 2b. The pool is the drivers you can still place ─────────────────────────
 
-describe('a driver assigned to a crew does not vanish', () => {
-  // "The driver is gone" and "the driver is no longer in this slot" must never look alike. The
-  // pool is the server's whole list and stays whole: an assigned driver keeps their card and
-  // gains a badge naming the car, so nothing about assignment reads as removal.
+describe('the available-driver pool', () => {
+  // The pool answers "who can I still put somewhere", so a driver the board already seats leaves
+  // it — immediately, from the DRAFT, with no round trip. That is a UI list, and leaving it is
+  // not disappearing: the driver keeps their profile, keeps their row on the board, and comes
+  // back the moment a slot is cleared. The tests below hold both halves of that.
   const CREWED: FleetFixedRosterDto = {
     rows: [row(V1, '150', E1), row(V2, '151')],
     drivers: [
@@ -220,21 +268,27 @@ describe('a driver assigned to a crew does not vanish', () => {
     ],
   };
 
-  it('keeps an assigned driver in the pool, badged with the car they hold', () => {
+  it('drops an assigned driver OUT of the pool, and keeps them on the board', () => {
     const markup = render({ qc: client(CREWED) });
-    expect(driverCards(markup), 'both drivers are still listed').toEqual([E1, E2]);
-    const at = markup.indexOf(`data-driver-card="${E1}"`);
-    const card = markup.slice(at, markup.indexOf('</li>', at));
-    expect(card, 'and the assigned one names the car').toContain('150');
-    expect(card).toContain('أحمد محمد');
+    expect(driverCards(markup), 'only the unseated one is offered').toEqual([E2]);
+    // Left the list, not the screen: they are in their slot, by name.
+    expect(tbody(markup)).toContain('أحمد محمد');
   });
 
-  it('renders the pool from the server list, never from the unassigned remainder', () => {
-    // A page that filtered the pool by "not yet assigned" would shrink as the board fills, and
-    // a reader would read that as drivers being consumed.
-    expect(SOURCE).toContain('boardQuery.data.drivers.map');
-    const pool = SOURCE.slice(SOURCE.indexOf('boardQuery.data.drivers.map'));
-    expect(pool.slice(0, 400), 'the pool list is not filtered').not.toContain('.filter(');
+  it('returns a driver to the pool when the board seats them nowhere', () => {
+    const free: FleetFixedRosterDto = {
+      rows: [row(V1, '150'), row(V2, '151')],
+      drivers: CREWED.drivers,
+    };
+    expect(driverCards(render({ qc: client(free) }))).toEqual([E1, E2]);
+  });
+
+  it('derives the pool from the DRAFT, so a drag changes it with no round trip', () => {
+    // Rendering the server's list raw would leave an assigned driver sitting in the pool until
+    // the next fetch; adjusting the list step by step would drift. It is computed from the seats.
+    expect(SOURCE).toContain('availableDrivers(boardQuery.data?.drivers ?? [], draft)');
+    expect(SOURCE, 'the pool renders the derived list').toContain('pool.map((driver)');
+    expect(SOURCE, 'and never the raw server array').not.toContain('boardQuery.data.drivers.map');
   });
 
   it('says «سيارة أخرى» for a driver fixed to a car outside this reader’s scope', () => {
@@ -263,10 +317,9 @@ describe('a driver assigned to a crew does not vanish', () => {
     );
   });
 
-  it('shows the same number of drivers whether the board is empty or full', () => {
-    const empty = driverCards(render());
-    const full = driverCards(render({ qc: client(CREWED) }));
-    expect(full).toHaveLength(empty.length);
+  it('shrinks as the board fills', () => {
+    expect(driverCards(render())).toHaveLength(2);
+    expect(driverCards(render({ qc: client(CREWED) })), 'one is now seated').toHaveLength(1);
   });
 
   it('reaches the server through exactly two functions — read the board, save the board', () => {
@@ -296,6 +349,70 @@ describe('a driver assigned to a crew does not vanish', () => {
       "post<FleetFixedRosterDto & { changedCount: number }>('/fleet/fixed-roster'",
     );
     expect(fixed, 'no delete verb in this feature’s client').not.toMatch(/\bdel</);
+  });
+});
+
+// ── 2c. The same person is on a crew once ───────────────────────────────────
+
+describe('the same-driver rule', () => {
+  // The rule itself — one person per crew, one seat per person — is arithmetic over rows, and
+  // `fixed-roster-board.spec.ts` exercises every shape of it. What belongs HERE is that the page
+  // still defers to that arithmetic instead of keeping a second, drifting copy of the rule.
+  const drop = (): string =>
+    SOURCE.slice(SOURCE.indexOf('const drop = ('), SOURCE.indexOf('const commit'));
+
+  it('hands every drop to the board and writes whatever comes back', () => {
+    expect(drop(), 'the board decides').toContain(
+      'assignDriver(draft, vehicleId, slot, employeeId)',
+    );
+    expect(drop(), 'and the answer is kept').toContain('setDraft(');
+  });
+
+  it('turns no drop away — a slot change is a move, not an error to explain', () => {
+    // The screen used to refuse a drop onto the other slot of the same car, forcing the user to
+    // clear the slot and drag again. Nothing in the handler may reject a drop any more.
+    expect(drop(), 'no refusal branch').not.toMatch(/=== null/);
+    expect(drop(), 'no early return').not.toMatch(/\breturn;/);
+    expect(drop(), 'nothing to apologise for').not.toContain('toast.error');
+  });
+
+  it('left no orphan message behind in either catalogue', () => {
+    // A key nothing sends is a key that rots. Both spellings go when the refusal goes.
+    for (const locale of ['ar', 'en'] as const) {
+      const key = 'fleet.fixedRoster.alreadyOnThisVehicle';
+      expect(translate(locale, key), `${locale} still carries the dead key`).toBe(key);
+    }
+  });
+});
+
+// ── 2d. The screen is reachable from the sidebar ────────────────────────────
+
+describe('navigation', () => {
+  // The sidebar is data-driven: it renders the applications `GET /platform/me/applications`
+  // returns, and `seed-navigation.ts` is the catalog that boot syncs. A screen missing from it
+  // is reachable only by typing the URL.
+  const NAV = readFileSync(join(HERE, '../../../../api/src/seed-navigation.ts'), 'utf8');
+
+  it('registers «الطقم الثابت» as a Fleet application on its real route', () => {
+    const at = NAV.indexOf("route: '/fleet/fixed-roster'");
+    expect(at, 'the row exists').toBeGreaterThan(-1);
+    const row = NAV.slice(NAV.lastIndexOf('{', at), NAV.indexOf('}', at));
+    expect(row).toContain("ar: 'الطقم الثابت'");
+    expect(row, 'an icon the registry knows').toMatch(/icon: '(users|clipboard|truck)'/);
+  });
+
+  it('reuses the roster grant rather than inventing a permission', () => {
+    const at = NAV.indexOf("route: '/fleet/fixed-roster'");
+    const row = NAV.slice(NAV.lastIndexOf('{', at), NAV.indexOf('}', at));
+    expect(row).toContain("permission: 'fleetRoster.view'");
+    expect(NAV, 'no fixed-crew permission was added').not.toContain('fleetFixedRoster');
+  });
+
+  it('sits beside the daily roster, inside the Fleet category', () => {
+    const daily = NAV.indexOf("route: '/fleet/roster'");
+    const fixed = NAV.indexOf("route: '/fleet/fixed-roster'");
+    expect(fixed).toBeGreaterThan(daily);
+    expect(fixed - daily, 'adjacent rows').toBeLessThan(400);
   });
 });
 
@@ -348,14 +465,49 @@ describe('saving', () => {
 
   it('never lets a refused save fail in silence', () => {
     // Defining `onError` on the mutation opts it OUT of the global error toast
-    // (query-client.ts: `if (mutation.options.onError === undefined) notify(error)`), and the
-    // hook defines one so it can re-read the board. Without a catch at the call site the refusal
-    // would be invisible: the button stops spinning, the refetch drops the drags, and the reader
-    // is left guessing. The commonest refusal here is a driver another row still holds.
+    // (query-client.ts: `if (mutation.options.onError === undefined) notify(error)`), and this
+    // hook defines one — so the page's own catch is the single message the reader gets. Without
+    // that catch the refusal would be invisible: the button stops spinning and nothing is said.
+    // The commonest refusal here is a driver another row still holds.
     const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const zoneKey'));
     expect(commit, 'the save is guarded').toContain('try {');
     expect(commit, 'and a failure is shown').toMatch(/catch[\s\S]*toast\.error/);
     expect(commit).toContain('errorMessage(');
+  });
+
+  // ── a refused save must not throw the reader's work away ──────────────────
+  //
+  // This is the requirement with the most ways to lose it by accident, and the fewest visible
+  // symptoms when it goes: the drags simply are not there any more, and the board looks like it
+  // was never edited. Two independent mechanisms hold it up, so both are pinned here.
+
+  it('does NOT re-read the board when the save is refused', () => {
+    // An invalidate would answer with a fresh `rows` array; the page keys its draft to the saved
+    // board's IDENTITY, so a new array resets the draft — wiping the very drags the reader now
+    // has to fix. The handler still has to EXIST, because that is what keeps this mutation off
+    // the global toast and leaves `commit`'s catch as the one message shown.
+    const QUERIES = readFileSync(join(HERE, 'api/fleet-queries.ts'), 'utf8');
+    const at = QUERIES.indexOf('export const useSaveFixedRoster');
+    const hook = QUERIES.slice(at, QUERIES.indexOf('\n};', at));
+    expect(at, 'the hook exists').toBeGreaterThan(-1);
+    expect(hook, 'a handler is defined — no global toast on top of ours').toMatch(/onError:/);
+
+    const onError = hook.slice(hook.indexOf('onError:'));
+    for (const reread of ['invalidateQueries', 'setQueryData', 'refetch', 'resetQueries']) {
+      expect(onError, `a refusal must not ${reread}`).not.toContain(reread);
+    }
+  });
+
+  it('keys the draft to the saved board, so an unchanged board leaves the drags standing', () => {
+    // The other half. Derived DURING RENDER, not seeded by an effect: an effect runs after the
+    // first paint, so the board would flash empty on arrival — and never runs at all under
+    // `renderToStaticMarkup`, which is how this whole file tests the screen. Keying on identity
+    // is what makes "the server refused, nothing changed" mean "your draft is still here".
+    expect(SOURCE).toContain('const draft = edit.base === saved ? edit.rows : saved;');
+    expect(SOURCE, 'the saved board is a stable reference').toMatch(
+      /const saved = useMemo\(\(\) => boardQuery\.data\?\.rows \?\? \[\], \[boardQuery\.data\]\)/,
+    );
+    expect(SOURCE, 'no effect seeds the draft').not.toContain('useEffect');
   });
 
   it('hides the whole editing surface from a reader who may not plan', () => {

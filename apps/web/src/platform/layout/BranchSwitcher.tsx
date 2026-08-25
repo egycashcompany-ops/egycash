@@ -104,7 +104,14 @@ export const BranchSwitcher = (): JSX.Element => {
       {open && (
         <div
           role="listbox"
-          className="absolute end-0 z-30 mt-2 w-64 origin-top animate-menu-in rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
+          // `start-0`, NOT `end-0`, because this is the FIRST control in the utilities row —
+          // and below `md` that row is `w-full justify-between`, so the switcher sits flush
+          // against the viewport's inline-start edge. `end-0` pins the panel's far edge and lets
+          // the box grow OUTWARD from there, which on a phone puts it off the screen. Anchoring
+          // the near edge opens it inward, in both directions: `start` is the right edge in
+          // Arabic and the left edge in English, which is the edge the button is already on.
+          // The width cap is the backstop for a viewport narrower than the panel itself.
+          className="absolute start-0 z-30 mt-2 w-64 max-w-[calc(100vw-1.5rem)] origin-top animate-menu-in rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
         >
           <p className="px-3 pb-1 pt-1.5 text-xs font-medium text-slate-400">
             {t('nav.branchSwitcher.label')}

@@ -383,3 +383,111 @@ at send time**. Re-running the filter tomorrow answers a different question: peo
 transfer and leave, and a filter is a description of a moment. The row is written before
 `notify()` and unconditionally, so an audience that turned out empty still leaves an answer to
 "what did we announce?".
+
+## 13. HR notification rules (`hr.notificationRule`)
+
+§12 gave HR a message it writes and sends. This is the same message sent by something that
+**happened** instead of by somebody clicking send: a leave request decided, a contract expired,
+a probation ended.
+
+Nothing here is a new mechanism. The platform's event catalogue names the triggers, the
+automation filter form states the conditions, the §12 audience shapes say who hears about it,
+and `notificationsService.notify()` delivers it. What is new is one row in
+`hr_notification_rules` tying those together, and the guards around installing one.
+
+### The seam
+
+`rule-bridge.ts` subscribes as an **ordinary event consumer** — the same decision the automation
+trigger bridge made, for the same reason: no new bus, no new delivery guarantee, no change to any
+publisher. A business module emits `hr.leave.decided` inside its transaction exactly as before,
+and the bridge, downstream of that commit, decides which rules the event answers.
+
+One subscription per cataloged event, generated from `eventCatalogNames()` rather than listed by
+hand, all pointing at one handler id (`notificationRules.dispatch`). The bus dedups reliable
+delivery on `${eventId}:${handlerId}`, so one logical consumer is what this is. Most events match
+no rule, and that answer costs one indexed query on `{event, enabled, isDeleted}`.
+
+**It never throws into the bus.** A rule pointed at a field that does not exist, an audience that
+resolves to nobody, a notification service having a bad minute — none of it may fail the delivery
+of a business event to its other consumers. The event already happened; a rule is a courtesy on
+top of it, and a courtesy that can break the thing it is attached to is a liability. The whole
+handler is wrapped and every rule is independent of every other.
+
+### Two audiences only an event can offer
+
+Three of the four shapes are §12's, reused whole — a rule that means "everybody in Maadi" must
+not describe that differently from a person who means the same thing. The additions are the
+reason the feature is worth having:
+
+- **`subject`** — the person the event is **about**, read from its payload at a dot path.
+  "Their leave was approved, tell them" cannot be written as a static audience: the recipient is
+  different every time the rule fires. `includeManager` adds their reporting manager, looked up
+  as another employee rather than assumed from the id on the subject's record.
+- **`permission`** — everyone holding a permission at organization scope. "Tell whoever can
+  approve this" names a responsibility rather than a list, so it stays correct as the people
+  holding it change.
+
+### Everything here fights the same failure
+
+A rule that gets any of this wrong is **enabled, green, and silent**. There is no error, no log
+line, no failed run — just a notification that never comes, and a person waiting for it who
+concludes the system works differently than they thought. Each guard below exists for one shape
+of that.
+
+**Validated at save time, not at dispatch.** `rule-validation.ts` reuses automation's
+`validateTrigger` whole — a rule and a workflow trigger ask the same question of the same
+catalogue, and two implementations is how the answers start to differ. On top of it, a `subject`
+path is checked against the event's declared fields and a `permission` key against the permission
+registry. Errors block the save; warnings (an undeclared payload, a deprecated event, a name with
+two publishers) are shown and the save proceeds.
+
+**The reach count comes from the same function the bridge uses.** `POST /check` returns how many
+people the audience comes to right now, resolved by `resolveUserIds` — never a second
+implementation, because the two disagreeing is what makes a preview worse than none. `subject` is
+honestly `null`: its recipient is read from each event's payload, so there is no answer until one
+arrives. `0` is a real answer and an important one.
+
+**`firedCount` and `lastFiredAt` are on the list.** A rule that has never fired looks exactly
+like one that fires correctly, until somebody asks why a notification never came.
+
+**A placeholder the payload has no value for is left standing.** `{{employeeNam}}` arrives in the
+message as literal text rather than blanking to `عقد  انتهى`, which is what makes a mistyped
+field name visible in the one place somebody will look.
+
+### The loop, guarded twice
+
+A rule sends a notification; creating one emits `platform.notification.created`; a rule on **that**
+answers its own output for ever, at machine speed, on real people's phones. The loop is one
+dropdown selection away.
+
+So `isRuleTriggerable()` refuses the whole `platform.notification.` family at save time, **and**
+`ruleEventSubscriptions()` never subscribes to it. Both, because they stop different things: the
+first stops somebody creating the loop, the second stops a rule that predates the check — or one
+written straight into the database — from finding an event to loop on. A depth counter would also
+stop it, eventually, after some number of rounds of real notifications.
+
+### Authoring is organization-wide, and refusal is enabled-only
+
+`notificationRule.manage` is separate from `announcement.send`. Sending an announcement is one
+act by a person who is present; a rule is a **standing** power for the system to message people on
+its own, repeatedly, with nobody watching — nearer to granting a permission than to sending a
+message.
+
+It must also be held at **organization** scope, read from the grant itself rather than through
+`scopeSelector` (whose active-branch narrowing is about which records a screen shows). §12's
+audience is bounded by what its sender may see, because it resolves while they are standing
+there. A rule resolves later, from a handler with no caller, so there is nothing to bound it by at
+that moment — the entire bound is applied at authoring time.
+
+Validation applies **only to an enabled rule**. A disabled one is saveable however broken it is,
+the same latitude automation gives an unfireable trigger as a draft — but the reason that matters
+most is the other direction: **turning a rule off must always work.** If validation guarded every
+write, a rule that became invalid after the fact could no longer be disabled, and disabling it is
+precisely what somebody is trying to do at that moment.
+
+### One send per reading language, shared
+
+The bilingual split §12 describes now lives in `send-localised.ts`, used by both the announcement
+service and the rule bridge. The two must not answer the language question differently: one of
+them getting it wrong means an English reader receiving Arabic, which is exactly the kind of
+defect that survives review because it looks right to whoever wrote it.

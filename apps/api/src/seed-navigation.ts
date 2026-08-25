@@ -44,7 +44,11 @@ interface CategoryDef {
 
 // Grouped to mirror the two route trees (Recruitment `/…`, Organization `/organization/…`) plus the
 // platform catalog. Icons are names the sidebar's resolveNavIcon knows.
-const CATALOG: CategoryDef[] = [
+/**
+ * Exported so `seed-navigation.spec.ts` can check the declarations without a database — a row
+ * keyed on a permission that does not exist renders for nobody, and nothing at boot says so.
+ */
+export const NAVIGATION_CATALOG: CategoryDef[] = [
   {
     en: 'HR',
     ar: 'الموارد البشرية',
@@ -63,6 +67,15 @@ const CATALOG: CategoryDef[] = [
         route: '/announcements',
         icon: 'chat',
         permission: 'announcement.send',
+      },
+      // Beside Announcements because they are the same act from two directions: a person saying
+      // something once, and the system saying it every time a thing happens.
+      {
+        en: 'Notification Rules',
+        ar: 'قواعد الإشعارات',
+        route: '/notification-rules',
+        icon: 'bell',
+        permission: 'notificationRule.view',
       },
       {
         en: 'Applicants',
@@ -983,7 +996,7 @@ const backfillApplicationPermission = async (def: AppDef, by: string): Promise<v
  * gets mistaken for a live one.
  */
 export const seedBootstrapNavigation = async (adminId: string): Promise<void> => {
-  for (const category of CATALOG) {
+  for (const category of NAVIGATION_CATALOG) {
     const categoryId = await ensureCategory(category, adminId);
     let sortOrder = 0;
     for (const app of category.apps) {
@@ -1017,7 +1030,7 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   const adminIds = await rbacService.userIdsWithSystemRole('super-admin');
   const actor = adminIds[0];
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
-  for (const category of CATALOG) {
+  for (const category of NAVIGATION_CATALOG) {
     await backfillCategoryIcon(category, actor);
     for (const app of category.apps) await backfillApplicationPermission(app, actor);
     // Resolve the whole group up front: where a new row belongs depends on the stored order of

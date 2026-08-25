@@ -27,6 +27,7 @@ const AttendanceRoutes = lazy(() => import('../../modules/hr/attendance/routes')
 const PayrollRoutes = lazy(() => import('../../modules/hr/payroll/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
 const AnnouncementRoutes = lazy(() => import('../../modules/hr/announcements/routes'));
+const NotificationRuleRoutes = lazy(() => import('../../modules/hr/notification-rules/routes'));
 const FleetRoutes = lazy(() => import('../../modules/fleet/routes'));
 const OperationsRoutes = lazy(() => import('../../modules/operations/routes'));
 const AtmRoutes = lazy(() => import('../../modules/atm/routes'));
@@ -207,6 +208,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <AnnouncementRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/notification-rules/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <NotificationRuleRoutes />
               </Suspense>
             </RequireAuth>
           }

@@ -473,6 +473,23 @@ Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` g
 
 ### Fixed
 
+- **The branch switcher said «لا توجد فروع بعد» to a company with three branches.** It asked for
+  `/platform/organization/branches`; branches are mounted at `/platform/branches`, and
+  `/platform/organization` serves exactly one route. Every load 404'd, and because the menu drew
+  its empty state from `data ?? []` it reported the failure as a fact about the company's data.
+  Two fixes, because there were two faults. The path now points at `/platform/branches/options` —
+  the reference-options endpoint, which is authenticated but deliberately NOT gated on
+  `branch.view`, so narrowing your own view no longer demands an organization-administration
+  grant. And the menu now distinguishes loading, failed and genuinely empty, so a broken request
+  can never again read as an answer. The gold module's branch lookup (the letterhead on the five
+  printed statements) had the same wrong path and is fixed with it.
+
+  A new gate keeps the class shut: `platform-routes-exist.spec.ts` reads the real mount table out
+  of `app.ts` and the real route patterns out of every platform router, then checks every
+  `/platform/…` path in the web sources against them. Nothing else could have — the client builds
+  a URL string, the server assembles routes from a mount table and a dozen files, and TypeScript
+  never puts the two in the same room.
+
 - **A password could not be seen while it was typed, and the rules it had to satisfy were not
   shown at all.** Nine password fields across four screens — sign-in, activation, the forced first
   change and account security — were bare inputs: no way to check what had been typed, and no way to

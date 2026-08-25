@@ -677,7 +677,7 @@ export const GoldReportsPage = (): JSX.Element => {
   // The branch printed on the letterhead: the one branch in scope, or nothing when the reader sees
   // several — a statement headed with the wrong branch is worse than one headed with none.
   const branch = useMemo(() => {
-    const items = branches.data?.items ?? [];
+    const items = branches.data ?? [];
     return items.length === 1 ? (items[0]?.name.ar ?? '') : '';
   }, [branches.data]);
 

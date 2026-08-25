@@ -9,7 +9,7 @@
 // permission. The choice is remembered per browser, beside the theme and the language.
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { type OrgUnitDto } from '@ecms/contracts';
+import { type OrgUnitOptionDto } from '@ecms/contracts';
 import { useAppSelector } from '../../store';
 import { useT } from '../localization/useT';
 import { get, setActiveBranch } from '../../shared/lib/api-client';
@@ -51,9 +51,12 @@ export const BranchSwitcher = (): JSX.Element => {
   // never offered a choice that would do nothing.
   const orgWide = me !== null && me.branchId === null;
 
+  // `/branches/options` rather than the branches LIST: the list is gated on `branch.view`, an
+  // organization-administration grant that an operator narrowing their own view has no reason to
+  // hold. The options endpoint exists for exactly this — authenticated, active branches only.
   const branches = useQuery({
-    queryKey: ['platform', 'organization', 'branches', 'switcher'],
-    queryFn: () => get<OrgUnitDto[]>('/platform/organization/branches?pageSize=100'),
+    queryKey: ['platform', 'branches', 'options', 'switcher'],
+    queryFn: () => get<OrgUnitOptionDto[]>('/platform/branches/options'),
     enabled: orgWide,
     staleTime: 5 * 60 * 1000,
   });
@@ -72,6 +75,9 @@ export const BranchSwitcher = (): JSX.Element => {
   // A stored branch that no longer exists (retired, or the account moved companies) silently
   // becomes "the whole company" rather than a filter nobody can see or clear. Cleared without a
   // reload — there is nothing narrowed to reload away from.
+  //
+  // Only ever on a SUCCESSFUL list: a failed request knows nothing about which branches exist, and
+  // clearing on it would throw away a working choice every time the network hiccuped.
   useEffect(() => {
     if (!orgWide || branches.data === undefined || active === null) return;
     if (branches.data.some((branch) => branch.id === active)) return;
@@ -139,7 +145,20 @@ export const BranchSwitcher = (): JSX.Element => {
               {branch.name[locale]}
             </button>
           ))}
-          {options.length === 0 && (
+          {/*
+            Three different states, three different sentences. "No branches yet" is a claim about
+            the company, and printing it over a request that FAILED is how a wrong path in this
+            file reads as "you have not added any branches" — which is what it did.
+          */}
+          {branches.isPending && (
+            <p className="px-3 py-2 text-sm text-slate-400">{t('common.loading')}</p>
+          )}
+          {branches.isError && (
+            <p className="px-3 py-2 text-sm text-rose-600 dark:text-rose-400">
+              {t('nav.branchSwitcher.failed')}
+            </p>
+          )}
+          {!branches.isPending && !branches.isError && options.length === 0 && (
             <p className="px-3 py-2 text-sm text-slate-400">{t('nav.branchSwitcher.none')}</p>
           )}
         </div>

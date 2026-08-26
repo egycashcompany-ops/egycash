@@ -84,6 +84,15 @@ class ApplicantPortalService {
       },
     );
     await rbacService.ensureAssignment(String(user._id), String(role._id), 'organization');
+    // ACTIVE IMMEDIATELY, AND THAT IS NOT A SHORTCUT. `userService.create` leaves an account
+    // `invited`, waiting for somebody to follow an activation link and choose a password — and
+    // every authenticated request refuses an account that is not active. A candidate never gets
+    // that link: they sign in with a one-time code, so an account left `invited` would hand out a
+    // session token that fails on the very next request. Activating here also DISCARDS the
+    // activation token in the same write, which is the half that keeps the door shut: the account
+    // is active with no password, and the password login path refuses a null credential outright,
+    // so there is no way into it except the code.
+    await userService.forceActivate(String(user._id));
     await auditService.record({
       entityRef: entityRef(applicantId),
       action: 'create',

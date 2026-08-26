@@ -1030,7 +1030,15 @@ class UserService {
     return swept;
   }
 
-  /** Seed-only: activates an account without the invite/activation flow. */
+  /**
+   * Activate an account without the invite/activation flow, and clear the activation token with it.
+   *
+   * TWO CALLERS, BOTH NAMED: the seed, which cannot follow a link; and a PASSWORDLESS EXTERNAL
+   * PORTAL account (the applicant portal), which signs in with a one-time code and so is never
+   * issued a link either. Widen this list by naming a third — not by reaching for it because an
+   * account happened to be inconvenient to activate. Clearing the token is part of the contract:
+   * an account activated this way must not keep a dangling way to set a password.
+   */
   async forceActivate(userId: string): Promise<void> {
     const updated = await userRepository.updateSecurity(userId, {
       $set: {

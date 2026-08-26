@@ -178,6 +178,30 @@ const issue = async (batch: EvaluationBatchDto): Promise<EvaluationBatchDto> => 
   return res.body.data as EvaluationBatchDto;
 };
 
+/**
+ * The batch once no package build is still running.
+ *
+ * `ready` seen twice, a beat apart, is the cheap proof that nothing is in flight: a build announces
+ * itself by writing `building` before it does any work, so a second quiet read cannot follow one.
+ * `failed` is terminal and returned at once — the assertion should say what failed, not time out.
+ */
+const settledPackage = async (id: string): Promise<EvaluationBatchDto> => {
+  let last = await getBatch(id);
+  for (let attempt = 0; attempt < 150; attempt += 1) {
+    if (last.package.status === 'failed') return last;
+    if (last.package.status === 'ready') {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const again = await getBatch(id);
+      if (again.package.status === 'ready') return again;
+      last = again;
+      continue;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    last = await getBatch(id);
+  }
+  throw new Error(`batch ${id} never settled — package.status is ${last.package.status}`);
+};
+
 const getBatch = async (id: string): Promise<EvaluationBatchDto> => {
   const res = await request(app)
     .get(`/api/v1/hr/evaluation-batches/${id}`)
@@ -389,7 +413,13 @@ describe('issuing a batch', () => {
     // The worker job runs inline here — in production it is dispatched from the outbox.
     await buildEvaluationBatchPackage(issued.id);
 
-    const built = await getBatch(issued.id);
+    // TWO builds run for this batch, and only one of them is the line above: issuing emits a
+    // RELIABLE event, and under test `enqueue` executes handlers inline while `nudgeOutboxRelay`
+    // does not await them — so the outbox's own build is a floating promise racing this test.
+    // Either order ends at `ready`; what differs is WHEN. Reading straight after the awaited call
+    // can catch the other build's opening `package.status = 'building'` write, which is a fact
+    // about the test's timing and not about the package. So wait for the batch to go quiet.
+    const built = await settledPackage(issued.id);
     expect(built.package.status).toBe('ready');
     // No CHROMIUM_PATH in CI: the ZIP still exists, the missing list.pdf is reported.
     expect(built.package.archiveFileId).not.toBeNull();

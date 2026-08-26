@@ -566,7 +566,7 @@ class AuthService {
     const wait = resendWaitSeconds(state, now);
     if (!maySend(state, now)) return { accepted: true, retryAfterSeconds: wait };
 
-    const code = randomNumericCode(PORTAL_CHALLENGE_CODE_LENGTH);
+    const code = this.generatePortalCode();
     const expiresAt = new Date(now.getTime() + PORTAL_CHALLENGE_TTL_MINUTES * 60_000);
     await this.savePortalChallenge(String(user._id), afterIssue(sha256(code), expiresAt, now));
     // The code goes to the number ON FILE, never to one supplied with the request — otherwise the
@@ -635,6 +635,11 @@ class AuthService {
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
+  }
+
+  /** One-time portal code — a dedicated seam so tests can capture the delivered secret. */
+  generatePortalCode(): string {
+    return randomNumericCode(PORTAL_CHALLENGE_CODE_LENGTH);
   }
 
   private portalChallengeOf(user: UserDoc): PortalChallengeState {

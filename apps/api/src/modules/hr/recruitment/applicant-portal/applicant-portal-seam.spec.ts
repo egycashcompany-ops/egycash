@@ -87,6 +87,21 @@ describe('the surfaces and the resolver are wired at boot', () => {
   });
 });
 
+describe('the account is usable, and only through the code', () => {
+  it('is activated on creation — an `invited` account cannot make an authenticated request', () => {
+    expect(SERVICE).toContain('userService.forceActivate(String(user._id))');
+  });
+
+  it('never sets a password, so the ordinary login door stays shut on it', () => {
+    // `forceActivate` clears the activation token in the same write; nothing here may hand one out
+    // or set a credential, because an active account with a password is a second way in that no
+    // one-time code protects.
+    for (const forbidden of ['setPassword', 'activationToken', 'resendSetupLink', 'issueSetupLink']) {
+      expect(FEATURE).not.toContain(forbidden);
+    }
+  });
+});
+
 describe('no second authentication system (ADR-027)', () => {
   it('the portal account is an ordinary user with an external subject', () => {
     expect(SERVICE).toContain('userService.create');

@@ -346,6 +346,10 @@ export const ApplicantForm = ({
 
   /** Populate the form from the reviewed National-ID data (after the user confirms the OCR review).
    *  Reviewed values win; empty fields leave the current form value untouched. */
+  // The scanned card images, held only until the register call can name them: the applicant does
+  // not exist while the scan runs, so the server files them once it does.
+  const [cardFileIds, setCardFileIds] = useState<string[]>([]);
+
   const applyReview = (r: NationalIdReviewData): void => {
     setExtracted(true);
     setF((prev) => {
@@ -408,6 +412,7 @@ export const ApplicantForm = ({
           ? { jobRequisitionId: presetRequisitionId.trim() }
           : {}),
         ...(presetBranchId !== undefined && presetBranchId.trim() !== '' ? { branchId: presetBranchId.trim() } : {}),
+        ...(cardFileIds.length === 0 ? {} : { nationalIdCardFileIds: cardFileIds }),
         sourceId: internalSourceId ?? '',
         intakeChannel: 'internal',
         identity,
@@ -521,7 +526,7 @@ export const ApplicantForm = ({
 
       {mode === 'create' && (
         <>
-          <ApplicantNationalIdOcr onConfirm={applyReview} />
+          <ApplicantNationalIdOcr onConfirm={applyReview} onScanned={setCardFileIds} />
           {extracted && (
             <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
               {t('applicants.ocr.reviewBanner')}

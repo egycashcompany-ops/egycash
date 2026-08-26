@@ -98,6 +98,13 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // like every other. Staff who administer the portal are the audience; the candidate is not on
   // this bus at all.
   'hr.applicantPortalAccount': { permission: 'applicant.view' },
+  // P-HR-APP §5 — the documents a CANDIDATE hands in, and the catalogue of what is asked for.
+  // The audience on this bus is the staff who review them: a reviewer with the queue open should
+  // see a new upload arrive without reloading. The candidate is not on this bus at all — their
+  // own screen refreshes from their own action, and putting them on it would mean an external
+  // account holding a socket into an HR room.
+  'hr.applicantDocuments': { permission: 'applicantDocument.view' },
+  'hr.applicantDocumentType': { permission: 'applicantDocumentType.manage' },
   'hr.hiringDocuments': { permission: 'hiringDocuments.view' },
   'hr.hiringDocumentType': { permission: 'hiringDocumentType.manage' },
 

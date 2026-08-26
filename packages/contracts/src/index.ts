@@ -38,6 +38,7 @@ export * from './modules/hr-announcement.js';
 export * from './modules/hr-notification-rule.js';
 export * from './modules/hr-employee-actions.js';
 export * from './modules/hr-hiring-documents.js';
+export * from './modules/hr-applicant-documents.js';
 export * from './modules/hr-employee-file.js';
 export * from './modules/hr-leave.js';
 export * from './modules/hr-attendance.js';

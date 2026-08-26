@@ -12,7 +12,12 @@ import {
   buildApplicantSourcesRouter,
   buildApplicantsRouter,
 } from './recruitment/applicants';
-import { applicantPortalService } from './recruitment/applicant-portal';
+import { applicantPortalService, APPLICANT_PORTAL_PREFIX } from './recruitment/applicant-portal';
+import {
+  buildApplicantDocumentsRouter,
+  buildApplicantPortalDocumentsRouter,
+  hrApplicantDocumentFileAuthorizers,
+} from './recruitment/applicant-documents';
 import { logger } from '../../infrastructure/logging/logger';
 import {
   buildPublicRecruitmentFormRouter,
@@ -293,6 +298,45 @@ const applicantPortalAdminPermissions = declarePermissions(
   { en: 'applicant portal administration', ar: 'إدارة بوابة المتقدمين' },
   [],
   [{ action: 'sendLink', name: { en: 'Send the portal link', ar: 'إرسال رابط البوابة' } }],
+);
+
+/**
+ * The documents a candidate hands in (P-HR-APP §5).
+ *
+ * `view` and `review` are separate grants for the reason the whole review exists: looking at what
+ * somebody uploaded and RULING on it are different acts, and a refusal reopens the slot and asks
+ * that person to go and get another document. Whoever may do that should have been given the key
+ * on purpose.
+ *
+ * Note there is no `upload` key here at all — uploading is the CANDIDATE'S act, authorized by
+ * their own portal session, and minting a staff key for it would create a door for HR to file a
+ * certificate in somebody else's name.
+ */
+const applicantDocumentPermissions = declarePermissions(
+  'hr',
+  'applicantDocument',
+  { en: 'applicant documents', ar: 'مستندات المتقدمين' },
+  ['view'],
+  [
+    {
+      action: 'review',
+      name: { en: 'Review applicant documents', ar: 'مراجعة مستندات المتقدمين' },
+    },
+  ],
+);
+
+/** The catalogue of what is asked for (D-APP-4) — administered, like every other catalogue. */
+const applicantDocumentTypePermissions = declarePermissions(
+  'hr',
+  'applicantDocumentType',
+  { en: 'applicant document types', ar: 'أنواع مستندات المتقدمين' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Manage applicant document types', ar: 'إدارة أنواع مستندات المتقدمين' },
+    },
+  ],
 );
 
 const drivingTestPermissions = declarePermissions(
@@ -827,6 +871,8 @@ export const hrPermissions: PermissionDef[] = [
   ...drivingTestPermissions,
   ...applicantPortalPermissions,
   ...applicantPortalAdminPermissions,
+  ...applicantDocumentPermissions,
+  ...applicantDocumentTypePermissions,
   ...medicalCheckPermissions,
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
@@ -1096,6 +1142,11 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employees', router: buildSettlementRouter() },
     { prefix: '/hr/employees', router: buildLeaveBalancesRouter() },
     { prefix: '/hr/employees', router: buildEmployeesRouter() },
+    // P-HR-APP §5 — two prefixes, two audiences. The candidate's router is mounted under the ONE
+    // prefix their write surface declares, and it is the only router in ECMS an external applicant
+    // account can reach; HR's review surface is an ordinary permissioned HR route.
+    { prefix: APPLICANT_PORTAL_PREFIX, router: buildApplicantPortalDocumentsRouter() },
+    { prefix: '/hr/applicant-documents', router: buildApplicantDocumentsRouter() },
     { prefix: '/hr/hiring-documents', router: buildHiringDocumentsRouter() },
     { prefix: '/hr/hiring-document-types', router: buildHiringDocumentTypesRouter() },
     { prefix: '/hr/employee-files', router: buildEmployeeFilesRouter() },
@@ -1137,6 +1188,8 @@ export const hrModule: ModuleManifest = {
   collections: [
     'hr_applicants',
     'hr_applicant_sources',
+    'hr_applicant_document_types',
+    'hr_applicant_document_sets',
     'hr_sequences',
     'hr_screenings',
     'hr_interviews',
@@ -1187,6 +1240,9 @@ export const hrModule: ModuleManifest = {
     ...hrFileEntityAuthorizers,
     ...hrAdjustmentFileAuthorizers,
     ...hrEmployeeLoanFileAuthorizers,
+    // ADR-023 + D-APP-9 — a candidate reaches their OWN uploads and nothing else, decided against
+    // the subject on their session rather than anything in the request.
+    ...hrApplicantDocumentFileAuthorizers,
   ],
   eventSubscriptions: [
     {

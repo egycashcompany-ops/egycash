@@ -101,6 +101,11 @@ import {
   HiringDocumentsEventPayloadV1,
 } from '../modules/hr-hiring-documents.js';
 import {
+  HrApplicantDocumentEvents,
+  type HrApplicantDocumentEventName,
+  ApplicantDocumentEventPayloadV1,
+} from '../modules/hr-applicant-documents.js';
+import {
   HrLeaveEvents,
   type HrLeaveEventName,
   LeaveBalanceAdjustedPayloadV1,
@@ -635,6 +640,9 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   employee: { en: 'Employee', ar: 'موظف' },
   employeeFile: { en: 'Employee file', ar: 'ملف موظف' },
   hiringDocuments: { en: 'Hiring documents', ar: 'مستندات التعيين' },
+  // P-HR-APP — what a CANDIDATE hands in, which is a different population and a different
+  // lifecycle from the hiring documents a new employee provides after they are hired.
+  applicantDocument: { en: 'Applicant document', ar: 'مستند متقدّم' },
   leave: { en: 'Leave', ar: 'إجازة' },
   attendance: { en: 'Attendance', ar: 'حضور' },
   // P-HR-07. `payroll` is the subject of an adjustment decision, and `employeeLoan` is its own
@@ -721,6 +729,9 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   cancelled: { en: 'cancelled', ar: 'إلغاء' },
   evaluated: { en: 'evaluated', ar: 'تقييم' },
   completed: { en: 'completed', ar: 'إتمام' },
+  replaced: { en: 'replaced', ar: 'استبدال' },
+  reviewed: { en: 'reviewed', ar: 'مراجعة' },
+  setCompleted: { en: 'set completed', ar: 'اكتمال المجموعة' },
   issued: { en: 'issued', ar: 'إصدار' },
   generated: { en: 'generated', ar: 'توليد' },
   packageReady: { en: 'package ready', ar: 'جاهزية الحزمة' },
@@ -1045,6 +1056,7 @@ export type HrCatalogEventName =
   | HrEmployeeEventName
   | HrEmployeeFileEventName
   | HrHiringDocumentsEventName
+  | HrApplicantDocumentEventName
   | HrLeaveEventName
   | HrAttendanceEventName
   | HrPayrollEventName
@@ -1127,6 +1139,11 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrHiringDocumentsEvents.DocumentUploaded]: HiringDocumentsEventPayloadV1,
   [HrHiringDocumentsEvents.DocumentReplaced]: HiringDocumentsEventPayloadV1,
   [HrHiringDocumentsEvents.Completed]: HiringDocumentsEventPayloadV1,
+
+  [HrApplicantDocumentEvents.Uploaded]: ApplicantDocumentEventPayloadV1,
+  [HrApplicantDocumentEvents.Replaced]: ApplicantDocumentEventPayloadV1,
+  [HrApplicantDocumentEvents.Reviewed]: ApplicantDocumentEventPayloadV1,
+  [HrApplicantDocumentEvents.SetCompleted]: ApplicantDocumentEventPayloadV1,
 
   [HrLeaveEvents.Requested]: LeaveRequestedPayloadV1,
   [HrLeaveEvents.Decided]: LeaveDecidedPayloadV1,

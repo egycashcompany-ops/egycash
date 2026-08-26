@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 62 pages over 241 permissions', () => {
+  it('declares 62 pages over 244 permissions', () => {
     expect(pages).toHaveLength(62);
-    expect(permissions).toHaveLength(241);
+    expect(permissions).toHaveLength(244);
   });
 
   /**
@@ -45,13 +45,19 @@ describe('the assembled page registry', () => {
    * decides both steps of one lifecycle. The unassigned count stays at 25 — the same test P-ORG-1
    * passed in the other direction.
    */
-  it('assigns 214 permissions to a page and leaves 27 deliberately unassigned', () => {
+  it('assigns 214 permissions to a page and leaves 30 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     expect(assigned).toHaveLength(214);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
-    expect(permissions.length - assigned.length).toBe(27);
+    //
+    // Its phase 3 adds three more the same way, and deliberately does NOT route them yet. The
+    // review screen is phase 4; assigning these keys to a page that does not exist would make this
+    // registry describe a system nobody can open. `employeeLoan` is the precedent and it is worth
+    // following exactly: it left the unassigned list IN the change that built its screen, never
+    // before it.
+    expect(permissions.length - assigned.length).toBe(30);
   });
 
   it('splits the pages across the four modules as declared', () => {
@@ -95,6 +101,11 @@ describe('the assembled page registry', () => {
         // button is not a page.
         'applicantPortal',
         'applicantPortalAdmin',
+        // P-HR-APP phase 3. The API exists and the screens do not yet — so these are unassigned
+        // for the one honest reason a key can be: there is nothing to point at. They move to
+        // `hr.applicant-documents` in the change that builds it, and not a phase earlier.
+        'applicantDocument',
+        'applicantDocumentType',
       ].sort(),
     );
   });

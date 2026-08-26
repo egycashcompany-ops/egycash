@@ -41,6 +41,10 @@ import {
 } from './recruitment/applicant-portal';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
+import {
+  applicantDocumentTypeService,
+  ensureApplicantDocsCategory,
+} from './recruitment/applicant-documents';
 import { migrateEmployeesToRegistry } from './employee-management/employees';
 import { migrateEmployeeFiles } from './employee-management/employee-file';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
@@ -240,6 +244,11 @@ const ensureHiringDocumentsSeeds = async (): Promise<void> => {
     await hiringDocumentTypeService.ensure(type);
   }
   await ensureHiringDocsCategory();
+  // P-HR-APP §5 — the candidate's own uploads: images AND PDF, because what is being asked for is
+  // a photograph of a certificate taken on a phone. The five catalogue rows follow (D-APP-4);
+  // both are idempotent and neither overwrites what an administrator has since edited.
+  await ensureApplicantDocsCategory();
+  await applicantDocumentTypeService.ensureSeeded();
   // Source icons go up through the platform Files service; this is the category that holds the
   // "PNG or SVG, and small" rule for them.
   await ensureApplicantSourceIconCategory();

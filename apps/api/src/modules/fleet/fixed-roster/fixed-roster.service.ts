@@ -52,7 +52,7 @@ const entityRef = (id: string) => ({
  * is the way this quietly starts rewriting untouched rows.
  */
 const snapshot = (doc: FleetFixedCrewDoc) => ({
-  workTypeId: doc.workTypeId === null ? null : String(doc.workTypeId),
+  missionTypeId: doc.missionTypeId === null ? null : String(doc.missionTypeId),
   driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
   driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
   notes: doc.notes,
@@ -99,7 +99,7 @@ class FleetFixedRosterService {
         plateNumber: vehicle.plateNumber,
         typeId: String(vehicle.typeId),
         inMaintenance: inWorkshop.has(id),
-        workTypeId: crew === undefined ? null : (snapshot(crew).workTypeId ?? null),
+        missionTypeId: crew === undefined ? null : (snapshot(crew).missionTypeId ?? null),
         driver1EmployeeId: crew === undefined ? null : (snapshot(crew).driver1EmployeeId ?? null),
         driver2EmployeeId: crew === undefined ? null : (snapshot(crew).driver2EmployeeId ?? null),
         notes: crew === undefined ? null : (snapshot(crew).notes ?? null),
@@ -133,7 +133,7 @@ class FleetFixedRosterService {
     const input: SaveFleetFixedRoster = {
       rows: original.rows.map((row) => ({
         vehicleId: canonical(row.vehicleId) as string,
-        workTypeId: canonical(row.workTypeId),
+        missionTypeId: canonical(row.missionTypeId),
         driver1EmployeeId: canonical(row.driver1EmployeeId),
         driver2EmployeeId: canonical(row.driver2EmployeeId),
         notes: row.notes,
@@ -170,20 +170,22 @@ class FleetFixedRosterService {
       }
     }
 
-    // The work type must BE a work type: an id that is well-formed, live, and of this kind. The
-    // daily plan checks its mission type the same way and for the same reason — the column stores
-    // a reference, so a dangling one would render as a blank cell no reader could explain, and a
-    // `workshop` id would render as somebody else's vocabulary.
-    for (const workTypeId of new Set(
-      input.rows.map((row) => row.workTypeId).filter((id): id is string => id != null),
+    // The mission type must BE a mission type: an id that is well-formed, live, and of this
+    // kind. The daily plan checks its own the same way and against the SAME catalog — the column
+    // stores a reference, so a dangling one would render as a blank cell no reader could explain,
+    // and an id from another kind would render as somebody else's vocabulary. `workType`
+    // (أنواع الأعمال) is exactly that other vocabulary — the workshop's — and an id from it is
+    // refused here like any other wrong-kind id.
+    for (const missionTypeId of new Set(
+      input.rows.map((row) => row.missionTypeId).filter((id): id is string => id != null),
     )) {
-      const item = await fleetCatalogItemRepository.findActiveOfKind(workTypeId, 'workType');
+      const item = await fleetCatalogItemRepository.findActiveOfKind(missionTypeId, 'missionType');
       if (item === null) {
         throw new ValidationError([
           {
-            field: 'body.rows.workTypeId',
+            field: 'body.rows.missionTypeId',
             code: 'UNKNOWN',
-            message: 'work type not found or inactive',
+            message: 'mission type not found or inactive',
           },
         ]);
       }
@@ -218,13 +220,14 @@ class FleetFixedRosterService {
         const current = byVehicle.get(row.vehicleId);
         // Same keys, same order as `snapshot()` — see the note there.
         const next = {
-          workTypeId: row.workTypeId ?? null,
+          missionTypeId: row.missionTypeId ?? null,
           driver1EmployeeId: row.driver1EmployeeId ?? null,
           driver2EmployeeId: row.driver2EmployeeId ?? null,
           notes: row.notes ?? null,
         };
         const set: Partial<FleetFixedCrewDoc> = {
-          workTypeId: next.workTypeId === null ? null : new Types.ObjectId(next.workTypeId),
+          missionTypeId:
+            next.missionTypeId === null ? null : new Types.ObjectId(next.missionTypeId),
           driver1EmployeeId:
             next.driver1EmployeeId === null ? null : new Types.ObjectId(next.driver1EmployeeId),
           driver2EmployeeId:

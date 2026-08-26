@@ -1,5 +1,5 @@
-// The api ships five runtime entrypoints — server, worker, seed, seed:demo, atm:import — and all
-// of them load
+// The api ships six runtime entrypoints — server, worker, seed, seed:demo, atm:import,
+// fleet:fix-crew-mission — and all of them load
 // the module graph through `moduleManifests`. That graph must be importable OUTSIDE a vitest run:
 // one test-only import reachable from it (vitest, a spec helper, a mock) takes every entrypoint
 // down at import time. That is exactly what happened when the automation barrel re-exported
@@ -25,6 +25,9 @@ const RUNTIME_ROOTS = [
   // path — so it needs its own root or a test-only import in it would go unnoticed until an
   // operator ran a migration.
   './src/modules/atm/migration/legacy-import.ts',
+  // fleet:fix-crew-mission, for the same reason: a one-shot retirement an operator runs by hand
+  // is the worst possible place to discover a test-only import.
+  './src/modules/fleet/fixed-roster/legacy-work-type-retirement.ts',
 ];
 
 describe('runtime import safety', () => {

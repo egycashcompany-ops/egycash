@@ -29,6 +29,7 @@ export {
   registerWorkflowApplicantReader,
   resetWorkflowApplicantReader,
   type WorkflowApplicant,
+  currentStageKind,
 } from './workflow-state';
 export { availableActions, permissionForAction, unmappedActions } from './workflow-actions';
 export { stageBindingsInOrder } from './workflow-engine';

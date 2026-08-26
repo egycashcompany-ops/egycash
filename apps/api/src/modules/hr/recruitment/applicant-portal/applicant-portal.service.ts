@@ -10,6 +10,7 @@
 // is only that it never gets a password: it signs in with a one-time code (P-HR-APP §4), so the
 // activation token this creation produces is deliberately discarded.
 import { Types } from 'mongoose';
+import { type ApplicantPortalStatusDto } from '@ecms/contracts';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { sendWhatsApp } from '../../../../infrastructure/messaging/whatsapp';
 import { env } from '../../../../infrastructure/config/env';
@@ -18,6 +19,8 @@ import { rbacService } from '../../../../platform/rbac';
 import { userService, type UserDoc } from '../../../../platform/users';
 import { applicantRepository } from '../applicants/applicant.repository';
 import { type ApplicantDoc } from '../applicants/applicant.model';
+import { currentStageKind } from '../workflow';
+import { isTerminalStep, portalStepOf } from './portal-step';
 import {
   APPLICANT_PORTAL_PERMISSION,
   APPLICANT_PORTAL_ROLE_KEY,
@@ -107,6 +110,32 @@ class ApplicantPortalService {
       changes: [{ field: 'portalAccount', old: null, new: applicant.code }],
     });
     return user;
+  }
+
+  /**
+   * Where this candidate stands, in the six words they are allowed to read (D-APP-8).
+   *
+   * WHAT IS NOT HERE IS THE POINT. No score, no reason, no decider, no internal stage name, no
+   * attempt number, no list of what a recruiter could do next. The internal timeline carries
+   * thirty-three event types and this returns one enum value, because a candidate asking «where
+   * has my application got to» is owed an answer and is not owed a window on how the company is
+   * handling them.
+   */
+  async statusFor(applicantId: string): Promise<ApplicantPortalStatusDto | null> {
+    const applicant = await applicantRepository.getById(applicantId).catch(() => null);
+    if (applicant === null) return null;
+    const step = portalStepOf(applicant.status, await currentStageKind(applicantId));
+    // The denormalized label, not a fresh lookup: it is what the recruiter screens show, so the
+    // candidate and the company read the same words for the same seat.
+    const position = applicant.placementLabel?.position ?? null;
+    return {
+      applicantCode: applicant.code,
+      fullNameAr: applicant.fullNameAr,
+      step,
+      terminal: isTerminalStep(step),
+      position,
+      appliedAt: applicant.createdAt.toISOString(),
+    };
   }
 
   /**

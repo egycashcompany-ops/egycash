@@ -31,6 +31,7 @@ import { authorize } from '../../../../platform/rbac';
 import {
   getApplicantDocuments,
   getMyDocuments,
+  getMyStatus,
   listApplicantDocumentSets,
   listApplicantDocumentTypes,
   reviewApplicantDocument,
@@ -78,6 +79,12 @@ const multipartSingle = (): RequestHandler => {
 export const buildApplicantPortalDocumentsRouter = (): Router => {
   const router = Router();
 
+  router.get(
+    '/status',
+    authenticate,
+    authorize('applicantPortal.view'),
+    asyncHandler(getMyStatus),
+  );
   router.get(
     '/documents',
     authenticate,

@@ -126,6 +126,25 @@ const currentStage = async (
 };
 
 /**
+ * Just the stage KIND, for a reader that must not learn anything else.
+ *
+ * The applicant portal (P-HR-APP, D-APP-8) needs to tell a candidate roughly where they stand and
+ * must not be handed the concrete interview stage by name, the attempt number, the row's status or
+ * the actions a recruiter could take — all of which `buildWorkflowState` returns, correctly, to a
+ * recruiter. Exposing the coarse fact on its own is what keeps the portal from having to take the
+ * fine one and remember to throw most of it away.
+ *
+ * Widen this by adding another NARROW reader, never by returning more from this one.
+ */
+export const currentStageKind = async (applicantId: string): Promise<RecruitmentStageKind | null> => {
+  if (!Types.ObjectId.isValid(applicantId)) return null;
+  const live = await currentStage(applicantId);
+  // Through the same `StageObject` → kind map the recruiter-facing reader uses, so the two can
+  // never disagree about what an internal object is called.
+  return live === null ? null : STAGE_KIND[live.object];
+};
+
+/**
  * Build the envelope's `workflow` half. Returns null when the applicant cannot be read — a caller
  * with no candidate in scope (a catalog action) has no workflow state to report, and inventing an
  * empty one would be a lie the client would render.

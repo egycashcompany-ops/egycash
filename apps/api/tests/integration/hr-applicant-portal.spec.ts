@@ -402,7 +402,11 @@ describe('handing documents in', () => {
   it('refuses a document this candidate is not asked for', async () => {
     const licence = await typeIdByKey('professionalDrivingLicense');
     const res = await submit(portalToken, licence, { licenseClass: 'first' });
-    expect(res.status).toBe(422);
+    // 400, not 422: this is a refusal ABOUT A FIELD, and it comes back naming `typeId` so the
+    // screen can point at the control that is wrong. `BusinessRuleError` (422) is what this
+    // feature answers when the request is well-formed and the STATE forbids it — see the accepted
+    // document below, which cannot be replaced.
+    expect(res.status).toBe(400);
   });
 
   it('takes an upload, and the slot stops being missing', async () => {
@@ -430,7 +434,7 @@ describe('handing documents in', () => {
   it('refuses a licence class on a document that has no such thing (D-APP-6)', async () => {
     const typeId = await typeIdByKey('birthCertificate');
     const res = await submit(portalToken, typeId, { licenseClass: 'second' });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -450,7 +454,9 @@ describe('HR rules on what was handed in', () => {
       .post(`/api/v1/hr/applicant-documents/${applicant.id}/documents/${typeId}/review`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ outcome: 'rejected' });
-    expect(res.status).toBe(422);
+    // Refused by the schema itself, before the handler runs — the note is part of what a
+    // rejection IS, not a rule the service applies afterwards.
+    expect(res.status).toBe(400);
   });
 
   it('REJECTS with a reason, and the slot reopens for the candidate (D-APP-7ج)', async () => {

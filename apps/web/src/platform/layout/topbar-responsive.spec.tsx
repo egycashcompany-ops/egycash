@@ -13,6 +13,7 @@
 //
 // The measurements themselves were taken in a real browser against the real stylesheet: 0px
 // overflow at 320/360/412, and a desktop bar byte-identical to the one before the change.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -175,5 +176,43 @@ describe('the utilities take the second line, and give nothing up for it', () =>
     ]) {
       expect(MARKUP, label).toContain(label);
     }
+  });
+});
+
+/**
+ * The bar fitting is not the whole story: what the bar OPENS has to fit too.
+ *
+ * WHY THIS EXISTS. The branch switcher's panel is anchored, absolutely positioned and 16rem wide.
+ * It was anchored `end-0` — the far edge — which is right for a control sitting at the row's
+ * inline END, because the box then grows back INTO the row. The switcher is the row's FIRST
+ * control, and below `md` the row is `w-full justify-between`, so it is flush against the
+ * viewport's inline-start edge. Anchoring the far edge there makes the panel grow AWAY from the
+ * row, straight off the screen: on a phone roughly a third of it was outside the viewport, in the
+ * one direction nothing can scroll to.
+ *
+ * The rule, stated so it holds for whatever is added next: a panel opens INWARD from the edge its
+ * button is on. The button's own position decides which anchor that is, so the premise — that the
+ * switcher really is the first control — is pinned here too rather than assumed.
+ *
+ * Static markup cannot carry the panel (it renders only while open) and this harness has no DOM
+ * to measure with, so the anchor is read from the source, the way the api-contract specs do.
+ */
+describe('a panel opens inward from the edge its control sits on', () => {
+  const SOURCE = readFileSync(new URL('./BranchSwitcher.tsx', import.meta.url), 'utf8');
+  const panel = /role="listbox"[\s\S]*?className="([^"]*)"/.exec(SOURCE)?.[1] ?? '';
+
+  it('the branch switcher is the row that panel hangs from — its first control', () => {
+    const firstButton = /<button[^>]*class="([^"]*)"/.exec(UTILITIES)?.[1] ?? '';
+    // The switcher's button is the only one in the group with a border and a fixed height.
+    expect(firstButton.split(/\s+/)).toEqual(expect.arrayContaining(['h-9', 'border']));
+  });
+
+  it('so its panel anchors the NEAR edge, never the far one', () => {
+    expect(panel.split(/\s+/), panel).toContain('start-0');
+    expect(panel.split(/\s+/), panel).not.toContain('end-0');
+  });
+
+  it('and is capped to the viewport, so no width can outgrow the screen it opens on', () => {
+    expect(panel, panel).toMatch(/max-w-\[/);
   });
 });

@@ -50,6 +50,8 @@ export interface FormState {
   nationality: string;
   maritalStatus: '' | MaritalStatus;
   religion: string;
+  /** The security-check form's field — typed by hand, never OCR-derived. */
+  motherName: string;
   nationalIdExpiry: string;
   dependentsCount: string;
   primaryPhone: string;

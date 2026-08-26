@@ -854,8 +854,8 @@ describe('saving', () => {
   it('carries the chosen mission type through as the catalog ID, and null when cleared', () => {
     // The dialog hands `applyEdit` the id it read off the catalog `<option value={item.id}>`;
     // the row keeps it; `changedRows` sends it; the real schema accepts it. Every link in that
-    // chain is here, because a break in any one of them looks the same to the reader: the work
-    // type they picked is simply not there when the screen comes back.
+    // chain is here, because a break in any one of them looks the same to the reader: the
+    // mission type they picked is simply not there when the screen comes back.
     const saved = [row(V1, '150'), row(V2, '151')];
     const picked = applyEdit(saved, V1, {
       missionTypeId: MT,
@@ -871,7 +871,7 @@ describe('saving', () => {
     );
 
     // …and clearing it is a real value, not a missing key: `null` is how this module spells
-    // "no work type", and the contract accepts that too.
+    // "no mission type", and the contract accepts that too.
     const cleared = applyEdit(picked, V1, {
       missionTypeId: null,
       driver1EmployeeId: null,

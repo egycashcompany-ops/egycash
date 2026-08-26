@@ -6,14 +6,19 @@
 // closing waits until nothing is pending.
 import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { type BatchItemDto, type Locale } from '@ecms/contracts';
+import {
+  DRIVING_TEST_GRADES,
+  type BatchItemDto,
+  type DrivingTestGrade,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
-import { Field, Input } from '../../../../../shared/ui/form';
+import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
 import { BulkActionBar } from '../../../../../shared/ui/BulkActionBar';
 import { useTableSelection } from '../../../../../shared/ui/useTableSelection';
@@ -27,6 +32,7 @@ import {
   useBulkBatchItems,
   useCancelEvaluationBatch,
   useCloseEvaluationBatch,
+  useDecideBatchItem,
   useEvaluationBatch,
   useIssueEvaluationBatch,
   useRemoveBatchItem,
@@ -51,6 +57,12 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [reasonFor, setReasonFor] = useState<{ action: ReasonAction; applicantId?: string } | null>(null);
+  // A GRADE ARRIVES WITH A DECISION, never on its own: the examiner's mark and the approval are
+  // one act. Only the driving test has a scale, so only that phase is asked for one.
+  const isDrivingTest = batch?.phaseKey === 'drivingTest';
+  const [gradeFor, setGradeFor] = useState<string | null>(null);
+  const [grade, setGrade] = useState<DrivingTestGrade>('good');
+  const decideItem = useDecideBatchItem(id);
   const [reason, setReason] = useState('');
 
   const items = useMemo(() => batch?.items ?? [], [batch]);
@@ -134,6 +146,15 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
     },
     { key: 'position', header: t('batches.columns.position'), render: (i) => i.placementLabel.position ?? '—' },
     { key: 'result', header: t('batches.columns.result'), render: (i) => <BatchItemBadge result={i.result} /> },
+    ...(isDrivingTest
+      ? [
+          {
+            key: 'grade',
+            header: t('batches.columns.grade'),
+            render: (i: BatchItemDto) => (i.grade === null ? '—' : t(`batches.grade.${i.grade}`)),
+          },
+        ]
+      : []),
     { key: 'reason', header: t('batches.columns.reason'), render: (i) => i.reason ?? '—' },
     {
       key: 'actions',
@@ -154,7 +175,11 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
             <>
               <Button
                 size="sm"
-                onClick={() => void bulk.mutateAsync({ action: 'approve', ids: [i.applicantId] })}
+                onClick={() =>
+                  isDrivingTest
+                    ? setGradeFor(i.applicantId)
+                    : void bulk.mutateAsync({ action: 'approve', ids: [i.applicantId] })
+                }
               >
                 {t('batches.actions.approve')}
               </Button>
@@ -404,6 +429,45 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
       >
         <Field label={t('bulk.reason.title')}>
           <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+        </Field>
+      </Dialog>
+
+      <Dialog
+        open={gradeFor !== null}
+        onClose={() => setGradeFor(null)}
+        title={t('batches.actions.approve')}
+        description={t('batches.grade.prompt')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setGradeFor(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              loading={decideItem.isPending}
+              onClick={() => {
+                const applicantId = gradeFor;
+                if (applicantId === null || batch === undefined) return;
+                void decideItem
+                  .mutateAsync({
+                    applicantId,
+                    body: { result: 'approved', grade, version: batch.version },
+                  })
+                  .then(() => setGradeFor(null));
+              }}
+            >
+              {t('common.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('batches.columns.grade')}>
+          <Select value={grade} onChange={(e) => setGrade(e.target.value as DrivingTestGrade)}>
+            {DRIVING_TEST_GRADES.map((g) => (
+              <option key={g} value={g}>
+                {t(`batches.grade.${g}`)}
+              </option>
+            ))}
+          </Select>
         </Field>
       </Dialog>
     </PageContainer>

@@ -90,6 +90,7 @@ export const toApplicantDto = (doc: ApplicantDoc): ApplicantDto => {
     photoFileId: doc.photoFileId == null ? null : String(doc.photoFileId),
     maritalStatus: doc.maritalStatus ?? null,
     religion: doc.religion ?? null,
+    motherName: doc.motherName ?? null,
     nationalIdExpiry: iso(doc.nationalIdExpiry),
     dependentsCount: doc.dependentsCount ?? null,
     contact: {

@@ -157,6 +157,11 @@ describe('candidate and employee do not mix', () => {
       '/interviews/stages',
       '/evaluations',
       '/evaluations/phases',
+      // RW7 — one row per BATCH phase, not one row for "batches". A security check and a driving
+      // test are two errands run by two people; the single mixed screen they used to share is the
+      // thing this pair replaced.
+      '/evaluation-batches/phase/securityCheck',
+      '/evaluation-batches/phase/drivingTest',
       '/job-offers',
       '/applicant-sources',
       '/recruitment-form',

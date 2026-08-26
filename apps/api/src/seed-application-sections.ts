@@ -108,6 +108,8 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         '/interviews/stages',
         '/evaluations',
         '/evaluations/phases',
+        '/evaluation-batches/phase/securityCheck',
+        '/evaluation-batches/phase/drivingTest',
         '/job-offers',
         '/applicant-sources',
         '/recruitment-form',

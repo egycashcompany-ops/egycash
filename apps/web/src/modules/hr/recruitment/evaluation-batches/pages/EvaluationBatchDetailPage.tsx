@@ -186,7 +186,12 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
         description={localized(batch.phaseName, locale)}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
-          { label: t('batches.title'), to: '/evaluation-batches' },
+          {
+            // Back to the phase this batch belongs to, never to the mixed list: the crumb should
+            // return somebody to the queue they came from.
+            label: localized(batch.phaseName, locale),
+            to: `/evaluation-batches/phase/${batch.phaseKey}`,
+          },
           { label: batch.code },
         ]}
         actions={

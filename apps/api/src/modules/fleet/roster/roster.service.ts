@@ -27,6 +27,7 @@ import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
 import { driverAvailabilityOn } from '../availability/driver-availability';
+import { fleetFixedCrewRepository } from '../fixed-roster/fixed-crew.repository';
 import { fleetDutyAssignmentRepository } from './duty-assignment.repository';
 import { type FleetDutyAssignmentDoc } from './duty-assignment.model';
 import { type FleetVehicleDoc } from '../vehicles/vehicle.model';
@@ -75,49 +76,117 @@ interface PendingAudit {
 }
 
 class FleetRosterService {
-  /** The §4.5 board: scoped vehicles + the day's plan + the driver pool, split by the seam. */
+  /**
+   * The §4.5 board: scoped vehicles + the day's plan + the driver pool, split by the seam.
+   *
+   * TWO SOURCES, AND WHICH ONE SPEAKS IS DECIDED BY ONE FACT: does a `fleet_duty_assignment`
+   * document exist for this (vehicle, date)?
+   *
+   *   PLANNED   — a document exists. That document IS the day, exactly as stored, even when its
+   *               drivers are null. A day somebody deliberately emptied must come back empty; if
+   *               the fixed crew were re-applied here, clearing a crew for one day would be
+   *               impossible to express and every reload would silently undo the dispatcher.
+   *   UNPLANNED — no document exists. Nobody has said anything about this vehicle on this day, so
+   *               the standing crew (§2.7b) is what the day starts from.
+   *
+   * The overlay is COMPUTED, never written. `fleet_fixed_crews` is read through its own
+   * repository's `findAll()` (a `.lean()` read) and nothing on this path writes to it — the
+   * day's restrictions below shape the PROJECTION, so a vehicle in the workshop on Tuesday loses
+   * its crew on Tuesday's board and keeps it in the standing configuration.
+   */
   async board(date: Date, scope: ScopeSelector): Promise<FleetRosterDayDto> {
     const day = utcDay(date);
     const vehicles = await this.allActiveVehicles(scope);
     const vehicleIds = vehicles.map((v) => String(v._id));
-    const [inWorkshop, assignments] = await Promise.all([
+    const [inWorkshop, assignments, fixedCrews] = await Promise.all([
       fleetVehicleService.openVisitVehicleIds(vehicleIds, day),
       fleetDutyAssignmentRepository.findForDate(day),
+      fleetFixedCrewRepository.findAll(),
     ]);
     const byVehicle = new Map(assignments.map((row) => [String(row.vehicleId), row]));
+    const fixedByVehicle = new Map(fixedCrews.map((row) => [String(row.vehicleId), row]));
     // Taken is computed over the WHOLE day's plan, not just scoped vehicles — a driver assigned
     // to another branch's vehicle is still taken.
     const taken = fleetDutyAssignmentRepository.takenDrivers(assignments);
 
-    const rows: FleetRosterRowDto[] = vehicles.map((vehicle) => {
-      const id = String(vehicle._id);
-      const assignment = byVehicle.get(id);
-      const facts = assignment === undefined ? null : snapshot(assignment);
-      return {
-        vehicleId: id,
-        code: vehicle.code,
-        plateNumber: vehicle.plateNumber,
-        typeId: String(vehicle.typeId),
-        inMaintenance: inWorkshop.has(id),
-        missionTypeId: facts?.missionTypeId ?? null,
-        driver1EmployeeId: facts?.driver1EmployeeId ?? null,
-        driver2EmployeeId: facts?.driver2EmployeeId ?? null,
-        notes: facts?.notes ?? null,
-      };
-    });
-
-    const availableDrivers: FleetRosterDayDto['availableDrivers'] = [];
+    // The availability verdict is needed BEFORE the rows, because it decides which of a standing
+    // crew may be carried into the day. Point 1 — the seam is the ONLY availability authority.
+    const freeToday = new Set<string>();
+    const availableOrder: string[] = [];
     const unavailableDrivers: FleetRosterDayDto['unavailableDrivers'] = [];
     for (const profile of await this.allActiveDrivers()) {
       const employeeId = String(profile.employeeId);
-      // Point 1 — the seam is the ONLY availability authority; the roster never re-derives it.
       const availability = await driverAvailabilityOn(employeeId, day);
       if (availability.available) {
-        availableDrivers.push({ employeeId, assignedVehicleId: taken.get(employeeId) ?? null });
+        freeToday.add(employeeId);
+        availableOrder.push(employeeId);
       } else {
         unavailableDrivers.push({ employeeId, reason: availability.reason ?? 'unavailable' });
       }
     }
+
+    /** Where the overlay seats somebody, so the pool below can say so as the plan does. */
+    const seatedByOverlay = new Map<string, string>();
+
+    const rows: FleetRosterRowDto[] = vehicles.map((vehicle) => {
+      const id = String(vehicle._id);
+      const inMaintenance = inWorkshop.has(id);
+      const vehicleFacts = {
+        vehicleId: id,
+        code: vehicle.code,
+        plateNumber: vehicle.plateNumber,
+        typeId: String(vehicle.typeId),
+        inMaintenance,
+      };
+
+      const assignment = byVehicle.get(id);
+      if (assignment !== undefined) {
+        // PLANNED — the stored day, verbatim. Maintenance does not rewrite it here: FR-5 refuses
+        // the WRITE, so a persisted row is one the server already accepted, and silently blanking
+        // it on read would hide from the reader what the database actually holds.
+        const facts = snapshot(assignment);
+        return {
+          ...vehicleFacts,
+          missionTypeId: facts.missionTypeId,
+          driver1EmployeeId: facts.driver1EmployeeId,
+          driver2EmployeeId: facts.driver2EmployeeId,
+          notes: facts.notes,
+        };
+      }
+
+      // UNPLANNED — start from the standing crew, then let the day cut it down.
+      const fixed = fixedByVehicle.get(id);
+      const carry = (employeeId: Types.ObjectId | null): string | null => {
+        if (employeeId === null) return null;
+        const driver = String(employeeId);
+        // A vehicle that cannot be assigned today carries nobody (§9): the standing crew stays in
+        // `fleet_fixed_crews`, it simply is not on duty on a day the car is in the workshop.
+        if (inMaintenance) return null;
+        // Unavailable today, or already planned onto another vehicle for this date (FR-7): the
+        // standing configuration does not get to override either.
+        if (!freeToday.has(driver) || taken.has(driver) || seatedByOverlay.has(driver)) return null;
+        seatedByOverlay.set(driver, id);
+        return driver;
+      };
+
+      return {
+        ...vehicleFacts,
+        // The mission is a fact about the vehicle's standing work and is carried even when the
+        // car is in the workshop; the CREW is what the day withdraws. `notes` is deliberately not
+        // carried — a note on a day is about that day, and the standing remark is not.
+        missionTypeId: fixed === undefined ? null : (fixed.missionTypeId?.toString() ?? null),
+        driver1EmployeeId: carry(fixed?.driver1EmployeeId ?? null),
+        driver2EmployeeId: carry(fixed?.driver2EmployeeId ?? null),
+        notes: null,
+      };
+    });
+
+    const availableDrivers: FleetRosterDayDto['availableDrivers'] = availableOrder.map(
+      (employeeId) => ({
+        employeeId,
+        assignedVehicleId: taken.get(employeeId) ?? seatedByOverlay.get(employeeId) ?? null,
+      }),
+    );
 
     return { date: day.toISOString(), rows, availableDrivers, unavailableDrivers };
   }
@@ -151,6 +220,22 @@ class FleetRosterService {
       })),
     };
     const day = utcDay(input.date);
+
+    // A roster is a PLAN. Planning yesterday is not planning — the day is spent, and a write to
+    // it would rewrite history the odometer, the workshop and the audit trail have already moved
+    // past. Today stays writable: the current day's plan is the one operations is living in and
+    // is edited all morning. So the floor is today, in the SAME `utcDay` the board and every
+    // lookup on this path already use — one date interpretation, not a second one.
+    const todayUtc = utcDay(new Date());
+    if (day.getTime() < todayUtc.getTime()) {
+      throw new ValidationError([
+        {
+          field: 'body.date',
+          code: 'PAST_DATE',
+          message: 'a roster cannot be planned for a date in the past',
+        },
+      ]);
+    }
 
     // Scope rides the vehicle lookup: a branch-scoped planner cannot touch (or probe) another
     // branch's fleet — out-of-scope reads 404 exactly as the registry's own endpoints do.

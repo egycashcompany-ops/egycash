@@ -23,6 +23,7 @@ const form = (patch: Partial<FormState> = {}): FormState => ({
   nationality: 'Egyptian',
   maritalStatus: '',
   religion: '',
+  motherName: '',
   nationalIdExpiry: '',
   dependentsCount: '',
   primaryPhone: '01012345678',

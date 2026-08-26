@@ -10,13 +10,15 @@
 // built without `list.pdf` and the package reports the reason, exactly the graceful degradation
 // contracts uses. The job is retryable from the UI.
 import archiver from 'archiver';
-import { HrEvaluationBatchEvents } from '@ecms/contracts';
+import { DRIVING_TEST_GRADES, HrEvaluationBatchEvents } from '@ecms/contracts';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { type AuthContext } from '../../../../shared/types';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService } from '../../../../platform/files';
 import { pdfDriverEnabled, renderPdfFromHtml } from '../../../../platform/pdf';
 import { contractBrandingService } from '../../contracts/branding';
+import { resolveNationalIdCardCategoryId } from '../applicants/national-id-card.files';
+import { DRIVING_GRADE_LABELS } from './batch-form-fields';
 import { resolveEvaluationBatchCategoryId } from './evaluation-batch.files';
 import { type BatchItem, type EvaluationBatchDoc } from './evaluation-batch.model';
 import { evaluationBatchRepository } from './evaluation-batch.repository';
@@ -63,46 +65,199 @@ export const buildManifestCsv = (doc: EvaluationBatchDoc): string => {
   return [header.map(csvCell).join(','), ...rows].join('\r\n');
 };
 
+/** Shared chrome: the company header every generated form carries. */
+const headerHtml = (
+  branding: { logoDataUri: string | null; headerText: string; primaryColor: string },
+  subtitle: string,
+): string => {
+  const logo =
+    branding.logoDataUri === null ? '' : `<img class="logo" src="${branding.logoDataUri}" alt="" />`;
+  return `<header>${logo}<div><h1>${escapeHtml(branding.headerText)}</h1><div class="dept">${escapeHtml(subtitle)}</div></div></header>`;
+};
+
+const BASE_CSS = `
+  body { font-family: "Noto Naskh Arabic", "Segoe UI", sans-serif; color: #111; }
+  header { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; }
+  .logo { height: 48px; }
+  h1 { font-size: 16px; margin: 0; }
+  .dept { font-size: 12px; color: #444; }
+  h2 { font-size: 15px; margin: 10px 0 4px; text-align: center; }
+  .meta { margin: 8px 0; font-size: 12px; }
+  .meta span { margin-inline-end: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #333; padding: 4px 6px; text-align: right; }
+  th { background: #f0f0f0; }
+  td.num { text-align: center; width: 34px; }
+`;
+
 /**
- * The official list. Printed RTL in Arabic — this document leaves the building and is signed by
- * hand, so it carries the company header, the batch identity and a signature block.
+ * The SECURITY CHECK form (`securityCheck`).
+ *
+ * Its columns are the ones the receiving body asks for and no others: name, job, national id,
+ * address, mother's name. No code, no branch, no result — the sheet goes out to be filled in, and
+ * a column nobody writes in is a column that confuses the person holding the pen.
+ *
+ * The master template carries no header at all. This one does, by an explicit decision: an
+ * unheaded sheet cannot be traced back to the batch that produced it once it is on a desk with
+ * twenty others.
+ *
+ * `cards` are the National-ID images, ONE PER PAGE after the table, in the same order as the rows.
  */
-export const buildListHtml = (
+const securityCheckHtml = (
+  doc: EvaluationBatchDoc,
+  branding: { logoDataUri: string | null; headerText: string; primaryColor: string },
+  cards: readonly BatchCard[],
+): string => {
+  const rows = liveItems(doc)
+    .map(
+      (item, index) => `<tr>
+      <td class="num">${index + 1}</td>
+      <td>${escapeHtml(item.applicantName ?? '')}</td>
+      <td>${escapeHtml(item.placementSnapshotLabel.position ?? '')}</td>
+      <td dir="ltr">${escapeHtml(item.nationalId ?? '')}</td>
+      <td>${escapeHtml(item.address ?? '')}</td>
+      <td>${escapeHtml(item.motherName ?? '')}</td>
+    </tr>`,
+    )
+    .join('\n');
+  const issued = (doc.issuedAt ?? doc.createdAt).toISOString().slice(0, 10);
+  // Each card gets its own page. A candidate with no card on file is still named, so the reader
+  // knows a page is missing rather than silently receiving a shorter stack.
+  const cardPages = cards
+    .map(
+      (card) => `<section class="card-page">
+      <div class="card-name">${escapeHtml(card.applicantName)} — ${escapeHtml(card.applicantCode)}</div>
+      ${card.images.map((src) => `<img class="card" src="${src}" alt="" />`).join('\n')}
+      ${card.images.length === 0 ? '<div class="card-missing">لا توجد صورة بطاقة مرفقة</div>' : ''}
+    </section>`,
+    )
+    .join('\n');
+  return `<section dir="rtl" lang="ar">
+  <style>
+    ${BASE_CSS}
+    header { border-bottom: 2px solid ${branding.primaryColor}; }
+    .card-page { page-break-before: always; text-align: center; }
+    .card-name { font-size: 13px; margin-bottom: 8px; font-weight: bold; }
+    .card { max-width: 100%; max-height: 44vh; margin: 6px auto; display: block; border: 1px solid #999; }
+    .card-missing { font-size: 12px; color: #666; margin-top: 24px; }
+  </style>
+  ${headerHtml(branding, 'إدارة الموارد البشرية')}
+  <h2>${escapeHtml(doc.phaseName.ar)}</h2>
+  <div class="meta">
+    <span>رقم الدفعة: ${escapeHtml(doc.code)}</span>
+    <span>التاريخ: ${issued}</span>
+    <span>العدد: ${liveItems(doc).length}</span>
+  </div>
+  <table>
+    <thead><tr>
+      <th class="num">م</th><th>الاسم</th><th>الوظيفة</th>
+      <th>الرقم القومى</th><th>العنوان</th><th>اسم الأم</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+  ${cardPages}
+</section>`;
+};
+
+/**
+ * The DRIVING TEST form (`drivingTest`) — landscape, as the master is.
+ *
+ * The rating is four tick columns under one merged head, and they are printed EMPTY when nothing
+ * has come back yet: this sheet's job is to be filled in by hand at the wheel. When a grade has
+ * since been recorded the same template marks it, so a returned batch reprints as the record of
+ * what the examiner decided rather than as a fresh blank.
+ *
+ * Two named signatories, because the master names two: the HR representative who sent the
+ * candidates and the examiner who tested them.
+ */
+const drivingTestHtml = (
+  doc: EvaluationBatchDoc,
+  branding: { logoDataUri: string | null; headerText: string; primaryColor: string },
+): string => {
+  const grades = DRIVING_TEST_GRADES;
+  const rows = liveItems(doc)
+    .map(
+      (item, index) => `<tr>
+      <td class="num">${index + 1}</td>
+      <td>${escapeHtml(item.applicantName ?? '')}</td>
+      <td dir="ltr">${escapeHtml(item.phone ?? '')}</td>
+      ${grades.map((g) => `<td class="tick">${item.grade === g ? '✓' : ''}</td>`).join('')}
+      <td>${escapeHtml(item.reason ?? '')}</td>
+    </tr>`,
+    )
+    .join('\n');
+  const issued = (doc.issuedAt ?? doc.createdAt).toISOString().slice(0, 10);
+  return `<section dir="rtl" lang="ar">
+  <style>
+    @page { size: A4 landscape; }
+    ${BASE_CSS}
+    header { border-bottom: 2px solid ${branding.primaryColor}; }
+    td.tick { text-align: center; width: 56px; font-size: 14px; }
+    th.tick { width: 56px; text-align: center; }
+    .sign { margin-top: 28px; display: flex; justify-content: space-between; font-size: 12px; }
+    .sign div { min-width: 220px; }
+    .sign .who { font-weight: bold; margin-bottom: 6px; }
+    .sign .line { margin-top: 10px; }
+  </style>
+  ${headerHtml(branding, 'إدارة الموارد البشرية')}
+  <h2>نموذج إختبار سائقين</h2>
+  <div class="meta">
+    <span>رقم الدفعة: ${escapeHtml(doc.code)}</span>
+    <span>التاريخ: ${issued}</span>
+    <span>العدد: ${liveItems(doc).length}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="num" rowspan="2">#</th>
+        <th rowspan="2">الإسم</th>
+        <th rowspan="2">رقم التليفون</th>
+        <th class="tick" colspan="${grades.length}">التقييم</th>
+        <th rowspan="2">ملاحظات</th>
+      </tr>
+      <tr>${grades.map((g) => `<th class="tick">${DRIVING_GRADE_LABELS[g].ar}</th>`).join('')}</tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>
+  <div class="sign">
+    <div><div class="who">ممثل إدارة الموارد البشرية</div><div class="line">الإسم: ____________</div><div class="line">التوقيع: ____________</div></div>
+    <div><div class="who">الممتحن</div><div class="line">الإسم: ____________</div><div class="line">التوقيع: ____________</div></div>
+  </div>
+</section>`;
+};
+
+/**
+ * Any OTHER batch phase — the shape this file used to print for everything.
+ *
+ * Phases stay admin-configurable, so a fourth batch phase can be added with no code change and
+ * still gets a usable, identified list. It is a fallback, not a form: a new external check with
+ * its own paperwork earns its own template here.
+ */
+const genericListHtml = (
   doc: EvaluationBatchDoc,
   branding: { logoDataUri: string | null; headerText: string; primaryColor: string },
 ): string => {
   const rows = liveItems(doc)
     .map(
       (item, index) => `<tr>
-      <td>${index + 1}</td>
+      <td class="num">${index + 1}</td>
       <td>${escapeHtml(item.applicantCode)}</td>
       <td>${escapeHtml(item.applicantName ?? '')}</td>
-      <td>${escapeHtml(item.nationalId ?? '')}</td>
+      <td dir="ltr">${escapeHtml(item.nationalId ?? '')}</td>
       <td>${escapeHtml(item.placementSnapshotLabel.position ?? '')}</td>
       <td>${escapeHtml(item.placementSnapshotLabel.branch ?? '')}</td>
       <td></td>
     </tr>`,
     )
     .join('\n');
-  const logo =
-    branding.logoDataUri === null
-      ? ''
-      : `<img class="logo" src="${branding.logoDataUri}" alt="" />`;
   const issued = (doc.issuedAt ?? doc.createdAt).toISOString().slice(0, 10);
   return `<section dir="rtl" lang="ar">
   <style>
-    body { font-family: "Noto Naskh Arabic", "Segoe UI", sans-serif; color: #111; }
-    header { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid ${branding.primaryColor}; padding-bottom: 8px; }
-    .logo { height: 48px; }
-    h1 { font-size: 18px; margin: 0; }
-    .meta { margin: 12px 0; font-size: 12px; }
-    .meta span { margin-inline-end: 16px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { border: 1px solid #999; padding: 4px 6px; text-align: right; }
-    th { background: #f0f0f0; }
+    ${BASE_CSS}
+    header { border-bottom: 2px solid ${branding.primaryColor}; }
     .sign { margin-top: 32px; display: flex; justify-content: space-between; font-size: 12px; }
   </style>
-  <header>${logo}<h1>${escapeHtml(branding.headerText)}</h1></header>
+  ${headerHtml(branding, 'إدارة الموارد البشرية')}
   <h2>${escapeHtml(doc.phaseName.ar)} — ${escapeHtml(doc.code)}</h2>
   <div class="meta">
     <span>${escapeHtml(doc.title ?? '')}</span>
@@ -110,11 +265,85 @@ export const buildListHtml = (
     <span>عدد المرشحين: ${liveItems(doc).length}</span>
   </div>
   <table>
-    <thead><tr><th>#</th><th>الكود</th><th>الاسم</th><th>الرقم القومي</th><th>الوظيفة</th><th>الفرع</th><th>النتيجة</th></tr></thead>
+    <thead><tr><th class="num">#</th><th>الكود</th><th>الاسم</th><th>الرقم القومي</th><th>الوظيفة</th><th>الفرع</th><th>النتيجة</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="sign"><div>توقيع المُصدِر: ______________</div><div>توقيع المستلم: ______________</div></div>
 </section>`;
+};
+
+/** One member's National-ID images, already loaded as data URIs. */
+export interface BatchCard {
+  applicantCode: string;
+  applicantName: string;
+  images: readonly string[];
+}
+
+/**
+ * The official list — ONE FORM PER PHASE (the fix this file exists for).
+ *
+ * A security check and a driving test are two different documents: they share no column but the
+ * name and the serial, one is portrait and one landscape, one wants an address and a mother's name
+ * and the other a phone and a four-level grade. Printing one template for both, with only the
+ * heading changing, is what made them look like the same errand.
+ *
+ * Dispatch is on `phaseKey`, which is stable and seeded; anything unrecognised gets the generic
+ * list rather than nothing.
+ */
+export const buildListHtml = (
+  doc: EvaluationBatchDoc,
+  branding: { logoDataUri: string | null; headerText: string; primaryColor: string },
+  cards: readonly BatchCard[] = [],
+): string => {
+  if (doc.phaseKey === 'securityCheck') return securityCheckHtml(doc, branding, cards);
+  if (doc.phaseKey === 'drivingTest') return drivingTestHtml(doc, branding);
+  return genericListHtml(doc, branding);
+};
+
+/**
+ * The National-ID images for one member, as data URIs the renderer can inline.
+ *
+ * Only files in the National-ID CATEGORY — an applicant's other attachments (a CV, a certificate)
+ * are in the ZIP already and have no business in a security list. A member with no card on file
+ * still gets an entry with no images, so the form names them and says the page is missing rather
+ * than quietly shipping a shorter stack.
+ *
+ * A file that cannot be read is skipped, never fatal: the package must still go out.
+ */
+const cardsOf = async (
+  ctx: AuthContext,
+  items: readonly BatchItem[],
+  categoryId: string,
+): Promise<BatchCard[]> => {
+  const out: BatchCard[] = [];
+  for (const item of items) {
+    const files = await fileService
+      .list(
+        {
+          page: 1,
+          pageSize: 10,
+          sortDir: 'asc',
+          moduleId: 'hr',
+          entityType: 'applicant',
+          entityId: String(item.applicantId),
+          categoryId,
+        },
+        { scope: 'organization', userId: ctx.userId, branchId: null, departmentId: null, sectionId: null },
+      )
+      .catch(() => null);
+    const images: string[] = [];
+    for (const file of files?.items ?? []) {
+      const read = await fileService.readBuffer(ctx, String(file._id)).catch(() => null);
+      if (read === null || !read.doc.mime.startsWith('image/')) continue;
+      images.push(`data:${read.doc.mime};base64,${read.buffer.toString('base64')}`);
+    }
+    out.push({
+      applicantCode: item.applicantCode,
+      applicantName: item.applicantName ?? '',
+      images,
+    });
+  }
+  return out;
 };
 
 /** Collect an applicant's attachments as ZIP entries; a missing file never fails the package. */
@@ -163,7 +392,13 @@ export const buildEvaluationBatchPackage = async (batchId: string): Promise<void
       .resolveRenderBranding(ctx, 'ar')
       .catch(() => ({ logoDataUri: null, headerText: '', primaryColor: '#111111' }));
     const manifestCsv = buildManifestCsv(doc);
-    const html = buildListHtml(doc, branding);
+    // The card pages are the security form's alone; loading them for every phase would read and
+    // base64 every image in a batch that will never print one.
+    const cards =
+      doc.phaseKey === 'securityCheck'
+        ? await cardsOf(ctx, liveItems(doc), await resolveNationalIdCardCategoryId()).catch(() => [])
+        : [];
+    const html = buildListHtml(doc, branding, cards);
     const pdf = await renderPdfFromHtml(html);
 
     const entries: { name: string; buffer: Buffer }[] = [

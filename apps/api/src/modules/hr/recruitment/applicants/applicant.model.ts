@@ -101,6 +101,8 @@ export interface ApplicantDoc extends BaseDocFields {
   photoFileId: Types.ObjectId | null;
   maritalStatus: MaritalStatus | null;
   religion: string | null;
+  /** The security-check form's field. Typed by hand — never read from the card by OCR. */
+  motherName: string | null;
   nationalIdExpiry: Date | null;
   dependentsCount: number | null;
   // Contact + address (§7 groups 2,3)
@@ -245,6 +247,7 @@ const applicantSchema = new Schema<ApplicantDoc>(
     photoFileId: { type: Schema.Types.ObjectId, default: null },
     maritalStatus: { type: String, enum: MARITAL_STATUSES, default: null },
     religion: { type: String, default: null },
+    motherName: { type: String, default: null },
     nationalIdExpiry: { type: Date, default: null },
     dependentsCount: { type: Number, default: null },
     contact: {

@@ -12,6 +12,8 @@
 import { Schema, model, type Types } from 'mongoose';
 import {
   BATCH_ITEM_RESULTS,
+  DRIVING_TEST_GRADES,
+  type DrivingTestGrade,
   BATCH_PACKAGE_STATUSES,
   EVALUATION_BATCH_STATUSES,
   type BatchItemResult,
@@ -39,7 +41,19 @@ export interface BatchItem {
   placementSnapshot: StagePlacement;
   placementSnapshotLabel: StagePlacementLabel;
   nationalId: string | null;
+  /**
+   * What the outgoing FORMS ask for, frozen with the rest of the item (RW4).
+   *
+   * Snapshots, not lookups. A list that has been printed, signed and sent says what it said; an
+   * address corrected next week does not retroactively change the paper somebody already holds.
+   * Null on every item added before these fields existed, and on any applicant who has no value.
+   */
+  motherName: string | null;
+  address: string | null;
+  phone: string | null;
   result: BatchItemResult;
+  /** The driving examiner's grade, where the phase has a scale (never a substitute for `result`). */
+  grade: DrivingTestGrade | null;
   reason: string | null;
   resultFileId: Types.ObjectId | null;
   decidedBy: Types.ObjectId | null;
@@ -114,7 +128,11 @@ const itemSchema = new Schema<BatchItem>(
     placementSnapshot: { type: placementSchema, default: emptyPlacement },
     placementSnapshotLabel: { type: placementLabelSchema, default: emptyPlacementLabel },
     nationalId: { type: String, default: null },
+    motherName: { type: String, default: null },
+    address: { type: String, default: null },
+    phone: { type: String, default: null },
     result: { type: String, enum: BATCH_ITEM_RESULTS, required: true, default: 'pending' },
+    grade: { type: String, enum: DRIVING_TEST_GRADES, default: null },
     reason: { type: String, default: null },
     resultFileId: { type: Schema.Types.ObjectId, default: null },
     decidedBy: { type: Schema.Types.ObjectId, default: null },

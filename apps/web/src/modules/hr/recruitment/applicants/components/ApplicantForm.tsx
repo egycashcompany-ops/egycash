@@ -76,6 +76,7 @@ const fromDto = (a: ApplicantDto): FormState => ({
   nationality: a.nationality,
   maritalStatus: a.maritalStatus ?? '',
   religion: a.religion ?? '',
+  motherName: a.motherName ?? '',
   nationalIdExpiry: a.nationalIdExpiry === null ? '' : a.nationalIdExpiry.slice(0, 10),
   dependentsCount: a.dependentsCount === null ? '' : String(a.dependentsCount),
   primaryPhone: a.contact.primaryPhone,
@@ -142,6 +143,7 @@ const emptyForm = (): FormState => ({
   nationality: NATIONALITY_EGYPTIAN,
   maritalStatus: '',
   religion: '',
+  motherName: '',
   nationalIdExpiry: '',
   dependentsCount: '',
   primaryPhone: '',
@@ -392,6 +394,7 @@ export const ApplicantForm = ({
         nationality: f.nationality.trim() === '' ? NATIONALITY_EGYPTIAN : f.nationality.trim(),
         ...(f.maritalStatus === '' ? {} : { maritalStatus: f.maritalStatus }),
         ...(str(f.religion) ? { religion: f.religion.trim() } : {}),
+        ...(str(f.motherName) ? { motherName: f.motherName.trim() } : {}),
         ...(str(f.nationalIdExpiry) ? { nationalIdExpiry: f.nationalIdExpiry } : {}),
         ...(num(f.dependentsCount) === undefined ? {} : { dependentsCount: num(f.dependentsCount) }),
       };
@@ -589,6 +592,15 @@ export const ApplicantForm = ({
                     <option key={m} value={m}>{t(`applicants.marital.${m}`)}</option>
                   ))}
                 </Select>
+              </Field>
+              {/* Asked for by the SECURITY CHECK form and by nothing else. Typed by hand: the OCR
+                  seam does not carry it, so what is entered here is what the form prints. */}
+              <Field label={t('applicants.form.motherName')} hint={t('applicants.form.motherNameHint')}>
+                <Input
+                  value={f.motherName}
+                  onChange={(e) => set({ motherName: e.target.value })}
+                  maxLength={200}
+                />
               </Field>
               <Field label={t('applicants.form.religion')}>
                 <Select value={f.religion} onChange={(e) => set({ religion: e.target.value })}>

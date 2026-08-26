@@ -15,6 +15,7 @@
 // Cross-feature access goes through the stage barrels (ADR-003).
 import { Types } from 'mongoose';
 import {
+  type DrivingTestGrade,
   HrEvaluationBatchEvents,
   type AddBatchItems,
   type BulkActionResultDto,
@@ -50,6 +51,7 @@ import {
   type BatchItem,
   type EvaluationBatchDoc,
 } from './evaluation-batch.model';
+import { formatAddress } from './batch-form-fields';
 import {
   evaluationBatchRepository,
   type EvaluationBatchListFilter,
@@ -464,7 +466,15 @@ class EvaluationBatchService {
       },
       scope,
     );
-    return this.applyItemResult(ctx, before, applicantId, input.result, input.reason ?? null, input.version);
+    return this.applyItemResult(
+      ctx,
+      before,
+      applicantId,
+      input.result,
+      input.reason ?? null,
+      input.version,
+      input.grade ?? null,
+    );
   }
 
   /** Retire an item without deleting it (candidate withdrew, sent in error…). */
@@ -683,7 +693,12 @@ class EvaluationBatchService {
         placementSnapshot: applicant.placement,
         placementSnapshotLabel: applicant.placementLabel,
         nationalId: applicant.nationalId,
+        // Frozen here, at the moment the applicant joins the batch (RW4) — see the model.
+        motherName: applicant.motherName ?? null,
+        address: formatAddress(applicant.officialAddress ?? applicant.currentAddress),
+        phone: applicant.contact?.primaryPhone ?? null,
         result: 'pending',
+        grade: null,
         reason: null,
         resultFileId: null,
         decidedBy: null,
@@ -716,11 +731,21 @@ class EvaluationBatchService {
     result: BatchItem['result'],
     reason: string | null,
     version: number,
+    grade: DrivingTestGrade | null = null,
   ): Promise<EvaluationBatchDoc> {
     const now = new Date();
     const items = before.items.map((i) =>
       String(i.applicantId) === applicantId
-        ? { ...i, result, reason, decidedBy: new Types.ObjectId(ctx.userId), decidedAt: now }
+        ? {
+            ...i,
+            result,
+            reason,
+            // A grade only ever ARRIVES with a decision, so an absent one leaves what was there
+            // rather than erasing an examiner's mark on a later void or correction.
+            grade: grade ?? i.grade ?? null,
+            decidedBy: new Types.ObjectId(ctx.userId),
+            decidedAt: now,
+          }
         : i,
     );
     const after = await evaluationBatchRepository.updateById(
@@ -734,6 +759,7 @@ class EvaluationBatchService {
       changes: [
         { field: 'itemResult', old: applicantId, new: result },
         ...(reason === null ? [] : [{ field: 'reason', old: null, new: reason }]),
+        ...(grade === null ? [] : [{ field: 'grade', old: null, new: grade }]),
       ],
     });
     return after;

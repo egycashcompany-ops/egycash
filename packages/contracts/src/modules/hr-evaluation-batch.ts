@@ -105,10 +105,27 @@ export const UploadBatchResultSchema = z
 export type UploadBatchResult = z.infer<typeof UploadBatchResultSchema>;
 
 /** Decide ONE item; a reason is mandatory to reject. */
+/**
+ * The driving examiner's four grades, as the official form prints them.
+ *
+ * A GRADE IS NOT A RESULT, and this is why it is a separate field rather than four more values on
+ * `BatchItemResult`. The result is what the pipeline acts on — approved moves a candidate forward,
+ * rejected stops them. The grade is what the examiner wrote, and a company may well hire a `good`
+ * driver and refuse an `excellent` one for a reason that has nothing to do with driving. Folding
+ * them together would force that judgement into the scale.
+ *
+ * Only the driving-test form carries one; every other phase records `null`.
+ */
+export const DRIVING_TEST_GRADES = ['weak', 'good', 'veryGood', 'excellent'] as const;
+export const DrivingTestGradeSchema = z.enum(DRIVING_TEST_GRADES);
+export type DrivingTestGrade = z.infer<typeof DrivingTestGradeSchema>;
+
 export const DecideBatchItemSchema = z
   .object({
     result: BatchItemDecisionSchema,
     reason: z.string().trim().max(500).optional(),
+    /** Recorded alongside the result, never instead of it. Ignored by phases that have no scale. */
+    grade: DrivingTestGradeSchema.nullish(),
     version: z.number().int().min(0),
   })
   .strict()
@@ -219,7 +236,18 @@ export interface BatchItemDto {
   placement: PlacementDto;
   placementLabel: PlacementLabelDto;
   nationalIdMasked: string | null;
+  /**
+   * The three fields the outgoing FORMS ask for and the pipeline does not (RW4 snapshot).
+   *
+   * Frozen with the rest of the item at issue: an address edited after a list was printed and
+   * signed must not change what that list says it carried.
+   */
+  motherName: string | null;
+  address: string | null;
+  phone: string | null;
   result: BatchItemResult;
+  /** The driving examiner's grade, when the phase has a scale. Never a substitute for `result`. */
+  grade: DrivingTestGrade | null;
   reason: string | null;
   resultFileId: string | null;
   decidedBy: string | null;

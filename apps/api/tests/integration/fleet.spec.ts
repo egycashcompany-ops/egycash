@@ -2321,6 +2321,180 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       ).status,
     ).toBe(403);
   });
+
+  // ── the daily board's TWO sources of truth ───────────────────────────────
+  //
+  // A day is either PLANNED (a `fleet_duty_assignment` exists for the pair) or UNPLANNED (none
+  // does). Planned days are the stored document, verbatim. Unplanned days start from the standing
+  // crew, §2.7b. Which one speaks is decided by the DOCUMENT'S EXISTENCE, never by whether its
+  // drivers happen to be null — that difference is what lets a dispatcher clear a crew for one
+  // day and have it stay cleared.
+
+  const saveFixedCrew = (rows: unknown[]) =>
+    request(app)
+      .post('/api/v1/fleet/fixed-roster')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ rows });
+  const fixedBoard = () =>
+    request(app).get('/api/v1/fleet/fixed-roster').set('Authorization', `Bearer ${adminToken}`);
+  const dayRow = (board: BoardDto, vehicleId: string) =>
+    board.rows.find((r) => r.vehicleId === vehicleId);
+  const putInWorkshop = async (vehicleId: string, inDate: string): Promise<void> => {
+    const workshop = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'workshop', name: { ar: `ورشة ${inDate}`, en: `Shop ${inDate}` } });
+    const workTypes = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const res = await request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId,
+        inDate,
+        workshopId: data<FleetCatalogItemDto>(workshop).id,
+        workTypeId: data<FleetCatalogItemDto[]>(workTypes).find((i) => i.name.ar === 'صيانة')?.id,
+        odometerAtService: 1000,
+        driverInEmployeeId: await someDriver(),
+      });
+    expect(res.status, 'the vehicle is in the workshop').toBe(201);
+  };
+
+  it('A — an UNPLANNED day starts from the standing crew', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b] = [await mkDriver(), await mkDriver()];
+    const missionTypeId = await missionTypeIdSeeded();
+    expect(
+      (
+        await saveFixedCrew([
+          { vehicleId: v.id, missionTypeId, driver1EmployeeId: a, driver2EmployeeId: b },
+        ])
+      ).status,
+    ).toBe(200);
+
+    const row = dayRow(data<BoardDto>(await getBoard('2026-12-01')), v.id);
+    expect(row?.driver1EmployeeId, 'the standing crew is where the day starts').toBe(a);
+    expect(row?.driver2EmployeeId).toBe(b);
+    expect(row?.missionTypeId, 'and its mission comes with it').toBe(missionTypeId);
+    // …and the pool says so, rather than offering somebody already visibly seated.
+    const board = data<BoardDto>(await getBoard('2026-12-01'));
+    expect(board.availableDrivers.find((d) => d.employeeId === a)?.assignedVehicleId).toBe(v.id);
+  });
+
+  it('B — a PLANNED day that was deliberately emptied STAYS empty', async () => {
+    // The trap this rule exists for: if the overlay keyed off "drivers are null" instead of "no
+    // document", clearing a crew for one day would be impossible — every reload would put the
+    // standing crew back, silently undoing the dispatcher.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b] = [await mkDriver(), await mkDriver()];
+    await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a, driver2EmployeeId: b }]);
+    const date = '2026-12-02';
+
+    // Plan the day with somebody, then clear it — that leaves a document with null drivers.
+    expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(200);
+    expect(
+      (
+        await savePlan(date, [
+          { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: null },
+        ])
+      ).status,
+    ).toBe(200);
+
+    const row = dayRow(data<BoardDto>(await getBoard(date)), v.id);
+    expect(row?.driver1EmployeeId, 'cleared means cleared').toBeNull();
+    expect(row?.driver2EmployeeId, 'the standing crew is NOT resurrected').toBeNull();
+  });
+
+  it('C — a PLANNED day keeps its own crew; the standing one does not substitute', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b, c] = [await mkDriver(), await mkDriver(), await mkDriver()];
+    await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a, driver2EmployeeId: b }]);
+    const date = '2026-12-03';
+    expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: c }])).status).toBe(200);
+
+    const row = dayRow(data<BoardDto>(await getBoard(date)), v.id);
+    expect(row?.driver1EmployeeId, 'the day says C').toBe(c);
+    expect(row?.driver2EmployeeId, 'and B is not quietly added beside them').toBeNull();
+  });
+
+  it('D — an UNPLANNED day drops the standing crew of a vehicle in the workshop', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b] = [await mkDriver(), await mkDriver()];
+    await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a, driver2EmployeeId: b }]);
+    const date = '2026-12-04';
+    await putInWorkshop(v.id, date);
+
+    const board = data<BoardDto>(await getBoard(date));
+    const row = dayRow(board, v.id);
+    expect(row, 'the vehicle is still ON the board — visible, not hidden').toBeDefined();
+    expect(row?.inMaintenance, 'and it reads as unassignable').toBe(true);
+    expect(row?.driver1EmployeeId, 'nobody is on duty on a car in the workshop').toBeNull();
+    expect(row?.driver2EmployeeId).toBeNull();
+    // The crew is free that day, not stranded on a car that cannot move.
+    expect(board.availableDrivers.find((d) => d.employeeId === a)?.assignedVehicleId).toBeNull();
+    // …and the server still refuses to WRITE them onto it (FR-5, unchanged).
+    expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(409);
+  });
+
+  it('E — none of that touches the standing configuration', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b] = [await mkDriver(), await mkDriver()];
+    const missionTypeId = await missionTypeIdSeeded();
+    await saveFixedCrew([
+      { vehicleId: v.id, missionTypeId, driver1EmployeeId: a, driver2EmployeeId: b },
+    ]);
+    const before = await mongoose.connection
+      .collection('fleet_fixed_crews')
+      .findOne({ vehicleId: new Types.ObjectId(v.id) });
+
+    // Read a day, plan a day, put the car in the workshop, read the day again.
+    await getBoard('2026-12-05');
+    await savePlan('2026-12-05', [{ vehicleId: v.id, driver1EmployeeId: a }]);
+    await putInWorkshop(v.id, '2026-12-06');
+    await getBoard('2026-12-06');
+
+    expect(
+      await mongoose.connection
+        .collection('fleet_fixed_crews')
+        .findOne({ vehicleId: new Types.ObjectId(v.id) }),
+      'the standing crew row is byte-identical after all of it',
+    ).toEqual(before);
+    const fixed = data<{ rows: { vehicleId: string; driver1EmployeeId: string | null }[] }>(
+      await fixedBoard(),
+    ).rows.find((r) => r.vehicleId === v.id);
+    expect(fixed?.driver1EmployeeId, 'and the fixed board still reads the same').toBe(a);
+  });
+
+  // ── a roster is a PLAN: the past is not plannable ────────────────────────
+
+  const shift = (days: number): string => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  it('refuses to plan a date in the PAST, and accepts today and after', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    const row = [{ vehicleId: v.id, driver1EmployeeId: driver }];
+
+    expect((await savePlan(shift(-1), row)).status, 'yesterday').toBe(400);
+    expect((await savePlan(shift(-30), row)).status, 'last month').toBe(400);
+    // The boundary: today is the floor, not the ceiling — the current day's plan is the one
+    // operations is living in, and it is edited all morning.
+    expect((await savePlan(shift(0), row)).status, 'today').toBe(200);
+    expect((await savePlan(shift(1), row)).status, 'tomorrow').toBe(200);
+    expect((await savePlan(shift(45), row)).status, 'well into the future').toBe(200);
+  });
+
+  it('names the past-date refusal so a client can act on it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await savePlan(shift(-2), [{ vehicleId: v.id }]);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('PAST_DATE');
+  });
 });
 
 // NOTE ON ORDER: this block sits AFTER the daily roster's, deliberately.

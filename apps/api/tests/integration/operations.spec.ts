@@ -52,7 +52,25 @@ let adminToken: string;
 let viewerToken: string; // operationsShipment.view only — proves mutations are separately gated
 const seenEvents: { name: string; payload: unknown }[] = [];
 
-const PLAN_DATE = '2026-08-20';
+// The fixture days for every roster-backed suite in this file. RELATIVE, never literal: planning a
+// roster is planning the FUTURE, so `POST /fleet/roster` refuses a date in the past — and a
+// hardcoded day quietly becomes unplannable the moment it goes stale, taking the top-level
+// `beforeAll` (and with it the whole file) down on a date nobody chose.
+//
+// The offsets are deliberately far out. They have to clear every date still written as a literal in
+// this file, because a fixture day that lands on one of those breaks it from the other side: a day
+// another test asserts nobody planned, or one it creates for the first time and expects a 201 for.
+// Relative days only ever move forward and the literals do not move at all, so clearing them once
+// clears them for good.
+const shift = (days: number): string => {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+const PLAN_DATE = shift(150);
+const DELIVERY_DATE = shift(151);
+const ORDER_DATE = shift(152);
 let branchId: string;
 let departmentId: string;
 let jobTitleId: string;
@@ -1412,7 +1430,6 @@ describe('the standing crew — the permanent crew of each cash-transfer vehicle
 });
 
 describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () => {
-  const DELIVERY_DATE = '2026-08-21';
   let securedDayId: string;
   let treasurer2Id: string;
 
@@ -1677,7 +1694,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       const shipment = await mkSecured();
       await receive(shipment);
 
-      const fromBoard = await crewIdFromBoard('2026-08-21');
+      const fromBoard = await crewIdFromBoard(DELIVERY_DATE);
       expect(fromBoard).not.toBe('');
       // The id a screen reads IS the id the repository holds — not a different collection's.
       expect(fromBoard).toBe(await findCrewAssignmentId());
@@ -1692,7 +1709,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     it('dispatches with the id taken from the board', async () => {
       const shipment = await mkSecured();
       await receive(shipment);
-      const fromBoard = await crewIdFromBoard('2026-08-21');
+      const fromBoard = await crewIdFromBoard(DELIVERY_DATE);
       await request(app)
         .post(`/api/v1/operations/secured/${shipment.id}/assign-delivery`)
         .set('Authorization', `Bearer ${adminToken}`)
@@ -1711,7 +1728,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
       const shipment = await mkSecured();
       await receive(shipment);
       const board = await request(app)
-        .get('/api/v1/operations/crew-board?date=2026-08-21')
+        .get(`/api/v1/operations/crew-board?date=${DELIVERY_DATE}`)
         .set('Authorization', `Bearer ${adminToken}`);
       const row = data<OperationsCrewBoardDto>(board).rows.find((r) => r.crew !== null);
       const dutyId = row?.fleetDutyAssignmentId ?? '';
@@ -1892,13 +1909,12 @@ const findCrewAssignmentId = async (): Promise<string> => {
   const { operationsDayService } = await import(
     '../../src/modules/operations/days/day.service'
   );
-  const day = await operationsDayService.findByDate(new Date('2026-08-21'));
+  const day = await operationsDayService.findByDate(new Date(DELIVERY_DATE));
   const rows = await operationsCrewAssignmentRepository.findForDay(day?._id ?? '');
   return String(rows[0]?._id ?? '');
 };
 
 describe('assignment & sequencing — the captain\'s ordered day (OP-5)', () => {
-  const ORDER_DATE = '2026-08-25';
   let crewId = '';
   let picks: OperationsShipmentAssignmentDto[] = [];
 
@@ -2129,7 +2145,7 @@ const currentOrder = async (): Promise<{ assignmentId: string; version: number }
     '../../src/modules/operations/shipments/shipment-assignment.repository'
   );
   const { operationsDayService } = await import('../../src/modules/operations/days/day.service');
-  const day = await operationsDayService.findByDate(new Date('2026-08-25'));
+  const day = await operationsDayService.findByDate(new Date(ORDER_DATE));
   const rows = await operationsShipmentAssignmentRepository.findForCaptainDay(
     day?._id ?? '',
     captainId,

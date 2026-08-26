@@ -29,7 +29,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { FixedRosterPage } from './pages/FixedRosterPage';
-import { changedRows } from './lib/fixed-roster-board';
+import { applyEdit, changedRows } from './lib/fixed-roster-board';
 
 /** Real 24-hex ids: the save payload is parsed with the REAL schema, which demands ObjectIds. */
 const V1 = '650000000000000000000001';
@@ -174,10 +174,27 @@ describe('the fixed-crew screen', () => {
     ]);
   });
 
-  it('names each vehicle by code and plate, as the daily board does', () => {
+  it('names each vehicle by its CODE, and prints no plate under it', () => {
+    // The plate used to sit under the code as a second line. It is gone from this board: a fixed
+    // crew belongs to the vehicle, and the vehicle is identified here by its code, so the second
+    // line spent a row's height on a fact this screen never asks. The plate is untouched on the
+    // record and on the screens that are ABOUT the vehicle — this is a presentation change only.
     const body = tbody(render());
-    expect(body).toContain('150');
-    expect(body).toContain('س ص 150');
+    expect(body, 'the code names the vehicle').toContain('150');
+    expect(body, 'and the plate is not printed').not.toContain('س ص 150');
+    expect(render(), 'nowhere else on the screen either').not.toContain('س ص 150');
+  });
+
+  it('still FINDS a vehicle by its plate, which is not the same as showing it', () => {
+    // Removing a line from a cell must not remove a way in. The search box says «الكود أو رقم
+    // اللوحة» and still means it: a reader holding a plate number reaches the row, they just are
+    // not made to read the plate on every other row to get there.
+    expect(SOURCE, 'the filter still reads the plate').toContain('row.plateNumber.toLowerCase()');
+    const found = tbody(
+      render({ route: '/fleet/fixed-roster?q=' + encodeURIComponent('س ص 150') }),
+    );
+    expect(found, 'the matching row is there').toContain('150');
+    expect(found, 'and the other one is filtered out').not.toContain('151');
   });
 
   it('shows the work type and the note as REAL values, dashed only when empty', () => {
@@ -436,9 +453,13 @@ describe('the same-driver rule', () => {
 // verified in a browser; what is asserted here is the wiring between them.
 
 describe('the edit dialog', () => {
+  // The dialog's form is now two declarations, not one: `DriverSelect` was lifted out of the
+  // dialog body (a component declared during render is rebuilt on every keystroke — the same
+  // root cause that made a seated driver undraggable). They are read together, because together
+  // is what the reader sees.
   const DIALOG = SOURCE.slice(
-    SOURCE.indexOf('const EditCrewDialog'),
-    SOURCE.indexOf('export const FixedRosterPage'),
+    SOURCE.indexOf('const DriverSelect'),
+    SOURCE.indexOf('const zoneKey'),
   );
 
   it('offers «تعديل» on EVERY row, crewed or not', () => {
@@ -619,7 +640,10 @@ describe('the driver panel', () => {
   });
 
   it('uses the same chip on the vehicle row, so a drag does not change what it looks like', () => {
-    const slot = SOURCE.slice(SOURCE.indexOf('const Slot = ('), SOURCE.indexOf('const columns'));
+    const slot = SOURCE.slice(
+      SOURCE.indexOf('const CrewSlotCell = ('),
+      SOURCE.indexOf('export const FixedRosterPage'),
+    );
     expect(slot).toContain('<DriverChip');
     expect(slot).not.toContain('<EmployeeName');
     // Both places render the same element, so the markup carries a chip per seated driver too.
@@ -681,12 +705,22 @@ describe('the driver panel', () => {
     );
   });
 
-  it('gives the board more of the width than it used to', () => {
-    // A quarter for the panel instead of a third. `min-w-0` on both halves is what lets the
-    // table keep its own overflow rather than pushing the page sideways.
-    expect(SOURCE).toContain('xl:grid-cols-4');
-    expect(SOURCE).toContain('xl:col-span-3');
+  it('gives the board more of the width than it used to — a fifth for the panel now', () => {
+    // A quarter became a fifth. The panel was still the widest thing on the page that is not the
+    // board, and the column that was actually short of room is «ملاحظات» — so the width moves
+    // there rather than being left as slack. `min-w-0` on both halves is what lets the table keep
+    // its own overflow rather than pushing the page sideways.
+    expect(SOURCE, 'five columns').toContain('xl:grid-cols-5');
+    expect(SOURCE, 'four of them are the board').toContain('xl:col-span-4');
+    expect(SOURCE, 'so the panel is one').not.toContain('xl:col-span-3');
     expect(SOURCE, 'the panel can shrink too').toContain('min-w-0 space-y-6');
+    // The note's ceiling rises with it. Measured in a browser: panel 326px → 256px, notes cell
+    // 256px → 384px at 1440px wide.
+    expect(SOURCE, 'the note may run wider before it truncates').toContain('max-w-[22rem]');
+    expect(SOURCE, 'and the old ceiling is gone').not.toContain('max-w-[14rem]');
+    expect(SOURCE, 'it still truncates rather than setting the column width').toContain(
+      'truncate text-sm',
+    );
   });
 
   it('keeps the rows readable while compact — the chip IS the row now', () => {
@@ -727,6 +761,75 @@ describe('the driver panel', () => {
   });
 });
 
+// ── 2g. Picking a driver up — one gesture, not two ──────────────────────────
+//
+// A seated driver could not be dragged in a single motion: the reader had to click the chip
+// first, and only then would a drag take. That was not a missing handler — the handlers were
+// there and fired. It was that `Slot` was declared INSIDE the page component, so every render
+// produced a new element type and React unmounted the whole cell instead of updating it.
+// `onDragStart` sets the dragging id, that render threw away the very node the browser had just
+// picked up, and the browser cancelled the drag. The same remount discarded the DROP TARGET
+// between `dragover` and `drop`, so the second half of the gesture was lost too.
+//
+// The node suite cannot drag. What it CAN pin is the structural cause, which is the thing that
+// would quietly come back — the interaction itself is measured in a browser, where a real
+// CDP-level drag now reports `dragIntercepted` for a seated chip and did not before.
+
+describe('picking a seated driver up', () => {
+  it('declares no component inside another component — the whole bug, in one rule', () => {
+    // A capitalised arrow const at an indent is a component being rebuilt on every render of its
+    // parent. At column zero it is a module-level component whose element type is stable, which
+    // is what lets React keep the DOM node — and a drag in flight belongs to a DOM node.
+    const inner = [...RAW.matchAll(/\n[ \t]+const ([A-Z]\w*) = \(/g)].map((m) => m[1]);
+    expect(inner, `these are rebuilt every render: ${inner.join(', ')}`).toEqual([]);
+    expect(SOURCE, 'the slot cell is one of them').toContain('\nconst CrewSlotCell = (');
+    expect(SOURCE, 'and so is the dialog’s driver select').toContain('\nconst DriverSelect = (');
+  });
+
+  it('makes the seated chip draggable on exactly the same terms as a pool row', () => {
+    // Same contract on both ends of the move, so "drag a driver" is one thing the reader learns
+    // once. If the seated chip needed a different gesture, that would be two things.
+    const markup = render({ qc: client({ ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] }) });
+    const seated = markup.slice(markup.indexOf('data-drop-zone'), markup.indexOf('</tbody>'));
+    expect(seated, 'the seated chip is draggable').toContain('draggable="true"');
+    expect(markup, 'and so is the pool row').toContain('data-driver-card');
+    const cell = SOURCE.slice(
+      SOURCE.indexOf('const CrewSlotCell = ('),
+      SOURCE.indexOf('export const FixedRosterPage'),
+    );
+    expect(cell, 'the seated chip carries the same payload').toContain('setData(DRAG_TYPE');
+    expect(cell, 'and the same effect').toContain("effectAllowed = 'move'");
+  });
+
+  it('asks for no click, double-click or handle before the drag', () => {
+    // The reported workaround was "double-click first". Nothing may make that a prerequisite:
+    // no click handler on the chip, no armed/selected state a drag waits for.
+    const cell = SOURCE.slice(
+      SOURCE.indexOf('const CrewSlotCell = ('),
+      SOURCE.indexOf('export const FixedRosterPage'),
+    );
+    // Anchor the end AFTER the start: the first `</span>` in the cell closes the empty-slot
+    // placeholder, which sits above the chip — slicing to it ran backwards and searched ''.
+    const from = cell.indexOf('draggable={mayPlan}');
+    expect(from, 'the draggable chip is in the cell').toBeGreaterThan(-1);
+    const chip = cell.slice(from, cell.indexOf('</span>', from));
+    expect(chip.length, 'and the slice actually holds it').toBeGreaterThan(40);
+    expect(chip, 'no click to arm the drag').not.toContain('onClick');
+    expect(chip, 'and no double-click either').not.toContain('onDoubleClick');
+    expect(chip, 'nor a mousedown standing in for one').not.toContain('onMouseDown');
+    expect(cell, 'draggable is gated by permission only').toContain('draggable={mayPlan}');
+  });
+
+  it('moves a seated driver through the SAME rule the pool drag uses', () => {
+    // One `assignDriver` call in the page, reached by every drop — from the pool or from a seat.
+    // A second call site would be a second set of rules that could drift from this one.
+    expect(SOURCE.match(/assignDriver\(/g) ?? [], 'exactly one call site').toHaveLength(1);
+    const drop = SOURCE.slice(SOURCE.indexOf('const drop = ('), SOURCE.indexOf('const commit'));
+    expect(drop, 'the drop delegates rather than deciding').toContain('assignDriver(draft');
+    expect(drop, 'and knows nothing about where the drag started').not.toContain('pool');
+  });
+});
+
 // ── 3. Saving — explicit, and only what moved ───────────────────────────────
 
 describe('saving', () => {
@@ -745,6 +848,39 @@ describe('saving', () => {
     const rows = changedRows(saved, draft);
     expect(rows).toHaveLength(2);
     expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
+  });
+
+  it('carries the chosen work type through as the catalog ID, and null when cleared', () => {
+    // The dialog hands `applyEdit` the id it read off the catalog `<option value={item.id}>`;
+    // the row keeps it; `changedRows` sends it; the real schema accepts it. Every link in that
+    // chain is here, because a break in any one of them looks the same to the reader: the work
+    // type they picked is simply not there when the screen comes back.
+    const saved = [row(V1, '150'), row(V2, '151')];
+    const picked = applyEdit(saved, V1, {
+      workTypeId: WT,
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      notes: null,
+    });
+    expect(picked[0]?.workTypeId, 'the id, not the name').toBe(WT);
+    const rows = changedRows(saved, picked);
+    expect(rows[0]?.workTypeId).toBe(WT);
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success, 'the contract takes it').toBe(
+      true,
+    );
+
+    // …and clearing it is a real value, not a missing key: `null` is how this module spells
+    // "no work type", and the contract accepts that too.
+    const cleared = applyEdit(picked, V1, {
+      workTypeId: null,
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      notes: null,
+    });
+    expect(cleared[0]?.workTypeId).toBeNull();
+    const back = changedRows(picked, cleared);
+    expect(back[0]?.workTypeId).toBeNull();
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows: back }).success).toBe(true);
   });
 
   it('refuses a payload that would seat one person twice on a car', () => {
@@ -780,7 +916,7 @@ describe('saving', () => {
     // hook defines one — so the page's own catch is the single message the reader gets. Without
     // that catch the refusal would be invisible: the button stops spinning and nothing is said.
     // The commonest refusal here is a driver another row still holds.
-    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const zoneKey'));
+    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const dash'));
     expect(commit, 'the save is guarded').toContain('try {');
     expect(commit, 'and a failure is shown').toMatch(/catch[\s\S]*toast\.error/);
     expect(commit).toContain('errorMessage(');

@@ -121,6 +121,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // P-HR-REQ — the whole feature subtree: the list, one requisition, and its hires all read the
   // same status, and a decision somebody else took moves all three at once.
   'hr.jobRequisition': [['hr', 'jobRequisitions']],
+  // P-HR-APP — a portal account opening changes what the applicant screens show about that
+  // candidate (whether they have a portal, and when their link last went out), so those are the
+  // lists that go stale. The portal's own screens are the candidate's, on a different origin.
+  'hr.applicantPortalAccount': [['hr', 'applicants']],
   'hr.hiringDocuments': [['hr', 'hiringDocuments'], ...recruitmentPipeline],
   'hr.hiringDocumentType': [['hr', 'hiringDocumentTypes']],
 

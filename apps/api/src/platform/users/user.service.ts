@@ -744,6 +744,15 @@ class UserService {
    * a code with no expiry, or an attempt count belonging to a code that is gone. The rules module
    * computes the next state; this only persists it.
    */
+  /** The account belonging to an external subject, or null (ADR-027). */
+  async findByExternalSubject(
+    moduleId: string,
+    subjectType: string,
+    subjectId: string,
+  ): Promise<UserDoc | null> {
+    return userRepository.findByExternalSubject(moduleId, subjectType, subjectId);
+  }
+
   async setPortalChallenge(
     userId: string,
     state: { codeHash: string | null; expiresAt: Date | null; sentAt: Date | null; attempts: number },

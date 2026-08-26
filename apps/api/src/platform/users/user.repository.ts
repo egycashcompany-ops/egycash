@@ -212,6 +212,30 @@ class UserRepository extends BaseRepository<UserDoc> {
   }
 
   /** Security-state updates bypass optimistic concurrency (single-field counters). */
+  /**
+   * The one account belonging to an external subject, or null.
+   *
+   * The owning module holds the relationship (ADR-027); the platform only stores and finds it. A
+   * module asking "does this person already have a login?" asks here rather than keeping a second
+   * index of its own.
+   */
+  async findByExternalSubject(
+    moduleId: string,
+    subjectType: string,
+    subjectId: string,
+  ): Promise<UserDoc | null> {
+    if (!Types.ObjectId.isValid(subjectId)) return null;
+    return this.model
+      .findOne({
+        'externalSubject.moduleId': moduleId,
+        'externalSubject.subjectType': subjectType,
+        'externalSubject.subjectId': new Types.ObjectId(subjectId),
+        isDeleted: false,
+      } as FilterQuery<UserDoc>)
+      .lean<UserDoc>()
+      .exec();
+  }
+
   async updateSecurity(userId: string, update: UpdateQuery<UserDoc>): Promise<UserDoc | null> {
     return this.model
       .findOneAndUpdate({ _id: userId, isDeleted: false } as FilterQuery<UserDoc>, update, {

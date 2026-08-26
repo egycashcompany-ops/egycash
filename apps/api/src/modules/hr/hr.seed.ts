@@ -29,6 +29,16 @@ import {
 } from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
+import {
+  registerExternalSurface,
+  registerExternalWriteSurface,
+  registerPortalIdentityResolver,
+} from '../../platform/auth';
+import {
+  APPLICANT_PORTAL_PREFIX,
+  APPLICANT_PORTAL_SUBJECT,
+  applicantPortalIdentityResolver,
+} from './recruitment/applicant-portal';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
 import { ensureHiringDocsCategory, hiringDocumentTypeService } from './recruitment/hiring-documents';
 import { migrateEmployeesToRegistry } from './employee-management/employees';
@@ -456,6 +466,14 @@ const ensureLeaveTemplates = async (): Promise<void> => {
 };
 
 export const seedHrRecruitment = async (): Promise<void> => {
+  // P-HR-APP — the applicant portal's confinement and its identity answer, both pushed in at boot
+  // (ADR-027 and its 2026-08-26 amendment). Read and write share one prefix here; that is a fact
+  // about this module, not a rule. Without the resolver the platform cannot sign anybody in, which
+  // is the fail-closed direction.
+  registerExternalSurface('hr', APPLICANT_PORTAL_SUBJECT, APPLICANT_PORTAL_PREFIX);
+  registerExternalWriteSurface('hr', APPLICANT_PORTAL_SUBJECT, APPLICANT_PORTAL_PREFIX);
+  registerPortalIdentityResolver(APPLICANT_PORTAL_SUBJECT, applicantPortalIdentityResolver);
+
   for (const source of SOURCES) {
     await applicantSourceService.ensure(source);
   }

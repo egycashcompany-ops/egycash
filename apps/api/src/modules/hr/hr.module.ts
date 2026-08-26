@@ -7,7 +7,13 @@
 // approved seven-stage workflow and the handoff artifact to the Employee module (BD-008).
 import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
-import { buildApplicantSourcesRouter, buildApplicantsRouter } from './recruitment/applicants';
+import {
+  applicantService,
+  buildApplicantSourcesRouter,
+  buildApplicantsRouter,
+} from './recruitment/applicants';
+import { applicantPortalService } from './recruitment/applicant-portal';
+import { logger } from '../../infrastructure/logging/logger';
 import {
   buildPublicRecruitmentFormRouter,
   buildRecruitmentFormRouter,
@@ -266,6 +272,27 @@ const securityCheckPermissions = declarePermissions(
     },
     { action: 'export', name: { en: 'Export security checks', ar: 'تصدير التحريات الأمنية' } },
   ],
+);
+
+/**
+ * The applicant portal (P-HR-APP). ONE key, held only by portal accounts themselves — it is not a
+ * staff permission and grants nothing wide: every portal read is confined to the caller's own
+ * `subjectId` regardless of scope (D-APP-9), and the surface gate refuses everything else.
+ */
+const applicantPortalPermissions = declarePermissions(
+  'hr',
+  'applicantPortal',
+  { en: 'applicant portal', ar: 'بوابة المتقدمين' },
+  ['view'],
+);
+
+/** Sending a candidate their portal link by hand (D-APP-3ب) — a staff act, audited and rationed. */
+const applicantPortalAdminPermissions = declarePermissions(
+  'hr',
+  'applicantPortalAdmin',
+  { en: 'applicant portal administration', ar: 'إدارة بوابة المتقدمين' },
+  [],
+  [{ action: 'sendLink', name: { en: 'Send the portal link', ar: 'إرسال رابط البوابة' } }],
 );
 
 const drivingTestPermissions = declarePermissions(
@@ -798,6 +825,8 @@ export const hrPermissions: PermissionDef[] = [
   ...evaluationPermissions,
   ...securityCheckPermissions,
   ...drivingTestPermissions,
+  ...applicantPortalPermissions,
+  ...applicantPortalAdminPermissions,
   ...medicalCheckPermissions,
   ...evaluationPhasePermissions,
   ...jobOfferPermissions,
@@ -1169,6 +1198,27 @@ export const hrModule: ModuleManifest = {
       handlerId: 'jobRequisitions.recordFill',
       handler: async (envelope) => {
         await recordHireAgainstRequisition(envelope.payload);
+      },
+    },
+    {
+      // P-HR-APP D-APP-2 — the portal opens when a candidate CLEARS screening, and never before.
+      // Idempotent by construction: a redelivered event, or a screening flipped back to accepted,
+      // finds the existing account and does nothing. Like every courtesy attached to an event that
+      // already happened, it swallows its own failures — a screening decision must not fail
+      // because a portal account could not be made.
+      event: 'hr.screening.decided',
+      handlerId: 'applicantPortal.openOnScreeningPass',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { applicantId?: string; outcome?: string };
+        if (payload.outcome !== 'accepted' || typeof payload.applicantId !== 'string') return;
+        try {
+          const applicant = await applicantService.findByIdSystem(payload.applicantId);
+          if (applicant === null) return;
+          await applicantPortalService.openFor(applicant);
+          await applicantPortalService.sendPortalLink(payload.applicantId, 'system');
+        } catch (error) {
+          logger.error({ err: error, applicantId: payload.applicantId }, 'opening the applicant portal failed');
+        }
       },
     },
     // Notification rules (stage 3): one subscription per cataloged event, all routed to the same

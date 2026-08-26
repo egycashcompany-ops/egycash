@@ -24,6 +24,7 @@ import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { StatStrip } from '../../../shared/ui/StatStrip';
 import { useGoldDashboardCharts, useGoldDashboardStats } from '../api/gold-queries';
@@ -256,6 +257,23 @@ export const GoldDashboardPage = (): JSX.Element => {
     return (
       <PageContainer>
         <LoadingState />
+      </PageContainer>
+    );
+  }
+
+  // Same reason as the vault board: every read here is `data?.x ?? 0`, so a failed request drew a
+  // dashboard of zeroes — the most confident possible statement about a vault, made from nothing.
+  if (stats.isError || charts.isError) {
+    const failed = stats.isError ? stats : charts;
+    return (
+      <PageContainer>
+        <ErrorState
+          error={failed.error}
+          onRetry={() => {
+            void stats.refetch();
+            void charts.refetch();
+          }}
+        />
       </PageContainer>
     );
   }

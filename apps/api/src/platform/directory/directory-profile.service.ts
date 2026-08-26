@@ -24,13 +24,27 @@ const namesOf = async (
   return new Map(rows.map((r) => [String(r._id), r.name]));
 };
 
-const displayNameOf = (profile: {
-  firstName: LocalizedString;
-  lastName: LocalizedString;
-}): LocalizedString => ({
-  ar: `${profile.firstName.ar} ${profile.lastName.ar}`.trim(),
-  en: `${profile.firstName.en} ${profile.lastName.en}`.trim(),
-});
+const EMPTY_NAME: LocalizedString = { ar: '', en: '' };
+
+/**
+ * A person's display name, from whatever the row actually holds.
+ *
+ * This resolver answers "who did this" for the audit trail, the timelines and every module's
+ * registers, so ONE user document missing its `profile` — a legacy row, a half-finished import —
+ * used to be a 500 on every page that named that person. A blank name is the honest rendering of
+ * a name nobody recorded, and it leaves the rest of the page standing.
+ */
+const displayNameOf = (profile?: {
+  firstName?: LocalizedString;
+  lastName?: LocalizedString;
+} | null): LocalizedString => {
+  const first = profile?.firstName ?? EMPTY_NAME;
+  const last = profile?.lastName ?? EMPTY_NAME;
+  return {
+    ar: `${first.ar} ${last.ar}`.trim(),
+    en: `${first.en} ${last.en}`.trim(),
+  };
+};
 
 class DirectoryProfileService {
   /**
@@ -54,7 +68,7 @@ class DirectoryProfileService {
     const ids = (pick: 'branchId' | 'departmentId' | 'jobTitleId'): Types.ObjectId[] => [
       ...new Set(
         users
-          .map((u) => u.organization[pick])
+          .map((u) => u.organization?.[pick] ?? null)
           .filter((v): v is Types.ObjectId => v !== null && v !== undefined)
           .map(String),
       ),
@@ -77,9 +91,9 @@ class DirectoryProfileService {
           displayName: displayNameOf(u.profile),
           // The photo lives on the employee record when there is one; absent is the normal case.
           avatarFileId: null,
-          jobTitle: named(jobTitles, u.organization.jobTitleId),
-          department: named(departments, u.organization.departmentId),
-          branch: named(branches, u.organization.branchId),
+          jobTitle: named(jobTitles, u.organization?.jobTitleId ?? null),
+          department: named(departments, u.organization?.departmentId ?? null),
+          branch: named(branches, u.organization?.branchId ?? null),
           active: u.status === 'active',
           workEmail: u.email,
         } satisfies DirectoryProfileDto,

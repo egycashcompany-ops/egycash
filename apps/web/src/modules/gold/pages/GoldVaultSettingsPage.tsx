@@ -23,6 +23,7 @@ import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { ChevronIcon, PlusIcon, TrashIcon, EditIcon, CogIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -114,6 +115,16 @@ export const GoldVaultSettingsPage = (): JSX.Element => {
     return (
       <PageContainer>
         <LoadingState />
+      </PageContainer>
+    );
+  }
+
+  // Without this the settings screen answered a failed request with "no vaults configured yet" —
+  // and this is the screen you would then use to create one that already exists.
+  if (vaultsQuery.isError) {
+    return (
+      <PageContainer>
+        <ErrorState error={vaultsQuery.error} onRetry={() => void vaultsQuery.refetch()} />
       </PageContainer>
     );
   }

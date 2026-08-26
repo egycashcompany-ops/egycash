@@ -14,6 +14,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Card, CardBody } from '../../../shared/ui/Card';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { LoadingState } from '../../../shared/ui/states/LoadingState';
+import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { PrinterIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -96,7 +97,7 @@ const BalancesReport = ({
   const t = useT();
   const [funds, setFunds] = useState<string[]>([]);
   const clients = useGoldCompanyOptions();
-  const { data, isFetching } = useGoldClientBalances({
+  const { data, isFetching, isError, error, refetch } = useGoldClientBalances({
     metalType,
     funds: funds.length === 0 ? undefined : funds,
   });
@@ -146,6 +147,8 @@ const BalancesReport = ({
       </div>
       {isFetching ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
           <table className="w-full">
@@ -294,7 +297,7 @@ const ControlReport = ({ branch }: { branch: string }): JSX.Element => {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [funds, setFunds] = useState<string[]>([]);
-  const { data, isFetching } = useGoldFundMovement({
+  const { data, isFetching, isError, error, refetch } = useGoldFundMovement({
     metalType,
     year,
     fromMonth: month,
@@ -365,6 +368,8 @@ const ControlReport = ({ branch }: { branch: string }): JSX.Element => {
       />
       {isFetching ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
           <table className="w-full">
@@ -417,7 +422,7 @@ const MovementReport = ({ branch }: { branch: string }): JSX.Element => {
   const [fromMonth, setFromMonth] = useState(now.getMonth() + 1);
   const [toMonth, setToMonth] = useState(now.getMonth() + 1);
   const [funds, setFunds] = useState<string[]>([]);
-  const { data, isFetching } = useGoldFundMovement({
+  const { data, isFetching, isError, error, refetch } = useGoldFundMovement({
     metalType,
     year,
     fromMonth,
@@ -496,6 +501,8 @@ const MovementReport = ({ branch }: { branch: string }): JSX.Element => {
       />
       {isFetching ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
           <table className="w-full">
@@ -565,7 +572,7 @@ const ClosingReport = ({ branch }: { branch: string }): JSX.Element => {
   const [fromMonth, setFromMonth] = useState(1);
   const [toMonth, setToMonth] = useState(now.getMonth() + 1);
   const [funds, setFunds] = useState<string[]>([]);
-  const { data, isFetching } = useGoldFundClosing({
+  const { data, isFetching, isError, error, refetch } = useGoldFundClosing({
     metalType,
     year,
     fromMonth,
@@ -614,6 +621,8 @@ const ClosingReport = ({ branch }: { branch: string }): JSX.Element => {
       />
       {isFetching ? (
         <LoadingState />
+      ) : isError ? (
+        <ErrorState error={error} onRetry={() => void refetch()} />
       ) : (
         <div className="space-y-6">
           {list.length === 0 && (
@@ -677,7 +686,7 @@ export const GoldReportsPage = (): JSX.Element => {
   // The branch printed on the letterhead: the one branch in scope, or nothing when the reader sees
   // several — a statement headed with the wrong branch is worse than one headed with none.
   const branch = useMemo(() => {
-    const items = branches.data?.items ?? [];
+    const items = branches.data ?? [];
     return items.length === 1 ? (items[0]?.name.ar ?? '') : '';
   }, [branches.data]);
 

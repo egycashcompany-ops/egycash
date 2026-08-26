@@ -30,7 +30,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { Card, CardHeader } from '../../../shared/ui/Card';
+import { Card } from '../../../shared/ui/Card';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -44,8 +44,10 @@ import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
-import { EmployeeName, useEmployeeName } from '../components/EmployeeName';
+import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
+import { DriverChip } from '../components/DriverChip';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
+import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
 import {
   CREW_SLOTS,
   applyEdit,
@@ -304,6 +306,35 @@ export const FixedRosterPage = (): JSX.Element => {
     [boardQuery.data, draft],
   );
 
+  // ── finding somebody in the pool ──────────────────────────────────────────
+  //
+  // Panel-local state, not a URL parameter: this filters a side list, it does not select what
+  // the page is about. The vehicle search above is `?q=` because it changes which rows the board
+  // shows — a thing worth sharing in a link. Which driver you were hunting for is not.
+  const [driverSearch, setDriverSearch] = useState('');
+
+  // The records the cards already load, read once here so the whole pool can be searched. Same
+  // query keys, so this subscribes to the existing entries rather than fetching a second time.
+  const records = useEmployeeRecords(useMemo(() => pool.map((d) => d.employeeId), [pool]));
+  const searchIndex = useMemo(() => {
+    const index = new Map<string, DriverSearchRecord>();
+    for (const [employeeId, employee] of records) {
+      index.set(employeeId, {
+        employeeId,
+        nameAr: employee.personal.fullNameAr,
+        nameEn: employee.personal.fullNameEn,
+        code: employee.code,
+        employeeNumber: employee.employeeNumber,
+      });
+    }
+    return index;
+  }, [records]);
+
+  const shownDrivers = useMemo(
+    () => filterDrivers(pool, searchIndex, driverSearch),
+    [pool, searchIndex, driverSearch],
+  );
+
   const term = search.trim().toLowerCase();
   const rows = draft.filter(
     (row) =>
@@ -390,12 +421,12 @@ export const FixedRosterPage = (): JSX.Element => {
                 }}
                 onDragEnd={() => setDragging(null)}
                 className={[
-                  'min-w-0 flex-1 truncate text-sm text-slate-800 dark:text-slate-100',
+                  'min-w-0 flex-1',
                   mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
                   dragging === employeeId ? 'opacity-50' : '',
                 ].join(' ')}
               >
-                <EmployeeName employeeId={employeeId} />
+                <DriverChip employeeId={employeeId} />
               </span>
               {mayPlan && (
                 <button
@@ -564,12 +595,12 @@ export const FixedRosterPage = (): JSX.Element => {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid gap-6 xl:grid-cols-4">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the wrapper
             just grows and takes the PAGE sideways with it. With it, a narrow screen scrolls
             inside the table, which is where the scrolling belongs. */}
-        <div className="min-w-0 space-y-4 xl:col-span-2">
+        <div className="min-w-0 space-y-4 xl:col-span-3">
           <FilterBar hasActiveFilters={search !== ''} onClear={() => patch({ q: null })}>
             <SearchInput
               value={search}
@@ -600,17 +631,35 @@ export const FixedRosterPage = (): JSX.Element => {
           />
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <Card>
-            <CardHeader
-              title={`${t('fleet.fixedRoster.driversTitle')} · ${formatNumber(pool.length, locale)}`}
-              description={t('fleet.fixedRoster.driversHint')}
-            />
+            {/* Compact header: the count belongs beside the title, and the search directly under
+                it, so the panel spends its height on drivers rather than on chrome. */}
+            <div className="space-y-2 px-4 pb-2 pt-4">
+              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                {t('fleet.fixedRoster.driversTitle')}
+                <span className="ms-1 text-slate-500 dark:text-slate-400">
+                  ({formatNumber(pool.length, locale)})
+                </span>
+              </h2>
+              <SearchInput
+                value={driverSearch}
+                onChange={setDriverSearch}
+                placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
+                className="w-full"
+              />
+            </div>
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
+            ) : shownDrivers.length === 0 ? (
+              // Searched and found nobody — distinct from "the pool is empty", which means every
+              // driver is already crewed and is a fact about the board rather than about the term.
+              <p className="px-4 pb-4 text-sm text-slate-500 dark:text-slate-400">
+                {t('fleet.fixedRoster.driverSearchEmpty')}
+              </p>
             ) : (
-              <ul className="max-h-[32rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
-                {pool.map((driver) => {
+              <ul className="max-h-[26rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+                {shownDrivers.map((driver) => {
                   // Everyone here is unseated ON THIS BOARD — that is what the pool now means.
                   // But the board carries only the vehicles this reader may see, so a driver
                   // fixed to a car outside that scope is not free either: calling them free
@@ -631,20 +680,21 @@ export const FixedRosterPage = (): JSX.Element => {
                         }}
                         onDragEnd={() => setDragging(null)}
                         className={[
-                          'flex items-center justify-between gap-2 px-5 py-2.5 text-sm',
+                          'flex items-center justify-between gap-2 px-3 py-1.5',
                           mayPlan
                             ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50 dark:hover:bg-slate-800/60'
                             : '',
                           dragging === driver.employeeId ? 'opacity-50' : '',
                         ].join(' ')}
                       >
-                        <span className="min-w-0 truncate">
-                          <EmployeeName employeeId={driver.employeeId} />
-                        </span>
-                        {heldElsewhere ? (
-                          <Badge tone="warning">{t('fleet.roster.otherVehicle')}</Badge>
-                        ) : (
-                          <Badge tone="neutral">{t('fleet.fixedRoster.unassigned')}</Badge>
+                        <DriverChip employeeId={driver.employeeId} className="min-w-0" />
+                        {/* Only the exception is badged now. "Free" is what every other row in
+                            this list already means, so saying it on each one spends the width
+                            the name needs without telling the reader anything. */}
+                        {heldElsewhere && (
+                          <Badge tone="warning" size="sm" className="shrink-0">
+                            {t('fleet.roster.otherVehicle')}
+                          </Badge>
                         )}
                       </div>
                     </li>

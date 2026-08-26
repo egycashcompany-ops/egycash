@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { GoldCompanyModel, type GoldCompanyDoc } from './company.model';
 
@@ -9,9 +10,16 @@ class GoldCompanyRepository extends BaseRepository<GoldCompanyDoc> {
     super(GoldCompanyModel, {});
   }
 
-  /** Names for a page of rows — one query instead of one per row. */
+  /**
+   * Names for a page of rows — one query instead of one per row.
+   *
+   * Ids that are not ObjectIds are dropped rather than sent to Mongo. Callers reach this through
+   * `String(doc.companyId)`, and `String(null)` is the four-letter string `"null"` — which Mongoose
+   * answers with a CastError, an unhandled throw, and a 500 on the whole page. A row whose owner
+   * is missing has no name to look up; that is a blank cell, not a server error.
+   */
   async namesOf(ids: readonly string[]): Promise<Map<string, string>> {
-    const unique = [...new Set(ids)];
+    const unique = [...new Set(ids)].filter((value) => Types.ObjectId.isValid(value));
     if (unique.length === 0) return new Map();
     const docs = await this.model
       .find({ _id: { $in: unique } })

@@ -208,7 +208,13 @@ describe('the fixed-crew screen', () => {
     };
     const body = tbody(render({ qc: client(filled) }));
     expect(body, 'the catalog item name, not its id').toContain('نقل نقدية');
-    expect(body).not.toContain(MT);
+    // The id may appear in an `<option value>` — that is how a select carries its reference —
+    // but it must never be a thing the reader is shown. So the claim is about the VISIBLE text,
+    // which is what it always meant; matching raw markup only happened to say the same thing
+    // back when the cell was a bare `<span>`.
+    const visible = body.replace(/<[^>]*>/g, ' ');
+    expect(visible, 'no ObjectId is ever displayed').not.toContain(MT);
+    expect(visible, 'the name is').toContain('نقل نقدية');
     expect(body).toContain('يبدأ من المخزن');
     // …and the untouched row still reads as empty.
     expect(body).toContain('—');
@@ -576,8 +582,133 @@ describe('the edit dialog', () => {
     expect(SOURCE).toContain('onClose={() => setEditing(null)}');
     expect(DIALOG, 'the dialog writes no draft of its own').not.toContain('setDraft');
     expect(DIALOG, 'and never calls the mutation').not.toContain('mutate');
-    // The only path that reaches the board is the save handler.
-    expect(SOURCE.match(/applyEdit\(/g) ?? [], 'exactly one commit point').toHaveLength(1);
+    // The only path from the DIALOG to the board is its save handler — it never edits the draft
+    // itself. `applyEdit` now has two callers, because the mission type is editable in the cell
+    // as well; that is two entry points into ONE rule, which is the point of the function. What
+    // must stay impossible is a THIRD way that writes the row without it.
+    expect(DIALOG, 'the dialog does not commit, it hands back').not.toContain('applyEdit(');
+    const callers = SOURCE.match(/applyEdit\(/g) ?? [];
+    expect(callers, 'the dialog save and the mission cell — no others').toHaveLength(2);
+    // Neither entry point may assemble the row by hand: that would be the second persistence
+    // mechanism, agreeing with `applyEdit` only until somebody changed one of them.
+    expect(SOURCE, 'no row is spread into a new one outside the board lib').not.toMatch(
+      /\{\s*\.\.\.row,\s*(missionTypeId|driver[12]EmployeeId|notes)/,
+    );
+  });
+});
+
+// ── 2e-bis. «نوع المهمة», editable where it is read ─────────────────────────
+//
+// The mission type changes as often as the crew does, and it used to cost four interactions:
+// open «تعديل», pick, save, close. It is a select in the cell now. The dialog still edits it —
+// two entry points into ONE rule (`applyEdit`), which is the same shape the drag and the dialog
+// already share for drivers.
+//
+// The node suite cannot open a native select. What it pins is that the control IS in the table,
+// that it is the app's own catalog select on the `missionType` kind, and that the change goes
+// through the authoritative path; the interaction itself is measured in a browser.
+
+describe('the mission type, edited in the cell', () => {
+  const MISSION_CELL = SOURCE.slice(
+    SOURCE.indexOf("key: 'mission'"),
+    SOURCE.indexOf("key: 'driver1'"),
+  );
+
+  it('renders a real select in the table, not only inside the dialog', () => {
+    const body = tbody(render());
+    expect(body, 'the cell holds a control').toContain('<select');
+    expect(MISSION_CELL, 'and it is the app’s own catalog select').toContain('<CatalogSelect');
+    // Reachable without «تعديل»: the select is in the row, the dialog is not rendered at all
+    // until a row is being edited.
+    expect(body, 'no dialog is open').not.toContain('role="dialog"');
+  });
+
+  it('offers the missionType catalog — never workType', () => {
+    expect(MISSION_CELL, 'the mission vocabulary').toContain('kind="missionType"');
+    expect(MISSION_CELL, 'not the workshop’s').not.toContain('workType');
+    expect(SOURCE, 'nowhere on this screen').not.toContain("useFleetCatalog('workType')");
+    // …and it costs no new request: `CatalogSelect` reads the same cached hook the page does.
+    const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
+    expect(select, 'the shared hook').toContain('useFleetCatalog(kind)');
+    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
+    expect(api, 'no endpoint was added for this').not.toMatch(/mission-type|missionTypes\(/);
+  });
+
+  it('shows each option by its localized NAME and stores the id', () => {
+    const body = tbody(render());
+    expect(body, 'the catalog name is the option label').toContain('نقل نقدية');
+    const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
+    expect(select, 'label localized the project’s way').toContain('localized(item.name, locale)');
+    expect(select, 'value is the id').toContain('value={item.id}');
+  });
+
+  it('sends the change through `applyEdit` as missionTypeId — the dialog’s own path', () => {
+    expect(MISSION_CELL, 'the cell delegates').toContain('setMission(row,');
+    const setter = SOURCE.slice(
+      SOURCE.indexOf('const setMission ='),
+      SOURCE.indexOf("key: 'vehicle'"),
+    );
+    expect(setter, 'through the authoritative rule').toContain('applyEdit(rows, row.vehicleId');
+    expect(setter, 'as missionTypeId').toContain('missionTypeId,');
+    expect(setter, 'editing the draft, as a drag does').toContain('setDraft(');
+    expect(setter, 'and it never calls the mutation itself').not.toContain('mutate');
+    // The drivers and the note ride along unchanged — the cell edits ONE field.
+    for (const carried of ['driver1EmployeeId: row.driver1EmployeeId', 'notes: row.notes']) {
+      expect(setter, carried).toContain(carried);
+    }
+  });
+
+  it('clears to null, which is how this module spells "nothing"', () => {
+    expect(MISSION_CELL, 'the empty option means cleared').toContain("id === '' ? null : id");
+    expect(MISSION_CELL, 'and it is labelled as such').toContain(
+      "t('fleet.fixedRoster.noMissionType')",
+    );
+    expect(translate('ar', 'fleet.fixedRoster.noMissionType')).toBe('بدون نوع مهمة');
+    // `null` survives the real contract, which is what makes "cleared" storable.
+    const cleared = applyEdit([row(V1, '150')], V1, {
+      missionTypeId: null,
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      notes: null,
+    });
+    expect(cleared[0]?.missionTypeId).toBeNull();
+    const rows = changedRows([{ ...row(V1, '150'), missionTypeId: MT }], cleared);
+    expect(rows[0]?.missionTypeId).toBeNull();
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
+  });
+
+  it('keeps its interaction out of the row’s drag handling', () => {
+    // The row's other cells are drag sources and drop targets. A pointer landing in this select
+    // must not reach them — `DataTable` isolates its own selection cell exactly this way.
+    expect(MISSION_CELL, 'the click stops here').toContain('e.stopPropagation()');
+    expect(MISSION_CELL, 'and so does the press that would begin a drag').toContain('onMouseDown');
+    // The cell is not itself draggable, and declares no drop zone.
+    expect(MISSION_CELL, 'not a drag source').not.toContain('draggable');
+    expect(MISSION_CELL, 'not a drop target').not.toContain('data-drop-zone');
+    const table = readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8');
+    expect(table, 'the idiom is the table’s own').toContain('onClick={(e) => e.stopPropagation()}');
+  });
+
+  it('gives the label room the chevron does not already take', () => {
+    // A `<select>` clips its label internally and reports `scrollWidth === clientWidth`, so
+    // nothing about the DOM says it is cut — it has to be measured as rendered text against the
+    // inner width. At `min-w-[9rem]` the shared `Select`'s `pe-9` chevron gutter (36px) plus the
+    // 12px start padding left 94px, and «نقل أموال (يومي)» needs 104px: clipped in the column
+    // whose whole job is to show it. 11rem leaves 126px.
+    expect(MISSION_CELL, 'wide enough for a real mission name').toContain('min-w-[11rem]');
+    expect(MISSION_CELL, 'the too-narrow box is gone').not.toContain('min-w-[9rem]');
+    const form = readFileSync(join(HERE, '../../shared/ui/form.tsx'), 'utf8');
+    expect(form, 'the chevron gutter this budgets for').toContain('pe-9');
+  });
+
+  it('shows a reader who may not plan the NAME, with nothing to change', () => {
+    const filled: FleetFixedRosterDto = {
+      ...BOARD,
+      rows: [{ ...row(V1, '150'), missionTypeId: MT }, row(V2, '151')],
+    };
+    const body = tbody(render({ permissions: ['fleetRoster.view'], qc: client(filled) }));
+    expect(body, 'the value is readable').toContain('نقل نقدية');
+    expect(body, 'but not editable').not.toContain('<select');
   });
 });
 

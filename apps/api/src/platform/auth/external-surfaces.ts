@@ -10,14 +10,21 @@
 //
 // So confinement is a separate, coarser question asked before authorization, and it is answered
 // the only way that stays right as the codebase grows: DENY BY DEFAULT. An external caller may
-// reach exactly two things —
+// reach exactly three things —
 //
 //   1. its own account: the whole `/auth` router, which is either pre-authentication or
 //      self-service by construction (login, refresh, logout, me, password change, TOTP, sessions);
-//   2. the surface its owning module registered for it, and only by GET.
+//   2. the READ surface its owning module registered for it, by GET;
+//   3. the WRITE surface its owning module registered for it, if it registered one at all.
 //
 // A route added tomorrow anywhere else in ECMS is out of reach without anybody remembering this
 // file exists. That is the property worth having.
+//
+// THE THIRD ONE IS NEW, AND NARROW (ADR-027, amended 2026-08-26). It was added for the applicant
+// portal, whose entire purpose is that a candidate uploads their own certificates — a thing a
+// read-only account cannot do. It changes nothing for a subject type that does not ask: a customer
+// who registers no write surface is exactly as incapable of writing as before, which is why this
+// is a second opt-in call and not a flag on the first.
 //
 // **Dependency direction**, as in `file-authorizers.ts`: modules PUSH their surface in at boot and
 // this file imports nothing from any module.
@@ -26,6 +33,15 @@ import { type ExternalSubject } from '../../shared/types';
 
 /** `${moduleId}:${subjectType}` → the single route prefix that subject may read. */
 const surfaces = new Map<string, string>();
+
+/**
+ * `${moduleId}:${subjectType}` → the single route prefix that subject may WRITE under.
+ *
+ * A SEPARATE map, not a widened value in the first one, so that "may read here" and "may write
+ * here" stay two answers. They happen to be the same prefix for the applicant portal; that is a
+ * fact about that module, not a rule, and a module that wants both says both.
+ */
+const writeSurfaces = new Map<string, string>();
 
 const keyOf = (moduleId: string, subjectType: string): string => `${moduleId}:${subjectType}`;
 
@@ -45,6 +61,23 @@ export const registerExternalSurface = (
   surfaces.set(keyOf(moduleId, subjectType), prefix);
 };
 
+/**
+ * Declare the WRITE surface for one kind of external subject, e.g.
+ * `registerExternalWriteSurface('hr', 'applicant', '/hr/applicant-portal')`.
+ *
+ * Opt-in, one prefix, and absent unless a module asks: the default for every external subject is
+ * still that it cannot write anywhere at all. Registering this does NOT grant reads — a module
+ * that wants both calls both — and it does not skip authorization: this gate answers "should this
+ * caller reach this area", permissions still answer "may they do this".
+ */
+export const registerExternalWriteSurface = (
+  moduleId: string,
+  subjectType: string,
+  prefix: string,
+): void => {
+  writeSurfaces.set(keyOf(moduleId, subjectType), prefix);
+};
+
 /** Path containment that cannot be fooled by a shared prefix: `/gold/portalx` is not under `/gold/portal`. */
 const under = (path: string, base: string): boolean => path === base || path.startsWith(`${base}/`);
 
@@ -60,12 +93,14 @@ export const externalMayReach = (
   path: string,
 ): boolean => {
   if (under(path, `${env.BASE_PATH}/api/v1/auth`)) return true;
-  if (method !== 'GET' && method !== 'HEAD') return false;
-  const prefix = surfaces.get(keyOf(subject.moduleId, subject.subjectType));
+  const key = keyOf(subject.moduleId, subject.subjectType);
+  const map = method === 'GET' || method === 'HEAD' ? surfaces : writeSurfaces;
+  const prefix = map.get(key);
   return prefix !== undefined && under(path, `${env.BASE_PATH}/api/v1${prefix}`);
 };
 
 /** Test seam — the registry is process-wide and boot-populated. */
 export const clearExternalSurfaces = (): void => {
   surfaces.clear();
+  writeSurfaces.clear();
 };

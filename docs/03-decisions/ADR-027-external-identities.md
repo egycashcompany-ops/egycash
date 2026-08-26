@@ -107,3 +107,60 @@ on the fact that it would have doubled every credential-handling decision in the
 
 **Adding a `customer` data scope.** Rejected as described above: the scopes are the org tree, and
 widening the enum would change a value persisted on every existing role assignment.
+
+---
+
+## Amendment — 2026-08-26: a declared WRITE surface, per subject type
+
+**Status:** Accepted · **Amends:** the "by GET only" clause of the Decision above.
+
+### What changed in the world
+
+This ADR was written when the only external subject was a gold-vault customer, and a customer only
+ever *reads*: their bars, their receipts, their statements. "Structurally incapable of writing
+anything, anywhere" was true, cheap, and exactly right for that population.
+
+The applicant portal (P-HR-APP) breaks it. Its entire purpose is that a candidate uploads their own
+qualification certificate, birth certificate, military-service certificate and national ID — and,
+for drivers, a professional licence. A read-only external account cannot do the one thing this
+surface exists for.
+
+### The decision
+
+**A subject type may now declare a WRITE prefix as well as a read prefix**, through a second,
+explicit call:
+
+```ts
+registerExternalSurface('hr', 'applicant', '/hr/applicant-portal');
+registerExternalWriteSurface('hr', 'applicant', '/hr/applicant-portal');
+```
+
+Everything that made the original gate worth having is kept:
+
+- **Deny by default is unchanged.** A subject type that declares no write surface is exactly as
+  read-only as it was yesterday — the gold customer's confinement is untouched, and this amendment
+  does not widen it by one route.
+- **One prefix, not a list**, for the same reason the read surface has one: a list invites the
+  surface to creep outward an entry at a time, and a single prefix makes every widening a visible
+  decision about where the customer-facing routes live.
+- **The write prefix is not implicitly the read prefix.** A module that wants both says both. They
+  happen to be equal for the applicant portal; that is a fact about that module, not a rule.
+- **Authorization still runs afterwards.** This gate answers "should this caller be able to reach
+  this area at all"; permissions still answer "may they do this". Neither substitutes for the other.
+
+### What is deliberately NOT granted
+
+- No external account reaches a write route outside its own declared prefix — the `POST
+  /platform/directory/resolve` and gold `/print` examples in the Context above stay refused, for
+  every external subject, exactly as before.
+- No blanket "external accounts may write". The capability is per subject type, opt-in, and absent
+  unless a module asks for it in code that a reviewer reads.
+
+### Why not keep the invariant and use a signed link instead
+
+The alternative was to leave this ADR untouched and let applicants upload through an unauthenticated
+token URL, as the public application form already does. Rejected: what was asked for is a portal —
+the candidate signs in, sees where their application stands, and comes back later to replace a
+document. A token in a link is a different product, and it would have needed its own session-shaped
+mechanism to answer "where am I now", which is the second authentication system this ADR exists to
+prevent.

@@ -689,14 +689,41 @@ describe('the driver panel', () => {
     expect(SOURCE, 'the panel can shrink too').toContain('min-w-0 space-y-6');
   });
 
-  it('keeps the rows readable while compact — padding shrank, the name did not', () => {
-    expect(POOL_LIST, 'tighter rows').toContain('px-3 py-1.5');
+  it('keeps the rows readable while compact — the chip IS the row now', () => {
+    // The row used to pad a content-width pill; the chip fills the row instead, and the space
+    // that padding took is what the reference gives back to the board. A gapped stack replaces
+    // the divider rules, so nothing is drawn between two things that are already separated.
+    expect(POOL_LIST, 'the chip fills the row').toContain('flex-1');
+    expect(POOL_LIST, 'no padding around a pill any more').not.toContain('px-3 py-1.5');
     // Narrow is fine; clipped is not. The chip may use the full row width and truncates when it
     // runs out, rather than being pinned to a fixed width a longer name would spill out of.
     const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8');
     expect(chip, 'grows to the row').toContain('max-w-full');
     expect(chip, 'and truncates instead of overflowing').toContain('truncate');
     expect(chip, 'no fixed width').not.toMatch(/\sw-\[?\d/);
+  });
+
+  it('tints the panel with its own surface — a Card would have swallowed the colour', () => {
+    // The reference stands the pool on a green field, and the first attempt at it passed that
+    // green to `<Card>`. It drew white. `cn` joins class names without resolving Tailwind
+    // conflicts (CardBody's own note says so), so the Card's `bg-white` and the incoming
+    // `bg-green-50` both landed on the element and the winner was stylesheet order — which emits
+    // `white` after `green`. Nothing failed; the tint simply never appeared. This pins the shape
+    // that works and refuses the one that looks identical in a diff and loses the colour.
+    const PANEL = SOURCE.slice(
+      SOURCE.indexOf('min-w-0 space-y-6'),
+      SOURCE.indexOf('shownDrivers.map((driver)'),
+    );
+    expect(PANEL, 'the surface carries the tint itself').toContain('bg-green-50');
+    expect(PANEL, 'not handed to a Card that ignores it').not.toContain('<Card');
+    expect(SOURCE, 'and the import went with it').not.toContain('shared/ui/Card');
+    // The hue is Tailwind `green`, deliberately NOT the `emerald` this project spends on success
+    // — see DriverChip's header. A tidy-up that unifies the two changes what the chip means.
+    const chip = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(chip, "the reference's green").toContain('bg-green-700');
+    expect(chip, 'never the success emerald').not.toContain('emerald');
   });
 });
 

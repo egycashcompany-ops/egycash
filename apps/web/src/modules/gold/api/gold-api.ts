@@ -49,7 +49,7 @@ import {
   type GoldRepresentativeDto,
   type GoldTransferDto,
   type GoldVaultDto,
-  type OrgUnitDto,
+  type OrgUnitOptionDto,
   type Paginated,
   type PreviewGoldLayout,
   type ReorderGoldItems,
@@ -91,9 +91,14 @@ export const searchVehicles = (
 ): Promise<Paginated<FleetVehicleDto>> =>
   getPage<FleetVehicleDto>(`/fleet/vehicles${buildQuery({ search, pageSize })}`);
 
-/** Integration 3 — the ECMS branches every gold document is stamped with. */
-export const listBranches = (): Promise<Paginated<OrgUnitDto>> =>
-  getPage<OrgUnitDto>(`/platform/organization/branches${buildQuery({ pageSize: 100 })}`);
+/**
+ * Integration 3 — the ECMS branches every gold document is stamped with.
+ *
+ * The OPTIONS endpoint, not the branches list: a gold operator printing a statement holds gold
+ * grants, not `branch.view`, and reference options are authenticated-only by design.
+ */
+export const listBranches = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/branches/options');
 
 // ── Companies / funds ──────────────────────────────────────────────────────
 export const listCompanies = (params: GoldListParams): Promise<Paginated<GoldCompanyDto>> =>

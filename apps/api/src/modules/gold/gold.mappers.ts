@@ -10,6 +10,7 @@
 // Second, a receipt's SNAPSHOT names (`teamLeaderName`, `supervisor1Name`, `vehicleNumber`) are
 // read straight off the document and never re-resolved. They were captured when the document was
 // written precisely so that a printed receipt keeps saying what it said.
+import { Types } from 'mongoose';
 import {
   type GoldBarDto,
   type GoldBarHistoryEntryDto,
@@ -30,15 +31,86 @@ import { type GoldRepresentativeDoc } from './representatives/representative.mod
 import { type GoldFloorDoc } from './floors/floor.model';
 import { type GoldVaultDoc } from './vaults/vault.model';
 import { type GoldDrawerDoc } from './vaults/drawer.model';
-import { type GoldBarDoc } from './bars/bar.model';
-import { type GoldReceivingReceiptDoc } from './receiving/receiving-receipt.model';
+import { type GoldBarDoc, type GoldBarHistorySub } from './bars/bar.model';
+import {
+  type GoldReceivingLineSub,
+  type GoldReceivingReceiptDoc,
+} from './receiving/receiving-receipt.model';
 import { type GoldDeliveryReceiptDoc } from './delivery/delivery-receipt.model';
 import { type GoldTransferDoc } from './transfers/transfer.model';
 import { type GoldKeyHandoverDoc } from './keys/key-handover.model';
 
-const iso = (d: Date): string => d.toISOString();
-const isoOrNull = (d: Date | null | undefined): string | null =>
-  d === null || d === undefined ? null : d.toISOString();
+/**
+ * Whatever the row holds, as a Date — or nothing.
+ *
+ * `.lean()` does NOT cast: it hands back the raw BSON value, so a field the schema calls a `Date`
+ * is a Date only if whoever WROTE the row made it one. A row written by this API always did; a row
+ * from a migration or a restored dump commonly holds the ISO STRING instead, and `"2024-03-01"`
+ * has no `.toISOString()`. Guarding for absence alone therefore closes half the door — which is
+ * why this checks the type rather than the presence.
+ *
+ * A parseable string or epoch number is not a fallback, it is the same instant written another
+ * way, so it is read as the date it is. Anything genuinely unusable becomes null and the caller
+ * decides what that means.
+ */
+const asDate = (value: unknown): Date | null => {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'string' || typeof value === 'number') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+/**
+ * Whatever the row holds, as a list — or an empty one.
+ *
+ * `default: []` is applied on WRITE, so it says nothing about a row that reached the collection
+ * another way, and `.lean()` returns the raw value. Same lesson as the dates: guard the TYPE, not
+ * the presence — `?? []` still hands a stored STRING to `.map`.
+ */
+const asArray = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
+
+/**
+ * A BUSINESS date — the date on the paper, not on the row.
+ *
+ * Deliberately NOT resolved from the `_id` the way the audit timestamps are. A receipt's own date
+ * has no true substitute, and a printed receipt carrying a date the system invented is worse than
+ * one carrying none. So a row that lost its date renders with the cell EMPTY: visibly wrong, easy
+ * to find, impossible to mistake for a fact — and the eleven good rows beside it still render.
+ */
+const iso = (d: unknown): string => asDate(d)?.toISOString() ?? '';
+
+/**
+ * The audit timestamps, read from the row itself.
+ *
+ * `timestamps: true` writes `createdAt` and `updatedAt` on everything this API creates, which is
+ * why the DTOs type them as always present — and why the mappers used to dereference them
+ * unguarded. A row that reached the collection any OTHER way (a migration, a restored dump, a
+ * hand-inserted fixture) may not carry them, and one such row took down the entire page with a
+ * 500: twelve good rows hidden, and an error that names nothing.
+ *
+ * The ObjectId's embedded timestamp is not a substitute value invented to paper over the gap — it
+ * IS when that document was created, recorded by the driver in the `_id` itself. So the page
+ * renders, the date is right, and the malformed row is visible instead of fatal.
+ */
+type Stamped = { _id: unknown; createdAt?: unknown; updatedAt?: unknown };
+
+/** The creation instant the driver stamped into the `_id`, whether it arrived as an id or a string. */
+const bornAt = (id: unknown): Date => {
+  if (id instanceof Types.ObjectId) return id.getTimestamp();
+  if (typeof id === 'string' && Types.ObjectId.isValid(id)) {
+    return new Types.ObjectId(id).getTimestamp();
+  }
+  return new Date(0);
+};
+
+const createdIso = (doc: Stamped): string =>
+  (asDate(doc.createdAt) ?? bornAt(doc._id)).toISOString();
+
+const updatedIso = (doc: Stamped): string =>
+  (asDate(doc.updatedAt) ?? asDate(doc.createdAt) ?? bornAt(doc._id)).toISOString();
+export const isoOrNull = (d: unknown): string | null => asDate(d)?.toISOString() ?? null;
 const id = (v: { toString: () => string } | null | undefined): string | null =>
   v === null || v === undefined ? null : String(v);
 
@@ -66,8 +138,8 @@ export const toGoldCompanyDto = (doc: GoldCompanyDoc): GoldCompanyDto => ({
   status: doc.status,
   notes: doc.notes,
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldRepresentativeDto = (
@@ -85,8 +157,8 @@ export const toGoldRepresentativeDto = (
   status: doc.status,
   notes: doc.notes,
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldFloorDto = (doc: GoldFloorDoc, labels: GoldLabels = {}): GoldFloorDto => ({
@@ -96,8 +168,8 @@ export const toGoldFloorDto = (doc: GoldFloorDoc, labels: GoldLabels = {}): Gold
   branchId: id(doc.branchId),
   branchName: look(labels.branches, id(doc.branchId)),
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldVaultDto = (
@@ -110,8 +182,10 @@ export const toGoldVaultDto = (
   code: doc.code,
   description: doc.description,
   status: doc.status,
+  // Nullish, not `=== null`: a row whose `layout` key is absent altogether is the same "no layout
+  // yet" this already knows how to render, and reading `.rows` off it instead blanks the board.
   layout:
-    doc.layout === null
+    doc.layout === null || doc.layout === undefined
       ? null
       : {
           rows: doc.layout.rows,
@@ -130,8 +204,8 @@ export const toGoldVaultDto = (
   branchName: look(labels.branches, id(doc.branchId)),
   drawerCount,
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldDrawerDto = (
@@ -165,7 +239,7 @@ const toHistoryDto = (entry: GoldBarDoc['history'][number]): GoldBarHistoryEntry
 });
 
 export const toGoldBarHistoryDto = (doc: GoldBarDoc): GoldBarHistoryEntryDto[] =>
-  doc.history.map(toHistoryDto);
+  asArray<GoldBarHistorySub>(doc.history).map(toHistoryDto);
 
 export const toGoldBarDto = (doc: GoldBarDoc, labels: GoldLabels = {}): GoldBarDto => {
   const drawerId = id(doc.currentDrawerId);
@@ -191,8 +265,8 @@ export const toGoldBarDto = (doc: GoldBarDoc, labels: GoldLabels = {}): GoldBarD
     status: doc.status,
     notes: doc.notes,
     version: doc.__v,
-    createdAt: iso(doc.createdAt),
-    updatedAt: iso(doc.updatedAt),
+    createdAt: createdIso(doc),
+    updatedAt: updatedIso(doc),
   };
 };
 
@@ -205,21 +279,29 @@ export const toGoldBarLineDto = (doc: GoldBarDoc): GoldBarLineDto => ({
   purity: doc.purity,
 });
 
+/**
+ * One bar line on a receiving receipt.
+ *
+ * The line is read defensively for the same reason the row is: a receipt carrying one unreadable
+ * line is still a receipt the register has to list, and the twelve rows around it should not
+ * disappear because a migration wrote one sub-document badly.
+ */
 const toReceivingLineDto = (
-  line: GoldReceivingReceiptDoc['lines'][number],
+  line: Partial<GoldReceivingReceiptDoc['lines'][number]> | null | undefined,
   labels: GoldLabels,
 ): GoldReceivingLineDto => {
-  const drawerId = id(line.drawerId);
+  const cell = line ?? {};
+  const drawerId = id(cell.drawerId);
   return {
-    serialNumber: line.serialNumber,
-    metalType: line.metalType,
-    purity: line.purity,
-    weight: line.weight,
-    brand: line.brand,
-    weightBeforePacking: line.weightBeforePacking,
-    weightAfterPacking: line.weightAfterPacking,
-    vaultId: id(line.vaultId),
-    vaultCode: look(labels.vaults, id(line.vaultId)),
+    serialNumber: cell.serialNumber ?? '',
+    metalType: cell.metalType ?? 'gold',
+    purity: cell.purity ?? null,
+    weight: cell.weight ?? 0,
+    brand: cell.brand ?? null,
+    weightBeforePacking: cell.weightBeforePacking ?? null,
+    weightAfterPacking: cell.weightAfterPacking ?? null,
+    vaultId: id(cell.vaultId),
+    vaultCode: look(labels.vaults, id(cell.vaultId)),
     drawerId,
     drawerNumber: drawerId === null ? null : (labels.drawerNumbers?.get(drawerId) ?? null),
   };
@@ -267,11 +349,11 @@ export const toGoldReceivingReceiptDto = (
   barsCount: doc.barsCount,
   notes: doc.notes,
   storageLocation: doc.storageLocation,
-  lines: doc.lines.map((line) => toReceivingLineDto(line, labels)),
-  barIds: doc.barIds.map((barId) => String(barId)),
+  lines: asArray<GoldReceivingLineSub>(doc.lines).map((line) => toReceivingLineDto(line, labels)),
+  barIds: asArray(doc.barIds).map((barId) => String(barId)),
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldDeliveryReceiptDto = (
@@ -300,12 +382,12 @@ export const toGoldDeliveryReceiptDto = (
   keyHolder: doc.keyHolder,
   totalWeight: doc.totalWeight,
   barsCount: doc.barsCount,
-  barIds: doc.barIds.map((barId) => String(barId)),
+  barIds: asArray(doc.barIds).map((barId) => String(barId)),
   bars,
   notes: doc.notes,
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldTransferDto = (
@@ -338,13 +420,13 @@ export const toGoldTransferDto = (
   newOwnerNationalId: doc.newOwnerNationalId,
   barsCount: doc.barsCount,
   totalWeight: doc.totalWeight,
-  barIds: doc.barIds.map((barId) => String(barId)),
+  barIds: asArray(doc.barIds).map((barId) => String(barId)),
   bars,
   approvedBy: doc.approvedBy,
   notes: doc.notes,
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });
 
 export const toGoldKeyHandoverDto = (
@@ -379,6 +461,6 @@ export const toGoldKeyHandoverDto = (
   branchName: look(labels.branches, id(doc.branchId)),
   notes: doc.notes,
   version: doc.__v,
-  createdAt: iso(doc.createdAt),
-  updatedAt: iso(doc.updatedAt),
+  createdAt: createdIso(doc),
+  updatedAt: updatedIso(doc),
 });

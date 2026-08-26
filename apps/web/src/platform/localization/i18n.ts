@@ -377,6 +377,7 @@ const en: Record<string, string> = {
   'nav.branchSwitcher.label': 'Viewing',
   'nav.branchSwitcher.all': 'The whole company',
   'nav.branchSwitcher.none': 'No branches yet',
+  'nav.branchSwitcher.failed': 'The branch list could not be loaded.',
   'nav.pinned': 'Pinned',
   'nav.pin': 'Pin',
   'nav.unpin': 'Unpin',
@@ -5294,6 +5295,8 @@ const en: Record<string, string> = {
   'gold.dashboard.monthlyFlow': 'Monthly in and out (kg)',
   'gold.dashboard.empty': 'Nothing to chart yet.',
   'gold.vaults.subtitle': 'Every vault and drawer, with its fill level and key status',
+  'gold.vaults.keyOverlayFailed':
+    'Key handovers could not be loaded — drawers may be shown as not handed over.',
   'gold.vaults.empty': 'No vaults yet',
   'gold.vaults.emptyHint': 'Create one from the settings screen.',
   'gold.vaults.noDrawers': 'No drawers — set them up in settings',
@@ -6257,6 +6260,7 @@ const ar: Record<string, string> = {
   'nav.branchSwitcher.label': 'المعروض الآن',
   'nav.branchSwitcher.all': 'الشركة كلها',
   'nav.branchSwitcher.none': 'لا توجد فروع بعد',
+  'nav.branchSwitcher.failed': 'تعذّر تحميل قائمة الفروع.',
   'nav.pinned': 'المثبّتة',
   'nav.pin': 'تثبيت',
   'nav.unpin': 'إلغاء التثبيت',
@@ -11066,6 +11070,8 @@ const ar: Record<string, string> = {
   'gold.dashboard.monthlyFlow': 'الدخول والخروج الشهرى (كجم)',
   'gold.dashboard.empty': 'لا توجد بيانات للعرض بعد',
   'gold.vaults.subtitle': 'عرض مرئي لكل الخزائن وأدراجها مع مؤشّر الامتلاء وحالة المفاتيح',
+  'gold.vaults.keyOverlayFailed':
+    'تعذّر تحميل تسليمات المفاتيح — قد تظهر الأدراج كأنها غير مُسلَّمة.',
   'gold.vaults.empty': 'لا توجد خزائن',
   'gold.vaults.emptyHint': 'أنشئ خزينة من صفحة الإعدادات',
   'gold.vaults.noDrawers': 'لا توجد أدراج — اضبطها من الإعدادات',

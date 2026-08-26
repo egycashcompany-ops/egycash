@@ -105,5 +105,8 @@ export const resolveCreateBranchId = async (ctx: AuthContext): Promise<string | 
  */
 export const branchNames = async (): Promise<Map<string, string>> => {
   const page = await branchRepository.list({ page: 1, pageSize: 100 });
-  return new Map(page.items.map((branch) => [String(branch._id), branch.name.ar]));
+  // `name.ar` and not `name.ar!`: this map is built on EVERY gold list, so one branch row missing
+  // its localized name would be a 500 on all of them. A branch with no Arabic name renders as the
+  // empty string, which is what the cell would have shown anyway.
+  return new Map(page.items.map((branch) => [String(branch._id), branch.name?.ar ?? '']));
 };

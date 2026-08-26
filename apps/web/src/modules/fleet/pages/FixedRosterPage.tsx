@@ -44,6 +44,7 @@ import { formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
 import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
+import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
@@ -513,6 +514,27 @@ export const FixedRosterPage = (): JSX.Element => {
   };
 
   /**
+   * Change one vehicle's mission type from the CELL.
+   *
+   * Routed through `applyEdit` — the very function the dialog's save calls — rather than writing
+   * the row here, so one place knows what an edit means and the cell cannot drift from the
+   * dialog. The drivers and the note are handed back unchanged; `applyEdit` runs them through
+   * `assignDriver`, where re-seating the driver already in the slot is a no-op.
+   *
+   * It edits the DRAFT, exactly as a drag does. «حفظ» is still the only thing that writes, so a
+   * mistaken pick is undone by «إلغاء» like any other change on this board.
+   */
+  const setMission = (row: FleetFixedCrewRowDto, missionTypeId: string | null): void =>
+    setDraft((rows) =>
+      applyEdit(rows, row.vehicleId, {
+        missionTypeId,
+        driver1EmployeeId: row.driver1EmployeeId,
+        driver2EmployeeId: row.driver2EmployeeId,
+        notes: row.notes,
+      }),
+    );
+
+  /**
    * The seven columns, in the daily roster's own order and idiom (§4.5's board, minus its date).
    *
    * «نوع المهمة» and «ملاحظات» are here for that likeness and are always «—»: a standing crew is
@@ -551,10 +573,40 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'mission',
       header: t('fleet.roster.fields.mission'),
-      render: (row) => {
-        const name = missionTypeName(row.missionTypeId);
-        return name === null ? dash : <span className="text-sm">{name}</span>;
-      },
+      // Editable IN THE CELL, not only behind «تعديل». This is the fact on the board a
+      // dispatcher changes most often after the crew itself, and reaching it through a dialog
+      // cost four interactions to answer a one-word question.
+      //
+      // `CatalogSelect` is the app's own catalog select, given the SAME `missionType` kind the
+      // daily board uses. It reads the same cached hook, so N rows still cost ONE request, and
+      // it keeps an archived current value visible rather than silently dropping a historical
+      // reference. A reader without `fleetRoster.plan` sees the name as text, as before.
+      render: (row) =>
+        !mayPlan ? (
+          (missionTypeName(row.missionTypeId) ?? dash)
+        ) : (
+          // The click stops here. This row's other cells are drag sources and drop targets, and
+          // `DataTable` isolates its own selection cell the same way — a control inside a row
+          // must not hand its interaction to the row.
+          // `min-w-[11rem]`: the shared `Select` reserves `pe-9` (36px) for its chevron plus a
+          // 12px start gutter, so a 9rem box left 94px of text — and «نقل أموال (يومي)», the
+          // commonest mission there is, needs 104px. Measured, not guessed: a select clips its
+          // label internally and reports no overflow, so nothing but comparing the rendered text
+          // against the inner width catches it.
+          <div
+            className="min-w-[11rem]"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <CatalogSelect
+              kind="missionType"
+              value={row.missionTypeId ?? ''}
+              ariaLabel={`${row.code} · ${t('fleet.roster.fields.mission')}`}
+              allLabel={t('fleet.fixedRoster.noMissionType')}
+              onChange={(id) => setMission(row, id === '' ? null : id)}
+            />
+          </div>
+        ),
     },
     {
       key: 'driver1',

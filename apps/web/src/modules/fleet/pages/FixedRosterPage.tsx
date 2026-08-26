@@ -76,6 +76,40 @@ const DriverOption = ({ employeeId }: { employeeId: string }): JSX.Element => {
 };
 
 /**
+ * One driver slot as a labelled select — module level for the same reason `CrewSlotCell` is.
+ *
+ * Written inside the dialog it was a fresh element type on every keystroke, so React threw the
+ * `<select>` away and built another one each time the draft changed. Out here the element
+ * survives, which is what a native control needs to stay the one the reader is interacting with.
+ */
+const DriverSelect = ({
+  value,
+  onChange,
+  label,
+  exclude,
+  candidates,
+  t,
+}: {
+  value: string | null;
+  onChange: (id: string | null) => void;
+  label: string;
+  exclude: string | null;
+  candidates: string[];
+  t: (key: string) => string;
+}): JSX.Element => (
+  <Field label={label}>
+    <Select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
+      <option value="">{t('fleet.fixedRoster.noDriver')}</option>
+      {candidates
+        .filter((id) => id !== exclude || id === value)
+        .map((id) => (
+          <DriverOption key={id} employeeId={id} />
+        ))}
+    </Select>
+  </Field>
+);
+
+/**
  * Edit one vehicle's four editable facts together — «تعديل».
  *
  * The dialog holds its OWN draft and hands it back only on save, which is what makes «إلغاء»
@@ -126,29 +160,6 @@ const EditCrewDialog = ({
   // that a drag cannot: the same person chosen in both slots. `applyEdit` would silently
   // displace the first with the second, so it is refused here instead, before it is applied.
   const sameTwice = driver1 !== null && driver1 === driver2;
-
-  const DriverSelect = ({
-    value,
-    onChange,
-    label,
-    exclude,
-  }: {
-    value: string | null;
-    onChange: (id: string | null) => void;
-    label: string;
-    exclude: string | null;
-  }): JSX.Element => (
-    <Field label={label}>
-      <Select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">{t('fleet.fixedRoster.noDriver')}</option>
-        {candidates
-          .filter((id) => id !== exclude || id === value)
-          .map((id) => (
-            <DriverOption key={id} employeeId={id} />
-          ))}
-      </Select>
-    </Field>
-  );
 
   return (
     <Dialog
@@ -213,12 +224,16 @@ const EditCrewDialog = ({
           value={driver1}
           onChange={setDriver1}
           exclude={driver2}
+          candidates={candidates}
+          t={t}
         />
         <DriverSelect
           label={t('fleet.odometer.fields.driver2')}
           value={driver2}
           onChange={setDriver2}
           exclude={driver1}
+          candidates={candidates}
+          t={t}
         />
         {sameTwice && (
           <p className="text-sm text-rose-600 dark:text-rose-400">
@@ -236,6 +251,118 @@ const EditCrewDialog = ({
         </Field>
       </div>
     </Dialog>
+  );
+};
+
+/** The id of one drop target. Module level so the cell below can be too. */
+const zoneKey = (vehicleId: string, slot: CrewSlot): string => `${vehicleId}:${slot}`;
+
+/**
+ * One slot, as a table CELL: a drop target that either holds a driver or asks for one.
+ *
+ * No label of its own — the column header above it already says which slot this is, and
+ * repeating it in every row is the noise a table exists to remove.
+ *
+ * DECLARED HERE, not inside the page, and that is the fix for a real bug rather than tidiness.
+ * A component written inside another component is a NEW function — a new element TYPE — on every
+ * render, so React cannot match it against the previous tree: it unmounts the whole cell and
+ * mounts a fresh one. `onDragStart` sets the dragging id, that render replaced the very DOM node
+ * the browser had just picked up, and the browser cancelled the drag before it could begin. The
+ * seated driver was therefore undraggable in one gesture, while the pool — whose rows are inline
+ * JSX and keep their nodes across renders — was always fine. Hoisting it keeps the node alive,
+ * so mouse-down → drag → drop works in one motion, with no click to "wake" the chip first.
+ */
+const CrewSlotCell = ({
+  row,
+  slot,
+  mayPlan,
+  over,
+  dragging,
+  t,
+  setOver,
+  onDrop,
+  onClear,
+  setDragging,
+}: {
+  row: FleetFixedCrewRowDto;
+  slot: CrewSlot;
+  mayPlan: boolean;
+  over: string | null;
+  dragging: string | null;
+  t: (key: string, params?: Record<string, string | number>) => string;
+  setOver: (update: (key: string | null) => string | null) => void;
+  onDrop: (vehicleId: string, slot: CrewSlot, employeeId: string) => void;
+  onClear: (vehicleId: string, slot: CrewSlot) => void;
+  setDragging: (employeeId: string | null) => void;
+}): JSX.Element => {
+  const employeeId = row[slot];
+  const key = zoneKey(row.vehicleId, slot);
+  const active = over === key;
+  return (
+    <div className="min-w-[9rem]">
+      <div
+        data-drop-zone={key}
+        aria-label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
+        onDragOver={(e) => {
+          if (!mayPlan) return;
+          // Preventing the default IS what makes an element a drop target.
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          setOver(() => key);
+        }}
+        onDragLeave={() => setOver((k) => (k === key ? null : k))}
+        onDrop={(e) => {
+          if (!mayPlan) return;
+          e.preventDefault();
+          const id = e.dataTransfer.getData(DRAG_TYPE);
+          if (id !== '') onDrop(row.vehicleId, slot, id);
+        }}
+        className={[
+          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
+          active
+            ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
+            : employeeId === null
+              ? 'border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40'
+              : 'border-transparent bg-slate-50 dark:bg-slate-800/60',
+        ].join(' ')}
+      >
+        {employeeId === null ? (
+          <span className="text-xs text-slate-400 dark:text-slate-500">
+            {t('fleet.fixedRoster.dropHere')}
+          </span>
+        ) : (
+          <>
+            <span
+              draggable={mayPlan}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DRAG_TYPE, employeeId);
+                e.dataTransfer.effectAllowed = 'move';
+                setDragging(employeeId);
+              }}
+              onDragEnd={() => setDragging(null)}
+              className={[
+                'min-w-0 flex-1',
+                mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
+                dragging === employeeId ? 'opacity-50' : '',
+              ].join(' ')}
+            >
+              <DriverChip employeeId={employeeId} className="w-full" />
+            </span>
+            {mayPlan && (
+              <button
+                type="button"
+                aria-label={t('fleet.fixedRoster.removeDriver')}
+                title={t('fleet.fixedRoster.removeDriver')}
+                onClick={() => onClear(row.vehicleId, slot)}
+                className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 };
 
@@ -365,84 +492,19 @@ export const FixedRosterPage = (): JSX.Element => {
   };
 
   const dash = <span className="text-slate-400">—</span>;
-  const zoneKey = (vehicleId: string, slot: CrewSlot): string => `${vehicleId}:${slot}`;
 
-  /**
-   * One slot, as a table CELL: a drop target that either holds a driver or asks for one.
-   *
-   * No label of its own — the column header above it already says which slot this is, and
-   * repeating it in every row is the noise a table exists to remove.
-   */
-  const Slot = ({ row, slot }: { row: FleetFixedCrewRowDto; slot: CrewSlot }): JSX.Element => {
-    const employeeId = row[slot];
-    const key = zoneKey(row.vehicleId, slot);
-    const active = over === key;
-    return (
-      <div className="min-w-[9rem]">
-        <div
-          data-drop-zone={key}
-          aria-label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
-          onDragOver={(e) => {
-            if (!mayPlan) return;
-            // Preventing the default IS what makes an element a drop target.
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-            setOver(key);
-          }}
-          onDragLeave={() => setOver((k) => (k === key ? null : k))}
-          onDrop={(e) => {
-            if (!mayPlan) return;
-            e.preventDefault();
-            const id = e.dataTransfer.getData(DRAG_TYPE);
-            if (id !== '') drop(row.vehicleId, slot, id);
-          }}
-          className={[
-            'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
-            active
-              ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
-              : employeeId === null
-                ? 'border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40'
-                : 'border-transparent bg-slate-50 dark:bg-slate-800/60',
-          ].join(' ')}
-        >
-          {employeeId === null ? (
-            <span className="text-xs text-slate-400 dark:text-slate-500">
-              {t('fleet.fixedRoster.dropHere')}
-            </span>
-          ) : (
-            <>
-              <span
-                draggable={mayPlan}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(DRAG_TYPE, employeeId);
-                  e.dataTransfer.effectAllowed = 'move';
-                  setDragging(employeeId);
-                }}
-                onDragEnd={() => setDragging(null)}
-                className={[
-                  'min-w-0 flex-1',
-                  mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
-                  dragging === employeeId ? 'opacity-50' : '',
-                ].join(' ')}
-              >
-                <DriverChip employeeId={employeeId} className="w-full" />
-              </span>
-              {mayPlan && (
-                <button
-                  type="button"
-                  aria-label={t('fleet.fixedRoster.removeDriver')}
-                  title={t('fleet.fixedRoster.removeDriver')}
-                  onClick={() => setDraft((c) => clearSlot(c, row.vehicleId, slot))}
-                  className="shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-                >
-                  <TrashIcon className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    );
+  // Everything the (module-level) slot cell needs from this page, gathered once. Spread rather
+  // than threaded one by one so the two columns below stay readable.
+  const slotProps = {
+    mayPlan,
+    over,
+    dragging,
+    t,
+    setOver,
+    onDrop: drop,
+    onClear: (vehicleId: string, slot: CrewSlot): void =>
+      setDraft((rows) => clearSlot(rows, vehicleId, slot)),
+    setDragging,
   };
 
   /**
@@ -456,14 +518,14 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // The CODE alone. The plate sat under it as a second line and cost every row the height of
+      // a line to say a thing this board never asks: a fixed crew belongs to the vehicle, and the
+      // vehicle is identified here by its code. The plate is still on the vehicle record, still
+      // shown on the screens that are ABOUT the vehicle, and still findable — the search below
+      // reads it, so a reader holding a plate number can still reach the row.
       render: (row) => (
-        <span className="flex flex-col">
-          <span className="font-mono text-xs" dir="ltr">
-            {row.code}
-          </span>
-          <span className="text-xs text-slate-500 dark:text-slate-400" dir="ltr">
-            {row.plateNumber}
-          </span>
+        <span className="font-mono text-xs" dir="ltr">
+          {row.code}
         </span>
       ),
     },
@@ -492,12 +554,12 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'driver1',
       header: t('fleet.odometer.fields.driver1'),
-      render: (row) => <Slot row={row} slot="driver1EmployeeId" />,
+      render: (row) => <CrewSlotCell {...slotProps} row={row} slot="driver1EmployeeId" />,
     },
     {
       key: 'driver2',
       header: t('fleet.odometer.fields.driver2'),
-      render: (row) => <Slot row={row} slot="driver2EmployeeId" />,
+      render: (row) => <CrewSlotCell {...slotProps} row={row} slot="driver2EmployeeId" />,
     },
     {
       key: 'notes',
@@ -507,8 +569,10 @@ export const FixedRosterPage = (): JSX.Element => {
           dash
         ) : (
           // Long notes are truncated rather than allowed to set the column's width — the note is
-          // context here, and the dialog is where it is read and written in full.
-          <span className="block max-w-[14rem] truncate text-sm" title={row.notes}>
+          // context here, and the dialog is where it is read and written in full. The ceiling is
+          // wider than it was: the width the driver panel gave up is spent HERE, which is the
+          // column that was actually running out of room.
+          <span className="block max-w-[22rem] truncate text-sm" title={row.notes}>
             {row.notes}
           </span>
         ),
@@ -594,12 +658,12 @@ export const FixedRosterPage = (): JSX.Element => {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-4">
+      <div className="grid gap-6 xl:grid-cols-5">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the wrapper
             just grows and takes the PAGE sideways with it. With it, a narrow screen scrolls
             inside the table, which is where the scrolling belongs. */}
-        <div className="min-w-0 space-y-4 xl:col-span-3">
+        <div className="min-w-0 space-y-4 xl:col-span-4">
           <FilterBar hasActiveFilters={search !== ''} onClear={() => patch({ q: null })}>
             <SearchInput
               value={search}

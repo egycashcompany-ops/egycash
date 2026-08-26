@@ -22,7 +22,11 @@ import {
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
 import { ensureAnnouncementTemplate } from './announcements';
-import { applicantSourceService, ensureApplicantSourceIconCategory } from './recruitment/applicants';
+import {
+  applicantSourceService,
+  ensureApplicantSourceIconCategory,
+  ensureNationalIdCardCategory,
+} from './recruitment/applicants';
 import { interviewStageService } from './recruitment/interviews';
 import { ensureEvaluationCategory, evaluationPhaseService } from './recruitment/evaluations';
 import { ensureEvaluationBatchCategory } from './recruitment/evaluation-batches';
@@ -229,6 +233,8 @@ const ensureHiringDocumentsSeeds = async (): Promise<void> => {
   // Source icons go up through the platform Files service; this is the category that holds the
   // "PNG or SVG, and small" rule for them.
   await ensureApplicantSourceIconCategory();
+  // The category the security-check package reads to find a candidate's ID-card images.
+  await ensureNationalIdCardCategory();
   await notificationTemplateService.ensure({
     key: HrHiringDocumentsTemplates.Completed,
     category: 'hr',

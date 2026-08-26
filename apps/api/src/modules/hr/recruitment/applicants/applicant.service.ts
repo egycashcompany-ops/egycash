@@ -219,6 +219,7 @@ class ApplicantService {
         photoFileId: oid(input.identity.photoFileId),
         maritalStatus: input.identity.maritalStatus ?? null,
         religion: input.identity.religion ?? null,
+        motherName: input.identity.motherName ?? null,
         nationalIdExpiry: input.identity.nationalIdExpiry ?? null,
         dependentsCount: input.identity.dependentsCount ?? null,
         contact: {
@@ -448,6 +449,7 @@ class ApplicantService {
     const set: Partial<ApplicantDoc> = {};
     if (input.fullNameAr !== undefined) set.fullNameAr = input.fullNameAr;
     if (input.fullNameEn !== undefined) set.fullNameEn = input.fullNameEn;
+    if (input.motherName !== undefined) set.motherName = input.motherName;
     if (input.fullNameAr !== undefined || input.fullNameEn !== undefined) {
       set.searchName = buildSearchName(
         input.fullNameAr ?? before.fullNameAr,

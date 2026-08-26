@@ -226,6 +226,15 @@ export const IdentityInputSchema = z
     dependentsCount: z.number().int().min(0).max(50).optional(),
     /** Read from the National-ID card (back). Free text — Egypt records a small set. */
     religion: z.string().max(100).optional(),
+    /**
+     * Mother's name — required by the SECURITY CHECK form, and by nothing else in this system.
+     *
+     * Typed by hand, never derived: it is printed on the back of the National-ID card, but this
+     * field is not wired to the OCR seam, so what a recruiter enters is what the form carries.
+     * Deliberately NOT `arabicName`: a name may legitimately be recorded in either script here,
+     * and a rejected save is a worse failure than a Latin spelling on one row.
+     */
+    motherName: z.string().trim().min(2).max(200).optional(),
     /** National-ID card expiry (read from the card front; not derivable from the number). */
     nationalIdExpiry: z.coerce.date().optional(),
   })
@@ -311,6 +320,7 @@ export const UpdateApplicantSchema = z
   .object({
     fullNameAr: arabicName(z.string().min(2).max(200)).optional(),
     fullNameEn: englishName(z.string().max(200)).optional(),
+    motherName: z.string().trim().min(2).max(200).optional(),
     contact: ContactInputSchema.partial().optional(),
     officialAddress: ApplicantAddressSchema.optional(),
     currentAddress: ApplicantAddressSchema.optional(),
@@ -531,6 +541,8 @@ export interface ApplicantDto {
   photoFileId: string | null;
   maritalStatus: MaritalStatus | null;
   religion: string | null;
+  /** Mother's name — the security-check form's field, entered by hand (never OCR-derived). */
+  motherName: string | null;
   /** National-ID card expiry (ISO), when captured. Not derived from the number. */
   nationalIdExpiry: string | null;
   dependentsCount: number | null;
@@ -645,3 +657,14 @@ export const ApplicantRejectedPayloadV1 = z.object({
  * the upload path is the platform's, unchanged.
  */
 export const APPLICANT_SOURCE_ICON_FILE_CATEGORY = 'hr-applicant-source-icons';
+
+/**
+ * The category that marks an attachment as a National-ID card image.
+ *
+ * The security-check package prints one card per page after its list, and this is how it knows
+ * WHICH of an applicant's attachments to print. A category rather than a pair of fields on the
+ * applicant: filing a document by kind is what this system already does everywhere else, it works
+ * whether or not the OCR scan ever ran, and it holds both sides plus a replacement without the
+ * model growing a column per image.
+ */
+export const APPLICANT_NATIONAL_ID_FILE_CATEGORY = 'hr-applicant-national-id';

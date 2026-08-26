@@ -638,6 +638,8 @@ const en: Record<string, string> = {
     'Security and driving checks sent out as a group, and the results that came back.',
   'batches.unknownPhase': 'This check phase does not exist, or you may not see it.',
   'batches.columns.grade': 'Grade',
+  'batches.shortNames.warning':
+    'These names are not quadruple. The official forms are filled in with the full four-part name — fix them before issuing:',
   'batches.grade.prompt': 'Record the examiner\u2019s grade with the approval.',
   'batches.grade.weak': 'Weak',
   'batches.grade.good': 'Good',
@@ -987,6 +989,8 @@ const en: Record<string, string> = {
   'applicants.form.nationality': 'Nationality',
   'applicants.form.maritalStatus': 'Marital status',
   'applicants.form.religion': 'Religion',
+  'applicants.form.fullNameArNotQuadruple':
+    'This name is not quadruple. Official forms are filled in with the full four-part name.',
   'applicants.form.motherName': "Mother's name",
   'applicants.form.motherNameHint': 'Required by the security-check form. Entered by hand.',
   'applicants.form.derivedFromNid': 'Derived automatically from the National ID',
@@ -6536,6 +6540,8 @@ const ar: Record<string, string> = {
   'batches.subtitle': 'التحريات الأمنية واختبارات القيادة التي تُرسل كدفعة، والنتائج العائدة.',
   'batches.unknownPhase': 'مرحلة الفحص هذه غير موجودة، أو لا تملك صلاحية رؤيتها.',
   'batches.columns.grade': 'التقييم',
+  'batches.shortNames.warning':
+    'هذه الأسماء ليست رباعية. النماذج الرسمية تُملأ بالاسم الرباعي — صحّحها قبل الإصدار:',
   'batches.grade.prompt': 'سجّل تقدير الممتحن مع الاعتماد.',
   'batches.grade.weak': 'ضعيف',
   'batches.grade.good': 'جيد',
@@ -6879,6 +6885,8 @@ const ar: Record<string, string> = {
   'applicants.form.nationality': 'الجنسية',
   'applicants.form.maritalStatus': 'الحالة الاجتماعية',
   'applicants.form.religion': 'الديانة',
+  'applicants.form.fullNameArNotQuadruple':
+    'الاسم ليس رباعيًا. النماذج الرسمية تُملأ بالاسم الرباعي.',
   'applicants.form.motherName': 'اسم الأم',
   'applicants.form.motherNameHint': 'يطلبه نموذج الفحص الأمني. يُكتب يدويًا.',
   'applicants.form.derivedFromNid': 'مستخرج تلقائيًا من الرقم القومي',

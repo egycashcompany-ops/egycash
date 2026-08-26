@@ -26,6 +26,7 @@ export const Field = ({
   htmlFor,
   required = false,
   hint,
+  warning,
   error,
   children,
 }: {
@@ -33,6 +34,12 @@ export const Field = ({
   htmlFor?: string;
   required?: boolean;
   hint?: string | undefined;
+  /**
+   * Advice, not failure. An `error` says the save will be refused; a `warning` says the value is
+   * probably not what was meant and the save will go through anyway — which is a different thing
+   * to tell somebody, and deserves a different colour from both grey hint and red error.
+   */
+  warning?: string | undefined;
   error?: string | undefined;
   children: ReactNode;
 }): JSX.Element => (
@@ -46,6 +53,8 @@ export const Field = ({
     {children}
     {error !== undefined ? (
       <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+    ) : warning !== undefined ? (
+      <p className="text-xs text-amber-600 dark:text-amber-400">{warning}</p>
     ) : hint !== undefined ? (
       <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
     ) : null}

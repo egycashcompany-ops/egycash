@@ -8,6 +8,7 @@ import { useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   DRIVING_TEST_GRADES,
+  isQuadrupleName,
   type BatchItemDto,
   type DrivingTestGrade,
   type Locale,
@@ -60,6 +61,13 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
   // A GRADE ARRIVES WITH A DECISION, never on its own: the examiner's mark and the approval are
   // one act. Only the driving test has a scale, so only that phase is asked for one.
   const isDrivingTest = batch?.phaseKey === 'drivingTest';
+  // ISSUING IS THE LAST CHEAP MOMENT TO FIX A NAME. Every one of these forms is filled in with the
+  // quadruple name, and a sheet that leaves with two parts comes back refused — after the batch
+  // has frozen its membership and the paper is on somebody else's desk. Advisory, never blocking:
+  // a three-part name is somebody's real name, and this screen is not the place to adjudicate it.
+  const shortNames = (batch?.items ?? [])
+    .filter((i) => i.result !== 'voided' && !isQuadrupleName(i.applicantName))
+    .map((i) => i.applicantName || i.applicantCode);
   const [gradeFor, setGradeFor] = useState<string | null>(null);
   const [grade, setGrade] = useState<DrivingTestGrade>('good');
   const decideItem = useDecideBatchItem(id);
@@ -247,6 +255,13 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
           </div>
         }
       />
+
+      {isDraft && shortNames.length > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          {t('batches.shortNames.warning')}
+          <span className="font-medium"> {shortNames.join('، ')}</span>
+        </div>
+      )}
 
       <div className="space-y-4">
         <Card>

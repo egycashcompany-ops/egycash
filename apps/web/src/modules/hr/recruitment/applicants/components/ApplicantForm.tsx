@@ -21,6 +21,7 @@ import {
   asciiDigits,
   citiesOfGovernorate,
   findGovernorate,
+  isQuadrupleName,
   normalizeEgyptianPhone,
   normalizeReligion,
   parseNationalId,
@@ -547,6 +548,14 @@ export const ApplicantForm = ({
             label={t('applicants.form.fullNameAr')}
             required
             error={msg('fullNameAr')}
+            // Advisory only. Every official form this company sends out is filled in with the
+            // quadruple name, and a sheet that leaves with two parts comes back refused — but a
+            // three-part name is somebody's real name, so this warns and never blocks.
+            warning={
+              f.fullNameAr.trim() !== '' && !isQuadrupleName(f.fullNameAr)
+                ? t('applicants.form.fullNameArNotQuadruple')
+                : undefined
+            }
             hint={t('applicants.form.fullNameArHint')}
           >
             <Input

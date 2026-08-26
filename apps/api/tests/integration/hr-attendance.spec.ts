@@ -37,6 +37,7 @@ import {
   dayRecordService,
   AttendanceDayModel,
 } from '../../src/modules/hr/attendance';
+import { HolidayModel } from '../../src/modules/hr/work-calendar';
 import { Types } from 'mongoose';
 import { NotificationModel } from '../../src/platform/notifications/notification.model';
 import { type AuthContext } from '../../src/shared/types';
@@ -122,19 +123,78 @@ const regEmployee = async (): Promise<EmployeeDto> => {
 
 let HOLIDAY_ISO: Set<string> = new Set();
 
+/**
+ * The weekend this suite runs against — Fri/Sat unless YESTERDAY falls on one.
+ *
+ * WHY IT IS NOT A CONSTANT. The sweeps only ever look at yesterday (`previousDayRows`), so the
+ * sweep fixtures need yesterday to be an ordinary WORKING day: a weekend there derives `weekend`,
+ * a public holiday derives `holiday`, and either way the sweep finds no `absent`/`incomplete` row
+ * and its assertions fail — for a reason that has nothing to do with sweeping. That is not
+ * hypothetical: it took `main` red on 2026-08-26, when yesterday became 2026-08-25, المولد النبوي.
+ *
+ * So the suite OWNS its calendar instead of hoping: `alignCalendarToYesterday` moves the weekend
+ * off yesterday when it lands there and clears any holiday on it. Every picker below reads this
+ * rather than assuming Fri/Sat, so the weekend-derivation test moves with it and the two can
+ * never disagree.
+ */
+let WEEKEND_DAYS: number[] = [5, 6];
+
 /** A recent WORKDAY — not Fri/Sat and not a seeded public holiday — inside the punch window. */
 const recentWorkday = (): Date => {
   let day = addDays(cairoToday(), -10);
-  while ([5, 6].includes(isoWeekday(day)) || HOLIDAY_ISO.has(dateOnlyIso(day))) {
+  while (WEEKEND_DAYS.includes(isoWeekday(day)) || HOLIDAY_ISO.has(dateOnlyIso(day))) {
     day = addDays(day, 1);
   }
   return day;
 };
 
-/** A recent WEEKEND day per the seeded calendar (Fri=5). */
+/**
+ * Make yesterday an ordinary working day, and leave the suite's calendar self-consistent.
+ *
+ * Two independent things can make yesterday something other than a workday, and BOTH have to be
+ * handled — fixing one leaves the suite failing on the other's schedule:
+ *
+ *   · a weekend — whenever the run happens on the day after Fri or Sat, so two days in seven;
+ *   · a public holiday — the day after each of the 17 rows in SEED_HOLIDAYS_2026.
+ *
+ * Neither is a flake: each is deterministic on the date, fails every run that day, and clears
+ * only when the calendar moves on.
+ */
+const alignCalendarToYesterday = async (): Promise<void> => {
+  const yesterday = addDays(cairoToday(), -1);
+
+  // ① The weekend. Fri/Sat stays the default whenever it does not collide; when it does, the pair
+  //    moves to Mon/Tue, which cannot collide because yesterday is then Fri or Sat.
+  if ([5, 6].includes(isoWeekday(yesterday))) {
+    WEEKEND_DAYS = [1, 2];
+    const ctx: AuthContext = {
+      // `settingsService.set` stamps `updatedBy`, so this has to be a real ObjectId.
+      userId: new Types.ObjectId().toString(),
+      sessionId: 'seed',
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+      locale: 'en',
+      permissions: { 'setting.edit': 'organization' },
+      permissionVersion: 1,
+      isPrivileged: true,
+    };
+    await settingsService.set(ctx, {
+      key: HrLeaveSettingKeys.WeekendDays,
+      scope: 'organization',
+      value: WEEKEND_DAYS,
+    });
+  }
+
+  // ② The holiday. Soft-deleted rather than removed, which is the same state an administrator's
+  //    own deletion leaves behind — `listHolidays` filters on `isDeleted: false`.
+  await HolidayModel.updateMany({ date: yesterday }, { $set: { isDeleted: true } }).exec();
+};
+
+/** A recent WEEKEND day per the calendar this suite configured. */
 const recentWeekendDay = (): Date => {
   let day = addDays(cairoToday(), -10);
-  while (isoWeekday(day) !== 5) day = addDays(day, 1);
+  while (!WEEKEND_DAYS.includes(isoWeekday(day))) day = addDays(day, 1);
   return day;
 };
 
@@ -227,6 +287,11 @@ beforeAll(async () => {
   const seeded = (shiftsRes.body.data as ShiftDto[]).find((s) => s.code === 'GENERAL');
   expect(seeded).toBeDefined();
   GENERAL = seeded as ShiftDto;
+
+  // Yesterday has to be an ordinary working day BEFORE anything else reads the calendar — see
+  // WEEKEND_DAYS above for why, and note the ordering: this both writes the weekend setting and
+  // clears a holiday, so the HOLIDAY_ISO read below must come after it or the two disagree.
+  await alignCalendarToYesterday();
 
   // The seeded Egyptian public holidays could land inside the test window; the workday picker
   // must skip them or an expected `absent` would derive as `holiday`.
@@ -509,7 +574,7 @@ describe('AT-4 — freeze + the payroll feed seam', () => {
     const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
     const period = `${String(first.getUTCFullYear())}-${String(first.getUTCMonth() + 1).padStart(2, '0')}`;
     let workday = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 10));
-    while ([5, 6].includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
+    while (WEEKEND_DAYS.includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
       workday = addDays(workday, 1);
     }
     return { period, workday };
@@ -815,7 +880,7 @@ describe('AT-5 — regularizations and overtime approval', () => {
     const first = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
     const period = `${String(first.getUTCFullYear())}-${String(first.getUTCMonth() + 1).padStart(2, '0')}`;
     let workday = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 12));
-    while ([5, 6].includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
+    while (WEEKEND_DAYS.includes(isoWeekday(workday)) || HOLIDAY_ISO.has(dateOnlyIso(workday))) {
       workday = addDays(workday, 1);
     }
 
@@ -1134,6 +1199,24 @@ describe('AT-6 — screens, self-service and export', () => {
 
 // ── AT-7 — the two morning sweeps: notices that repeat safely and escalate nothing ───────────
 describe('AT-7 — absence and missing-checkout sweeps', () => {
+  /**
+   * The premise every test below rests on, asserted once and by itself.
+   *
+   * Without this, a calendar that puts yesterday out of reach does not report itself — it reports
+   * as three sweep tests failing on `absent`, `1 notice`, and `incomplete`, which reads as "the
+   * sweeps are broken" and sends the next person into `attendance-sweeps.ts`. That is exactly the
+   * wrong file. This says the true thing instead, in one line, before any sweep runs.
+   */
+  it('yesterday is an ordinary working day — the premise the sweeps need', () => {
+    const yesterday = addDays(cairoToday(), -1);
+    expect(WEEKEND_DAYS, `${dateOnlyIso(yesterday)} must not be a weekend day`).not.toContain(
+      isoWeekday(yesterday),
+    );
+    expect(HOLIDAY_ISO, `${dateOnlyIso(yesterday)} must not be a public holiday`).not.toContain(
+      dateOnlyIso(yesterday),
+    );
+  });
+
   /**
    * YESTERDAY IS MADE A WORKING DAY FOR THIS BLOCK, and that is the whole of this setup.
    *

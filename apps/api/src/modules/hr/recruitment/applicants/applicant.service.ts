@@ -26,7 +26,9 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
+import { resolveNationalIdCardCategoryId } from './national-id-card.files';
 import { normalizeArabic } from '../../shared/arabic';
 import {
   materializeAfterMoveToOffer,
@@ -288,6 +290,7 @@ class ApplicantService {
         { code: doc.code, source: source.key, requisition: input.jobRequisitionId ?? null },
       ),
     });
+    await this.fileNationalIdCards(ctx, String(doc._id), doc.code, input.nationalIdCardFileIds ?? []);
     await emit(HrEvents.ApplicantCreated, {
       applicantId: String(doc._id),
       code: doc.code,
@@ -434,6 +437,46 @@ class ApplicantService {
       .lean()
       .cursor();
     for await (const row of cursor) await visit(String(row._id));
+  }
+
+  /**
+   * File the just-scanned National-ID images against the applicant that was created from them.
+   *
+   * COPIED, not re-pointed. A file's entity reference is immutable through the platform's update
+   * surface, and deliberately so: being able to move a file onto another entity is being able to
+   * put a document somewhere you may read it. `fileService.copy` authorizes the READ of the source
+   * (ADR-023) and writes a new row under the applicant, which leaves the scan's own upload alone
+   * as the record of what the OCR actually saw.
+   *
+   * NEVER FATAL. A person joining the pipeline matters more than an image: a copy that fails is
+   * logged and the registration stands, and the card can be attached by hand afterwards.
+   */
+  private async fileNationalIdCards(
+    ctx: AuthContext,
+    applicantId: string,
+    applicantCode: string,
+    fileIds: readonly string[],
+  ): Promise<void> {
+    if (fileIds.length === 0) return;
+    try {
+      const categoryId = await resolveNationalIdCardCategoryId();
+      for (const [index, fileId] of fileIds.entries()) {
+        await fileService
+          .copy(ctx, fileId, {
+            moduleId: 'hr',
+            entityType: 'applicant',
+            entityId: applicantId,
+            categoryId,
+            displayName: `${applicantCode} — national id ${index + 1}`,
+            visibility: 'private',
+          })
+          .catch((error: unknown) => {
+            logger.warn({ err: error, applicantId, fileId }, 'filing a national-id card failed');
+          });
+      }
+    } catch (error) {
+      logger.warn({ err: error, applicantId }, 'the national-id card category is unavailable');
+    }
   }
 
   async update(

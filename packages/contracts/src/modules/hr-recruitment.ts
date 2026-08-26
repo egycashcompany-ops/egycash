@@ -267,6 +267,18 @@ export const RegisterApplicantSchema = z
     jobRequisitionId: objectId().optional(),
     branchId: objectId().optional(),
     /**
+     * The National-ID images just scanned, to be filed against this applicant.
+     *
+     * The scan runs BEFORE the applicant exists, so its uploads land on a scratch reference and
+     * cannot name an owner yet. Passing the ids here lets the server copy them onto the applicant
+     * it is creating, in the National-ID category — which is how the security-check package finds
+     * a card to print. At most two: the front and the back of one card.
+     *
+     * Optional, and a failure to copy never fails a registration: a person joining the pipeline
+     * matters more than an image, and an uncopied card can be attached by hand afterwards.
+     */
+    nationalIdCardFileIds: z.array(objectId()).max(2).optional(),
+    /**
      * Position + Branch at intake (RW1). Optional — a walk-in with no target seat is normal;
      * the placement is completed later and stays editable until Offer Acceptance (RW2/RW3).
      * When both are supplied, `placement.branchId` wins and `branchId` follows it.

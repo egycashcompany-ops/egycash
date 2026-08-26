@@ -21,6 +21,8 @@ import { type Express } from 'express';
 import {
   platformPermissions,
   SettingKeys,
+  type ApplicantDocumentSetDto,
+  type ApplicantDocumentTypeDto,
   type ApplicantDto,
   type ScreeningDto,
 } from '@ecms/contracts';
@@ -114,6 +116,46 @@ const portalAccount = async (applicantId: string): Promise<UserDoc> => {
   );
 };
 
+/** Register a candidate. The two numbers are theirs; neither is a secret, which is the point. */
+const registerApplicant = async (nationalId: string, phone: string): Promise<ApplicantDto> => {
+  const sources = await request(app)
+    .get('/api/v1/hr/applicant-sources')
+    .query({ pageSize: 50 })
+    .set('Authorization', `Bearer ${adminToken}`);
+  const source = data<{ id: string; key: string }[]>(sources).find((s) => s.key === 'internalHr');
+  if (source === undefined) throw new Error('source internalHr not seeded');
+  const registered = await request(app)
+    .post('/api/v1/hr/applicants')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      sourceId: source.id,
+      intakeChannel: 'internal',
+      identity: {
+        fullNameAr: 'محمد أحمد عبد الله سالم',
+        nationality: 'Egyptian',
+        nationalId,
+      },
+      contact: { primaryPhone: phone },
+    });
+  expect(registered.status, 'register applicant').toBe(201);
+  return mutated<ApplicantDto>(registered);
+};
+
+/** Open a screening and accept it — the act that opens the portal (D-APP-2). */
+const acceptScreening = async (applicantId: string): Promise<void> => {
+  const screening = mutated<ScreeningDto>(
+    await request(app)
+      .post('/api/v1/hr/screenings')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ applicantId }),
+  );
+  const decided = await request(app)
+    .post(`/api/v1/hr/screenings/${screening.id}/decide`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ outcome: 'accepted', version: screening.version });
+  expect(decided.status, 'accept screening').toBe(200);
+};
+
 beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   app = buildApp();
@@ -161,24 +203,7 @@ beforeAll(async () => {
   expect(loggedIn.status).toBe(200);
   adminToken = data<{ accessToken: string }>(loggedIn).accessToken;
 
-  const sources = await request(app)
-    .get('/api/v1/hr/applicant-sources')
-    .query({ pageSize: 50 })
-    .set('Authorization', `Bearer ${adminToken}`);
-  const source = data<{ id: string; key: string }[]>(sources).find((s) => s.key === 'internalHr');
-  if (source === undefined) throw new Error('source internalHr not seeded');
-
-  const registered = await request(app)
-    .post('/api/v1/hr/applicants')
-    .set('Authorization', `Bearer ${adminToken}`)
-    .send({
-      sourceId: source.id,
-      intakeChannel: 'internal',
-      identity: { fullNameAr: 'محمد أحمد عبد الله سالم', nationality: 'Egyptian', nationalId: NATIONAL_ID },
-      contact: { primaryPhone: PHONE },
-    });
-  expect(registered.status).toBe(201);
-  applicant = mutated<ApplicantDto>(registered);
+  applicant = await registerApplicant(NATIONAL_ID, PHONE);
 }, 180_000);
 
 afterAll(async () => {
@@ -206,17 +231,7 @@ describe('before screening is cleared there is no portal at all (D-APP-2)', () =
 
 describe('clearing screening opens the portal', () => {
   it('creates an ACTIVE, PASSWORDLESS account — both halves, or the portal does not work', async () => {
-    const screening = mutated<ScreeningDto>(
-      await request(app)
-        .post('/api/v1/hr/screenings')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ applicantId: applicant.id }),
-    );
-    const decided = await request(app)
-      .post(`/api/v1/hr/screenings/${screening.id}/decide`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ outcome: 'accepted', version: screening.version });
-    expect(decided.status).toBe(200);
+    await acceptScreening(applicant.id);
 
     const account = await portalAccount(applicant.id);
     // ACTIVE: `invited` would issue a token that fails on the next request (auth §15.3).
@@ -316,6 +331,206 @@ describe('signing in with two numbers and a code', () => {
     // The SAME answer as a real start — an attacker learns nothing about whose number is on file.
     expect(res.status).toBe(200);
     expect(data<{ accepted: boolean }>(res).accepted).toBe(true);
+  });
+});
+
+/** A one-pixel PNG. Small, real, and the right MIME for a category that takes photographs. */
+const PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+const typeIdByKey = async (key: string): Promise<string> => {
+  const res = await request(app)
+    .get('/api/v1/hr/applicant-documents/types')
+    .query({ pageSize: 50 })
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(res.status, 'list document types').toBe(200);
+  const found = data<ApplicantDocumentTypeDto[]>(res).find((t) => t.key === key);
+  if (found === undefined) throw new Error(`document type ${key} was not seeded`);
+  return found.id;
+};
+
+/** The candidate's own upload — no applicant id anywhere in it, because there is nowhere to put one. */
+const submit = (token: string, typeId: string, extra: Record<string, string> = {}): request.Test => {
+  const req = request(app)
+    .post('/api/v1/hr/applicant-portal/documents')
+    .set('Authorization', `Bearer ${token}`)
+    .field('typeId', typeId);
+  for (const [key, value] of Object.entries(extra)) req.field(key, value);
+  return req.attach('file', PNG, 'certificate.png');
+};
+
+describe('the catalogue is data, and it is seeded (D-APP-4)', () => {
+  it('asks for the four documents everyone owes and the fifth only drivers do', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-documents/types')
+      .query({ pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const types = data<ApplicantDocumentTypeDto[]>(res);
+    expect(types.map((t) => t.key)).toEqual([
+      'qualification',
+      'birthCertificate',
+      'militaryService',
+      'nationalIdCard',
+      'professionalDrivingLicense',
+    ]);
+    const licence = types.find((t) => t.key === 'professionalDrivingLicense');
+    expect(licence?.applicability).toBe('driversOnly');
+    expect(licence?.licenseClassRequired).toBe(true);
+  });
+});
+
+describe('handing documents in', () => {
+  it('asks this candidate for four — the licence belongs to a seat they are not in (D-APP-5)', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-portal/documents')
+      .set('Authorization', `Bearer ${portalToken}`);
+    expect(res.status).toBe(200);
+    const set = data<ApplicantDocumentSetDto>(res);
+    expect(set.documents).toEqual([]);
+    expect(set.missing.map((m) => m.typeKey)).toEqual([
+      'qualification',
+      'birthCertificate',
+      'militaryService',
+      'nationalIdCard',
+    ]);
+    expect(set.complete).toBe(false);
+  });
+
+  it('refuses a document this candidate is not asked for', async () => {
+    const licence = await typeIdByKey('professionalDrivingLicense');
+    const res = await submit(portalToken, licence, { licenseClass: 'first' });
+    // 400, not 422: this is a refusal ABOUT A FIELD, and it comes back naming `typeId` so the
+    // screen can point at the control that is wrong. `BusinessRuleError` (422) is what this
+    // feature answers when the request is well-formed and the STATE forbids it — see the accepted
+    // document below, which cannot be replaced.
+    expect(res.status).toBe(400);
+  });
+
+  it('takes an upload, and the slot stops being missing', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await submit(portalToken, typeId);
+    expect(res.status).toBe(201);
+    const set = data<ApplicantDocumentSetDto>(res);
+    const doc = set.documents.find((d) => d.typeKey === 'qualification');
+    expect(doc?.status).toBe('pending');
+    expect(doc?.mayReplace).toBe(true);
+    expect(doc?.fileVersion).toBe(1);
+    expect(set.missing.map((m) => m.typeKey)).not.toContain('qualification');
+    expect(set.pendingReview).toBe(1);
+  });
+
+  it('replaces it in place — a new VERSION, not a second row (D-APP-7)', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await submit(portalToken, typeId);
+    expect(res.status).toBe(201);
+    const set = data<ApplicantDocumentSetDto>(res);
+    expect(set.documents.filter((d) => d.typeKey === 'qualification')).toHaveLength(1);
+    expect(set.documents.find((d) => d.typeKey === 'qualification')?.fileVersion).toBe(2);
+  });
+
+  it('refuses a licence class on a document that has no such thing (D-APP-6)', async () => {
+    const typeId = await typeIdByKey('birthCertificate');
+    const res = await submit(portalToken, typeId, { licenseClass: 'second' });
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('HR rules on what was handed in', () => {
+  it('is not something the candidate can do to their own file', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await request(app)
+      .post(`/api/v1/hr/applicant-documents/${applicant.id}/documents/${typeId}/review`)
+      .set('Authorization', `Bearer ${portalToken}`)
+      .send({ outcome: 'accepted' });
+    expect(res.status).toBe(403);
+  });
+
+  it('refuses a rejection with no reason — the candidate is being asked to fix something', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await request(app)
+      .post(`/api/v1/hr/applicant-documents/${applicant.id}/documents/${typeId}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'rejected' });
+    // Refused by the schema itself, before the handler runs — the note is part of what a
+    // rejection IS, not a rule the service applies afterwards.
+    expect(res.status).toBe(400);
+  });
+
+  it('REJECTS with a reason, and the slot reopens for the candidate (D-APP-7ج)', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await request(app)
+      .post(`/api/v1/hr/applicant-documents/${applicant.id}/documents/${typeId}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'rejected', note: 'الصورة غير واضحة' });
+    expect(res.status).toBe(200);
+    const doc = data<ApplicantDocumentSetDto>(res).documents.find((d) => d.typeKey === 'qualification');
+    expect(doc?.status).toBe('rejected');
+    expect(doc?.reviewNote).toBe('الصورة غير واضحة');
+    // The whole point of the refusal: they can act on it.
+    expect(doc?.mayReplace).toBe(true);
+  });
+
+  it('lets the candidate hand in a better one, which lands back as pending', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await submit(portalToken, typeId);
+    expect(res.status).toBe(201);
+    const doc = data<ApplicantDocumentSetDto>(res).documents.find((d) => d.typeKey === 'qualification');
+    expect(doc?.status).toBe('pending');
+    // The old verdict does not survive the new file.
+    expect(doc?.reviewNote).toBeNull();
+  });
+
+  it('ACCEPTS, and the slot locks', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await request(app)
+      .post(`/api/v1/hr/applicant-documents/${applicant.id}/documents/${typeId}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'accepted' });
+    expect(res.status).toBe(200);
+    const doc = data<ApplicantDocumentSetDto>(res).documents.find((d) => d.typeKey === 'qualification');
+    expect(doc?.status).toBe('accepted');
+    expect(doc?.mayReplace).toBe(false);
+  });
+
+  it('will not let the candidate swap an accepted document underneath the reviewer', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await submit(portalToken, typeId);
+    expect(res.status).toBe(422);
+  });
+
+  it('will not re-decide a settled slot', async () => {
+    const typeId = await typeIdByKey('qualification');
+    const res = await request(app)
+      .post(`/api/v1/hr/applicant-documents/${applicant.id}/documents/${typeId}/review`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outcome: 'rejected', note: 'مرة أخرى' });
+    expect(res.status).toBe(409);
+  });
+});
+
+describe('D-APP-9 — one candidate never reaches another', () => {
+  it('reads only their OWN set, whoever else exists', async () => {
+    const other = await registerApplicant('29001011590088', '01099880088');
+    await acceptScreening(other.id);
+    await portalAccount(other.id);
+
+    const mine = await request(app)
+      .get('/api/v1/hr/applicant-portal/documents')
+      .set('Authorization', `Bearer ${portalToken}`);
+    expect(mine.status).toBe(200);
+    // The set that comes back is decided by the session, and there is no parameter that could
+    // have pointed it anywhere else.
+    expect(data<ApplicantDocumentSetDto>(mine).applicantId).toBe(applicant.id);
+  });
+
+  it('cannot reach the staff review surface at all', async () => {
+    const res = await request(app)
+      .get('/api/v1/hr/applicant-documents')
+      .set('Authorization', `Bearer ${portalToken}`);
+    expect(res.status).toBe(403);
   });
 });
 

@@ -45,6 +45,7 @@ import {
   HrWorkflowEngineEvents,
 } from '../modules/hr-recruitment-workflow.js';
 import { FleetEvents } from '../modules/fleet.js';
+import { HrApplicantDocumentEvents } from '../modules/hr-applicant-documents.js';
 import { OperationsEvents } from '../modules/operations.js';
 import { ItEvents } from '../modules/it.js';
 
@@ -60,6 +61,10 @@ const HR_EVENT_CONSTANTS = [
   HrEmployeeEvents,
   HrEmployeeFileEvents,
   HrHiringDocumentsEvents,
+  // P-HR-APP §5 — what a CANDIDATE hands in. Declared here with the entry that catalogues it, for
+  // the reason the payroll note below gives: a catalogued name with no constant behind it is a
+  // trigger that can never fire.
+  HrApplicantDocumentEvents,
   HrLeaveEvents,
   HrAttendanceEvents,
   // P-HR-07 — the payroll decisions somebody waits on. Declared here the moment they were

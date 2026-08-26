@@ -26,8 +26,13 @@ const DYNAMIC_ENTITY_KEYS = [
   'hr.employeeActionAttachment', // contracts hr-employee-actions EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE
   'hr.payrollAdjustmentAttachment', // payroll-adjustment.files.ts ADJUSTMENT_ATTACHMENT_ENTITY_TYPE
   'platform.section', // org-unit.ts `this.entityType` — branch/department literals exist elsewhere
+  'hr.applicantDocuments', // applicant-document.files.ts APPLICANT_DOCUMENT_ENTITY_TYPE
 ];
-const EXPECTED_DYNAMIC_SITES = 5; // the four above + workflow-consumers relaying hr event refs
+// P-HR-APP phase 3 adds TWO sites for one entity, both in `applicant-document.service.ts`: the
+// audit ref and the file's owning ref, each reaching for the same shared constant rather than
+// retyping the string. That is the trade this count exists to make visible — one more name here in
+// exchange for one place to change the entity type.
+const EXPECTED_DYNAMIC_SITES = 7; // the five above + workflow-consumers relaying hr event refs
 
 const collectSources = (dir: string, files: string[] = []): string[] => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

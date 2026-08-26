@@ -125,6 +125,12 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // candidate (whether they have a portal, and when their link last went out), so those are the
   // lists that go stale. The portal's own screens are the candidate's, on a different origin.
   'hr.applicantPortalAccount': [['hr', 'applicants']],
+  // P-HR-APP §5 — an upload or a review lands on the reviewer's queue, and on the applicant's own
+  // page because «what has this candidate handed in» is part of reading them. The catalogue
+  // refreshes its own list and nothing else: changing what is asked for does not change what
+  // anybody has already handed in.
+  'hr.applicantDocuments': [['hr', 'applicantDocuments'], ['hr', 'applicants']],
+  'hr.applicantDocumentType': [['hr', 'applicantDocumentTypes']],
   'hr.hiringDocuments': [['hr', 'hiringDocuments'], ...recruitmentPipeline],
   'hr.hiringDocumentType': [['hr', 'hiringDocumentTypes']],
 

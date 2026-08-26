@@ -79,9 +79,13 @@ class ApplicantDocumentTypeService {
   /** Boot-time seed of the five. Idempotent, and it never overwrites an edited row. */
   async ensureSeeded(): Promise<void> {
     for (const row of SEEDED) {
+      // `key` and `isDeleted` are pinned by the filter and deliberately absent below: an upsert
+      // seeds the new document from the filter's equality conditions, and a field named in both
+      // places is a path conflict Mongo refuses — which would fail the whole boot sequence.
+      const { key, ...rest } = row;
       await ApplicantDocumentTypeModel.updateOne(
-        { key: row.key, isDeleted: false },
-        { $setOnInsert: { ...row, active: true, isDeleted: false } },
+        { key, isDeleted: false },
+        { $setOnInsert: { ...rest, active: true } },
         { upsert: true, setDefaultsOnInsert: true },
       ).exec();
     }

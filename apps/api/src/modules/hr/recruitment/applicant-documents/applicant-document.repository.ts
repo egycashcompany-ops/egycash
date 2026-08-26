@@ -42,13 +42,11 @@ class ApplicantDocumentRepository {
     return ApplicantDocumentSetModel.findOneAndUpdate(
       live({ applicantId: oid }),
       {
-        $setOnInsert: {
-          applicantId: oid,
-          applicantCode,
-          applicantName,
-          documents: [],
-          isDeleted: false,
-        },
+        // `applicantId` and `isDeleted` are NOT repeated here. An upsert already seeds the new
+        // document from the filter's equality conditions, and naming a field in both places is a
+        // path conflict Mongo refuses outright — so the two fields the filter pins are the two
+        // fields this block must stay silent about.
+        $setOnInsert: { applicantCode, applicantName, documents: [] },
       },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     )

@@ -89,16 +89,23 @@ class ApplicantDocumentService {
     return jobTitle?.requiresDrivingTest ?? false;
   }
 
-  /** The catalogue rows asked of this candidate, with their names, ordered. */
+  /**
+   * The catalogue rows asked of this candidate, with their names, ordered.
+   *
+   * `catalogue` is a parameter so a LIST can read the five rows once instead of once per candidate
+   * on the page. Optional rather than required because every single-candidate caller would
+   * otherwise have to fetch it just to hand it back.
+   */
   private async askedOf(
     applicant: ApplicantDoc,
+    catalogue?: ApplicantDocumentTypeDoc[],
   ): Promise<{ facts: DocumentTypeFacts; name: ApplicantDocumentTypeDoc['name'] }[]> {
-    const [catalogue, isDriver] = await Promise.all([
-      applicantDocumentTypeService.all(),
+    const [rows, isDriver] = await Promise.all([
+      catalogue === undefined ? applicantDocumentTypeService.all() : Promise.resolve(catalogue),
       this.isDriver(applicant),
     ]);
-    const byId = new Map(catalogue.map((row) => [String(row._id), row]));
-    return typesFor(catalogue.map(factsOf), isDriver).map((facts) => {
+    const byId = new Map(rows.map((row) => [String(row._id), row]));
+    return typesFor(rows.map(factsOf), isDriver).map((facts) => {
       const row = byId.get(facts.id);
       if (row === undefined) throw new NotFoundError();
       return { facts, name: row.name };
@@ -353,10 +360,13 @@ class ApplicantDocumentService {
     search?: string;
   }): Promise<{ items: ApplicantDocumentSetDto[]; total: number }> {
     const { items, total } = await applicantDocumentRepository.list(query);
+    // Read the catalogue ONCE for the whole page. Each candidate still needs their own job title
+    // asked — that is per person by definition — but the five rows are the same five rows.
+    const catalogue = await applicantDocumentTypeService.all();
     const decorated = await Promise.all(
       items.map(async (set) => {
         const applicant = await applicantService.findByIdSystem(String(set.applicantId));
-        const asked = applicant === null ? [] : await this.askedOf(applicant);
+        const asked = applicant === null ? [] : await this.askedOf(applicant, catalogue);
         return this.toDto(set, asked);
       }),
     );

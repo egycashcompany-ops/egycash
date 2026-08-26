@@ -136,9 +136,16 @@ export default function RecruitmentRoutes(): JSX.Element {
         </Route>
         {/* Security / Driving batches (RW8) — the group form of the external checks. Sight is
             per phase (RW7), so the pages authorize themselves rather than gating the subtree on
-            one permission. */}
+            one permission.
+
+            THE LIST IS ADDRESSED BY PHASE KEY, not phase id, and that is deliberate: the
+            navigation catalog is seeded statically and cannot know an ObjectId. The key is stable
+            (`securityCheck`, `drivingTest`), so a seeded row survives a reseeded database. The
+            evaluations subtree next door addresses phases by id because its links are built at
+            runtime from the catalog it just read. */}
         <Route path="evaluation-batches">
           <Route index element={<EvaluationBatchesPage />} />
+          <Route path="phase/:phaseKey" element={<EvaluationBatchesPage />} />
           <Route path=":id" element={<EvaluationBatchDetailPage />} />
         </Route>
         <Route

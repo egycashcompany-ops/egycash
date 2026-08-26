@@ -29,11 +29,19 @@ import { type BatchListParams } from './evaluation-batch-api';
 const MODULE = 'hr';
 const FEATURE = 'evaluationBatches';
 
-export const useEvaluationBatches = (params: BatchListParams) =>
+/**
+ * `enabled` is how a phase-scoped list avoids asking the wrong question while it waits.
+ *
+ * The phase-scoped screen knows a phase KEY and needs the id the API filters by, which only the
+ * catalog can supply. Firing the query before that resolves would ask for EVERY phase's batches —
+ * briefly showing exactly the mixed list the scoping exists to prevent.
+ */
+export const useEvaluationBatches = (params: BatchListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, FEATURE, params),
     queryFn: () => api.listEvaluationBatches(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 export const useEvaluationBatch = (id: string) =>

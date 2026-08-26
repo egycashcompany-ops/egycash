@@ -636,6 +636,7 @@ const en: Record<string, string> = {
   'batches.title': 'Check batches',
   'batches.subtitle':
     'Security and driving checks sent out as a group, and the results that came back.',
+  'batches.unknownPhase': 'This check phase does not exist, or you may not see it.',
   'batches.filter.all': 'All',
   'batches.status.draft': 'Draft',
   'batches.status.issued': 'Issued',
@@ -6525,6 +6526,7 @@ const ar: Record<string, string> = {
   // Evaluation batches (RW8).
   'batches.title': 'دفعات الفحص',
   'batches.subtitle': 'التحريات الأمنية واختبارات القيادة التي تُرسل كدفعة، والنتائج العائدة.',
+  'batches.unknownPhase': 'مرحلة الفحص هذه غير موجودة، أو لا تملك صلاحية رؤيتها.',
   'batches.filter.all': 'الكل',
   'batches.status.draft': 'مسودة',
   'batches.status.issued': 'صادرة',

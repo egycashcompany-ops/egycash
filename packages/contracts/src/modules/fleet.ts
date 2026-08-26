@@ -832,8 +832,16 @@ export interface FleetFixedCrewRowDto {
   typeId: string;
   /** Derived, shown for context only — a car in the workshop still HAS a fixed crew. */
   inMaintenance: boolean;
-  /** A `workType` catalog item (أنواع الأعمال), or null. The NAME is resolved by the client. */
-  workTypeId: string | null;
+  /**
+   * A `missionType` catalog item (أنواع المهمات), or null. The NAME is resolved by the client.
+   *
+   * The SAME vocabulary the daily roster's «نوع المهمة» points at — this is the dateless half of
+   * that question ("what does this car normally run"), so it must not be a second list. It is
+   * deliberately NOT `workType` (أنواع الأعمال), which is the workshop's vocabulary: that catalog
+   * carries `countsForAlarm` and feeds maintenance visits, and a maintenance work type is not a
+   * mission a crew is sent on.
+   */
+  missionTypeId: string | null;
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
   notes: string | null;
@@ -854,7 +862,7 @@ export interface FleetFixedRosterDto {
 export const SaveFleetFixedCrewRowSchema = z
   .object({
     vehicleId: canonicalId(),
-    workTypeId: canonicalId().nullish(),
+    missionTypeId: canonicalId().nullish(),
     driver1EmployeeId: canonicalId().nullish(),
     driver2EmployeeId: canonicalId().nullish(),
     // `.min(1)` rather than allowing '': a note is either something or nothing, and nothing is

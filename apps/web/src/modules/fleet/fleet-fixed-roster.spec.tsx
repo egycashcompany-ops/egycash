@@ -36,7 +36,7 @@ const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
-const WT = '650000000000000000000021';
+const MT = '650000000000000000000021';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
@@ -61,7 +61,7 @@ const row = (
   plateNumber: `س ص ${code}`,
   typeId: 'vt1',
   inMaintenance: false,
-  workTypeId: null,
+  missionTypeId: null,
   driver1EmployeeId: d1,
   driver2EmployeeId: d2,
   notes: null,
@@ -80,10 +80,11 @@ const ALL = ['fleetRoster.view', 'fleetRoster.plan'];
 const client = (board: FleetFixedRosterDto = BOARD): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(['fleet', 'fixed-roster'], board);
-  // The REAL `workType` catalog key, in the shape `useFleetCatalog('workType')` reads.
-  qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'workType' }], {
+  // The REAL `missionType` catalog key, in the shape `useFleetCatalog('missionType')` reads —
+  // the same catalog and the same key the DAILY roster's mission column reads.
+  qc.setQueryData(['fleet', 'catalogs', 'list', { kind: 'missionType' }], {
     items: [
-      { id: WT, kind: 'workType', name: { ar: 'نقل نقدية', en: 'Cash run' }, isActive: true },
+      { id: MT, kind: 'missionType', name: { ar: 'نقل نقدية', en: 'Cash run' }, isActive: true },
     ],
     meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
   });
@@ -197,29 +198,35 @@ describe('the fixed-crew screen', () => {
     expect(found, 'and the other one is filtered out').not.toContain('151');
   });
 
-  it('shows the work type and the note as REAL values, dashed only when empty', () => {
+  it('shows the mission type and the note as REAL values, dashed only when empty', () => {
     // These were permanent placeholders until the crew gained the two fields. The dash is now
     // what "this row holds nothing" looks like, not what the column always looks like — so a
     // populated row must actually print its values.
     const filled: FleetFixedRosterDto = {
       ...BOARD,
-      rows: [{ ...row(V1, '150'), workTypeId: WT, notes: 'يبدأ من المخزن' }, row(V2, '151')],
+      rows: [{ ...row(V1, '150'), missionTypeId: MT, notes: 'يبدأ من المخزن' }, row(V2, '151')],
     };
     const body = tbody(render({ qc: client(filled) }));
     expect(body, 'the catalog item name, not its id').toContain('نقل نقدية');
-    expect(body).not.toContain(WT);
+    // The id may appear in an `<option value>` — that is how a select carries its reference —
+    // but it must never be a thing the reader is shown. So the claim is about the VISIBLE text,
+    // which is what it always meant; matching raw markup only happened to say the same thing
+    // back when the cell was a bare `<span>`.
+    const visible = body.replace(/<[^>]*>/g, ' ');
+    expect(visible, 'no ObjectId is ever displayed').not.toContain(MT);
+    expect(visible, 'the name is').toContain('نقل نقدية');
     expect(body).toContain('يبدأ من المخزن');
     // …and the untouched row still reads as empty.
     expect(body).toContain('—');
   });
 
-  it('renders the work type by NAME, resolved from the catalog, never the raw id', () => {
+  it('renders the mission type by NAME, resolved from the catalog, never the raw id', () => {
     // Persisting the id and displaying the label is the project's catalog convention; printing
     // the ObjectId would be unreadable and would leak a key the reader cannot act on.
     expect(SOURCE, 'the id is resolved through the catalog').toContain(
-      'workTypeName(row.workTypeId)',
+      'missionTypeName(row.missionTypeId)',
     );
-    expect(SOURCE).toContain("useFleetCatalog('workType')");
+    expect(SOURCE).toContain("useFleetCatalog('missionType')");
   });
 
   it('contains its own horizontal overflow — the page never scrolls sideways for it', () => {
@@ -490,7 +497,7 @@ describe('the edit dialog', () => {
 
   it('opens with the row’s CURRENT values, not empty ones', () => {
     for (const seed of [
-      'useState<string | null>(row.workTypeId)',
+      'useState<string | null>(row.missionTypeId)',
       'useState<string | null>(row.driver1EmployeeId)',
       'useState<string | null>(row.driver2EmployeeId)',
       "useState<string>(row.notes ?? '')",
@@ -499,29 +506,29 @@ describe('the edit dialog', () => {
     }
   });
 
-  it('fills the work-type select from the REAL catalog, never a hardcoded list', () => {
-    expect(SOURCE).toContain("useFleetCatalog('workType')");
-    expect(DIALOG, 'options come from the query').toContain('workTypes.data?.items ?? []');
+  it('fills the mission-type select from the REAL catalog, never a hardcoded list', () => {
+    expect(SOURCE).toContain("useFleetCatalog('missionType')");
+    expect(DIALOG, 'options come from the query').toContain('missionTypes.data?.items ?? []');
     expect(DIALOG, 'and the id is what is stored').toContain('value={item.id}');
     expect(DIALOG, 'the label is the localized catalog name').toContain(
       'localized(item.name, locale)',
     );
   });
 
-  it('is a SINGLE select — one work type per vehicle', () => {
+  it('is a SINGLE select — one mission type per vehicle', () => {
     expect(DIALOG, 'a <select>, not a multi-select').toContain('<Select');
     expect(DIALOG).not.toContain('MultiSelect');
     expect(DIALOG, 'no multiple attribute').not.toMatch(/\bmultiple\b/);
   });
 
   it('handles the catalog’s loading, empty and failed states', () => {
-    expect(DIALOG, 'loading').toContain('workTypes.isPending');
-    expect(DIALOG, 'error').toContain('workTypes.isError');
-    expect(DIALOG, 'empty').toContain('noWorkTypesYet');
+    expect(DIALOG, 'loading').toContain('missionTypes.isPending');
+    expect(DIALOG, 'error').toContain('missionTypes.isError');
+    expect(DIALOG, 'empty').toContain('noMissionTypesYet');
   });
 
-  it('lets a vehicle have NO work type, and no driver', () => {
-    expect(DIALOG).toContain("t('fleet.fixedRoster.noWorkType')");
+  it('lets a vehicle have NO mission type, and no driver', () => {
+    expect(DIALOG).toContain("t('fleet.fixedRoster.noMissionType')");
     expect(DIALOG).toContain("t('fleet.fixedRoster.noDriver')");
     // '' is the empty option's value and must come back as null, not as an empty string.
     expect(DIALOG).toContain('e.target.value || null');
@@ -575,8 +582,133 @@ describe('the edit dialog', () => {
     expect(SOURCE).toContain('onClose={() => setEditing(null)}');
     expect(DIALOG, 'the dialog writes no draft of its own').not.toContain('setDraft');
     expect(DIALOG, 'and never calls the mutation').not.toContain('mutate');
-    // The only path that reaches the board is the save handler.
-    expect(SOURCE.match(/applyEdit\(/g) ?? [], 'exactly one commit point').toHaveLength(1);
+    // The only path from the DIALOG to the board is its save handler — it never edits the draft
+    // itself. `applyEdit` now has two callers, because the mission type is editable in the cell
+    // as well; that is two entry points into ONE rule, which is the point of the function. What
+    // must stay impossible is a THIRD way that writes the row without it.
+    expect(DIALOG, 'the dialog does not commit, it hands back').not.toContain('applyEdit(');
+    const callers = SOURCE.match(/applyEdit\(/g) ?? [];
+    expect(callers, 'the dialog save and the mission cell — no others').toHaveLength(2);
+    // Neither entry point may assemble the row by hand: that would be the second persistence
+    // mechanism, agreeing with `applyEdit` only until somebody changed one of them.
+    expect(SOURCE, 'no row is spread into a new one outside the board lib').not.toMatch(
+      /\{\s*\.\.\.row,\s*(missionTypeId|driver[12]EmployeeId|notes)/,
+    );
+  });
+});
+
+// ── 2e-bis. «نوع المهمة», editable where it is read ─────────────────────────
+//
+// The mission type changes as often as the crew does, and it used to cost four interactions:
+// open «تعديل», pick, save, close. It is a select in the cell now. The dialog still edits it —
+// two entry points into ONE rule (`applyEdit`), which is the same shape the drag and the dialog
+// already share for drivers.
+//
+// The node suite cannot open a native select. What it pins is that the control IS in the table,
+// that it is the app's own catalog select on the `missionType` kind, and that the change goes
+// through the authoritative path; the interaction itself is measured in a browser.
+
+describe('the mission type, edited in the cell', () => {
+  const MISSION_CELL = SOURCE.slice(
+    SOURCE.indexOf("key: 'mission'"),
+    SOURCE.indexOf("key: 'driver1'"),
+  );
+
+  it('renders a real select in the table, not only inside the dialog', () => {
+    const body = tbody(render());
+    expect(body, 'the cell holds a control').toContain('<select');
+    expect(MISSION_CELL, 'and it is the app’s own catalog select').toContain('<CatalogSelect');
+    // Reachable without «تعديل»: the select is in the row, the dialog is not rendered at all
+    // until a row is being edited.
+    expect(body, 'no dialog is open').not.toContain('role="dialog"');
+  });
+
+  it('offers the missionType catalog — never workType', () => {
+    expect(MISSION_CELL, 'the mission vocabulary').toContain('kind="missionType"');
+    expect(MISSION_CELL, 'not the workshop’s').not.toContain('workType');
+    expect(SOURCE, 'nowhere on this screen').not.toContain("useFleetCatalog('workType')");
+    // …and it costs no new request: `CatalogSelect` reads the same cached hook the page does.
+    const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
+    expect(select, 'the shared hook').toContain('useFleetCatalog(kind)');
+    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
+    expect(api, 'no endpoint was added for this').not.toMatch(/mission-type|missionTypes\(/);
+  });
+
+  it('shows each option by its localized NAME and stores the id', () => {
+    const body = tbody(render());
+    expect(body, 'the catalog name is the option label').toContain('نقل نقدية');
+    const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
+    expect(select, 'label localized the project’s way').toContain('localized(item.name, locale)');
+    expect(select, 'value is the id').toContain('value={item.id}');
+  });
+
+  it('sends the change through `applyEdit` as missionTypeId — the dialog’s own path', () => {
+    expect(MISSION_CELL, 'the cell delegates').toContain('setMission(row,');
+    const setter = SOURCE.slice(
+      SOURCE.indexOf('const setMission ='),
+      SOURCE.indexOf("key: 'vehicle'"),
+    );
+    expect(setter, 'through the authoritative rule').toContain('applyEdit(rows, row.vehicleId');
+    expect(setter, 'as missionTypeId').toContain('missionTypeId,');
+    expect(setter, 'editing the draft, as a drag does').toContain('setDraft(');
+    expect(setter, 'and it never calls the mutation itself').not.toContain('mutate');
+    // The drivers and the note ride along unchanged — the cell edits ONE field.
+    for (const carried of ['driver1EmployeeId: row.driver1EmployeeId', 'notes: row.notes']) {
+      expect(setter, carried).toContain(carried);
+    }
+  });
+
+  it('clears to null, which is how this module spells "nothing"', () => {
+    expect(MISSION_CELL, 'the empty option means cleared').toContain("id === '' ? null : id");
+    expect(MISSION_CELL, 'and it is labelled as such').toContain(
+      "t('fleet.fixedRoster.noMissionType')",
+    );
+    expect(translate('ar', 'fleet.fixedRoster.noMissionType')).toBe('بدون نوع مهمة');
+    // `null` survives the real contract, which is what makes "cleared" storable.
+    const cleared = applyEdit([row(V1, '150')], V1, {
+      missionTypeId: null,
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      notes: null,
+    });
+    expect(cleared[0]?.missionTypeId).toBeNull();
+    const rows = changedRows([{ ...row(V1, '150'), missionTypeId: MT }], cleared);
+    expect(rows[0]?.missionTypeId).toBeNull();
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
+  });
+
+  it('keeps its interaction out of the row’s drag handling', () => {
+    // The row's other cells are drag sources and drop targets. A pointer landing in this select
+    // must not reach them — `DataTable` isolates its own selection cell exactly this way.
+    expect(MISSION_CELL, 'the click stops here').toContain('e.stopPropagation()');
+    expect(MISSION_CELL, 'and so does the press that would begin a drag').toContain('onMouseDown');
+    // The cell is not itself draggable, and declares no drop zone.
+    expect(MISSION_CELL, 'not a drag source').not.toContain('draggable');
+    expect(MISSION_CELL, 'not a drop target').not.toContain('data-drop-zone');
+    const table = readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8');
+    expect(table, 'the idiom is the table’s own').toContain('onClick={(e) => e.stopPropagation()}');
+  });
+
+  it('gives the label room the chevron does not already take', () => {
+    // A `<select>` clips its label internally and reports `scrollWidth === clientWidth`, so
+    // nothing about the DOM says it is cut — it has to be measured as rendered text against the
+    // inner width. At `min-w-[9rem]` the shared `Select`'s `pe-9` chevron gutter (36px) plus the
+    // 12px start padding left 94px, and «نقل أموال (يومي)» needs 104px: clipped in the column
+    // whose whole job is to show it. 11rem leaves 126px.
+    expect(MISSION_CELL, 'wide enough for a real mission name').toContain('min-w-[11rem]');
+    expect(MISSION_CELL, 'the too-narrow box is gone').not.toContain('min-w-[9rem]');
+    const form = readFileSync(join(HERE, '../../shared/ui/form.tsx'), 'utf8');
+    expect(form, 'the chevron gutter this budgets for').toContain('pe-9');
+  });
+
+  it('shows a reader who may not plan the NAME, with nothing to change', () => {
+    const filled: FleetFixedRosterDto = {
+      ...BOARD,
+      rows: [{ ...row(V1, '150'), missionTypeId: MT }, row(V2, '151')],
+    };
+    const body = tbody(render({ permissions: ['fleetRoster.view'], qc: client(filled) }));
+    expect(body, 'the value is readable').toContain('نقل نقدية');
+    expect(body, 'but not editable').not.toContain('<select');
   });
 });
 
@@ -850,36 +982,36 @@ describe('saving', () => {
     expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success).toBe(true);
   });
 
-  it('carries the chosen work type through as the catalog ID, and null when cleared', () => {
+  it('carries the chosen mission type through as the catalog ID, and null when cleared', () => {
     // The dialog hands `applyEdit` the id it read off the catalog `<option value={item.id}>`;
     // the row keeps it; `changedRows` sends it; the real schema accepts it. Every link in that
-    // chain is here, because a break in any one of them looks the same to the reader: the work
-    // type they picked is simply not there when the screen comes back.
+    // chain is here, because a break in any one of them looks the same to the reader: the
+    // mission type they picked is simply not there when the screen comes back.
     const saved = [row(V1, '150'), row(V2, '151')];
     const picked = applyEdit(saved, V1, {
-      workTypeId: WT,
+      missionTypeId: MT,
       driver1EmployeeId: null,
       driver2EmployeeId: null,
       notes: null,
     });
-    expect(picked[0]?.workTypeId, 'the id, not the name').toBe(WT);
+    expect(picked[0]?.missionTypeId, 'the id, not the name').toBe(MT);
     const rows = changedRows(saved, picked);
-    expect(rows[0]?.workTypeId).toBe(WT);
+    expect(rows[0]?.missionTypeId).toBe(MT);
     expect(SaveFleetFixedRosterSchema.safeParse({ rows }).success, 'the contract takes it').toBe(
       true,
     );
 
     // …and clearing it is a real value, not a missing key: `null` is how this module spells
-    // "no work type", and the contract accepts that too.
+    // "no mission type", and the contract accepts that too.
     const cleared = applyEdit(picked, V1, {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: null,
       driver2EmployeeId: null,
       notes: null,
     });
-    expect(cleared[0]?.workTypeId).toBeNull();
+    expect(cleared[0]?.missionTypeId).toBeNull();
     const back = changedRows(picked, cleared);
-    expect(back[0]?.workTypeId).toBeNull();
+    expect(back[0]?.missionTypeId).toBeNull();
     expect(SaveFleetFixedRosterSchema.safeParse({ rows: back }).success).toBe(true);
   });
 

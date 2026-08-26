@@ -303,32 +303,43 @@ describe('SaveFleetFixedRosterSchema — id spelling', () => {
   });
 });
 
-// ── Fixed crew: the work type and the note ─────────────────────────────────
+// ── Fixed crew: the mission type and the note ──────────────────────────────
 //
 // Both were added after the collection shipped, so the shape has to stay valid for a row that
-// has neither — an existing crew must not become unsaveable because two fields appeared.
+// has neither — an existing crew must not become unsaveable because two fields appeared. The
+// same is true of the RENAME: rows written while the field was called `workTypeId` no longer
+// carry a mission type at all, and must still parse.
 
-describe('SaveFleetFixedRosterSchema — work type and notes', () => {
+describe('SaveFleetFixedRosterSchema — mission type and notes', () => {
   const V = '64b1f0abcdefabcdefabcdef';
-  const WT = '64b1f0abcdefabcdefabcd77';
+  const MT = '64b1f0abcdefabcdefabcd77';
 
   it('still accepts a row that carries neither', () => {
     expect(SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V }] }).success).toBe(true);
   });
 
-  it('accepts both, and canonicalizes the work type like every other id', () => {
+  it('accepts both, and canonicalizes the mission type like every other id', () => {
     const parsed = SaveFleetFixedRosterSchema.parse({
-      rows: [{ vehicleId: V, workTypeId: WT.toUpperCase(), notes: 'من المخزن' }],
+      rows: [{ vehicleId: V, missionTypeId: MT.toUpperCase(), notes: 'من المخزن' }],
     });
-    expect(parsed.rows[0]?.workTypeId).toBe(WT);
+    expect(parsed.rows[0]?.missionTypeId).toBe(MT);
     expect(parsed.rows[0]?.notes).toBe('من المخزن');
   });
 
-  it('refuses a work type that is not an id at all', () => {
+  it('refuses a mission type that is not an id at all', () => {
     expect(
-      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, workTypeId: 'general' }] })
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, missionTypeId: 'general' }] })
         .success,
       'the LABEL is not the reference — ids are',
+    ).toBe(false);
+  });
+
+  it('refuses the RETIRED field name outright — `.strict()` is what makes the rename real', () => {
+    // A client still sending `workTypeId` is sending a maintenance reference for a mission slot.
+    // Silently ignoring it would let that client believe it had saved something; the schema is
+    // `.strict()`, so it is refused instead.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, workTypeId: MT }] }).success,
     ).toBe(false);
   });
 
@@ -361,9 +372,14 @@ describe('SaveFleetFixedRosterSchema — work type and notes', () => {
   });
 
   it('still refuses an unknown field — the row is not an open bag', () => {
+    // This used to use `missionTypeId` as the foreign field, because the fixed crew's own slot
+    // was called `workTypeId`. That is now this row's OWN field, so the sentinel moves to the
+    // one thing §2.7b says a fixed crew can never carry: a date. The claim is unchanged — the
+    // row is `.strict()`, and the daily board's identity must not leak into a dateless one.
     expect(
-      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, missionTypeId: WT }] }).success,
-      'the daily board’s field must not be accepted here',
+      SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V, date: '2026-08-26' }] })
+        .success,
+      'the daily board’s date must not be accepted here',
     ).toBe(false);
   });
 });

@@ -26,6 +26,10 @@ import {
 import mongoose, { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
 import { migrateFixedCrewIndex } from '../../src/modules/fleet/fleet.migration';
+import {
+  inspectLegacyWorkTypes,
+  retireLegacyWorkTypes,
+} from '../../src/modules/fleet/fixed-roster/legacy-work-type-retirement';
 import { fleetRosterService } from '../../src/modules/fleet/roster/roster.service';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
@@ -2333,7 +2337,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       vehicleId: string;
       code: string;
       inMaintenance: boolean;
-      workTypeId: string | null;
+      missionTypeId: string | null;
       driver1EmployeeId: string | null;
       driver2EmployeeId: string | null;
       notes: string | null;
@@ -2365,17 +2369,17 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
   it('EDIT — stores work type, both drivers and a note together, and reads them back', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [d1, d2] = [await mkDriver(), await mkDriver()];
-    const workType = data<FleetCatalogItemDto>(
+    const missionType = data<FleetCatalogItemDto>(
       await request(app)
         .post('/api/v1/fleet/catalog-items')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ kind: 'workType', name: { ar: 'نقل نقدية', en: 'Cash run' } }),
+        .send({ kind: 'missionType', name: { ar: 'نقل نقدية', en: 'Cash run' } }),
     );
 
     const save = await saveCrews([
       {
         vehicleId: v.id,
-        workTypeId: workType.id,
+        missionTypeId: missionType.id,
         driver1EmployeeId: d1,
         driver2EmployeeId: d2,
         notes: 'يبدأ من المخزن',
@@ -2386,7 +2390,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
 
     // A fresh request — the four values survived the round trip, not just the response.
     expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
-      workTypeId: workType.id,
+      missionTypeId: missionType.id,
       driver1EmployeeId: d1,
       driver2EmployeeId: d2,
       notes: 'يبدأ من المخزن',
@@ -2399,23 +2403,23 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     const d = await mkDriver();
     expect((await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d }])).status).toBe(200);
     expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
-      workTypeId: null,
+      missionTypeId: null,
       notes: null,
     });
   });
 
   it('EDIT — a work type alone is a change; no driver need be involved', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const workType = data<FleetCatalogItemDto>(
+    const missionType = data<FleetCatalogItemDto>(
       await request(app)
         .post('/api/v1/fleet/catalog-items')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ kind: 'workType', name: { ar: 'صيانة دورية', en: 'Routine' } }),
+        .send({ kind: 'missionType', name: { ar: 'نقل أموال يومي', en: 'Daily cash run' } }),
     );
-    const save = await saveCrews([{ vehicleId: v.id, workTypeId: workType.id }]);
+    const save = await saveCrews([{ vehicleId: v.id, missionTypeId: missionType.id }]);
     expect(save.status).toBe(200);
     expect(data<FixedBoardDto>(save).changedCount, 'a crewless row that says something').toBe(1);
-    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.workTypeId).toBe(workType.id);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.missionTypeId).toBe(missionType.id);
   });
 
   it('EDIT — re-saving the same four values is a no-op, so nothing is rewritten', async () => {
@@ -2438,22 +2442,65 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     expect((await saveCrews([{ vehicleId: v.id, notes: '' }])).status).toBe(400);
   });
 
-  it('EDIT — refuses a work type that is not a workType', async () => {
+  it('EDIT — refuses a mission type that is not a missionType, workType included', async () => {
     // A `workshop` id is a real catalog item of the WRONG kind: well-formed, live, and still
     // somebody else's vocabulary. Storing it would render as another module's label.
+    //
+    // `workType` (أنواع الأعمال) gets its own assertion because it is not a hypothetical wrong
+    // kind — it is the one this column actually pointed at for a release, so a regression would
+    // look exactly like the bug that was fixed. The workshop's vocabulary is not a mission.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const workshop = data<FleetCatalogItemDto>(
+    const kindId = async (kind: string, ar: string): Promise<string> =>
+      data<FleetCatalogItemDto>(
+        await request(app)
+          .post('/api/v1/fleet/catalog-items')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ kind, name: { ar, en: ar } }),
+      ).id;
+
+    expect(
+      (
+        await saveCrews([
+          { vehicleId: v.id, missionTypeId: await kindId('workshop', 'ورشة الطقم') },
+        ])
+      ).status,
+      'a workshop is not a mission',
+    ).toBe(400);
+    expect(
+      (
+        await saveCrews([
+          { vehicleId: v.id, missionTypeId: await kindId('workType', 'صيانة دورية') },
+        ])
+      ).status,
+      'and neither is a WORK type — the very kind this column used to read',
+    ).toBe(400);
+    expect(
+      (await saveCrews([{ vehicleId: v.id, missionTypeId: new Types.ObjectId().toString() }]))
+        .status,
+      'and a dangling reference too',
+    ).toBe(400);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.missionTypeId).toBeNull();
+  });
+
+  it('EDIT — an archived mission type is refused; only a LIVE one may be seated', async () => {
+    // `findActiveOfKind` is the check, so archiving must actually close the door. Otherwise the
+    // catalog's archive-not-delete rule would be advisory on this column.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const item = data<FleetCatalogItemDto>(
       await request(app)
         .post('/api/v1/fleet/catalog-items')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ kind: 'workshop', name: { ar: 'ورشة الطقم', en: 'Crew shop' } }),
+        .send({ kind: 'missionType', name: { ar: 'مهمة مؤرشفة', en: 'Archived mission' } }),
     );
-    expect((await saveCrews([{ vehicleId: v.id, workTypeId: workshop.id }])).status).toBe(400);
+    expect((await saveCrews([{ vehicleId: v.id, missionTypeId: item.id }])).status).toBe(200);
+    await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${item.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: 0 });
     expect(
-      (await saveCrews([{ vehicleId: v.id, workTypeId: new Types.ObjectId().toString() }])).status,
-      'and a dangling reference too',
+      (await saveCrews([{ vehicleId: v.id, missionTypeId: item.id, notes: 'تغيير' }])).status,
+      'archived is not seatable',
     ).toBe(400);
-    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.workTypeId).toBeNull();
   });
 
   it('EDIT — the driver rules still hold when the edit comes as one row', async () => {
@@ -2479,11 +2526,11 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
   it('EDIT — writes nothing outside fleet_fixed_crews', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const d = await mkDriver();
-    const workType = data<FleetCatalogItemDto>(
+    const missionType = data<FleetCatalogItemDto>(
       await request(app)
         .post('/api/v1/fleet/catalog-items')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ kind: 'workType', name: { ar: 'مهمة', en: 'Task' } }),
+        .send({ kind: 'missionType', name: { ar: 'مهمة', en: 'Task' } }),
     );
     const counts = async () => ({
       drivers: await mongoose.connection.collection('fleet_driver_profiles').countDocuments({}),
@@ -2500,7 +2547,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     expect(
       (
         await saveCrews([
-          { vehicleId: v.id, workTypeId: workType.id, driver1EmployeeId: d, notes: 'ملاحظة' },
+          { vehicleId: v.id, missionTypeId: missionType.id, driver1EmployeeId: d, notes: 'ملاحظة' },
         ])
       ).status,
     ).toBe(200);
@@ -3087,6 +3134,130 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       ).driver1EmployeeId,
     ).toBe(daily);
     expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver1EmployeeId).toBe(fixed);
+  });
+
+  // ── retiring the legacy `workTypeId` ─────────────────────────────────────
+  //
+  // The column stored `workTypeId` for one release, validated against the WORKSHOP's catalog.
+  // These run against real MongoDB because the whole risk is in the write: a dry run that
+  // quietly writes, a commit that invents a mission, or an `updateMany` whose filter is loose
+  // enough to reach another collection. None of that is visible in source alone.
+
+  const legacyRow = async (vehicleId: string, workTypeId: Types.ObjectId): Promise<void> => {
+    // Written through the raw collection: `workTypeId` is no longer in the schema, so a strict
+    // Mongoose model would silently drop it — which is exactly the state a real legacy row is in.
+    await mongoose.connection
+      .collection('fleet_fixed_crews')
+      .updateOne(
+        { vehicleId: new Types.ObjectId(vehicleId) },
+        { $set: { workTypeId } },
+        { upsert: false },
+      );
+  };
+
+  it('MIGRATION dry run — reports the legacy rows and writes absolutely nothing', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'صيانة قديمة', en: 'Legacy maintenance' } }),
+    );
+    await legacyRow(v.id, new Types.ObjectId(workType.id));
+
+    const before = await mongoose.connection
+      .collection('fleet_fixed_crews')
+      .findOne({ vehicleId: new Types.ObjectId(v.id) });
+
+    const report = await inspectLegacyWorkTypes();
+    expect(report.rowsWithLegacyValue, 'the row is seen').toBeGreaterThanOrEqual(1);
+    const seen = report.distinct.find((d) => d.workTypeId === workType.id);
+    expect(seen?.rows).toBe(1);
+    // …and it reports WHAT the id actually is, which is the whole point of reading before writing.
+    expect(seen?.catalog).toMatchObject({ kind: 'workType', nameAr: 'صيانة قديمة' });
+
+    expect(
+      await mongoose.connection
+        .collection('fleet_fixed_crews')
+        .findOne({ vehicleId: new Types.ObjectId(v.id) }),
+      'the row is byte-identical after a dry run',
+    ).toEqual(before);
+  });
+
+  it('MIGRATION commit — unsets the legacy field and invents no mission type', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: driver, notes: 'ملاحظة قائمة' }]);
+    const workType = data<FleetCatalogItemDto>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'workType', name: { ar: 'غسيل', en: 'Wash' } }),
+    );
+    await legacyRow(v.id, new Types.ObjectId(workType.id));
+
+    await retireLegacyWorkTypes();
+
+    const raw = await mongoose.connection
+      .collection('fleet_fixed_crews')
+      .findOne({ vehicleId: new Types.ObjectId(v.id) });
+    expect(raw, 'the retired field is gone from the document').not.toHaveProperty('workTypeId');
+    expect(raw?.missionTypeId ?? null, 'and NOTHING was put in its place').toBeNull();
+    // The rest of the row is untouched — this retires a field, it does not rewrite crews.
+    expect(String(raw?.driver1EmployeeId)).toBe(driver);
+    expect(raw?.notes).toBe('ملاحظة قائمة');
+
+    // The board reads cleanly afterwards: no mission type, and no crash on the missing field.
+    const row = rowFor(data<FixedBoardDto>(await getCrews()), v.id);
+    expect(row?.missionTypeId).toBeNull();
+    expect(row?.driver1EmployeeId).toBe(driver);
+
+    // Idempotent: running it twice is not an error and changes nothing further.
+    const again = await retireLegacyWorkTypes();
+    expect(again.modified).toBe(0);
+  });
+
+  it('MIGRATION never touches a maintenance document — they have a workTypeId too', async () => {
+    // `fleet_maintenance_visits.workTypeId` is a DIFFERENT field on a DIFFERENT collection, and
+    // it is correct. A migration filtered by field name rather than by collection would strip it.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const before = await FleetMaintenanceVisitModel.find({}).lean().exec();
+    const withType = before.filter((visit) => visit.workTypeId != null).length;
+    expect(withType, 'the fixture has maintenance visits to protect').toBeGreaterThan(0);
+
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    await retireLegacyWorkTypes();
+
+    const after = await FleetMaintenanceVisitModel.find({}).lean().exec();
+    expect(after.filter((visit) => visit.workTypeId != null).length).toBe(withType);
+    expect(
+      after.map((visit) => String(visit.workTypeId)).sort(),
+      'every maintenance work type survives byte for byte',
+    ).toEqual(before.map((visit) => String(visit.workTypeId)).sort());
+  });
+
+  it('MIGRATION leaves the audit trail alone — history is not rewritten', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: await mkDriver() }]);
+    const audits = mongoose.connection.collection('audit_logs');
+    const before = await audits.countDocuments({});
+    // Without this the whole test passes on an empty collection — 0 === 0 proves nothing, and a
+    // wrong collection name would look exactly like a clean bill of health.
+    expect(before, 'there IS history to protect').toBeGreaterThan(0);
+    const sample = await audits.find({}).sort({ _id: -1 }).limit(5).toArray();
+    expect(sample.length, 'and a sample to compare byte for byte').toBeGreaterThan(0);
+
+    await retireLegacyWorkTypes();
+
+    expect(await audits.countDocuments({}), 'no audit row added or removed').toBe(before);
+    expect(
+      await audits
+        .find({ _id: { $in: sample.map((doc) => doc._id) } })
+        .sort({ _id: -1 })
+        .toArray(),
+      'and the existing entries are byte-identical',
+    ).toEqual(sample);
   });
 });
 

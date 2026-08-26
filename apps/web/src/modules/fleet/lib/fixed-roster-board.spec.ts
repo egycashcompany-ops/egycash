@@ -27,7 +27,7 @@ const row = (
   plateNumber: `س ص ${code}`,
   typeId: 'vt1',
   inMaintenance: false,
-  workTypeId: null,
+  missionTypeId: null,
   driver1EmployeeId: d1,
   driver2EmployeeId: d2,
   notes: null,
@@ -100,7 +100,7 @@ describe('assignDriver', () => {
     expect(changedRows(saved, assignDriver(saved, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
       {
         vehicleId: 'v1',
-        workTypeId: null,
+        missionTypeId: null,
         driver1EmployeeId: 'e2',
         driver2EmployeeId: 'e1',
         notes: null,
@@ -378,7 +378,7 @@ describe('changedRows', () => {
     expect(changedRows(BOARD, next)).toEqual([
       {
         vehicleId: 'v2',
-        workTypeId: null,
+        missionTypeId: null,
         driver1EmployeeId: 'e1',
         driver2EmployeeId: null,
         notes: null,
@@ -392,7 +392,7 @@ describe('changedRows', () => {
     expect(changedRows(saved, clearSlot(saved, 'v1', 'driver1EmployeeId'))).toEqual([
       {
         vehicleId: 'v1',
-        workTypeId: null,
+        missionTypeId: null,
         driver1EmployeeId: null,
         driver2EmployeeId: null,
         notes: null,
@@ -409,7 +409,7 @@ describe('changedRows', () => {
     expect(changedRows([], [row('v9', '999', 'e1')])).toEqual([
       {
         vehicleId: 'v9',
-        workTypeId: null,
+        missionTypeId: null,
         driver1EmployeeId: 'e1',
         driver2EmployeeId: null,
         notes: null,
@@ -424,9 +424,9 @@ describe('changedRows', () => {
     expect(Object.keys(changedRows(BOARD, next)[0] as object).sort()).toEqual([
       'driver1EmployeeId',
       'driver2EmployeeId',
+      'missionTypeId',
       'notes',
       'vehicleId',
-      'workTypeId',
     ]);
   });
 });
@@ -443,13 +443,13 @@ describe('applyEdit', () => {
 
   it('writes all four values of the row it names, and nothing on any other row', () => {
     const after = applyEdit(board(), 'v1', {
-      workTypeId: 'wt1',
+      missionTypeId: 'wt1',
       driver1EmployeeId: 'e1',
       driver2EmployeeId: null,
       notes: 'من المخزن',
     });
     const v1 = after.find((r) => r.vehicleId === 'v1') as FleetFixedCrewRowDto;
-    expect(v1.workTypeId).toBe('wt1');
+    expect(v1.missionTypeId).toBe('wt1');
     expect(v1.driver1EmployeeId).toBe('e1');
     expect(v1.driver2EmployeeId).toBeNull();
     expect(v1.notes).toBe('من المخزن');
@@ -460,7 +460,7 @@ describe('applyEdit', () => {
     // The rule the dialog must not be able to sidestep. e9 crews v2; choosing them for v1 has
     // to take them off v2, or one driver would hold two crews.
     const after = applyEdit(board(), 'v1', {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: 'e9',
       driver2EmployeeId: null,
       notes: null,
@@ -472,13 +472,13 @@ describe('applyEdit', () => {
 
   it('clears a slot when the dialog chooses "no driver"', () => {
     const seated = applyEdit(board(), 'v1', {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: 'e1',
       driver2EmployeeId: 'e2',
       notes: null,
     });
     const cleared = applyEdit(seated, 'v1', {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: null,
       driver2EmployeeId: 'e2',
       notes: null,
@@ -494,13 +494,13 @@ describe('applyEdit', () => {
 
   it('keeps the row’s own drivers selectable — re-saving them changes nothing', () => {
     const seated = applyEdit(board(), 'v1', {
-      workTypeId: 'wt1',
+      missionTypeId: 'wt1',
       driver1EmployeeId: 'e1',
       driver2EmployeeId: 'e2',
       notes: 'x',
     });
     const again = applyEdit(seated, 'v1', {
-      workTypeId: 'wt1',
+      missionTypeId: 'wt1',
       driver1EmployeeId: 'e1',
       driver2EmployeeId: 'e2',
       notes: 'x',
@@ -511,13 +511,13 @@ describe('applyEdit', () => {
 
   it('swaps within the car when the dialog reverses the two slots', () => {
     const seated = applyEdit(board(), 'v1', {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: 'e1',
       driver2EmployeeId: 'e2',
       notes: null,
     });
     const reversed = applyEdit(seated, 'v1', {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: 'e2',
       driver2EmployeeId: 'e1',
       notes: null,
@@ -532,7 +532,7 @@ describe('applyEdit', () => {
       for (const d2 of [null, ...people]) {
         if (d1 !== null && d1 === d2) continue; // the dialog refuses this pair before applying
         const after = applyEdit(board(), 'v1', {
-          workTypeId: null,
+          missionTypeId: null,
           driver1EmployeeId: d1,
           driver2EmployeeId: d2,
           notes: null,
@@ -557,7 +557,7 @@ describe('applyEdit', () => {
   it('sends a work-type-only edit — a change with no driver in it still travels', () => {
     const saved = board();
     const after = applyEdit(saved, 'v1', {
-      workTypeId: 'wt1',
+      missionTypeId: 'wt1',
       driver1EmployeeId: null,
       driver2EmployeeId: null,
       notes: null,
@@ -565,7 +565,7 @@ describe('applyEdit', () => {
     expect(changedRows(saved, after)).toEqual([
       {
         vehicleId: 'v1',
-        workTypeId: 'wt1',
+        missionTypeId: 'wt1',
         driver1EmployeeId: null,
         driver2EmployeeId: null,
         notes: null,
@@ -576,7 +576,7 @@ describe('applyEdit', () => {
   it('sends a notes-only edit too', () => {
     const saved = board();
     const after = applyEdit(saved, 'v2', {
-      workTypeId: null,
+      missionTypeId: null,
       driver1EmployeeId: 'e9',
       driver2EmployeeId: null,
       notes: 'ملاحظة',
@@ -584,7 +584,7 @@ describe('applyEdit', () => {
     expect(changedRows(saved, after)).toEqual([
       {
         vehicleId: 'v2',
-        workTypeId: null,
+        missionTypeId: null,
         driver1EmployeeId: 'e9',
         driver2EmployeeId: null,
         notes: 'ملاحظة',
@@ -596,7 +596,7 @@ describe('applyEdit', () => {
     const saved = board();
     const snapshot = JSON.stringify(saved);
     applyEdit(saved, 'v1', {
-      workTypeId: 'wt1',
+      missionTypeId: 'wt1',
       driver1EmployeeId: 'e9',
       driver2EmployeeId: null,
       notes: 'x',

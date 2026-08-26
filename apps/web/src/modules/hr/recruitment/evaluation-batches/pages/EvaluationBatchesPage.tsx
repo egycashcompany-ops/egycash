@@ -1,7 +1,17 @@
-// Every batch of every phase the caller can see (RW8). Batches are permanent, so this list is the
-// complete history — cancelled and closed ones included — with the status strip as its filter.
+// ONE PHASE'S batches (RW7/RW8). Batches are permanent, so this list is the complete history —
+// cancelled and closed ones included — with the status strip as its filter.
+//
+// It used to be every phase's batches in one table, told apart only by a `phase` COLUMN. That is
+// what made a security check and a driving test look like the same errand: they are two different
+// documents, sent to two different bodies, read by two different people, and the screen merged
+// them. Reached through `phase/:phaseKey` the list is scoped, and the phase column disappears
+// because every row now carries the same value.
+//
+// The unscoped route still answers — a caller who typed `/evaluation-batches` gets everything they
+// may see — but nothing links there any more. And an UNKNOWN key never falls back to "everything":
+// silently widening the very filter this page exists to apply is how the old bug would come back.
 import { useMemo, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { type EvaluationBatchStatus, type EvaluationBatchSummaryDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
@@ -17,6 +27,7 @@ import { formatDate, localized } from '../../../../../shared/lib/format';
 import { StageBuckets } from '../../shared/StageBuckets';
 import { BatchPackageBadge, BatchStatusBadge } from '../components/BatchStatusBadge';
 import { useBulkEvaluationBatches, useEvaluationBatches } from '../api/evaluation-batch-queries';
+import { useEvaluationPhases } from '../../evaluations/api/evaluation-queries';
 
 const DEFAULT_PAGE_SIZE = 25;
 const STATUSES: EvaluationBatchStatus[] = ['draft', 'issued', 'closed', 'cancelled'];
@@ -26,6 +37,14 @@ export const EvaluationBatchesPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  const { phaseKey } = useParams<{ phaseKey?: string }>();
+
+  // The catalog is the only thing that maps a stable key to the id the API filters by. While it
+  // loads there is no id yet, so the query waits rather than asking for every phase at once.
+  const { data: phases, isLoading: phasesLoading } = useEvaluationPhases();
+  const phase = phaseKey === undefined ? undefined : phases?.find((p) => p.key === phaseKey);
+  const phaseUnknown = phaseKey !== undefined && phases !== undefined && phase === undefined;
+  const awaitingPhase = phaseKey !== undefined && phase === undefined;
 
   const status = sp.get('status') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -48,10 +67,11 @@ export const EvaluationBatchesPage = (): JSX.Element => {
       sortBy: 'createdAt',
       sortDir: 'desc' as const,
       ...(status === '' ? {} : { status }),
+      ...(phase === undefined ? {} : { phaseId: phase.id }),
     }),
-    [page, pageSize, status],
+    [page, pageSize, status, phase],
   );
-  const { data, isLoading, isError, error, refetch } = useEvaluationBatches(params);
+  const { data, isLoading, isError, error, refetch } = useEvaluationBatches(params, !awaitingPhase);
   const rows = data?.items ?? [];
 
   // RW17 — closing and cancelling are the two acts that make sense over a selection; both run per
@@ -80,7 +100,15 @@ export const EvaluationBatchesPage = (): JSX.Element => {
         </span>
       ),
     },
-    { key: 'phase', header: t('batches.columns.phase'), render: (b) => localized(b.phaseName, locale) },
+    ...(phaseKey === undefined
+      ? [
+          {
+            key: 'phase',
+            header: t('batches.columns.phase'),
+            render: (b: EvaluationBatchSummaryDto) => localized(b.phaseName, locale),
+          },
+        ]
+      : []),
     { key: 'title', header: t('batches.columns.title'), render: (b) => b.title ?? '—' },
     { key: 'status', header: t('batches.columns.status'), render: (b) => <BatchStatusBadge status={b.status} /> },
     {
@@ -109,10 +137,19 @@ export const EvaluationBatchesPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('batches.title')}
+        title={phase === undefined ? t('batches.title') : localized(phase.name, locale)}
         description={t('batches.subtitle')}
-        breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('batches.title') }]}
+        breadcrumbs={[
+          { label: t('recruitment.title'), to: '/' },
+          { label: phase === undefined ? t('batches.title') : localized(phase.name, locale) },
+        ]}
       />
+
+      {phaseUnknown && (
+        <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+          {t('batches.unknownPhase')}
+        </div>
+      )}
 
       <div className="space-y-4">
         <StageBuckets
@@ -146,9 +183,9 @@ export const EvaluationBatchesPage = (): JSX.Element => {
         <DataTable
           selection={selection}
           columns={columns}
-          rows={rows}
+          rows={phaseUnknown ? [] : rows}
           rowKey={(b) => b.id}
-          loading={isLoading}
+          loading={isLoading || phasesLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           onRowClick={(b) => navigate(`/evaluation-batches/${b.id}`)}

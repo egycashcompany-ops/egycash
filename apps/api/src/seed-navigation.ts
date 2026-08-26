@@ -133,6 +133,25 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'layers',
         permission: 'evaluationPhase.manage',
       },
+      // ONE ROW PER BATCH PHASE, and that is the point (RW7). A security check and a driving test
+      // are two different errands, run by two different people, against two different forms — and
+      // until now they shared a single screen with a `phase` COLUMN as the only thing telling them
+      // apart. Each row carries its own phase's key, so a driving examiner who holds no security
+      // grant sees one row rather than a mixed list they are half-authorized to read.
+      {
+        en: 'Security Check Batches',
+        ar: 'دفعات الفحص الأمني',
+        route: '/evaluation-batches/phase/securityCheck',
+        icon: 'shield',
+        permission: 'securityCheck.view',
+      },
+      {
+        en: 'Driving Test Batches',
+        ar: 'دفعات اختبار القيادة',
+        route: '/evaluation-batches/phase/drivingTest',
+        icon: 'car',
+        permission: 'drivingTest.view',
+      },
       {
         en: 'Job Offers',
         ar: 'عروض العمل',

@@ -737,6 +737,21 @@ class UserService {
     return updated;
   }
 
+  /**
+   * Store the one-time sign-in challenge for an external account (P-HR-APP §4).
+   *
+   * The whole sub-document is written at once so a caller cannot leave half a challenge behind —
+   * a code with no expiry, or an attempt count belonging to a code that is gone. The rules module
+   * computes the next state; this only persists it.
+   */
+  async setPortalChallenge(
+    userId: string,
+    state: { codeHash: string | null; expiresAt: Date | null; sentAt: Date | null; attempts: number },
+  ): Promise<void> {
+    await userRepository.updateSecurity(userId, { $set: { portalChallenge: state } });
+    await getCache().del(userSnapshotKey(userId));
+  }
+
   async setPassword(
     userId: string,
     password: string,

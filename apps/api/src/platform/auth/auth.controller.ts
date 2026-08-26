@@ -1,5 +1,7 @@
 import { type Request, type Response } from 'express';
 import {
+  type CompletePortalChallenge,
+  type StartPortalChallenge,
   ErrorCodes,
   type ActivateAccount,
   type ChangePassword,
@@ -41,6 +43,30 @@ export const login = async (req: Request, res: Response): Promise<void> => {
   const identifier = body.identifier ?? body.email ?? '';
   const { response, tokens } = await authService.login(identifier, body.password);
   if (tokens !== undefined) setRefreshCookie(res, tokens);
+  ok(res, response);
+};
+
+/**
+ * Ask for a one-time code (P-HR-APP §4).
+ *
+ * Answers the same shape whatever happened — see `startPortalChallenge`. The controller does not
+ * branch, because a branch here is exactly how the difference would leak out.
+ */
+export const startPortalChallenge = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<StartPortalChallenge>(req);
+  const result = await authService.startPortalChallenge(body.subjectType, body.identifier, body.phone);
+  ok(res, result);
+};
+
+export const completePortalChallenge = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<CompletePortalChallenge>(req);
+  const { response, tokens } = await authService.completePortalChallenge(
+    body.subjectType,
+    body.identifier,
+    body.phone,
+    body.code,
+  );
+  setRefreshCookie(res, tokens);
   ok(res, response);
 };
 

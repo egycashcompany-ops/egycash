@@ -32,7 +32,12 @@ describe('D-APP-2 — the portal opens on clearing screening, never on applying'
 
   it('is idempotent — an existing account is returned, not duplicated', () => {
     expect(SERVICE).toContain('const existing = await this.accountFor(applicantId)');
-    expect(SERVICE).toContain('if (existing !== null) return existing;');
+    // The existing account is answered from inside that branch, so nothing below it — the
+    // `userService.create` that would make a second login for one person — is ever reached.
+    const branch = SERVICE.slice(SERVICE.indexOf('if (existing !== null) {'));
+    const body = branch.slice(0, branch.indexOf('\n    }'));
+    expect(body).toContain('return existing;');
+    expect(body).not.toContain('userService.create');
   });
 
   it('never fails the screening decision it rides on', () => {
@@ -90,6 +95,14 @@ describe('the surfaces and the resolver are wired at boot', () => {
 describe('the account is usable, and only through the code', () => {
   it('is activated on creation — an `invited` account cannot make an authenticated request', () => {
     expect(SERVICE).toContain('userService.forceActivate(String(user._id))');
+  });
+
+  it('repairs a half-built account instead of returning it, but never resurrects a suspended one', () => {
+    expect(SERVICE).toContain("if (existing.status === 'invited')");
+    expect(SERVICE).toContain('userService.forceActivate(String(existing._id))');
+    for (const status of ["'suspended'", "'archived'"]) {
+      expect(SERVICE).not.toContain(`existing.status === ${status}`);
+    }
   });
 
   it('never sets a password, so the ordinary login door stays shut on it', () => {

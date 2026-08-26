@@ -52,7 +52,15 @@ class ApplicantPortalService {
   async openFor(applicant: ApplicantDoc): Promise<UserDoc> {
     const applicantId = String(applicant._id);
     const existing = await this.accountFor(applicantId);
-    if (existing !== null) return existing;
+    if (existing !== null) {
+      // Idempotent, and REPAIRING rather than merely skipping. Opening an account is two writes —
+      // the user, then the activation below — so a process that dies between them leaves a
+      // candidate holding a login they can never use, and an early return would preserve that
+      // state forever. Only `invited` is repaired: a suspended or archived account was made that
+      // way on purpose and re-running an event must not undo somebody's decision.
+      if (existing.status === 'invited') await userService.forceActivate(String(existing._id));
+      return existing;
+    }
 
     // The role is re-asserted rather than looked up: the same idempotent helper the seed calls, so
     // a deployment that somehow skipped the seed converges instead of failing on the first

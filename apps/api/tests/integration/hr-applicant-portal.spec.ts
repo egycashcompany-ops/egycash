@@ -91,14 +91,27 @@ const startAndCaptureCode = async (
   };
 };
 
-/** The event handler runs off the decision, not inside it — so the account appears shortly after. */
+/**
+ * The account once the handler has FINISHED with it.
+ *
+ * Two reasons this waits rather than reads. The handler runs off the screening decision, not inside
+ * it, so the account appears shortly after; and `openFor` creates the user and activates it in two
+ * steps, so an observer that stops at the first non-null read catches a half-built account and
+ * calls the feature broken. Waiting for `active` is not the weaker assertion — an account that
+ * never activates times out here and the message says what it was stuck at.
+ */
 const portalAccount = async (applicantId: string): Promise<UserDoc> => {
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    const found = await userService.findByExternalSubject('hr', APPLICANT_PORTAL_SUBJECT, applicantId);
-    if (found !== null) return found;
+  let found: UserDoc | null = null;
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    found = await userService.findByExternalSubject('hr', APPLICANT_PORTAL_SUBJECT, applicantId);
+    if (found !== null && found.status === 'active') return found;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error(`no portal account ever opened for applicant ${applicantId}`);
+  throw new Error(
+    found === null
+      ? `no portal account ever opened for applicant ${applicantId}`
+      : `the portal account for ${applicantId} never became usable — status stayed ${found.status}`,
+  );
 };
 
 beforeAll(async () => {

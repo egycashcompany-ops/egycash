@@ -30,7 +30,6 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { Card } from '../../../shared/ui/Card';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -426,7 +425,7 @@ export const FixedRosterPage = (): JSX.Element => {
                   dragging === employeeId ? 'opacity-50' : '',
                 ].join(' ')}
               >
-                <DriverChip employeeId={employeeId} />
+                <DriverChip employeeId={employeeId} className="w-full" />
               </span>
               {mayPlan && (
                 <button
@@ -632,13 +631,23 @@ export const FixedRosterPage = (): JSX.Element => {
         </div>
 
         <div className="min-w-0 space-y-6">
-          <Card>
+          {/* Tinted like the reference: the pool is a CONTROL surface, not another data panel,
+              and the green ties it to the chips it holds — so the eye reads list-and-chips as one
+              thing beside the board rather than a second table competing with it.
+
+              A plain surface rather than `<Card>`, because a Card cannot be re-tinted: `cn` joins
+              class names without resolving Tailwind conflicts (see `CardBody`'s own note), so the
+              base `bg-white border-slate-200` and an incoming `bg-green-50 border-green-200` both
+              land on the element and the winner is stylesheet order — which put white on top and
+              left the tint silently doing nothing. Every other tinted surface in this app is built
+              exactly like this one, from the same three tokens. */}
+          <div className="rounded-lg border border-green-200 bg-green-50 shadow-card dark:border-green-900 dark:bg-green-950/30">
             {/* Compact header: the count belongs beside the title, and the search directly under
                 it, so the panel spends its height on drivers rather than on chrome. */}
-            <div className="space-y-2 px-4 pb-2 pt-4">
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <div className="space-y-2 px-3 pb-2 pt-3">
+              <h2 className="text-center text-sm font-semibold text-green-900 dark:text-green-200">
                 {t('fleet.fixedRoster.driversTitle')}
-                <span className="ms-1 text-slate-500 dark:text-slate-400">
+                <span className="ms-1 font-normal text-green-700 dark:text-green-400">
                   ({formatNumber(pool.length, locale)})
                 </span>
               </h2>
@@ -654,11 +663,11 @@ export const FixedRosterPage = (): JSX.Element => {
             ) : shownDrivers.length === 0 ? (
               // Searched and found nobody — distinct from "the pool is empty", which means every
               // driver is already crewed and is a fact about the board rather than about the term.
-              <p className="px-4 pb-4 text-sm text-slate-500 dark:text-slate-400">
+              <p className="px-3 pb-3 text-center text-sm text-green-800 dark:text-green-300">
                 {t('fleet.fixedRoster.driverSearchEmpty')}
               </p>
             ) : (
-              <ul className="max-h-[26rem] divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+              <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
                 {shownDrivers.map((driver) => {
                   // Everyone here is unseated ON THIS BOARD — that is what the pool now means.
                   // But the board carries only the vehicles this reader may see, so a driver
@@ -680,14 +689,20 @@ export const FixedRosterPage = (): JSX.Element => {
                         }}
                         onDragEnd={() => setDragging(null)}
                         className={[
-                          'flex items-center justify-between gap-2 px-3 py-1.5',
-                          mayPlan
-                            ? 'cursor-grab active:cursor-grabbing hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                            : '',
+                          // The chip IS the row now, so the row itself adds no padding of its
+                          // own — the old `px-3 py-1.5` sat around a content-width pill and is
+                          // exactly the space the reference gives back to the board.
+                          'flex items-center gap-1.5',
+                          mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
                           dragging === driver.employeeId ? 'opacity-50' : '',
                         ].join(' ')}
                       >
-                        <DriverChip employeeId={driver.employeeId} className="min-w-0" />
+                        <DriverChip
+                          employeeId={driver.employeeId}
+                          className={
+                            mayPlan ? 'min-w-0 flex-1 hover:bg-green-800' : 'min-w-0 flex-1'
+                          }
+                        />
                         {/* Only the exception is badged now. "Free" is what every other row in
                             this list already means, so saying it on each one spends the width
                             the name needs without telling the reader anything. */}
@@ -702,7 +717,7 @@ export const FixedRosterPage = (): JSX.Element => {
                 })}
               </ul>
             )}
-          </Card>
+          </div>
         </div>
       </div>
 

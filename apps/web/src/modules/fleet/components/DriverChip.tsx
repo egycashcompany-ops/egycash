@@ -10,9 +10,17 @@
 // it. Where the name cannot be resolved — no `employee.view`, or the record has not landed — the
 // id's tail stands in, honestly, rather than an empty chip.
 //
-// Solid emerald rather than `Badge tone="success"`: every Badge tone is a light fill for a chip
-// that CLASSIFIES a row, and this one IS the content of its cell. The palette is the project's
-// own success family, at the weight that carries white text.
+// Solid green rather than `Badge tone="success"`: every Badge tone is a light fill for a chip
+// that CLASSIFIES a row, and this one IS the content of its cell.
+//
+// The hue is the reference design's — Tailwind `green`, not the `emerald` this project uses for
+// success elsewhere. They are a shade apart and the difference is deliberate: emerald reads as a
+// STATUS ("this went well"), and a driver is not a status. Keeping the two apart means a green
+// chip on this board never has to be read as a verdict about the person in it.
+//
+// A BLOCK, not an inline pill: in the reference a driver fills the width available to them, in
+// the list and in the cell alike, so the eye scans one column of equal shapes instead of a
+// ragged edge of name-length pills. `truncate` is what keeps that safe for a long name.
 import { cn } from '../../../shared/lib/cn';
 import { useEmployeeName } from './EmployeeName';
 
@@ -31,8 +39,8 @@ export const DriverChip = ({
       data-driver-chip={employeeId}
       title={title ?? name ?? employeeId}
       className={cn(
-        'inline-flex max-w-full items-center truncate rounded-full bg-emerald-700 px-2.5 py-1',
-        'text-xs font-medium text-white dark:bg-emerald-600',
+        'flex max-w-full items-center justify-center truncate rounded-md bg-green-700 px-2.5 py-1',
+        'text-xs font-medium text-white dark:bg-green-600',
         className,
       )}
     >

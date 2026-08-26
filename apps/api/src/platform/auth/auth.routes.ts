@@ -7,9 +7,11 @@ import { rateLimit } from '../../infrastructure/redis/rate-limiter';
 import {
   ActivateAccountSchema,
   ChangePasswordSchema,
+  CompletePortalChallengeSchema,
   EnrollChallengeBodySchema,
   LoginSchema,
   SessionIdParamSchema,
+  StartPortalChallengeSchema,
   TotpChallengeSchema,
   TotpVerifySchema,
   UpdateMyPreferencesSchema,
@@ -17,6 +19,8 @@ import {
 import {
   activate,
   changePassword,
+  completePortalChallenge,
+  startPortalChallenge,
   listSessions,
   login,
   logout,
@@ -47,6 +51,20 @@ export const buildAuthRouter = (): Router => {
     strictLimit('auth-login'),
     validate({ body: LoginSchema }),
     asyncHandler(login),
+  );
+  // The applicant portal's sign-in (P-HR-APP §4). Under `/auth` on purpose: an external account
+  // may reach this router by construction, which is what lets a candidate sign in at all.
+  router.post(
+    '/portal/challenge',
+    strictLimit('auth-portal-challenge'),
+    validate({ body: StartPortalChallengeSchema }),
+    asyncHandler(startPortalChallenge),
+  );
+  router.post(
+    '/portal/verify',
+    strictLimit('auth-portal-verify'),
+    validate({ body: CompletePortalChallengeSchema }),
+    asyncHandler(completePortalChallenge),
   );
   router.post(
     '/totp/challenge',

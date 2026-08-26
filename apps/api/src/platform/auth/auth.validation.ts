@@ -5,6 +5,8 @@ export {
   ChangePasswordSchema,
   ActivateAccountSchema,
   UpdateMyPreferencesSchema,
+  StartPortalChallengeSchema,
+  CompletePortalChallengeSchema,
 } from '@ecms/contracts';
 
 import { z } from 'zod';

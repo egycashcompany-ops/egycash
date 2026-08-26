@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 62 pages over 239 permissions', () => {
+  it('declares 62 pages over 241 permissions', () => {
     expect(pages).toHaveLength(62);
-    expect(permissions).toHaveLength(239);
+    expect(permissions).toHaveLength(241);
   });
 
   /**
@@ -45,10 +45,13 @@ describe('the assembled page registry', () => {
    * decides both steps of one lifecycle. The unassigned count stays at 25 — the same test P-ORG-1
    * passed in the other direction.
    */
-  it('assigns 214 permissions to a page and leaves 25 deliberately unassigned', () => {
+  it('assigns 214 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
     expect(assigned).toHaveLength(214);
-    expect(permissions.length - assigned.length).toBe(25);
+    // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
+    // portal's own key belongs to accounts outside the company and has no staff screen at all, and
+    // sending a candidate their link is an action on the applicant screen rather than a screen.
+    expect(permissions.length - assigned.length).toBe(27);
   });
 
   it('splits the pages across the four modules as declared', () => {
@@ -86,6 +89,12 @@ describe('the assembled page registry', () => {
         'drivingTest',
         'medicalCheck',
         'securityCheck',
+        // P-HR-APP. `applicantPortal` is held by accounts OUTSIDE the company — there is no staff
+        // screen it could point at, and giving it one would be inventing a page to satisfy a
+        // counter. `applicantPortalAdmin` is one button on the applicant screen (D-APP-3ب), and a
+        // button is not a page.
+        'applicantPortal',
+        'applicantPortalAdmin',
       ].sort(),
     );
   });

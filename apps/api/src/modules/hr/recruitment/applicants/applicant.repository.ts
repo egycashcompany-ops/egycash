@@ -119,6 +119,21 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
       .exec();
   }
 
+  /**
+   * By national id, WHATEVER their status — the portal's reader (P-HR-APP §4).
+   *
+   * Deliberately not `findLiveByNationalId`: a candidate who was refused keeps their portal so
+   * they can read that they were refused (D-APP-7ب), and a hired one keeps it until the account is
+   * retired. Narrowing to `new` here would sign exactly those two out with no explanation.
+   */
+  async findAnyByNationalId(nationalId: string): Promise<ApplicantDoc | null> {
+    return this.model
+      .findOne({ nationalId, isDeleted: false })
+      .sort({ createdAt: -1 })
+      .lean<ApplicantDoc>()
+      .exec();
+  }
+
   async findLiveByNationalId(nationalId: string): Promise<ApplicantDoc | null> {
     return this.model
       .findOne({ nationalId, isDeleted: false, status: 'new' })

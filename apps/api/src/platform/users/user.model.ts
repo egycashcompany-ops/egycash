@@ -76,6 +76,22 @@ export interface UserDoc extends BaseDocFields {
     sentAt: Date | null;
     delivery: { channel: 'whatsapp' | 'email'; ok: boolean; detail: string | null }[] | null;
   };
+  /**
+   * The one-time code an EXTERNAL account signs in with (P-HR-APP §4) — a candidate has no
+   * password, and a code sent to the mobile already on file is what makes knowing their national
+   * ID and their number insufficient.
+   *
+   * DELIBERATELY NOT `activation`, though the shape rhymes. That field carries the setup link an
+   * account is created with; overloading it would mean a sign-in attempt silently destroys a
+   * pending invitation. Two purposes, two fields.
+   */
+  portalChallenge: {
+    codeHash: string | null;
+    expiresAt: Date | null;
+    /** The last time a code went OUT — the cooldown is measured from here, not from a guess. */
+    sentAt: Date | null;
+    attempts: number;
+  };
 }
 
 const localized = { ar: { type: String, required: true }, en: { type: String, required: true } };
@@ -139,6 +155,12 @@ const userSchema = new Schema<UserDoc>(
       expiresAt: { type: Date, default: null },
       sentAt: { type: Date, default: null },
       delivery: { type: [{ _id: false, channel: String, ok: Boolean, detail: { type: String, default: null } }], default: null },
+    },
+    portalChallenge: {
+      codeHash: { type: String, default: null },
+      expiresAt: { type: Date, default: null },
+      sentAt: { type: Date, default: null },
+      attempts: { type: Number, default: 0 },
     },
     ...baseFields,
   },

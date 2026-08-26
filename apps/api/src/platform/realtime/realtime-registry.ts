@@ -94,6 +94,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // P-HR-REQ — knowing a requisition moved is knowing somebody asked to hire, and who approved
   // it; the room is joined by the same key that opens its screen.
   'hr.jobRequisition': { permission: 'jobRequisition.view' },
+  // P-HR-APP — a portal account being opened is an audited HR act, so it must be classified here
+  // like every other. Staff who administer the portal are the audience; the candidate is not on
+  // this bus at all.
+  'hr.applicantPortalAccount': { permission: 'applicant.view' },
   'hr.hiringDocuments': { permission: 'hiringDocuments.view' },
   'hr.hiringDocumentType': { permission: 'hiringDocumentType.manage' },
 

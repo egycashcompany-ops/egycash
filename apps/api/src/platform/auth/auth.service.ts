@@ -2,11 +2,14 @@
 // 15-min JWT access tokens, rotating refresh tokens with reuse detection (family
 // revocation on replay), lockout with settings-driven policy, and TOTP 2FA
 // enforced for privileged accounts (Review R13).
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { Types } from 'mongoose';
 import { authenticator } from 'otplib';
 import {
+  PORTAL_CHALLENGE_CODE_LENGTH,
+  PORTAL_CHALLENGE_RESEND_COOLDOWN_SECONDS,
+  PORTAL_CHALLENGE_TTL_MINUTES,
   ErrorCodes,
   PlatformEvents,
   SettingKeys,
@@ -26,6 +29,7 @@ import { getContext, type ActorIdentity } from '../../infrastructure/http/reques
 import { BusinessRuleError, NotFoundError, UnauthenticatedError } from '../../shared/errors';
 import { type AuthContext } from '../../shared/types';
 import { randomBackupCode, randomToken, sha256 } from '../../shared/utils/crypto';
+import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { verifyPassword } from '../../shared/utils/passwords';
 import { auditService } from '../audit';
 import { rbacService } from '../rbac';
@@ -34,6 +38,17 @@ import { userService, type UserDoc } from '../users';
 import { directoryProfileService } from '../directory/directory-profile.service';
 import { emit, subscribe } from '../kernel/event-bus';
 import { resolveExternalSubjectLabel } from './identity-seams';
+import { resolvePortalIdentity } from './portal-identities';
+import {
+  EMPTY_PORTAL_CHALLENGE,
+  afterFailedAttempt,
+  afterIssue,
+  afterSuccess,
+  maySend,
+  resendWaitSeconds,
+  verifyProblem,
+  type PortalChallengeState,
+} from './portal-challenge-rules';
 import { userSnapshotKey } from './user-snapshot-cache';
 import { SessionModel, type SessionDoc } from './session.model';
 
@@ -105,6 +120,28 @@ const actorOf = (user: UserDoc | null) => {
     userAgent: context?.actor?.userAgent ?? null,
   };
 };
+
+/**
+ * A numeric code with uniform digits, from a CSPRNG.
+ *
+ * `Math.random()` would be the obvious mistake here: it is predictable enough that somebody who
+ * has watched a few codes could narrow the next one, which is exactly the attack this defends.
+ * The rejection loop keeps every digit equally likely rather than favouring the low ones.
+ */
+const randomNumericCode = (length: number): string => {
+  const digits: string[] = [];
+  while (digits.length < length) {
+    for (const byte of randomBytes(length)) {
+      if (byte >= 250) continue; // 250 = 25 * 10; anything above skews the distribution.
+      digits.push(String(byte % 10));
+      if (digits.length === length) break;
+    }
+  }
+  return digits.join('');
+};
+
+const portalChallengeMessage = (code: string): string =>
+  `رمز الدخول إلى بوابة المتقدمين: ${code}\nصالح لمدة ${PORTAL_CHALLENGE_TTL_MINUTES} دقائق. لا تشاركه مع أحد.`;
 
 export interface IssuedTokens {
   accessToken: string;
@@ -503,6 +540,122 @@ class AuthService {
   }
 
   // ── Refresh rotation with reuse detection (ADR-006) ───────────────────────
+
+  /**
+   * Send a one-time code to the mobile an external subject is already on file with (P-HR-APP §4).
+   *
+   * ANSWERS THE SAME THING EVERY TIME. Whether the two identifiers matched nobody, matched
+   * somebody with no portal, or matched somebody whose application was refused, the caller is told
+   * a code is on its way if that matched an account. Anything else makes this endpoint a way to
+   * ask the company whether a given national ID belongs to a person who applied here — so the
+   * work below is deliberately arranged to produce one shape on every path.
+   */
+  async startPortalChallenge(
+    subjectType: string,
+    identifier: string,
+    phone: string,
+  ): Promise<{ accepted: true; retryAfterSeconds: number }> {
+    const now = new Date();
+    const user = await resolvePortalIdentity(subjectType, { identifier, phone });
+    if (user === null) {
+      // Nothing to do, and nothing to say about it. The cooldown reported here is the standing
+      // one, so a caller cannot tell an unknown identifier from one that is simply rate-limited.
+      return { accepted: true, retryAfterSeconds: 0 };
+    }
+    const state = this.portalChallengeOf(user);
+    const wait = resendWaitSeconds(state, now);
+    if (!maySend(state, now)) return { accepted: true, retryAfterSeconds: wait };
+
+    const code = this.generatePortalCode();
+    const expiresAt = new Date(now.getTime() + PORTAL_CHALLENGE_TTL_MINUTES * 60_000);
+    await this.savePortalChallenge(String(user._id), afterIssue(sha256(code), expiresAt, now));
+    // The code goes to the number ON FILE, never to one supplied with the request — otherwise the
+    // second factor would be something the caller chose, which is not a second factor at all.
+    const sent = await sendWhatsApp(user.phone ?? '', portalChallengeMessage(code));
+    if (!sent.ok) logger.warn({ userId: String(user._id) }, 'portal challenge delivery failed');
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(user._id) },
+      action: 'update',
+      changes: [{ field: 'portalChallenge', old: null, new: 'issued' }],
+    });
+    return { accepted: true, retryAfterSeconds: PORTAL_CHALLENGE_RESEND_COOLDOWN_SECONDS };
+  }
+
+  /**
+   * Trade a correct code for a session.
+   *
+   * Every refusal is the same refusal to the caller — wrong code, expired code, spent attempts and
+   * unknown identifier are one message — while the audit trail keeps them apart, because somebody
+   * reading it later should be able to tell a person who was slow from a person who was guessing.
+   */
+  async completePortalChallenge(
+    subjectType: string,
+    identifier: string,
+    phone: string,
+    code: string,
+  ): Promise<{ response: LoginResponse; tokens: IssuedTokens }> {
+    const now = new Date();
+    const refused = (): never => {
+      throw new UnauthenticatedError(ErrorCodes.AUTH_INVALID_CREDENTIALS, 'Invalid code');
+    };
+    const user = await resolvePortalIdentity(subjectType, { identifier, phone });
+    if (user === null) return refused();
+
+    const state = this.portalChallengeOf(user);
+    const problem = verifyProblem(state, sha256(code), now);
+    if (problem !== null) {
+      // A miss costs an attempt; the other refusals cost nothing, because there is nothing left to
+      // protect — an expired or already-burned code cannot be guessed at.
+      if (problem === 'mismatch') {
+        await this.savePortalChallenge(String(user._id), afterFailedAttempt(state));
+      }
+      await auditService.record({
+        entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(user._id) },
+        action: 'loginFailed',
+        changes: [{ field: 'portalChallenge', old: null, new: problem }],
+      });
+      return refused();
+    }
+
+    await this.savePortalChallenge(String(user._id), afterSuccess(state));
+    const { accessToken, refreshToken, refreshExpiresAt } = await this.createSession(user);
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: String(user._id) },
+      action: 'login',
+      changes: [{ field: 'method', old: null, new: 'portalChallenge' }],
+    });
+    return {
+      response: {
+        // The code IS the second factor, so TOTP never enters this path — and a candidate has no
+        // password, so there is nothing for them to be made to change.
+        totpRequired: false,
+        accessToken,
+        me: await this.buildMe(user),
+        mustChangePassword: false,
+      },
+      tokens: { accessToken, refreshToken, refreshExpiresAt },
+    };
+  }
+
+  /** One-time portal code — a dedicated seam so tests can capture the delivered secret. */
+  generatePortalCode(): string {
+    return randomNumericCode(PORTAL_CHALLENGE_CODE_LENGTH);
+  }
+
+  private portalChallengeOf(user: UserDoc): PortalChallengeState {
+    const stored = user.portalChallenge ?? null;
+    if (stored === null) return EMPTY_PORTAL_CHALLENGE;
+    return {
+      codeHash: stored.codeHash ?? null,
+      expiresAt: stored.expiresAt ?? null,
+      sentAt: stored.sentAt ?? null,
+      attempts: stored.attempts ?? 0,
+    };
+  }
+
+  private async savePortalChallenge(userId: string, state: PortalChallengeState): Promise<void> {
+    await userService.setPortalChallenge(userId, state);
+  }
 
   async refresh(presentedToken: string): Promise<IssuedTokens> {
     const presentedHash = sha256(presentedToken);

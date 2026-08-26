@@ -125,16 +125,16 @@ const DriverSelect = ({
 const EditCrewDialog = ({
   row,
   pool,
-  workTypes,
+  missionTypes,
   onClose,
   onSave,
 }: {
   row: FleetFixedCrewRowDto;
   pool: { employeeId: string }[];
-  workTypes: ReturnType<typeof useFleetCatalog>;
+  missionTypes: ReturnType<typeof useFleetCatalog>;
   onClose: () => void;
   onSave: (edit: {
-    workTypeId: string | null;
+    missionTypeId: string | null;
     driver1EmployeeId: string | null;
     driver2EmployeeId: string | null;
     notes: string | null;
@@ -142,7 +142,7 @@ const EditCrewDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [workTypeId, setWorkTypeId] = useState<string | null>(row.workTypeId);
+  const [missionTypeId, setMissionTypeId] = useState<string | null>(row.missionTypeId);
   const [driver1, setDriver1] = useState<string | null>(row.driver1EmployeeId);
   const [driver2, setDriver2] = useState<string | null>(row.driver2EmployeeId);
   const [notes, setNotes] = useState<string>(row.notes ?? '');
@@ -176,7 +176,7 @@ const EditCrewDialog = ({
             disabled={sameTwice}
             onClick={() =>
               onSave({
-                workTypeId,
+                missionTypeId,
                 driver1EmployeeId: driver1,
                 driver2EmployeeId: driver2,
                 // '' is not a note. The contract refuses an empty string, and `null` is how
@@ -192,29 +192,29 @@ const EditCrewDialog = ({
     >
       <div className="space-y-4">
         <Field label={t('fleet.roster.fields.mission')}>
-          {workTypes.isError ? (
+          {missionTypes.isError ? (
             <p className="text-sm text-rose-600 dark:text-rose-400">
-              {t('fleet.fixedRoster.workTypesFailed')}
+              {t('fleet.fixedRoster.missionTypesFailed')}
             </p>
           ) : (
             <Select
-              value={workTypeId ?? ''}
-              disabled={workTypes.isPending}
-              onChange={(e) => setWorkTypeId(e.target.value || null)}
+              value={missionTypeId ?? ''}
+              disabled={missionTypes.isPending}
+              onChange={(e) => setMissionTypeId(e.target.value || null)}
             >
-              <option value="">{t('fleet.fixedRoster.noWorkType')}</option>
-              {(workTypes.data?.items ?? []).map((item) => (
+              <option value="">{t('fleet.fixedRoster.noMissionType')}</option>
+              {(missionTypes.data?.items ?? []).map((item) => (
                 <option key={item.id} value={item.id}>
                   {localized(item.name, locale)}
                 </option>
               ))}
             </Select>
           )}
-          {!workTypes.isPending &&
-            !workTypes.isError &&
-            (workTypes.data?.items.length ?? 0) === 0 && (
+          {!missionTypes.isPending &&
+            !missionTypes.isError &&
+            (missionTypes.data?.items.length ?? 0) === 0 && (
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {t('fleet.fixedRoster.noWorkTypesYet')}
+                {t('fleet.fixedRoster.noMissionTypesYet')}
               </p>
             )}
         </Field>
@@ -410,13 +410,18 @@ export const FixedRosterPage = (): JSX.Element => {
   /** The vehicle whose edit dialog is open, or null. The dialog holds its own draft. */
   const [editing, setEditing] = useState<string | null>(null);
 
-  // «نوع المهمة» is a reference to the fleet's own vocabulary — the SAME `workType` catalog the
-  // maintenance screen reads (أنواع الأعمال), through the same cached hook, so the two screens
+  // «نوع المهمة» is a reference to the fleet's own vocabulary — the SAME `missionType` catalog
+  // the DAILY roster reads (أنواع المهمات), through the same cached hook, so the two boards
   // cannot drift into two lists. The id is what is stored; the name is resolved for display.
-  const workTypes = useFleetCatalog('workType');
-  const workTypeName = (id: string | null): string | null => {
+  //
+  // It pointed at `workType` (أنواع الأعمال) for one release. That is the WORKSHOP's vocabulary —
+  // it carries `countsForAlarm` and names maintenance jobs — so the column labelled «نوع المهمة»
+  // was offering «صيانة» as a car's standing mission. Corrected here; the rows written under the
+  // old name are retired by `npm run fleet:fix-crew-mission`.
+  const missionTypes = useFleetCatalog('missionType');
+  const missionTypeName = (id: string | null): string | null => {
     if (id === null) return null;
-    const item = workTypes.data?.items.find((entry) => entry.id === id);
+    const item = missionTypes.data?.items.find((entry) => entry.id === id);
     // `undefined` = the catalog has not answered yet, or the item was archived after it was
     // chosen. Either way the id is real and the row is not broken, so the cell shows the dash
     // rather than a raw ObjectId no reader could act on.
@@ -547,7 +552,7 @@ export const FixedRosterPage = (): JSX.Element => {
       key: 'mission',
       header: t('fleet.roster.fields.mission'),
       render: (row) => {
-        const name = workTypeName(row.workTypeId);
+        const name = missionTypeName(row.missionTypeId);
         return name === null ? dash : <span className="text-sm">{name}</span>;
       },
     },
@@ -789,7 +794,7 @@ export const FixedRosterPage = (): JSX.Element => {
         <EditCrewDialog
           row={editingRow}
           pool={pool}
-          workTypes={workTypes}
+          missionTypes={missionTypes}
           onClose={() => setEditing(null)}
           onSave={(edit) => {
             setDraft((rows) => applyEdit(rows, editingRow.vehicleId, edit));

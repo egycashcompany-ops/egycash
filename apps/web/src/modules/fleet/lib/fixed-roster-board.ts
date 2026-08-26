@@ -116,7 +116,7 @@ export const applyEdit = (
   rows: readonly FleetFixedCrewRowDto[],
   vehicleId: string,
   edit: {
-    workTypeId: string | null;
+    missionTypeId: string | null;
     driver1EmployeeId: string | null;
     driver2EmployeeId: string | null;
     notes: string | null;
@@ -131,7 +131,9 @@ export const applyEdit = (
         : assignDriver(next, vehicleId, slot, chosen);
   }
   return next.map((row) =>
-    row.vehicleId === vehicleId ? { ...row, workTypeId: edit.workTypeId, notes: edit.notes } : row,
+    row.vehicleId === vehicleId
+      ? { ...row, missionTypeId: edit.missionTypeId, notes: edit.notes }
+      : row,
   );
 };
 
@@ -153,7 +155,7 @@ export const clearSlot = (
  */
 export interface FixedCrewPayloadRow {
   vehicleId: string;
-  workTypeId: string | null;
+  missionTypeId: string | null;
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
   notes: string | null;
@@ -161,7 +163,7 @@ export interface FixedCrewPayloadRow {
 
 /** The four editable facts of a row — what "changed" is measured over, and what is sent. */
 const editable = (row: FleetFixedCrewRowDto): Omit<FixedCrewPayloadRow, 'vehicleId'> => ({
-  workTypeId: row.workTypeId,
+  missionTypeId: row.missionTypeId,
   driver1EmployeeId: row.driver1EmployeeId,
   driver2EmployeeId: row.driver2EmployeeId,
   notes: row.notes,

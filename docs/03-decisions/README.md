@@ -77,7 +77,11 @@ never will be. The gold vault's customers get ordinary ECMS accounts carrying an
 `externalSubject` back-reference — `employeeId` with its owner named — and are confined, before
 authorization and by default-deny, to their own `/auth` self-service plus the single read surface
 their module registered. It is written to be reused: a second module with external users of its own
-writes one string.
+writes one string. Its **2026-08-26 amendment** is the first exercise of that reuse and the first
+dent in "read-only": a subject type may now also declare one WRITE prefix, because the applicant
+portal exists so a candidate can upload their own documents. Deny-by-default is untouched — a
+subject type that declares no write surface, the gold customer included, is exactly as read-only as
+it was.
 
 now warn about but do not change. ADR-026 carries **three appendices** rather than spawning further
 ADRs, because each refines a decision it already owns: SA-4 records that effective permissions are a

@@ -28,6 +28,7 @@ import { ApplicantLifecycleActions } from '../components/ApplicantLifecycleActio
 import { ReturnToStageDialog } from '../components/ReturnToStageDialog';
 import { useApplicant, useVerifyApplicantIdentity } from '../api/applicant-queries';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { useWorkflowState } from '../../shared/useWorkflowMutation';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 
@@ -82,11 +83,15 @@ export const ApplicantDetailPage = (): JSX.Element => {
 
   const gridCls = 'grid grid-cols-2 gap-4 sm:grid-cols-3';
 
+  // The bar draws where the CANDIDATE stands, not where this screen sits — the two are
+  // different facts and used to be conflated (see RecruitmentStepBar).
+  const stage = useWorkflowState(a.id)?.stage?.kind ?? null;
+
   return (
     <PageContainer>
       <PageHeader
         title={a.fullNameAr}
-        aside={<RecruitmentStepBar current="applicants" />}
+        aside={<RecruitmentStepBar current={stage} viewing="applicants" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.applicants'), to: '/applicants' },

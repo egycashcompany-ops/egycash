@@ -275,6 +275,32 @@ export interface JobOfferDto extends AttemptMarkerDto {
 
 // ── Events (ADR-008 naming `<module>.<entity>.<event>`) ─────────────────────
 
+// ── Who is standing at the end of the checks (P-HR-REQ / offers queue) ─────
+
+/**
+ * A candidate who has cleared every check that applies to them and has no offer yet.
+ *
+ * `movedToOffer` is the fact the SCREEN needs and the reason this DTO exists rather than reusing
+ * `ApplicantDto`: the button beside somebody who has not been moved does two things (the explicit
+ * move, then the form), and beside somebody who has it does one. The client must know which without
+ * inferring it from a date field whose meaning it would then be re-deriving.
+ */
+export interface AwaitingOfferCandidateDto {
+  applicantId: string;
+  applicantCode: string;
+  fullNameAr: string;
+  position: string | null;
+  /** Has HR already made the explicit move to the Job Offer stage (I11)? */
+  movedToOffer: boolean;
+  /** When the last of their checks came back approved — what the queue is ordered by. */
+  clearedAt: string;
+}
+
+export const ListAwaitingOfferQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().max(100).optional(),
+}).strict();
+export type ListAwaitingOfferQuery = z.infer<typeof ListAwaitingOfferQuerySchema>;
+
 export const HrOfferEvents = {
   OfferCreated: 'hr.jobOffer.created',
   OfferRevised: 'hr.jobOffer.revised',

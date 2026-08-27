@@ -77,11 +77,14 @@ export const HiringDocsDetailPage = (): JSX.Element => {
     }
   };
 
+  // The one screen where the two facts genuinely coincide: a hiring-documents set exists only for
+  // somebody already hired, so `employeesReady` is where they stand AND what this page is about.
+  // Stated rather than defaulted, so it reads as a fact rather than an omission.
   return (
     <PageContainer>
       <PageHeader
         title={t('hiringDocs.detail.title', { code: h.employeeCode })}
-        aside={<RecruitmentStepBar current="employeesReady" />}
+        aside={<RecruitmentStepBar current="employeesReady" viewing="employeesReady" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.hiringDocuments'), to: '/hiring-documents' },

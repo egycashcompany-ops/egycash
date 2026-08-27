@@ -10,6 +10,7 @@ import {
   bulkJobOffers,
   createJobOffer,
   getJobOffer,
+  listAwaitingOffer,
   listJobOffers,
   rejectJobOffer,
   reviseJobOffer,
@@ -21,6 +22,7 @@ import {
   BulkJobOffersSchema,
   CreateJobOfferSchema,
   JobOfferIdParamSchema,
+  ListAwaitingOfferQuerySchema,
   ListJobOffersQuerySchema,
   RejectJobOfferSchema,
   ReviseJobOfferSchema,
@@ -31,6 +33,14 @@ import {
 export const buildJobOffersRouter = (): Router => {
   const router = Router();
 
+  // The queue that feeds the offers screen — declared before `/:id` so the literal wins.
+  router.get(
+    '/awaiting',
+    authenticate,
+    authorize('jobOffer.view'),
+    validate({ query: ListAwaitingOfferQuerySchema }),
+    asyncHandler(listAwaitingOffer),
+  );
   router.get(
     '/',
     authenticate,

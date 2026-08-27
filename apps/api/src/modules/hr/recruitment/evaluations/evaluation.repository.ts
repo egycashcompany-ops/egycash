@@ -70,6 +70,30 @@ class EvaluationRepository extends BaseRepository<EvaluationDoc> {
   }
 
   /** All of an applicant's evaluations, oldest phase first. */
+  /**
+   * Everybody with at least one approved check, and when their latest one landed.
+   *
+   * The starting set for the offers queue. It runs over the EVALUATIONS rather than the applicants
+   * because the people who have passed something are a far smaller set than the people who have
+   * applied, and they are the only ones who can possibly qualify — so the narrow collection does
+   * the narrowing.
+   *
+   * Superseded attempts are excluded here for the same reason they are everywhere else: a retried
+   * phase is history, never a gate input (RW13).
+   */
+  async applicantsWithApprovals(): Promise<{ applicantId: string; latestApprovalAt: Date }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; latestApprovalAt: Date }>([
+        { $match: { status: 'approved', supersededAt: null, isDeleted: false } },
+        { $group: { _id: '$applicantId', latestApprovalAt: { $max: '$updatedAt' } } },
+      ])
+      .exec();
+    return rows.map((row) => ({
+      applicantId: String(row._id),
+      latestApprovalAt: row.latestApprovalAt,
+    }));
+  }
+
   async findByApplicant(applicantId: string): Promise<EvaluationDoc[]> {
     if (!Types.ObjectId.isValid(applicantId)) return [];
     return this.model

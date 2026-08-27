@@ -26,6 +26,7 @@ import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useAddScreeningNote, useScreening } from '../api/screening-queries';
+import { useWorkflowState } from '../../shared/useWorkflowMutation';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 
 export const ScreeningDetailPage = (): JSX.Element => {
@@ -93,11 +94,15 @@ export const ScreeningDetailPage = (): JSX.Element => {
     });
   }
 
+  // The bar draws where the CANDIDATE stands, not where this screen sits — the two are
+  // different facts and used to be conflated (see RecruitmentStepBar).
+  const stage = useWorkflowState(s.applicantId)?.stage?.kind ?? null;
+
   return (
     <PageContainer>
       <PageHeader
         title={t('screening.detail.title', { name: s.applicantName })}
-        aside={<RecruitmentStepBar current="screening" />}
+        aside={<RecruitmentStepBar current={stage} viewing="screening" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.screening'), to: '/screening' },

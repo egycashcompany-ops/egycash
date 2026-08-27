@@ -28,6 +28,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
+import { useWorkflowState } from '../../shared/useWorkflowMutation';
 import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
 import {
   useInterview,
@@ -94,12 +95,16 @@ export const InterviewDetailPage = (): JSX.Element => {
     if (canEvaluate) setEvaluateOpen(true);
   };
 
+  // The bar draws where the CANDIDATE stands, not where this screen sits — the two are
+  // different facts and used to be conflated (see RecruitmentStepBar).
+  const stage = useWorkflowState(iv.applicantId)?.stage?.kind ?? null;
+
   return (
     <PageContainer>
       <PageHeader
         title={t('interviews.detail.title', { name: iv.applicantName })}
         description={localized(iv.stageName, locale)}
-        aside={<RecruitmentStepBar current="interview" />}
+        aside={<RecruitmentStepBar current={stage} viewing="interview" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.interviews'), to: '/interviews' },

@@ -16,7 +16,7 @@ import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input } from '../../../../../shared/ui/form';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
-import { PlusIcon } from '../../../../../shared/ui/icons';
+import { AwaitingOfferQueue } from '../components/AwaitingOfferQueue';
 import { formatDate, formatMoney } from '../../../../../shared/lib/format';
 import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
@@ -45,6 +45,7 @@ export const JobOffersListPage = (): JSX.Element => {
     by: string;
     dir: 'asc' | 'desc';
   };
+  const awaitingPage = Math.max(1, Number(sp.get('awaiting') ?? '1') || 1);
   const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
@@ -127,13 +128,18 @@ export const JobOffersListPage = (): JSX.Element => {
         title={t('recruitment.nav.offers')}
         description={t('offers.list.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.offers') }]}
-        actions={
-          <Can permission="jobOffer.create">
-            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => navigate('new')}>
-              {t('offers.actions.create')}
-            </Button>
-          </Can>
-        }
+      />
+
+      {/*
+        The queue replaces the «+ new offer» button that used to sit in the header. That button
+        asked somebody to remember who was ready and then find them in a picker; the information
+        was already in the system and nothing was showing it. Its own page parameter, because it
+        pages independently of the offers below it.
+      */}
+      <AwaitingOfferQueue
+        search={filters.search ?? ''}
+        page={awaitingPage}
+        onPageChange={(next) => { patch({ awaiting: String(next) }, false); }}
       />
 
       <div className="space-y-4">

@@ -325,9 +325,18 @@ class EvaluationService {
 
   /**
    * Whether the applicant has cleared every active evaluation phase — every non-driver phase is
-   * `approved`, plus any driver phase that was actually opened for them. Used by later stages to
-   * gate a Job Offer after the interview + evaluation pipeline.
+   * `approved`, plus any driver phase that was actually opened for them.
+   *
+   * The driver rule leans on the materializer, which opens a `driversOnly` phase only for somebody
+   * whose job title requires a driving test: a phase that was never opened was never theirs to
+   * pass. This is the ONE answer to "have they finished the checks" — the offers queue asks it too
+   * rather than carrying a second copy with its own idea of who owes what.
    */
+  /** The offers queue's starting set — see the repository for why it starts here. */
+  async applicantsWithApprovals(): Promise<{ applicantId: string; latestApprovalAt: Date }[]> {
+    return evaluationRepository.applicantsWithApprovals();
+  }
+
   async hasClearedRequiredEvaluations(applicantId: string): Promise<boolean> {
     const [phases, evaluations] = await Promise.all([
       evaluationPhaseRepository.findAllActive(),

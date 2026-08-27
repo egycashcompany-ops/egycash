@@ -3,6 +3,7 @@
 // manager references are resolved via existing platform endpoints (branches / departments /
 // job-titles / users) — no new API is introduced.
 import {
+  type AwaitingOfferCandidateDto,
   type AcceptJobOffer,
   type BranchDto,
   type CreateJobOffer,
@@ -74,3 +75,15 @@ export const getUser = (id: string): Promise<UserDto> => get<UserDto>(`/platform
 /** Bulk send/withdraw a selection of offers (RW17) — answers a partial-success envelope. */
 export const bulkJobOffers = (body: BulkJobOffers): Promise<BulkWorkflowResultDto> =>
   post<BulkWorkflowResultDto>('/hr/job-offers/bulk', body);
+
+/**
+ * The queue: candidates who have finished their checks and have nothing written for them yet.
+ *
+ * A read, and only a read. The two ACTS the screen offers beside each row — the explicit move to
+ * the Job Offer stage, and creating the offer — are the existing endpoints for exactly those
+ * things, unchanged and still permission-gated where they live.
+ */
+export const fetchAwaitingOffer = (
+  params: { page: number; pageSize: number; search?: string },
+): Promise<Paginated<AwaitingOfferCandidateDto>> =>
+  getPage(`/hr/job-offers/awaiting${buildQuery(params)}`);

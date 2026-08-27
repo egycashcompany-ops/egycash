@@ -7,6 +7,7 @@ export {
   AcceptJobOfferSchema,
   RejectJobOfferSchema,
   WithdrawJobOfferSchema,
+  ListAwaitingOfferQuerySchema,
   ListJobOffersQuerySchema,
   BulkJobOffersSchema,
 } from '@ecms/contracts';

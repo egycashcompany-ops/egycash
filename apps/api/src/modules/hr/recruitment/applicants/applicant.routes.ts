@@ -21,6 +21,7 @@ import {
   createApplicantSource,
   exportApplicants,
   getApplicant,
+  getApplicantWorkflowState,
   listApplicantAttachments,
   listApplicantSources,
   listApplicants,
@@ -172,6 +173,15 @@ export const buildApplicantsRouter = (): Router => {
   );
 
   // Attachments (bytes via the platform Files service).
+  // Where the candidate stands, as a read. The pipeline bar on every detail page draws from this
+  // rather than from the name of the screen it happens to be on.
+  router.get(
+    '/:id/workflow-state',
+    authenticate,
+    authorize('applicant.view'),
+    validate({ params: ApplicantIdParamSchema }),
+    asyncHandler(getApplicantWorkflowState),
+  );
   router.get(
     '/:id/attachments',
     authenticate,

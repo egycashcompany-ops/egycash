@@ -446,6 +446,7 @@ const en: Record<string, string> = {
   // Recruitment module
   'recruitment.title': 'Recruitment',
   'recruitment.step.aria': 'Recruitment progress',
+  'recruitment.step.viewing': 'Viewing this stage',
   'recruitment.step.applicants': 'Applicant',
   'recruitment.step.screening': 'Screening',
   'recruitment.step.interview': 'Interview',
@@ -6356,6 +6357,7 @@ const ar: Record<string, string> = {
   // Recruitment module
   'recruitment.title': 'التوظيف',
   'recruitment.step.aria': 'مراحل التوظيف',
+  'recruitment.step.viewing': 'أنت على هذه المرحلة',
   'recruitment.step.applicants': 'متقدّم',
   'recruitment.step.screening': 'الفرز المبدئي',
   'recruitment.step.interview': 'المقابلة',

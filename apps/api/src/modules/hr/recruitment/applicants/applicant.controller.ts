@@ -24,9 +24,9 @@ import {
 import { created, noContent, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
-import { ValidationError } from '../../../../shared/errors';
+import { NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
-import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
+import { buildWorkflowState, withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { applicantService } from './applicant.service';
 import { applicantSourceService } from './applicant-source.service';
 import { toApplicantDto, toApplicantSourceDto } from './applicant.mapper';
@@ -124,6 +124,28 @@ export const restoreApplicant = async (req: Request, res: Response): Promise<voi
       selfId,
     ),
   );
+};
+
+/**
+ * Where this candidate stands, as a READ.
+ *
+ * The same `buildWorkflowState` every mutation's envelope already returns — exposed on its own
+ * because a screen that has not acted yet had no way to ask. That gap is why the pipeline bar on a
+ * detail page showed the stage the SCREEN was about rather than the stage the CANDIDATE was at: it
+ * had nothing else to draw with, so every page passed its own name.
+ *
+ * Behind `applicant.view`, and it invents no permission: everything in the answer is already in
+ * the envelope that comes back from acting on the same candidate.
+ */
+export const getApplicantWorkflowState = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { params } = validated<never, never, IdParam>(req);
+  // The scoped read first, so a candidate outside the caller's scope is a 404 here exactly as it
+  // is on every other applicant route — rather than a state object for somebody they cannot see.
+  await applicantService.getById(params.id, scopeSelector(ctx, 'applicant.view'));
+  const state = await buildWorkflowState(ctx, params.id);
+  if (state === null) throw new NotFoundError();
+  ok(res, state);
 };
 
 export const moveApplicantToOffer = async (req: Request, res: Response): Promise<void> => {

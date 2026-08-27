@@ -2,8 +2,10 @@
 // each write applies the workflow envelope to the cache (I6), so nothing is refetched. The applicant
 // lookup reuses the Applicants list API; org/manager references reuse the existing platform
 // endpoints.
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import {
+  type AwaitingOfferCandidateDto,
+  type Paginated,
   type AcceptJobOffer,
   type CreateJobOffer,
   type RejectJobOffer,
@@ -21,6 +23,20 @@ import { type JobOfferListParams } from './job-offer-api';
 
 const MODULE = 'hr';
 const FEATURE = 'jobOffers';
+
+/**
+ * The queue. Its own key, so creating an offer or moving somebody invalidates it without touching
+ * the offers LIST — the two answer different questions and go stale for different reasons.
+ */
+export const useAwaitingOffer = (params: {
+  page: number;
+  pageSize: number;
+  search?: string;
+}): UseQueryResult<Paginated<AwaitingOfferCandidateDto>> =>
+  useQuery({
+    queryKey: listKey(MODULE, 'jobOffersAwaiting', params),
+    queryFn: () => api.fetchAwaitingOffer(params),
+  });
 
 export const useJobOffers = (params: JobOfferListParams) =>
   useQuery({

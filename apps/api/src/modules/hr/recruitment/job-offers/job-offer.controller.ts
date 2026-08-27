@@ -8,6 +8,7 @@ import {
   type AcceptJobOffer,
   type BulkJobOffers,
   type CreateJobOffer,
+  type ListAwaitingOfferQuery,
   type ListJobOffersQuery,
   type RejectJobOffer,
   type ReviseJobOffer,
@@ -19,6 +20,7 @@ import { authContext } from '../../../../platform/auth';
 import { scopeSelector } from '../../../../shared/types';
 import { withBulkWorkflowEnvelope, withWorkflowEnvelope } from '../workflow';
 import { jobOfferService } from './job-offer.service';
+import { awaitingOfferService } from './awaiting-offer.service';
 import { toJobOfferDto } from './job-offer.mapper';
 import { type JobOfferDoc } from './job-offer.model';
 
@@ -43,6 +45,32 @@ export const listJobOffers = async (req: Request, res: Response): Promise<void> 
   const ctx = authContext(req);
   const { query } = validated<never, ListJobOffersQuery>(req);
   okPage(res, await jobOfferService.list(query, scopeSelector(ctx, 'jobOffer.view')), toJobOfferDto);
+};
+
+/**
+ * The queue: who has finished their checks and has nothing written for them yet.
+ *
+ * Behind `jobOffer.view`, and it mints no permission — every fact in the answer is one the caller
+ * can already read on the applicant screens. What the BUTTON beside each row does still needs
+ * `applicant.moveToOffer` and `jobOffer.create`, enforced where those acts happen.
+ */
+export const listAwaitingOffer = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListAwaitingOfferQuery>(req);
+  const { items, total } = await awaitingOfferService.list(
+    {
+      page: query.page,
+      pageSize: query.pageSize,
+      ...(query.search === undefined ? {} : { search: query.search }),
+    },
+    scopeSelector(ctx, 'jobOffer.view'),
+  );
+  ok(res, items, {
+    page: query.page,
+    pageSize: query.pageSize,
+    totalItems: total,
+    totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+  });
 };
 
 export const getJobOffer = async (req: Request, res: Response): Promise<void> => {

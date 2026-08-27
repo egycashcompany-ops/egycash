@@ -104,6 +104,29 @@ describe('what the phase deliberately did not do', () => {
   });
 });
 
+/**
+ * NO SOURCE STILL DESCRIBES THE GAP AS OPEN.
+ *
+ * `report-execution.service.ts` and `report-definition.controller.ts` each carried a careful,
+ * accurate paragraph explaining that a payslip has no department field and that a department grant
+ * therefore narrows nothing. Both were true when written and both survived the phase that made
+ * them false, because a comment does not fail a build — and a reader who trusts them would
+ * conclude the scope they are relying on does not work.
+ *
+ * Prose cannot be verified in general. This claim can: the phrase names a field the collection
+ * demonstrably declares, three assertions above.
+ */
+describe('nothing in payroll still says the payslip has no department', () => {
+  it.each([
+    'payroll/report-builder/report-execution.service.ts',
+    'payroll/report-builder/report-definition.controller.ts',
+    'payroll/payslips/payslip.repository.ts',
+    'payroll/reconciliation/reconciliation.service.ts',
+  ])('%s does not describe the closed gap as open', (file) => {
+    expect(read(file)).not.toMatch(/no department field/i);
+  });
+});
+
 // ── Stage 3 — the backfill ──────────────────────────────────────────────────
 
 describe('the backfill only ever adds', () => {

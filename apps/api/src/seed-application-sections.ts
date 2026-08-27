@@ -76,6 +76,10 @@ interface SectionDef {
  * its own service says the set is collected "after an employee is created (Stage 5)". It is the
  * last step of hiring, and its subject is an employee, not a candidate.
  *
+ * `/applicant-documents` goes the OTHER way for the same reason: what a candidate hands in after
+ * clearing screening is collected before anybody is hired, so its subject is a candidate and it
+ * belongs in Recruitment. Two documents screens, two sections, one test applied twice.
+ *
  * `/evaluations` and `/evaluations/phases` stay in Recruitment for the same kind of reason — they
  * evaluate APPLICANTS (the code lives in `modules/hr/recruitment/evaluations`). There is no
  * performance-review feature in this repository, so there is no Performance group to put them in
@@ -108,6 +112,10 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         '/interviews/stages',
         '/evaluations',
         '/evaluations/phases',
+        // P-HR-APP §5 — sits in Recruitment, not Employees, by the same evidence the note above
+        // uses for `/hiring-documents`: its subject is a CANDIDATE, and the set is collected
+        // before anybody is hired.
+        '/applicant-documents',
         '/evaluation-batches/phase/securityCheck',
         '/evaluation-batches/phase/drivingTest',
         '/job-offers',

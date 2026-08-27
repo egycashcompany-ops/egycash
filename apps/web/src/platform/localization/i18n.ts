@@ -5691,6 +5691,31 @@ const en: Record<string, string> = {
     'Every bar received, moved or delivered is posted the moment it happens. Sign in to see where your metal is and what it weighs.',
   'gold.portal.login.artAlt': 'Gold bars stacked on a vault shelf',
   // بوابة المتقدمين (P-HR-APP) — the candidate's own surface.
+  // The reviewer's side of the candidate documents (P-HR-APP §5).
+  'hr.applicantDocuments.title': 'Applicant documents',
+  'hr.applicantDocuments.description':
+    'What candidates have handed in since clearing screening, and what is still waiting on a decision.',
+  'hr.applicantDocuments.tab.waiting': 'Waiting',
+  'hr.applicantDocuments.tab.all': 'All',
+  'hr.applicantDocuments.searchPlaceholder': 'Name or applicant code',
+  'hr.applicantDocuments.loadFailed': 'We could not load the queue. Try again.',
+  'hr.applicantDocuments.emptyWaiting': 'Nothing is waiting on a decision',
+  'hr.applicantDocuments.emptyAll': 'No candidate has handed anything in yet',
+  'hr.applicantDocuments.pendingCount': '{{n}} waiting',
+  'hr.applicantDocuments.settled': 'All settled',
+  'hr.applicantDocuments.version': 'version {{n}}',
+  'hr.applicantDocuments.accept': 'Accept',
+  'hr.applicantDocuments.reject': 'Ask for another',
+  'hr.applicantDocuments.confirmReject': 'Send it back',
+  'hr.applicantDocuments.rejectReason': 'What is wrong with it?',
+  'hr.applicantDocuments.rejectReasonHint':
+    'The candidate sees this and uploads another, so say what to fix.',
+  'hr.applicantDocuments.stillMissing': 'Not handed in yet',
+  'hr.applicantDocuments.status.pending': 'Awaiting review',
+  'hr.applicantDocuments.status.accepted': 'Accepted',
+  'hr.applicantDocuments.status.rejected': 'Sent back',
+  'hr.applicantDocuments.licenseClass.first': 'First class',
+  'hr.applicantDocuments.licenseClass.second': 'Second class',
   'hr.applicantPortal.login.title': 'Applicant portal',
   'hr.applicantPortal.login.subtitle':
     'Enter the national ID and mobile number on your application. We will send a code to that number.',
@@ -11528,6 +11553,31 @@ const ar: Record<string, string> = {
     'كل سبيكة تدخل أو تتحرك أو تخرج تُقيَّد لحظة حدوثها. سجّل دخولك لترى أين معدنك وكم يزن.',
   'gold.portal.login.artAlt': 'سبائك ذهب مرصوصة على رفّ خزينة',
   // بوابة المتقدمين (P-HR-APP)
+  // مراجعة مستندات المتقدمين (P-HR-APP §5)
+  'hr.applicantDocuments.title': 'مستندات المتقدمين',
+  'hr.applicantDocuments.description':
+    'ما رفعه المتقدمون بعد اجتياز الفرز، وما ينتظر قرارًا منك.',
+  'hr.applicantDocuments.tab.waiting': 'في الانتظار',
+  'hr.applicantDocuments.tab.all': 'الكل',
+  'hr.applicantDocuments.searchPlaceholder': 'الاسم أو كود المتقدم',
+  'hr.applicantDocuments.loadFailed': 'تعذّر تحميل القائمة. حاول مرة أخرى.',
+  'hr.applicantDocuments.emptyWaiting': 'لا شيء ينتظر قرارًا',
+  'hr.applicantDocuments.emptyAll': 'لم يرفع أي متقدم شيئًا بعد',
+  'hr.applicantDocuments.pendingCount': '{{n}} في الانتظار',
+  'hr.applicantDocuments.settled': 'اكتمل',
+  'hr.applicantDocuments.version': 'النسخة {{n}}',
+  'hr.applicantDocuments.accept': 'قبول',
+  'hr.applicantDocuments.reject': 'اطلب بديلًا',
+  'hr.applicantDocuments.confirmReject': 'أعِده للمتقدم',
+  'hr.applicantDocuments.rejectReason': 'ما المشكلة فيه؟',
+  'hr.applicantDocuments.rejectReasonHint':
+    'المتقدم سيرى هذا ويرفع بديلًا، فاذكر ما يحتاج تصحيحًا.',
+  'hr.applicantDocuments.stillMissing': 'لم يُرفَع بعد',
+  'hr.applicantDocuments.status.pending': 'في انتظار المراجعة',
+  'hr.applicantDocuments.status.accepted': 'مقبول',
+  'hr.applicantDocuments.status.rejected': 'أُعيد للمتقدم',
+  'hr.applicantDocuments.licenseClass.first': 'أولى',
+  'hr.applicantDocuments.licenseClass.second': 'ثانية',
   'hr.applicantPortal.login.title': 'بوابة المتقدمين',
   'hr.applicantPortal.login.subtitle':
     'اكتب الرقم القومي ورقم الموبايل المسجَّلين في طلبك، وسيصلك رمز على الرقم نفسه.',

@@ -323,6 +323,7 @@ const applicantDocumentPermissions = declarePermissions(
       name: { en: 'Review applicant documents', ar: 'مراجعة مستندات المتقدمين' },
     },
   ],
+  'hr.applicant-documents',
 );
 
 /** The catalogue of what is asked for (D-APP-4) — administered, like every other catalogue. */
@@ -337,6 +338,7 @@ const applicantDocumentTypePermissions = declarePermissions(
       name: { en: 'Manage applicant document types', ar: 'إدارة أنواع مستندات المتقدمين' },
     },
   ],
+  'hr.applicant-documents',
 );
 
 const drivingTestPermissions = declarePermissions(
@@ -997,6 +999,15 @@ export const hrPages: PageDef[] = [
     name: { en: 'Employee files', ar: 'ملفات الموظفين' },
     route: '/employee-files',
     sortOrder: 110,
+  },
+  {
+    // P-HR-APP §5 — the reviewer's worklist for what CANDIDATES hand in, which is a different
+    // population and a different moment from the hiring documents a new employee provides.
+    id: 'hr.applicant-documents',
+    moduleId: 'hr',
+    name: { en: 'Applicant documents', ar: 'مستندات المتقدمين' },
+    route: '/applicant-documents',
+    sortOrder: 118,
   },
   {
     id: 'hr.hiring-documents',

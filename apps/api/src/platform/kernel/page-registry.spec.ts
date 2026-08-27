@@ -22,8 +22,8 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 62 pages over 244 permissions', () => {
-    expect(pages).toHaveLength(62);
+  it('declares 63 pages over 244 permissions', () => {
+    expect(pages).toHaveLength(63);
     expect(permissions).toHaveLength(244);
   });
 
@@ -45,25 +45,24 @@ describe('the assembled page registry', () => {
    * decides both steps of one lifecycle. The unassigned count stays at 25 — the same test P-ORG-1
    * passed in the other direction.
    */
-  it('assigns 214 permissions to a page and leaves 30 deliberately unassigned', () => {
+  it('assigns 217 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(214);
+    expect(assigned).toHaveLength(217);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
     //
-    // Its phase 3 adds three more the same way, and deliberately does NOT route them yet. The
-    // review screen is phase 4; assigning these keys to a page that does not exist would make this
-    // registry describe a system nobody can open. `employeeLoan` is the precedent and it is worth
-    // following exactly: it left the unassigned list IN the change that built its screen, never
-    // before it.
-    expect(permissions.length - assigned.length).toBe(30);
+    // Its phase 3 added three the same way and deliberately did NOT route them: the review screen
+    // was phase 4, and assigning keys to a page that does not exist would make this registry
+    // describe a system nobody can open. Phase 4 built that screen, so the three moved here — in
+    // the change that built it, exactly as `employeeLoan` did and never before.
+    expect(permissions.length - assigned.length).toBe(27);
   });
 
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 28, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 29, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer
@@ -101,11 +100,6 @@ describe('the assembled page registry', () => {
         // button is not a page.
         'applicantPortal',
         'applicantPortalAdmin',
-        // P-HR-APP phase 3. The API exists and the screens do not yet — so these are unassigned
-        // for the one honest reason a key can be: there is nothing to point at. They move to
-        // `hr.applicant-documents` in the change that builds it, and not a phase earlier.
-        'applicantDocument',
-        'applicantDocumentType',
       ].sort(),
     );
   });

@@ -216,6 +216,54 @@ export interface ApplicantDocumentSetDto {
   updatedAt: string;
 }
 
+// ── Where the candidate stands (D-APP-8) ───────────────────────────────────
+
+/**
+ * The pipeline as the CANDIDATE is allowed to see it.
+ *
+ * The internal timeline carries thirty-three event types, among them security-check outcomes,
+ * evaluation scores and recruiters' notes. None of that is theirs to read. What they get is a
+ * six-step map with one terminal refusal — enough to answer «where has my application got to»
+ * and not enough to answer anything else.
+ *
+ * These six are NOT invented for the portal: they are `RECRUITMENT_STAGE_KINDS` under names a
+ * candidate would use. Keeping the shapes aligned means a seventh internal stage cannot quietly
+ * appear with nowhere to map, because the mapper must then name where it belongs.
+ */
+export const APPLICANT_PORTAL_STEPS = [
+  'applied',
+  'screeningPassed',
+  'interview',
+  'assessment',
+  'jobOffer',
+  'hired',
+  'rejected',
+] as const;
+export const ApplicantPortalStepSchema = z.enum(APPLICANT_PORTAL_STEPS);
+export type ApplicantPortalStep = z.infer<typeof ApplicantPortalStepSchema>;
+
+/**
+ * What the candidate's own screen reads.
+ *
+ * Deliberately small. There is no score, no reason, no decider, and no date beyond the one they
+ * already know — every one of those was a decision somebody made ABOUT them rather than a fact
+ * they are owed, and a portal is not the place a person learns them.
+ */
+export interface ApplicantPortalStatusDto {
+  applicantCode: string;
+  fullNameAr: string;
+  /** Where they stand, and the only stage word they ever see. */
+  step: ApplicantPortalStep;
+  /** True once the pipeline is over for them, either way — nothing more is coming. */
+  terminal: boolean;
+  /**
+   * The seat they applied to, as the denormalized label the recruiter screens already show. Null
+   * when nobody has placed them yet — which is a normal state, not an error to render.
+   */
+  position: string | null;
+  appliedAt: string;
+}
+
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────
 
 export const HrApplicantDocumentEvents = {

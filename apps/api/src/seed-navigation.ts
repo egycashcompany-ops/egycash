@@ -263,6 +263,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'contract.view',
       },
       {
+        // P-HR-APP §5 — what CANDIDATES hand in, reviewed. Beside hiring documents because they are
+        // the same kind of work at two different moments: before the offer and after the hire.
+        en: 'Applicant Documents',
+        ar: 'مستندات المتقدمين',
+        route: '/applicant-documents',
+        icon: 'file',
+        permission: 'applicantDocument.view',
+      },
+      {
         en: 'Hiring Documents',
         ar: 'مستندات التعيين',
         route: '/hiring-documents',

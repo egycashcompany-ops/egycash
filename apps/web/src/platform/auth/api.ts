@@ -23,6 +23,39 @@ export const totpChallengeRequest = async (
   return response;
 };
 
+/**
+ * The applicant portal's sign-in, in two calls (P-HR-APP §4).
+ *
+ * `startPortalChallenge` ALWAYS resolves. That is not sloppiness: the server answers the same
+ * `{accepted: true}` whether the two numbers matched a candidate, matched nobody, or matched
+ * somebody who is simply rate-limited — so the screen cannot tell the caller which, and neither
+ * can this function. `retryAfterSeconds` is the only thing that varies, and it is a courtesy for
+ * the resend timer rather than a signal about who exists.
+ */
+export const startPortalChallenge = (
+  subjectType: string,
+  identifier: string,
+  phone: string,
+): Promise<{ accepted: true; retryAfterSeconds: number }> =>
+  post('/auth/portal/challenge', { subjectType, identifier, phone });
+
+/** Trade a correct code for a session. Every refusal is one refusal — see the service. */
+export const completePortalChallenge = async (
+  subjectType: string,
+  identifier: string,
+  phone: string,
+  code: string,
+): Promise<LoginResponse> => {
+  const response = await post<LoginResponse>('/auth/portal/verify', {
+    subjectType,
+    identifier,
+    phone,
+    code,
+  });
+  if (!response.totpRequired) setAccessToken(response.accessToken);
+  return response;
+};
+
 export const totpEnrollWithChallengeRequest = (
   challengeToken: string,
 ): Promise<{ secret: string; otpauthUrl: string }> =>

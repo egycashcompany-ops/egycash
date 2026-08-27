@@ -31,6 +31,8 @@ export interface EvaluationDoc extends BaseDocFields, StageDocFields {
   applicantCode: string;
   applicantName: string;
   branchId: Types.ObjectId | null;
+  /** The department axis, mirrored from the applicant beside `branchId` (F-REQ-1). */
+  departmentId: Types.ObjectId | null;
   phaseId: Types.ObjectId;
   phaseKey: string;
   phaseName: LocalizedString;
@@ -67,6 +69,7 @@ const evaluationSchema = new Schema<EvaluationDoc>(
     applicantCode: { type: String, required: true },
     applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     phaseId: { type: Schema.Types.ObjectId, required: true },
     phaseKey: { type: String, required: true },
     phaseName: { ar: { type: String, required: true }, en: { type: String, required: true } },
@@ -103,6 +106,9 @@ evaluationSchema.index({ batchId: 1 }, { name: 'ix_batchId' });
 evaluationSchema.index({ applicantId: 1, phaseOrder: 1 }, { name: 'ix_applicant_order' });
 evaluationSchema.index({ phaseId: 1, status: 1 }, { name: 'ix_phase_status' });
 evaluationSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branch_status' });
+// The department axis reads as often as the branch one does, so it is indexed the same way
+// — a declared scope field with no index is a collection scan on every scoped list.
+evaluationSchema.index({ departmentId: 1, status: 1 }, { name: 'ix_departmentId_status' });
 
 // I3 — the aggregated stage counters (RW15) group the LIVE set by status, with no predicate to
 // narrow it: exactly the shape that would otherwise scan the collection and fetch every document

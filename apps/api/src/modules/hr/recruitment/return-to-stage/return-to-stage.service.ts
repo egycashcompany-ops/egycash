@@ -174,6 +174,7 @@ class ReturnToStageService {
           applicantCode: plan.applicant.code,
           applicantName: plan.applicant.fullNameAr,
           branchId: plan.applicant.branchId,
+          departmentId: plan.applicant.departmentId,
           stageRefId: plan.target.stageRefId,
           attempt: plan.newAttempt,
           actorUserId: ctx.userId,

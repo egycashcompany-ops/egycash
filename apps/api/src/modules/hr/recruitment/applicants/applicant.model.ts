@@ -76,6 +76,12 @@ export interface ApplicantDoc extends BaseDocFields {
   // (the reference may be attached later when the Job Requests module lands).
   jobRequisitionId: Types.ObjectId | null;
   branchId: Types.ObjectId | null;
+  /**
+   * The department axis of the data scope (F-REQ-1), a live MIRROR of `placement.departmentId`
+   * exactly as `branchId` above mirrors `placement.branchId` — written by the same single writer,
+   * never edited on its own, and re-synced when the candidate is reassigned.
+   */
+  departmentId: Types.ObjectId | null;
   sourceId: Types.ObjectId;
   sourceDetail: ApplicantSourceDetail | null;
   intakeChannel: ApplicantIntakeChannel;
@@ -189,6 +195,7 @@ const applicantSchema = new Schema<ApplicantDoc>(
     },
     jobRequisitionId: { type: Schema.Types.ObjectId, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     sourceId: { type: Schema.Types.ObjectId, required: true },
     sourceDetail: {
       type: new Schema<ApplicantSourceDetail>(
@@ -367,6 +374,9 @@ applicantSchema.index({ status: 1, createdAt: -1 }, { name: 'ix_status_createdAt
 applicantSchema.index({ sourceId: 1 }, { name: 'ix_sourceId' });
 applicantSchema.index({ jobRequisitionId: 1 }, { name: 'ix_jobRequisitionId' });
 applicantSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
+// The department axis reads as often as the branch one does, so it is indexed the same way
+// — a declared scope field with no index is a collection scan on every scoped list.
+applicantSchema.index({ departmentId: 1, status: 1 }, { name: 'ix_departmentId_status' });
 // Candidate-attribute filters on the stage queues (age range + education level) resolve to a set
 // of applicant ids here before the queue narrows itself, so this query runs once per request and
 // must not scan. `education.level` leads because it is an equality bound; `birthDate` follows as

@@ -177,6 +177,11 @@ class ApplicantService {
       placement.branchId !== null
         ? String(placement.branchId)
         : (resolution?.branchId ?? input.branchId ?? null);
+    // F-REQ-1 — the department mirror, from the resolved placement and from nowhere else. There
+    // is no bare `input.departmentId` to fall back to (unlike the branch, which ADR-016 lets a
+    // direct intake state on its own), so a candidate placed in no department carries none: they
+    // are organization-wide until somebody places them, which is what the pipeline already shows.
+    const departmentId = placement.departmentId;
 
     const doc = await applicantRepository.create(
       {
@@ -188,6 +193,7 @@ class ApplicantService {
         jobRequisitionId:
           input.jobRequisitionId === undefined ? null : new Types.ObjectId(input.jobRequisitionId),
         branchId: oid(branchId),
+        departmentId,
         sourceId: new Types.ObjectId(input.sourceId),
         sourceDetail:
           input.sourceDetail === undefined
@@ -905,7 +911,8 @@ class ApplicantService {
   }
 
   /**
-   * RW1 — the single writer of `placement` and its ADR-015 scope mirror `branchId`. The
+   * RW1 — the single writer of `placement` and its scope mirrors `branchId` (ADR-015) and
+   * `departmentId` (F-REQ-1). The
    * reassignment feature composes the whole act (history, stage scopes, timeline, offer revision)
    * and calls this for the applicant's own row, so the mirror can never drift.
    */
@@ -916,6 +923,7 @@ class ApplicantService {
     scope: ScopeSelector,
     set: Pick<ApplicantDoc, 'placement' | 'placementLabel' | 'placementHistory'> & {
       branchId: ApplicantDoc['branchId'];
+      departmentId: ApplicantDoc['departmentId'];
     },
   ): Promise<ApplicantDoc> {
     return applicantRepository.updateById(id, set, { by: ctx.userId, version, scope });

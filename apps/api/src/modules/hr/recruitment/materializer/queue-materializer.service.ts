@@ -61,6 +61,7 @@ const subjectOf = (applicant: ApplicantDoc) => ({
   applicantCode: applicant.code,
   applicantName: applicant.fullNameAr,
   branchId: applicant.branchId,
+  departmentId: applicant.departmentId,
   placement: applicant.placement,
   placementLabel: applicant.placementLabel,
 });

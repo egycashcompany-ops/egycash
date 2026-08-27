@@ -22,6 +22,16 @@ export const getJobTitle = async (req: Request, res: Response): Promise<void> =>
   ok(res, await jobTitleService.toDtoNamed(await jobTitleService.getById(params.id)));
 };
 
+/**
+ * The dropdown surface (see the service for why it is not gated by `jobTitle.view`).
+ *
+ * Authenticated only — it is the same decoupling `org-unit.http.ts` states for the other three
+ * units, and stating it differently here would be the two-answers-to-one-question failure.
+ */
+export const jobTitleOptions = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await jobTitleService.options());
+};
+
 export const createJobTitle = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<CreateJobTitle>(req);

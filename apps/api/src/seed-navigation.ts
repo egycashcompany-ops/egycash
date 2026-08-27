@@ -265,6 +265,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'clipboard',
         permission: 'trainingSession.view',
       },
+      // The queue sits between the two: it is worked daily like a session, and it is not
+      // configuration. On `view`, because whoever may nominate must be able to see what they asked
+      // for — the DECISION buttons inside it carry the second key.
+      {
+        en: 'Training Nominations',
+        ar: 'ترشيحات التدريب',
+        route: '/training/nominations',
+        icon: 'clipboard',
+        permission: 'trainingNomination.view',
+      },
       {
         en: 'Training Catalogue',
         ar: 'كتالوج التدريب',

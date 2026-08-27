@@ -24,6 +24,7 @@ const SECTIONS = read('../../../../../api/src/seed-application-sections.ts');
 
 const SCREENS = [
   { page: 'hr.training-sessions', route: '/training/sessions', path: 'sessions' },
+  { page: 'hr.training-nominations', route: '/training/nominations', path: 'nominations' },
   { page: 'hr.training-courses', route: '/training/courses', path: 'courses' },
 ] as const;
 
@@ -69,6 +70,19 @@ describe('each screen is gated by the key that matches what it does', () => {
     expect(ROUTES).toContain('permission="trainingSession.view"');
     expect(SEED).toContain("permission: 'trainingSession.view'");
   });
+
+  /**
+   * The queue is on `view` and the DECISION buttons inside it on `decide` (D3). Gating the whole
+   * screen on `decide` would hide from a nominator the answer to what they asked — and gating the
+   * buttons on `view` would put the two-person rule entirely in the server's hands, where the
+   * person clicking would learn about it only from a refusal.
+   */
+  it('the nominations screen asks for view, and its decisions for decide', () => {
+    expect(ROUTES).toContain('permission="trainingNomination.view"');
+    expect(SEED).toContain("permission: 'trainingNomination.view'");
+    const page = read('pages/TrainingNominationsPage.tsx');
+    expect(page).toContain('permission="trainingNomination.decide"');
+  });
 });
 
 /**
@@ -79,7 +93,7 @@ describe('each screen is gated by the key that matches what it does', () => {
  * way for that to happen is somebody adding the row while the API is still in flight.
  */
 describe('no surface exists for a phase that has not shipped', () => {
-  it.each(['nominations', 'enrollments', 'certificates', 'records'])(
+  it.each(['certificates', 'records', 'history'])(
     'nothing routes to /training/%s',
     (unshipped) => {
       expect(ROUTES).not.toContain(`path="${unshipped}"`);

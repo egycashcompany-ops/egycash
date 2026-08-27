@@ -34,6 +34,10 @@ import { HrEmployeeLoanEvents } from '../modules/hr-employee-loans.js';
 import { HrJobRequisitionEvents } from '../modules/hr-job-requisition.js';
 import { HrContractEvents } from '../modules/hr-contract.js';
 import { HrTrainingEvents } from '../modules/hr-training.js';
+import {
+  HrTrainingEnrollmentEvents,
+  HrTrainingNominationEvents,
+} from '../modules/hr-training-nominations.js';
 import { HrOfferEvents } from '../modules/hr-job-offer.js';
 import { HrInterviewEvents } from '../modules/hr-interview.js';
 import { HrScreeningEvents } from '../modules/hr-screening.js';
@@ -80,6 +84,8 @@ const HR_EVENT_CONSTANTS = [
   // reason the two notes above give: a catalogued name with no constant behind it is a trigger
   // that can never fire, and this list is what proves the two sides agree.
   HrTrainingEvents,
+  HrTrainingNominationEvents,
+  HrTrainingEnrollmentEvents,
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);

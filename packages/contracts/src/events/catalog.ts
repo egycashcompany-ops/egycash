@@ -162,6 +162,14 @@ import {
   TrainingSessionEventPayloadV1,
 } from '../modules/hr-training.js';
 import {
+  HrTrainingEnrollmentEvents,
+  HrTrainingNominationEvents,
+  type HrTrainingEnrollmentEventName,
+  type HrTrainingNominationEventName,
+  TrainingEnrollmentEventPayloadV1,
+  TrainingNominationEventPayloadV1,
+} from '../modules/hr-training-nominations.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -661,6 +669,11 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // the fact that qualifies people (D7). The same reasoning that made `jobRequisition` its own
   // entity rather than an action on `jobOffer`.
   trainingSession: { en: 'Training session', ar: 'جلسة تدريب' },
+  // The REQUEST and the SEAT are two subjects, not two actions on one: a nomination may be refused
+  // and still exists, while a seat exists only once somebody said yes. Collapsing them would make
+  // «rejected» and «cancelled» read as the same thing happening to the same object.
+  trainingNomination: { en: 'Training nomination', ar: 'ترشيح تدريب' },
+  trainingEnrollment: { en: 'Training seat', ar: 'مقعد تدريب' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -1073,7 +1086,9 @@ export type HrCatalogEventName =
   | HrEmployeeLoanEventName
   | HrJobRequisitionEventName
   | HrContractEventName
-  | HrTrainingEventName;
+  | HrTrainingEventName
+  | HrTrainingNominationEventName
+  | HrTrainingEnrollmentEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1207,6 +1222,15 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrTrainingEvents.SessionStarted]: TrainingSessionEventPayloadV1,
   [HrTrainingEvents.SessionCompleted]: TrainingSessionEventPayloadV1,
   [HrTrainingEvents.SessionCancelled]: TrainingSessionEventPayloadV1,
+
+  // T3 — one payload shape per subject: the four nomination facts differ only in which moment they
+  // report, and the nomination's own ids already say which request is meant.
+  [HrTrainingNominationEvents.Submitted]: TrainingNominationEventPayloadV1,
+  [HrTrainingNominationEvents.Approved]: TrainingNominationEventPayloadV1,
+  [HrTrainingNominationEvents.Rejected]: TrainingNominationEventPayloadV1,
+  [HrTrainingNominationEvents.Withdrawn]: TrainingNominationEventPayloadV1,
+  [HrTrainingEnrollmentEvents.Created]: TrainingEnrollmentEventPayloadV1,
+  [HrTrainingEnrollmentEvents.Cancelled]: TrainingEnrollmentEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

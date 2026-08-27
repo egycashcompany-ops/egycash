@@ -11,21 +11,36 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import {
+  CancelTrainingEnrollmentSchema,
   CreateTrainingCourseSchema,
+  CreateTrainingNominationSchema,
   CreateTrainingSessionSchema,
+  DecideTrainingNominationSchema,
+  EnrollInTrainingSessionSchema,
+  ListTrainingEnrollmentsQuerySchema,
+  ListTrainingNominationsQuerySchema,
   ListTrainingCoursesQuerySchema,
   ListTrainingSessionsQuerySchema,
   TransitionTrainingSessionSchema,
   UpdateTrainingCourseSchema,
   UpdateTrainingSessionSchema,
+  WithdrawTrainingNominationSchema,
   objectId,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../platform/web';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import {
+  cancelTrainingEnrollment,
   createTrainingCourse,
+  createTrainingNomination,
   createTrainingSession,
+  decideTrainingNomination,
+  enrollInTrainingSession,
+  getTrainingNomination,
+  listTrainingEnrollments,
+  listTrainingNominations,
+  withdrawTrainingNomination,
   getTrainingCourse,
   getTrainingSession,
   listTrainingCourses,
@@ -107,6 +122,84 @@ export const buildTrainingSessionsRouter = (): Router => {
     authorize('trainingSession.conduct'),
     validate({ body: TransitionTrainingSessionSchema, params: IdParamSchema }),
     asyncHandler(transitionTrainingSession),
+  );
+  return router;
+};
+
+/**
+ * Nominations and the seats they create (T3).
+ *
+ * THE PERMISSION SPLIT IS D3 MADE MECHANICAL. `create` asks; `decide` answers. Two keys, because
+ * one key held by one person is not a two-person rule — and the service additionally refuses the
+ * nominator their own decision, since a key says what you may do, not who you are.
+ *
+ * Seats sit on `decide` rather than a key of their own: putting somebody in directly and approving
+ * a nomination for them are the same act with and without the paperwork, and taking a seat back is
+ * the same authority reversing itself. A third key would suggest they were three different powers.
+ */
+export const buildTrainingNominationsRouter = (): Router => {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    authorize('trainingNomination.view'),
+    validate({ query: ListTrainingNominationsQuerySchema }),
+    asyncHandler(listTrainingNominations),
+  );
+  router.get(
+    '/:id',
+    authenticate,
+    authorize('trainingNomination.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getTrainingNomination),
+  );
+  router.post(
+    '/',
+    authenticate,
+    authorize('trainingNomination.create'),
+    validate({ body: CreateTrainingNominationSchema }),
+    asyncHandler(createTrainingNomination),
+  );
+  router.post(
+    '/:id/decide',
+    authenticate,
+    authorize('trainingNomination.decide'),
+    validate({ body: DecideTrainingNominationSchema, params: IdParamSchema }),
+    asyncHandler(decideTrainingNomination),
+  );
+  // On `create`, not `decide`: taking your own request back is not a decision about somebody.
+  router.post(
+    '/:id/withdraw',
+    authenticate,
+    authorize('trainingNomination.create'),
+    validate({ body: WithdrawTrainingNominationSchema, params: IdParamSchema }),
+    asyncHandler(withdrawTrainingNomination),
+  );
+  return router;
+};
+
+export const buildTrainingEnrollmentsRouter = (): Router => {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    authorize('trainingNomination.view'),
+    validate({ query: ListTrainingEnrollmentsQuerySchema }),
+    asyncHandler(listTrainingEnrollments),
+  );
+  router.post(
+    '/',
+    authenticate,
+    authorize('trainingNomination.decide'),
+    validate({ body: EnrollInTrainingSessionSchema }),
+    asyncHandler(enrollInTrainingSession),
+  );
+  router.post(
+    '/:id/cancel',
+    authenticate,
+    authorize('trainingNomination.decide'),
+    validate({ body: CancelTrainingEnrollmentSchema, params: IdParamSchema }),
+    asyncHandler(cancelTrainingEnrollment),
   );
   return router;
 };

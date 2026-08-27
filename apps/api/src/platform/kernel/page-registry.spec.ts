@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 65 pages over 249 permissions', () => {
-    expect(pages).toHaveLength(65);
-    expect(permissions).toHaveLength(249);
+  it('declares 66 pages over 252 permissions', () => {
+    expect(pages).toHaveLength(66);
+    expect(permissions).toHaveLength(252);
   });
 
   /**
@@ -49,10 +49,15 @@ describe('the assembled page registry', () => {
    * move. `trainingCourse.manage` administers the catalogue screen; the four `trainingSession.*`
    * keys point at the sessions screen, including `conduct`, which is a key per transition rather
    * than a screen per transition — the same shape P-HR-10 established for the payroll lifecycle.
+   *
+   * Its T3 adds three keys and one page, all three assigned. `trainingNomination.decide` covers
+   * the seat as well as the request — putting somebody in directly and approving a nomination for
+   * them are the same act with and without the paperwork — so the count moves by three and not by
+   * the four a key-per-endpoint reading would predict.
    */
-  it('assigns 222 permissions to a page and leaves 27 deliberately unassigned', () => {
+  it('assigns 225 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(222);
+    expect(assigned).toHaveLength(225);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -67,7 +72,7 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 31, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 32, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

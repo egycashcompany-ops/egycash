@@ -92,7 +92,12 @@ import {
   employeeLoanService,
   hrEmployeeLoanFileAuthorizers,
 } from './employee-loans';
-import { buildTrainingCoursesRouter, buildTrainingSessionsRouter } from './training';
+import {
+  buildTrainingCoursesRouter,
+  buildTrainingEnrollmentsRouter,
+  buildTrainingNominationsRouter,
+  buildTrainingSessionsRouter,
+} from './training';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -847,6 +852,33 @@ const trainingSessionPermissions = declarePermissions(
   'hr.training-sessions',
 );
 
+/**
+ * Nominations (P-HR-TRN D3). Two keys and not one, because one key held by one person is not a
+ * two-person rule: `create` asks, `decide` answers, and the service additionally refuses the
+ * nominator their own decision.
+ *
+ * Seats have no key of their own. Putting somebody in directly and approving a nomination for them
+ * are the same act with and without the paperwork, and taking a seat back is that authority
+ * reversing itself — so all three sit on `decide`. A third key would suggest three powers where
+ * there is one.
+ */
+const trainingNominationPermissions = declarePermissions(
+  'hr',
+  'trainingNomination',
+  { en: 'training nominations', ar: 'ترشيحات التدريب' },
+  ['view', 'create'],
+  [
+    {
+      action: 'decide',
+      name: {
+        en: 'Decide training nominations and seats',
+        ar: 'البتّ في ترشيحات التدريب والمقاعد',
+      },
+    },
+  ],
+  'hr.training-nominations',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -932,6 +964,7 @@ export const hrPermissions: PermissionDef[] = [
   ...payrollReportPermissions,
   ...trainingCoursePermissions,
   ...trainingSessionPermissions,
+  ...trainingNominationPermissions,
 ];
 
 /**
@@ -1165,6 +1198,14 @@ export const hrPages: PageDef[] = [
     route: '/training/courses',
     sortOrder: 310,
   },
+  // Between the two: a nomination is worked daily like a session, and is not configuration.
+  {
+    id: 'hr.training-nominations',
+    moduleId: 'hr',
+    name: { en: 'Training nominations', ar: 'ترشيحات التدريب' },
+    route: '/training/nominations',
+    sortOrder: 305,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -1252,6 +1293,8 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employee-loans', router: buildEmployeeLoansAdminRouter() },
     { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
+    { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },
+    { prefix: '/hr/training/enrollments', router: buildTrainingEnrollmentsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -1302,6 +1345,8 @@ export const hrModule: ModuleManifest = {
     'hr_loan_repayments',
     'hr_training_courses',
     'hr_training_sessions',
+    'hr_training_nominations',
+    'hr_training_enrollments',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no

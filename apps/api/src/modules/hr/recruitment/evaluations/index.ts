@@ -6,3 +6,5 @@ export { evaluationPhaseService } from './evaluation-phase.service';
 export { ensureEvaluationCategory } from './evaluation.files';
 export { type EvaluationDoc } from './evaluation.model';
 export { type EvaluationPhaseDoc } from './evaluation-phase.model';
+// The single answer to "is this phase drivers-only" — the materializer asks it too (ADR-003).
+export { applicabilityOf, isDriversOnlyPhase } from './phase-applicability';

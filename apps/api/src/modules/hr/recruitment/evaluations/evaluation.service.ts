@@ -28,6 +28,7 @@ import { recruitmentWorkflowEngine, registerStageBinding, runBulk, type StageBin
 import { EvaluationModel } from './evaluation.model';
 import { evaluationRepository, type EvaluationListFilter } from './evaluation.repository';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
+import { isDriversOnlyPhase } from './phase-applicability';
 import { resolveEvaluationCategoryId } from './evaluation.files';
 import { type EvaluationDoc, type EvaluationFile } from './evaluation.model';
 
@@ -327,9 +328,11 @@ class EvaluationService {
    * Whether the applicant has cleared every active evaluation phase — every non-driver phase is
    * `approved`, plus any driver phase that was actually opened for them.
    *
-   * The driver rule leans on the materializer, which opens a `driversOnly` phase only for somebody
+   * The driver rule leans on the materializer, which opens a drivers-only phase only for somebody
    * whose job title requires a driving test: a phase that was never opened was never theirs to
-   * pass. This is the ONE answer to "have they finished the checks" — the offers queue asks it too
+   * pass. That reasoning is only sound while both sides read applicability the same way, so both
+   * call `isDriversOnlyPhase` — see `phase-applicability.ts` for what went wrong when they did
+   * not. This is the ONE answer to "have they finished the checks"; the offers queue asks it too
    * rather than carrying a second copy with its own idea of who owes what.
    */
   /** The offers queue's starting set — see the repository for why it starts here. */
@@ -348,8 +351,10 @@ class EvaluationService {
     );
     return phases.every((phase) => {
       const record = byPhase.get(String(phase._id));
-      // Driver-only phases only gate when they were opened for this applicant.
-      if (phase.driversOnly && record === undefined) return true;
+      // Driver-only phases only gate when they were opened for this applicant — and "driver-only"
+      // is asked through the shared predicate, so this and the materializer that DID or did not
+      // open the phase cannot answer it differently.
+      if (isDriversOnlyPhase(phase) && record === undefined) return true;
       return record !== undefined && record.status === 'approved';
     });
   }

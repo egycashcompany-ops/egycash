@@ -11,13 +11,14 @@ import {
 } from '@ecms/contracts';
 import { ok, created, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
-import { ValidationError } from '../../../../shared/errors';
+import { NotFoundError, ValidationError } from '../../../../shared/errors';
 import { type UploadedBinary } from '../../../../platform/files';
 import { applicantDocumentService } from './applicant-document.service';
 import {
   applicantDocumentTypeService,
   toApplicantDocumentTypeDto,
 } from './applicant-document-type.service';
+import { applicantPortalService } from '../applicant-portal';
 import { portalApplicantId } from './portal-subject';
 
 /** The envelope's page block, computed once rather than spelled out at each call site. */
@@ -46,6 +47,13 @@ const binaryOf = (req: Request): UploadedBinary => {
 
 export const getMyDocuments = async (req: Request, res: Response): Promise<void> => {
   ok(res, await applicantDocumentService.setFor(await portalApplicantId(req)));
+};
+
+/** Where they stand (D-APP-8). Six words, and the narrowing that produces them is `portal-step.ts`. */
+export const getMyStatus = async (req: Request, res: Response): Promise<void> => {
+  const status = await applicantPortalService.statusFor(await portalApplicantId(req));
+  if (status === null) throw new NotFoundError();
+  ok(res, status);
 };
 
 export const submitMyDocument = async (req: Request, res: Response): Promise<void> => {

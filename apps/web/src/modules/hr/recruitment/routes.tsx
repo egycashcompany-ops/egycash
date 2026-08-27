@@ -30,6 +30,7 @@ import { JobOfferDetailPage } from './job-offers/pages/JobOfferDetailPage';
 import { JobOfferFormPage } from './job-offers/pages/JobOfferFormPage';
 import { JobRequisitionsListPage } from './job-requisitions/pages/JobRequisitionsListPage';
 import { JobRequisitionDetailPage } from './job-requisitions/pages/JobRequisitionDetailPage';
+import { ApplicantDocumentsQueuePage } from './applicant-documents/pages/ApplicantDocumentsQueuePage';
 import { HiringDocsListPage } from './hiring-documents/pages/HiringDocsListPage';
 import { HiringDocsDetailPage } from './hiring-documents/pages/HiringDocsDetailPage';
 
@@ -186,6 +187,16 @@ export default function RecruitmentRoutes(): JSX.Element {
           <Route index element={<JobRequisitionsListPage />} />
           <Route path=":id" element={<JobRequisitionDetailPage />} />
         </Route>
+        {/* P-HR-APP §5 — the reviewer's worklist. One screen, no detail route: a reviewer's unit of
+            work is one PERSON's documents, and each candidate expands in place. */}
+        <Route
+          path="applicant-documents"
+          element={
+            <RequirePermission permission="applicantDocument.view">
+              <ApplicantDocumentsQueuePage />
+            </RequirePermission>
+          }
+        />
         <Route
           path="hiring-documents"
           element={

@@ -45,6 +45,14 @@ const SystemAdminRoutes = lazy(() => import('../../modules/system-admin/routes')
 const VerifyContractPage = lazy(
   () => import('../../modules/hr/contracts/pages/VerifyContractPage'),
 );
+const ApplicantPortalLoginPage = lazy(() =>
+  import('../../modules/hr/recruitment/applicant-portal/ApplicantPortalLoginPage').then((m) => ({
+    default: m.ApplicantPortalLoginPage,
+  })),
+);
+const ApplicantPortalRoutes = lazy(
+  () => import('../../modules/hr/recruitment/applicant-portal/routes'),
+);
 const PublicApplyPage = lazy(() =>
   import('../../modules/hr/recruitment/recruitment-form/pages/PublicApplyPage').then((m) => ({
     default: m.PublicApplyPage,
@@ -135,6 +143,37 @@ export const App = (): JSX.Element => {
               }
             >
               <PortalLoginPage />
+            </Suspense>
+          }
+        />
+        {/* بوابة المتقدمين — the candidates'. Public in the same sense /login is: the guard is
+            inside, and it sends an unauthenticated visitor to the CANDIDATE's login rather than
+            the staff one. Declared here, above the catch-all, for the same reason /portal is. */}
+        <Route
+          path="/applicant-portal/login"
+          element={
+            <Suspense
+              fallback={
+                <div className="grid min-h-screen place-items-center">
+                  <LoadingState />
+                </div>
+              }
+            >
+              <ApplicantPortalLoginPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/applicant-portal/*"
+          element={
+            <Suspense
+              fallback={
+                <div className="grid min-h-screen place-items-center">
+                  <LoadingState />
+                </div>
+              }
+            >
+              <ApplicantPortalRoutes />
             </Suspense>
           }
         />

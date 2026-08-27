@@ -25,6 +25,7 @@ const SECTIONS = read('../../../../../api/src/seed-application-sections.ts');
 const SCREENS = [
   { page: 'hr.training-sessions', route: '/training/sessions', path: 'sessions' },
   { page: 'hr.training-nominations', route: '/training/nominations', path: 'nominations' },
+  { page: 'hr.training-records', route: '/training/records', path: 'records' },
   { page: 'hr.training-courses', route: '/training/courses', path: 'courses' },
 ] as const;
 
@@ -93,7 +94,7 @@ describe('each screen is gated by the key that matches what it does', () => {
  * way for that to happen is somebody adding the row while the API is still in flight.
  */
 describe('no surface exists for a phase that has not shipped', () => {
-  it.each(['certificates', 'records', 'history'])(
+  it.each(['history', 'attendance', 'certificates'])(
     'nothing routes to /training/%s',
     (unshipped) => {
       expect(ROUTES).not.toContain(`path="${unshipped}"`);

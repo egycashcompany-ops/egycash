@@ -282,6 +282,14 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'file',
         permission: 'trainingCourse.manage',
       },
+      // Last of the four: a record is read from what the three above produced.
+      {
+        en: 'Training Records',
+        ar: 'سجلات التدريب',
+        route: '/training/records',
+        icon: 'file',
+        permission: 'trainingRecord.view',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

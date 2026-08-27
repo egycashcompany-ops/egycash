@@ -16,7 +16,11 @@ import {
   type CreateTrainingNomination,
   type CreateTrainingSession,
   type DecideTrainingNomination,
+  type AttachTrainingCertificate,
+  type CompleteTrainingSession,
   type EnrollInTrainingSession,
+  type MarkTrainingAttendance,
+  type MarkTrainingAttendanceBulk,
   type TransitionTrainingSession,
   type UpdateTrainingCourse,
   type UpdateTrainingSession,
@@ -30,6 +34,7 @@ const COURSES = 'trainingCourses';
 const SESSIONS = 'trainingSessions';
 const NOMINATIONS = 'trainingNominations';
 const ENROLLMENTS = 'trainingEnrollments';
+const RECORDS = 'trainingRecords';
 
 // ── Courses ─────────────────────────────────────────────────────────────────
 
@@ -167,4 +172,60 @@ export const useEnrollInTrainingSession = () =>
 export const useCancelTrainingEnrollment = () =>
   useNominationMutation(({ id, body }: { id: string; body: CancelTrainingEnrollment }) =>
     api.cancelTrainingEnrollment(id, body),
+  );
+
+// ── The day, and what it produced ───────────────────────────────────────────
+
+export const useTrainingRecords = (params: Record<string, string | number | undefined>) =>
+  useQuery({
+    queryKey: listKey(MODULE, RECORDS, params),
+    queryFn: () => api.listTrainingRecords(params),
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * Marking and completing move FOUR things, so they refresh all four.
+ *
+ * Completing writes records, settles the seats it named, and closes the session. A screen that
+ * refreshed only the sessions would show the session finished with a roster still saying everybody
+ * is `enrolled` — which is the state somebody would then try to mark again.
+ */
+const useDayMutation = <TVars>(fn: (vars: TVars) => Promise<unknown>) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, ENROLLMENTS] });
+      void client.invalidateQueries({ queryKey: [MODULE, SESSIONS] });
+      void client.invalidateQueries({ queryKey: [MODULE, RECORDS] });
+      void client.invalidateQueries({ queryKey: [MODULE, NOMINATIONS] });
+    },
+  });
+};
+
+export const useMarkTrainingAttendance = () =>
+  useDayMutation(({ id, body }: { id: string; body: MarkTrainingAttendance }) =>
+    api.markTrainingAttendance(id, body),
+  );
+
+export const useMarkTrainingAttendanceBulk = () =>
+  useDayMutation((body: MarkTrainingAttendanceBulk) => api.markTrainingAttendanceBulk(body));
+
+export const useCompleteTrainingSession = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: CompleteTrainingSession }) =>
+      api.completeTrainingSession(id, body),
+    onSuccess: () => {
+      for (const feature of [ENROLLMENTS, SESSIONS, RECORDS, NOMINATIONS]) {
+        void client.invalidateQueries({ queryKey: [MODULE, feature] });
+      }
+    },
+  });
+};
+
+export const useAttachTrainingCertificate = () =>
+  useDayMutation(
+    ({ id, file, body }: { id: string; file: File; body: AttachTrainingCertificate }) =>
+      api.attachTrainingCertificate(id, file, body),
   );

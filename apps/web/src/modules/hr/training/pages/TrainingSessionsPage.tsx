@@ -26,6 +26,7 @@ import { Field, Input, Select, Textarea } from '../../../../shared/ui/form';
 import { formatDate } from '../../../../shared/lib/format';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { SessionStatusBadge } from '../components/SessionStatusBadge';
+import { CompleteSessionDialog } from '../components/CompleteSessionDialog';
 import {
   useActiveTrainingCourses,
   useCreateTrainingSession,
@@ -35,8 +36,17 @@ import {
 
 const DEFAULT_PAGE_SIZE = 25;
 
-/** Which transitions each status offers — the client half of `session-rules.ts`'s machine. */
-const ACTIONS: Readonly<Record<TrainingSessionStatus, readonly ('start' | 'complete' | 'cancel')[]>> = {
+/**
+ * Which buttons each status offers — the client half of `session-rules.ts`'s machine.
+ *
+ * `complete` is in this list but NOT in the transition schema, and that asymmetry is the point:
+ * completing is a button here and a different endpoint there, because it names the people it
+ * qualifies (D7) rather than only changing a status. The row offers three buttons; two of them
+ * open a confirmation and the third opens the roster.
+ */
+const ACTIONS: Readonly<
+  Record<TrainingSessionStatus, readonly ('start' | 'complete' | 'cancel')[]>
+> = {
   scheduled: ['start', 'cancel'],
   running: ['complete', 'cancel'],
   completed: [],
@@ -129,7 +139,7 @@ const TransitionDialog = ({
   onClose,
 }: {
   session: TrainingSessionDto;
-  action: 'start' | 'complete' | 'cancel';
+  action: 'start' | 'cancel';
   onClose: () => void;
 }): JSX.Element => {
   const t = useT();
@@ -195,8 +205,10 @@ export const TrainingSessionsPage = (): JSX.Element => {
   const [scheduling, setScheduling] = useState(false);
   const [acting, setActing] = useState<{
     session: TrainingSessionDto;
-    action: 'start' | 'complete' | 'cancel';
+    action: 'start' | 'cancel';
   } | null>(null);
+  // Completion is its own dialog: a list of who qualified, not a confirmation (D7).
+  const [completing, setCompleting] = useState<TrainingSessionDto | null>(null);
 
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const search = sp.get('q') ?? '';
@@ -266,7 +278,11 @@ export const TrainingSessionsPage = (): JSX.Element => {
                 key={action}
                 size="sm"
                 variant={action === 'cancel' ? 'danger' : 'secondary'}
-                onClick={() => setActing({ session: s, action })}
+                onClick={() =>
+                  action === 'complete'
+                    ? setCompleting(s)
+                    : setActing({ session: s, action })
+                }
               >
                 {t(`training.session.action.${action}`)}
               </Button>
@@ -324,6 +340,9 @@ export const TrainingSessionsPage = (): JSX.Element => {
       </div>
 
       {scheduling && <ScheduleDialog onClose={() => setScheduling(false)} />}
+      {completing !== null && (
+        <CompleteSessionDialog session={completing} onClose={() => setCompleting(null)} />
+      )}
       {acting !== null && (
         <TransitionDialog
           session={acting.session}

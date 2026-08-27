@@ -1887,6 +1887,31 @@ const en: Record<string, string> = {
   'training.course.restore': 'Teach again',
   'training.course.searchPlaceholder': 'Course name or key',
 
+  'training.session.completeAction': 'Complete for {{n}}',
+  'training.session.rosterEmpty': 'Nobody holds a seat in this session',
+  'training.enrollment.status.enrolled': 'Enrolled',
+  'training.enrollment.status.cancelled': 'Seat taken back',
+  'training.enrollment.status.attended': 'Attended',
+  'training.enrollment.status.absent': 'Did not attend',
+  'training.enrollment.status.excused': 'Excused',
+  'training.enrollment.status.completed': 'Completed',
+
+  'training.record.title': 'Training records',
+  'training.record.subtitle':
+    'What each person was taught, and when. A record says what it said the day it was written — it is never edited.',
+  'training.record.completedAt': 'Completed',
+  'training.record.expiresAt': 'Expires',
+  'training.record.expiresAtHint':
+    'Recorded because it is on the certificate. Nothing in the system acts on it.',
+  'training.record.certificate': 'Certificate',
+  'training.record.noCertificate': 'Not received yet',
+  'training.record.attachCertificate': 'Attach certificate',
+  'training.record.replaceCertificate': 'Replace certificate',
+  'training.record.certificateAttached': 'Certificate attached',
+  'training.record.attach': 'Attach',
+  'training.record.file': 'The certificate',
+  'training.record.searchPlaceholder': 'Employee, course or session',
+
   'training.nomination.title': 'Training nominations',
   'training.nomination.subtitle':
     'Who has been put forward for a session, and what was decided. A nomination is a request — the seat comes after somebody says yes.',
@@ -1946,7 +1971,7 @@ const en: Record<string, string> = {
   'training.session.confirm.cancel':
     'Nobody will be taught by this session. Say why — the people expecting it are told.',
   'training.session.done.start': 'Session started',
-  'training.session.done.complete': 'Session completed',
+  'training.session.done.complete': 'Session completed — {{n}} record(s) written',
   'training.session.done.cancel': 'Session called off',
 
   'offers.awaiting.title': 'Ready for an offer',
@@ -7919,6 +7944,29 @@ const ar: Record<string, string> = {
   'training.course.restore': 'إعادة التدريس',
   'training.course.searchPlaceholder': 'اسم الدورة أو مُعرّفها',
 
+  'training.session.completeAction': 'إنهاء لـ {{n}}',
+  'training.session.rosterEmpty': 'لا أحد يحجز مقعدًا في هذه الجلسة',
+  'training.enrollment.status.enrolled': 'مسجَّل',
+  'training.enrollment.status.cancelled': 'سُحب المقعد',
+  'training.enrollment.status.attended': 'حضر',
+  'training.enrollment.status.absent': 'لم يحضر',
+  'training.enrollment.status.excused': 'غياب بعذر',
+  'training.enrollment.status.completed': 'أتمّ التدريب',
+
+  'training.record.title': 'سجلات التدريب',
+  'training.record.subtitle': 'ما تعلَّمه كل شخص ومتى. السجل يظل كما كُتب يوم كُتب — ولا يُعدَّل بعدها.',
+  'training.record.completedAt': 'تاريخ الإتمام',
+  'training.record.expiresAt': 'تاريخ الانتهاء',
+  'training.record.expiresAtHint': 'يُسجَّل لأنه مكتوب على الشهادة. لا يترتّب عليه أي إجراء في النظام.',
+  'training.record.certificate': 'الشهادة',
+  'training.record.noCertificate': 'لم تصل بعد',
+  'training.record.attachCertificate': 'إرفاق الشهادة',
+  'training.record.replaceCertificate': 'استبدال الشهادة',
+  'training.record.certificateAttached': 'أُرفقت الشهادة',
+  'training.record.attach': 'إرفاق',
+  'training.record.file': 'ملف الشهادة',
+  'training.record.searchPlaceholder': 'الموظف أو الدورة أو الجلسة',
+
   'training.nomination.title': 'ترشيحات التدريب',
   'training.nomination.subtitle':
     'مَن رُشِّح لجلسة وما الذي تقرّر بشأنه. الترشيح طلب — والمقعد يأتي بعد موافقة أحدهم.',
@@ -7974,7 +8022,7 @@ const ar: Record<string, string> = {
   'training.session.confirm.complete': 'الإنهاء هو ما يُثبت اجتياز مَن حضروا، ولا يمكن التراجع عنه.',
   'training.session.confirm.cancel': 'لن تُدرَّس هذه الجلسة لأحد. اذكر السبب — فمَن كانوا ينتظرونها سيُبلَّغون.',
   'training.session.done.start': 'بدأت الجلسة',
-  'training.session.done.complete': 'اكتملت الجلسة',
+  'training.session.done.complete': 'اكتملت الجلسة — كُتب {{n}} سجل',
   'training.session.done.cancel': 'أُلغيت الجلسة',
 
   'offers.awaiting.title': 'جاهزون لعرض عمل',

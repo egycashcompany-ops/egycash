@@ -169,7 +169,7 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
       // somebody visits when the programme changes.
       en: 'Training & Development',
       ar: 'التدريب والتطوير',
-      routes: ['/training/sessions', '/training/nominations', '/training/courses'],
+      routes: ['/training/sessions', '/training/nominations', '/training/records', '/training/courses'],
     },
   ],
 };

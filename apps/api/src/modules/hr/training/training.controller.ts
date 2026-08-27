@@ -2,7 +2,9 @@
 // in `session-rules.ts`.
 import { type Request, type Response } from 'express';
 import {
+  type AttachTrainingCertificate,
   type CancelTrainingEnrollment,
+  type CompleteTrainingSession,
   type CreateTrainingCourse,
   type CreateTrainingNomination,
   type CreateTrainingSession,
@@ -10,6 +12,9 @@ import {
   type DecideTrainingNomination,
   type ListTrainingEnrollmentsQuery,
   type ListTrainingNominationsQuery,
+  type ListTrainingRecordsQuery,
+  type MarkTrainingAttendance,
+  type MarkTrainingAttendanceBulk,
   type ListTrainingCoursesQuery,
   type ListTrainingSessionsQuery,
   type TransitionTrainingSession,
@@ -19,6 +24,8 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage } from '../../../platform/web';
 import { validated } from '../../../infrastructure/http/validate';
+import { ValidationError } from '../../../shared/errors';
+import { type UploadedBinary } from '../../../platform/files';
 import { authContext } from '../../../platform/auth';
 import { scopeSelector } from '../../../shared/types';
 import { trainingCourseService } from './courses/training-course.service';
@@ -29,6 +36,8 @@ import {
   toTrainingEnrollmentDto,
   toTrainingNominationDto,
 } from './nominations/nomination.mapper';
+import { trainingRecordService } from './records/training-record.service';
+import { toTrainingRecordDto } from './records/record.mapper';
 
 type IdParam = { id: string };
 
@@ -175,4 +184,86 @@ export const cancelTrainingEnrollment = async (req: Request, res: Response): Pro
     nominationScope(req),
   );
   ok(res, toTrainingEnrollmentDto(doc));
+};
+
+// ── Attendance, completion, records and certificates (T4) ───────────────────
+
+const recordScope = (req: Request) => scopeSelector(authContext(req), 'trainingRecord.view');
+
+/** Multipart intake — the same shape every other HR upload uses, refused the same way when absent. */
+const binaryOf = (req: Request): UploadedBinary => {
+  const file = (req as Request & { file?: Express.Multer.File }).file;
+  if (file === undefined) {
+    throw new ValidationError([{ field: 'file', code: 'REQUIRED', message: 'a file is required' }]);
+  }
+  return {
+    originalName: file.originalname,
+    mime: file.mimetype,
+    size: file.size,
+    buffer: file.buffer,
+  };
+};
+
+export const markTrainingAttendance = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<MarkTrainingAttendance, never, IdParam>(req);
+  const doc = await trainingRecordService.markAttendance(
+    ctx,
+    params.id,
+    body,
+    scopeSelector(ctx, 'trainingNomination.view'),
+  );
+  ok(res, toTrainingEnrollmentDto(doc));
+};
+
+export const markTrainingAttendanceBulk = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<MarkTrainingAttendanceBulk>(req);
+  ok(
+    res,
+    await trainingRecordService.markAttendanceBulk(
+      ctx,
+      body,
+      scopeSelector(ctx, 'trainingNomination.view'),
+    ),
+  );
+};
+
+export const completeTrainingSession = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<CompleteTrainingSession, never, IdParam>(req);
+  const { session, created: records } = await trainingRecordService.complete(
+    ctx,
+    params.id,
+    body,
+    scopeSelector(ctx, 'trainingSession.view'),
+  );
+  ok(res, {
+    session: toTrainingSessionDto(session as never, ENROLLED_NONE),
+    recordsCreated: records,
+  });
+};
+
+export const listTrainingRecords = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, ListTrainingRecordsQuery>(req);
+  const page = await trainingRecordService.list(query, recordScope(req));
+  okPage(res, page, toTrainingRecordDto);
+};
+
+export const getTrainingRecord = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, toTrainingRecordDto(await trainingRecordService.getById(params.id, recordScope(req))));
+};
+
+export const attachTrainingCertificate = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<AttachTrainingCertificate, never, IdParam>(req);
+  const doc = await trainingRecordService.attachCertificate(
+    ctx,
+    params.id,
+    binaryOf(req),
+    body,
+    recordScope(req),
+  );
+  ok(res, toTrainingRecordDto(doc));
 };

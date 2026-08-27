@@ -96,7 +96,9 @@ import {
   buildTrainingCoursesRouter,
   buildTrainingEnrollmentsRouter,
   buildTrainingNominationsRouter,
+  buildTrainingRecordsRouter,
   buildTrainingSessionsRouter,
+  hrTrainingCertificateAuthorizers,
 } from './training';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
@@ -879,6 +881,26 @@ const trainingNominationPermissions = declarePermissions(
   'hr.training-nominations',
 );
 
+/**
+ * The record (P-HR-TRN D8). ONE KEY, and it is a read.
+ *
+ * There is no `trainingRecord.create` because nobody creates one directly — a record is written by
+ * completing a session, and a key that could mint one would be a way to claim somebody was taught
+ * something without a session ever having run. There is no `edit` and no `delete` either: a record
+ * says what somebody was taught, and that is not a thing anybody later revises.
+ *
+ * The certificate is attached on `trainingSession.conduct`, because it is the last step of running
+ * the session rather than a power over the record.
+ */
+const trainingRecordPermissions = declarePermissions(
+  'hr',
+  'trainingRecord',
+  { en: 'training records', ar: 'سجلات التدريب' },
+  ['view'],
+  [],
+  'hr.training-records',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -965,6 +987,7 @@ export const hrPermissions: PermissionDef[] = [
   ...trainingCoursePermissions,
   ...trainingSessionPermissions,
   ...trainingNominationPermissions,
+  ...trainingRecordPermissions,
 ];
 
 /**
@@ -1206,6 +1229,14 @@ export const hrPages: PageDef[] = [
     route: '/training/nominations',
     sortOrder: 305,
   },
+  // Last: a record is read from what the three above produced.
+  {
+    id: 'hr.training-records',
+    moduleId: 'hr',
+    name: { en: 'Training records', ar: 'سجلات التدريب' },
+    route: '/training/records',
+    sortOrder: 320,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -1295,6 +1326,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
     { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },
     { prefix: '/hr/training/enrollments', router: buildTrainingEnrollmentsRouter() },
+    { prefix: '/hr/training/records', router: buildTrainingRecordsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -1347,6 +1379,7 @@ export const hrModule: ModuleManifest = {
     'hr_training_sessions',
     'hr_training_nominations',
     'hr_training_enrollments',
+    'hr_training_records',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no
@@ -1358,6 +1391,10 @@ export const hrModule: ModuleManifest = {
     // ADR-023 + D-APP-9 — a candidate reaches their OWN uploads and nothing else, decided against
     // the subject on their session rather than anything in the request.
     ...hrApplicantDocumentFileAuthorizers,
+    // P-HR-TRN D9 — a certificate is filed against the RECORD it certifies. Reading follows the
+    // record's own key; writing follows the conducting key, because the person who taught the
+    // session is the person holding the paper.
+    ...hrTrainingCertificateAuthorizers,
   ],
   eventSubscriptions: [
     {

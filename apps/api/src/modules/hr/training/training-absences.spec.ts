@@ -17,14 +17,25 @@ import { describe, expect, it } from 'vitest';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-/** Every source in the feature, excluding this file — which must name the forbidden words. */
+/**
+ * Every PRODUCTION source in the feature.
+ *
+ * SPECS ARE EXCLUDED, and not only this one. A test that asserts an absence has to name the thing
+ * it forbids — `training-immutability.spec.ts` says «nothing here sweeps or schedules», and the
+ * word `sweep` in that sentence is the assertion rather than a violation of it. Scanning specs
+ * would make every guard trip every other guard, which is how a suite ends up with allow-lists
+ * nobody can read.
+ *
+ * The absences these assert are about what the SERVICE and the MODELS do. Nothing a spec contains
+ * reaches production.
+ */
 const sources = (): { name: string; text: string }[] => {
   const out: { name: string; text: string }[] = [];
   const walk = (dir: string): void => {
     for (const entry of readdirSync(dir)) {
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) walk(full);
-      else if (entry.endsWith('.ts') && !entry.endsWith('training-absences.spec.ts')) {
+      else if (entry.endsWith('.ts') && !entry.includes('.spec.')) {
         out.push({ name: full.slice(HERE.length + 1), text: readFileSync(full, 'utf8') });
       }
     }

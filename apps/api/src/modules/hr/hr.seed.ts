@@ -60,7 +60,7 @@ import {
   backfillPayslipDepartments,
 } from './payroll';
 import { backfillEmployeeLoanDepartments } from './employee-loans';
-import { seedTrainingCourses } from './training';
+import { ensureTrainingCertificateCategory, seedTrainingCourses } from './training';
 
 // `kind` says what a platform IS — how applications from it normally arrive. It does not say
 // whether the platform has an application link: every active source can be published to, whatever
@@ -504,6 +504,7 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureHiringDocumentsSeeds();
   // P-HR-TRN D1 — the starting training catalogue; create-if-missing, never overwriting.
   await seedTrainingCourses();
+  await ensureTrainingCertificateCategory();
   // Legacy recruitment documents: late-added applicant fields + denormalized applicantName
   // on the stage collections (idempotent, missing-field guarded).
   await migrateRecruitmentLegacy();

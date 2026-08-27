@@ -8,10 +8,20 @@
 //
 // The catalogue is deliberately NOT gated by `trainingSession.view`: somebody scheduling a delivery
 // must be able to pick a course, and nothing in the catalogue is sensitive.
-import { Router } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import {
+  AttachTrainingCertificateSchema,
   CancelTrainingEnrollmentSchema,
+  CompleteTrainingSessionSchema,
+  ErrorCodes,
   CreateTrainingCourseSchema,
   CreateTrainingNominationSchema,
   CreateTrainingSessionSchema,
@@ -19,6 +29,9 @@ import {
   EnrollInTrainingSessionSchema,
   ListTrainingEnrollmentsQuerySchema,
   ListTrainingNominationsQuerySchema,
+  ListTrainingRecordsQuerySchema,
+  MarkTrainingAttendanceBulkSchema,
+  MarkTrainingAttendanceSchema,
   ListTrainingCoursesQuerySchema,
   ListTrainingSessionsQuerySchema,
   TransitionTrainingSessionSchema,
@@ -28,10 +41,17 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../platform/web';
+import { AppError } from '../../../shared/errors';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import {
+  attachTrainingCertificate,
   cancelTrainingEnrollment,
+  completeTrainingSession,
+  getTrainingRecord,
+  listTrainingRecords,
+  markTrainingAttendance,
+  markTrainingAttendanceBulk,
   createTrainingCourse,
   createTrainingNomination,
   createTrainingSession,
@@ -51,6 +71,35 @@ import {
 } from './training.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
+
+/** A signed certificate is a scan or a phone photograph, so the cap is the one images need. */
+const CERTIFICATE_MAX_MB = 25;
+
+const multipartSingle = (): RequestHandler => {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: CERTIFICATE_MAX_MB * 1024 * 1024, files: 1 },
+  }).single('file');
+  return (req: Request, res: Response, next: NextFunction): void => {
+    upload(req, res, (error: unknown) => {
+      if (error === undefined || error === null) {
+        next();
+        return;
+      }
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        next(
+          new AppError(
+            ErrorCodes.FILE_TOO_LARGE,
+            422,
+            `File exceeds the ${String(CERTIFICATE_MAX_MB)} MB cap`,
+          ),
+        );
+        return;
+      }
+      next(error);
+    });
+  };
+};
 
 export const buildTrainingCoursesRouter = (): Router => {
   const router = Router();
@@ -115,7 +164,20 @@ export const buildTrainingSessionsRouter = (): Router => {
     validate({ body: UpdateTrainingSessionSchema, params: IdParamSchema }),
     asyncHandler(updateTrainingSession),
   );
-  // Its own grant: completing a session is what qualifies people (D7), not a field edit.
+  /**
+   * COMPLETION IS ITS OWN ROUTE, not an action on `/transition`, because it takes the list of
+   * people it qualifies (D7) and writes their permanent records. Folding it back into the
+   * transition would give the system a second way to complete a session — one that quietly
+   * qualifies nobody.
+   */
+  router.post(
+    '/:id/complete',
+    authenticate,
+    authorize('trainingSession.conduct'),
+    validate({ body: CompleteTrainingSessionSchema, params: IdParamSchema }),
+    asyncHandler(completeTrainingSession),
+  );
+  // Its own grant: starting and calling off a session is running it, not editing a room booking.
   router.post(
     '/:id/transition',
     authenticate,
@@ -200,6 +262,61 @@ export const buildTrainingEnrollmentsRouter = (): Router => {
     authorize('trainingNomination.decide'),
     validate({ body: CancelTrainingEnrollmentSchema, params: IdParamSchema }),
     asyncHandler(cancelTrainingEnrollment),
+  );
+  /**
+   * Marking the room is CONDUCTING, not deciding (D6). The person who taught the session says who
+   * was in it; the person who grants seats does not, and neither of them completes anybody by
+   * doing it — that is a separate act on the session itself.
+   */
+  router.post(
+    '/:id/attendance',
+    authenticate,
+    authorize('trainingSession.conduct'),
+    validate({ body: MarkTrainingAttendanceSchema, params: IdParamSchema }),
+    asyncHandler(markTrainingAttendance),
+  );
+  router.post(
+    '/attendance',
+    authenticate,
+    authorize('trainingSession.conduct'),
+    validate({ body: MarkTrainingAttendanceBulkSchema }),
+    asyncHandler(markTrainingAttendanceBulk),
+  );
+  return router;
+};
+
+/**
+ * The records, and the certificates on them (D8, D9).
+ *
+ * READ-ONLY apart from the certificate. There is no update route and no delete route, because a
+ * record says what somebody was taught and that is not a thing anybody later edits — see
+ * `training-immutability.spec.ts`, which holds the same claim against the service.
+ */
+export const buildTrainingRecordsRouter = (): Router => {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    authorize('trainingRecord.view'),
+    validate({ query: ListTrainingRecordsQuerySchema }),
+    asyncHandler(listTrainingRecords),
+  );
+  router.get(
+    '/:id',
+    authenticate,
+    authorize('trainingRecord.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getTrainingRecord),
+  );
+  // The conducting key, because attaching a certificate is the last step of running a session —
+  // the person who taught it is the person holding the paper.
+  router.post(
+    '/:id/certificate',
+    authenticate,
+    authorize('trainingSession.conduct'),
+    multipartSingle(),
+    validate({ body: AttachTrainingCertificateSchema, params: IdParamSchema }),
+    asyncHandler(attachTrainingCertificate),
   );
   return router;
 };

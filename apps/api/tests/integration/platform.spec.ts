@@ -956,6 +956,73 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(rows.some((r) => r.code === 'JT-CASH-OFFICER')).toBe(true);
   });
 
+  it('serves job-title dropdown options to any authenticated caller, without `jobTitle.view`', async () => {
+    // THE DEFECT THIS CLOSES. Branches, departments and sections get `/options` from
+    // `makeOrgUnitRouter`; job titles have a hand-written router and never gained it. The
+    // notification-rule editor and the announcement composer both call it, and both were reading
+    // a 404 as «this company has no job titles» — a routing mistake stating a fact about data.
+    const active = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-OPT-A', name: { ar: 'سائق', en: 'Driver' }, jobGrade: 'G2' });
+    expect(active.status).toBe(201);
+    const inactive = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-OPT-Z', name: { ar: 'ملغى', en: 'Retired' }, jobGrade: 'G2' });
+    const retiredId = (inactive.body as { data: JobTitleDto }).data.id;
+    await request(app)
+      .patch(`/api/v1/platform/job-titles/${retiredId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'inactive', version: 0 });
+
+    type Option = { id: string; code: string; name: { ar: string; en: string } };
+    const asAdmin = await request(app)
+      .get('/api/v1/platform/job-titles/options')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(asAdmin.status).toBe(200);
+    const options = (asAdmin.body as { data: Option[] }).data;
+    expect(options.some((o) => o.code === 'JT-OPT-A')).toBe(true);
+    // Active only — a dropdown that offers a retired title invites somebody to pick it.
+    expect(options.some((o) => o.code === 'JT-OPT-Z')).toBe(false);
+    // Three fields and no fourth: no grade, no salary band, no shift defaults.
+    const one = options.find((o) => o.code === 'JT-OPT-A') as Option;
+    expect(Object.keys(one).sort()).toEqual(['code', 'id', 'name']);
+    expect(one.name.ar).toBe('سائق');
+
+    // The decoupling `org-unit.http.ts` states for the other three units, stated the same way
+    // here: somebody who may write a notification rule must be able to NAME a job title without
+    // being able to read the catalogue.
+    const user = await request(app)
+      .post('/api/v1/platform/users')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        email: 'opts@ecms.local',
+        firstName: { ar: 'ر', en: 'R' },
+        lastName: { ar: 'ر', en: 'R' },
+        organization: { branchId: null, departmentId: null, sectionId: null, jobTitleId: null },
+      });
+    const created = (user.body as { data: { id: string; activationToken: string } }).data;
+    await request(app)
+      .post('/api/v1/auth/activate')
+      .send({ token: created.activationToken, password: PASSWORD });
+    const token = (await doLogin('opts@ecms.local', PASSWORD)).body.data?.accessToken ?? '';
+
+    const forbidden = await request(app)
+      .get('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${token}`);
+    expect(forbidden.status).toBe(403);
+
+    const allowed = await request(app)
+      .get('/api/v1/platform/job-titles/options')
+      .set('Authorization', `Bearer ${token}`);
+    expect(allowed.status).toBe(200);
+    expect((allowed.body as { data: Option[] }).data.some((o) => o.code === 'JT-OPT-A')).toBe(true);
+
+    // Unauthenticated is still refused — «not gated by view» is not «open».
+    expect((await request(app).get('/api/v1/platform/job-titles/options')).status).toBe(401);
+  });
+
   it('expires time-bound role assignments at computation time (Review R14)', async () => {
     const role = await rbacService.createRole(
       { name: { ar: 'مؤقت', en: 'Temporary' }, permissionKeys: ['auditLog.view'] },

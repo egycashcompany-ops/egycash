@@ -72,11 +72,12 @@ const patternsOf = (builder: string): string[] => {
 const asMatcher = (mounted: string): RegExp =>
   new RegExp(`^${mounted.replace(/:[A-Za-z0-9_]+/g, '[^/]+').replace(/\/$/, '')}/?$`);
 
-const MOUNTED: RegExp[] = mountTable().flatMap(({ prefix, builder }) =>
-  patternsOf(builder).map((pattern) =>
-    asMatcher(pattern === '/' ? prefix : `${prefix}${pattern}`),
-  ),
+/** Every mounted path as its literal pattern text, `:params` and all. */
+const MOUNTED_PATTERNS: string[] = mountTable().flatMap(({ prefix, builder }) =>
+  patternsOf(builder).map((pattern) => (pattern === '/' ? prefix : `${prefix}${pattern}`)),
 );
+
+const MOUNTED: RegExp[] = MOUNTED_PATTERNS.map(asMatcher);
 
 /** Comments are prose: they contain example URLs and ellipses that are not requests. */
 const stripComments = (text: string): string =>
@@ -87,9 +88,7 @@ const stripComments = (text: string): string =>
  *
  * Two interpolation shapes, and they mean different things. `${x}` after a slash is one path
  * SEGMENT — an id — and matches a `:param`. `${x}` glued to the end of a segment is `buildQuery`
- * appending `?a=b`, so the path ends there. A path whose RESOURCE is interpolated
- * (`/platform/${unit}/options`, from the shared org-unit helpers) names no single route and is
- * skipped: which route it is, is decided by a caller this file cannot see.
+ * appending `?a=b`, so the path ends there.
  */
 const webPaths = (): { path: string; file: string }[] => {
   const found = new Map<string, string>();
@@ -97,12 +96,52 @@ const webPaths = (): { path: string; file: string }[] => {
     if (source.name.includes('.spec.')) continue;
     for (const m of stripComments(source.text).matchAll(/['`](\/platform\/[^'`\s]*)['`]/g)) {
       const raw = m[1] as string;
-      if (/^\/platform\/\$\{/.test(raw)) continue; // the resource itself is a variable
+      if (/^\/platform\/\$\{/.test(raw)) continue; // resolved separately — see `optionPaths`
       const path = raw
         .replace(/([^/])\$\{[^}]*\}.*$/, '$1') // a glued interpolation is the query string
         .replace(/\$\{[^}]*\}/g, 'X') // a slash-separated one is an id
         .split('?')[0] as string;
       if (!found.has(path)) found.set(path, source.name.slice(WEB_SRC.length + 1));
+    }
+  }
+  return [...found].map(([path, file]) => ({ path, file }));
+};
+
+/**
+ * The `/options` dropdowns, whose RESOURCE is interpolated — resolved from the call sites.
+ *
+ * WHY THIS WAS ADDED. The path above is built as `/platform/${path}/options` inside a one-line
+ * local helper, and this file used to skip anything whose resource was a variable: "which route
+ * it is, is decided by a caller this file cannot see." That was true of the template and false of
+ * the program. Every caller passes a STRING LITERAL — `orgOptions('branches')`,
+ * `orgOptions('job-titles')` — and the literal is right there in the same file.
+ *
+ * So it was not unknowable, only unread, and `/platform/job-titles/options` 404'd in two shipped
+ * screens for exactly as long as the skip stood. The helper is matched by SHAPE rather than by
+ * name (three files declare their own copy under two names), and the literals it is called with
+ * become concrete paths.
+ *
+ * THESE ARE CHECKED AGAINST LITERAL PATTERNS, not against the matchers `webPaths` uses, and that
+ * distinction is the whole assertion. `/platform/job-titles/:id` matches the STRING
+ * `/platform/job-titles/options` perfectly well — which is why adding the resolution alone still
+ * found nothing. Express does not agree: `/:id` is declared after, and its `objectId()` validation
+ * rejects the word `options` as malformed. A dropdown route must therefore be declared, not
+ * merely matched.
+ */
+const optionPaths = (): { path: string; file: string }[] => {
+  const found = new Map<string, string>();
+  for (const source of sourcesIn(WEB_SRC)) {
+    if (source.name.includes('.spec.')) continue;
+    const text = stripComments(source.text);
+    // `const <helper> = (…) => get<…>(`/platform/${…}/options`)` — the helper, whatever it is called.
+    const helpers = [
+      ...text.matchAll(/const (\w+) = \([^)]*\)[^=]*=>[\s\S]{0,120}?`\/platform\/\$\{[^}]+\}\/options`/g),
+    ].map((m) => m[1] as string);
+    for (const helper of helpers) {
+      for (const call of text.matchAll(new RegExp(`\\b${helper}\\('([^']+)'\\)`, 'g'))) {
+        const path = `/platform/${call[1] as string}/options`;
+        if (!found.has(path)) found.set(path, source.name.slice(WEB_SRC.length + 1));
+      }
     }
   }
   return [...found].map(([path, file]) => ({ path, file }));
@@ -116,5 +155,16 @@ describe('the web calls no /platform path this API does not mount', () => {
 
   it.each(webPaths())('$path — called from $file', ({ path }) => {
     expect(MOUNTED.some((route) => route.test(path))).toBe(true);
+  });
+
+  /** A helper that resolved to nothing would make the assertions below vacuously true. */
+  it('resolves the interpolated `/options` helpers to real resources', () => {
+    const paths = optionPaths().map((p) => p.path);
+    expect(paths).toContain('/platform/branches/options');
+    expect(paths).toContain('/platform/job-titles/options');
+  });
+
+  it.each(optionPaths())('$path is declared, not merely matched by `/:id`', ({ path }) => {
+    expect(MOUNTED_PATTERNS).toContain(path);
   });
 });

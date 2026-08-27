@@ -3,6 +3,7 @@ import {
   type CreateJobTitle,
   type JobTitleDto,
   type ListOrgUnitsQuery,
+  type OrgUnitOptionDto,
   type Paginated,
   type UpdateJobTitle,
 } from '@ecms/contracts';
@@ -138,6 +139,33 @@ class JobTitleService {
 
   async getById(id: string): Promise<JobTitleDoc> {
     return jobTitleRepository.getById(id);
+  }
+
+  /**
+   * Reference options for form dropdowns — the same surface every other org unit exposes.
+   *
+   * IT WAS MISSING, AND NOTHING SAID SO. Branches, departments and sections all get `/options`
+   * from `makeOrgUnitRouter`; job titles have a hand-written router and never gained it. Two
+   * shipped screens — the notification rule editor and the announcement composer — call
+   * `/platform/job-titles/options` and were reading a 404 as «no job titles exist», which is a
+   * factual claim about the company's data made by a routing mistake.
+   *
+   * ORGANIZATION SCOPE AND NO `jobTitle.view`, deliberately, for the reason the shared factory
+   * already records: somebody who may write a notification rule must be able to NAME a job title
+   * without being able to read the catalogue. It carries id, code and name and nothing else — no
+   * salary band, no grade, no shift defaults.
+   */
+  async options(): Promise<OrgUnitOptionDto[]> {
+    const page = await jobTitleRepository.list({
+      filter: { status: 'active' } as FilterQuery<JobTitleDoc>,
+      page: 1,
+      pageSize: 500,
+      sortBy: 'code',
+      sortDir: 'asc',
+      sortableFields: ['code'],
+      scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+    });
+    return page.items.map((doc) => ({ id: String(doc._id), code: doc.code, name: doc.name }));
   }
 
   async list(query: ListOrgUnitsQuery, scope: ScopeSelector): Promise<Paginated<JobTitleDoc>> {

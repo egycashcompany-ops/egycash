@@ -14,6 +14,7 @@ import {
   createJobTitle,
   deleteJobTitle,
   getJobTitle,
+  jobTitleOptions,
   listJobTitles,
   updateJobTitle,
 } from './job-title.controller';
@@ -30,6 +31,10 @@ export const buildJobTitlesRouter = (): Router => {
     validate({ query: ListOrgUnitsQuerySchema }),
     asyncHandler(listJobTitles),
   );
+  // Declared BEFORE `/:id`, or `options` is read as an id and rejected as a malformed ObjectId.
+  // Authenticated but not gated by `jobTitle.view`: a user who may write a notification rule must
+  // be able to name a job title without being able to read the catalogue (org-unit.http.ts §).
+  router.get('/options', authenticate, asyncHandler(jobTitleOptions));
   router.get(
     '/:id',
     authenticate,

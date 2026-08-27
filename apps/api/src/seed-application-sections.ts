@@ -167,9 +167,22 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
       //
       // The sessions row first — it is the daily work, and the catalogue behind it is configuration
       // somebody visits when the programme changes.
+      //
+      // P-HR-PRF joins the group the line above said it would. Training answers «what has this
+      // person been taught» and Performance answers «how are they doing» — two halves of the same
+      // subject, and putting the second in a section of its own would suggest they are unrelated.
+      // Both performance rows come AFTER the four training ones: a cycle reviews a period that has
+      // already happened, including the training in it.
       en: 'Training & Development',
       ar: 'التدريب والتطوير',
-      routes: ['/training/sessions', '/training/nominations', '/training/records', '/training/courses'],
+      routes: [
+        '/training/sessions',
+        '/training/nominations',
+        '/training/records',
+        '/training/courses',
+        '/performance/cycles',
+        '/performance/reviews',
+      ],
     },
   ],
 };

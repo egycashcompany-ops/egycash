@@ -1,0 +1,103 @@
+// Thin HTTP mapping only (ADR-003): parse, delegate, respond. Every rule lives in the services and
+// in `cycle-rules.ts`.
+import { type Request, type Response } from 'express';
+import {
+  type AssignPerformanceEvaluator,
+  type ClosePerformanceCycle,
+  type CreatePerformanceCycle,
+  type ListPerformanceCyclesQuery,
+  type ListPerformanceReviewsQuery,
+  type OpenPerformanceCycle,
+  type UpdatePerformanceCycle,
+} from '@ecms/contracts';
+import { created, ok, okPage } from '../../../platform/web';
+import { validated } from '../../../infrastructure/http/validate';
+import { authContext } from '../../../platform/auth';
+import { scopeSelector } from '../../../shared/types';
+import { performanceCycleService } from './cycles/performance-cycle.service';
+import { performanceReviewService } from './reviews/performance-review.service';
+import { toPerformanceCycleDto, toPerformanceReviewDto } from './performance.mapper';
+
+type IdParam = { id: string };
+
+// ── Cycles ──────────────────────────────────────────────────────────────────
+
+const cycleScope = (req: Request) => scopeSelector(authContext(req), 'performanceCycle.view');
+
+export const listPerformanceCycles = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, ListPerformanceCyclesQuery>(req);
+  okPage(res, await performanceCycleService.list(query, cycleScope(req)), toPerformanceCycleDto);
+};
+
+export const getPerformanceCycle = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, toPerformanceCycleDto(await performanceCycleService.getById(params.id, cycleScope(req))));
+};
+
+export const createPerformanceCycle = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<CreatePerformanceCycle>(req);
+  const doc = await performanceCycleService.create(ctx, body);
+  created(res, toPerformanceCycleDto(doc), `/api/v1/hr/performance/cycles/${String(doc._id)}`);
+};
+
+export const updatePerformanceCycle = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdatePerformanceCycle, never, IdParam>(req);
+  const doc = await performanceCycleService.update(ctx, params.id, body, cycleScope(req));
+  ok(res, toPerformanceCycleDto(doc));
+};
+
+/**
+ * Opening returns the cycle AND the materializer's receipt.
+ *
+ * The receipt is the point: «matched 312, created 312, 4 unassigned» tells somebody the round is
+ * real and where the four gaps are. Returning only the cycle would leave «did that work?» to be
+ * answered by reloading a queue and counting.
+ */
+export const openPerformanceCycle = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<OpenPerformanceCycle, never, IdParam>(req);
+  const { cycle, result } = await performanceCycleService.open(
+    ctx,
+    params.id,
+    body,
+    cycleScope(req),
+  );
+  ok(res, { cycle: toPerformanceCycleDto(cycle), result });
+};
+
+export const closePerformanceCycle = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ClosePerformanceCycle, never, IdParam>(req);
+  const doc = await performanceCycleService.close(ctx, params.id, body, cycleScope(req));
+  ok(res, toPerformanceCycleDto(doc));
+};
+
+// ── Reviews ─────────────────────────────────────────────────────────────────
+
+/** Reviews are about PEOPLE, so every read passes the caller's scope on both axes (D14). */
+const reviewScope = (req: Request) => scopeSelector(authContext(req), 'performanceReview.view');
+
+export const listPerformanceReviews = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, ListPerformanceReviewsQuery>(req);
+  okPage(res, await performanceReviewService.list(query, reviewScope(req)), toPerformanceReviewDto);
+};
+
+export const getPerformanceReview = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const doc = await performanceReviewService.getById(params.id, reviewScope(req));
+  ok(res, toPerformanceReviewDto(doc));
+};
+
+export const assignPerformanceEvaluator = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<AssignPerformanceEvaluator, never, IdParam>(req);
+  const doc = await performanceReviewService.assignEvaluator(
+    ctx,
+    params.id,
+    body,
+    reviewScope(req),
+  );
+  ok(res, toPerformanceReviewDto(doc));
+};

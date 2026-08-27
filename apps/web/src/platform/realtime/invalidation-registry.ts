@@ -109,6 +109,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['hr', 'trainingSessions'],
     ['hr', 'trainingRecords'],
   ],
+  // P-HR-PRF §6. The cycle reaches BOTH families and the review only its own, which is the shape
+  // opening makes necessary: opening a round writes several hundred reviews, so a screen watching
+  // the round has to refresh the queue too. Assigning an evaluator moves one row and nothing else.
+  'hr.performanceCycle': [['hr', 'performanceCycles'], ['hr', 'performanceReviews']],
+  'hr.performanceReview': [['hr', 'performanceReviews']],
   'hr.contract': [['hr', 'contracts'], ['hr', 'settlement']],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],

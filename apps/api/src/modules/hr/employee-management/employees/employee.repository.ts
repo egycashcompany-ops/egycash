@@ -253,6 +253,37 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /**
+   * Everyone EMPLOYED at this placement — the two lists ANDed, either one omitted meaning «any».
+   *
+   * `System` like its neighbours, and for the reason the one above states: the caller is another
+   * feature reading through a seam, not a person browsing HR. A performance cycle's scope is a
+   * STATEMENT of who the round covers (P-HR-PRF D3), so narrowing it by whoever happened to press
+   * «open» would produce a round that claims to cover the company and holds only one branch —
+   * a discrepancy nothing downstream could see, because the missing rows look exactly like people
+   * who were never in scope.
+   *
+   * Both lists empty is «everybody employed», which is the caller stating it and never a filter
+   * that lost its last criterion: `PerformanceCycleScopeSchema` refuses an empty filter, so the
+   * only way to reach here with neither is the explicit `everyone` branch of its union.
+   */
+  async listEmployedByPlacementSystem(
+    branchIds: readonly string[],
+    departmentIds: readonly string[],
+  ): Promise<EmployeeDoc[]> {
+    const filter: FilterQuery<EmployeeDoc> = {
+      status: { $in: [...EMPLOYED_STATUSES] },
+      isDeleted: false,
+    };
+    if (branchIds.length > 0) {
+      filter.branchId = { $in: branchIds.map((id) => new Types.ObjectId(id)) };
+    }
+    if (departmentIds.length > 0) {
+      filter.departmentId = { $in: departmentIds.map((id) => new Types.ObjectId(id)) };
+    }
+    return this.model.find(filter).sort({ code: 1 }).lean<EmployeeDoc[]>().exec();
+  }
+
   /** Employees whose probation deadline falls inside the window (the reminder task). */
   async findProbationEndingSystem(from: Date, to: Date): Promise<EmployeeDoc[]> {
     return this.model

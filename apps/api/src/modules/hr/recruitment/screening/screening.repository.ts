@@ -33,7 +33,11 @@ export interface ScreeningListFilter {
 
 class ScreeningRepository extends BaseRepository<ScreeningDoc> {
   constructor() {
-    super(ScreeningModel, { branchField: 'branchId', softDelete: true });
+    super(ScreeningModel, {
+      branchField: 'branchId',
+      departmentField: 'departmentId',
+      softDelete: true,
+    });
   }
 
   /**

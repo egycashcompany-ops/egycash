@@ -20,6 +20,8 @@ export interface ScreeningDoc extends BaseDocFields, StageDocFields {
   applicantCode: string;
   applicantName: string;
   branchId: Types.ObjectId | null;
+  /** The department axis, mirrored from the applicant beside `branchId` (F-REQ-1). */
+  departmentId: Types.ObjectId | null;
   status: ScreeningStatus;
   notes: ScreeningNote[];
   // Decision (set once, on the terminal transition). `decisionReason` carries the
@@ -35,6 +37,7 @@ const screeningSchema = new Schema<ScreeningDoc>(
     applicantCode: { type: String, required: true },
     applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: SCREENING_STATUSES, required: true, default: 'waiting' },
     notes: {
       type: [
@@ -70,6 +73,9 @@ screeningSchema.index(
 screeningSchema.index({ applicantId: 1, supersededAt: 1 }, { name: 'ix_applicant_superseded' });
 screeningSchema.index({ status: 1, createdAt: -1 }, { name: 'ix_status_createdAt' });
 screeningSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
+// The department axis reads as often as the branch one does, so it is indexed the same way
+// — a declared scope field with no index is a collection scan on every scoped list.
+screeningSchema.index({ departmentId: 1, status: 1 }, { name: 'ix_departmentId_status' });
 screeningSchema.index({ decidedAt: -1 }, { name: 'ix_decidedAt' });
 
 // I3 — the aggregated stage counters (RW15) group the LIVE set by status, with no predicate to

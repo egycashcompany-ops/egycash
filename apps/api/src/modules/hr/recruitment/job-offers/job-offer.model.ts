@@ -67,6 +67,8 @@ export interface JobOfferDoc extends BaseDocFields, StageDocFields {
   applicantCode: string;
   applicantName: string;
   branchId: Types.ObjectId | null;
+  /** The department axis, mirrored from the applicant beside `branchId` (F-REQ-1). */
+  departmentId: Types.ObjectId | null;
   status: OfferStatus;
   /** null while `waiting`; the package is filled in when the offer is drafted (I11). */
   terms: OfferTerms | null;
@@ -130,6 +132,7 @@ const jobOfferSchema = new Schema<JobOfferDoc>(
     applicantCode: { type: String, required: true },
     applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     status: { type: String, enum: OFFER_STATUSES, required: true, default: 'waiting' },
     terms: { type: termsSchema, default: null },
     hiredEmployeeId: { type: Schema.Types.ObjectId, default: null },
@@ -194,6 +197,9 @@ jobOfferSchema.index({ status: 1, hiredEmployeeId: 1 }, { name: 'ix_status_hired
 jobOfferSchema.index({ applicantId: 1, createdAt: -1 }, { name: 'ix_applicant_createdAt' });
 jobOfferSchema.index({ status: 1, createdAt: -1 }, { name: 'ix_status_createdAt' });
 jobOfferSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
+// The department axis reads as often as the branch one does, so it is indexed the same way
+// — a declared scope field with no index is a collection scan on every scoped list.
+jobOfferSchema.index({ departmentId: 1, status: 1 }, { name: 'ix_departmentId_status' });
 // Drives the automatic-expiration sweep (sent offers past validUntil).
 jobOfferSchema.index({ status: 1, 'terms.validUntil': 1 }, { name: 'ix_status_validUntil' });
 

@@ -30,7 +30,11 @@ const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\
 
 class JobOfferRepository extends BaseRepository<JobOfferDoc> {
   constructor() {
-    super(JobOfferModel, { branchField: 'branchId', softDelete: true });
+    super(JobOfferModel, {
+      branchField: 'branchId',
+      departmentField: 'departmentId',
+      softDelete: true,
+    });
   }
 
   /**

@@ -30,7 +30,11 @@ const ACTIVE_STATUSES = ['scheduled', 'inProgress', 'completed'];
 
 class InterviewRepository extends BaseRepository<InterviewDoc> {
   constructor() {
-    super(InterviewModel, { branchField: 'branchId', softDelete: true });
+    super(InterviewModel, {
+      branchField: 'branchId',
+      departmentField: 'departmentId',
+      softDelete: true,
+    });
   }
 
   /**

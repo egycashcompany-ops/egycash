@@ -38,6 +38,8 @@ export interface InterviewDoc extends BaseDocFields, StageDocFields {
   applicantCode: string;
   applicantName: string;
   branchId: Types.ObjectId | null;
+  /** The department axis, mirrored from the applicant beside `branchId` (F-REQ-1). */
+  departmentId: Types.ObjectId | null;
   stageId: Types.ObjectId;
   stageOrder: number;
   stageName: LocalizedString;
@@ -71,6 +73,7 @@ const interviewSchema = new Schema<InterviewDoc>(
     applicantCode: { type: String, required: true },
     applicantName: { type: String, default: '' },
     branchId: { type: Schema.Types.ObjectId, default: null },
+    departmentId: { type: Schema.Types.ObjectId, default: null },
     stageId: { type: Schema.Types.ObjectId, required: true },
     stageOrder: { type: Number, required: true },
     stageName: { ar: { type: String, required: true }, en: { type: String, required: true } },
@@ -128,6 +131,9 @@ interviewSchema.index({ applicantId: 1, stageOrder: 1 }, { name: 'ix_applicant_s
 interviewSchema.index({ stageId: 1, status: 1 }, { name: 'ix_stage_status' });
 interviewSchema.index({ status: 1, scheduledAt: 1 }, { name: 'ix_status_scheduledAt' });
 interviewSchema.index({ branchId: 1, status: 1 }, { name: 'ix_branchId_status' });
+// The department axis reads as often as the branch one does, so it is indexed the same way
+// — a declared scope field with no index is a collection scan on every scoped list.
+interviewSchema.index({ departmentId: 1, status: 1 }, { name: 'ix_departmentId_status' });
 interviewSchema.index({ 'panel.interviewerId': 1, status: 1 }, { name: 'ix_interviewer_status' });
 interviewSchema.index({ stageId: 1 }, { name: 'ix_stageId' });
 

@@ -45,6 +45,8 @@ export interface StageRecord extends BaseDocFields, StageDocFields {
   applicantCode: string;
   applicantName: string;
   branchId: Types.ObjectId | null;
+  /** The department axis, mirrored from the applicant beside the branch (F-REQ-1). */
+  departmentId: Types.ObjectId | null;
   status: string;
 }
 
@@ -88,6 +90,12 @@ export interface EnsureStageInput<T extends StageRecord> {
   applicantCode: string;
   applicantName: string;
   branchId: Types.ObjectId | null;
+  /**
+   * Required, not optional, and that is the point: making it optional would let a caller that
+   * forgot it insert a row invisible to every department-scoped reader, and nothing would say so.
+   * Required means the compiler names each of the eight sites that open a stage.
+   */
+  departmentId: Types.ObjectId | null;
   /** The interview stage / evaluation phase this record belongs to. */
   stageRefId?: Types.ObjectId | null;
   attempt?: number;
@@ -195,6 +203,7 @@ class RecruitmentWorkflowEngine {
       applicantCode: input.applicantCode,
       applicantName: input.applicantName,
       branchId: input.branchId,
+      departmentId: input.departmentId,
       status: 'waiting',
       placementSnapshot: input.placement ?? emptyPlacement(),
       placementSnapshotLabel: input.placementLabel ?? emptyPlacementLabel(),

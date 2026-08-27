@@ -25,7 +25,11 @@ export interface EvaluationListFilter {
 
 class EvaluationRepository extends BaseRepository<EvaluationDoc> {
   constructor() {
-    super(EvaluationModel, { branchField: 'branchId', softDelete: true });
+    super(EvaluationModel, {
+      branchField: 'branchId',
+      departmentField: 'departmentId',
+      softDelete: true,
+    });
   }
 
   /**

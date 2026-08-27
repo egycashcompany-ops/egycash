@@ -1,6 +1,8 @@
-// Applicant data access (Sprint 4.1 plan §2/§9). Branch-scoped via `branchId` so the
-// platform's own/branch/organization machinery (ADR-004) applies when recruiter scope is
-// decided (OQ-15); today most recruiters hold organization scope. Search is
+// Applicant data access (Sprint 4.1 plan §2/§9). Scoped on TWO axes — `branchId` (ADR-015) and
+// `departmentId` (F-REQ-1) — both mirrors of the placement, written by `writePlacement` and by
+// nothing else. The second was missing for four phases, and its absence was silent: an
+// undeclared scope field makes `scopeFilter` return an empty filter, which `baseFilter` drops, so
+// a department-scoped recruiter was served the whole organization with nothing failing. Search is
 // Arabic-normalized against the denormalized `searchName` (§9).
 import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
@@ -34,7 +36,13 @@ export interface DuplicateProbe {
 
 class ApplicantRepository extends BaseRepository<ApplicantDoc> {
   constructor() {
-    super(ApplicantModel, { branchField: 'branchId', softDelete: true });
+    super(ApplicantModel, {
+      branchField: 'branchId',
+      // F-REQ-1 — declared, or `scopeFilter` answers a department-scoped reader with an EMPTY
+      // filter and `baseFilter` drops it: the whole organization, silently, with nothing failing.
+      departmentField: 'departmentId',
+      softDelete: true,
+    });
   }
 
   private buildFilter(f: ApplicantListFilter): FilterQuery<ApplicantDoc> {

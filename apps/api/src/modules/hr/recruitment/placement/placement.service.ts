@@ -30,7 +30,7 @@ import { evaluationService } from '../evaluations';
 import { jobOfferService } from '../job-offers';
 import { recruitmentTimelineService } from '../timeline';
 import { newCorrelationId } from '../timeline';
-import { type StagePlacementLabel } from '../workflow/stage-fields';
+import { type StagePlacement, type StagePlacementLabel } from '../workflow/stage-fields';
 import {
   applicantService,
   changedDimensions,
@@ -48,15 +48,22 @@ const label = (l: StagePlacementLabel): string =>
  * The stage services whose records carry the candidate's denormalized scope field. Each exposes
  * its own sync so this file never reaches into another feature's collection (ADR-003).
  */
-const syncStageScopes = async (
-  applicantId: string,
-  branchId: Types.ObjectId | null,
-): Promise<void> => {
+/**
+ * Push the applicant's data scope down onto every stage row they own.
+ *
+ * RENAMED FROM `syncApplicantBranch` WHEN THE DEPARTMENT AXIS ARRIVED, deliberately. A second
+ * method beside the first would have let a stage feature keep syncing one axis and quietly not
+ * the other — the row would stay readable to the old department and vanish from the new one, and
+ * only a reassigned candidate's history would show it. One method taking the whole scope means
+ * the compiler names every stage that has not been updated.
+ */
+const syncStageScopes = async (applicantId: string, placement: StagePlacement): Promise<void> => {
+  const scope = { branchId: placement.branchId, departmentId: placement.departmentId };
   await Promise.all([
-    screeningService.syncApplicantBranch(applicantId, branchId),
-    interviewService.syncApplicantBranch(applicantId, branchId),
-    evaluationService.syncApplicantBranch(applicantId, branchId),
-    jobOfferService.syncApplicantBranch(applicantId, branchId),
+    screeningService.syncApplicantScope(applicantId, scope),
+    interviewService.syncApplicantScope(applicantId, scope),
+    evaluationService.syncApplicantScope(applicantId, scope),
+    jobOfferService.syncApplicantScope(applicantId, scope),
   ]);
 };
 
@@ -113,14 +120,16 @@ export const reassignPlacement = async (
     {
       placement,
       placementLabel: toLabel,
-      // The ADR-015 scope field is a MIRROR of placement.branchId — this service is its writer.
+      // The scope fields are MIRRORS of the placement — this service is their writer. Both axes
+      // move together or a reassignment leaves the two disagreeing about the same candidate.
       branchId: placement.branchId,
+      departmentId: placement.departmentId,
       placementHistory: [...(before.placementHistory ?? []), change],
     },
   );
 
-  // Step 3 — the candidate's history follows them, so a branch-scoped user never loses sight of it.
-  await syncStageScopes(id, placement.branchId);
+  // Step 3 — the candidate's history follows them, so a scoped user never loses sight of it.
+  await syncStageScopes(id, placement);
 
   await auditService.record({
     entityRef: entityRef(id),

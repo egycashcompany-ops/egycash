@@ -116,6 +116,7 @@ class InterviewService {
       applicantCode: applicant.code,
       applicantName: applicant.fullNameAr,
       branchId: applicant.branchId,
+      departmentId: applicant.departmentId,
       stageRefId: new Types.ObjectId(input.stageId),
       actorUserId: ctx.userId,
       placement: applicant.placement,
@@ -177,6 +178,7 @@ class InterviewService {
       applicantCode: applicant.code,
       applicantName: applicant.fullNameAr,
       branchId: applicant.branchId,
+      departmentId: applicant.departmentId,
       stageRefId: new Types.ObjectId(input.stageId),
       actorUserId: ctx.userId,
       placement: applicant.placement,
@@ -784,11 +786,18 @@ class InterviewService {
    * denormalized SCOPE FIELD only: no decision, no status, and never a `placementSnapshot`
    * (RW4 — what a record was created under is history and is never rewritten).
    */
-  async syncApplicantBranch(applicantId: string, branchId: Types.ObjectId | null): Promise<void> {
+  /**
+   * Follow the applicant's data scope (F-REQ-1). Both axes in one write: a stage row whose branch
+   * moved but whose department did not would be readable by the department they LEFT.
+   */
+  async syncApplicantScope(
+    applicantId: string,
+    scope: { branchId: Types.ObjectId | null; departmentId: Types.ObjectId | null },
+  ): Promise<void> {
     if (!Types.ObjectId.isValid(applicantId)) return;
     await InterviewModel.updateMany(
       { applicantId: new Types.ObjectId(applicantId) },
-      { $set: { branchId } },
+      { $set: { branchId: scope.branchId, departmentId: scope.departmentId } },
     ).exec();
   }
 

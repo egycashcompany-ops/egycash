@@ -219,6 +219,67 @@ const backfillPlacement = async (): Promise<void> => {
   }
 };
 
+/**
+ * F-REQ-1 — fill the department mirror on the rows written before it existed.
+ *
+ * NOT A DERIVATION. The applicant's answer is `placement.departmentId`, stored on the same
+ * document; the stage rows' answer is the applicant's, exactly as `branchId` is today. Nothing is
+ * inferred from a date, an action log or a job title — every value copied here was already in the
+ * database, one field away, which is why this needs no rule and states none.
+ *
+ * IDEMPOTENT BY FILTER, not by a flag: both halves match only rows whose mirror is still absent or
+ * null, so a second run finds nothing and a row somebody corrected by hand is never overwritten.
+ * An applicant placed in no department keeps `null` — invisible to a department-scoped reader,
+ * which is the point of the axis and matches what D-DEPT-4 already settled for payroll.
+ */
+const backfillDepartmentScope = async (): Promise<void> => {
+  const placed = await ApplicantModel.find(
+    { 'placement.departmentId': { $ne: null } },
+    { placement: 1 },
+  )
+    .lean<{ _id: Types.ObjectId; placement: { departmentId: Types.ObjectId | null } }[]>()
+    .exec();
+
+  // One update per DEPARTMENT rather than per applicant: the same value for many rows. The id
+  // read off the document is reused as the value written — never re-parsed from its string form.
+  const byDepartment = new Map<string, { value: Types.ObjectId; ids: Types.ObjectId[] }>();
+  for (const applicant of placed) {
+    const departmentId = applicant.placement?.departmentId ?? null;
+    if (departmentId === null) continue;
+    const key = String(departmentId);
+    const group = byDepartment.get(key) ?? { value: departmentId, ids: [] };
+    group.ids.push(applicant._id);
+    byDepartment.set(key, group);
+  }
+
+  for (const { value, ids } of byDepartment.values()) {
+    await ApplicantModel.updateMany(
+      { _id: { $in: ids }, departmentId: null },
+      { $set: { departmentId: value } },
+    ).exec();
+    // The stage rows follow the applicant, the same direction `syncApplicantScope` pushes.
+    for (const model of STAGE_MODELS) {
+      await model
+        .updateMany(
+          { applicantId: { $in: ids }, departmentId: null } as never,
+          { $set: { departmentId: value } },
+        )
+        .exec();
+    }
+  }
+
+  // A row that never had the field at all — absent, not null — so the filters above skip it.
+  await ApplicantModel.updateMany(
+    { departmentId: { $exists: false } },
+    { $set: { departmentId: null } },
+  ).exec();
+  for (const model of STAGE_MODELS) {
+    await model
+      .updateMany({ departmentId: { $exists: false } } as never, { $set: { departmentId: null } })
+      .exec();
+  }
+};
+
 /** `pending` becomes the explicit `waiting` status (I11) on the two stages that used it. */
 const renamePendingToWaiting = async (): Promise<void> => {
   await ScreeningModel.updateMany({ status: 'pending' }, { $set: { status: 'waiting' } }).exec();
@@ -384,6 +445,9 @@ export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await dropEvaluationDecisionHistory();
   await closeStagesOfDepartedApplicants();
   await backfillPlacement();
+  // AFTER `backfillPlacement`, which is what puts `placement.departmentId` on the rows that
+  // predate the placement shape — reading before it would find nothing to copy.
+  await backfillDepartmentScope();
   await renamePendingToWaiting();
   await backfillPhaseTyping();
   await reorderPhasesToBusinessOrder();

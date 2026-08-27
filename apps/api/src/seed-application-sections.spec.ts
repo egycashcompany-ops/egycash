@@ -68,7 +68,7 @@ describe('the parse itself', () => {
   // Guards every assertion below: an empty set satisfies "no duplicates" and "all covered".
   it('found the navigation rows and the sections', () => {
     expect(NAV_ROUTES.length).toBeGreaterThan(15);
-    expect(HR_SECTIONS.length).toBe(6);
+    expect(HR_SECTIONS.length).toBe(7);
     expect(HR_SECTIONS.map((s) => s.en)).toEqual([
       'Communication',
       'Recruitment',
@@ -76,6 +76,9 @@ describe('the parse itself', () => {
       'Employee File',
       'Attendance & Leave',
       'Payroll',
+      // P-HR-TRN — the seventh, and the first about an employee's DEVELOPMENT rather than about
+      // who they are, what they did or what they were paid. Performance and Medical land here too.
+      'Training & Development',
     ]);
   });
 });

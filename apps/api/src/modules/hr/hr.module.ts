@@ -92,6 +92,7 @@ import {
   employeeLoanService,
   hrEmployeeLoanFileAuthorizers,
 } from './employee-loans';
+import { buildTrainingCoursesRouter, buildTrainingSessionsRouter } from './training';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -810,6 +811,42 @@ const employeeLoanPermissions = declarePermissions(
   'hr.employee-loans',
 );
 
+/**
+ * Training (P-HR-TRN). Two resources, because they are two jobs.
+ *
+ * `trainingCourse.manage` administers the CATALOGUE — configuration, and a small group's work.
+ * `trainingSession.*` schedules and runs DELIVERIES, which is a larger group's daily business.
+ *
+ * `conduct` is separate from `edit` on purpose: completing a session is what will qualify the
+ * people in it and write their permanent records (D7), and that is a heavier act than correcting
+ * a room booking. A key that could do both would make the two indistinguishable in the matrix.
+ */
+const trainingCoursePermissions = declarePermissions(
+  'hr',
+  'trainingCourse',
+  { en: 'training courses', ar: 'دورات التدريب' },
+  [],
+  [{ action: 'manage', name: { en: 'Manage the training catalogue', ar: 'إدارة كتالوج التدريب' } }],
+  'hr.training-courses',
+);
+
+const trainingSessionPermissions = declarePermissions(
+  'hr',
+  'trainingSession',
+  { en: 'training sessions', ar: 'جلسات التدريب' },
+  ['view', 'create', 'edit'],
+  [
+    {
+      action: 'conduct',
+      name: {
+        en: 'Start, complete or cancel a training session',
+        ar: 'بدء أو إنهاء أو إلغاء جلسة تدريب',
+      },
+    },
+  ],
+  'hr.training-sessions',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -893,6 +930,8 @@ export const hrPermissions: PermissionDef[] = [
   ...payrollAdjustmentPermissions,
   ...employeeLoanPermissions,
   ...payrollReportPermissions,
+  ...trainingCoursePermissions,
+  ...trainingSessionPermissions,
 ];
 
 /**
@@ -1110,6 +1149,22 @@ export const hrPages: PageDef[] = [
     route: '/payroll/reports',
     sortOrder: 250,
   },
+  // P-HR-TRN. The sessions screen first: it is the daily work, and the catalogue behind it is
+  // configuration somebody visits when the programme changes.
+  {
+    id: 'hr.training-sessions',
+    moduleId: 'hr',
+    name: { en: 'Training sessions', ar: 'جلسات التدريب' },
+    route: '/training/sessions',
+    sortOrder: 300,
+  },
+  {
+    id: 'hr.training-courses',
+    moduleId: 'hr',
+    name: { en: 'Training catalogue', ar: 'كتالوج التدريب' },
+    route: '/training/courses',
+    sortOrder: 310,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -1195,6 +1250,8 @@ export const hrModule: ModuleManifest = {
     // P-HR-04 — the organization-wide list the approval queue reads.
     { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },
     { prefix: '/hr/employee-loans', router: buildEmployeeLoansAdminRouter() },
+    { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
+    { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
   ],
   collections: [
     'hr_applicants',
@@ -1243,6 +1300,8 @@ export const hrModule: ModuleManifest = {
     'hr_employee_loans',
     'hr_loan_installments',
     'hr_loan_repayments',
+    'hr_training_courses',
+    'hr_training_sessions',
   ],
   // ADR-023 — HR answers the Files service's "may this caller see the owning entity?" for the
   // documents personnel actions are created with (HR3-C). One type, minted by this phase, so no

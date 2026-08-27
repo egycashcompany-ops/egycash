@@ -159,6 +159,18 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         '/payroll/reports',
       ],
     },
+    {
+      // P-HR-TRN. Its own group rather than a corner of an existing one, because training is about
+      // an employee's DEVELOPMENT and none of the five above is: Recruitment's subject is a
+      // candidate, Employees and Employee File hold who somebody is, and Attendance and Payroll
+      // hold what they did and what they were paid for it. Performance and Medical land here too.
+      //
+      // The sessions row first — it is the daily work, and the catalogue behind it is configuration
+      // somebody visits when the programme changes.
+      en: 'Training & Development',
+      ar: 'التدريب والتطوير',
+      routes: ['/training/sessions', '/training/courses'],
+    },
   ],
 };
 

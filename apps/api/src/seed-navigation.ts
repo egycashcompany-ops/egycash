@@ -255,6 +255,23 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'chart',
         permission: 'payrollReport.view',
       },
+      // P-HR-TRN. The SESSIONS row on `view` — it is the daily worklist, and everybody who takes
+      // part in running training reads it. The CATALOGUE row is on `manage`, because that screen is
+      // configuration: somebody who cannot save anything would be shown a page of disabled buttons.
+      {
+        en: 'Training Sessions',
+        ar: 'جلسات التدريب',
+        route: '/training/sessions',
+        icon: 'clipboard',
+        permission: 'trainingSession.view',
+      },
+      {
+        en: 'Training Catalogue',
+        ar: 'كتالوج التدريب',
+        route: '/training/courses',
+        icon: 'file',
+        permission: 'trainingCourse.manage',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

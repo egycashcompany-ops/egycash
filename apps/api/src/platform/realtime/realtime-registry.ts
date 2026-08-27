@@ -57,6 +57,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // Compensation is the canonical sensitive case: even the fact that a pay item changed is
   // gated behind the compensation permission, not plain employee.view.
   'hr.employeePayItem': { permission: 'employee.viewCompensation' },
+  // P-HR-TRN. The catalogue is configuration, so it follows the key that administers it; a session
+  // is the operational record several people work at once, so it follows the read permission.
+  'hr.trainingCourse': { permission: 'trainingCourse.manage' },
+  'hr.trainingSession': { permission: 'trainingSession.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

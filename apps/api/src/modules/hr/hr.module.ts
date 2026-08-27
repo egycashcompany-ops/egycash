@@ -92,11 +92,7 @@ import {
   employeeLoanService,
   hrEmployeeLoanFileAuthorizers,
 } from './employee-loans';
-import {
-  buildTrainingCoursesRouter,
-  buildTrainingSessionsRouter,
-  seedTrainingCourses,
-} from './training';
+import { buildTrainingCoursesRouter, buildTrainingSessionsRouter } from './training';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';

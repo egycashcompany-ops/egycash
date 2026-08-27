@@ -34,13 +34,12 @@ const OfferAction = ({ row }: { row: AwaitingOfferCandidateDto }): JSX.Element =
   const move = useMoveApplicantToOffer(row.applicantId);
   const [confirming, setConfirming] = useState(false);
 
-  // The form reads this from router state and skips its own applicant search.
+  // IN THE URL, NOT IN ROUTER STATE. Router state lives in the history entry and is gone on
+  // reload, so a recruiter who refreshed the form was handed an empty picker with no sign that
+  // anyone had been chosen. The form resolves the name from the id; `from=queue` records that the
+  // candidate has already been MOVED, which is what makes the choice fixed rather than editable.
   const openForm = (): void => {
-    navigate('/job-offers/new', {
-      state: {
-        applicant: { id: row.applicantId, code: row.applicantCode, fullNameAr: row.fullNameAr },
-      },
-    });
+    navigate(`/job-offers/new?applicantId=${row.applicantId}&from=queue`);
   };
 
   const moveThenOpen = async (): Promise<void> => {

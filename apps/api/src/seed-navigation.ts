@@ -290,6 +290,24 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'file',
         permission: 'trainingRecord.view',
       },
+      // P-HR-PRF. Cycles first — nothing exists without a round (D1) — and the reviews queue
+      // second, because it is what a round produces. The reviews row is on `performanceReview.view`
+      // rather than on the cycle's key: a round is a company object, and the rows inside it name
+      // people.
+      {
+        en: 'Performance Cycles',
+        ar: 'دورات تقييم الأداء',
+        route: '/performance/cycles',
+        icon: 'clipboard',
+        permission: 'performanceCycle.view',
+      },
+      {
+        en: 'Performance Reviews',
+        ar: 'مراجعات الأداء',
+        route: '/performance/reviews',
+        icon: 'clipboard',
+        permission: 'performanceReview.view',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

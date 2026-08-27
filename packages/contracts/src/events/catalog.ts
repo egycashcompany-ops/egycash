@@ -178,6 +178,11 @@ import {
   TrainingRecordEventPayloadV1,
 } from '../modules/hr-training-records.js';
 import {
+  HrPerformanceEvents,
+  type HrPerformanceEventName,
+  PerformanceCycleEventPayloadV1,
+} from '../modules/hr-performance.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -686,6 +691,11 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // the session, says something about a PERSON, and is the only one of the four anybody asks about
   // years later. Naming it here is what lets `created` and `certificateAttached` sit on it.
   trainingRecord: { en: 'Training record', ar: 'سجل تدريب' },
+  // P-HR-PRF. The CYCLE is the subject, because a round is what opens and closes (D1, D2) — the
+  // review is a row inside it and gets its own entity when P4 gives it facts of its own. Naming
+  // the cycle here is also what keeps the two events honest: they report that a round happened,
+  // and nothing about anybody's rating.
+  performanceCycle: { en: 'Performance cycle', ar: 'دورة تقييم أداء' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -1108,7 +1118,8 @@ export type HrCatalogEventName =
   | HrTrainingNominationEventName
   | HrTrainingEnrollmentEventName
   | HrTrainingRecordEventName
-  | HrTrainingAttendanceEventName;
+  | HrTrainingAttendanceEventName
+  | HrPerformanceEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1256,6 +1267,11 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrTrainingAttendanceEvents.Marked]: TrainingAttendanceEventPayloadV1,
   [HrTrainingRecordEvents.Created]: TrainingRecordEventPayloadV1,
   [HrTrainingRecordEvents.CertificateAttached]: TrainingRecordEventPayloadV1,
+
+  // P-HR-PRF P2 — the round opening and the round closing. One payload for both: they differ only
+  // in which moment they report, and the count is the receipt either way.
+  [HrPerformanceEvents.CycleOpened]: PerformanceCycleEventPayloadV1,
+  [HrPerformanceEvents.CycleClosed]: PerformanceCycleEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

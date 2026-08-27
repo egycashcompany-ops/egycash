@@ -65,6 +65,12 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.trainingNomination': { permission: 'trainingNomination.view' },
   'hr.trainingEnrollment': { permission: 'trainingNomination.view' },
   'hr.trainingRecord': { permission: 'trainingRecord.view' },
+  // P-HR-PRF §6 — the existing bus, reused. A cycle changes state under people who are looking at
+  // it (opening writes several hundred rows, and the count on screen is the receipt), and a review
+  // is an operational row several people work at once. Each follows the key that READS it, which
+  // for the review is the one that gates a named person.
+  'hr.performanceCycle': { permission: 'performanceCycle.view' },
+  'hr.performanceReview': { permission: 'performanceReview.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

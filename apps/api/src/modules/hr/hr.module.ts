@@ -100,6 +100,7 @@ import {
   buildTrainingSessionsRouter,
   hrTrainingCertificateAuthorizers,
 } from './training';
+import { buildPerformanceCyclesRouter, buildPerformanceReviewsRouter } from './performance';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -901,6 +902,52 @@ const trainingRecordPermissions = declarePermissions(
   'hr.training-records',
 );
 
+/**
+ * P-HR-PRF. Three keys, and the split is between DEFINING a round, RUNNING it, and reading the
+ * rows it opened.
+ *
+ * `performanceCycle.manage` writes a draft — a name, a period, a scope, a scale. It is planning.
+ *
+ * `performanceCycle.conduct` OPENS and CLOSES, and opening writes a row for every employee in
+ * scope while closing ends the round for good. That is a heavier act than editing a draft's dates,
+ * so it is not folded into `manage` — the same reasoning that kept `trainingSession.conduct`
+ * separate from `trainingSession.edit`.
+ *
+ * `performanceReview.view` is its own key rather than part of the cycle's, because the two are
+ * about different things: a ROUND is a company object anybody planning one may read, and a REVIEW
+ * names a person. Somebody who may see that «H1 2026» exists is not thereby somebody who may see
+ * who is being assessed and by whom.
+ *
+ * THERE IS NO KEY THAT WRITES AN ASSESSMENT, deliberately. Submitting, returning and finalizing
+ * are P4, and a grant declared before the thing it guards exists reads in the permission matrix
+ * like a capability somebody has already been given.
+ */
+const performanceCyclePermissions = declarePermissions(
+  'hr',
+  'performanceCycle',
+  { en: 'performance cycles', ar: 'دورات تقييم الأداء' },
+  ['view', 'manage'],
+  [
+    {
+      action: 'conduct',
+      name: {
+        en: 'Open and close a performance cycle',
+        ar: 'فتح وإغلاق دورة تقييم الأداء',
+      },
+    },
+  ],
+  'hr.performance-cycles',
+);
+
+const performanceReviewPermissions = declarePermissions(
+  'hr',
+  'performanceReview',
+  { en: 'performance reviews', ar: 'مراجعات الأداء' },
+  ['view'],
+  [],
+  'hr.performance-reviews',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -988,6 +1035,8 @@ export const hrPermissions: PermissionDef[] = [
   ...trainingSessionPermissions,
   ...trainingNominationPermissions,
   ...trainingRecordPermissions,
+  ...performanceCyclePermissions,
+  ...performanceReviewPermissions,
 ];
 
 /**
@@ -1237,6 +1286,22 @@ export const hrPages: PageDef[] = [
     route: '/training/records',
     sortOrder: 320,
   },
+  // P-HR-PRF. The cycles screen first, because nothing exists without a round (D1); the reviews
+  // queue is what the round produces and is read second.
+  {
+    id: 'hr.performance-cycles',
+    moduleId: 'hr',
+    name: { en: 'Performance cycles', ar: 'دورات تقييم الأداء' },
+    route: '/performance/cycles',
+    sortOrder: 330,
+  },
+  {
+    id: 'hr.performance-reviews',
+    moduleId: 'hr',
+    name: { en: 'Performance reviews', ar: 'مراجعات الأداء' },
+    route: '/performance/reviews',
+    sortOrder: 340,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -1322,6 +1387,8 @@ export const hrModule: ModuleManifest = {
     // P-HR-04 — the organization-wide list the approval queue reads.
     { prefix: '/hr/payroll/adjustments', router: buildPayrollAdjustmentsRouter() },
     { prefix: '/hr/employee-loans', router: buildEmployeeLoansAdminRouter() },
+    { prefix: '/hr/performance/cycles', router: buildPerformanceCyclesRouter() },
+    { prefix: '/hr/performance/reviews', router: buildPerformanceReviewsRouter() },
     { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
     { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },

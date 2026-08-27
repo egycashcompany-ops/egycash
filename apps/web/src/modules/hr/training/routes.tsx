@@ -1,14 +1,14 @@
-// Training route subtree (lazy-loaded). Two screens and nothing else: the deliveries somebody
-// works daily, and the catalogue behind them.
+// Training route subtree (lazy-loaded). Three screens: the deliveries somebody works daily, the
+// requests to attend them, and the catalogue behind both.
 //
-// No nominations route, no enrollment route, no certificate route — those are T3 and T4, and a
-// route to an unbuilt screen is the owner rule carried from Fleet FW-1: nothing unshipped is
-// reachable.
+// No attendance route and no certificate route — those are T4, and a route to an unbuilt screen is
+// the owner rule carried from Fleet FW-1: nothing unshipped is reachable.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { TrainingCoursesPage } from './pages/TrainingCoursesPage';
+import { TrainingNominationsPage } from './pages/TrainingNominationsPage';
 import { TrainingSessionsPage } from './pages/TrainingSessionsPage';
 
 export default function TrainingRoutes(): JSX.Element {
@@ -20,6 +20,19 @@ export default function TrainingRoutes(): JSX.Element {
           element={
             <RequirePermission permission="trainingSession.view">
               <TrainingSessionsPage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          The queue is gated by `view`, and the DECISION buttons inside it by `decide` — a person
+          who may nominate must be able to see what they asked for, and a person who may decide
+          sees the same screen with two more buttons on it.
+        */}
+        <Route
+          path="nominations"
+          element={
+            <RequirePermission permission="trainingNomination.view">
+              <TrainingNominationsPage />
             </RequirePermission>
           }
         />

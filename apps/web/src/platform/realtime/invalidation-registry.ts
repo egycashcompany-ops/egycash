@@ -89,6 +89,18 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // did not move.
   'hr.trainingCourse': [['hr', 'trainingCourses'], ['hr', 'trainingSessions']],
   'hr.trainingSession': [['hr', 'trainingSessions']],
+  // A decision moves three things: the request, the seat it creates, and the session's remaining
+  // capacity — which is the number somebody reads before deciding the next one.
+  'hr.trainingNomination': [
+    ['hr', 'trainingNominations'],
+    ['hr', 'trainingEnrollments'],
+    ['hr', 'trainingSessions'],
+  ],
+  'hr.trainingEnrollment': [
+    ['hr', 'trainingEnrollments'],
+    ['hr', 'trainingNominations'],
+    ['hr', 'trainingSessions'],
+  ],
   'hr.contract': [['hr', 'contracts'], ['hr', 'settlement']],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],

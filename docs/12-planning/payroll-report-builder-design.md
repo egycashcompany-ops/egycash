@@ -159,6 +159,16 @@ property of the pipeline's **shape**, not of a check somebody has to remember.
 
 ### F-B1-1 — the ladder does not actually reach the department, and this design said it did
 
+> **CLOSED by P-SCOPE-1.** `payslip.departmentId` is now stamped at issue and declared to the
+> repository, so a `department`-scoped grant narrows every payslip read — this report included,
+> without a line changing here, because the scope arrives through the same `baseFilter` it always
+> did. `section` is still unnarrowed, deliberately (D-DEPT-5).
+>
+> The finding below is kept as written, in the present tense it was written in. It is the record of
+> what was true for four phases and of how it was found, and the last paragraph turned out to be
+> exactly right: the characterization test DID fail when the gap was closed, and was replaced by
+> its opposite in `hr-payroll-reports.spec.ts`. See `payroll-department-scope-design.md`.
+
 **The earlier text of this section was wrong.** It claimed a *department* manager is answered with
 their department's figures. The code does not do that, and never did:
 

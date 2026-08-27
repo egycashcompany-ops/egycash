@@ -11,11 +11,14 @@
 // figures and hands an organization-scoped reader the whole company's, with no ownership model to
 // maintain. A filter cannot widen that: it becomes a `$match` AFTER the scoped one.
 //
-// F-B1-1 — WHAT THIS DOES NOT YET DO. The requirement is "لكل إدارة، بالإضافة إلى الشركة بالكامل",
-// and a payslip carries `branchId` with no department field, so a `department`-scoped grant narrows
-// this read by NOTHING and answers as `organization` does. Inherited from PY-7 and shared with every
-// other payslip read; recorded rather than glossed, and pending a decision that would have to touch
-// what a payslip stores.
+// F-B1-1 — CLOSED, and worth saying how. The requirement is "لكل إدارة، بالإضافة إلى الشركة
+// بالكامل". For four phases a payslip carried the branch axis and no second one, so a
+// `department`-scoped grant narrowed this read by NOTHING and answered as `organization` did —
+// silently, because `BaseRepository.scopeFilter` returns an empty filter for an undeclared field.
+// P-SCOPE-1 stamped `payslip.departmentId` at issue and declared it to the repository, and this
+// read inherited the fix without changing a line: the scope arrives through the same `baseFilter`
+// it always did. `hr-payroll-reports.spec.ts` holds the behaviour, in a test that replaced its own
+// opposite.
 //
 // NOTHING IS STORED. A result is computed and returned; there is no execution row, so no figure here
 // can go stale against the payslips it summed.

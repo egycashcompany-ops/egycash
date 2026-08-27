@@ -23,12 +23,13 @@ type IdParam = { id: string };
  * permission is what makes the same saved definition answer a BRANCH-scoped reader with their branch
  * and an organization-scoped reader with the company.
  *
- * F-B1-1 — AND THE LADDER STOPS AT THE BRANCH, on this collection. A payslip carries `branchId` and
- * no department field, so `BaseRepository.scopeFilter` answers a `department` or `section` grant
- * with an empty filter and the read is not narrowed at all. That is inherited from PY-7 rather than
- * introduced here — the payslip list, the reconciliation and both cost reports have always behaved
- * this way — and it is stated here instead of being described as something it is not.
- * `hr-payroll-reports.spec.ts` holds the actual behaviour under that name.
+ * F-B1-1 — AND THE LADDER NOW REACHES THE DEPARTMENT, though not the section. A payslip once
+ * carried the branch axis and no second one, so `BaseRepository.scopeFilter` answered a
+ * `department` grant with an empty filter and did not narrow the read at all. P-SCOPE-1 stamped
+ * `payslip.departmentId` at issue and declared it, closing that for every payslip read at once —
+ * the list, the reconciliation and both cost reports included, since all of them scope through the
+ * same repository. `section` is still unnarrowed and deliberately so (D-DEPT-5): the section rung
+ * was left where it was. `hr-payroll-reports.spec.ts` holds both halves.
  */
 const executionScope = (req: Request) =>
   scopeSelector(authContext(req), 'employee.viewCompensation');

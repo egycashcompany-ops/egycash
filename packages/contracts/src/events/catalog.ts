@@ -764,6 +764,12 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   cancelled: { en: 'cancelled', ar: 'إلغاء' },
   evaluated: { en: 'evaluated', ar: 'تقييم' },
   completed: { en: 'completed', ar: 'إتمام' },
+  // P-HR-TRN T4. Two words the lexicon had never needed: what happened to a seat on the day, and
+  // the paperwork arriving afterwards. Labels are GENERATED from this map, so a new action word
+  // with no entry would show an English identifier in the Arabic UI — which is what
+  // `catalog.spec.ts`'s localization check refuses, and what it caught here.
+  attendanceMarked: { en: 'attendance marked', ar: 'تسجيل حضور' },
+  certificateAttached: { en: 'certificate attached', ar: 'إرفاق شهادة' },
   replaced: { en: 'replaced', ar: 'استبدال' },
   reviewed: { en: 'reviewed', ar: 'مراجعة' },
   setCompleted: { en: 'set completed', ar: 'اكتمال المجموعة' },

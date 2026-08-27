@@ -30,7 +30,7 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
@@ -56,6 +56,9 @@ const EmployeeAttendanceTab = lazy(
   () => import('../../../attendance/components/EmployeeAttendanceTab'),
 );
 const EmployeeContractsTab = lazy(() => import('../../../contracts/components/EmployeeContractsTab'));
+// P-HR-TRN T5 — beside Attendance, because both answer «what has this person actually done» rather
+// than «who are they» or «what are they paid».
+const EmployeeTrainingTab = lazy(() => import('../../../training/components/EmployeeTrainingTab'));
 const EmployeePayItemsTab = lazy(
   () => import('../../../payroll/components/EmployeePayItemsTab'),
 );
@@ -383,6 +386,17 @@ export const EmployeeProfilePage = (): JSX.Element => {
       {tab === 'adjustments' && e.compensationVisible && (
         <Suspense fallback={<LoadingState />}>
           <EmployeeAdjustmentsTab employee={e} />
+        </Suspense>
+      )}
+      {/*
+        No permission condition, unlike the compensation tabs beside it. Training is not sensitive
+        in the way pay is — the endpoints behind this tab carry `trainingRecord.view` and
+        `trainingNomination.view`, and a reader without them is answered with an empty list rather
+        than a tab that lies about existing.
+      */}
+      {tab === 'training' && (
+        <Suspense fallback={<LoadingState />}>
+          <EmployeeTrainingTab employee={e} />
         </Suspense>
       )}
       {tab === 'loans' && e.compensationVisible && (

@@ -46,6 +46,7 @@ export * from './modules/hr-payroll-money.js';
 export * from './modules/hr-payroll.js';
 export * from './modules/hr-payroll-reports.js';
 export * from './modules/hr-employee-loans.js';
+export * from './modules/hr-training.js';
 export * from './modules/hr-job-requisition.js';
 export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';

@@ -83,6 +83,12 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'hr.employeeLoanAttachment': [['hr', 'employeeLoans']],
   'hr.employeeActionAttachment': [['hr', 'employees']],
   'hr.employeePayItem': [['hr', 'compensation']],
+  // P-HR-TRN. Two topics, and the catalogue reaches BOTH key families: retiring a course changes
+  // what the session form may offer, so a screen holding the picker open must not go on offering
+  // a course nobody may schedule any more. A session change touches only sessions — the catalogue
+  // did not move.
+  'hr.trainingCourse': [['hr', 'trainingCourses'], ['hr', 'trainingSessions']],
+  'hr.trainingSession': [['hr', 'trainingSessions']],
   'hr.contract': [['hr', 'contracts'], ['hr', 'settlement']],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],

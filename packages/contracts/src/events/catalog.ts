@@ -157,6 +157,11 @@ import {
   ContractTerminatedPayloadV1,
 } from '../modules/hr-contract.js';
 import {
+  HrTrainingEvents,
+  type HrTrainingEventName,
+  TrainingSessionEventPayloadV1,
+} from '../modules/hr-training.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -651,6 +656,11 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   payroll: { en: 'Payroll', ar: 'الرواتب' },
   employeeLoan: { en: 'Employee loan', ar: 'قرض موظف' },
   contract: { en: 'Contract', ar: 'عقد' },
+  // P-HR-TRN. The SESSION is the subject, not the course: a course is configuration and nothing
+  // happens to it, while a session is scheduled, run, completed or called off — and «completed» is
+  // the fact that qualifies people (D7). The same reasoning that made `jobRequisition` its own
+  // entity rather than an action on `jobOffer`.
+  trainingSession: { en: 'Training session', ar: 'جلسة تدريب' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -1062,7 +1072,8 @@ export type HrCatalogEventName =
   | HrPayrollEventName
   | HrEmployeeLoanEventName
   | HrJobRequisitionEventName
-  | HrContractEventName;
+  | HrContractEventName
+  | HrTrainingEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1189,6 +1200,13 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrContractEvents.Renewed]: ContractSupersededPayloadV1,
   [HrContractEvents.Terminated]: ContractTerminatedPayloadV1,
   [HrContractEvents.Expired]: ContractEventPayloadV1,
+
+  // P-HR-TRN — one payload shape for all four: they differ only in which moment they report, and
+  // the session's own code and course already say which delivery is meant.
+  [HrTrainingEvents.SessionScheduled]: TrainingSessionEventPayloadV1,
+  [HrTrainingEvents.SessionStarted]: TrainingSessionEventPayloadV1,
+  [HrTrainingEvents.SessionCompleted]: TrainingSessionEventPayloadV1,
+  [HrTrainingEvents.SessionCancelled]: TrainingSessionEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

@@ -38,6 +38,10 @@ import {
   HrTrainingEnrollmentEvents,
   HrTrainingNominationEvents,
 } from '../modules/hr-training-nominations.js';
+import {
+  HrTrainingAttendanceEvents,
+  HrTrainingRecordEvents,
+} from '../modules/hr-training-records.js';
 import { HrOfferEvents } from '../modules/hr-job-offer.js';
 import { HrInterviewEvents } from '../modules/hr-interview.js';
 import { HrScreeningEvents } from '../modules/hr-screening.js';
@@ -86,6 +90,8 @@ const HR_EVENT_CONSTANTS = [
   HrTrainingEvents,
   HrTrainingNominationEvents,
   HrTrainingEnrollmentEvents,
+  HrTrainingAttendanceEvents,
+  HrTrainingRecordEvents,
 ].flatMap((group) => Object.values(group));
 
 const FLEET_EVENT_CONSTANTS = Object.values(FleetEvents);

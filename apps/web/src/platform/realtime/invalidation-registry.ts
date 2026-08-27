@@ -96,10 +96,18 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['hr', 'trainingEnrollments'],
     ['hr', 'trainingSessions'],
   ],
+  // Completing a session writes records, so a record's arrival refreshes the four screens that
+  // could be showing the state before it.
+  'hr.trainingRecord': [
+    ['hr', 'trainingRecords'],
+    ['hr', 'trainingEnrollments'],
+    ['hr', 'trainingSessions'],
+  ],
   'hr.trainingEnrollment': [
     ['hr', 'trainingEnrollments'],
     ['hr', 'trainingNominations'],
     ['hr', 'trainingSessions'],
+    ['hr', 'trainingRecords'],
   ],
   'hr.contract': [['hr', 'contracts'], ['hr', 'settlement']],
   'hr.contractBranding': [['hr', 'contracts']],

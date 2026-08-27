@@ -1,14 +1,17 @@
-// Training route subtree (lazy-loaded). Three screens: the deliveries somebody works daily, the
-// requests to attend them, and the catalogue behind both.
+// Training route subtree (lazy-loaded). Four screens: the deliveries somebody works daily, the
+// requests to attend them, the catalogue behind both, and the permanent records completing a
+// session writes.
 //
-// No attendance route and no certificate route — those are T4, and a route to an unbuilt screen is
-// the owner rule carried from Fleet FW-1: nothing unshipped is reachable.
+// Attendance and the certificate have no screens of their own, and that is not an omission: both
+// are acts ON something that already has one. Marking the room happens inside the session's
+// completion roster, and a certificate is attached from the record it belongs to.
 import { Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { TrainingCoursesPage } from './pages/TrainingCoursesPage';
 import { TrainingNominationsPage } from './pages/TrainingNominationsPage';
+import { TrainingRecordsPage } from './pages/TrainingRecordsPage';
 import { TrainingSessionsPage } from './pages/TrainingSessionsPage';
 
 export default function TrainingRoutes(): JSX.Element {
@@ -47,6 +50,19 @@ export default function TrainingRoutes(): JSX.Element {
           element={
             <RequirePermission permission="trainingCourse.manage">
               <TrainingCoursesPage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          On `trainingRecord.view` and nothing more. There is no create, edit or delete route here
+          because there is none on the server either: a record is written by completing a session,
+          and what it says is not revised (D8).
+        */}
+        <Route
+          path="records"
+          element={
+            <RequirePermission permission="trainingRecord.view">
+              <TrainingRecordsPage />
             </RequirePermission>
           }
         />

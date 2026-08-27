@@ -4,6 +4,7 @@ export {
   buildTrainingCoursesRouter,
   buildTrainingEnrollmentsRouter,
   buildTrainingNominationsRouter,
+  buildTrainingRecordsRouter,
   buildTrainingSessionsRouter,
 } from './training.routes';
 export { trainingCourseService } from './courses/training-course.service';
@@ -14,3 +15,9 @@ export { type TrainingSessionDoc } from './sessions/training-session.model';
 export { trainingNominationService } from './nominations/training-nomination.service';
 export { type TrainingNominationDoc } from './nominations/training-nomination.model';
 export { type TrainingEnrollmentDoc } from './nominations/training-enrollment.model';
+export { trainingRecordService } from './records/training-record.service';
+export { type TrainingRecordDoc } from './records/training-record.model';
+export {
+  ensureTrainingCertificateCategory,
+  hrTrainingCertificateAuthorizers,
+} from './records/training-record.files';

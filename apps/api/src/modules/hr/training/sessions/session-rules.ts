@@ -31,9 +31,18 @@ const NEXT: Readonly<Record<TrainingSessionStatus, readonly TrainingSessionStatu
  */
 export const TARGET_OF = {
   start: 'running',
-  complete: 'completed',
   cancel: 'cancelled',
-} as const satisfies Readonly<Record<'start' | 'complete' | 'cancel', TrainingSessionStatus>>;
+} as const satisfies Readonly<Record<'start' | 'cancel', TrainingSessionStatus>>;
+
+/**
+ * Completion's target, named separately because completion is not a transition like the others.
+ *
+ * It takes the list of people it qualifies (D7) and writes their permanent records, so it has its
+ * own endpoint and its own service method. Keeping the status here rather than inlining `'completed'`
+ * at the one call site means the machine above is still the only place that says what may follow
+ * what — `canTransition(status, COMPLETED)` is the same check the other two make.
+ */
+export const COMPLETED: TrainingSessionStatus = 'completed';
 
 export const canTransition = (
   from: TrainingSessionStatus,

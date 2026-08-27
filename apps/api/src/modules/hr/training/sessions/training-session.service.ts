@@ -25,7 +25,7 @@ import { emit } from '../../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { trainingCourseService } from '../courses/training-course.service';
 import { nextSessionNumber } from './session-sequence';
-import { canTransition, TARGET_OF } from './session-rules';
+import { canTransition, COMPLETED, TARGET_OF } from './session-rules';
 import { trainingSessionRepository } from './training-session.repository';
 import { type TrainingSessionDoc } from './training-session.model';
 
@@ -44,7 +44,6 @@ const snapshot = (doc: TrainingSessionDoc) => ({
 
 const EVENT_OF = {
   running: HrTrainingEvents.SessionStarted,
-  completed: HrTrainingEvents.SessionCompleted,
   cancelled: HrTrainingEvents.SessionCancelled,
 } as const;
 
@@ -164,7 +163,14 @@ class TrainingSessionService {
     return updated;
   }
 
-  /** Start, complete or cancel — the machine in `session-rules.ts`, applied and recorded. */
+  /**
+   * Start or cancel — the machine in `session-rules.ts`, applied and recorded.
+   *
+   * COMPLETION IS NOT HERE. It writes one immutable record per named enrollment (D7), which is a
+   * different act with a different argument, and it lives in the nominations feature beside the
+   * enrollments it reads. This method is what is left when that is taken out: two status changes
+   * that mean nothing beyond themselves.
+   */
   async transition(
     ctx: AuthContext,
     id: string,
@@ -179,10 +185,6 @@ class TrainingSessionService {
     }
     const set: Partial<TrainingSessionDoc> = { status: to };
     if (to === 'cancelled') set.cancelledReason = input.reason ?? null;
-    if (to === 'completed') {
-      set.completedAt = new Date();
-      set.completedBy = new Types.ObjectId(ctx.userId);
-    }
     const updated = await trainingSessionRepository.updateById(id, set, {
       by: ctx.userId,
       version: input.version,
@@ -197,6 +199,44 @@ class TrainingSessionService {
       ],
     });
     await emit(EVENT_OF[to], {
+      sessionId: id,
+      sessionCode: updated.code,
+      courseKey: updated.courseKey,
+    });
+    return updated;
+  }
+  /**
+   * Stamp a session completed — the WRITE half of the completion act (D7).
+   *
+   * Narrow on purpose, and it checks the machine rather than trusting the caller: the records are
+   * written by the nominations feature (which owns the enrollments), and this is the only thing it
+   * is allowed to do to a session. A method that took a status would let any caller set any one.
+   */
+  async markCompleted(
+    ctx: AuthContext,
+    id: string,
+    version: number,
+    scope: ScopeSelector,
+  ): Promise<TrainingSessionDoc> {
+    const before = await trainingSessionRepository.getById(id, scope);
+    if (!canTransition(before.status, COMPLETED)) {
+      throw new BusinessRuleError(`a ${before.status} session cannot become ${COMPLETED}`);
+    }
+    const updated = await trainingSessionRepository.updateById(
+      id,
+      {
+        status: COMPLETED,
+        completedAt: new Date(),
+        completedBy: new Types.ObjectId(ctx.userId),
+      },
+      { by: ctx.userId, version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'status', old: before.status, new: COMPLETED }],
+    });
+    await emit(HrTrainingEvents.SessionCompleted, {
       sessionId: id,
       sessionCode: updated.code,
       courseKey: updated.courseKey,

@@ -64,6 +64,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // A nomination and a seat are both about a PERSON, so both follow the key that reads them.
   'hr.trainingNomination': { permission: 'trainingNomination.view' },
   'hr.trainingEnrollment': { permission: 'trainingNomination.view' },
+  'hr.trainingRecord': { permission: 'trainingRecord.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

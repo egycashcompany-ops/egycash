@@ -1,16 +1,19 @@
 // Training api/ surface (ADR-013 — P-HR-TRN, phase T2).
 //
-// Four resources: the catalogue, its deliveries, the requests to attend them, and the seats those
-// requests create. There is no attendance call here and no certificate call — those are T4, and a
-// client method for an endpoint that does not exist is how a screen ends up promising something
-// the server refuses.
+// Five resources: the catalogue, its deliveries, the requests to attend them, the seats those
+// requests create, and the permanent records completing a session writes.
 import {
   type CancelTrainingEnrollment,
   type CreateTrainingCourse,
   type CreateTrainingNomination,
   type CreateTrainingSession,
   type DecideTrainingNomination,
+  type AttachTrainingCertificate,
+  type CompleteTrainingSession,
   type EnrollInTrainingSession,
+  type MarkTrainingAttendance,
+  type MarkTrainingAttendanceBulk,
+  type TrainingRecordDto,
   type TrainingEnrollmentDto,
   type TrainingNominationDto,
   type Paginated,
@@ -21,12 +24,13 @@ import {
   type UpdateTrainingSession,
   type WithdrawTrainingNomination,
 } from '@ecms/contracts';
-import { buildQuery, get, getPage, patch, post, type QueryParams } from '../../../../shared/lib/api-client';
+import { buildQuery, get, getPage, patch, post, upload, type QueryParams } from '../../../../shared/lib/api-client';
 
 const COURSES = '/hr/training/courses';
 const SESSIONS = '/hr/training/sessions';
 const NOMINATIONS = '/hr/training/nominations';
 const ENROLLMENTS = '/hr/training/enrollments';
+const RECORDS = '/hr/training/records';
 
 // ── Courses ─────────────────────────────────────────────────────────────────
 
@@ -105,3 +109,53 @@ export const cancelTrainingEnrollment = (
   body: CancelTrainingEnrollment,
 ): Promise<TrainingEnrollmentDto> =>
   post<TrainingEnrollmentDto>(`${ENROLLMENTS}/${id}/cancel`, body);
+
+// ── The day, and what it produced ───────────────────────────────────────────
+
+export const markTrainingAttendance = (
+  enrollmentId: string,
+  body: MarkTrainingAttendance,
+): Promise<TrainingEnrollmentDto> =>
+  post<TrainingEnrollmentDto>(`${ENROLLMENTS}/${enrollmentId}/attendance`, body);
+
+/** The whole room in one call — how somebody running a session actually works. */
+export const markTrainingAttendanceBulk = (
+  body: MarkTrainingAttendanceBulk,
+): Promise<{ marked: number; failed: { enrollmentId: string; reason: string }[] }> =>
+  post<{ marked: number; failed: { enrollmentId: string; reason: string }[] }>(
+    `${ENROLLMENTS}/attendance`,
+    body,
+  );
+
+/**
+ * Completing NAMES the people it qualifies (D7).
+ *
+ * Not `transition`, which handles the two status changes that mean nothing beyond themselves.
+ * Completion writes permanent records, and the list is the whole of the decision.
+ */
+export const completeTrainingSession = (
+  sessionId: string,
+  body: CompleteTrainingSession,
+): Promise<{ session: TrainingSessionDto; recordsCreated: number }> =>
+  post<{ session: TrainingSessionDto; recordsCreated: number }>(
+    `${SESSIONS}/${sessionId}/complete`,
+    body,
+  );
+
+export const listTrainingRecords = (params: QueryParams): Promise<Paginated<TrainingRecordDto>> =>
+  getPage<TrainingRecordDto>(`${RECORDS}${buildQuery(params)}`);
+
+/** Multipart: the certificate itself, plus the expiry the paper carries (recorded, not enforced). */
+export const attachTrainingCertificate = (
+  recordId: string,
+  file: File,
+  body: AttachTrainingCertificate,
+): Promise<TrainingRecordDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  if (body.expiresAt !== undefined) {
+    form.append('expiresAt', new Date(body.expiresAt).toISOString());
+  }
+  if (body.note !== undefined) form.append('note', body.note);
+  return upload<TrainingRecordDto>(`${RECORDS}/${recordId}/certificate`, form);
+};

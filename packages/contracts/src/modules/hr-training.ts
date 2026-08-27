@@ -164,10 +164,17 @@ export const UpdateTrainingSessionSchema = z
   .strict();
 export type UpdateTrainingSession = z.infer<typeof UpdateTrainingSessionSchema>;
 
-/** Moving a session along §4. Cancelling states why; starting and completing need no words. */
+/**
+ * Moving a session along §4 — the transitions that change nothing but the status.
+ *
+ * COMPLETION IS NOT ONE OF THEM, and it left this enum when T4 gave it the list of people it
+ * qualifies (D7). Completing writes one immutable record per NAMED enrollment, so it takes an
+ * argument this shape has nowhere to put — and leaving a second, argument-free way to complete a
+ * session would mean two ways to do it, one of which quietly qualifies nobody.
+ */
 export const TransitionTrainingSessionSchema = z
   .object({
-    action: z.enum(['start', 'complete', 'cancel']),
+    action: z.enum(['start', 'cancel']),
     reason: z.string().trim().max(500).optional(),
     version: z.number().int().min(0),
   })

@@ -170,6 +170,14 @@ import {
   TrainingNominationEventPayloadV1,
 } from '../modules/hr-training-nominations.js';
 import {
+  HrTrainingAttendanceEvents,
+  HrTrainingRecordEvents,
+  type HrTrainingAttendanceEventName,
+  type HrTrainingRecordEventName,
+  TrainingAttendanceEventPayloadV1,
+  TrainingRecordEventPayloadV1,
+} from '../modules/hr-training-records.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -674,6 +682,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // «rejected» and «cancelled» read as the same thing happening to the same object.
   trainingNomination: { en: 'Training nomination', ar: 'ترشيح تدريب' },
   trainingEnrollment: { en: 'Training seat', ar: 'مقعد تدريب' },
+  // The RECORD is a subject of its own, not an action on the session that produced it: it outlives
+  // the session, says something about a PERSON, and is the only one of the four anybody asks about
+  // years later. Naming it here is what lets `created` and `certificateAttached` sit on it.
+  trainingRecord: { en: 'Training record', ar: 'سجل تدريب' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -752,6 +764,12 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   cancelled: { en: 'cancelled', ar: 'إلغاء' },
   evaluated: { en: 'evaluated', ar: 'تقييم' },
   completed: { en: 'completed', ar: 'إتمام' },
+  // P-HR-TRN T4. Two words the lexicon had never needed: what happened to a seat on the day, and
+  // the paperwork arriving afterwards. Labels are GENERATED from this map, so a new action word
+  // with no entry would show an English identifier in the Arabic UI — which is what
+  // `catalog.spec.ts`'s localization check refuses, and what it caught here.
+  attendanceMarked: { en: 'attendance marked', ar: 'تسجيل حضور' },
+  certificateAttached: { en: 'certificate attached', ar: 'إرفاق شهادة' },
   replaced: { en: 'replaced', ar: 'استبدال' },
   reviewed: { en: 'reviewed', ar: 'مراجعة' },
   setCompleted: { en: 'set completed', ar: 'اكتمال المجموعة' },
@@ -1088,7 +1106,9 @@ export type HrCatalogEventName =
   | HrContractEventName
   | HrTrainingEventName
   | HrTrainingNominationEventName
-  | HrTrainingEnrollmentEventName;
+  | HrTrainingEnrollmentEventName
+  | HrTrainingRecordEventName
+  | HrTrainingAttendanceEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1231,6 +1251,11 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrTrainingNominationEvents.Withdrawn]: TrainingNominationEventPayloadV1,
   [HrTrainingEnrollmentEvents.Created]: TrainingEnrollmentEventPayloadV1,
   [HrTrainingEnrollmentEvents.Cancelled]: TrainingEnrollmentEventPayloadV1,
+
+  // T4 — what happened on the day, and what it produced.
+  [HrTrainingAttendanceEvents.Marked]: TrainingAttendanceEventPayloadV1,
+  [HrTrainingRecordEvents.Created]: TrainingRecordEventPayloadV1,
+  [HrTrainingRecordEvents.CertificateAttached]: TrainingRecordEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

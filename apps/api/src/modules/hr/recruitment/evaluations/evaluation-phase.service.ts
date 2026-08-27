@@ -12,6 +12,7 @@ import { auditService } from '../../../../platform/audit';
 import { diffChanges } from '../../../../shared/utils/diff';
 import { evaluationPhaseRepository } from './evaluation-phase.repository';
 import { type EvaluationPhaseDoc } from './evaluation-phase.model';
+import { applicabilityOf, isDriversOnlyPhase } from './phase-applicability';
 
 const entityRef = (id: string) => ({ moduleId: 'hr', entityType: 'evaluationPhase', entityId: id });
 
@@ -29,18 +30,18 @@ const snapshot = (doc: EvaluationPhaseDoc) => ({
 
 /**
  * The persisted shape of a new phase. `applicability` is the typed field and `driversOnly` its
- * read alias, so a caller may set either and the two never disagree.
+ * read alias, so a caller may set either and the two never disagree — resolved by the same
+ * function every reader uses, rather than by a fourth copy of the expression.
  */
 const newPhaseFields = (input: CreateEvaluationPhase): Partial<EvaluationPhaseDoc> => {
-  const applicability = input.applicability ?? (input.driversOnly ? 'driversOnly' : 'all');
   return {
     key: input.key,
     name: input.name,
     order: input.order,
     active: true,
-    driversOnly: applicability === 'driversOnly',
+    driversOnly: isDriversOnlyPhase(input),
     kind: input.kind,
-    applicability,
+    applicability: applicabilityOf(input),
     permissionResource: input.permissionResource,
     appointmentEnabled: input.appointmentEnabled,
     requiresResultDocument: input.requiresResultDocument,
@@ -100,13 +101,13 @@ class EvaluationPhaseService {
     if (input.name !== undefined) set.name = input.name;
     if (input.order !== undefined) set.order = input.order;
     if (input.active !== undefined) set.active = input.active;
-    // `applicability` and `driversOnly` are the same fact; setting either keeps both in step.
-    if (input.applicability !== undefined) {
-      set.applicability = input.applicability;
-      set.driversOnly = input.applicability === 'driversOnly';
-    } else if (input.driversOnly !== undefined) {
-      set.driversOnly = input.driversOnly;
-      set.applicability = input.driversOnly ? 'driversOnly' : 'all';
+    // `applicability` and `driversOnly` are the same fact; setting either keeps both in step, and
+    // WHICH fact that is comes from the shared resolver. The branch survives because "the caller
+    // named neither" must leave both alone — `applicabilityOf({})` answers `'all'`, which would
+    // silently un-set a drivers-only phase on any update that only renamed it.
+    if (input.applicability !== undefined || input.driversOnly !== undefined) {
+      set.applicability = applicabilityOf(input);
+      set.driversOnly = isDriversOnlyPhase(input);
     }
     if (input.kind !== undefined) set.kind = input.kind;
     if (input.permissionResource !== undefined) set.permissionResource = input.permissionResource;

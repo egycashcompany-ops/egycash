@@ -17,7 +17,7 @@ import { logger } from '../../../../infrastructure/logging/logger';
 import { applicantService, type ApplicantDoc } from '../applicants';
 import { screeningService } from '../screening';
 import { interviewService, interviewStageService } from '../interviews';
-import { evaluationService, evaluationPhaseService } from '../evaluations';
+import { evaluationService, evaluationPhaseService, isDriversOnlyPhase } from '../evaluations';
 import { jobOfferService } from '../job-offers';
 import { recruitmentWorkflowEngine } from '../workflow';
 import { jobTitleService } from '../../../../platform/organization/job-titles/job-title.service';
@@ -197,7 +197,7 @@ class QueueMaterializerService {
     const binding = evaluationService.workflowBinding as unknown as { model: never };
     let opened = false;
     for (const phase of phases.items) {
-      if (phase.applicability === 'driversOnly' && !isDriver) continue;
+      if (isDriversOnlyPhase(phase) && !isDriver) continue;
       if (await hasLiveRecord(binding.model, applicantId, 'phaseId', phase._id)) continue;
       const { created } = await recruitmentWorkflowEngine.ensureStageRecord({
         binding: evaluationService.workflowBinding,

@@ -11,6 +11,7 @@ import {
   placementLabelDto,
 } from '../workflow/stage-mapper';
 import { type EvaluationPhaseDoc } from './evaluation-phase.model';
+import { applicabilityOf, isDriversOnlyPhase } from './phase-applicability';
 import { type EvaluationDoc, type EvaluationFile } from './evaluation.model';
 
 export const toEvaluationPhaseDto = (doc: EvaluationPhaseDoc): EvaluationPhaseDto => ({
@@ -19,9 +20,9 @@ export const toEvaluationPhaseDto = (doc: EvaluationPhaseDoc): EvaluationPhaseDt
   name: doc.name,
   order: doc.order,
   active: doc.active,
-  driversOnly: doc.applicability === 'driversOnly' || doc.driversOnly,
+  driversOnly: isDriversOnlyPhase(doc),
   kind: doc.kind ?? 'individual',
-  applicability: doc.applicability ?? (doc.driversOnly ? 'driversOnly' : 'all'),
+  applicability: applicabilityOf(doc),
   permissionResource: doc.permissionResource ?? 'evaluation',
   appointmentEnabled: doc.appointmentEnabled ?? false,
   requiresResultDocument: doc.requiresResultDocument ?? false,

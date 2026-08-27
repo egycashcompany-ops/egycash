@@ -30,6 +30,7 @@ import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { type AuthContext } from '../../src/shared/types';
+import { mutated } from './helpers/workflow-envelope';
 
 const PASSWORD = 'Str0ng#Pass!';
 
@@ -58,6 +59,11 @@ const resolveMongoUri = async (): Promise<string> => {
   return replSet.getUri(dbName);
 };
 
+/**
+ * A READ's payload. A recruitment MUTATION answers with the I6 workflow envelope instead —
+ * `{ data, workflow, timeline, counters }` under `body.data` — so registrations go through
+ * `mutated` and only lists and details come through here.
+ */
 const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 
 const mkUser = async (
@@ -105,7 +111,7 @@ const register = async (departmentId: string): Promise<ApplicantDto> => {
       placement: { jobTitleId: JOB_TITLE, departmentId, branchId: BRANCH },
     });
   expect(res.status, JSON.stringify(res.body)).toBe(201);
-  return data<ApplicantDto>(res);
+  return mutated<ApplicantDto>(res);
 };
 
 const listApplicants = (token: string) =>

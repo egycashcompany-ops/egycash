@@ -77,6 +77,7 @@ would arrive as a helpful addition rather than as a mistake.
 | **D4** | **The organizational scope axes do not apply to the clinical record.** `branchId`/`departmentId` are stamped for the operational rows (§5) but a department-scoped reader is NOT thereby entitled to that department's health data — the key is the gate, not the axis. This is the one collection in HR where a wider scope must not mean wider reading. |
 | **D5** | **The employee always sees their own record in full.** It is about them. There is no state in which the company knows something about somebody's body and they cannot read it. |
 | **D6** | **Two separate things, kept apart:** the **health profile** (what is true of a person — blood type, chronic conditions, allergies, disability) and the **medical events** (what happened — an examination, a certificate, a fitness assessment on a date). A profile is corrected; an event is never edited (D9). |
+| **D6-b** | **The emergency contact is NOT clinical data and does not live here.** It goes on the EMPLOYEE record, readable by `employee.view`. See §3.1 — this is the one decision in the module that deliberately makes something MORE visible. |
 | **D7** | **A fitness verdict is a CLINICAL statement recorded as given, never derived.** «Fit», «fit with restrictions», «unfit for this role» comes from whoever examined the person. Nothing computes it from conditions, absences, or age. |
 | **D8** | **Restrictions are recorded as WORDS, not as a machine-readable rule.** «No night shifts for six months» is stored as that sentence and a date. Nothing in Attendance or Fleet reads it and enforces it — see D11. |
 | **D9** | **A medical event is immutable once recorded**, in the shape a training record is (P-HR-TRN D8) and a finalized review is (P-HR-PRF D7). What a doctor said on a date is not revised; a later opinion is a later event. |
@@ -85,6 +86,30 @@ would arrive as a helpful addition rather than as a mistake.
 | **D12** | **No diagnosis codes, no ICD, no clinical coding.** A coded diagnosis is a medical record proper, and holding one makes the company a custodian of clinical data under a duty nobody here has scoped. Conditions are recorded as text on the profile because that is what an HR department can honestly hold. |
 | **D13** | **No expiry sweep and no compliance screen.** «Whose medical certificate has lapsed» is a real question and a rule nobody has given — how long a certificate is valid, for which roles, and what follows from a lapse are three unstated decisions, and a screen computed from an invented one would be a report the company acts on. Expiry dates are stored and shown; nothing counts them. |
 | **D14** | **Every read of the clinical record is audited**, including reads that return nothing. This is the only place in HR where READS are audited, and the reason is D3: the harm from a leak is not recoverable, so «who looked» has to be answerable after the fact rather than only «who changed». |
+
+### 3.1 The emergency contact, and why it is the one thing this module pushes OUT
+
+The first draft of this document filed the emergency contact under the health profile, with
+everything else about somebody's body. That was wrong, and it is worth writing down why rather than
+quietly moving the field.
+
+Behind `medicalRecord.view`, the number you call when somebody collapses on a night shift is
+readable by the small group D3 creates — and not by the supervisor standing over them. The failure
+mode of over-protecting that field is not a privacy complaint; it is nobody being called.
+
+And it is not clinical. A next-of-kin's name and phone number says nothing about a person's health.
+It sits beside the phone numbers the employee record already carries, and it is read for the same
+reason: somebody needs to reach a human quickly.
+
+**So it belongs on the employee record**, readable by `employee.view`, and this module does not hold
+it. The employee record has no emergency contact today — `EmployeeContact` carries two phones and an
+email — so adding one is real work, and it belongs to Employee Management rather than here. Recorded
+as a gap this module found and did not fix, because fixing it in Medical would put it behind exactly
+the key that must not gate it.
+
+Every other decision in this module reduces who can see something. This one is the exception, and
+the exception is the point: «protect it» is not automatically the safer answer, and treating it as
+one is how a field ends up locked away from the only person who needed it.
 
 ### What D7, D8, D11, D12 and D13 have in common
 
@@ -112,7 +137,7 @@ Each gets a seam spec asserting the absence, in the shape `training-absences.spe
 
 | | what it is | scope axes |
 |---|---|---|
-| `hr_medical_profiles` | one per employee: blood type, conditions, allergies, disability, emergency contact | none (D4) |
+| `hr_medical_profiles` | one per employee: blood type, conditions, allergies, disability | none (D4) |
 | `hr_medical_events` | an examination, a certificate, a fitness verdict on a date | none (D4) |
 | `hr_medical_insurance` | the card: provider, number, tier, window, dependants | branch + department |
 
@@ -159,6 +184,10 @@ None of these blocks the module.
    Until all three are answered there is nothing to compute compliance against.
 5. **Do dependants need records of their own?** (D10) — today they are names on a card. If the
    company administers their claims, that is a different and larger module.
+6. **Who is the emergency contact, and does HR hold one today?** (D6-b) — the employee record has
+   no field for it, so nobody's is recorded anywhere. Adding it is a small change to Employee
+   Management and it is not this module's to make, but it is the gap most likely to matter on the
+   day it matters.
 
 Question 1 is the only one worth answering before M2 ships, and only because a key nobody holds is
 indistinguishable from a feature that does not work.

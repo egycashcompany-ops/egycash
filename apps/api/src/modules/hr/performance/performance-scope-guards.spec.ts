@@ -22,20 +22,27 @@ const code = (file: string): string =>
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/(^|\s)\/\/.*$/gm, '');
 
-const REVIEW_MODEL = 'reviews/performance-review.model.ts';
 const CYCLE_MODEL = 'cycles/performance-cycle.model.ts';
 const REPOSITORY = 'performance.repository.ts';
 
-describe('the review carries both axes', () => {
-  it('stores them', () => {
-    const source = read(REVIEW_MODEL);
+/** The rows that are about a PERSON. Each is readable by whoever may read that person. */
+const PERSONAL = [
+  { name: 'reviews', model: 'reviews/performance-review.model.ts' },
+  // P3. The goal is stamped from the REVIEW rather than re-read from the employee — the review is
+  // the row that already settled which person this is and where they sit.
+  { name: 'goals', model: 'goals/performance-goal.model.ts' },
+] as const;
+
+describe('every performance row about a person carries both axes', () => {
+  it.each(PERSONAL)('$name stores them', ({ model }) => {
+    const source = read(model);
     expect(source).toContain('branchId: Types.ObjectId | null;');
     expect(source).toContain('departmentId: Types.ObjectId | null;');
     expect(source).toContain('departmentId: { type: Schema.Types.ObjectId, default: null }');
   });
 
-  it('indexes the department axis', () => {
-    expect(code(REVIEW_MODEL)).toContain('index({ departmentId: 1, status: 1 }');
+  it.each(PERSONAL)('$name indexes the department axis', ({ model }) => {
+    expect(code(model)).toContain('index({ departmentId: 1, status: 1 }');
   });
 
   /**
@@ -45,10 +52,12 @@ describe('the review carries both axes', () => {
    * was never the behaviour of a declared field — it was the field never being declared, which no
    * runtime assertion can distinguish from an organization-scoped caller getting everything.
    */
-  it('declares both scope fields on the repository', () => {
+  it('declares both scope fields on every personal repository', () => {
     const source = code(REPOSITORY);
-    expect(source).toContain("branchField: 'branchId'");
-    expect(source).toContain("departmentField: 'departmentId'");
+    // One pair per personal collection — counting them is what catches the SECOND repository
+    // arriving without its declaration, which a `toContain` would wave through on the first's.
+    expect(source.split("branchField: 'branchId'").length - 1).toBe(PERSONAL.length);
+    expect(source.split("departmentField: 'departmentId'").length - 1).toBe(PERSONAL.length);
   });
 });
 

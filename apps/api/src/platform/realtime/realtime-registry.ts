@@ -71,6 +71,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // for the review is the one that gates a named person.
   'hr.performanceCycle': { permission: 'performanceCycle.view' },
   'hr.performanceReview': { permission: 'performanceReview.view' },
+  // P3. A goal follows its own read key: it is about a person, and the group that reads goals is
+  // the group that reads the person's review — but the keys stay separate so ADR-017 finer scopes
+  // can diverge later without a migration.
+  'hr.performanceGoal': { permission: 'performanceGoal.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

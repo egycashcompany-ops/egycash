@@ -11,6 +11,7 @@ import { Types, type FilterQuery } from 'mongoose';
 import {
   type Paginated,
   type PerformanceCycleStatus,
+  type PerformanceGoalStatus,
   type PerformanceReviewStatus,
 } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
@@ -20,9 +21,18 @@ import {
   PerformanceReviewModel,
   type PerformanceReviewDoc,
 } from './reviews/performance-review.model';
+import { PerformanceGoalModel, type PerformanceGoalDoc } from './goals/performance-goal.model';
 
 export interface CycleListFilter {
   status?: readonly PerformanceCycleStatus[] | undefined;
+  search?: string | undefined;
+}
+
+export interface GoalListFilter {
+  reviewId?: string | undefined;
+  cycleId?: string | undefined;
+  employeeId?: string | undefined;
+  status?: readonly PerformanceGoalStatus[] | undefined;
   search?: string | undefined;
 }
 
@@ -208,5 +218,55 @@ class PerformanceReviewRepository extends BaseRepository<PerformanceReviewDoc> {
   }
 }
 
+/**
+ * The goal. BOTH AXES, stamped from the REVIEW it hangs off (D14).
+ *
+ * Fifth collection in this codebase to carry the requirement, and the fourth spec to hold it —
+ * stamped from the review rather than re-read from the employee, because the review is the row
+ * that already settled which person this is and where they sit. Reading the employee again would
+ * be a second answer to a question already answered, and a goal created the week after a transfer
+ * would silently disagree with the review it belongs to.
+ */
+class PerformanceGoalRepository extends BaseRepository<PerformanceGoalDoc> {
+  constructor() {
+    super(PerformanceGoalModel, {
+      branchField: 'branchId',
+      departmentField: 'departmentId',
+      softDelete: true,
+    });
+  }
+
+  async listFiltered(
+    f: GoalListFilter,
+    query: {
+      page: number;
+      pageSize: number;
+      sortBy?: string | undefined;
+      sortDir?: 'asc' | 'desc' | undefined;
+    },
+    scope: ScopeSelector,
+  ): Promise<Paginated<PerformanceGoalDoc>> {
+    const clauses: FilterQuery<PerformanceGoalDoc>[] = [];
+    if (f.reviewId !== undefined) clauses.push({ reviewId: new Types.ObjectId(f.reviewId) });
+    if (f.cycleId !== undefined) clauses.push({ cycleId: new Types.ObjectId(f.cycleId) });
+    if (f.employeeId !== undefined) clauses.push({ employeeId: new Types.ObjectId(f.employeeId) });
+    if (f.status !== undefined) clauses.push({ status: { $in: f.status } });
+    if (f.search !== undefined && f.search.trim() !== '') {
+      const pattern = escaped(f.search);
+      clauses.push({ $or: [{ title: pattern }, { employeeName: pattern }] });
+    }
+    return this.list({
+      filter: (clauses.length === 0 ? {} : { $and: clauses }) as FilterQuery<PerformanceGoalDoc>,
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
+      sortableFields: ['dueAt', 'createdAt'],
+      scope,
+    });
+  }
+}
+
 export const performanceCycleRepository = new PerformanceCycleRepository();
 export const performanceReviewRepository = new PerformanceReviewRepository();
+export const performanceGoalRepository = new PerformanceGoalRepository();

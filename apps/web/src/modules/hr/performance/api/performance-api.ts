@@ -6,11 +6,15 @@
 import {
   type AssignPerformanceEvaluator,
   type ClosePerformanceCycle,
+  type ClosePerformanceGoal,
   type CreatePerformanceCycle,
+  type CreatePerformanceGoal,
   type Paginated,
   type PerformanceCycleDto,
   type PerformanceCycleOpenResultDto,
+  type PerformanceGoalDto,
   type PerformanceReviewDto,
+  type ProgressPerformanceGoal,
   type OpenPerformanceCycle,
   type UpdatePerformanceCycle,
 } from '@ecms/contracts';
@@ -25,6 +29,7 @@ import {
 
 const CYCLES = '/hr/performance/cycles';
 const REVIEWS = '/hr/performance/reviews';
+const GOALS = '/hr/performance/goals';
 
 // ── Cycles ──────────────────────────────────────────────────────────────────
 
@@ -74,3 +79,21 @@ export const assignPerformanceEvaluator = (
   id: string,
   body: AssignPerformanceEvaluator,
 ): Promise<PerformanceReviewDto> => patch<PerformanceReviewDto>(`${REVIEWS}/${id}/evaluator`, body);
+
+// ── Goals ───────────────────────────────────────────────────────────────────
+
+export const listPerformanceGoals = (params: QueryParams): Promise<Paginated<PerformanceGoalDto>> =>
+  getPage<PerformanceGoalDto>(`${GOALS}${buildQuery(params)}`);
+
+export const createPerformanceGoal = (body: CreatePerformanceGoal): Promise<PerformanceGoalDto> =>
+  post<PerformanceGoalDto>(GOALS, body);
+
+export const progressPerformanceGoal = (
+  id: string,
+  body: ProgressPerformanceGoal,
+): Promise<PerformanceGoalDto> => post<PerformanceGoalDto>(`${GOALS}/${id}/progress`, body);
+
+export const closePerformanceGoal = (
+  id: string,
+  body: ClosePerformanceGoal,
+): Promise<PerformanceGoalDto> => post<PerformanceGoalDto>(`${GOALS}/${id}/close`, body);

@@ -6,12 +6,14 @@
 // three columns in, one discriminated value out.
 import {
   type PerformanceCycleDto,
+  type PerformanceGoalDto,
   type PerformanceCycleScope,
   type PerformanceReviewDto,
   type PerformanceScale,
 } from '@ecms/contracts';
 import { type PerformanceCycleDoc } from './cycles/performance-cycle.model';
 import { type PerformanceReviewDoc } from './reviews/performance-review.model';
+import { type PerformanceGoalDoc } from './goals/performance-goal.model';
 
 const iso = (value: Date | null): string | null => (value === null ? null : value.toISOString());
 
@@ -75,5 +77,33 @@ export const toPerformanceReviewDto = (doc: PerformanceReviewDoc): PerformanceRe
   finalizedAt: iso(doc.finalizedAt),
   excusedAt: iso(doc.excusedAt),
   excusedReason: doc.excusedReason,
+  version: doc.__v,
+});
+
+/**
+ * The goal.
+ *
+ * NOTHING IS DERIVED HERE. There is no `progressPercent` computed from `currentValue` over
+ * `targetValue`, and its absence is D9 in the mapper: a percentage is a rating wearing a different
+ * unit, and the moment one exists somebody puts it beside an assessment. The screen shows the two
+ * numbers side by side and lets the reader do the arithmetic they are qualified to do.
+ */
+export const toPerformanceGoalDto = (doc: PerformanceGoalDoc): PerformanceGoalDto => ({
+  id: String(doc._id),
+  reviewId: String(doc.reviewId),
+  cycleId: String(doc.cycleId),
+  employeeId: String(doc.employeeId),
+  employeeCode: doc.employeeCode,
+  employeeName: doc.employeeName,
+  title: doc.title,
+  description: doc.description,
+  targetValue: doc.targetValue,
+  currentValue: doc.currentValue,
+  unit: doc.unit,
+  status: doc.status,
+  dueAt: iso(doc.dueAt),
+  lastNote: doc.lastNote,
+  progressedAt: iso(doc.progressedAt),
+  closedAt: iso(doc.closedAt),
   version: doc.__v,
 });

@@ -8,8 +8,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type AssignPerformanceEvaluator,
   type ClosePerformanceCycle,
+  type ClosePerformanceGoal,
   type CreatePerformanceCycle,
+  type CreatePerformanceGoal,
   type OpenPerformanceCycle,
+  type ProgressPerformanceGoal,
   type UpdatePerformanceCycle,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../shared/lib/query-keys';
@@ -18,6 +21,7 @@ import * as api from './performance-api';
 const MODULE = 'hr';
 const CYCLES = 'performanceCycles';
 const REVIEWS = 'performanceReviews';
+const GOALS = 'performanceGoals';
 
 // ── Cycles ──────────────────────────────────────────────────────────────────
 
@@ -101,3 +105,40 @@ export const useAssignPerformanceEvaluator = () => {
     },
   });
 };
+
+// ── Goals ───────────────────────────────────────────────────────────────────
+
+export const usePerformanceGoals = (params: Record<string, string | number | undefined>) =>
+  useQuery({
+    queryKey: listKey(MODULE, GOALS, params),
+    queryFn: () => api.listPerformanceGoals(params),
+    placeholderData: (prev) => prev,
+  });
+
+/**
+ * Every goal write refreshes goals only. The REVIEW does not change when a goal moves — the row
+ * expansion re-reads goals under its own key, and invalidating reviews too would refetch a whole
+ * queue page on every progress note.
+ */
+const useGoalMutation = <TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, GOALS] });
+    },
+  });
+};
+
+export const useCreatePerformanceGoal = () =>
+  useGoalMutation((body: CreatePerformanceGoal) => api.createPerformanceGoal(body));
+
+export const useProgressPerformanceGoal = () =>
+  useGoalMutation(({ id, body }: { id: string; body: ProgressPerformanceGoal }) =>
+    api.progressPerformanceGoal(id, body),
+  );
+
+export const useClosePerformanceGoal = () =>
+  useGoalMutation(({ id, body }: { id: string; body: ClosePerformanceGoal }) =>
+    api.closePerformanceGoal(id, body),
+  );

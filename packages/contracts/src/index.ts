@@ -51,6 +51,7 @@ export * from './modules/hr-training-nominations.js';
 export * from './modules/hr-training-records.js';
 export * from './modules/hr-performance.js';
 export * from './modules/hr-performance-reviews.js';
+export * from './modules/hr-performance-goals.js';
 export * from './modules/hr-job-requisition.js';
 export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';

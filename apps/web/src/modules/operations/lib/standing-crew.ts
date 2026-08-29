@@ -26,6 +26,9 @@ export const toStandingRows = (
   rows.map((row) => ({
     vehicleId: row.vehicleId,
     vehicleCode: row.vehicleCode,
+    // The standing board is DATELESS, so it has no operation: التشغيله is a fact about a vehicle
+    // on a DAY and lives on the duty row. The shape is shared; this half of it is not.
+    missionTypeId: null,
     captainEmployeeIds: toCells(row.captainEmployeeIds),
     specialist1EmployeeIds: toCells(row.specialist1EmployeeIds),
     specialist2EmployeeIds: toCells(row.specialist2EmployeeIds),
@@ -98,6 +101,7 @@ export const newStandingRow = (
 ): BoardRow => ({
   vehicleId: vehicle.vehicleId,
   vehicleCode: vehicle.vehicleCode,
+  missionTypeId: null,
   captainEmployeeIds: toCells([]),
   specialist1EmployeeIds: toCells([]),
   specialist2EmployeeIds: toCells([]),

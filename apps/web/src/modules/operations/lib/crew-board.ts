@@ -50,6 +50,15 @@ export type SlotCells = (string | null)[];
 export interface BoardRow {
   vehicleId: string;
   vehicleCode: string;
+  /**
+   * التشغيله — the operation Fleet planned for this vehicle on this date.
+   *
+   * Fleet-owned and read-only here, exactly like the two driver ids beside it: it lives on the
+   * `fleet_duty_assignment` row, is chosen in `fleet/roster`, and Operations only displays it.
+   * It was being dropped on the way through this mapper, so the value survived the whole flow
+   * and then vanished one step before the screen.
+   */
+  missionTypeId: string | null;
   captainEmployeeIds: SlotCells;
   specialist1EmployeeIds: SlotCells;
   specialist2EmployeeIds: SlotCells;
@@ -75,6 +84,7 @@ export const toBoardRows = (rows: readonly OperationsCrewBoardRowDto[]): BoardRo
   rows.map((row) => ({
     vehicleId: row.vehicleId,
     vehicleCode: row.vehicleCode,
+    missionTypeId: row.missionTypeId,
     captainEmployeeIds: toCells(row.crew?.captainEmployeeIds),
     specialist1EmployeeIds: toCells(row.crew?.specialist1EmployeeIds),
     specialist2EmployeeIds: toCells(row.crew?.specialist2EmployeeIds),

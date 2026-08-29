@@ -45,9 +45,10 @@ import {
   applyEdit,
   assignDriver,
   availableDrivers,
-  changedRows,
   clearSlot,
   type DutySlot,
+  hasEdits,
+  rowsToSave,
   setMission,
 } from '../lib/daily-roster-board';
 
@@ -121,13 +122,19 @@ const RosterSlotCell = ({
   const key = `${row.vehicleId}:${slot}`;
   // A car in the workshop is not a drop target at all (FR-5). The server refuses the write too;
   // this is what stops the reader trying.
-  const droppable = mayPlan && !row.inMaintenance;
+  //
+  // Nor is slot 2 of a vehicle with no first driver: the schema and the service both refuse that
+  // pair, so offering the drop would be offering a save that comes back 400.
+  const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null;
+  const droppable = mayPlan && !row.inMaintenance && !needsFirst;
   const active = over === key;
   return (
     <div className="min-w-[9rem]">
       <div
         data-drop-zone={key}
-        data-drop-disabled={row.inMaintenance ? 'maintenance' : undefined}
+        data-drop-disabled={
+          row.inMaintenance ? 'maintenance' : needsFirst ? 'needsFirstDriver' : undefined
+        }
         aria-label={`${row.code} · ${t(slot === 'driver1EmployeeId' ? 'fleet.odometer.fields.driver1' : 'fleet.odometer.fields.driver2')}`}
         onDragOver={(e) => {
           if (!droppable) return;
@@ -146,7 +153,7 @@ const RosterSlotCell = ({
           'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
           active
             ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
-            : row.inMaintenance
+            : row.inMaintenance || needsFirst
               ? 'border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-800/30'
               : employeeId === null
                 ? 'border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40'
@@ -155,7 +162,13 @@ const RosterSlotCell = ({
       >
         {employeeId === null ? (
           <span className="text-xs text-slate-400 dark:text-slate-500">
-            {t(row.inMaintenance ? 'fleet.roster.inWorkshopNoDrop' : 'fleet.fixedRoster.dropHere')}
+            {t(
+              row.inMaintenance
+                ? 'fleet.roster.inWorkshopNoDrop'
+                : needsFirst
+                  ? 'fleet.fixedRoster.needsFirstDriver'
+                  : 'fleet.fixedRoster.dropHere',
+            )}
           </span>
         ) : (
           <>
@@ -245,8 +258,13 @@ export const RosterPage = (): JSX.Element => {
     setEdit({ base: saved, rows: next(draft) });
   const discard = (): void => setEdit({ base: saved, rows: saved });
 
-  const pending = useMemo(() => changedRows(saved, draft), [saved, draft]);
+  // What a save would WRITE — edits, plus any operation still only projected from the standing
+  // crew. The second half is what carries an unchanged operation through to Operations.
+  const pending = useMemo(() => rowsToSave(saved, draft), [saved, draft]);
   const dirty = pending.length > 0;
+  // What «إلغاء» would throw away. Distinct from `dirty`: a day can be saveable (it holds an
+  // unmaterialised operation) while there is nothing of the dispatcher's own to discard.
+  const edited = useMemo(() => hasEdits(saved, draft), [saved, draft]);
 
   const plan = usePlanRoster();
 
@@ -507,10 +525,14 @@ export const RosterPage = (): JSX.Element => {
           { label: t('fleet.nav.roster') },
         ]}
         actions={
-          <div className="flex flex-wrap items-center gap-2">
+          // The day itself, as ONE control: a stepper with the picker between its two arrows.
+          // Grouped in a single bordered shell so the three read as one thing rather than three
+          // loose buttons, and given `whitespace-nowrap` + `shrink-0` so the picker cannot be
+          // squeezed into a second line beside the page title on a narrow header.
+          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               aria-label={t('fleet.roster.prevDay')}
               title={t('fleet.roster.prevDay')}
               // The floor is a real boundary, not a hint: stepping back off today would land on a
@@ -526,46 +548,20 @@ export const RosterPage = (): JSX.Element => {
               value={date}
               min={floor}
               onChange={(e) => patch({ date: e.target.value || null })}
-              className="w-auto"
+              // `w-auto` alone let the native picker set its own width and sit a pixel or two
+              // off the arrows' baseline; a fixed width and no border of its own keep the three
+              // aligned inside the shell.
+              className="w-[10.5rem] border-0 bg-transparent text-center text-sm font-medium tabular-nums shadow-none focus:ring-0 dark:bg-transparent"
             />
             <Button
               size="sm"
-              variant="secondary"
+              variant="ghost"
               aria-label={t('fleet.roster.nextDay')}
               title={t('fleet.roster.nextDay')}
               onClick={() => patch({ date: shiftDay(date, 1) })}
             >
               <ChevronEndIcon className="h-4 w-4" />
             </Button>
-            {mayPlan && (
-              <>
-                {dirty && (
-                  <span
-                    data-unsaved="true"
-                    className="text-sm text-amber-700 dark:text-amber-300"
-                  >
-                    {t('fleet.roster.unsaved')}
-                  </span>
-                )}
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!dirty || plan.isPending}
-                  onClick={discard}
-                >
-                  {t('common.cancel')}
-                </Button>
-                <Button
-                  size="sm"
-                  data-save-roster="true"
-                  disabled={!dirty}
-                  loading={plan.isPending}
-                  onClick={() => void commit()}
-                >
-                  {t('common.save')}
-                </Button>
-              </>
-            )}
           </div>
         }
       />
@@ -575,7 +571,7 @@ export const RosterPage = (): JSX.Element => {
           down a row for information that is read at a glance and never interacted with. Here the
           code search and the mission filter sit beside the day's tally, and the whole thing wraps
           rather than scrolling — which is what keeps it honest at 390px. */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
         <SearchInput
           value={search}
           onChange={(value) => patch({ q: value || null })}
@@ -610,6 +606,36 @@ export const RosterPage = (): JSX.Element => {
             <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
           </span>
         ))}
+
+        {/* «حفظ» lives at the END of the filter row, not under the table and not in a footer of
+            its own. It belongs to the strip that says what the day currently IS, and `ms-auto`
+            pins it to the far edge so it is in the same place whatever the counters add up to. */}
+        {mayPlan && (
+          <div className="ms-auto flex items-center gap-2">
+            {dirty && (
+              <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
+                {t('fleet.roster.unsaved')}
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!edited || plan.isPending}
+              onClick={discard}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              size="sm"
+              data-save-roster="true"
+              disabled={!dirty}
+              loading={plan.isPending}
+              onClick={() => void commit()}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3">

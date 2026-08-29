@@ -18,6 +18,24 @@ export type DutySlot = 'driver1EmployeeId' | 'driver2EmployeeId';
 
 export const DUTY_SLOTS: readonly DutySlot[] = ['driver1EmployeeId', 'driver2EmployeeId'];
 
+/**
+ * A second driver needs a first: slot 2 never holds somebody while slot 1 is empty.
+ *
+ * The same rule the standing crew carries, and for a sharper reason here —
+ * `operations/crew-board` reads slot 1 as "the driver" of the day, so a day holding only a
+ * second driver reaches Operations as a crewless vehicle with a real person committed to it.
+ *
+ * A NORMALISATION over the whole board rather than a check in one place, because three gestures
+ * reach the state and gating only the obvious one leaves the others open: clearing slot 1,
+ * dragging the slot-1 driver onto another vehicle (the releasing row is left holding only slot
+ * 2), and the dialog writing the pair directly. Promotion is what this board already does
+ * everywhere else — a driver is never silently dropped, they are moved.
+ */
+const seatOrder = (row: FleetRosterRowDto): FleetRosterRowDto =>
+  row.driver1EmployeeId === null && row.driver2EmployeeId !== null
+    ? { ...row, driver1EmployeeId: row.driver2EmployeeId, driver2EmployeeId: null }
+    : row;
+
 /** Where a driver sits on this day's draft, or `null` when they sit nowhere. */
 export const findSeat = (
   rows: readonly FleetRosterRowDto[],
@@ -62,26 +80,35 @@ export const assignDriver = (
   return rows.map((row) => {
     // Any OTHER car releases them — that is what makes one driver, one vehicle per date true.
     if (row.vehicleId !== vehicleId) {
-      return {
+      // A vehicle that gives up its FIRST driver this way is left holding only a second, so it
+      // is re-seated rather than left in a state the server refuses.
+      return seatOrder({
         ...row,
         driver1EmployeeId: row.driver1EmployeeId === employeeId ? null : row.driver1EmployeeId,
         driver2EmployeeId: row.driver2EmployeeId === employeeId ? null : row.driver2EmployeeId,
-      };
+      });
     }
     const displaced = row[slot];
     const next: FleetRosterRowDto = { ...row, [slot]: employeeId };
     if (swapWithin && seat !== null) next[seat.slot] = displaced;
-    return next;
+    // Seating somebody in slot 2 of a vehicle with no slot-1 driver seats them in slot 1. The
+    // cell refuses that drop before it reaches here; this makes the rule hold for the dialog too.
+    return seatOrder(next);
   });
 };
 
-/** Empty one slot of one vehicle. Every other row is left exactly as it was. */
+/**
+ * Empty one slot of one vehicle. Every other row is left exactly as it was.
+ *
+ * Clearing slot 1 of a crew that still has a second driver PROMOTES that driver rather than
+ * leaving the vehicle holding only a second man — see `seatOrder`.
+ */
 export const clearSlot = (
   rows: readonly FleetRosterRowDto[],
   vehicleId: string,
   slot: DutySlot,
 ): FleetRosterRowDto[] =>
-  rows.map((row) => (row.vehicleId === vehicleId ? { ...row, [slot]: null } : row));
+  rows.map((row) => (row.vehicleId === vehicleId ? seatOrder({ ...row, [slot]: null }) : row));
 
 /**
  * Point one vehicle's day at a mission type, or at none.
@@ -180,18 +207,11 @@ const editable = (row: FleetRosterRowDto): Omit<DutyPayloadRow, 'vehicleId'> => 
   notes: row.notes,
 });
 
-/**
- * The rows whose day differs from the BASELINE — the save payload.
- *
- * The baseline is whatever the board arrived as, which is the whole point of the Fixed→Daily
- * derivation: on an unplanned day it is the standing crew the server projected, so saving an
- * untouched board writes NOTHING and the day stays unplanned. Only what the dispatcher actually
- * changed becomes a `fleet_duty_assignment`. On a planned day the baseline is the stored day, so
- * the same arithmetic sends only real edits.
- *
- * A move changes two rows and sends two, which is what lets the server check FR-7 against the end
- * state instead of guessing, and is why the releasing side is never forgotten.
- */
+/** Does this row say anything at all about the day? */
+const holdsSomething = (row: FleetRosterRowDto): boolean =>
+  Object.values(editable(row)).some((v) => v !== null);
+
+/** The rows the dispatcher actually EDITED, measured against the day the board arrived as. */
 export const changedRows = (
   baseline: readonly FleetRosterRowDto[],
   draft: readonly FleetRosterRowDto[],
@@ -200,14 +220,63 @@ export const changedRows = (
   return draft
     .filter((row) => {
       const was = before.get(row.vehicleId);
-      if (was === undefined) return Object.values(editable(row)).some((v) => v !== null);
+      if (was === undefined) return holdsSomething(row);
       return JSON.stringify(editable(was)) !== JSON.stringify(editable(row));
     })
     .map((row) => ({ vehicleId: row.vehicleId, ...editable(row) }));
 };
 
-/** Is there anything to save? The Save button and the unsaved marker both ask this. */
+/**
+ * The SAVE payload: what the day should hold, including what it merely inherited.
+ *
+ * This is the fix for a real defect, and the reason it is not simply `changedRows`.
+ *
+ * A row's operation can reach this screen two ways: read back from a stored
+ * `fleet_duty_assignment`, or PROJECTED from the standing crew because no such row exists yet.
+ * `operations/crew-board` builds its day by iterating the duty documents — so a vehicle whose
+ * operation was only ever projected is not on that board AT ALL. Sending only what changed
+ * therefore made "the dispatcher agreed with the standing crew" indistinguishable from "there is
+ * nothing to plan", and the operation never arrived in Operations. Not changing a value is not
+ * the same as not wanting it saved.
+ *
+ * So a row travels when EITHER:
+ *
+ *  • it differs from the baseline — an edit, including one that empties a row, which is how
+ *    "this vehicle runs nobody today" stays expressible; or
+ *  • it is not yet `planned` and holds something — the projection, being made real. Once saved
+ *    the row comes back `planned: true`, so it is not sent again on the next save.
+ *
+ * A row that is unplanned and holds NOTHING is not sent: there is no day to record for a vehicle
+ * nobody has said anything about, and materialising every idle vehicle would put the whole fleet
+ * on the crew board every day.
+ *
+ * A move changes two rows and sends two, which is what lets the server check FR-7 against the end
+ * state instead of guessing, and is why the releasing side is never forgotten.
+ */
+export const rowsToSave = (
+  baseline: readonly FleetRosterRowDto[],
+  draft: readonly FleetRosterRowDto[],
+): DutyPayloadRow[] => {
+  const changed = new Set(changedRows(baseline, draft).map((row) => row.vehicleId));
+  return draft
+    .filter((row) => changed.has(row.vehicleId) || (!row.planned && holdsSomething(row)))
+    .map((row) => ({ vehicleId: row.vehicleId, ...editable(row) }));
+};
+
+/**
+ * Is there anything to save? The Save button and the unsaved marker both ask this.
+ *
+ * True on an untouched day that still carries an unmaterialised operation — which is the point:
+ * the dispatcher must be able to commit the standing crew's operation to the day without having
+ * to change something first to wake the button up.
+ */
 export const isDirty = (
+  baseline: readonly FleetRosterRowDto[],
+  draft: readonly FleetRosterRowDto[],
+): boolean => rowsToSave(baseline, draft).length > 0;
+
+/** Has the dispatcher edited anything? What «إلغاء» offers to throw away. */
+export const hasEdits = (
   baseline: readonly FleetRosterRowDto[],
   draft: readonly FleetRosterRowDto[],
 ): boolean => changedRows(baseline, draft).length > 0;

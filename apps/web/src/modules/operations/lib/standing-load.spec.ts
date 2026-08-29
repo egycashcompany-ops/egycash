@@ -13,6 +13,7 @@ const cells = (...ids: (string | null)[]): SlotCells =>
 const row = (vehicleId: string, over: Partial<BoardRow> = {}): BoardRow => ({
   vehicleId,
   vehicleCode: `C-${vehicleId}`,
+  missionTypeId: null,
   captainEmployeeIds: cells(),
   specialist1EmployeeIds: cells(),
   specialist2EmployeeIds: cells(),

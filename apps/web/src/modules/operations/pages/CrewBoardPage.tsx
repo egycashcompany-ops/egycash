@@ -30,11 +30,15 @@
 // write. Only CHANGED rows are sent.
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type OperationsCrewMemberDto } from '@ecms/contracts';
+import { type Locale, type OperationsCrewMemberDto } from '@ecms/contracts';
+import { useAppSelector } from '../../../store';
+import { localized } from '../../../shared/lib/format';
+import { useFleetCatalog } from '../../fleet/api/fleet-queries';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { Button } from '../../../shared/ui/Button';
+import { Badge } from '../../../shared/ui/Badge';
 import { Card, CardBody } from '../../../shared/ui/Card';
 import { Input, Switch } from '../../../shared/ui/form';
 import { Spinner } from '../../../shared/ui/Spinner';
@@ -92,6 +96,15 @@ export const CrewBoardPage = (): JSX.Element => {
   const standing = useOperationsStandingCrew();
   const plan = usePlanOperationsCrew();
   const canPlan = can('operationsCrew.plan');
+
+  // The mission NAME, from the same `missionType` catalog `fleet/roster` writes the id from —
+  // the same cached hook, so N cards still cost one request, and no second vocabulary.
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const missionTypes = useFleetCatalog('missionType');
+  const missionName = (id: string): string | null => {
+    const item = missionTypes.data?.items.find((entry) => entry.id === id);
+    return item === undefined ? null : localized(item.name, locale);
+  };
 
   const serverRows = useMemo(() => toBoardRows(board.data?.rows ?? []), [board.data]);
   const [rows, setRows] = useState<BoardRow[]>([]);
@@ -320,7 +333,18 @@ export const CrewBoardPage = (): JSX.Element => {
             <Card key={row.vehicleId}>
               <CardBody className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-semibold">{row.vehicleCode}</h3>
+                  <h3 className="flex flex-wrap items-center gap-2 font-semibold">
+                    {row.vehicleCode}
+                    {/* التشغيله, as Fleet planned it. Read-only here — this board crews the day,
+                        it does not decide what the day is for. Shown because a captain being
+                        assigned to a car needs to know what that car is doing, and because the
+                        value was arriving in the response and then being dropped. */}
+                    {row.missionTypeId !== null && (
+                      <Badge tone="info" size="sm">
+                        {missionName(row.missionTypeId)}
+                      </Badge>
+                    )}
+                  </h3>
                   <div className="flex flex-wrap gap-2">
                     <Input
                       className="w-36"

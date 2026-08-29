@@ -147,6 +147,7 @@ class FleetRosterService {
         const facts = snapshot(assignment);
         return {
           ...vehicleFacts,
+          planned: true,
           missionTypeId: facts.missionTypeId,
           driver1EmployeeId: facts.driver1EmployeeId,
           driver2EmployeeId: facts.driver2EmployeeId,
@@ -171,6 +172,10 @@ class FleetRosterService {
 
       return {
         ...vehicleFacts,
+        // Nothing is stored for this vehicle on this date, so everything below is a PROJECTION.
+        // Saying so on the wire is what lets the board offer to materialise it: an operation
+        // inherited from the standing crew is only real to Operations once a duty row exists.
+        planned: false,
         // The mission is a fact about the vehicle's standing work and is carried even when the
         // car is in the workshop; the CREW is what the day withdraws. `notes` is deliberately not
         // carried — a note on a day is about that day, and the standing remark is not.
@@ -235,6 +240,22 @@ class FleetRosterService {
           message: 'a roster cannot be planned for a date in the past',
         },
       ]);
+    }
+
+    // A second driver needs a first. The schema says so at the HTTP boundary; this repeats it
+    // for the same reason the canonicalisation above is repeated — the invariant belongs to the
+    // RECORD. `operations/crew-board` reads slot 1 as "the driver" of the day, so a row holding
+    // only a second driver reaches Operations as a crewless vehicle with a real person on it.
+    for (const row of input.rows) {
+      if (row.driver1EmployeeId == null && row.driver2EmployeeId != null) {
+        throw new ValidationError([
+          {
+            field: 'body.rows.driver2EmployeeId',
+            code: 'DRIVER2_WITHOUT_DRIVER1',
+            message: 'a second driver needs a first — assign driver 1 before driver 2',
+          },
+        ]);
+      }
     }
 
     // Scope rides the vehicle lookup: a branch-scoped planner cannot touch (or probe) another

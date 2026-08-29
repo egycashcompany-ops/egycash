@@ -1679,6 +1679,54 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
     expect(vaultRead.status).toBe(403);
   });
 
+  // ── التشغيله arrives from Fleet and is READ here ─────────────────────────
+  //
+  // The last step of `fixed-roster → fleet/roster → operations/crew-board`. Fleet owns the value
+  // and this board only displays it, so what is asserted is that it SURVIVES the join: the duty
+  // row carries `missionTypeId`, and the board row hands it to the screen. It was arriving in the
+  // response and then being dropped by the web mapper, which is why the operation was invisible
+  // here even for days Fleet had genuinely planned.
+
+  it('carries the Fleet-planned operation onto the crew board', async () => {
+    const mission = data<{ id: string }>(
+      await request(app)
+        .post('/api/v1/fleet/catalog-items')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ kind: 'missionType', name: { ar: 'تشغيلة الكاش', en: 'Cash run' } }),
+    );
+    const date = new Date(Date.now() + 40 * 86_400_000).toISOString().slice(0, 10);
+
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/fleet/roster')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ date, rows: [{ vehicleId: vehicleAId, missionTypeId: mission.id }] })
+      ).status,
+    ).toBe(200);
+
+    const board = data<OperationsCrewBoardDto>(
+      await request(app)
+        .get(`/api/v1/operations/crew-board?date=${date}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const row = board.rows.find((r) => r.vehicleId === vehicleAId);
+    expect(row, 'the vehicle Fleet planned is on the board').toBeDefined();
+    expect(row?.missionTypeId, 'carrying the operation Fleet chose').toBe(mission.id);
+  });
+
+  it('shows NO vehicle for a day Fleet never planned — the duty row IS the day', async () => {
+    // Why materialising matters upstream: this board iterates duty documents. A vehicle whose
+    // operation was only projected from the standing crew has none, so it is simply absent.
+    const empty = new Date(Date.now() + 41 * 86_400_000).toISOString().slice(0, 10);
+    const board = data<OperationsCrewBoardDto>(
+      await request(app)
+        .get(`/api/v1/operations/crew-board?date=${empty}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(board.rows).toEqual([]);
+  });
+
   describe('the board hands out the id its own screens need', () => {
     // WHY THIS EXISTS. `/operations/vault/dispatch` had two actions and BOTH 404'd in production,
     // through every green gate. `OperationsCrewBoardRowDto.crew` carried no id, so the page sent

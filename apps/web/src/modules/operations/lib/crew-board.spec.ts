@@ -9,7 +9,11 @@
 // drop names a card. The one-occupant cases below are the legacy behaviour at the new capacity —
 // they read the same as they did — and the two-occupant cases are the new ground.
 import { describe, expect, it } from 'vitest';
-import { CREW_SLOT_CAPACITY, type OperationsCrewMemberDto } from '@ecms/contracts';
+import {
+  CREW_SLOT_CAPACITY,
+  type OperationsCrewBoardRowDto,
+  type OperationsCrewMemberDto,
+} from '@ecms/contracts';
 import {
   CREW_SLOTS,
   SLOT_POSITIONS,
@@ -38,6 +42,7 @@ const cells = (...ids: (string | null)[]): SlotCells =>
 const row = (over: Partial<BoardRow> = {}): BoardRow => ({
   vehicleId: 'v1',
   vehicleCode: 'C-1',
+  missionTypeId: null,
   captainEmployeeIds: cells(),
   specialist1EmployeeIds: cells(),
   specialist2EmployeeIds: cells(),
@@ -537,5 +542,41 @@ describe('assignCaptainWithCrew — a captain brings his crew with him', () => {
     const rows = loaded();
     assignCaptainWithCrew(rows, 'v2', 0, 'cap');
     expect(rowCrew(rows[0] as BoardRow)).toEqual(['cap', 's1', 's2']);
+  });
+});
+
+// ── التشغيله survives the join ─────────────────────────────────────────────
+//
+// The last step of `fixed-roster → fleet/roster → operations/crew-board`. Fleet owns the value,
+// the server puts it on the board row, and this mapper turns the response into what the screen
+// renders. It was DROPPING the field, so the operation survived the whole flow and then vanished
+// one step before it could be read.
+describe('the Fleet-planned operation reaches the screen', () => {
+  const serverRow = (over: Partial<OperationsCrewBoardRowDto> = {}): OperationsCrewBoardRowDto => ({
+    vehicleId: 'v1',
+    vehicleCode: 'C-1',
+    fleetDutyAssignmentId: 'd1',
+    driver1EmployeeId: null,
+    driver2EmployeeId: null,
+    missionTypeId: null,
+    crew: null,
+    ...over,
+  });
+
+  it('carries missionTypeId through the mapper', () => {
+    expect(toBoardRows([serverRow({ missionTypeId: 'm1' })])[0]?.missionTypeId).toBe('m1');
+  });
+
+  it('keeps null when Fleet planned no operation', () => {
+    expect(toBoardRows([serverRow()])[0]?.missionTypeId).toBeNull();
+  });
+
+  it('keeps each row’s own operation when several vehicles are on the day', () => {
+    const rows = toBoardRows([
+      serverRow({ vehicleId: 'v1', missionTypeId: 'm1' }),
+      serverRow({ vehicleId: 'v2', missionTypeId: 'm2' }),
+      serverRow({ vehicleId: 'v3', missionTypeId: null }),
+    ]);
+    expect(rows.map((r) => r.missionTypeId)).toEqual(['m1', 'm2', null]);
   });
 });

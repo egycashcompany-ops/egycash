@@ -993,6 +993,7 @@ describe('the licence preview names the driver’s vehicle for today', () => {
         plateNumber: 'س ص 150',
         typeId: 'ty1',
         inMaintenance: false,
+        planned: false,
         missionTypeId: null,
         driver1EmployeeId: driverSlot === 'none' ? null : EMPLOYEE_ID,
         driver2EmployeeId: null,

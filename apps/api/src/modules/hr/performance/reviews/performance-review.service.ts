@@ -41,6 +41,19 @@ const entityRef = (id: string) => ({
   entityId: id,
 });
 
+/**
+ * The scope `listMine` reads with — organization, because the narrowing that matters is the
+ * employee id and it comes from the token rather than from the request. Named rather than inlined
+ * so the one place this feature reads past a caller's scope is a thing somebody can grep for.
+ */
+const SYSTEM_SCOPE: ScopeSelector = {
+  scope: 'organization',
+  userId: '',
+  branchId: null,
+  departmentId: null,
+  sectionId: null,
+};
+
 const snapshot = (doc: PerformanceReviewDoc) => ({
   status: doc.status,
   evaluatorId: doc.evaluatorId === null ? null : String(doc.evaluatorId),
@@ -81,6 +94,42 @@ class PerformanceReviewService {
       },
       { page: query.page, pageSize: query.pageSize, sortBy: query.sortBy, sortDir: query.sortDir },
       scope,
+    );
+  }
+
+  /**
+   * D15 — the employee's own FINALIZED reviews, and nothing before them.
+   *
+   * A draft is the evaluator thinking. A submitted review is somebody else's to decide. Showing an
+   * employee either would turn the process into a negotiation instead of an assessment — and the
+   * person being assessed is the one reader who cannot un-see an early draft.
+   *
+   * THE STATUS IS HARDCODED, NOT DEFAULTED, and the distinction is the whole guard: a default is a
+   * thing a query parameter overrides, and the override would be one URL away from showing
+   * somebody a draft assessment of themselves. This method takes no status at all.
+   *
+   * SYSTEM SCOPED, deliberately. The caller holds no `performanceReview.view` — most employees
+   * never will — and requiring it would mean somebody could read their own review only if they
+   * could also read everybody's.
+   *
+   * A caller with no employee record gets an empty page rather than an error: a login that is not
+   * an employee has no reviews, which is an answer and not a fault.
+   */
+  async listMine(
+    userId: string,
+    query: { page: number; pageSize: number; sortDir?: 'asc' | 'desc' | undefined },
+  ): Promise<Paginated<PerformanceReviewDoc>> {
+    const me = await this.callerEmployeeId(userId);
+    if (me === null) {
+      return {
+        items: [],
+        meta: { page: 1, pageSize: query.pageSize, totalItems: 0, totalPages: 1 },
+      };
+    }
+    return performanceReviewRepository.listFiltered(
+      { employeeId: me, status: ['finalized'] },
+      { page: query.page, pageSize: query.pageSize, sortBy: 'createdAt', sortDir: query.sortDir },
+      SYSTEM_SCOPE,
     );
   }
 

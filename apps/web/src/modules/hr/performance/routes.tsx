@@ -10,6 +10,7 @@ import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { PerformanceCyclesPage } from './pages/PerformanceCyclesPage';
 import { PerformanceReviewsPage } from './pages/PerformanceReviewsPage';
+import { MyPerformancePage } from './pages/MyPerformancePage';
 
 export default function PerformanceRoutes(): JSX.Element {
   return (
@@ -36,6 +37,13 @@ export default function PerformanceRoutes(): JSX.Element {
             </RequirePermission>
           }
         />
+        {/*
+          D15 — self-service, and deliberately NOT wrapped in `RequirePermission`. Every employee
+          login reaches it; the server shows the caller's own finalized reviews and nothing else.
+          The same stance `/attendance/me` takes, and for the same reason: gating it on the view
+          key would mean reading your own assessment requires being able to read everybody's.
+        */}
+        <Route path="me" element={<MyPerformancePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

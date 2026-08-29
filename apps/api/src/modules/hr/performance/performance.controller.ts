@@ -98,6 +98,25 @@ export const listPerformanceReviews = async (req: Request, res: Response): Promi
   okPage(res, await performanceReviewService.list(query, reviewScope(req)), toPerformanceReviewDto);
 };
 
+/**
+ * D15 — the caller's own finalized reviews.
+ *
+ * EVERY FILTER THAT ARRIVED IS DROPPED, the same stance `listMyAttendanceDays` takes: `/me`
+ * answers for the caller and about nothing else, so a `status` or an `employeeId` in the query is
+ * not narrowed, it is ignored. Passing them through would make the one route that reads past a
+ * permission also the one route a caller can steer.
+ */
+export const listMyPerformanceReviews = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListPerformanceReviewsQuery>(req);
+  const page = await performanceReviewService.listMine(String(ctx.userId), {
+    page: query.page,
+    pageSize: query.pageSize,
+    ...(query.sortDir === undefined ? {} : { sortDir: query.sortDir }),
+  });
+  okPage(res, page, toPerformanceReviewDto);
+};
+
 export const getPerformanceReview = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   const doc = await performanceReviewService.getById(params.id, reviewScope(req));

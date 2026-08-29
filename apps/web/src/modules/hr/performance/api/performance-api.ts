@@ -104,6 +104,18 @@ export const excusePerformanceReview = (
   body: ExcusePerformanceReview,
 ): Promise<PerformanceReviewDto> => post<PerformanceReviewDto>(`${REVIEWS}/${id}/excuse`, body);
 
+/**
+ * D15 — the caller's own finalized reviews.
+ *
+ * It takes only paging. There is no status argument and there will not be one: the server shows
+ * finalized reviews and nothing else, and a parameter here would suggest otherwise to whoever
+ * reads this file next.
+ */
+export const listMyPerformanceReviews = (
+  params: QueryParams,
+): Promise<Paginated<PerformanceReviewDto>> =>
+  getPage<PerformanceReviewDto>(`${REVIEWS}/me${buildQuery(params)}`);
+
 // ── Goals ───────────────────────────────────────────────────────────────────
 
 export const listPerformanceGoals = (params: QueryParams): Promise<Paginated<PerformanceGoalDto>> =>

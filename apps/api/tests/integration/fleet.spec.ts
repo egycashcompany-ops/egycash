@@ -2632,6 +2632,124 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     });
   });
 
+  // ── FR-5 governs MATERIALISATION, not only drops ─────────────────────────
+  //
+  // The regression these exist for. The board projects a standing mission onto a vehicle the
+  // workshop holds (the mission is a fact about the vehicle; the CREW is what the day withdraws),
+  // and `assigns()` counts a mission-only row as an ASSIGNMENT — so committing that projection
+  // asked the server for exactly the write FR-5 refuses, and `plan()` throws before its
+  // transaction, taking the whole day's save with it.
+
+  it('FR-5 — refuses an EXPLICIT assignment to a vehicle the workshop holds, mission alone', async () => {
+    // The rule itself, reachable and unchanged. A mission with no drivers is still an assignment.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const mission = await missionTypeId('تشغيلة أثناء الصيانة');
+    const date = shift(17);
+    await putInWorkshop(v.id, date);
+
+    const res = await savePlan(date, [{ vehicleId: v.id, missionTypeId: mission }]);
+    expect(res.status, 'a mission-only row is an assignment').toBe(409);
+    expect(JSON.stringify(res.body)).toContain('FR-5');
+    expect(await dutyDoc(v.id, date), 'and nothing was written').toBeNull();
+  });
+
+  it('FR-5 — the board still SHOWS the standing mission on an in-workshop vehicle', async () => {
+    // Deliberately unchanged: the projection is worth reading. What must not happen is the save
+    // proposing it. `inMaintenance` is what tells the client which rows those are.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const mission = await missionTypeId('تشغيلة معروضة');
+    const date = shift(18);
+    await saveFixedCrew([{ vehicleId: v.id, missionTypeId: mission }]);
+    await putInWorkshop(v.id, date);
+
+    const shown = dayRow(data<BoardDto>(await getBoard(date)), v.id);
+    expect(shown?.inMaintenance, 'flagged for the client').toBe(true);
+    expect(shown?.missionTypeId, 'and the standing mission is still readable').toBe(mission);
+    expect(shown?.planned, 'while nothing is stored for it').toBe(false);
+  });
+
+  it('FR-5 — an in-workshop vehicle does not stop the REST of the day being saved', async () => {
+    // The payload the fixed client now sends: the assignable vehicles, without the workshop one.
+    // Proven end to end, because the failure was that the server rejected the whole batch.
+    const [ok1, shopped, ok2] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const mission = await missionTypeId('تشغيلة الأسطول');
+    const date = shift(19);
+    await putInWorkshop(shopped.id, date);
+
+    const res = await savePlan(date, [
+      { vehicleId: ok1.id, missionTypeId: mission },
+      { vehicleId: ok2.id, missionTypeId: mission },
+    ]);
+    expect(res.status).toBe(200);
+    expect(await dutyDoc(ok1.id, date), 'the assignable vehicles are planned').not.toBeNull();
+    expect(await dutyDoc(ok2.id, date)).not.toBeNull();
+    expect(await dutyDoc(shopped.id, date), 'the workshop one is simply absent').toBeNull();
+  });
+
+  it('FR-5 — sending the whole batch INCLUDING the workshop vehicle still fails it all', async () => {
+    // The existing business rule, asserted so the fix cannot be mistaken for a server change:
+    // `plan()` throws on the first offending row, before the transaction. That is exactly why
+    // the client must not put such a row in the payload.
+    const [ok1, shopped] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const mission = await missionTypeId('تشغيلة مرفوضة');
+    const date = shift(20);
+    await putInWorkshop(shopped.id, date);
+
+    const res = await savePlan(date, [
+      { vehicleId: ok1.id, missionTypeId: mission },
+      { vehicleId: shopped.id, missionTypeId: mission },
+    ]);
+    expect(res.status).toBe(409);
+    expect(await dutyDoc(ok1.id, date), 'the good row did not land either').toBeNull();
+  });
+
+  it('FR-5 — CLEARING an in-workshop vehicle stays allowed', async () => {
+    // A car can go into the workshop after its day was planned, and that day must be emptiable.
+    // A row that only clears is not an assignment, so the rule lets it through.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    const date = shift(21);
+    expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: d1 }])).status).toBe(200);
+    await putInWorkshop(v.id, date);
+
+    expect(
+      (
+        await savePlan(date, [
+          {
+            vehicleId: v.id,
+            missionTypeId: null,
+            driver1EmployeeId: null,
+            driver2EmployeeId: null,
+          },
+        ])
+      ).status,
+      'emptying a workshop day is legal',
+    ).toBe(200);
+  });
+
+  it('FR-5 — the same vehicle IS plannable on a date the visit does not cover', async () => {
+    // An OPEN visit covers its `inDate` and every day after it — "a car that enters the workshop
+    // AFTER day D was not in the workshop ON day D". So the free day is one BEFORE the visit
+    // starts, not one after it. The exclusion is about the DAY, not about the vehicle.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const mission = await missionTypeId('تشغيلة قبل الصيانة');
+    const before = shift(22);
+    await putInWorkshop(v.id, shift(23));
+
+    expect(dayRow(data<BoardDto>(await getBoard(before)), v.id)?.inMaintenance).toBe(false);
+    expect(
+      (await savePlan(before, [{ vehicleId: v.id, missionTypeId: mission }])).status,
+    ).toBe(200);
+    expect(await dutyDoc(v.id, before)).not.toBeNull();
+  });
+
   it('DRIVER ORDER — clearing a day stays legal; the rule is about ORDER, not presence', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const d1 = await mkDriver();

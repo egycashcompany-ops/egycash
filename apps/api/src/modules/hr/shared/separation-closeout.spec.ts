@@ -83,6 +83,38 @@ describe('the exit reaches all seven consumers', () => {
 });
 
 /**
+ * The consumer that searching for `hr.employee.exited` does not find, and the one that matters
+ * most (§2, «A sixth consumer, reached through the login»).
+ *
+ *   exit → login suspended → `platform.user.statusChanged` → the leaver's workflows are suspended
+ *
+ * Automation says why in its own words: offboarding has to actually stop what somebody set in
+ * motion, or automation becomes a way for a revoked account to keep acting. So the automatic
+ * suspension is not only an access decision — it is the ONLY thing that stops a leaver's scheduled
+ * workflows, and it is two events away from anything an exit test would think to look at.
+ */
+describe('the exit still reaches automation through the login', () => {
+  /**
+   * UNCONDITIONAL. The suspension sits inside `applyExit` with no flag and no payload key — unlike
+   * `suspend`, whose caller may pass `disableLogin: false`. That difference is the whole property:
+   * an exit that could be told to leave the login alone would silently leave the workflows running
+   * with it.
+   */
+  it('suspends the login as part of the exit, with nothing to switch it off', () => {
+    const actions = strip(read('employee-management/employee-actions/employee-action.service.ts'));
+    const exit = bodyOf(actions, 'private async applyExit(', /\n {2}private async \w+\(/);
+    expect(exit).toContain('this.suspendLogin(');
+    expect(exit).not.toContain('disableLogin');
+  });
+
+  it('leaves automation listening for the status change', () => {
+    const automation = readFileSync(resolve(HR, '../automation/automation.module.ts'), 'utf8');
+    expect(automation).toContain('PlatformEvents.UserStatusChanged');
+    expect(automation).toContain("handlerId: 'workflows.suspendOnOwnerDeactivated'");
+  });
+});
+
+/**
  * D3 — the sharpest line in this phase, and the easiest to cross by accident.
  *
  * Terminating a contract records a person, a date and a required reason, and emits an event. It is

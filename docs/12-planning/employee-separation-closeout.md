@@ -50,6 +50,29 @@ the code, not in a document:
 returns; Loans flags rather than recovers. Both are right, and both are the reason this audit does
 not read «unclosed» as «broken».
 
+### A sixth consumer, reached through the login
+
+Grepping `hr.employee.exited` finds five subscribers. It does not find this one, and this one is the
+most security-bearing of them all:
+
+> exit → **login suspended** (D3, inside the act) → `platform.user.statusChanged` → Automation
+> **suspends every workflow that person owns**
+
+`automation.module.ts` states the reason in its own words: *«offboarding someone has to actually
+stop what they set in motion, or the automation becomes a way for a revoked account to keep
+acting»*. So the automatic login suspension is not only an access decision — it is the **only**
+thing that stops a leaver's scheduled workflows, and making it optional would quietly reopen that
+door.
+
+Two things follow, and both are asserted rather than trusted:
+
+* the exit must keep suspending the login **unconditionally** — no flag, no checkbox;
+* Automation must keep listening to `platform.user.statusChanged`.
+
+This is also why «who is listening to an exit» cannot be answered by searching one event name. The
+chain is two events long, and the second one is in a module that is off by default
+(`AUTOMATION_ENABLED`), which is exactly the shape that survives an audit unnoticed.
+
 ### What the exit does NOT touch, correctly
 
 * **Payroll.** A leaver is already in the exit month's batch and already prorated to the day —

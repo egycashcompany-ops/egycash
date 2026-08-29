@@ -76,6 +76,16 @@ export const AUDIT_ACTIONS = [
   'return',
   'transfer',
   'dispose',
+  // P-HR-MED D14 — the only READ this platform audits.
+  //
+  // Everywhere else, «who changed it» is the question an audit answers and a read leaves no trace,
+  // because the harm from an unauthorized read of a leave balance or a shift is recoverable and
+  // small. A clinical record is neither: it cannot be un-seen, the person it describes may never
+  // know, and the duty to be able to say who looked outlives any one employment.
+  //
+  // Recorded even when the read returns NOTHING. «Somebody went looking» is the fact worth having,
+  // and a lookup that found no profile is the same act as one that found one.
+  'medicalRecordRead',
   // IT-3 (design §10): resolving a ticket and a system-stamped SLA breach are distinct audited
   // acts. `slaBreached` is written by the sweep under the SYSTEM actor — the contract-generation
   // precedent for an audited act with no human behind it.

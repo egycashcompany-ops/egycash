@@ -75,6 +75,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // the group that reads the person's review — but the keys stay separate so ADR-017 finer scopes
   // can diverge later without a migration.
   'hr.performanceGoal': { permission: 'performanceGoal.view' },
+  // P-HR-MED. Follows its own key and nothing else (D3) — the realtime layer must not be the one
+  // place a clinical change announces itself to a wider audience than may read it.
+  'hr.medicalProfile': { permission: 'medicalRecord.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

@@ -308,6 +308,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'clipboard',
         permission: 'performanceReview.view',
       },
+      // P-HR-MED. On `medicalRecord.view` and on nothing else (D3): this row is invisible to every
+      // holder of every other HR key, which is the whole point. A row keyed on `employee.view`
+      // would advertise the screen to everybody who can read a personnel file.
+      {
+        en: 'Medical Records',
+        ar: 'السجلات الطبية',
+        route: '/medical/profiles',
+        icon: 'file',
+        permission: 'medicalRecord.view',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

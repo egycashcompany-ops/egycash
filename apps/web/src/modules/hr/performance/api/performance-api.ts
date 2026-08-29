@@ -9,12 +9,16 @@ import {
   type ClosePerformanceGoal,
   type CreatePerformanceCycle,
   type CreatePerformanceGoal,
+  type ExcusePerformanceReview,
+  type FinalizePerformanceReview,
   type Paginated,
   type PerformanceCycleDto,
   type PerformanceCycleOpenResultDto,
   type PerformanceGoalDto,
   type PerformanceReviewDto,
   type ProgressPerformanceGoal,
+  type ReturnPerformanceReview,
+  type SubmitPerformanceReview,
   type OpenPerformanceCycle,
   type UpdatePerformanceCycle,
 } from '@ecms/contracts';
@@ -79,6 +83,26 @@ export const assignPerformanceEvaluator = (
   id: string,
   body: AssignPerformanceEvaluator,
 ): Promise<PerformanceReviewDto> => patch<PerformanceReviewDto>(`${REVIEWS}/${id}/evaluator`, body);
+
+export const submitPerformanceReview = (
+  id: string,
+  body: SubmitPerformanceReview,
+): Promise<PerformanceReviewDto> => post<PerformanceReviewDto>(`${REVIEWS}/${id}/submit`, body);
+
+export const returnPerformanceReview = (
+  id: string,
+  body: ReturnPerformanceReview,
+): Promise<PerformanceReviewDto> => post<PerformanceReviewDto>(`${REVIEWS}/${id}/return`, body);
+
+export const finalizePerformanceReview = (
+  id: string,
+  body: FinalizePerformanceReview,
+): Promise<PerformanceReviewDto> => post<PerformanceReviewDto>(`${REVIEWS}/${id}/finalize`, body);
+
+export const excusePerformanceReview = (
+  id: string,
+  body: ExcusePerformanceReview,
+): Promise<PerformanceReviewDto> => post<PerformanceReviewDto>(`${REVIEWS}/${id}/excuse`, body);
 
 // ── Goals ───────────────────────────────────────────────────────────────────
 

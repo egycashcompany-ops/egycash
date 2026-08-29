@@ -188,6 +188,11 @@ import {
   PerformanceGoalEventPayloadV1,
 } from '../modules/hr-performance-goals.js';
 import {
+  HrPerformanceReviewEvents,
+  type HrPerformanceReviewEventName,
+  PerformanceReviewEventPayloadV1,
+} from '../modules/hr-performance-reviews.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -706,6 +711,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // of them rather than about the assessment. The same reasoning that gave `trainingRecord` an
   // entity rather than leaving it an action on the session.
   performanceGoal: { en: 'Performance goal', ar: 'هدف أداء' },
+  // P4. The REVIEW becomes a subject once things happen to it: submitted, sent back, closed. Until
+  // this phase it was a row the cycle opened and nothing more, which is why P2 named only the
+  // cycle — an entity with no facts of its own would have been vocabulary nothing used.
+  performanceReview: { en: 'Performance review', ar: 'مراجعة أداء' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -803,6 +812,11 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   // action word with no entry renders as an English identifier in the Arabic UI; that is what
   // `catalog.spec.ts`'s localization check refuses, and it has caught exactly this twice.
   progressed: { en: 'progressed', ar: 'تحديث تقدّم' },
+  // P4. `submitted` and `returned` were already here; these two were not, and labels are GENERATED
+  // from this map — a new action word with no entry renders as an English identifier in the Arabic
+  // UI. That is the check `catalog.spec.ts` makes, and the gap it has now caught twice.
+  finalized: { en: 'finalized', ar: 'اعتماد' },
+  excused: { en: 'excused', ar: 'إعفاء' },
   // P-HR-REQ — a requisition reaching the number it asked for. Not `completed`: that word is
   // already an interview finishing, and a filled requisition is a count reaching a total.
   filled: { en: 'filled', ar: 'اكتمال' },
@@ -1134,7 +1148,8 @@ export type HrCatalogEventName =
   | HrTrainingRecordEventName
   | HrTrainingAttendanceEventName
   | HrPerformanceEventName
-  | HrPerformanceGoalEventName;
+  | HrPerformanceGoalEventName
+  | HrPerformanceReviewEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1294,6 +1309,14 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrPerformanceGoalEvents.Created]: PerformanceGoalEventPayloadV1,
   [HrPerformanceGoalEvents.Progressed]: PerformanceGoalEventPayloadV1,
   [HrPerformanceGoalEvents.Closed]: PerformanceGoalEventPayloadV1,
+
+  // P4 — one payload for all four, carrying NO RATING (see the schema for why). `finalized` is the
+  // most attractive event in this system to hang a pay consequence off, and the number is exactly
+  // what a subscriber would need to do it.
+  [HrPerformanceReviewEvents.Submitted]: PerformanceReviewEventPayloadV1,
+  [HrPerformanceReviewEvents.Returned]: PerformanceReviewEventPayloadV1,
+  [HrPerformanceReviewEvents.Finalized]: PerformanceReviewEventPayloadV1,
+  [HrPerformanceReviewEvents.Excused]: PerformanceReviewEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

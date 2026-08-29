@@ -48,8 +48,13 @@ export interface PerformanceReviewDoc extends BaseDocFields {
   evaluatorId: Types.ObjectId | null;
   evaluatorName: string | null;
   status: PerformanceReviewStatus;
-  /** A point on the CYCLE's scale (D8). Written by P4; nothing computes it. */
+  /** A point on the CYCLE's scale (D8), written by the evaluator. Nothing computes it. */
   rating: number | null;
+  /** The assessment in words. Both required on submit — see the contract for why. */
+  strengths: string | null;
+  improvements: string | null;
+  /** Why HR sent it back. Kept after the return, so the evaluator can see what to change. */
+  returnedReason: string | null;
   branchId: Types.ObjectId | null;
   departmentId: Types.ObjectId | null;
   submittedAt: Date | null;
@@ -80,6 +85,9 @@ const performanceReviewSchema = new Schema<PerformanceReviewDoc>(
       default: 'draft',
     },
     rating: { type: Number, default: null },
+    strengths: { type: String, default: null },
+    improvements: { type: String, default: null },
+    returnedReason: { type: String, default: null },
     branchId: { type: Schema.Types.ObjectId, default: null },
     departmentId: { type: Schema.Types.ObjectId, default: null },
     submittedAt: { type: Date, default: null },

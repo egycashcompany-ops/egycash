@@ -1,8 +1,10 @@
 // Medical api/ surface (ADR-013 — P-HR-MED, phase M2).
 import {
   type ListMedicalProfilesQuery,
+  type MedicalEventDto,
   type MedicalProfileDto,
   type Paginated,
+  type RecordMedicalEvent,
   type UpsertMedicalProfile,
 } from '@ecms/contracts';
 import {
@@ -10,6 +12,7 @@ import {
   get,
   getPage,
   patch,
+  upload,
   type QueryParams,
 } from '../../../../shared/lib/api-client';
 
@@ -32,3 +35,28 @@ export const upsertMedicalProfile = (
 ): Promise<MedicalProfileDto> => patch<MedicalProfileDto>(`${PROFILES}/${employeeId}`, body);
 
 export type { ListMedicalProfilesQuery };
+
+const EVENTS = '/hr/medical/events';
+
+export const listMedicalEvents = (params: QueryParams): Promise<Paginated<MedicalEventDto>> =>
+  getPage<MedicalEventDto>(`${EVENTS}${buildQuery(params)}`);
+
+/**
+ * Recording one — multipart, because the certificate arrives WITH the event.
+ *
+ * There is no «attach a document later» call and there will not be one: the row can never be
+ * written again (D9), so a late upload would have nowhere to record the link.
+ */
+export const recordMedicalEvent = (
+  body: RecordMedicalEvent,
+  file: File | null,
+): Promise<MedicalEventDto> => {
+  const form = new FormData();
+  // Dates as ISO strings — multipart carries text, and the server coerces with `z.coerce.date()`.
+  for (const [key, value] of Object.entries(body)) {
+    if (value === undefined || value === null) continue;
+    form.append(key, value instanceof Date ? value.toISOString() : String(value));
+  }
+  if (file !== null) form.append('file', file);
+  return upload<MedicalEventDto>(EVENTS, form);
+};

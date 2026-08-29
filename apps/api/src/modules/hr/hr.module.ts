@@ -105,7 +105,11 @@ import {
   buildPerformanceGoalsRouter,
   buildPerformanceReviewsRouter,
 } from './performance';
-import { buildMedicalProfilesRouter } from './medical';
+import {
+  buildMedicalEventsRouter,
+  buildMedicalProfilesRouter,
+  hrMedicalDocumentAuthorizers,
+} from './medical';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -1477,6 +1481,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/performance/reviews', router: buildPerformanceReviewsRouter() },
     { prefix: '/hr/performance/goals', router: buildPerformanceGoalsRouter() },
     { prefix: '/hr/medical/profiles', router: buildMedicalProfilesRouter() },
+    { prefix: '/hr/medical/events', router: buildMedicalEventsRouter() },
     { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
     { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },
@@ -1550,6 +1555,10 @@ export const hrModule: ModuleManifest = {
     // record's own key; writing follows the conducting key, because the person who taught the
     // session is the person holding the paper.
     ...hrTrainingCertificateAuthorizers,
+    // P-HR-MED D3 — a medical certificate is filed against the EVENT it documents, and BOTH intents
+    // ask for a medical key. Not the employee's, and not the training record's: this is the one
+    // file category in HR that no personnel-file permission reaches.
+    ...hrMedicalDocumentAuthorizers,
   ],
   eventSubscriptions: [
     {

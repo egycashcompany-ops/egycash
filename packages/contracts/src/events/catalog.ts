@@ -193,6 +193,11 @@ import {
   PerformanceReviewEventPayloadV1,
 } from '../modules/hr-performance-reviews.js';
 import {
+  HrMedicalEvents,
+  type HrMedicalEventName,
+  MedicalEventPayloadV1,
+} from '../modules/hr-medical-events.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -715,6 +720,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // this phase it was a row the cycle opened and nothing more, which is why P2 named only the
   // cycle — an entity with no facts of its own would have been vocabulary nothing used.
   performanceReview: { en: 'Performance review', ar: 'مراجعة أداء' },
+  // P-HR-MED. The EVENT is the subject — the profile is not, deliberately: a change to somebody's
+  // health profile is not a fact other modules have any business reacting to, so it publishes
+  // nothing and has no entity here.
+  medicalEvent: { en: 'Medical event', ar: 'واقعة طبية' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -1149,7 +1158,8 @@ export type HrCatalogEventName =
   | HrTrainingAttendanceEventName
   | HrPerformanceEventName
   | HrPerformanceGoalEventName
-  | HrPerformanceReviewEventName;
+  | HrPerformanceReviewEventName
+  | HrMedicalEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1317,6 +1327,11 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   [HrPerformanceReviewEvents.Returned]: PerformanceReviewEventPayloadV1,
   [HrPerformanceReviewEvents.Finalized]: PerformanceReviewEventPayloadV1,
   [HrPerformanceReviewEvents.Excused]: PerformanceReviewEventPayloadV1,
+
+  // P-HR-MED M3 — carrying NO verdict and no restriction (see the schema). This is the most
+  // attractive event in the system to hang an automatic consequence off, and the verdict is
+  // exactly what a subscriber would need to implement a rule with legal weight nobody has stated.
+  [HrMedicalEvents.Recorded]: MedicalEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

@@ -28,6 +28,7 @@ const DYNAMIC_ENTITY_KEYS = [
   'platform.section', // org-unit.ts `this.entityType` — branch/department literals exist elsewhere
   'hr.applicantDocuments', // applicant-document.files.ts APPLICANT_DOCUMENT_ENTITY_TYPE
   'hr.trainingRecord', // training-record.files.ts TRAINING_RECORD_ENTITY_TYPE
+  'hr.medicalEvent', // medical-event.files.ts MEDICAL_EVENT_ENTITY_TYPE
 ];
 // P-HR-APP phase 3 adds TWO sites for one entity, both in `applicant-document.service.ts`: the
 // audit ref and the file's owning ref, each reaching for the same shared constant rather than
@@ -35,7 +36,9 @@ const DYNAMIC_ENTITY_KEYS = [
 // exchange for one place to change the entity type.
 // P-HR-TRN T4 adds ONE site: a training certificate is filed against the RECORD it certifies, and
 // the service reaches for the shared constant rather than retyping the entity type beside it.
-const EXPECTED_DYNAMIC_SITES = 8; // the six above + workflow-consumers relaying hr event refs
+// P-HR-MED M3 adds ONE site: a medical certificate is filed against the EVENT it documents, and
+// the service reaches for the shared constant rather than retyping the entity type beside it.
+const EXPECTED_DYNAMIC_SITES = 9; // the seven above + workflow-consumers relaying hr event refs
 
 const collectSources = (dir: string, files: string[] = []): string[] => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

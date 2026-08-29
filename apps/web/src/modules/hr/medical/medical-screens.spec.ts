@@ -105,9 +105,32 @@ describe('the employee reaches their own record without a key', () => {
  * FW-1 — nothing unshipped is reachable. M3 brings medical events, M4 insurance.
  */
 describe('no surface exists for a phase that has not shipped', () => {
-  it.each(['events', 'insurance', 'certificates'])('nothing routes to /medical/%s', (unshipped) => {
+  it.each(['insurance', 'certificates'])('nothing routes to /medical/%s', (unshipped) => {
     expect(ROUTES).not.toContain(`path="${unshipped}"`);
     expect(SEED).not.toContain(`/medical/${unshipped}`);
+  });
+
+  /**
+   * M3 ships events INSIDE the record dialog rather than as a screen of their own, so `events` left
+   * the list above rather than staying in it. A medical history is only ever read in the context of
+   * the person it belongs to — a company-wide list of examinations answers no question anybody asks,
+   * and would be the screening tool D12 and D13 refuse, arriving as a convenience.
+   */
+  it('the history has no screen of its own', () => {
+    expect(ROUTES).not.toContain('path="events"');
+    expect(SEED).not.toContain('/medical/events');
+    expect(MANIFEST).not.toContain("route: '/medical/events'");
+  });
+
+  /**
+   * D9 — the history offers no way to change what it shows. There is no edit route on the server,
+   * so a button here would be one that always fails.
+   */
+  it('the history panel edits nothing', () => {
+    const panel = read('components/MedicalHistoryPanel.tsx');
+    expect(panel).not.toContain('useUpdateMedicalEvent');
+    expect(panel).not.toContain('useDeleteMedicalEvent');
+    expect(panel.toLowerCase()).not.toContain('onedit');
   });
 
   /**

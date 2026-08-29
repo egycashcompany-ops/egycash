@@ -1,11 +1,12 @@
 // TanStack Query hooks for the health profile (ADR-013 — P-HR-MED, M2).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type UpsertMedicalProfile } from '@ecms/contracts';
+import { type RecordMedicalEvent, type UpsertMedicalProfile } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../shared/lib/query-keys';
 import * as api from './medical-api';
 
 const MODULE = 'hr';
 const PROFILES = 'medicalProfiles';
+const EVENTS = 'medicalEvents';
 
 export const useMedicalProfiles = (params: Record<string, string | number | undefined>) =>
   useQuery({
@@ -47,6 +48,32 @@ export const useUpsertMedicalProfile = () => {
       api.upsertMedicalProfile(employeeId, body),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: [MODULE, PROFILES] });
+    },
+  });
+};
+
+/**
+ * One person's medical history.
+ *
+ * Same no-cache stance as the profile: reading somebody's history is a read of their clinical
+ * record and the server audits it (D14), so serving a cached page would be a read the log never
+ * saw — and it would be the read that most often happens on a screen opened for somebody else.
+ */
+export const useMedicalEvents = (params: Record<string, string | number | undefined>) =>
+  useQuery({
+    queryKey: listKey(MODULE, EVENTS, params),
+    queryFn: () => api.listMedicalEvents(params),
+    staleTime: 0,
+    gcTime: 0,
+  });
+
+export const useRecordMedicalEvent = () => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ body, file }: { body: RecordMedicalEvent; file: File | null }) =>
+      api.recordMedicalEvent(body, file),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, EVENTS] });
     },
   });
 };

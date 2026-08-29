@@ -121,6 +121,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   ],
   'hr.medicalProfile': [['hr', 'medicalProfiles']],
   'hr.medicalEvent': [['hr', 'medicalEvents']],
+  'hr.medicalInsurance': [['hr', 'insuranceCards']],
   'hr.contract': [['hr', 'contracts'], ['hr', 'settlement']],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],

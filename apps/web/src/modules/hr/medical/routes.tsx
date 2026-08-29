@@ -9,6 +9,7 @@ import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { MedicalProfilesPage } from './pages/MedicalProfilesPage';
 import { MyMedicalPage } from './pages/MyMedicalPage';
+import { InsuranceCardsPage } from './pages/InsuranceCardsPage';
 
 export default function MedicalRoutes(): JSX.Element {
   return (
@@ -29,6 +30,19 @@ export default function MedicalRoutes(): JSX.Element {
           element={
             <RequirePermission permission="medicalRecord.view">
               <MedicalProfilesPage />
+            </RequirePermission>
+          }
+        />
+        {/*
+          M4 — its OWN key, not the clinical one. The card is scoped by branch because benefits
+          administration is delegable (D4); gating it on `medicalRecord.view` would mean delegating
+          it hands out clinical access, and whoever files a card number could read conditions.
+        */}
+        <Route
+          path="insurance"
+          element={
+            <RequirePermission permission="medicalInsurance.view">
+              <InsuranceCardsPage />
             </RequirePermission>
           }
         />

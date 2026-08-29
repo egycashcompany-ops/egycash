@@ -318,6 +318,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'file',
         permission: 'medicalRecord.view',
       },
+      // Its OWN key, not the clinical one: administering benefit cards must not require — or
+      // confer — the ability to read somebody's conditions.
+      {
+        en: 'Medical Insurance',
+        ar: 'التأمين الطبي',
+        route: '/medical/insurance',
+        icon: 'file',
+        permission: 'medicalInsurance.view',
+      },
       {
         en: 'Contracts',
         ar: 'العقود',

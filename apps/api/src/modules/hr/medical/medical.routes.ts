@@ -18,10 +18,14 @@ import {
 import multer from 'multer';
 import { z } from 'zod';
 import {
+  EndInsuranceCardSchema,
   ErrorCodes,
+  IssueInsuranceCardSchema,
+  ListInsuranceCardsQuerySchema,
   ListMedicalEventsQuerySchema,
   ListMedicalProfilesQuerySchema,
   RecordMedicalEventSchema,
+  UpdateInsuranceCardSchema,
   UpsertMedicalProfileSchema,
   objectId,
 } from '@ecms/contracts';
@@ -30,11 +34,15 @@ import { AppError } from '../../../shared/errors';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import {
+  endInsuranceCard,
   getMedicalProfile,
   getMyMedicalProfile,
+  issueInsuranceCard,
+  listInsuranceCards,
   listMedicalEvents,
   listMedicalProfiles,
   recordMedicalEvent,
+  updateInsuranceCard,
   upsertMedicalProfile,
 } from './medical.controller';
 
@@ -142,6 +150,53 @@ export const buildMedicalEventsRouter = (): Router => {
     multipartSingle(),
     validate({ body: RecordMedicalEventSchema }),
     asyncHandler(recordMedicalEvent),
+  );
+  return router;
+};
+
+const CardIdParamSchema = z.object({ id: objectId() }).strict();
+
+/**
+ * Insurance — ITS OWN TWO KEYS, not the clinical record's.
+ *
+ * The first draft shared `medicalRecord.*` and that was backwards. D4 scopes the card by branch
+ * precisely because benefits administration is DELEGABLE; gating it on the clinical key would mean
+ * that delegating it hands out clinical access, and whoever files a card number could read
+ * everybody's conditions. Administrative and clinical are two gates.
+ *
+ * THERE IS NO RENEW ROUTE. A renewal is what the provider does — one card ends and another is
+ * issued — and a single endpoint for it would hide which number somebody actually held on a given
+ * day. `hr.medicalInsurance.renewed` is emitted when an issue follows an end for the same person.
+ */
+export const buildMedicalInsuranceRouter = (): Router => {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    authorize('medicalInsurance.view'),
+    validate({ query: ListInsuranceCardsQuerySchema }),
+    asyncHandler(listInsuranceCards),
+  );
+  router.post(
+    '/',
+    authenticate,
+    authorize('medicalInsurance.manage'),
+    validate({ body: IssueInsuranceCardSchema }),
+    asyncHandler(issueInsuranceCard),
+  );
+  router.patch(
+    '/:id',
+    authenticate,
+    authorize('medicalInsurance.manage'),
+    validate({ body: UpdateInsuranceCardSchema, params: CardIdParamSchema }),
+    asyncHandler(updateInsuranceCard),
+  );
+  router.post(
+    '/:id/end',
+    authenticate,
+    authorize('medicalInsurance.manage'),
+    validate({ body: EndInsuranceCardSchema, params: CardIdParamSchema }),
+    asyncHandler(endInsuranceCard),
   );
   return router;
 };

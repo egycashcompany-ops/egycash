@@ -79,6 +79,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // place a clinical change announces itself to a wider audience than may read it.
   'hr.medicalProfile': { permission: 'medicalRecord.view' },
   'hr.medicalEvent': { permission: 'medicalRecord.view' },
+  'hr.medicalInsurance': { permission: 'medicalInsurance.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

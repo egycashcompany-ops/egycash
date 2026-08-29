@@ -1,9 +1,13 @@
 // Thin HTTP mapping only (ADR-003): parse, delegate, respond.
 import { type Request, type Response } from 'express';
 import {
+  type EndInsuranceCard,
+  type IssueInsuranceCard,
+  type ListInsuranceCardsQuery,
   type ListMedicalEventsQuery,
   type ListMedicalProfilesQuery,
   type RecordMedicalEvent,
+  type UpdateInsuranceCard,
   type UpsertMedicalProfile,
 } from '@ecms/contracts';
 import { created, ok, okPage } from '../../../platform/web';
@@ -12,8 +16,9 @@ import { authContext } from '../../../platform/auth';
 import { scopeSelector } from '../../../shared/types';
 import { medicalProfileService } from './profiles/medical-profile.service';
 import { medicalEventService } from './events/medical-event.service';
+import { insuranceCardService } from './insurance/insurance-card.service';
 import { type UploadedBinary } from '../../../platform/files';
-import { toMedicalEventDto, toMedicalProfileDto } from './medical.mapper';
+import { toInsuranceCardDto, toMedicalEventDto, toMedicalProfileDto } from './medical.mapper';
 
 type EmployeeIdParam = { employeeId: string };
 
@@ -95,3 +100,41 @@ export const recordMedicalEvent = async (req: Request, res: Response): Promise<v
 // handler that threw «this is immutable» for a route nobody declared would be theatre: the
 // enforcement is the repository's write seam, which refuses the write itself, and the absent route
 // is what a reader of this file should find.
+
+// ── Insurance ───────────────────────────────────────────────────────────────
+
+type CardIdParam = { id: string };
+
+/**
+ * The card's scope selector DOES narrow, unlike the clinical ones (D4).
+ *
+ * Its repository declares both axes, so a branch-scoped HR officer sees their branch's cards —
+ * which is the point: benefits administration is delegable and clinical reading is not.
+ */
+const cardScope = (req: Request) => scopeSelector(authContext(req), 'medicalInsurance.view');
+
+export const listInsuranceCards = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, ListInsuranceCardsQuery>(req);
+  okPage(res, await insuranceCardService.list(query, cardScope(req)), toInsuranceCardDto);
+};
+
+export const issueInsuranceCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<IssueInsuranceCard>(req);
+  const doc = await insuranceCardService.issue(ctx, body);
+  created(res, toInsuranceCardDto(doc), `/api/v1/hr/medical/insurance/${String(doc._id)}`);
+};
+
+export const updateInsuranceCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdateInsuranceCard, never, CardIdParam>(req);
+  const doc = await insuranceCardService.update(ctx, params.id, body, cardScope(req));
+  ok(res, toInsuranceCardDto(doc));
+};
+
+export const endInsuranceCard = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<EndInsuranceCard, never, CardIdParam>(req);
+  const doc = await insuranceCardService.end(ctx, params.id, body, cardScope(req));
+  ok(res, toInsuranceCardDto(doc));
+};

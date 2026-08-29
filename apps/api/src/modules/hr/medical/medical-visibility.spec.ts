@@ -25,13 +25,24 @@ const strip = (text: string): string =>
 
 const REPOSITORY = strip(read('medical.repository.ts'));
 
-/** The clinical repositories — the ones D4 exempts. The insurance repository is NOT one of them. */
-const clinicalSlice = (): string => {
-  const from = REPOSITORY.indexOf('class MedicalProfileRepository');
-  const to = REPOSITORY.indexOf('class MedicalInsuranceRepository');
-  expect(from, 'the profile repository exists').toBeGreaterThan(-1);
-  return to === -1 ? REPOSITORY.slice(from) : REPOSITORY.slice(from, to);
+/**
+ * One class's body, bounded by the NEXT class rather than by the end of the file.
+ *
+ * An open-ended slice is a guard that grows a false failure the day somebody appends a class — and
+ * it did: M4's `InsuranceCardRepository` declares both axes on purpose, and an unbounded clinical
+ * slice read them as the clinical repository's own. A boundary that is «the next class» is the only
+ * one that stays correct as the file grows.
+ */
+const classBody = (name: string): string => {
+  const from = REPOSITORY.indexOf(`class ${name}`);
+  expect(from, `${name} exists`).toBeGreaterThan(-1);
+  const next = REPOSITORY.indexOf('\nclass ', from + 1);
+  return next === -1 ? REPOSITORY.slice(from) : REPOSITORY.slice(from, next);
 };
+
+/** The clinical repositories — the ones D4 exempts. The insurance repository is NOT one of them. */
+const clinicalSlice = (): string =>
+  `${classBody('MedicalProfileRepository')}\n${classBody('MedicalEventRepository')}`;
 
 describe('D4 — the clinical record is not widened by an organizational scope', () => {
   it('declares neither axis', () => {
@@ -49,6 +60,31 @@ describe('D4 — the clinical record is not widened by an organizational scope',
     const model = strip(read('profiles/medical-profile.model.ts'));
     expect(model).not.toMatch(/^\s*branchId:/m);
     expect(model).not.toMatch(/^\s*departmentId:/m);
+  });
+});
+
+/**
+ * D4, THE OTHER HALF — the INSURANCE card declares BOTH axes, and must.
+ *
+ * The asymmetry is the design, not an inconsistency: a card number is an administrative fact an HR
+ * officer legitimately administers by branch, and a blood type is not. Asserting only the clinical
+ * absence would leave the card free to drift into the clinical shape — at which point benefits
+ * administration stops being delegable, and somebody "fixes" it by widening the clinical rows
+ * instead.
+ *
+ * So both halves are pinned, and each names the other.
+ */
+describe('D4 — the card is administrative, and IS scoped', () => {
+  it('declares both axes', () => {
+    const insurance = classBody('InsuranceCardRepository');
+    expect(insurance).toContain("branchField: 'branchId'");
+    expect(insurance).toContain("departmentField: 'departmentId'");
+  });
+
+  it('stores the placement to scope by', () => {
+    const model = strip(read('insurance/insurance-card.model.ts'));
+    expect(model).toContain('branchId: Types.ObjectId | null;');
+    expect(model).toContain('departmentId: Types.ObjectId | null;');
   });
 });
 
@@ -82,6 +118,22 @@ describe('D3 — no other permission opens this door', () => {
   /** And `medicalCheck.*` is RECRUITMENT's key, about an applicant (D1). Different door. */
   it.each(sources())('$name does not borrow the recruitment key', ({ text }) => {
     expect(text).not.toContain('medicalCheck.');
+  });
+
+  /**
+   * D3-b — and the CLINICAL routes do not accept the INSURANCE key either.
+   *
+   * This is the direction the first draft got wrong in reverse: the card was going to ride the
+   * clinical key, which would have made delegating benefits administration hand out clinical
+   * access. Now that they are two keys, the guard has to hold the boundary from BOTH sides —
+   * `medicalInsurance.view` appearing on a profile or event route would reopen the same hole.
+   */
+  it('no clinical route accepts the insurance key', () => {
+    const routes = strip(read('medical.routes.ts'));
+    const insuranceAt = routes.indexOf('buildMedicalInsuranceRouter');
+    expect(insuranceAt, 'the insurance router exists').toBeGreaterThan(-1);
+    // Everything BEFORE the insurance router is the clinical half of the file.
+    expect(routes.slice(0, insuranceAt)).not.toContain('medicalInsurance.');
   });
 });
 

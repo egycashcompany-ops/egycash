@@ -105,9 +105,39 @@ describe('the employee reaches their own record without a key', () => {
  * FW-1 — nothing unshipped is reachable. M3 brings medical events, M4 insurance.
  */
 describe('no surface exists for a phase that has not shipped', () => {
-  it.each(['insurance', 'certificates'])('nothing routes to /medical/%s', (unshipped) => {
+  it.each(['certificates', 'claims'])('nothing routes to /medical/%s', (unshipped) => {
     expect(ROUTES).not.toContain(`path="${unshipped}"`);
     expect(SEED).not.toContain(`/medical/${unshipped}`);
+  });
+
+  /**
+   * D10 — and there is no claims surface, which is the boundary M4 is stopped at. A claims ledger
+   * is a different and much larger product that happens to share a noun with a benefit card, and
+   * it is the same accounting boundary PY-12, P-HR-12 and P-HR-14 are each stopped at.
+   */
+  it('the insurance screen holds no claims', () => {
+    const page = read('pages/InsuranceCardsPage.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '')
+      .toLowerCase();
+    for (const forbidden of ['claim', 'reimburs', 'balance', 'deductible']) {
+      expect(page, forbidden).not.toContain(forbidden);
+    }
+  });
+
+  /**
+   * D3-b — the insurance screen carries its OWN key, not the clinical one. Gating it on
+   * `medicalRecord.*` would mean delegating benefits administration hands out clinical access.
+   */
+  it('the insurance screen asks for the insurance key', () => {
+    expect(ROUTES).toContain('permission="medicalInsurance.view"');
+    expect(read('pages/InsuranceCardsPage.tsx')).toContain('permission="medicalInsurance.manage"');
+    const from = SEED.indexOf("route: '/medical/insurance'");
+    expect(from).toBeGreaterThan(-1);
+    expect(SEED.slice(Math.max(0, from - 300), from + 200)).toContain(
+      "permission: 'medicalInsurance.view'",
+    );
   });
 
   /**

@@ -54,6 +54,7 @@ export * from './modules/hr-performance-reviews.js';
 export * from './modules/hr-performance-goals.js';
 export * from './modules/hr-medical.js';
 export * from './modules/hr-medical-events.js';
+export * from './modules/hr-medical-insurance.js';
 export * from './modules/hr-job-requisition.js';
 export * from './modules/hr-contract.js';
 export * from './modules/fleet.js';

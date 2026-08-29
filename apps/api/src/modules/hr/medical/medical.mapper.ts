@@ -3,9 +3,14 @@
 // EVERY FIELD IS RETURNED, and there is no «summary» shape. A masked or partial clinical DTO would
 // be a second answer to «who may see what», sitting beside the permission that already answers it —
 // and the two would drift. The gate is the key (D3); once through it, the record is the record.
-import { type MedicalEventDto, type MedicalProfileDto } from '@ecms/contracts';
+import {
+  type InsuranceCardDto,
+  type MedicalEventDto,
+  type MedicalProfileDto,
+} from '@ecms/contracts';
 import { type MedicalProfileDoc } from './profiles/medical-profile.model';
 import { type MedicalEventDoc } from './events/medical-event.model';
+import { type InsuranceCardDoc } from './insurance/insurance-card.model';
 
 export const toMedicalProfileDto = (doc: MedicalProfileDoc): MedicalProfileDto => ({
   id: String(doc._id),
@@ -48,5 +53,25 @@ export const toMedicalEventDto = (
   documentFileId: document?.id ?? null,
   documentFileName: document?.name ?? null,
   recordedAt: doc.createdAt.toISOString(),
+  version: doc.__v,
+});
+
+export const toInsuranceCardDto = (doc: InsuranceCardDoc): InsuranceCardDto => ({
+  id: String(doc._id),
+  employeeId: String(doc.employeeId),
+  employeeCode: doc.employeeCode,
+  employeeName: doc.employeeName,
+  provider: doc.provider,
+  cardNumber: doc.cardNumber,
+  tier: doc.tier,
+  status: doc.status,
+  startsOn: doc.startsOn.toISOString(),
+  endsOn: doc.endsOn === null ? null : doc.endsOn.toISOString(),
+  endedOn: doc.endedOn === null ? null : doc.endedOn.toISOString(),
+  endReason: doc.endReason,
+  dependants: doc.dependants.map((d) => ({ name: d.name, relationship: d.relationship })),
+  note: doc.note,
+  branchId: doc.branchId === null ? null : String(doc.branchId),
+  departmentId: doc.departmentId === null ? null : String(doc.departmentId),
   version: doc.__v,
 });

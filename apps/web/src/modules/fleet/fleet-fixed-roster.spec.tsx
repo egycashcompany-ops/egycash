@@ -1117,3 +1117,74 @@ describe('the daily roster is untouched', () => {
     expect(ROSTER).toMatch(/dateKey: date/);
   });
 });
+
+// ── a second driver needs a first, in the SCREEN ───────────────────────────
+//
+// The rule itself lives in three places and each is tested where it belongs: the arithmetic in
+// `fixed-roster-board.spec.ts`, the boundary in the contracts spec, the stored record in the
+// integration suite. What is left is the part a user meets — the slot that will not take a drop
+// and the select that will not offer a name — and that is here.
+
+describe('driver 2 depends on driver 1', () => {
+  it('makes slot 2 a NON-target while slot 1 is empty', () => {
+    const markup = render();
+    // Both slots exist for an empty crew; only slot 1 accepts anything.
+    const zone = (slot: string): string => {
+      const at = markup.indexOf(`data-drop-zone="${V1}:${slot}"`);
+      return at === -1 ? '' : markup.slice(at, markup.indexOf('>', at));
+    };
+    expect(zone('driver1EmployeeId'), 'the first seat is open').not.toContain('data-drop-disabled');
+    expect(zone('driver2EmployeeId'), 'the second is not, and says why').toContain(
+      'data-drop-disabled="needsFirstDriver"',
+    );
+  });
+
+  it('refuses the drop in code, not only in the styling', () => {
+    // A `data-` attribute is a label. This is the gate: `onDragOver` never prevents the default,
+    // so the browser does not treat the slot as a drop target at all.
+    expect(SOURCE, 'the gate exists').toContain(
+      "const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null",
+    );
+    expect(SOURCE, 'and both handlers ride it').toContain('const droppable = mayPlan && !needsFirst');
+    const cell = SOURCE.slice(SOURCE.indexOf('const CrewSlotCell'), SOURCE.indexOf('export const FixedRosterPage'));
+    const overAt = cell.indexOf('onDragOver');
+    const dropAt = cell.indexOf('onDrop=');
+    expect(cell.slice(overAt, overAt + 120), 'dragover is gated').toContain('if (!droppable) return');
+    expect(cell.slice(dropAt, dropAt + 120), 'and so is drop').toContain('if (!droppable) return');
+  });
+
+  it('OPENS slot 2 as soon as slot 1 holds somebody', () => {
+    const seated = { ...BOARD, rows: [row(V1, '150', E1), row(V2, '151')] };
+    const markup = render({ qc: client(seated) });
+    const at = markup.indexOf(`data-drop-zone="${V1}:driver2EmployeeId"`);
+    expect(at, 'the slot is rendered').toBeGreaterThan(-1);
+    expect(markup.slice(at, markup.indexOf('>', at)), 'and it is now a target').not.toContain(
+      'data-drop-disabled',
+    );
+  });
+
+  it('tells the reader what is missing instead of ignoring the gesture', () => {
+    const markup = render();
+    const at = markup.indexOf(`data-drop-zone="${V1}:driver2EmployeeId"`);
+    const cell = markup.slice(at, markup.indexOf('</div>', at));
+    expect(cell, 'the empty second slot explains itself').toContain(
+      translate('ar', 'fleet.fixedRoster.needsFirstDriver'),
+    );
+  });
+
+  it('disables the dialog’s second-driver select while the first is empty', () => {
+    expect(SOURCE, 'the select is disabled').toContain('disabled={driver1 === null}');
+    expect(SOURCE, 'with the reason beside it').toContain(
+      "hint={driver1 === null ? t('fleet.fixedRoster.needsFirstDriver') : undefined}",
+    );
+  });
+
+  it('PROMOTES rather than stranding when the dialog clears driver 1', () => {
+    // «بدون سائق» on the first slot of a two-man crew leaves one person on the car, and the seat
+    // a lone driver holds is slot 1 — so the dialog shows exactly the crew the save will write.
+    const handler = SOURCE.slice(SOURCE.indexOf('onChange={(id) => {'));
+    expect(handler.slice(0, 260)).toContain('if (id === null && driver2 !== null)');
+    expect(handler.slice(0, 260)).toContain('setDriver1(driver2)');
+    expect(handler.slice(0, 260)).toContain('setDriver2(null)');
+  });
+});

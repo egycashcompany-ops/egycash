@@ -2949,18 +2949,20 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
   });
 
   it('AUDIT — moving between the two SLOTS of one vehicle deletes nobody', async () => {
+    // A SWAP, because that is the only slot move a crew can make: a lone driver may not be sent
+    // to seat two, since a second driver with no first is not a crew the record may hold.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const d1 = await mkDriver();
-    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }]);
     const before = await driverPopulation();
 
     const moved = await saveCrews([
-      { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: d1 },
+      { vehicleId: v.id, driver1EmployeeId: d2, driver2EmployeeId: d1 },
     ]);
     expect(moved.status).toBe(200);
     expect(await driverPopulation()).toEqual(before);
     expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
-      driver1EmployeeId: null,
+      driver1EmployeeId: d2,
       driver2EmployeeId: d1,
     });
   });
@@ -3038,10 +3040,12 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       ).rows.find((r) => r.vehicleId === v.id);
     const before = await dayBefore();
 
-    // Set, move and clear a fixed crew on the SAME vehicle.
-    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: fixed }]);
-    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: fixed }]);
-    await saveCrews([{ vehicleId: v.id, driver2EmployeeId: null }]);
+    // Set, reseat and clear a fixed crew on the SAME vehicle. The middle step is a swap rather
+    // than a slide into seat two: a crew may not hold a second driver with no first.
+    const second = await mkDriver();
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: fixed, driver2EmployeeId: second }]);
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: second, driver2EmployeeId: fixed }]);
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: null }]);
 
     expect(await dayBefore(), 'the day row is byte-identical').toEqual(before);
   });
@@ -3432,6 +3436,123 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
         .toArray(),
       'and the existing entries are byte-identical',
     ).toEqual(sample);
+  });
+
+  // ── a second driver needs a first ────────────────────────────────────────
+  //
+  // The slots are ORDERED: slot 1 is the crew's driver, slot 2 the second man beside them. A row
+  // holding only a second driver reads as a crewless car on every screen that shows "the driver"
+  // while a real person is committed to it. The board refuses to propose it; these prove the
+  // SERVER refuses to store it, so the rule is not UI-only.
+
+  it('DRIVER ORDER — refuses a second driver with no first', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d2 = await mkDriver();
+    const res = await saveCrews([{ vehicleId: v.id, driver2EmployeeId: d2 }]);
+    expect(res.status, 'a crew whose only member sits in seat two').toBe(400);
+    expect(
+      rowFor(data<FixedBoardDto>(await getCrews()), v.id)?.driver2EmployeeId ?? null,
+      'and nothing was written',
+    ).toBeNull();
+  });
+
+  it('DRIVER ORDER — refuses it with driver 1 spelled as an explicit null', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d2 = await mkDriver();
+    expect(
+      (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: d2 }]))
+        .status,
+    ).toBe(400);
+  });
+
+  it('DRIVER ORDER — accepts the pair when the first driver is there', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const res = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 },
+    ]);
+    expect(res.status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: d1,
+      driver2EmployeeId: d2,
+    });
+  });
+
+  it('DRIVER ORDER — a lone FIRST driver is a crew, and clearing one stays legal', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    expect((await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1 }])).status).toBe(200);
+    // The rule is about ORDER, not presence — emptying a vehicle must remain expressible.
+    expect(
+      (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: null }]))
+        .status,
+    ).toBe(200);
+  });
+
+  it('DRIVER ORDER — clearing driver 1 while driver 2 remains is REFUSED, not silently kept', async () => {
+    // The board promotes the second driver into the vacated seat rather than sending this, so a
+    // dispatcher never meets the refusal. A client that sends it anyway gets a 400 — and the
+    // stored crew is left exactly as it was.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }]);
+
+    const res = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: d2 },
+    ]);
+    expect(res.status).toBe(400);
+    expect(
+      rowFor(data<FixedBoardDto>(await getCrews()), v.id),
+      'the crew that was already there is untouched',
+    ).toMatchObject({ driver1EmployeeId: d1, driver2EmployeeId: d2 });
+  });
+
+  it('DRIVER ORDER — the promotion the board sends IS accepted', async () => {
+    // The other half of the previous test: what the UI actually produces when driver 1 is
+    // cleared is a promotion, and that must go through.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }]);
+
+    const res = await saveCrews([
+      { vehicleId: v.id, driver1EmployeeId: d2, driver2EmployeeId: null },
+    ]);
+    expect(res.status).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), v.id)).toMatchObject({
+      driver1EmployeeId: d2,
+      driver2EmployeeId: null,
+    });
+  });
+
+  it('DRIVER ORDER — refuses the bad row even when a GOOD row travels beside it', async () => {
+    // Saves are batched: a move sends both sides. One invalid row must fail the whole payload
+    // rather than being quietly dropped from it.
+    const [a, b] = [
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+      data<FleetVehicleDto>(await createVehicle(adminToken)),
+    ];
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const res = await saveCrews([
+      { vehicleId: a.id, driver1EmployeeId: d1 },
+      { vehicleId: b.id, driver2EmployeeId: d2 },
+    ]);
+    expect(res.status).toBe(400);
+    const board = data<FixedBoardDto>(await getCrews());
+    expect(rowFor(board, a.id)?.driver1EmployeeId ?? null, 'the good row did not land').toBeNull();
+  });
+
+  it('DRIVER ORDER — a crew stored before the rule still READS and re-saves', async () => {
+    // Existing valid rows remain valid: nothing re-validates on read, and a legal crew written
+    // yesterday can be saved again today unchanged.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }]);
+    expect((await getCrews()).status).toBe(200);
+    expect(
+      (
+        await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }])
+      ).status,
+    ).toBe(200);
   });
 });
 

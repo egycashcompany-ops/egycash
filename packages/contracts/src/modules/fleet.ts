@@ -883,6 +883,23 @@ export const SaveFleetFixedCrewRowSchema = z
         message: 'the two driver slots cannot hold the same person',
       });
     }
+    // The slots are ORDERED, not interchangeable. Slot 1 is the crew's driver and slot 2 is the
+    // second man beside them, so a car carrying a second driver and no first is not a small
+    // inconsistency — it is a crew that does not exist. It also reads as data corruption
+    // downstream: every screen that shows "the driver" reads slot 1, so such a row appears
+    // crewless while a real person is committed to it.
+    //
+    // Enforced HERE rather than only in the page because the rule is about the record, not the
+    // form: an API client, an import, or a future screen must not be able to write the state the
+    // board refuses to draw. Rows already stored this way keep parsing — nothing re-validates
+    // them on read; the rule binds what is WRITTEN from here on.
+    if (value.driver1EmployeeId == null && value.driver2EmployeeId != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['driver2EmployeeId'],
+        message: 'a second driver needs a first — assign driver 1 before driver 2',
+      });
+    }
   });
 export type SaveFleetFixedCrewRow = z.infer<typeof SaveFleetFixedCrewRowSchema>;
 

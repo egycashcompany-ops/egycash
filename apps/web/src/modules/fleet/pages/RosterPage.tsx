@@ -1,10 +1,23 @@
-// Daily duty roster (FW-7, legacy roster board): the §4.5 planning screen over FL-5, where the
-// SERVER is the only planner — vehicles, the day's assignments, the driver pool split by the
-// availability seam (with each refusal's named reason), and the FR-5/6/7 verdicts all arrive
-// derived; the page renders them and submits desired state, recomputing nothing. URL-synced
-// date + client-side code/plate search over the one live board; assign, edit, clear and
-// vehicle-to-vehicle transfer are all the same plan call (only the touched rows travel).
-import { useState, useMemo } from 'react';
+// Daily duty roster (FW-7, legacy roster board): the §4.5 planning screen over FL-5.
+//
+// THE DAY IS A DRAFT. The board arrives derived — the server merges the vehicles, the day's
+// stored assignments, the fixed crew where no assignment exists, and the availability seam's
+// verdicts — and from then until «حفظ» every drag, mission change and clear edits a LOCAL copy.
+// Nothing reaches `fleet_duty_assignments` in between, and nothing reaches `fleet_fixed_crews`
+// ever: this screen has no write path to the standing crew at all.
+//
+// That is a change from the board that saved on every drop. Planning a day is a sequence of
+// related decisions — this car takes that crew, so this other one needs a different pair — and
+// persisting each keystroke made every half-finished thought a fact, gave «إلغاء» nothing to
+// undo, and turned one plan into a dozen audit entries. The fixed board already worked this way;
+// the two now behave the same, which is the point.
+//
+// WHERE THE DAY COMES FROM is the server's decision, not this page's, and it turns on one fact:
+// does a `fleet_duty_assignment` exist for (vehicle, date)? If it does, that stored day IS the
+// baseline, verbatim, even when its crew is empty — a day somebody deliberately emptied must not
+// have the standing crew put back on reload. If it does not, the fixed crew is where the day
+// starts, cut down by that day's workshop visits (FR-5) and driver availability (FR-6/7).
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type FleetRosterRowDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -12,7 +25,6 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
@@ -20,7 +32,8 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Input } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { ChevronEndIcon, ChevronStartIcon, EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { errorMessage } from '../../../shared/lib/errors';
+import { ChevronEndIcon, ChevronStartIcon, CloseIcon, EditIcon } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { useFleetCatalog, usePlanRoster, useRosterDay } from '../api/fleet-queries';
 import { EmployeeName } from '../components/EmployeeName';
@@ -28,6 +41,15 @@ import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
+import {
+  applyEdit,
+  assignDriver,
+  availableDrivers,
+  changedRows,
+  clearSlot,
+  type DutySlot,
+  setMission,
+} from '../lib/daily-roster-board';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -70,9 +92,7 @@ const DRAG_TYPE = 'application/x-ecms-driver';
  * drag in flight belongs to and makes the browser cancel it. That bug was real on the fixed board
  * and is not repeated here.
  *
- * It is a sibling of the fixed board's cell rather than a shared component: making one component
- * serve both would mean editing `FixedRosterPage`, which is out of bounds for this change. The
- * two therefore share the drag CONTRACT (`DRAG_TYPE`, `DriverChip`) and nothing else.
+ * A drop edits the DRAFT. Nothing is sent until «حفظ».
  */
 const RosterSlotCell = ({
   row,
@@ -83,20 +103,18 @@ const RosterSlotCell = ({
   t,
   setOver,
   onDrop,
+  onClear,
   setDragging,
 }: {
   row: FleetRosterRowDto;
-  slot: 'driver1EmployeeId' | 'driver2EmployeeId';
+  slot: DutySlot;
   mayPlan: boolean;
   over: string | null;
   dragging: string | null;
   t: (key: string, params?: Record<string, string | number>) => string;
   setOver: (update: (key: string | null) => string | null) => void;
-  onDrop: (
-    row: FleetRosterRowDto,
-    slot: 'driver1EmployeeId' | 'driver2EmployeeId',
-    employeeId: string,
-  ) => void;
+  onDrop: (row: FleetRosterRowDto, slot: DutySlot, employeeId: string) => void;
+  onClear: (row: FleetRosterRowDto, slot: DutySlot) => void;
   setDragging: (employeeId: string | null) => void;
 }): JSX.Element => {
   const employeeId = row[slot];
@@ -140,22 +158,39 @@ const RosterSlotCell = ({
             {t(row.inMaintenance ? 'fleet.roster.inWorkshopNoDrop' : 'fleet.fixedRoster.dropHere')}
           </span>
         ) : (
-          <span
-            draggable={mayPlan}
-            onDragStart={(e) => {
-              e.dataTransfer.setData(DRAG_TYPE, employeeId);
-              e.dataTransfer.effectAllowed = 'move';
-              setDragging(employeeId);
-            }}
-            onDragEnd={() => setDragging(null)}
-            className={[
-              'min-w-0 flex-1',
-              mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
-              dragging === employeeId ? 'opacity-50' : '',
-            ].join(' ')}
-          >
-            <DriverChip employeeId={employeeId} className="w-full" />
-          </span>
+          <>
+            <span
+              draggable={mayPlan}
+              onDragStart={(e) => {
+                e.dataTransfer.setData(DRAG_TYPE, employeeId);
+                e.dataTransfer.effectAllowed = 'move';
+                setDragging(employeeId);
+              }}
+              onDragEnd={() => setDragging(null)}
+              className={[
+                'min-w-0 flex-1',
+                mayPlan ? 'cursor-grab active:cursor-grabbing' : '',
+                dragging === employeeId ? 'opacity-50' : '',
+              ].join(' ')}
+            >
+              <DriverChip employeeId={employeeId} className="w-full" />
+            </span>
+            {/* Taking somebody OFF the day, without a dialog. The driver returns to the pool
+                immediately because the pool is derived from the draft — and, like every other
+                edit here, nothing is written until «حفظ». */}
+            {mayPlan && (
+              <button
+                type="button"
+                data-clear-slot={key}
+                aria-label={t('fleet.roster.clearSlot')}
+                title={t('fleet.roster.clearSlot')}
+                onClick={() => onClear(row, slot)}
+                className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-700 dark:hover:text-slate-100"
+              >
+                <CloseIcon className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -175,6 +210,7 @@ export const RosterPage = (): JSX.Element => {
   const requested = sp.get('date') ?? today();
   const date = requested < floor ? floor : requested;
   const search = sp.get('q') ?? '';
+  const mission = sp.get('mission') ?? '';
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -189,6 +225,31 @@ export const RosterPage = (): JSX.Element => {
 
   const boardQuery = useRosterDay(date);
   const board = boardQuery.data;
+  // The BASELINE: the day exactly as the server derived it. On an unplanned day that is the
+  // standing crew; on a planned day it is the stored assignment. Either way it is what «إلغاء»
+  // returns to and what the save measures against — so an untouched board saves NOTHING and a
+  // derived day stays unplanned until somebody actually plans it.
+  const saved = useMemo(() => board?.rows ?? [], [board]);
+
+  // The draft, derived DURING render rather than by an effect. An effect runs after the first
+  // paint (so the board would flash) and never runs at all under `renderToStaticMarkup`, which is
+  // how this screen is tested. Holding the base the draft was taken from lets the draft reset
+  // itself the moment the server answers with a different board — a new date, or a completed
+  // save — and stay put in between, so a background refetch cannot undo a drag.
+  const [edit, setEdit] = useState<{ base: FleetRosterRowDto[]; rows: FleetRosterRowDto[] }>({
+    base: [],
+    rows: [],
+  });
+  const draft = edit.base === saved ? edit.rows : saved;
+  const setDraft = (next: (rows: FleetRosterRowDto[]) => FleetRosterRowDto[]): void =>
+    setEdit({ base: saved, rows: next(draft) });
+  const discard = (): void => setEdit({ base: saved, rows: saved });
+
+  const pending = useMemo(() => changedRows(saved, draft), [saved, draft]);
+  const dirty = pending.length > 0;
+
+  const plan = usePlanRoster();
+
   const missionTypes = useFleetCatalog('missionType');
   const missionName = (id: string | null): string => {
     if (id === null) return '—';
@@ -196,45 +257,45 @@ export const RosterPage = (): JSX.Element => {
     return item === undefined ? '—' : localized(item.name, locale);
   };
 
-  const mission = sp.get('mission') ?? '';
   const term = search.trim().toLowerCase();
-  const rows = (board?.rows ?? []).filter(
+  // The table reads the DRAFT, so an edit is visible the moment it is made. The search still
+  // matches the plate as well as the code — the cell no longer shows the plate, but a dispatcher
+  // holding a plate number in their head is exactly who is typing in this box.
+  const rows = draft.filter(
     (row) =>
       (term === '' ||
         row.code.toLowerCase().includes(term) ||
         row.plateNumber.toLowerCase().includes(term)) &&
       (mission === '' || row.missionTypeId === mission),
   );
-  const assignedCount = board?.rows.filter(hasFacts).length ?? 0;
-  const workshopCount = board?.rows.filter((row) => row.inMaintenance).length ?? 0;
 
   /**
-   * The header's tally, counted off the DAY'S OWN PROJECTION — never a hardcoded vocabulary.
+   * The header's tally, counted off the DRAFT — never a hardcoded vocabulary, and never the
+   * server's last answer once the dispatcher has started editing.
    *
-   * «إجمالي» is every vehicle on the board, «صيانة» the ones the workshop holds, «تشغيل» the ones
+   * «إجمالي» is every vehicle on the day, «صيانة» the ones the workshop holds, «تشغيل» the ones
    * carrying a plan. After those comes one counter per ACTIVE mission type, named by the catalog,
    * so a mission somebody adds in `/fleet/catalogs` appears here without a code change and one
    * they archive stops appearing. The search narrows the table; these count the whole day.
    */
   const counters = useMemo(() => {
-    const all = board?.rows ?? [];
     const byMission = new Map<string, number>();
-    for (const row of all) {
+    for (const row of draft) {
       if (row.missionTypeId === null) continue;
       byMission.set(row.missionTypeId, (byMission.get(row.missionTypeId) ?? 0) + 1);
     }
     return [
-      { key: 'total', label: t('fleet.roster.counter.total'), value: all.length, tone: 'brand' },
+      { key: 'total', label: t('fleet.roster.counter.total'), value: draft.length, tone: 'brand' },
       {
         key: 'workshop',
         label: t('fleet.roster.counter.workshop'),
-        value: workshopCount,
+        value: draft.filter((row) => row.inMaintenance).length,
         tone: 'rose',
       },
       {
         key: 'assigned',
         label: t('fleet.roster.counter.assigned'),
-        value: assignedCount,
+        value: draft.filter(hasFacts).length,
         tone: 'emerald',
       },
       ...(missionTypes.data?.items ?? [])
@@ -246,83 +307,85 @@ export const RosterPage = (): JSX.Element => {
           tone: 'slate' as const,
         })),
     ];
-  }, [board, missionTypes.data, assignedCount, workshopCount, locale, t]);
+  }, [draft, missionTypes.data, locale, t]);
 
-  const [editing, setEditing] = useState<FleetRosterRowDto | null>(null);
+  // The pool is DERIVED from the draft, never the server's list rendered raw: everyone the draft
+  // seats leaves it the instant the drop lands, and comes back the instant a slot is cleared —
+  // with no round trip in between. Deriving it is also why a move between vehicles cannot flicker
+  // a driver back into the list and why a slot change cannot duplicate a card.
+  const pool = useMemo(
+    () => availableDrivers(board?.availableDrivers ?? [], draft),
+    [board, draft],
+  );
+
+  const [editing, setEditing] = useState<string | null>(null);
   const [clearing, setClearing] = useState<FleetRosterRowDto | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
-  const plan = usePlanRoster();
 
-  /**
-   * A drop writes the day, immediately — this board has no draft.
-   *
-   * The WHOLE row goes, as the dialog's save sends it, because the plan endpoint upserts the pair
-   * and a partial row would read as "clear the fields I left out". The same person landing in the
-   * other slot of the same car swaps them; the server is still the authority (FR-5/6/7) and a
-   * refusal surfaces as the mutation's error toast.
-   */
-  const dropDriver = async (
-    row: FleetRosterRowDto,
-    slot: 'driver1EmployeeId' | 'driver2EmployeeId',
-    employeeId: string,
-  ): Promise<void> => {
+  const editingRow = draft.find((row) => row.vehicleId === editing) ?? null;
+
+  const dropDriver = (row: FleetRosterRowDto, slot: DutySlot, employeeId: string): void => {
     setOver(null);
     setDragging(null);
-    const other = slot === 'driver1EmployeeId' ? 'driver2EmployeeId' : 'driver1EmployeeId';
-    const next = {
-      vehicleId: row.vehicleId,
-      missionTypeId: row.missionTypeId,
-      notes: row.notes,
-      [slot]: employeeId,
-      // Dropping somebody onto the slot their crewmate holds is a swap, not a duplicate.
-      [other]: row[other] === employeeId ? row[slot] : row[other],
-    } as {
-      vehicleId: string;
-      missionTypeId: string | null;
-      notes: string | null;
-      driver1EmployeeId: string | null;
-      driver2EmployeeId: string | null;
-    };
-    await plan.mutateAsync({ dateKey: date, body: { date: new Date(date), rows: [next] } });
+    // Every drop lands in the draft: onto another car a move, onto this car's other slot a swap,
+    // onto the slot already held a no-op. `assignDriver` is what keeps all three legal, and it
+    // refuses a car the workshop holds.
+    setDraft(() => assignDriver(draft, row.vehicleId, slot, employeeId));
   };
 
-  const confirmClear = async (): Promise<void> => {
+  const commit = async (): Promise<void> => {
+    if (!dirty) return;
+    try {
+      await plan.mutateAsync({ dateKey: date, body: { date: new Date(date), rows: pending } });
+      toast.success(t('fleet.roster.saved'));
+    } catch (error) {
+      // The hook defines its own `onError` so a failed save re-reads the day — and defining one
+      // opts the mutation OUT of the global error toast. Without this the refusal would be
+      // silent: the button would stop spinning, the refetch would drop the edits, and the reader
+      // would be left guessing. The commonest refusal here is a driver another row still holds.
+      toast.error(errorMessage(error, locale));
+    }
+  };
+
+  const confirmClear = (): void => {
     if (clearing === null) return;
-    await plan.mutateAsync({
-      dateKey: date,
-      body: {
-        date: new Date(date),
-        rows: [
-          {
-            vehicleId: clearing.vehicleId,
-            missionTypeId: null,
-            driver1EmployeeId: null,
-            driver2EmployeeId: null,
-            notes: null,
-          },
-        ],
-      },
-    });
-    toast.success(t('fleet.roster.cleared'));
+    setDraft(() =>
+      applyEdit(draft, clearing.vehicleId, {
+        missionTypeId: null,
+        driver1EmployeeId: null,
+        driver2EmployeeId: null,
+        notes: null,
+      }),
+    );
     setClearing(null);
   };
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
+  const slotProps = {
+    mayPlan,
+    over,
+    dragging,
+    t,
+    setOver,
+    onDrop: dropDriver,
+    onClear: (row: FleetRosterRowDto, slot: DutySlot) =>
+      setDraft(() => clearSlot(draft, row.vehicleId, slot)),
+    setDragging,
+  };
+
   const columns: Column<FleetRosterRowDto>[] = [
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // The CODE alone. The plate was a second identifier under every row of a column the eye
+      // scans for one, and the code is the one this fleet dispatches by — the plate is still
+      // searchable above, which is where a plate number is actually used.
       render: (row) => (
-        <span className="flex flex-col">
-          <span className="font-mono text-xs" dir="ltr">
-            {row.code}
-          </span>
-          <span className="text-xs text-slate-500 dark:text-slate-400" dir="ltr">
-            {row.plateNumber}
-          </span>
+        <span className="font-mono text-xs" dir="ltr">
+          {row.code}
         </span>
       ),
     },
@@ -343,48 +406,57 @@ export const RosterPage = (): JSX.Element => {
     {
       key: 'mission',
       header: t('fleet.roster.fields.mission'),
-      render: (row) => missionName(row.missionTypeId),
+      // Editable IN THE CELL, not only behind «تعديل». This is the fact a dispatcher changes
+      // most often after the crew itself, and reaching it through a dialog cost four
+      // interactions to answer a one-word question.
+      //
+      // `CatalogSelect` is the app's own catalog select on the SAME `missionType` kind the fixed
+      // board uses — one cached request for N rows, an archived current value kept visible rather
+      // than silently dropped, and never `workType`, which is the workshop's vocabulary. A reader
+      // without `fleetRoster.plan` sees the name as text.
+      render: (row) =>
+        !mayPlan ? (
+          missionName(row.missionTypeId)
+        ) : (
+          // The click stops here: this row's other cells are drag sources and drop targets, and a
+          // control inside a row must not hand its interaction to the row.
+          // `min-w-[11rem]`: the shared `Select` reserves `pe-9` (36px) for its chevron plus a
+          // 12px start gutter, so a 9rem box leaves 94px of text — and «نقل أموال (يومي)», the
+          // commonest mission there is, needs 104px. Measured, not guessed: a select clips its
+          // label internally and reports no overflow.
+          <div
+            className="min-w-[11rem]"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <CatalogSelect
+              kind="missionType"
+              value={row.missionTypeId ?? ''}
+              ariaLabel={`${row.code} · ${t('fleet.roster.fields.mission')}`}
+              allLabel={t('fleet.fixedRoster.noMissionType')}
+              onChange={(id) =>
+                setDraft(() => setMission(draft, row.vehicleId, id === '' ? null : id))
+              }
+            />
+          </div>
+        ),
     },
     {
       key: 'driver1',
       header: t('fleet.odometer.fields.driver1'),
-      render: (row) => (
-        <RosterSlotCell
-          row={row}
-          slot="driver1EmployeeId"
-          mayPlan={mayPlan}
-          over={over}
-          dragging={dragging}
-          t={t}
-          setOver={setOver}
-          onDrop={(r, sl, id) => void dropDriver(r, sl, id)}
-          setDragging={setDragging}
-        />
-      ),
+      render: (row) => <RosterSlotCell {...slotProps} row={row} slot="driver1EmployeeId" />,
     },
     {
       key: 'driver2',
       header: t('fleet.odometer.fields.driver2'),
-      render: (row) => (
-        <RosterSlotCell
-          row={row}
-          slot="driver2EmployeeId"
-          mayPlan={mayPlan}
-          over={over}
-          dragging={dragging}
-          t={t}
-          setOver={setOver}
-          onDrop={(r, sl, id) => void dropDriver(r, sl, id)}
-          setDragging={setDragging}
-        />
-      ),
+      render: (row) => <RosterSlotCell {...slotProps} row={row} slot="driver2EmployeeId" />,
     },
     {
       key: 'notes',
       header: t('fleet.attendance.fields.notes'),
       render: (row) => <span className="block max-w-[16rem] truncate">{row.notes ?? '—'}</span>,
     },
-    ...(can('fleetRoster.plan')
+    ...(mayPlan
       ? [
           {
             key: 'actions',
@@ -399,7 +471,7 @@ export const RosterPage = (): JSX.Element => {
                     className={actionButton}
                     aria-label={t('fleet.roster.editAssignment')}
                     title={t('fleet.roster.editAssignment')}
-                    onClick={() => setEditing(row)}
+                    onClick={() => setEditing(row.vehicleId)}
                   >
                     <EditIcon className="h-4 w-4" />
                   </button>
@@ -412,7 +484,7 @@ export const RosterPage = (): JSX.Element => {
                     title={t('fleet.roster.clearAssignment')}
                     onClick={() => setClearing(row)}
                   >
-                    <TrashIcon className="h-4 w-4" />
+                    <CloseIcon className="h-4 w-4" />
                   </button>
                 )}
               </span>
@@ -435,7 +507,7 @@ export const RosterPage = (): JSX.Element => {
           { label: t('fleet.nav.roster') },
         ]}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               size="sm"
               variant="secondary"
@@ -465,15 +537,52 @@ export const RosterPage = (): JSX.Element => {
             >
               <ChevronEndIcon className="h-4 w-4" />
             </Button>
+            {mayPlan && (
+              <>
+                {dirty && (
+                  <span
+                    data-unsaved="true"
+                    className="text-sm text-amber-700 dark:text-amber-300"
+                  >
+                    {t('fleet.roster.unsaved')}
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!dirty || plan.isPending}
+                  onClick={discard}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button
+                  size="sm"
+                  data-save-roster="true"
+                  disabled={!dirty}
+                  loading={plan.isPending}
+                  onClick={() => void commit()}
+                >
+                  {t('common.save')}
+                </Button>
+              </>
+            )}
           </div>
         }
       />
 
-      {/* The day's tally beside the day itself: a strip of counters rather than a paragraph
-          under the board, so the height it used to take goes to the assignment table. It wraps
-          rather than scrolling, which is what keeps it honest at 390px. */}
+      {/* ONE top strip: what narrows the board and what the board adds up to, together.
+          The counters used to sit in their own block under the controls, which pushed the table
+          down a row for information that is read at a glance and never interacted with. Here the
+          code search and the mission filter sit beside the day's tally, and the whole thing wraps
+          rather than scrolling — which is what keeps it honest at 390px. */}
       <div className="flex flex-wrap items-center gap-1.5">
-        <div className="me-1 w-44">
+        <SearchInput
+          value={search}
+          onChange={(value) => patch({ q: value || null })}
+          placeholder={t('fleet.roster.searchPlaceholder')}
+          className="w-56"
+        />
+        <div className="w-44">
           <CatalogSelect
             kind="missionType"
             value={mission}
@@ -506,21 +615,8 @@ export const RosterPage = (): JSX.Element => {
       <div className="grid gap-6 xl:grid-cols-3">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the column
-            grows to the table's `min-w-[40rem]` and takes the PAGE sideways at 390px. The fixed
-            board carries the same class for the same reason; this one was missing it. */}
+            grows to the table's `min-w-[40rem]` and takes the PAGE sideways at 390px. */}
         <div className="min-w-0 space-y-4 xl:col-span-2">
-          <FilterBar
-            hasActiveFilters={search !== '' || mission !== ''}
-            onClear={() => patch({ q: null, mission: null })}
-          >
-            <SearchInput
-              value={search}
-              onChange={(value) => patch({ q: value || null })}
-              placeholder={t('fleet.roster.searchPlaceholder')}
-              className="w-56"
-            />
-          </FilterBar>
-
           <DataTable
             columns={columns}
             rows={rows}
@@ -539,14 +635,14 @@ export const RosterPage = (): JSX.Element => {
             <h2 className="px-3 pb-2 pt-3 text-center text-sm font-semibold text-emerald-900 dark:text-emerald-200">
               {t('fleet.roster.availableTitle')}
               <span className="ms-1 font-normal text-emerald-700 dark:text-emerald-400">
-                ({formatNumber(board?.availableDrivers.length ?? 0, locale)})
+                ({formatNumber(pool.length, locale)})
               </span>
             </h2>
-            {board === undefined || board.availableDrivers.length === 0 ? (
+            {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : (
               <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
-                {board.availableDrivers.map((driver) => (
+                {pool.map((driver) => (
                   <li key={driver.employeeId}>
                     <div
                       data-driver-card={driver.employeeId}
@@ -564,11 +660,6 @@ export const RosterPage = (): JSX.Element => {
                       ].join(' ')}
                     >
                       <DriverChip employeeId={driver.employeeId} className="min-w-0 flex-1" />
-                      {driver.assignedVehicleId !== null && (
-                        <Badge tone="warning" size="sm" className="shrink-0">
-                          {t('fleet.roster.otherVehicle')}
-                        </Badge>
-                      )}
                     </div>
                   </li>
                 ))}
@@ -613,10 +704,13 @@ export const RosterPage = (): JSX.Element => {
 
       {board !== undefined && (
         <RosterAssignDialog
-          open={editing !== null}
+          open={editingRow !== null}
           onClose={() => setEditing(null)}
-          date={date}
-          row={editing}
+          onSave={(values) =>
+            editingRow !== null &&
+            setDraft(() => applyEdit(draft, editingRow.vehicleId, values))
+          }
+          row={editingRow}
           board={board}
         />
       )}
@@ -629,7 +723,7 @@ export const RosterPage = (): JSX.Element => {
             <Button variant="secondary" onClick={() => setClearing(null)}>
               {t('common.cancel')}
             </Button>
-            <Button variant="danger" loading={plan.isPending} onClick={() => void confirmClear()}>
+            <Button variant="danger" onClick={confirmClear}>
               {t('fleet.roster.clearAssignment')}
             </Button>
           </>

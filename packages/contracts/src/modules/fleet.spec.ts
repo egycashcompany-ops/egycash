@@ -383,3 +383,88 @@ describe('SaveFleetFixedRosterSchema — mission type and notes', () => {
     ).toBe(false);
   });
 });
+
+// ── a second driver needs a first ──────────────────────────────────────────
+//
+// The slots are ORDERED, not interchangeable: slot 1 is the crew's driver, slot 2 is the second
+// man beside them. A row holding only a second driver reads as a crewless car on every screen
+// that shows "the driver", while a real person is committed to it. The board refuses to propose
+// the state and the service refuses to store it; this is the boundary that makes it unwritable
+// by anything at all — an import, an API client, or a screen nobody has written yet.
+
+describe('SaveFleetFixedRosterSchema — driver 2 depends on driver 1', () => {
+  const V1 = '64b1f0abcdefabcdefabcdef';
+  const D1 = '64b1f0abcdefabcdefabcd01';
+  const D2 = '64b1f0abcdefabcdefabcd02';
+
+  it('REFUSES a second driver with no first', () => {
+    const bad = SaveFleetFixedRosterSchema.safeParse({
+      rows: [{ vehicleId: V1, driver2EmployeeId: D2 }],
+    });
+    expect(bad.success, 'a crew whose only member sits in seat two').toBe(false);
+    expect(JSON.stringify(bad.error?.issues), 'and says which field is wrong').toContain(
+      'driver2EmployeeId',
+    );
+  });
+
+  it('refuses it when driver 1 is spelled as an explicit null', () => {
+    // `nullish()` accepts both an absent field and an explicit null; the rule must not care.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [{ vehicleId: V1, driver1EmployeeId: null, driver2EmployeeId: D2 }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('ACCEPTS the pair when the first driver is there', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [{ vehicleId: V1, driver1EmployeeId: D1, driver2EmployeeId: D2 }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts a lone FIRST driver — one is a crew, two is a crew, second-only is not', () => {
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [{ vehicleId: V1, driver1EmployeeId: D1 }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts a row with no drivers at all — clearing a crew stays legal', () => {
+    // The rule is about ORDER, not about presence. Emptying a vehicle must remain expressible,
+    // or a crew could be created and never removed.
+    expect(SaveFleetFixedRosterSchema.safeParse({ rows: [{ vehicleId: V1 }] }).success).toBe(true);
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [{ vehicleId: V1, driver1EmployeeId: null, driver2EmployeeId: null }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuses the bad row even when a GOOD row travels beside it', () => {
+    // Saves are batched — a drag sends both sides of a move. One invalid row must fail the
+    // payload rather than being quietly dropped from it.
+    expect(
+      SaveFleetFixedRosterSchema.safeParse({
+        rows: [
+          { vehicleId: V1, driver1EmployeeId: D1 },
+          { vehicleId: '64b1f0abcdefabcdefabcd03', driver2EmployeeId: D2 },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('is a rule about the FIXED crew — the daily plan keeps its own shape', () => {
+    // Deliberately NOT mirrored onto `PlanFleetRosterSchema`: this change was scoped to the
+    // standing crew. Asserted so that adding it to the daily board later is a decision somebody
+    // makes on purpose, with this test in front of them, rather than a silent divergence.
+    expect(
+      PlanFleetRosterSchema.safeParse({
+        date: '2099-01-01',
+        rows: [{ vehicleId: V1, driver2EmployeeId: D2 }],
+      }).success,
+    ).toBe(true);
+  });
+});

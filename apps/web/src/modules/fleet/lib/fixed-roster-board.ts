@@ -16,6 +16,26 @@ export type CrewSlot = 'driver1EmployeeId' | 'driver2EmployeeId';
 
 export const CREW_SLOTS: readonly CrewSlot[] = ['driver1EmployeeId', 'driver2EmployeeId'];
 
+/**
+ * A second driver needs a first: slot 2 never holds somebody while slot 1 is empty.
+ *
+ * The slots are ORDERED, not interchangeable — slot 1 is the crew's driver and slot 2 is the
+ * second man beside them. A row holding only a second driver is not a small inconsistency: every
+ * other screen reads slot 1 as "the driver", so the car reads as crewless while a real person is
+ * committed to it. The server refuses to store it, and the board must not be able to propose it.
+ *
+ * Applied as a NORMALISATION over the whole board rather than as a check in one place, because
+ * three different gestures can produce the state and gating only the obvious one would leave the
+ * others open: clearing slot 1, dragging the slot-1 driver onto another car (the releasing row is
+ * left holding only slot 2), and the edit dialog writing the pair directly. Promotion is what the
+ * board already does everywhere else — a driver is never silently dropped, they are moved — so
+ * the person stays on the crew they were put on and simply becomes its first driver.
+ */
+const seatOrder = (row: FleetFixedCrewRowDto): FleetFixedCrewRowDto =>
+  row.driver1EmployeeId === null && row.driver2EmployeeId !== null
+    ? { ...row, driver1EmployeeId: row.driver2EmployeeId, driver2EmployeeId: null }
+    : row;
+
 /** Where a driver currently sits, or `null` when they sit nowhere. */
 export const findSeat = (
   rows: readonly FleetFixedCrewRowDto[],
@@ -56,13 +76,14 @@ export const assignDriver = (
   const seat = findSeat(rows, employeeId);
   const swapWithin = seat !== null && seat.vehicleId === vehicleId && seat.slot !== slot;
   return rows.map((row) => {
-    // Any OTHER car releases them — that is what makes one driver, one crew true.
+    // Any OTHER car releases them — that is what makes one driver, one crew true. A car that
+    // gives up its FIRST driver this way is left holding only a second, so it is re-seated.
     if (row.vehicleId !== vehicleId) {
-      return {
+      return seatOrder({
         ...row,
         driver1EmployeeId: row.driver1EmployeeId === employeeId ? null : row.driver1EmployeeId,
         driver2EmployeeId: row.driver2EmployeeId === employeeId ? null : row.driver2EmployeeId,
-      };
+      });
     }
     // The destination car. Whoever sat in the target slot is displaced.
     const displaced = row[slot];
@@ -70,7 +91,10 @@ export const assignDriver = (
     // A move between this car's own two slots hands the old slot to the displaced person —
     // a swap when the destination was taken, an ordinary move when it was empty.
     if (swapWithin && seat !== null) next[seat.slot] = displaced;
-    return next;
+    // Seating somebody in slot 2 of a car with no slot-1 driver seats them in slot 1 instead.
+    // The cell refuses that drop before it reaches here; this is what makes the rule hold for
+    // the dialog and for any caller that does not.
+    return seatOrder(next);
   });
 };
 
@@ -137,13 +161,19 @@ export const applyEdit = (
   );
 };
 
-/** Empty one slot. The other slot, and every other row, is left exactly as it was. */
+/**
+ * Empty one slot. Every other row is left exactly as it was.
+ *
+ * Clearing slot 1 of a crew that still has a second driver PROMOTES that driver into slot 1
+ * rather than leaving the car holding only a second man — see `seatOrder`. Clearing slot 2 is
+ * the ordinary case and simply empties it.
+ */
 export const clearSlot = (
   rows: readonly FleetFixedCrewRowDto[],
   vehicleId: string,
   slot: CrewSlot,
 ): FleetFixedCrewRowDto[] =>
-  rows.map((row) => (row.vehicleId === vehicleId ? { ...row, [slot]: null } : row));
+  rows.map((row) => (row.vehicleId === vehicleId ? seatOrder({ ...row, [slot]: null }) : row));
 
 /**
  * The rows whose CREW differs from the saved board — the save payload, and nothing more.

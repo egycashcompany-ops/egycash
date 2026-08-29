@@ -12,6 +12,7 @@ import {
   availableDrivers,
   changedRows,
   clearSlot,
+  CREW_SLOTS,
   findSeat,
   isDirty,
 } from './fixed-roster-board';
@@ -43,8 +44,10 @@ describe('assignDriver', () => {
       '150:e1/-',
       '151:-/-',
     ]);
+    // …except into slot 2 of a car with no first driver, which is the one state a crew may not
+    // be in. The card lands in slot 1 instead of creating a second driver with no first.
     expect(crews(assignDriver(BOARD, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
-      '150:-/e1',
+      '150:e1/-',
       '151:-/-',
     ]);
   });
@@ -65,10 +68,13 @@ describe('assignDriver', () => {
   // from each other. Dragging between them is a legitimate correction — the crew is right, the
   // seats are the wrong way round — so it MOVES, and nobody is asked to clear a slot first.
 
-  it('MOVES a driver to the other slot of the car they already crew — slot 1 → slot 2', () => {
+  it('keeps a LONE driver in slot 1 — moving them to slot 2 would leave a crew with no first', () => {
+    // The gesture is legal on a crew of two (the swap below); on a crew of one there is nobody
+    // to take slot 1, so the move is not a move at all and the driver stays where they are.
+    // The cell refuses the drop before it reaches here — this is the arithmetic behind that.
     const before = [row('v1', '150', 'e1'), row('v2', '151')];
     expect(crews(assignDriver(before, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
-      '150:-/e1',
+      '150:e1/-',
       '151:-/-',
     ]);
   });
@@ -186,9 +192,10 @@ describe('assignDriver', () => {
     // The swap is a SAME-CAR affair. Arriving from elsewhere, the person you land on leaves the
     // crew — shuffling them into the car's free slot instead would rewrite a crew nobody dragged,
     // and would keep them out of the pool where the user expects to find them again.
-    const before = [row('v1', '150', 'e1'), row('v2', '151', null, 'e9')];
-    const after = assignDriver(before, 'v2', 'driver2EmployeeId', 'e1');
-    expect(crews(after)).toEqual(['150:-/-', '151:-/e1']);
+    // The occupant sits in slot 1 because that is the only seat a lone driver may hold.
+    const before = [row('v1', '150', 'e1'), row('v2', '151', 'e9')];
+    const after = assignDriver(before, 'v2', 'driver1EmployeeId', 'e1');
+    expect(crews(after)).toEqual(['150:-/-', '151:e1/-']);
     expect(
       availableDrivers([{ employeeId: 'e1' }, { employeeId: 'e9' }], after).map(
         (d) => d.employeeId,
@@ -269,7 +276,21 @@ describe('nothing is mutated in place', () => {
 describe('clearSlot', () => {
   it('empties one slot and touches nothing else', () => {
     const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')];
-    expect(crews(clearSlot(before, 'v1', 'driver1EmployeeId'))).toEqual(['150:-/e2', '151:e3/-']);
+    expect(crews(clearSlot(before, 'v1', 'driver2EmployeeId'))).toEqual(['150:e1/-', '151:e3/-']);
+  });
+
+  it('PROMOTES the second driver when the first is cleared — never a crew with no first', () => {
+    // Removing the first driver of a two-man crew leaves one person on the car, and the seat a
+    // lone driver holds is slot 1. Dropping them instead would take somebody off a crew nobody
+    // asked to disband; leaving them in slot 2 is the state the server refuses to store.
+    const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')];
+    expect(crews(clearSlot(before, 'v1', 'driver1EmployeeId'))).toEqual(['150:e2/-', '151:e3/-']);
+  });
+
+  it('clearing the LAST driver empties the crew rather than promoting nobody', () => {
+    expect(crews(clearSlot([row('v1', '150', 'e1')], 'v1', 'driver1EmployeeId'))).toEqual([
+      '150:-/-',
+    ]);
   });
 });
 
@@ -483,7 +504,10 @@ describe('applyEdit', () => {
       driver2EmployeeId: 'e2',
       notes: null,
     });
-    expect(crews(cleared)).toEqual(['150:-/e2', '151:e9/-']);
+    // e2 is promoted into the seat e1 vacated — the dialog cannot leave a crew with no first
+    // driver any more than a drag can. The dialog disables slot 2 while slot 1 is empty, so this
+    // pair is not offerable there; the promotion is what makes the rule hold regardless.
+    expect(crews(cleared)).toEqual(['150:e2/-', '151:e9/-']);
     // …and the released driver is offered again.
     expect(
       availableDrivers([{ employeeId: 'e1' }, { employeeId: 'e2' }], cleared).map(
@@ -602,5 +626,82 @@ describe('applyEdit', () => {
       notes: 'x',
     });
     expect(JSON.stringify(saved)).toBe(snapshot);
+  });
+});
+
+// ── a second driver needs a first ──────────────────────────────────────────
+//
+// The slots are ORDERED. Slot 1 is the crew's driver; slot 2 is the second man beside them. A row
+// holding only a second driver reads as a crewless car on every screen that shows "the driver",
+// while a real person is committed to it — so the server refuses to store one, and the board must
+// not be able to propose one. These prove the rule survives EVERY gesture that could reach it,
+// not just the obvious one.
+describe('a second driver needs a first', () => {
+  const lonelySecond = (rows: readonly FleetFixedCrewRowDto[]): FleetFixedCrewRowDto[] =>
+    rows.filter((r) => r.driver1EmployeeId === null && r.driver2EmployeeId !== null);
+
+  it('cannot be produced by dropping onto slot 2 of an empty car', () => {
+    expect(lonelySecond(assignDriver(BOARD, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([]);
+  });
+
+  it('cannot be produced by clearing slot 1', () => {
+    const before = [row('v1', '150', 'e1', 'e2')];
+    expect(lonelySecond(clearSlot(before, 'v1', 'driver1EmployeeId'))).toEqual([]);
+  });
+
+  it('cannot be produced by dragging the FIRST driver away to another car', () => {
+    // The releasing row is the trap: it keeps its second driver and loses its first, which is
+    // exactly the forbidden state — reached without anybody touching slot 2.
+    const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
+    const after = assignDriver(before, 'v2', 'driver1EmployeeId', 'e1');
+    expect(lonelySecond(after)).toEqual([]);
+    expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
+  });
+
+  it('cannot be produced by the edit dialog writing the pair directly', () => {
+    const after = applyEdit(BOARD, 'v1', {
+      missionTypeId: null,
+      driver1EmployeeId: null,
+      driver2EmployeeId: 'e1',
+      notes: null,
+    });
+    expect(lonelySecond(after)).toEqual([]);
+    expect(crews(after)).toEqual(['150:e1/-', '151:-/-']);
+  });
+
+  it('holds from EVERY starting board and every drop — exhaustively', () => {
+    const starts = [
+      [row('v1', '150'), row('v2', '151')],
+      [row('v1', '150', 'e1'), row('v2', '151')],
+      [row('v1', '150', 'e1', 'e2'), row('v2', '151')],
+      [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')],
+    ];
+    for (const start of starts) {
+      for (const vehicleId of ['v1', 'v2']) {
+        for (const slot of CREW_SLOTS) {
+          for (const who of ['e1', 'e2', 'e3', 'e4']) {
+            expect(
+              lonelySecond(assignDriver(start, vehicleId, slot, who)),
+              `assign ${who} -> ${vehicleId}.${slot}`,
+            ).toEqual([]);
+          }
+          expect(lonelySecond(clearSlot(start, vehicleId, slot)), `clear ${vehicleId}.${slot}`)
+            .toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('a promotion travels in the payload, so the save is not silently partial', () => {
+    const saved = [row('v1', '150', 'e1', 'e2')];
+    expect(changedRows(saved, clearSlot(saved, 'v1', 'driver1EmployeeId'))).toEqual([
+      {
+        vehicleId: 'v1',
+        missionTypeId: null,
+        driver1EmployeeId: 'e2',
+        driver2EmployeeId: null,
+        notes: null,
+      },
+    ]);
   });
 });

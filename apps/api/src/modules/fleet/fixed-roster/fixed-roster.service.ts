@@ -155,6 +155,24 @@ class FleetFixedRosterService {
       }
     }
 
+    // A second driver needs a first. The schema says so at the HTTP boundary; this repeats it for
+    // the same reason the canonicalisation above is repeated — the invariant belongs to the
+    // RECORD, and a caller reaching this method without passing through the schema must not be
+    // able to write a crew whose only member sits in the second seat. Slot 1 is what every other
+    // screen reads as "the driver", so such a row would show as crewless while a real person is
+    // committed to it.
+    for (const row of input.rows) {
+      if (row.driver1EmployeeId == null && row.driver2EmployeeId != null) {
+        throw new ValidationError([
+          {
+            field: 'body.rows.driver2EmployeeId',
+            code: 'DRIVER2_WITHOUT_DRIVER1',
+            message: 'a second driver needs a first — assign driver 1 before driver 2',
+          },
+        ]);
+      }
+    }
+
     // The dateless half of the availability seam: a fixed driver must BE a driver. Whether they
     // are free next Tuesday is a question this board does not ask.
     for (const employeeId of new Set(input.rows.flatMap(rowDrivers))) {

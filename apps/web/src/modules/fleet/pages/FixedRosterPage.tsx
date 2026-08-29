@@ -89,6 +89,8 @@ const DriverSelect = ({
   label,
   exclude,
   candidates,
+  disabled,
+  hint,
   t,
 }: {
   value: string | null;
@@ -96,10 +98,17 @@ const DriverSelect = ({
   label: string;
   exclude: string | null;
   candidates: string[];
+  /** Slot 2 while slot 1 is empty: a pair the record may not hold, so it is not offerable. */
+  disabled?: boolean;
+  hint?: string | undefined;
   t: (key: string) => string;
 }): JSX.Element => (
   <Field label={label}>
-    <Select value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
+    <Select
+      value={value ?? ''}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value || null)}
+    >
       <option value="">{t('fleet.fixedRoster.noDriver')}</option>
       {candidates
         .filter((id) => id !== exclude || id === value)
@@ -107,6 +116,9 @@ const DriverSelect = ({
           <DriverOption key={id} employeeId={id} />
         ))}
     </Select>
+    {hint !== undefined && (
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+    )}
   </Field>
 );
 
@@ -223,7 +235,17 @@ const EditCrewDialog = ({
         <DriverSelect
           label={t('fleet.odometer.fields.driver1')}
           value={driver1}
-          onChange={setDriver1}
+          // Choosing «بدون سائق» here does not leave a second driver stranded in slot 2 — the
+          // remaining driver is PROMOTED, which is what `clearSlot` does for the same gesture on
+          // the board. The dialog therefore shows exactly the crew the save will write.
+          onChange={(id) => {
+            if (id === null && driver2 !== null) {
+              setDriver1(driver2);
+              setDriver2(null);
+              return;
+            }
+            setDriver1(id);
+          }}
           exclude={driver2}
           candidates={candidates}
           t={t}
@@ -234,6 +256,8 @@ const EditCrewDialog = ({
           onChange={setDriver2}
           exclude={driver1}
           candidates={candidates}
+          disabled={driver1 === null}
+          hint={driver1 === null ? t('fleet.fixedRoster.needsFirstDriver') : undefined}
           t={t}
         />
         {sameTwice && (
@@ -299,13 +323,20 @@ const CrewSlotCell = ({
   const employeeId = row[slot];
   const key = zoneKey(row.vehicleId, slot);
   const active = over === key;
+  // A second driver needs a first. Slot 2 of a crew whose slot 1 is empty is not a drop target
+  // at all: the schema and the service both refuse to store that pair, so offering the drop
+  // would be offering a save that comes back 400. The cell says WHY in place of «اسحب هنا»
+  // rather than silently ignoring the gesture.
+  const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null;
+  const droppable = mayPlan && !needsFirst;
   return (
     <div className="min-w-[9rem]">
       <div
         data-drop-zone={key}
+        data-drop-disabled={needsFirst ? 'needsFirstDriver' : undefined}
         aria-label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
         onDragOver={(e) => {
-          if (!mayPlan) return;
+          if (!droppable) return;
           // Preventing the default IS what makes an element a drop target.
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
@@ -313,7 +344,7 @@ const CrewSlotCell = ({
         }}
         onDragLeave={() => setOver((k) => (k === key ? null : k))}
         onDrop={(e) => {
-          if (!mayPlan) return;
+          if (!droppable) return;
           e.preventDefault();
           const id = e.dataTransfer.getData(DRAG_TYPE);
           if (id !== '') onDrop(row.vehicleId, slot, id);
@@ -322,14 +353,16 @@ const CrewSlotCell = ({
           'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
           active
             ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
-            : employeeId === null
-              ? 'border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40'
-              : 'border-transparent bg-slate-50 dark:bg-slate-800/60',
+            : needsFirst
+              ? 'border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-800/30'
+              : employeeId === null
+                ? 'border-slate-300 bg-slate-50/60 dark:border-slate-700 dark:bg-slate-800/40'
+                : 'border-transparent bg-slate-50 dark:bg-slate-800/60',
         ].join(' ')}
       >
         {employeeId === null ? (
           <span className="text-xs text-slate-400 dark:text-slate-500">
-            {t('fleet.fixedRoster.dropHere')}
+            {t(needsFirst ? 'fleet.fixedRoster.needsFirstDriver' : 'fleet.fixedRoster.dropHere')}
           </span>
         ) : (
           <>

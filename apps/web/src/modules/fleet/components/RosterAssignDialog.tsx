@@ -1,24 +1,21 @@
 // Assign/edit one vehicle's row of the daily roster (§4.5). The dialog edits the COMPLETE
-// desired state of (vehicle, date) — exactly the shape the plan API upserts. Driver choices
-// come from the board's own pool (the availability seam's verdicts), never from a directory
-// search: what the server says is assignable is all the UI offers. Picking a driver who
-// already holds another vehicle's assignment composes that vehicle's releasing row into the
-// SAME save — both sides of the move in one transaction, the drag semantics FL-5 was built
-// for (FR-7); the server remains the authority and refuses anything the board missed.
+// desired state of (vehicle, date) and hands it back — it does NOT save. The day is a DRAFT
+// now: «حفظ» on the page commits every change at once, so a dialog that wrote straight to the
+// server would be a second way to persist and would make «إلغاء» on the page a lie.
+//
+// Driver choices come from the board's own pool (the availability seam's verdicts), never from
+// a directory search: what the server says is assignable is all the UI offers. Picking a driver
+// who already holds another vehicle for the date releases that vehicle — but the arithmetic for
+// that lives in `applyEdit` on the daily board module, which is the same code a drag goes
+// through. It used to be a second copy here, free to drift from the board's.
 import { useEffect, useState } from 'react';
-import {
-  type FleetRosterDayDto,
-  type FleetRosterRowDto,
-  type PlanFleetRosterRow,
-} from '@ecms/contracts';
+import { type FleetRosterDayDto, type FleetRosterRowDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Field, Textarea } from '../../../shared/ui/form';
-import { toast } from '../../../shared/ui/toast/toast-store';
 import { CloseIcon } from '../../../shared/ui/icons';
-import { usePlanRoster } from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
 import { EmployeeName } from './EmployeeName';
 
@@ -119,14 +116,19 @@ const DriverSlot = ({
 export const RosterAssignDialog = ({
   open,
   onClose,
-  date,
+  onSave,
   row,
   board,
 }: {
   open: boolean;
   onClose: () => void;
-  /** The board's day as the yyyy-mm-dd URL value — also the day cache key. */
-  date: string;
+  /** Hands the four edited facts to the page's draft. Nothing is persisted here. */
+  onSave: (edit: {
+    missionTypeId: string | null;
+    driver1EmployeeId: string | null;
+    driver2EmployeeId: string | null;
+    notes: string | null;
+  }) => void;
   row: FleetRosterRowDto | null;
   board: FleetRosterDayDto;
 }): JSX.Element => {
@@ -144,47 +146,16 @@ export const RosterAssignDialog = ({
     }
   }, [open, row]);
 
-  const plan = usePlanRoster();
-
-  const submit = async (): Promise<void> => {
+  const submit = (): void => {
     if (row === null) return;
-    // One row per touched vehicle: releasing rows first (a picked driver held elsewhere is
-    // stripped from that vehicle's CURRENT state), then this vehicle's full desired state.
-    const rows = new Map<string, PlanFleetRosterRow>();
-    for (const picked of [driver1, driver2]) {
-      if (picked === '') continue;
-      const from = board.availableDrivers.find((d) => d.employeeId === picked)?.assignedVehicleId;
-      if (from == null || from === row.vehicleId) continue;
-      const source =
-        rows.get(from) ??
-        ((): PlanFleetRosterRow | undefined => {
-          const current = board.rows.find((r) => r.vehicleId === from);
-          if (current === undefined) return undefined; // outside the scoped board — the server will answer
-          return {
-            vehicleId: current.vehicleId,
-            missionTypeId: current.missionTypeId,
-            driver1EmployeeId: current.driver1EmployeeId,
-            driver2EmployeeId: current.driver2EmployeeId,
-            notes: current.notes,
-          };
-        })();
-      if (source === undefined) continue;
-      if (source.driver1EmployeeId === picked) source.driver1EmployeeId = null;
-      if (source.driver2EmployeeId === picked) source.driver2EmployeeId = null;
-      rows.set(from, source);
-    }
-    rows.set(row.vehicleId, {
-      vehicleId: row.vehicleId,
+    onSave({
       missionTypeId: missionTypeId === '' ? null : missionTypeId,
       driver1EmployeeId: driver1 === '' ? null : driver1,
       driver2EmployeeId: driver2 === '' ? null : driver2,
+      // '' is not a note. The contract refuses an empty string and `null` is how this module
+      // spells "nothing" everywhere else.
       notes: notes.trim() === '' ? null : notes.trim(),
     });
-    await plan.mutateAsync({
-      dateKey: date,
-      body: { date: new Date(date), rows: [...rows.values()] },
-    });
-    toast.success(t('fleet.roster.saved'));
     onClose();
   };
 
@@ -199,7 +170,7 @@ export const RosterAssignDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={plan.isPending} onClick={() => void submit()}>
+          <Button onClick={submit}>
             {t('common.save')}
           </Button>
         </>

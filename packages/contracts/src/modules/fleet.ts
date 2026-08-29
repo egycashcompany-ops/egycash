@@ -733,6 +733,21 @@ export interface FleetRosterRowDto {
   typeId: string;
   /** Derived §2.7/H5: an open maintenance visit covers the date — unassignable. */
   inMaintenance: boolean;
+  /**
+   * Does a `fleet_duty_assignment` EXIST for this (vehicle, date)?
+   *
+   * The one fact that says where the rest of this row came from. `true` — the stored day, read
+   * back verbatim. `false` — nothing has been written for this vehicle on this date, so the row
+   * is DERIVED from the standing crew and exists only in this response.
+   *
+   * It is on the wire because the difference is not cosmetic downstream: `operations/crew-board`
+   * lists the day by iterating the duty documents, so a vehicle whose mission was only ever
+   * derived is absent from it entirely. The board needs to know which of its rows are still
+   * only a projection in order to offer to MATERIALISE them — otherwise "the dispatcher changed
+   * nothing" and "there is nothing to save" look identical, and the operation quietly never
+   * reaches Operations.
+   */
+  planned: boolean;
   missionTypeId: string | null;
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
@@ -766,6 +781,22 @@ export const PlanFleetRosterRowSchema = z
         code: z.ZodIssueCode.custom,
         path: ['driver2EmployeeId'],
         message: 'the two driver slots cannot hold the same person',
+      });
+    }
+    // A second driver needs a first — the same rule the standing crew carries, for the same
+    // reason. The slots are ORDERED: slot 1 is the crew's driver, slot 2 the second man beside
+    // them, and `operations/crew-board` reads slot 1 as "the driver" of the day. A day holding
+    // only a second driver therefore reaches Operations as a crewless vehicle with a real person
+    // committed to it.
+    //
+    // Applied here as well as on the fixed crew because the daily row is what Operations
+    // actually reads: leaving the rule on the standing crew alone would mean the record it
+    // protects can still be created one day at a time.
+    if (value.driver1EmployeeId == null && value.driver2EmployeeId != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['driver2EmployeeId'],
+        message: 'a second driver needs a first — assign driver 1 before driver 2',
       });
     }
   });

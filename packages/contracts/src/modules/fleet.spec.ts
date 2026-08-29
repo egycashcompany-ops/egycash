@@ -456,15 +456,39 @@ describe('SaveFleetFixedRosterSchema — driver 2 depends on driver 1', () => {
     ).toBe(false);
   });
 
-  it('is a rule about the FIXED crew — the daily plan keeps its own shape', () => {
-    // Deliberately NOT mirrored onto `PlanFleetRosterSchema`: this change was scoped to the
-    // standing crew. Asserted so that adding it to the daily board later is a decision somebody
-    // makes on purpose, with this test in front of them, rather than a silent divergence.
+  it('now binds the DAILY plan too — the record Operations actually reads', () => {
+    // This was deliberately scoped to the standing crew at first, with a test asserting the
+    // daily board still accepted the pair, so that extending it would be a decision somebody
+    // made on purpose. That decision is made: `operations/crew-board` reads the DUTY row's slot
+    // 1 as "the driver" of the day, so leaving the rule on the fixed crew alone meant the record
+    // it protects could still be created one day at a time.
     expect(
       PlanFleetRosterSchema.safeParse({
         date: '2099-01-01',
         rows: [{ vehicleId: V1, driver2EmployeeId: D2 }],
       }).success,
+      'a second driver with no first',
+    ).toBe(false);
+    expect(
+      PlanFleetRosterSchema.safeParse({
+        date: '2099-01-01',
+        rows: [{ vehicleId: V1, driver1EmployeeId: D1 }],
+      }).success,
+      'driver 1 alone',
+    ).toBe(true);
+    expect(
+      PlanFleetRosterSchema.safeParse({
+        date: '2099-01-01',
+        rows: [{ vehicleId: V1, driver1EmployeeId: D1, driver2EmployeeId: D2 }],
+      }).success,
+      'driver 1 and driver 2',
+    ).toBe(true);
+    expect(
+      PlanFleetRosterSchema.safeParse({
+        date: '2099-01-01',
+        rows: [{ vehicleId: V1 }],
+      }).success,
+      'and an empty row stays legal, so clearing a day remains expressible',
     ).toBe(true);
   });
 });

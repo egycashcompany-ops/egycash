@@ -1936,6 +1936,8 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     rows: {
       vehicleId: string;
       inMaintenance: boolean;
+      /** Does a duty document exist for the pair — i.e. is this row stored or projected? */
+      planned: boolean;
       missionTypeId: string | null;
       driver1EmployeeId: string | null;
       driver2EmployeeId: string | null;
@@ -1953,6 +1955,30 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     if (item === undefined) throw new Error('seeded mission type not found');
     return item.id;
   };
+  /** A mission type created for one test, so two tests cannot fight over the same catalog row. */
+  const missionTypeId = async (nameAr: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'missionType', name: { ar: nameAr, en: nameAr } });
+    return data<FleetCatalogItemDto>(res).id;
+  };
+  /**
+   * The DUTY DOCUMENT itself, read straight from the collection.
+   *
+   * Asserted against the database rather than the board, because the board would answer from the
+   * standing crew even when nothing was stored — which is precisely the failure these tests
+   * exist to catch. `operations/crew-board` iterates these documents, so their existence IS the
+   * thing that decides whether the operation reached Operations.
+   */
+  const dutyDoc = async (
+    vehicleId: string,
+    date: string,
+  ): Promise<{ missionTypeId: unknown } | null> =>
+    (await mongoose.connection.collection('fleet_duty_assignments').findOne({
+      vehicleId: new mongoose.Types.ObjectId(vehicleId),
+      date: new Date(`${date}T00:00:00.000Z`),
+    })) as { missionTypeId: unknown } | null;
   const mkDriver = async (): Promise<string> => {
     const employeeId = await mkEmployee();
     await mkDriverProfile(employeeId);
@@ -2494,6 +2520,130 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const res = await savePlan(shift(-2), [{ vehicleId: v.id }]);
     expect(res.status).toBe(400);
     expect(JSON.stringify(res.body)).toContain('PAST_DATE');
+  });
+
+  // ── التشغيله reaches Operations whether or not it was touched ────────────
+  //
+  // `operations/crew-board` builds its day by iterating `fleet_duty_assignments`. A vehicle whose
+  // operation was only ever PROJECTED from the standing crew has no such document, so it is not
+  // on that board at all and its operation never arrives. `planned` is what lets the roster
+  // screen tell the two apart and offer to materialise the projection.
+
+  it('FLOW — a derived row says it is NOT planned; a stored one says it is', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const mission = await missionTypeId('تشغيلة يومية');
+    await saveFixedCrew([{ vehicleId: v.id, missionTypeId: mission }]);
+    const date = shift(9);
+
+    const derived = dayRow(data<BoardDto>(await getBoard(date)), v.id);
+    expect(derived?.planned, 'nothing is stored for this vehicle on this date').toBe(false);
+    expect(derived?.missionTypeId, 'but the standing operation is projected onto it').toBe(
+      mission,
+    );
+
+    expect((await savePlan(date, [{ vehicleId: v.id, missionTypeId: mission }])).status).toBe(200);
+    const stored = dayRow(data<BoardDto>(await getBoard(date)), v.id);
+    expect(stored?.planned, 'now it is a real day').toBe(true);
+    expect(stored?.missionTypeId).toBe(mission);
+  });
+
+  it('FLOW CASE 1 — an operation inherited and NOT changed is still written to the day', async () => {
+    // The defect: saving only what the dispatcher edited meant an unchanged operation never
+    // became a duty row, so Operations never saw the vehicle.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const mission = await missionTypeId('تشغيلة موروثة');
+    await saveFixedCrew([{ vehicleId: v.id, missionTypeId: mission }]);
+    const date = shift(10);
+
+    // The board projects it; the client sends it back verbatim, which is what «حفظ» now does.
+    const projected = dayRow(data<BoardDto>(await getBoard(date)), v.id);
+    expect((await savePlan(date, [
+      { vehicleId: v.id, missionTypeId: projected?.missionTypeId ?? null },
+    ])).status).toBe(200);
+
+    const duty = await dutyDoc(v.id, date);
+    expect(duty, 'a duty row now exists for the pair').not.toBeNull();
+    expect(String(duty?.missionTypeId), 'carrying the INHERITED operation').toBe(mission);
+  });
+
+  it('FLOW CASE 2 — an operation the dispatcher CHANGED is written as the new value', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [standing, chosen] = [
+      await missionTypeId('تشغيلة قياسية'),
+      await missionTypeId('تشغيلة بديلة'),
+    ];
+    await saveFixedCrew([{ vehicleId: v.id, missionTypeId: standing }]);
+    const date = shift(11);
+
+    expect((await savePlan(date, [{ vehicleId: v.id, missionTypeId: chosen }])).status).toBe(200);
+
+    const duty = await dutyDoc(v.id, date);
+    expect(String(duty?.missionTypeId), 'the new value, not the standing one').toBe(chosen);
+    expect(dayRow(data<BoardDto>(await getBoard(date)), v.id)?.missionTypeId).toBe(chosen);
+    // …and the standing configuration is untouched by either case.
+    const fixed = data<{ rows: { vehicleId: string; missionTypeId: string | null }[] }>(
+      await fixedBoard(),
+    ).rows.find((r) => r.vehicleId === v.id);
+    expect(fixed?.missionTypeId, 'the fixed roster still says what it always said').toBe(standing);
+  });
+
+  // ── a second driver needs a first, on the DAY ────────────────────────────
+
+  it('DRIVER ORDER — refuses a second driver with no first', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d2 = await mkDriver();
+    const res = await savePlan(shift(12), [{ vehicleId: v.id, driver2EmployeeId: d2 }]);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('driver2EmployeeId');
+  });
+
+  it('DRIVER ORDER — refuses it with driver 1 spelled as an explicit null', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d2 = await mkDriver();
+    expect(
+      (
+        await savePlan(shift(13), [
+          { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: d2 },
+        ])
+      ).status,
+    ).toBe(400);
+  });
+
+  it('DRIVER ORDER — accepts driver 1 alone', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    expect((await savePlan(shift(14), [{ vehicleId: v.id, driver1EmployeeId: d1 }])).status).toBe(
+      200,
+    );
+  });
+
+  it('DRIVER ORDER — accepts driver 1 AND driver 2', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [d1, d2] = [await mkDriver(), await mkDriver()];
+    const date = shift(15);
+    expect(
+      (await savePlan(date, [
+        { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 },
+      ])).status,
+    ).toBe(200);
+    expect(dayRow(data<BoardDto>(await getBoard(date)), v.id)).toMatchObject({
+      driver1EmployeeId: d1,
+      driver2EmployeeId: d2,
+    });
+  });
+
+  it('DRIVER ORDER — clearing a day stays legal; the rule is about ORDER, not presence', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const d1 = await mkDriver();
+    const date = shift(16);
+    await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: d1 }]);
+    expect(
+      (
+        await savePlan(date, [
+          { vehicleId: v.id, driver1EmployeeId: null, driver2EmployeeId: null },
+        ])
+      ).status,
+    ).toBe(200);
   });
 });
 

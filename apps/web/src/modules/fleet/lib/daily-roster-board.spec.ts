@@ -13,7 +13,9 @@ import {
   clearSlot,
   DUTY_SLOTS,
   findSeat,
+  hasEdits,
   isDirty,
+  rowsToSave,
   setMission,
 } from './daily-roster-board';
 
@@ -29,6 +31,7 @@ const row = (
   plateNumber: `س ص ${code}`,
   typeId: 'vt1',
   inMaintenance: false,
+  planned: false,
   missionTypeId: null,
   driver1EmployeeId: d1,
   driver2EmployeeId: d2,
@@ -48,8 +51,10 @@ describe('assignDriver — a drop on the day', () => {
       '150:e1/-',
       '151:-/-',
     ]);
+    // …except into slot 2 of a vehicle with no first driver, which is the one state a day may
+    // not be in: `operations/crew-board` reads slot 1 as "the driver".
     expect(crews(assignDriver(BOARD, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([
-      '150:-/e1',
+      '150:e1/-',
       '151:-/-',
     ]);
   });
@@ -92,7 +97,8 @@ describe('assignDriver — a drop on the day', () => {
   it('is a no-op when the driver is dropped back on the slot they already hold', () => {
     const before = [row('v1', '150', 'e1'), row('v2', '151')];
     const after = assignDriver(before, 'v1', 'driver1EmployeeId', 'e1');
-    expect(isDirty(before, after)).toBe(false);
+    expect(hasEdits(before, after), 'nothing was edited').toBe(false);
+    expect(changedRows(before, after)).toEqual([]);
   });
 
   it('returns a NEW board and leaves the old one exactly as it was', () => {
@@ -112,9 +118,9 @@ describe('a vehicle in maintenance', () => {
       '150:-/-',
       '151:-/-',
     ]);
-    expect(isDirty(withWorkshop, assignDriver(withWorkshop, 'v1', 'driver1EmployeeId', 'e1'))).toBe(
-      false,
-    );
+    expect(
+      hasEdits(withWorkshop, assignDriver(withWorkshop, 'v1', 'driver1EmployeeId', 'e1')),
+    ).toBe(false);
   });
 
   it('does not release a driver seated elsewhere — a refused drop is not a move', () => {
@@ -207,12 +213,10 @@ describe('findSeat', () => {
 
 // ── the save: only what the dispatcher actually changed ────────────────────
 describe('changedRows — measured against the day the board arrived as', () => {
-  it('sends nothing when nothing moved, so an untouched derived day stays unplanned', () => {
-    // THE point of the derivation: opening tomorrow and saving must not write the standing crew
-    // into `fleet_duty_assignments` as if somebody had planned it.
+  it('reports NO EDITS when nothing moved', () => {
     const derived = [row('v1', '150', 'e1'), row('v2', '151', 'e2')];
     expect(changedRows(derived, derived)).toEqual([]);
-    expect(isDirty(derived, derived)).toBe(false);
+    expect(hasEdits(derived, derived)).toBe(false);
   });
 
   it('sends only the rows whose day differs', () => {
@@ -296,5 +300,147 @@ describe('changedRows — measured against the day the board arrived as', () => 
     changedRows(baseline, draft);
     expect(crews(baseline)).toEqual(a);
     expect(crews(draft)).toEqual(b);
+  });
+});
+
+// ── التشغيله reaches Operations whether or not it was touched ──────────────
+//
+// The defect this block exists for. A row's operation can arrive two ways: read back from a
+// stored `fleet_duty_assignment` (`planned: true`), or PROJECTED from the standing crew because
+// no such row exists (`planned: false`). `operations/crew-board` builds its day by iterating the
+// duty documents — so a vehicle whose operation was only ever projected is not on that board at
+// all. Sending only what CHANGED therefore made "the dispatcher agreed with the standing crew"
+// indistinguishable from "there is nothing to plan", and the operation never arrived.
+//
+// Not changing a value is not the same as not wanting it saved.
+describe('rowsToSave — the operation is committed either way', () => {
+  const derived = (vehicleId: string, code: string, mission: string | null, d1: string | null) =>
+    row(vehicleId, code, d1, null, { planned: false, missionTypeId: mission });
+  const stored = (vehicleId: string, code: string, mission: string | null, d1: string | null) =>
+    row(vehicleId, code, d1, null, { planned: true, missionTypeId: mission });
+
+  it('CASE 1 — inherited from the fixed roster and UNTOUCHED: still saved', () => {
+    const baseline = [derived('v1', '150', 'm1', 'e1')];
+    expect(rowsToSave(baseline, baseline)).toEqual([
+      {
+        vehicleId: 'v1',
+        missionTypeId: 'm1',
+        driver1EmployeeId: 'e1',
+        driver2EmployeeId: null,
+        notes: null,
+      },
+    ]);
+    expect(isDirty(baseline, baseline), 'so the Save button is live').toBe(true);
+    expect(hasEdits(baseline, baseline), 'even though nothing was edited').toBe(false);
+  });
+
+  it('CASE 2 — CHANGED by the dispatcher: the new value is what travels', () => {
+    const baseline = [derived('v1', '150', 'm1', 'e1')];
+    const draft = setMission(baseline, 'v1', 'm2');
+    expect(rowsToSave(baseline, draft)[0]?.missionTypeId).toBe('m2');
+    expect(hasEdits(baseline, draft)).toBe(true);
+  });
+
+  it('an operation with no crew still travels — a vehicle can be given work before a driver', () => {
+    const baseline = [derived('v1', '150', 'm1', null)];
+    expect(rowsToSave(baseline, baseline)).toHaveLength(1);
+  });
+
+  it('a row that is ALREADY stored and untouched is not sent again', () => {
+    // Once materialised the row comes back `planned: true`, so a second save is not a rewrite
+    // of the whole fleet — and the audit trail does not fill with no-op entries.
+    const baseline = [stored('v1', '150', 'm1', 'e1')];
+    expect(rowsToSave(baseline, baseline)).toEqual([]);
+    expect(isDirty(baseline, baseline)).toBe(false);
+  });
+
+  it('an idle vehicle is NOT materialised — the whole fleet does not land on the crew board', () => {
+    const baseline = [derived('v1', '150', null, null)];
+    expect(rowsToSave(baseline, baseline)).toEqual([]);
+    expect(isDirty(baseline, baseline)).toBe(false);
+  });
+
+  it('EMPTYING a stored row is still saved, so "runs nobody today" stays expressible', () => {
+    const baseline = [stored('v1', '150', 'm1', 'e1')];
+    let draft = clearSlot(baseline, 'v1', 'driver1EmployeeId');
+    draft = setMission(draft, 'v1', null);
+    expect(rowsToSave(baseline, draft)).toEqual([
+      {
+        vehicleId: 'v1',
+        missionTypeId: null,
+        driver1EmployeeId: null,
+        driver2EmployeeId: null,
+        notes: null,
+      },
+    ]);
+  });
+
+  it('mixes both kinds in ONE payload', () => {
+    const baseline = [derived('v1', '150', 'm1', 'e1'), stored('v2', '151', 'm1', 'e2')];
+    const draft = setMission(baseline, 'v2', 'm2');
+    const sent = rowsToSave(baseline, draft);
+    expect(sent.map((r) => r.vehicleId).sort()).toEqual(['v1', 'v2']);
+    expect(sent.find((r) => r.vehicleId === 'v1')?.missionTypeId, 'the untouched one').toBe('m1');
+    expect(sent.find((r) => r.vehicleId === 'v2')?.missionTypeId, 'the changed one').toBe('m2');
+  });
+
+  it('does not send a row twice when it is both changed and unplanned', () => {
+    const baseline = [derived('v1', '150', 'm1', 'e1')];
+    const draft = setMission(baseline, 'v1', 'm2');
+    expect(rowsToSave(baseline, draft)).toHaveLength(1);
+  });
+});
+
+// ── a second driver needs a first, on the DAY ──────────────────────────────
+describe('the day cannot hold a second driver with no first', () => {
+  const lonely = (rows: readonly FleetRosterRowDto[]) =>
+    rows.filter((r) => r.driver1EmployeeId === null && r.driver2EmployeeId !== null);
+
+  it('cannot be produced by dropping onto slot 2 of an empty vehicle', () => {
+    expect(lonely(assignDriver(BOARD, 'v1', 'driver2EmployeeId', 'e1'))).toEqual([]);
+  });
+
+  it('cannot be produced by clearing slot 1 — the second driver is promoted', () => {
+    const before = [row('v1', '150', 'e1', 'e2')];
+    const after = clearSlot(before, 'v1', 'driver1EmployeeId');
+    expect(lonely(after)).toEqual([]);
+    expect(crews(after)).toEqual(['150:e2/-']);
+  });
+
+  it('cannot be produced by dragging the FIRST driver away to another vehicle', () => {
+    const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
+    const after = assignDriver(before, 'v2', 'driver1EmployeeId', 'e1');
+    expect(lonely(after)).toEqual([]);
+    expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
+  });
+
+  it('holds from EVERY starting board and every drop — exhaustively', () => {
+    const starts = [
+      [row('v1', '150'), row('v2', '151')],
+      [row('v1', '150', 'e1'), row('v2', '151')],
+      [row('v1', '150', 'e1', 'e2'), row('v2', '151')],
+      [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3')],
+    ];
+    for (const start of starts) {
+      for (const vehicleId of ['v1', 'v2']) {
+        for (const slot of DUTY_SLOTS) {
+          for (const who of ['e1', 'e2', 'e3', 'e4']) {
+            expect(lonely(assignDriver(start, vehicleId, slot, who))).toEqual([]);
+          }
+          expect(lonely(clearSlot(start, vehicleId, slot))).toEqual([]);
+        }
+      }
+    }
+  });
+
+  it('never sends such a pair to the server', () => {
+    const baseline = [row('v1', '150', 'e1', 'e2', { planned: true })];
+    const draft = clearSlot(baseline, 'v1', 'driver1EmployeeId');
+    for (const sent of rowsToSave(baseline, draft)) {
+      expect(
+        sent.driver1EmployeeId === null && sent.driver2EmployeeId !== null,
+        'the payload cannot carry the refused pair',
+      ).toBe(false);
+    }
   });
 });

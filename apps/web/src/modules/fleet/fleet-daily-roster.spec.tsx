@@ -55,6 +55,7 @@ const row = (
   plateNumber: `س ص ${code}`,
   typeId: 'vt1',
   inMaintenance: false,
+  planned: false,
   missionTypeId: null,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
@@ -134,6 +135,20 @@ const render = ({
   );
 
 const t = (key: string): string => translate('ar', key);
+
+/**
+ * Is the button carrying `marker` actually disabled?
+ *
+ * Asserting `.toContain('disabled')` on the tag is NOT sound: every `Button` ships
+ * `disabled:cursor-not-allowed disabled:opacity-70` in its class list, so that substring is
+ * present whatever the state. Only the rendered ATTRIBUTE distinguishes them.
+ */
+const buttonDisabled = (markup: string, marker: string): boolean => {
+  const at = markup.indexOf(marker);
+  if (at === -1) throw new Error(`no button marked ${marker}`);
+  const tag = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
+  return / disabled=""/.test(tag) || / disabled>/.test(tag);
+};
 
 /** The mission `<select>` of ONE row, found by the aria-label the cell gives it. '' when absent. */
 const missionCell = (markup: string, code: string): string => {
@@ -402,26 +417,53 @@ describe('the daily draft and its Save', () => {
   });
 
   it('offers Save and Cancel, and both are dead until something changes', () => {
+    // This board arrives with an operation still only projected, so Save is deliberately LIVE —
+    // see the two tests below. What must be dead with nothing edited is «إلغاء».
     const markup = render();
-    const at = markup.indexOf('data-save-roster="true"');
-    expect(at, 'the save button is rendered').toBeGreaterThan(-1);
-    const save = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
-    expect(save, 'nothing to save on arrival').toContain('disabled');
+    expect(
+      buttonDisabled(markup, `>${t('common.cancel')}<`),
+      'nothing edited, so nothing to discard',
+    ).toBe(true);
     expect(SOURCE, 'the save is gated on real changes').toContain('disabled={!dirty}');
-    expect(SOURCE, 'and so is the cancel').toContain('disabled={!dirty || plan.isPending}');
+    expect(SOURCE, 'and the cancel is gated on real EDITS').toContain(
+      'disabled={!edited || plan.isPending}',
+    );
     expect(markup, 'both buttons are offered').toContain(t('common.save'));
     expect(markup).toContain(t('common.cancel'));
   });
 
-  it('shows no unsaved marker on an untouched day', () => {
-    expect(render(), 'an untouched board is not dirty').not.toContain('data-unsaved="true"');
+  it('is SAVEABLE on an untouched day that still carries an inherited operation', () => {
+    // The heart of the fix. V1 arrives `planned: false` with a mission and a driver projected
+    // from the standing crew — nothing is stored for it yet, so `operations/crew-board`, which
+    // lists the day by iterating the duty documents, does not know this vehicle exists. The
+    // dispatcher must be able to commit that without first having to change something.
+    const markup = render();
+    expect(buttonDisabled(markup, 'data-save-roster="true"'), 'Save is live').toBe(false);
+    expect(markup, 'and the day is marked unsaved').toContain('data-unsaved="true"');
   });
 
-  it('measures dirtiness against the derived day, so an untouched board saves NOTHING', () => {
-    // The rule that keeps the derivation honest: opening tomorrow and pressing nothing must not
-    // write the standing crew into `fleet_duty_assignments` as though somebody had planned it.
-    expect(SOURCE, 'changed rows are measured saved→draft').toContain('changedRows(saved, draft)');
+  it('is NOT saveable once every row is already stored', () => {
+    const allStored: FleetRosterDayDto = {
+      ...BOARD,
+      rows: BOARD.rows.map((r) => ({ ...r, planned: true })),
+    };
+    const markup = render({ qc: client(allStored) });
+    expect(buttonDisabled(markup, 'data-save-roster="true"'), 'nothing left to commit').toBe(true);
+    expect(markup).not.toContain('data-unsaved="true"');
+  });
+
+  it('saves the EFFECTIVE day — edits, plus any operation still only projected', () => {
+    // Not `changedRows`: an operation inherited from the standing crew is real to this screen
+    // but invisible to Operations until a duty row exists for it. Sending only what changed made
+    // "the dispatcher agreed with the fixed roster" and "there is nothing to plan" identical.
+    expect(SOURCE, 'the payload is the effective day').toContain('rowsToSave(saved, draft)');
     expect(SOURCE, 'and dirty is exactly that').toContain('const dirty = pending.length > 0');
+    expect(SOURCE, 'while «إلغاء» asks the narrower question').toContain('hasEdits(saved, draft)');
+  });
+
+  it('knows which rows are still only a projection, because the server says so', () => {
+    expect(SERVICE, 'a stored day is flagged').toContain('planned: true');
+    expect(SERVICE, 'and a derived one is flagged too').toContain('planned: false');
   });
 
   it('CANCEL restores the last saved day rather than clearing the board', () => {
@@ -568,5 +610,52 @@ describe('the day’s counters', () => {
     expect(searchAt, 'search comes first in the strip').toBeLessThan(strip);
     expect(missionFilterAt, 'then the mission filter').toBeLessThan(strip);
     expect(SOURCE, 'the old FilterBar block under the header is gone').not.toContain('<FilterBar');
+  });
+});
+
+// ── 11. a second driver needs a first, on the DAY ──────────────────────────
+//
+// `operations/crew-board` reads the DUTY row's slot 1 as "the driver" of the day, so a day
+// holding only a second driver reaches Operations as a crewless vehicle with a real person
+// committed to it. The rule lives in the schema, the service and the board arithmetic; this is
+// the part a dispatcher meets.
+
+describe('driver 2 depends on driver 1', () => {
+  const zone = (markup: string, vehicleId: string, slot: string): string => {
+    const at = markup.indexOf(`data-drop-zone="${vehicleId}:${slot}"`);
+    return at === -1 ? '' : markup.slice(at, markup.indexOf('>', at));
+  };
+
+  it('makes slot 2 a NON-target while slot 1 is empty', () => {
+    // V2 in this board is in the workshop, so use a plain empty vehicle for the claim.
+    const board: FleetRosterDayDto = { ...BOARD, rows: [row(V1, '150')] };
+    const markup = render({ qc: client(board) });
+    expect(zone(markup, V1, 'driver1EmployeeId'), 'the first seat is open').not.toContain(
+      'data-drop-disabled',
+    );
+    expect(zone(markup, V1, 'driver2EmployeeId'), 'the second is not, and says why').toContain(
+      'data-drop-disabled="needsFirstDriver"',
+    );
+  });
+
+  it('refuses the drop in code, not only in the styling', () => {
+    // A `data-` attribute is a label. This is the gate: `onDragOver` never prevents the default,
+    // so the browser does not treat the slot as a drop target at all.
+    expect(SOURCE, 'the gate exists').toContain(
+      "const needsFirst = slot === 'driver2EmployeeId' && row.driver1EmployeeId === null",
+    );
+    expect(SOURCE, 'and both handlers ride it').toContain(
+      'const droppable = mayPlan && !row.inMaintenance && !needsFirst',
+    );
+  });
+
+  it('OPENS slot 2 as soon as slot 1 holds somebody', () => {
+    const board: FleetRosterDayDto = { ...BOARD, rows: [row(V1, '150', { driver1EmployeeId: E1 })] };
+    const markup = render({ qc: client(board) });
+    expect(zone(markup, V1, 'driver2EmployeeId')).not.toContain('data-drop-disabled');
+  });
+
+  it('is refused SERVER-side too — the UI is not the guard', () => {
+    expect(SERVICE, 'the service refuses the pair').toContain('DRIVER2_WITHOUT_DRIVER1');
   });
 });

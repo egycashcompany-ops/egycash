@@ -444,3 +444,127 @@ describe('the day cannot hold a second driver with no first', () => {
     }
   });
 });
+
+// ── FR-5 governs materialisation, not just drops ───────────────────────────
+//
+// A real bug, and the shape of it is worth keeping in front of whoever reads this next.
+//
+// `board()` PROJECTS the standing mission onto a vehicle the workshop holds — the mission is a
+// fact about the vehicle's standing work, so it is shown — while withdrawing its crew. The
+// server, though, counts a mission-only row as an ASSIGNMENT (`assigns()` is
+// `missionTypeId != null || drivers.length > 0`), and FR-5 refuses to store an assignment for a
+// vehicle with an open visit covering the date. So offering to materialise that projection was
+// proposing precisely the write the rule exists to reject — and since `plan()` throws before its
+// transaction, ONE car in the workshop failed the whole day's save:
+//
+//   vehicle 213 has an open maintenance visit covering this date and is unassignable (FR-5)
+//
+// The rule is untouched and nothing is swallowed. The board simply stops proposing an illegal
+// write, exactly as its slot cell already refuses to be a drop target for the same vehicle.
+describe('a vehicle the workshop holds is not materialised', () => {
+  const inShop = (vehicleId: string, code: string, mission: string | null) =>
+    row(vehicleId, code, null, null, {
+      planned: false,
+      inMaintenance: true,
+      missionTypeId: mission,
+    });
+  const free = (vehicleId: string, code: string, mission: string | null, d1: string | null = null) =>
+    row(vehicleId, code, d1, null, { planned: false, missionTypeId: mission });
+
+  it('CASE 1 — an in-workshop vehicle with an INHERITED operation is not sent', () => {
+    const baseline = [inShop('v213', '213', 'm1')];
+    expect(rowsToSave(baseline, baseline), 'the save proposes nothing for it').toEqual([]);
+    expect(isDirty(baseline, baseline), 'and it alone does not arm the button').toBe(false);
+  });
+
+  it('CASE 2 — an ASSIGNABLE vehicle with an inherited operation is still materialised', () => {
+    const baseline = [free('v1', '150', 'm1', 'e1')];
+    expect(rowsToSave(baseline, baseline)).toEqual([
+      {
+        vehicleId: 'v1',
+        missionTypeId: 'm1',
+        driver1EmployeeId: 'e1',
+        driver2EmployeeId: null,
+        notes: null,
+      },
+    ]);
+  });
+
+  it('CASE 3 — an EXPLICIT attempt on an in-workshop vehicle still travels, and FR-5 refuses it', () => {
+    // The rule must stay reachable. Changing the mission of an in-workshop vehicle is a genuine
+    // edit, so it goes through the `changed` branch, reaches the server, and is rejected there —
+    // which is where FR-5 belongs. Silently dropping it here would be the bypass we must not add.
+    const baseline = [inShop('v213', '213', 'm1')];
+    const draft = setMission(baseline, 'v213', 'm2');
+    expect(rowsToSave(baseline, draft), 'the illegal write is still proposed, and refused').toEqual(
+      [
+        {
+          vehicleId: 'v213',
+          missionTypeId: 'm2',
+          driver1EmployeeId: null,
+          driver2EmployeeId: null,
+          notes: null,
+        },
+      ],
+    );
+  });
+
+  it('CASE 4 — one unassignable vehicle does not cost the rest of the roster its save', () => {
+    // The failure this fixes: `plan()` throws on the first offending row, before its transaction,
+    // so a single in-workshop car took every other vehicle's day down with it.
+    const baseline = [
+      free('v1', '150', 'm1', 'e1'),
+      inShop('v213', '213', 'm1'),
+      free('v2', '151', 'm2', 'e2'),
+    ];
+    const sent = rowsToSave(baseline, baseline);
+    expect(sent.map((r) => r.vehicleId).sort(), 'the assignable two, and only those').toEqual([
+      'v1',
+      'v2',
+    ]);
+    expect(isDirty(baseline, baseline), 'and the day is still worth saving').toBe(true);
+  });
+
+  it('CLEARING a stored in-workshop row is still sent — FR-5 allows a clear', () => {
+    // `assigns()` is false for a row that only clears, so the server accepts it. A car that goes
+    // into the workshop mid-plan must still be emptiable for that day.
+    const baseline = [
+      row('v213', '213', 'e1', null, { planned: true, inMaintenance: true, missionTypeId: 'm1' }),
+    ];
+    let draft = clearSlot(baseline, 'v213', 'driver1EmployeeId');
+    draft = setMission(draft, 'v213', null);
+    expect(rowsToSave(baseline, draft)).toEqual([
+      {
+        vehicleId: 'v213',
+        missionTypeId: null,
+        driver1EmployeeId: null,
+        driver2EmployeeId: null,
+        notes: null,
+      },
+    ]);
+  });
+
+  it('an in-workshop vehicle ALREADY stored and untouched is not re-sent', () => {
+    const baseline = [
+      row('v213', '213', null, null, { planned: true, inMaintenance: true, missionTypeId: 'm1' }),
+    ];
+    expect(rowsToSave(baseline, baseline)).toEqual([]);
+  });
+
+  it('the same vehicle IS materialised on a day it is not in the workshop', () => {
+    // The exclusion is about the DAY, not the vehicle: `inMaintenance` is derived per date, so
+    // the projection is committed as soon as the visit no longer covers the date being planned.
+    const baseline = [free('v213', '213', 'm1')];
+    expect(rowsToSave(baseline, baseline)).toHaveLength(1);
+  });
+
+  it('never proposes a write for a vehicle the board itself marks undroppable', () => {
+    // The two must agree. The cell refuses the drop when `inMaintenance`; the save must refuse
+    // the materialisation on exactly the same condition, or the screen contradicts itself.
+    const baseline = [inShop('a', '1', 'm1'), inShop('b', '2', 'm2'), free('c', '3', 'm3')];
+    for (const sent of rowsToSave(baseline, baseline)) {
+      const source = baseline.find((r) => r.vehicleId === sent.vehicleId);
+      expect(source?.inMaintenance, `${sent.vehicleId} is in the workshop`).toBe(false);
+    }
+  });
+});

@@ -243,12 +243,28 @@ export const changedRows = (
  *
  *  • it differs from the baseline — an edit, including one that empties a row, which is how
  *    "this vehicle runs nobody today" stays expressible; or
- *  • it is not yet `planned` and holds something — the projection, being made real. Once saved
- *    the row comes back `planned: true`, so it is not sent again on the next save.
+ *  • it is not yet `planned`, holds something, and the vehicle is ASSIGNABLE that day — the
+ *    projection, being made real. Once saved the row comes back `planned: true`, so it is not
+ *    sent again on the next save.
  *
  * A row that is unplanned and holds NOTHING is not sent: there is no day to record for a vehicle
  * nobody has said anything about, and materialising every idle vehicle would put the whole fleet
  * on the crew board every day.
+ *
+ * NOR is a vehicle the workshop holds (FR-5), and that exclusion is the whole of a real bug.
+ * `board()` still PROJECTS the standing mission onto an in-workshop vehicle — the mission is a
+ * fact about the vehicle's standing work, so it is worth showing — while withdrawing its crew.
+ * But the server counts a mission-only row as an ASSIGNMENT (`assigns()` is
+ * `missionTypeId != null || drivers.length > 0`) and FR-5 refuses to store one for a vehicle
+ * with an open visit covering the date. So offering to materialise that projection meant
+ * proposing exactly the write the rule exists to reject, and because `plan()` throws before its
+ * transaction, ONE car in the workshop failed the entire day's save.
+ *
+ * The rule is not relaxed and nothing is swallowed: FR-5 remains the authority, in the service,
+ * unchanged. What changes is that the board stops PROPOSING a write it knows is illegal —
+ * exactly as the slot cell already refuses to be a drop target for the same vehicle. An explicit
+ * attempt to assign one still travels, and is still refused, because such a row is a genuine
+ * EDIT and goes through the branch above.
  *
  * A move changes two rows and sends two, which is what lets the server check FR-7 against the end
  * state instead of guessing, and is why the releasing side is never forgotten.
@@ -259,7 +275,10 @@ export const rowsToSave = (
 ): DutyPayloadRow[] => {
   const changed = new Set(changedRows(baseline, draft).map((row) => row.vehicleId));
   return draft
-    .filter((row) => changed.has(row.vehicleId) || (!row.planned && holdsSomething(row)))
+    .filter(
+      (row) =>
+        changed.has(row.vehicleId) || (!row.planned && !row.inMaintenance && holdsSomething(row)),
+    )
     .map((row) => ({ vehicleId: row.vehicleId, ...editable(row) }));
 };
 

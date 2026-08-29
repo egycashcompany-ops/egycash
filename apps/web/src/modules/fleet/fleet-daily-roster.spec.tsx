@@ -659,3 +659,93 @@ describe('driver 2 depends on driver 1', () => {
     expect(SERVICE, 'the service refuses the pair').toContain('DRIVER2_WITHOUT_DRIVER1');
   });
 });
+
+// ── 12. one day's board never becomes another day's ────────────────────────
+//
+// A REAL bug, and worth stating plainly because the symptom looked cosmetic and was not.
+//
+// `useRosterDay` is keyed by the date and carried `placeholderData: (prev) => prev`. That option
+// is right almost everywhere on that module — a filter or a page's previous answer is the same
+// question, slightly stale. Here the key IS the entity's identity, so it served ANOTHER DAY's
+// roster: not stale data, wrong data. And because this board is editable the harm ran past
+// display — with the previous day's rows in hand the page armed «حفظ», and a save inside that
+// window POSTED that day's crew under the NEW date, overwriting the day actually planned there.
+//
+// Measured in Chromium before the fix: switching to a day with its own stored crew showed the
+// previous day's driver with no loading state, Save enabled, and one click wrote `…01` onto a
+// day whose stored driver was `…02`.
+
+describe('a day shows its own board, and only its own', () => {
+  it('the query does NOT serve the previous day while a new one loads', () => {
+    const queries = readFileSync(join(HERE, 'api/fleet-queries.ts'), 'utf8');
+    const hook = queries.slice(
+      queries.indexOf('export const useRosterDay'),
+      queries.indexOf('export const usePlanRoster'),
+    );
+    expect(hook, 'keyed by the date').toContain('queryKey: rosterDayKey(date)');
+    expect(
+      hook,
+      'and it must not hand back the previous key’s board — that is another DAY',
+    ).not.toContain('placeholderData');
+  });
+
+  it('ignores a board that describes a DIFFERENT date', () => {
+    // The invariant restated where it is relied on, so a caching option added to the hook later
+    // cannot quietly put another day's crew on screen and into the payload again.
+    expect(SOURCE, 'the response carries the day it describes, and the page checks it').toContain(
+      "boardQuery.data?.date.slice(0, 10) === date ? boardQuery.data : undefined",
+    );
+  });
+
+  it('renders NOTHING of another day when the cached board is stale', () => {
+    // A cache primed for the wrong date: the page must not paint that crew.
+    const qc = client(BOARD, day(1));
+    const markup = render({ date: day(2), qc });
+    expect(markup, 'no vehicle row from the other day').not.toContain('data-drop-zone');
+    expect(markup, 'and no driver from it either').not.toContain(`data-driver-chip="${E1}"`);
+  });
+
+  it('does not arm «حفظ» against another day’s rows', () => {
+    // The data-integrity half. Armed here, one click posts the wrong day's crew under this date.
+    const qc = client(BOARD, day(1));
+    const markup = render({ date: day(2), qc });
+    expect(buttonDisabled(markup, 'data-save-roster="true"'), 'nothing to save for a day we have not got').toBe(
+      true,
+    );
+    expect(markup).not.toContain('data-unsaved="true"');
+  });
+
+  it('says it is LOADING rather than showing an empty fleet', () => {
+    // Rejecting the board must not read as "this day has no vehicles".
+    expect(SOURCE, 'the table waits for the right day').toContain(
+      'boardQuery.isPending || (board === undefined && !boardQuery.isError)',
+    );
+  });
+
+  it('shows each day its own state — a stored override does not leak to the next day', () => {
+    // The two days differ the way they really can: one has a stored duty row, the other inherits
+    // the (dateless) standing crew. Rendered from their own caches, each shows its own answer.
+    const overridden: FleetRosterDayDto = {
+      ...BOARD,
+      date: `${day(2)}T00:00:00.000Z`,
+      rows: [row(V1, '150', { planned: true, missionTypeId: MT, driver1EmployeeId: E3 })],
+    };
+    const inherited: FleetRosterDayDto = {
+      ...BOARD,
+      date: `${day(3)}T00:00:00.000Z`,
+      rows: [row(V1, '150', { planned: false, missionTypeId: MT, driver1EmployeeId: E1 })],
+    };
+    // Scoped to the SEAT, not the whole page: an unseated driver also appears in the pool, so
+    // `markup.contains(chip)` would be true either way and the assertion would prove nothing.
+    const seated = (markup: string, vehicleId: string): string | null => {
+      const at = markup.indexOf(`data-drop-zone="${vehicleId}:driver1EmployeeId"`);
+      if (at === -1) return null;
+      const cell = markup.slice(at, markup.indexOf('</div>', at));
+      return /data-driver-chip="([0-9a-f]{24})"/.exec(cell)?.[1] ?? null;
+    };
+    const d2 = render({ date: day(2), qc: client(overridden, day(2)) });
+    const d3 = render({ date: day(3), qc: client(inherited, day(3)) });
+    expect(seated(d2, V1), 'the overridden day seats its own driver').toBe(E3);
+    expect(seated(d3, V1), 'the inherited day seats the standing one').toBe(E1);
+  });
+});

@@ -237,7 +237,18 @@ export const RosterPage = (): JSX.Element => {
   const mayPlan = can('fleetRoster.plan');
 
   const boardQuery = useRosterDay(date);
-  const board = boardQuery.data;
+  /**
+   * The board, ONLY if it is this day's board.
+   *
+   * The response carries the day it describes, so the page can check rather than trust. The
+   * query is keyed by date and no longer serves the previous key's data, which is the actual
+   * fix — this is the invariant stated where it is relied upon, so that a caching option added
+   * to `useRosterDay` later cannot quietly put another day's crew on the screen and into the
+   * save payload again. Everything below reads `board`, so one check covers the table, the
+   * counters, the pool, the draft and what «حفظ» sends.
+   */
+  const board =
+    boardQuery.data?.date.slice(0, 10) === date ? boardQuery.data : undefined;
   // The BASELINE: the day exactly as the server derived it. On an unplanned day that is the
   // standing crew; on a planned day it is the stored assignment. Either way it is what «إلغاء»
   // returns to and what the save measures against — so an untouched board saves NOTHING and a
@@ -647,7 +658,10 @@ export const RosterPage = (): JSX.Element => {
             columns={columns}
             rows={rows}
             rowKey={(row) => row.vehicleId}
-            loading={boardQuery.isPending}
+            // `board === undefined` while the query reports success means the answer on hand is
+            // for another date — still waiting for this one, so the table says so rather than
+            // rendering an empty day that looks like a fleet with nothing on it.
+            loading={boardQuery.isPending || (board === undefined && !boardQuery.isError)}
             error={boardQuery.isError ? boardQuery.error : undefined}
             onRetry={() => void boardQuery.refetch()}
           />

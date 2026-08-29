@@ -28,6 +28,7 @@ const AttendanceRoutes = lazy(() => import('../../modules/hr/attendance/routes')
 const PayrollRoutes = lazy(() => import('../../modules/hr/payroll/routes'));
 const TrainingRoutes = lazy(() => import('../../modules/hr/training/routes'));
 const PerformanceRoutes = lazy(() => import('../../modules/hr/performance/routes'));
+const MedicalRoutes = lazy(() => import('../../modules/hr/medical/routes'));
 const ContractsRoutes = lazy(() => import('../../modules/hr/contracts/routes'));
 const AnnouncementRoutes = lazy(() => import('../../modules/hr/announcements/routes'));
 const NotificationRuleRoutes = lazy(() => import('../../modules/hr/notification-rules/routes'));
@@ -350,6 +351,22 @@ export const App = (): JSX.Element => {
                 }
               >
                 <PerformanceRoutes />
+              </Suspense>
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/medical/*"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <MedicalRoutes />
               </Suspense>
             </RequireAuth>
           }

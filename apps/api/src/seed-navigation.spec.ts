@@ -57,6 +57,6 @@ describe('the seeded navigation catalog', () => {
     //
     // So adding a row fails HERE first, on the author's machine, naming the number to change —
     // rather than eight minutes into CI in the one suite that cannot run without a mongod.
-    expect(rows).toHaveLength(113);
+    expect(rows).toHaveLength(114);
   });
 });

@@ -105,6 +105,7 @@ import {
   buildPerformanceGoalsRouter,
   buildPerformanceReviewsRouter,
 } from './performance';
+import { buildMedicalProfilesRouter } from './medical';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -993,6 +994,35 @@ const performanceGoalPermissions = declarePermissions(
   'hr.performance-reviews',
 );
 
+/**
+ * P-HR-MED. TWO KEYS, AND NEITHER IS IMPLIED BY ANY OTHER PERMISSION IN THIS SYSTEM (D3).
+ *
+ * This is the only resource in HR where holding `employee.view` — or `employee.viewCompensation`,
+ * or every key in the module — grants nothing. A line manager who may read somebody's attendance,
+ * salary band and contract may not read their blood type, and that is not a scope decision but a
+ * different question entirely: those are facts about work, and this is a fact about a body.
+ *
+ * `medicalCheck.*` already exists and is RECRUITMENT's, about an applicant's pre-employment exam
+ * (D1). Same word, different subject, different door.
+ *
+ * The keys are declared and seeded to NOBODY. §8 Q1 asks the owner which role should hold them; a
+ * key nobody holds is indistinguishable from a feature that does not work, so that question is the
+ * one worth answering before this ships to anybody.
+ */
+const medicalRecordPermissions = declarePermissions(
+  'hr',
+  'medicalRecord',
+  { en: 'medical records', ar: 'السجلات الطبية' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Record and correct medical data', ar: 'تسجيل البيانات الطبية وتصحيحها' },
+    },
+  ],
+  'hr.medical-profiles',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -1083,6 +1113,7 @@ export const hrPermissions: PermissionDef[] = [
   ...performanceCyclePermissions,
   ...performanceReviewPermissions,
   ...performanceGoalPermissions,
+  ...medicalRecordPermissions,
 ];
 
 /**
@@ -1348,6 +1379,15 @@ export const hrPages: PageDef[] = [
     route: '/performance/reviews',
     sortOrder: 340,
   },
+  // P-HR-MED. One screen, and it is a LIST OF PEOPLE rather than of conditions — the only way to
+  // reach a record is to name the person (D12, D13).
+  {
+    id: 'hr.medical-profiles',
+    moduleId: 'hr',
+    name: { en: 'Medical records', ar: 'السجلات الطبية' },
+    route: '/medical/profiles',
+    sortOrder: 350,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -1436,6 +1476,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/performance/cycles', router: buildPerformanceCyclesRouter() },
     { prefix: '/hr/performance/reviews', router: buildPerformanceReviewsRouter() },
     { prefix: '/hr/performance/goals', router: buildPerformanceGoalsRouter() },
+    { prefix: '/hr/medical/profiles', router: buildMedicalProfilesRouter() },
     { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
     { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },

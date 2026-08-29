@@ -182,6 +182,9 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         '/training/courses',
         '/performance/cycles',
         '/performance/reviews',
+        // P-HR-MED joins the group the section's note said Medical would. It is about the person
+        // rather than about their work, which is what this group already holds.
+        '/medical/profiles',
       ],
     },
   ],

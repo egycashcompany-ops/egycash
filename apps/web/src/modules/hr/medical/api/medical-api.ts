@@ -1,10 +1,14 @@
 // Medical api/ surface (ADR-013 — P-HR-MED, phase M2).
 import {
   type ListMedicalProfilesQuery,
+  type EndInsuranceCard,
+  type InsuranceCardDto,
+  type IssueInsuranceCard,
   type MedicalEventDto,
   type MedicalProfileDto,
   type Paginated,
   type RecordMedicalEvent,
+  type UpdateInsuranceCard,
   type UpsertMedicalProfile,
 } from '@ecms/contracts';
 import {
@@ -12,6 +16,7 @@ import {
   get,
   getPage,
   patch,
+  post,
   upload,
   type QueryParams,
 } from '../../../../shared/lib/api-client';
@@ -60,3 +65,20 @@ export const recordMedicalEvent = (
   if (file !== null) form.append('file', file);
   return upload<MedicalEventDto>(EVENTS, form);
 };
+
+const INSURANCE = '/hr/medical/insurance';
+
+export const listInsuranceCards = (params: QueryParams): Promise<Paginated<InsuranceCardDto>> =>
+  getPage<InsuranceCardDto>(`${INSURANCE}${buildQuery(params)}`);
+
+export const issueInsuranceCard = (body: IssueInsuranceCard): Promise<InsuranceCardDto> =>
+  post<InsuranceCardDto>(INSURANCE, body);
+
+export const updateInsuranceCard = (
+  id: string,
+  body: UpdateInsuranceCard,
+): Promise<InsuranceCardDto> => patch<InsuranceCardDto>(`${INSURANCE}/${id}`, body);
+
+/** There is no `renew` — a renewal ends one card and issues another (see the router's note). */
+export const endInsuranceCard = (id: string, body: EndInsuranceCard): Promise<InsuranceCardDto> =>
+  post<InsuranceCardDto>(`${INSURANCE}/${id}/end`, body);

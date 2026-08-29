@@ -1,12 +1,19 @@
 // TanStack Query hooks for the health profile (ADR-013 — P-HR-MED, M2).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type RecordMedicalEvent, type UpsertMedicalProfile } from '@ecms/contracts';
+import {
+  type EndInsuranceCard,
+  type IssueInsuranceCard,
+  type RecordMedicalEvent,
+  type UpdateInsuranceCard,
+  type UpsertMedicalProfile,
+} from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../shared/lib/query-keys';
 import * as api from './medical-api';
 
 const MODULE = 'hr';
 const PROFILES = 'medicalProfiles';
 const EVENTS = 'medicalEvents';
+const CARDS = 'insuranceCards';
 
 export const useMedicalProfiles = (params: Record<string, string | number | undefined>) =>
   useQuery({
@@ -77,3 +84,43 @@ export const useRecordMedicalEvent = () => {
     },
   });
 };
+
+// ── Insurance ───────────────────────────────────────────────────────────────
+
+/**
+ * The card list CACHES normally, unlike the clinical reads above.
+ *
+ * It is administrative data — a provider, a number, a window — and the server does not audit
+ * reading it. The clinical reads bypass the cache because every fetch is audited and a cached one
+ * would be a read the log never saw; that reasoning does not apply here, and copying it would be
+ * cargo cult.
+ */
+export const useInsuranceCards = (params: Record<string, string | number | undefined>) =>
+  useQuery({
+    queryKey: listKey(MODULE, CARDS, params),
+    queryFn: () => api.listInsuranceCards(params),
+    placeholderData: (prev) => prev,
+  });
+
+const useCardMutation = <TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, CARDS] });
+    },
+  });
+};
+
+export const useIssueInsuranceCard = () =>
+  useCardMutation((body: IssueInsuranceCard) => api.issueInsuranceCard(body));
+
+export const useUpdateInsuranceCard = () =>
+  useCardMutation(({ id, body }: { id: string; body: UpdateInsuranceCard }) =>
+    api.updateInsuranceCard(id, body),
+  );
+
+export const useEndInsuranceCard = () =>
+  useCardMutation(({ id, body }: { id: string; body: EndInsuranceCard }) =>
+    api.endInsuranceCard(id, body),
+  );

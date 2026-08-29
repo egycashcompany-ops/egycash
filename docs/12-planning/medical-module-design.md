@@ -74,6 +74,7 @@ would arrive as a helpful addition rather than as a mistake.
 | **D1** | **Recruitment's medical exam and this module stay separate**, and nothing copies between them (§1). |
 | **D2** | **Medical insurance only, never social insurance** (§2). |
 | **D3** | **Medical data is NOT readable by `employee.view`.** It gets its own key, and holding every other HR permission grants none of it. A line manager who may read somebody's attendance, salary band and contract may not read their blood type. |
+| **D3-b** | **And the CARD gets a second key of its own** (`medicalInsurance.*`), separate from the clinical one. Added in M4, correcting this document. D4 scopes the card by branch precisely because benefits administration is DELEGABLE — and gating it on the clinical key would mean that delegating it hands out clinical access: whoever files a card number could read everybody's conditions. Administrative and clinical are two gates, not one. The page registry's «a page cannot exist without a permission» rule is what surfaced the error. |
 | **D4** | **The organizational scope axes do not apply to the clinical record.** `branchId`/`departmentId` are stamped for the operational rows (§5) but a department-scoped reader is NOT thereby entitled to that department's health data — the key is the gate, not the axis. This is the one collection in HR where a wider scope must not mean wider reading. |
 | **D5** | **The employee always sees their own record in full.** It is about them. There is no state in which the company knows something about somebody's body and they cannot read it. |
 | **D6** | **Two separate things, kept apart:** the **health profile** (what is true of a person — blood type, chronic conditions, allergies, disability) and the **medical events** (what happened — an examination, a certificate, a fitness assessment on a date). A profile is corrected; an event is never edited (D9). |
@@ -124,8 +125,9 @@ Each gets a seam spec asserting the absence, in the shape `training-absences.spe
 
 ## 4. Where each decision lands
 
-- **D3/D4** are the whole permission and scope story, and they invert the module's usual shape: the
-  key gates, the axis does not widen. `medical-visibility.spec.ts` asserts that the clinical
+- **D3/D3-b/D4** are the whole permission and scope story, and they invert the module's usual
+  shape: the key gates, the axis does not widen — except on the card, where the axis is what makes
+  delegation possible and a SECOND key is what stops that delegation reaching the clinical rows. `medical-visibility.spec.ts` asserts that the clinical
   repository declares NO `departmentField` — the opposite of what every other guard in this
   codebase requires, and therefore stated loudly where somebody «fixing» it will read it.
 - **D5** is the `/me` read, in the shape P-HR-PRF P5 shipped.
@@ -174,7 +176,7 @@ M2 first because the permission model is the module, and everything after it inh
 None of these blocks the module.
 
 1. **Who, by name, may read clinical data?** (D3) — this ships with a single `medicalRecord.view`
-   key held by nobody until it is granted. If the company has a specific role — an HR medical
+   key held by nobody until it is granted. The benefits keys (`medicalInsurance.*`, D3-b) are a separate and probably larger group. If the company has a specific role — an HR medical
    officer, a safety officer — say so and it becomes a seeded role rather than a manual grant.
 2. **Is medical insurance company-wide or per band?** (D10) — the tier is recorded as written
    either way; the question is whether a tier is ever DERIVED from a grade, which would be a rule.

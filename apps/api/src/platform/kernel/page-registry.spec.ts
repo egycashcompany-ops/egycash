@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 70 pages over 263 permissions', () => {
-    expect(pages).toHaveLength(70);
-    expect(permissions).toHaveLength(263);
+  it('declares 71 pages over 265 permissions', () => {
+    expect(pages).toHaveLength(71);
+    expect(permissions).toHaveLength(265);
   });
 
   /**
@@ -60,9 +60,9 @@ describe('the assembled page registry', () => {
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
    */
-  it('assigns 236 permissions to a page and leaves 27 deliberately unassigned', () => {
+  it('assigns 238 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(236);
+    expect(assigned).toHaveLength(238);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -77,7 +77,7 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 36, fleet: 10, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 15, hr: 37, fleet: 10, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

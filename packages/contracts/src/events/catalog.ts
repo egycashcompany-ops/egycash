@@ -198,6 +198,11 @@ import {
   MedicalEventPayloadV1,
 } from '../modules/hr-medical-events.js';
 import {
+  HrMedicalInsuranceEvents,
+  type HrMedicalInsuranceEventName,
+  MedicalInsuranceEventPayloadV1,
+} from '../modules/hr-medical-insurance.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -724,6 +729,10 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // health profile is not a fact other modules have any business reacting to, so it publishes
   // nothing and has no entity here.
   medicalEvent: { en: 'Medical event', ar: 'واقعة طبية' },
+  // The CARD is its own subject, not an action on the employee: it is issued, corrected and ended
+  // on the provider's schedule, and a person holds several over a career. Administrative rather
+  // than clinical, which is why it has events at all where the profile has none.
+  medicalInsurance: { en: 'Medical insurance', ar: 'تأمين طبي' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -1159,7 +1168,8 @@ export type HrCatalogEventName =
   | HrPerformanceEventName
   | HrPerformanceGoalEventName
   | HrPerformanceReviewEventName
-  | HrMedicalEventName;
+  | HrMedicalEventName
+  | HrMedicalInsuranceEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1332,6 +1342,13 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   // attractive event in the system to hang an automatic consequence off, and the verdict is
   // exactly what a subscriber would need to implement a rule with legal weight nobody has stated.
   [HrMedicalEvents.Recorded]: MedicalEventPayloadV1,
+
+  // M4 — the ids and the PROVIDER, never the card number. A card number is a credential: it is what
+  // somebody presents at a clinic, and an event is the one place that fans out to subscribers whose
+  // permissions nobody checked at publish time.
+  [HrMedicalInsuranceEvents.Issued]: MedicalInsuranceEventPayloadV1,
+  [HrMedicalInsuranceEvents.Renewed]: MedicalInsuranceEventPayloadV1,
+  [HrMedicalInsuranceEvents.Ended]: MedicalInsuranceEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

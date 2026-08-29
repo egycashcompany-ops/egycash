@@ -107,6 +107,7 @@ import {
 } from './performance';
 import {
   buildMedicalEventsRouter,
+  buildMedicalInsuranceRouter,
   buildMedicalProfilesRouter,
   hrMedicalDocumentAuthorizers,
 } from './medical';
@@ -1027,6 +1028,36 @@ const medicalRecordPermissions = declarePermissions(
   'hr.medical-profiles',
 );
 
+/**
+ * P-HR-MED M4. THE CARD GETS ITS OWN KEYS, and the first draft of this module got that wrong.
+ *
+ * The insurance card was going to ride `medicalRecord.*`, on the reasoning that whoever
+ * administers medical benefits is the same small group D3 creates. That reasoning is backwards, and
+ * the page registry's «a page cannot exist without a permission» rule is what surfaced it.
+ *
+ * D4 scopes the card by branch PRECISELY BECAUSE benefits administration is delegable — an HR
+ * officer in Maadi should be able to run Maadi's cards. But if the card is gated by the CLINICAL
+ * key, delegating that work means handing out clinical access: the person who files a card number
+ * would thereby be able to read everybody's conditions. The whole of D3 would leak through the
+ * benefits desk.
+ *
+ * So administrative and clinical are two gates, which is what they were all along — the design just
+ * had not noticed it needed to say so twice.
+ */
+const medicalInsurancePermissions = declarePermissions(
+  'hr',
+  'medicalInsurance',
+  { en: 'medical insurance', ar: 'التأمين الطبي' },
+  ['view'],
+  [
+    {
+      action: 'manage',
+      name: { en: 'Issue and end insurance cards', ar: 'إصدار بطاقات التأمين وإنهاؤها' },
+    },
+  ],
+  'hr.medical-insurance',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -1118,6 +1149,7 @@ export const hrPermissions: PermissionDef[] = [
   ...performanceReviewPermissions,
   ...performanceGoalPermissions,
   ...medicalRecordPermissions,
+  ...medicalInsurancePermissions,
 ];
 
 /**
@@ -1392,6 +1424,15 @@ export const hrPages: PageDef[] = [
     route: '/medical/profiles',
     sortOrder: 350,
   },
+  // The card is administrative, so it gets a screen of its own — unlike the medical HISTORY, which
+  // is read inside a person's record because it is clinical and only means anything beside them.
+  {
+    id: 'hr.medical-insurance',
+    moduleId: 'hr',
+    name: { en: 'Medical insurance', ar: 'التأمين الطبي' },
+    route: '/medical/insurance',
+    sortOrder: 360,
+  },
 ];
 
 export const hrModule: ModuleManifest = {
@@ -1482,6 +1523,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/performance/goals', router: buildPerformanceGoalsRouter() },
     { prefix: '/hr/medical/profiles', router: buildMedicalProfilesRouter() },
     { prefix: '/hr/medical/events', router: buildMedicalEventsRouter() },
+    { prefix: '/hr/medical/insurance', router: buildMedicalInsuranceRouter() },
     { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
     { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },

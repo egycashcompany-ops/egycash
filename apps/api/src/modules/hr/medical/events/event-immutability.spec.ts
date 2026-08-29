@@ -24,7 +24,8 @@ const eventRepo = (): string => {
   const all = strip(read('../medical.repository.ts'));
   const from = all.indexOf('class MedicalEventRepository');
   expect(from, 'the event repository exists').toBeGreaterThan(-1);
-  return all.slice(from);
+  const next = all.indexOf('\nclass ', from + 1);
+  return next === -1 ? all.slice(from) : all.slice(from, next);
 };
 
 describe('nothing can write a medical event after it is recorded', () => {
@@ -82,7 +83,11 @@ describe('no route offers to change one', () => {
     const all = strip(read('../medical.routes.ts'));
     const from = all.indexOf('buildMedicalEventsRouter');
     expect(from).toBeGreaterThan(-1);
-    const block = all.slice(from);
+    // Bounded by the NEXT builder, not by the end of the file. An open-ended slice grows a false
+    // failure the day somebody appends a router — and M4's insurance router, which legitimately
+    // has a `patch`, is exactly that day.
+    const next = all.indexOf('export const build', from + 1);
+    const block = next === -1 ? all.slice(from) : all.slice(from, next);
     expect(block).not.toContain('router.patch');
     expect(block).not.toContain('router.delete');
     expect(block).not.toContain('router.put');

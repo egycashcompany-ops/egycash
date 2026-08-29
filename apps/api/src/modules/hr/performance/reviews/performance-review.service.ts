@@ -28,6 +28,7 @@ import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../../shared/utils/diff';
+import { EXITED_REASON } from '../../shared/separation';
 import { employeeService } from '../../employee-management/employees/employee.service';
 import { employeeRepository } from '../../employee-management/employees/employee.repository';
 import { performanceCycleRepository, performanceReviewRepository } from '../performance.repository';
@@ -368,6 +369,48 @@ class PerformanceReviewService {
     });
     await emit(HrPerformanceReviewEvents.Excused, factOf(updated));
     return updated;
+  }
+
+  // ── Event subscriber (P-HR-SEP F2) ────────────────────────────────────────
+
+  /**
+   * `hr.employee.exited` — excuse the rows the leaver's round can no longer finish.
+   *
+   * WHY THIS IS A DEFECT AND NOT A TIDY-UP. `close` refuses while any review is neither finalized
+   * nor excused, and it names the COUNT rather than the reason. So one person resigning in the
+   * middle of a round leaves a row with an evaluator who cannot evaluate them and a subject who is
+   * not there — and the whole company's round stays open until somebody works out that the blocker
+   * is a leaver and excuses that row by hand. Nothing tells them. Opening already excludes people
+   * who had left BEFORE the round opened; this is the other half of the same rule.
+   *
+   * ONLY DRAFTS (D4) — see the repository for why a submitted review is left to its own path.
+   *
+   * PER ROW, NOT IN BULK, so each excuse carries its own audit entry and its own event: the audit
+   * chokepoint is what reaches an open screen (ADR-029), and a queue that silently loses a row is
+   * worse than one that shows a stale count. The list is one person's reviews, so the loop is
+   * bounded by how many rounds they were in.
+   */
+  async onEmployeeExited(employeeId: string): Promise<number> {
+    const drafts = await performanceReviewRepository.listDraftsForEmployeeSystem(employeeId);
+    let excused = 0;
+    for (const before of drafts) {
+      const updated = await performanceReviewRepository.excuseDraftForEmployeeSystem(
+        String(before._id),
+        employeeId,
+        EXITED_REASON,
+      );
+      // Null means somebody excused or submitted it between the read and the write — their
+      // decision stands, and nothing is emitted for a row this call did not change.
+      if (updated === null) continue;
+      excused += 1;
+      await auditService.record({
+        entityRef: entityRef(String(before._id)),
+        action: 'update',
+        changes: diffChanges(snapshot(before), snapshot(updated)),
+      });
+      await emit(HrPerformanceReviewEvents.Excused, factOf(updated));
+    }
+    return excused;
   }
 }
 

@@ -34,7 +34,7 @@ import { notificationsService } from '../../../../platform/notifications';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { fileCategoryService } from '../../../../platform/files';
-import { employeeService } from '../../employee-management/employees';
+import { employeeRepository, employeeService } from '../../employee-management/employees';
 import { contractBrandingService } from '../branding';
 import { contractTypeService } from '../contract-types';
 import { contractTemplateService } from '../contract-templates';
@@ -677,8 +677,33 @@ class ContractService {
 
   // ── Sweeps (D11) ───────────────────────────────────────────────────────────
 
+  /**
+   * The leavers among a batch of contracts (P-HR-SEP F1) — ONE read for the whole sweep.
+   *
+   * Both sweeps below filter on the CONTRACT's status and its end date, and neither of those
+   * facts changes when the holder leaves. So a contract running to June, held by somebody who
+   * resigned in March, is still «active, ending soon» as far as this collection is concerned —
+   * and the sweeps would say two false things about it: a renewal notice in May to everybody
+   * holding `contract.view`, and an `expired` stamp in June, when the contract did not run to its
+   * end at all. It ended when the employment did.
+   *
+   * WHAT THIS DOES NOT DO IS CHANGE THE CONTRACT'S STATUS (P-HR-SEP D3). `terminate` records a
+   * person, a date and a required reason, and emits `hr.contract.terminated` — it is a legal act
+   * on a document that may be produced in a dispute, and a sweep is not a signatory. Whether an
+   * exit should terminate the contract is a Business decision, recorded as §6 Q1 and not taken
+   * here. Stopping the system from asserting something untrue needs no such decision.
+   */
+  private async exitedHolders(docs: readonly ContractDoc[]): Promise<Set<string>> {
+    if (docs.length === 0) return new Set<string>();
+    return employeeRepository.listExitedIdsSystem([
+      ...new Set(docs.map((doc) => String(doc.employeeId))),
+    ]);
+  }
+
   async expireOverdue(): Promise<number> {
-    const overdue = await contractRepository.findOverdue(new Date());
+    const candidates = await contractRepository.findOverdue(new Date());
+    const exited = await this.exitedHolders(candidates);
+    const overdue = candidates.filter((doc) => !exited.has(String(doc.employeeId)));
     for (const doc of overdue) {
       await contractRepository.systemSet(String(doc._id), { status: 'expired' });
       await auditService.record({
@@ -694,7 +719,12 @@ class ContractService {
 
   async notifyExpiring(): Promise<number> {
     const { noticeDays } = await this.settings();
-    const soon = await contractRepository.findExpiringSoon(noticeDays);
+    const candidates = await contractRepository.findExpiringSoon(noticeDays);
+    const exited = await this.exitedHolders(candidates);
+    // A leaver's contract is skipped WITHOUT stamping `expiryNoticeSentAt`: the marker means «this
+    // one has been noticed», and writing it here would mean a rehire's contract could never be
+    // noticed again. Skipping costs one query per sweep; a wrongly-consumed marker is permanent.
+    const soon = candidates.filter((doc) => !exited.has(String(doc.employeeId)));
     for (const doc of soon) {
       await notificationsService
         .notify({

@@ -116,6 +116,44 @@ class TrainingEnrollmentRepository extends BaseRepository<TrainingEnrollmentDoc>
       .exec();
   }
 
+  /**
+   * The seats this person is still BOOKED into (P-HR-SEP F3) — `enrolled` and nothing else.
+   *
+   * NARROWER THAN `occupiesSeat` ON PURPOSE. That predicate counts `attended`, `absent`, `excused`
+   * and `completed` too, because those are seats that were genuinely taken — the training design
+   * says so plainly: «an absent seat was still taken, and counting it as free would let a session
+   * quietly overfill on the day it runs». All four are marks made when a session RAN, and no exit
+   * unmakes a fact about a room. Only `enrolled` is a booking for something that has not happened.
+   */
+  async listBookedForEmployeeSystem(employeeId: string): Promise<TrainingEnrollmentDoc[]> {
+    if (!Types.ObjectId.isValid(employeeId)) return [];
+    return TrainingEnrollmentModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      status: 'enrolled',
+      isDeleted: false,
+    })
+      .lean<TrainingEnrollmentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Give one booked seat back, because its holder has left (P-HR-SEP D2, D6).
+   *
+   * `status: 'enrolled'` RIDES IN THE FILTER, so this cannot overwrite a mark somebody made on the
+   * day — an `attended` written while this was in flight wins, and null tells the caller to emit
+   * nothing. That also makes a redelivered exit event a no-op rather than a second write.
+   */
+  async cancelBookedSeatSystem(id: string, reason: string): Promise<TrainingEnrollmentDoc | null> {
+    if (!Types.ObjectId.isValid(id)) return null;
+    return TrainingEnrollmentModel.findOneAndUpdate(
+      { _id: new Types.ObjectId(id), status: 'enrolled', isDeleted: false },
+      { $set: { status: 'cancelled', cancelledReason: reason }, $inc: { __v: 1 } },
+      { new: true },
+    )
+      .lean<TrainingEnrollmentDoc>()
+      .exec();
+  }
+
   async listFiltered(
     f: {
       sessionId?: string | undefined;

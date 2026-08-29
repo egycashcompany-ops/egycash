@@ -31,8 +31,10 @@ import { BusinessRuleError, ConflictError } from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
+import { EXITED_REASON } from '../../shared/separation';
 import { employeeService } from '../../employee-management/employees/employee.service';
 import { acceptsEnrollments, hasSeat } from '../sessions/session-rules';
+import { trainingSessionRepository } from '../sessions/training-session.repository';
 import { trainingSessionService } from '../sessions/training-session.service';
 import { canTransition, mayCancelEnrollment, mayDecide } from './nomination-rules';
 import {
@@ -413,6 +415,60 @@ class TrainingNominationService {
       }
       throw error;
     }
+  }
+
+  // ── Event subscriber (P-HR-SEP F3) ────────────────────────────────────────
+
+  /**
+   * `hr.employee.exited` — give back the seats a leaver will not be sitting in.
+   *
+   * THE SEAT IS THE ENROLLMENT, NOT THE NOMINATION, and the nomination is deliberately left alone
+   * (P-HR-SEP D5). `approved` is terminal in its state machine because a nomination records a
+   * decision that WAS taken, and decisions taken are not unmade by later events. The seat is a
+   * different claim: it is a place in a room on a date, and `occupiesSeat` counts it against
+   * capacity — so a leaver's booking holds a chair somebody else could have had, and puts them on
+   * the roster of a session they cannot attend.
+   *
+   * ONLY SESSIONS THAT HAVE NOT ENDED (D6), asked as one read of the sessions this person is
+   * booked into rather than one per row.
+   *
+   * The exit date is not used as the cutoff — see the session repository for why.
+   */
+  async onEmployeeExited(employeeId: string): Promise<number> {
+    const booked = await trainingEnrollmentRepository.listBookedForEmployeeSystem(employeeId);
+    if (booked.length === 0) return 0;
+    const unfinished = await trainingSessionRepository.listUnfinishedIdsSystem(
+      [...new Set(booked.map((seat) => String(seat.sessionId)))],
+      new Date(),
+    );
+    let cancelled = 0;
+    for (const seat of booked) {
+      if (!unfinished.has(String(seat.sessionId))) continue;
+      const updated = await trainingEnrollmentRepository.cancelBookedSeatSystem(
+        String(seat._id),
+        EXITED_REASON,
+      );
+      // Null means the seat stopped being a booking between the read and the write — somebody
+      // marked them present, or took the seat back first. Either way it is not ours to change.
+      if (updated === null) continue;
+      cancelled += 1;
+      await auditService.record({
+        entityRef: enrollmentRef(String(seat._id)),
+        action: 'update',
+        changes: [
+          { field: 'status', old: seat.status, new: 'cancelled' },
+          { field: 'reason', old: null, new: EXITED_REASON },
+        ],
+      });
+      await emit(HrTrainingEnrollmentEvents.Cancelled, {
+        enrollmentId: String(seat._id),
+        employeeId: String(updated.employeeId),
+        sessionId: String(updated.sessionId),
+        sessionCode: updated.sessionCode,
+        courseKey: updated.courseKey,
+      });
+    }
+    return cancelled;
   }
 
   private async publish(name: string, doc: TrainingNominationDoc): Promise<void> {

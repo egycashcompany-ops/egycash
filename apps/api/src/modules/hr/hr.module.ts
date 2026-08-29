@@ -99,11 +99,13 @@ import {
   buildTrainingRecordsRouter,
   buildTrainingSessionsRouter,
   hrTrainingCertificateAuthorizers,
+  trainingNominationService,
 } from './training';
 import {
   buildPerformanceCyclesRouter,
   buildPerformanceGoalsRouter,
   buildPerformanceReviewsRouter,
+  performanceReviewService,
 } from './performance';
 import {
   buildMedicalEventsRouter,
@@ -1789,6 +1791,37 @@ export const hrModule: ModuleManifest = {
             addDays(today, -7),
             today,
           );
+        }
+      },
+    },
+    {
+      // Separation closeout F2 (P-HR-SEP): excuse the leaver's UNWRITTEN reviews.
+      //
+      // Not tidying — unblocking. `close` refuses while any review is neither finalized nor
+      // excused, so one person resigning mid-round leaves the whole company's round stuck behind a
+      // row with an evaluator who cannot evaluate them. Opening already excludes people who had
+      // left before it; this is the other half of the same rule. D4 keeps it to `draft` rows.
+      event: 'hr.employee.exited',
+      handlerId: 'performance.excuseReviewsOfExitedEmployee',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await performanceReviewService.onEmployeeExited(payload.employeeId);
+        }
+      },
+    },
+    {
+      // Separation closeout F3 (P-HR-SEP): give back seats in sessions that have not run.
+      //
+      // The seat, never the nomination (D5): a nomination records a decision that was taken, and
+      // `approved` is terminal for exactly that reason. A seat is a chair on a date, counted
+      // against capacity — so a leaver's booking denies it to somebody who could use it.
+      event: 'hr.employee.exited',
+      handlerId: 'training.releaseSeatsOfExitedEmployee',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { employeeId?: string };
+        if (typeof payload.employeeId === 'string') {
+          await trainingNominationService.onEmployeeExited(payload.employeeId);
         }
       },
     },

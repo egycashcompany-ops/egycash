@@ -151,6 +151,31 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /**
+   * Which of these people have LEFT (P-HR-SEP F1) — the subset, as a set of ids.
+   *
+   * IT ASKS WHO HAS EXITED, NOT WHO IS STILL EMPLOYED, and the direction is the whole guard.
+   *
+   * The caller is a sweep deciding whom NOT to act on, so the two phrasings fail in opposite
+   * directions. «Who is employed» would treat an id this read cannot resolve — a deleted record,
+   * a contract pointing at nobody, a page of results that came back short — as somebody to skip,
+   * and a reminder system that goes quiet on a data fault is one nobody discovers is broken.
+   * «Who has exited» treats the same hole as somebody to act on: the notice still goes out, and it
+   * is a person's job to see that it names nobody.
+   *
+   * `System` like its neighbours: the caller is a scheduled task with no subject, and a sweep
+   * narrowed by a scope nobody holds would act on part of the company at random.
+   */
+  async listExitedIdsSystem(ids: readonly string[]): Promise<Set<string>> {
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return new Set<string>();
+    const rows = await this.model
+      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, status: 'exited' }, { _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
   /** The employee a login belongs to (self-service own-resolution, leave design C1-R). */
   async findByUserIdSystem(userId: string): Promise<EmployeeDoc | null> {
     if (!Types.ObjectId.isValid(userId)) return null;

@@ -247,6 +247,65 @@ class PerformanceReviewRepository extends BaseRepository<PerformanceReviewDoc> {
       isDeleted: false,
     }).exec();
   }
+
+  /**
+   * Excuse this person's UNWRITTEN reviews, because they have left (P-HR-SEP F2, D4).
+   *
+   * `status: 'draft'` IS THE WHOLE GUARD, and it is narrower than the two rules around it in both
+   * directions. Narrower than `writeConditions` (`$nin: ['finalized','excused']`), which would
+   * also admit a `submitted` review — and D4 refuses that: a submitted review holds a real
+   * evaluation of work the person actually did, written by somebody who took the time, and
+   * discarding it because the subject later resigned would destroy content on a technicality. It
+   * can still be finalized by its normal path, which unblocks the round the same way.
+   *
+   * NO CYCLE FILTER IS NEEDED, and that is a property of the machine rather than an omission. Rows
+   * are materialized when a round OPENS, and `close` refuses while any row is neither finalized
+   * nor excused — so a `draft` review can only belong to an open round. Adding a join to restate
+   * that would be a second answer to a question the state machine already settles.
+   *
+   * `excusedBy` IS NULL, deliberately. Nobody excused these; the exit did. The `excusedReason`
+   * carries that, in the same words Leave writes on a cancellation for the same cause (D2), so a
+   * row read a year later says a machine did it and why.
+   *
+   * IDEMPOTENT, AND ATOMICALLY SO: `status: 'draft'` sits in the FILTER, not in a check before it,
+   * so a redelivered event or a concurrent human excuse matches nothing rather than overwriting a
+   * decision somebody just made. Null means the row was no longer a draft — the caller's signal to
+   * emit nothing for it.
+   */
+  async excuseDraftForEmployeeSystem(
+    id: string,
+    employeeId: string,
+    reason: string,
+  ): Promise<PerformanceReviewDoc | null> {
+    if (!Types.ObjectId.isValid(id) || !Types.ObjectId.isValid(employeeId)) return null;
+    return PerformanceReviewModel.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(id),
+        employeeId: new Types.ObjectId(employeeId),
+        status: 'draft',
+        isDeleted: false,
+      },
+      {
+        $set: { status: 'excused', excusedAt: new Date(), excusedBy: null, excusedReason: reason },
+        $inc: { __v: 1 },
+      },
+      { new: true },
+    )
+      .lean<PerformanceReviewDoc>()
+      .exec();
+  }
+
+  /** The rows the above would touch — read first so each one can carry its own event. */
+  async listDraftsForEmployeeSystem(employeeId: string): Promise<PerformanceReviewDoc[]> {
+    if (!Types.ObjectId.isValid(employeeId)) return [];
+    return PerformanceReviewModel.find({
+      employeeId: new Types.ObjectId(employeeId),
+      status: 'draft',
+      isDeleted: false,
+    })
+      .lean<PerformanceReviewDoc[]>()
+      .exec();
+  }
 }
 
 /**

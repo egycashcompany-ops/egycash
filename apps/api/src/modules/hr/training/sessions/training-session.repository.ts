@@ -31,6 +31,25 @@ class TrainingSessionRepository extends BaseRepository<TrainingSessionDoc> {
       .exec();
   }
 
+  /**
+   * Which of these sessions have NOT finished by `asOf` (P-HR-SEP D6) — ids in, ids out.
+   *
+   * THE CUTOFF IS THE SESSION'S END, NOT THE EXIT DATE, and the difference is a person who left on
+   * the 20th and sat in a room on the 12th. Their seat there is history; the one on the 25th is a
+   * booking for a chair nobody will fill. Comparing against the exit would take back both.
+   */
+  async listUnfinishedIdsSystem(ids: readonly string[], asOf: Date): Promise<Set<string>> {
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return new Set<string>();
+    const rows = await TrainingSessionModel.find(
+      { _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, endsAt: { $gt: asOf } },
+      { _id: 1 },
+    )
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
   /** Does anything still point at this course? Deactivation is allowed; orphaning history is not. */
   async countLiveForCourse(courseId: string): Promise<number> {
     if (!Types.ObjectId.isValid(courseId)) return 0;

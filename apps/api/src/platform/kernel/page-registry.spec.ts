@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 69 pages over 259 permissions', () => {
+  it('declares 69 pages over 261 permissions', () => {
     expect(pages).toHaveLength(69);
-    expect(permissions).toHaveLength(259);
+    expect(permissions).toHaveLength(261);
   });
 
   /**
@@ -60,9 +60,9 @@ describe('the assembled page registry', () => {
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
    */
-  it('assigns 232 permissions to a page and leaves 27 deliberately unassigned', () => {
+  it('assigns 234 permissions to a page and leaves 27 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(232);
+    expect(assigned).toHaveLength(234);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

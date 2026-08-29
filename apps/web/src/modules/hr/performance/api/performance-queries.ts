@@ -11,8 +11,12 @@ import {
   type ClosePerformanceGoal,
   type CreatePerformanceCycle,
   type CreatePerformanceGoal,
+  type ExcusePerformanceReview,
+  type FinalizePerformanceReview,
   type OpenPerformanceCycle,
   type ProgressPerformanceGoal,
+  type ReturnPerformanceReview,
+  type SubmitPerformanceReview,
   type UpdatePerformanceCycle,
 } from '@ecms/contracts';
 import { detailKey, listKey } from '../../../../shared/lib/query-keys';
@@ -105,6 +109,44 @@ export const useAssignPerformanceEvaluator = () => {
     },
   });
 };
+
+/**
+ * Every review transition refreshes the reviews AND the cycles.
+ *
+ * The cycle carries the count a round is closable by, and «can I close this yet» is the question
+ * the cycles screen answers. A finalize that refreshed only the queue would leave somebody looking
+ * at a round that still says it has open reviews when it does not.
+ */
+const useReviewTransition = <TArgs, TResult>(fn: (args: TArgs) => Promise<TResult>) => {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: fn,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: [MODULE, REVIEWS] });
+      void client.invalidateQueries({ queryKey: [MODULE, CYCLES] });
+    },
+  });
+};
+
+export const useSubmitPerformanceReview = () =>
+  useReviewTransition(({ id, body }: { id: string; body: SubmitPerformanceReview }) =>
+    api.submitPerformanceReview(id, body),
+  );
+
+export const useReturnPerformanceReview = () =>
+  useReviewTransition(({ id, body }: { id: string; body: ReturnPerformanceReview }) =>
+    api.returnPerformanceReview(id, body),
+  );
+
+export const useFinalizePerformanceReview = () =>
+  useReviewTransition(({ id, body }: { id: string; body: FinalizePerformanceReview }) =>
+    api.finalizePerformanceReview(id, body),
+  );
+
+export const useExcusePerformanceReview = () =>
+  useReviewTransition(({ id, body }: { id: string; body: ExcusePerformanceReview }) =>
+    api.excusePerformanceReview(id, body),
+  );
 
 // ── Goals ───────────────────────────────────────────────────────────────────
 

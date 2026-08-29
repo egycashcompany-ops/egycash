@@ -943,12 +943,35 @@ const performanceCyclePermissions = declarePermissions(
   'hr.performance-cycles',
 );
 
+/**
+ * P4 gave the review two write keys, and the split is between HAVING AN OPINION and CLOSING THE
+ * RECORD (D6).
+ *
+ * `assess` is the evaluator writing what they think — a wide group, one review each, and holding
+ * it does not let anybody write on a review that is not theirs: the service checks that separately,
+ * because a grant says what you may do and not whose work you may sign.
+ *
+ * `finalize` carries `return` and `excuse` too, because all three are the same act from the same
+ * chair — deciding what happens to somebody else's assessment.
+ */
 const performanceReviewPermissions = declarePermissions(
   'hr',
   'performanceReview',
   { en: 'performance reviews', ar: 'مراجعات الأداء' },
   ['view'],
-  [],
+  [
+    {
+      action: 'assess',
+      name: { en: 'Write and submit an assessment', ar: 'كتابة التقييم وإرساله' },
+    },
+    {
+      action: 'finalize',
+      name: {
+        en: 'Finalize, return or excuse a review',
+        ar: 'اعتماد المراجعة أو إرجاعها أو الإعفاء منها',
+      },
+    },
+  ],
   'hr.performance-reviews',
 );
 

@@ -15,11 +15,15 @@ import {
   ClosePerformanceGoalSchema,
   CreatePerformanceCycleSchema,
   CreatePerformanceGoalSchema,
+  ExcusePerformanceReviewSchema,
+  FinalizePerformanceReviewSchema,
   ListPerformanceCyclesQuerySchema,
   ListPerformanceGoalsQuerySchema,
   ListPerformanceReviewsQuerySchema,
   OpenPerformanceCycleSchema,
   ProgressPerformanceGoalSchema,
+  ReturnPerformanceReviewSchema,
+  SubmitPerformanceReviewSchema,
   UpdatePerformanceCycleSchema,
   UpdatePerformanceGoalSchema,
   objectId,
@@ -33,6 +37,8 @@ import {
   closePerformanceGoal,
   createPerformanceCycle,
   createPerformanceGoal,
+  excusePerformanceReview,
+  finalizePerformanceReview,
   getPerformanceCycle,
   getPerformanceGoal,
   getPerformanceReview,
@@ -41,6 +47,8 @@ import {
   listPerformanceReviews,
   openPerformanceCycle,
   progressPerformanceGoal,
+  returnPerformanceReview,
+  submitPerformanceReview,
   updatePerformanceCycle,
   updatePerformanceGoal,
 } from './performance.controller';
@@ -124,6 +132,45 @@ export const buildPerformanceReviewsRouter = (): Router => {
     authorize('performanceCycle.conduct'),
     validate({ body: AssignPerformanceEvaluatorSchema, params: IdParamSchema }),
     asyncHandler(assignPerformanceEvaluator),
+  );
+  /**
+   * WRITING AN ASSESSMENT AND CLOSING ONE ARE DIFFERENT KEYS (D6).
+   *
+   * `performanceReview.assess` is the evaluator saying what they think — a wide group, one review
+   * each. `performanceReview.finalize` is HR closing the round's records, and it also carries
+   * `return` and `excuse`, because all three are the same act from the same chair: deciding what
+   * happens to somebody else's assessment.
+   *
+   * The key alone is not enough for `submit`: the service also checks that the caller IS the
+   * assigned evaluator. A grant says what you may do, not whose review you may write.
+   */
+  router.post(
+    '/:id/submit',
+    authenticate,
+    authorize('performanceReview.assess'),
+    validate({ body: SubmitPerformanceReviewSchema, params: IdParamSchema }),
+    asyncHandler(submitPerformanceReview),
+  );
+  router.post(
+    '/:id/return',
+    authenticate,
+    authorize('performanceReview.finalize'),
+    validate({ body: ReturnPerformanceReviewSchema, params: IdParamSchema }),
+    asyncHandler(returnPerformanceReview),
+  );
+  router.post(
+    '/:id/finalize',
+    authenticate,
+    authorize('performanceReview.finalize'),
+    validate({ body: FinalizePerformanceReviewSchema, params: IdParamSchema }),
+    asyncHandler(finalizePerformanceReview),
+  );
+  router.post(
+    '/:id/excuse',
+    authenticate,
+    authorize('performanceReview.finalize'),
+    validate({ body: ExcusePerformanceReviewSchema, params: IdParamSchema }),
+    asyncHandler(excusePerformanceReview),
   );
   return router;
 };

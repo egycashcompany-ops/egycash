@@ -25,8 +25,13 @@ import { Field, Input, Select } from '../../../../shared/ui/form';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { buildQuery, getPage } from '../../../../shared/lib/api-client';
-import { useAssignPerformanceEvaluator, usePerformanceReviews } from '../api/performance-queries';
+import {
+  useAssignPerformanceEvaluator,
+  usePerformanceCycles,
+  usePerformanceReviews,
+} from '../api/performance-queries';
 import { GoalsDialog } from '../components/GoalsDialog';
+import { AssessmentDialog } from '../components/AssessmentDialog';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -157,6 +162,7 @@ export const PerformanceReviewsPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   const [assigning, setAssigning] = useState<PerformanceReviewDto | null>(null);
   const [viewingGoals, setViewingGoals] = useState<PerformanceReviewDto | null>(null);
+  const [assessing, setAssessing] = useState<PerformanceReviewDto | null>(null);
 
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const search = sp.get('q') ?? '';
@@ -168,6 +174,12 @@ export const PerformanceReviewsPage = (): JSX.Element => {
     ...(status === '' ? {} : { status }),
   };
   const { data, isLoading, isError, error, refetch } = usePerformanceReviews(params);
+
+  // The rounds, for their SCALES (D8). A review's rating is a point on its cycle's scale, and the
+  // dialog cannot ask the row — the row carries the number, not the ruler it was measured with.
+  const cycles = usePerformanceCycles({ page: 1, pageSize: 100 });
+  const cycleOf = (review: PerformanceReviewDto) =>
+    cycles.data?.items.find((c) => c.id === review.cycleId);
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -241,6 +253,13 @@ export const PerformanceReviewsPage = (): JSX.Element => {
               {t('performance.goal.title')}
             </Button>
           </Can>
+          {/* Open to anybody who may READ the review: the dialog itself shows the evaluator's
+              half or HR's half by permission, and a closed review renders read-only. Gating this
+              button on a write key would hide a finalized assessment from the people entitled to
+              read it. */}
+          <Button size="sm" variant="secondary" onClick={() => setAssessing(r)}>
+            {t('performance.review.assessment')}
+          </Button>
           <Can permission="performanceCycle.conduct">
             {r.status === 'draft' && (
               <Button size="sm" variant="secondary" onClick={() => setAssigning(r)}>
@@ -298,6 +317,13 @@ export const PerformanceReviewsPage = (): JSX.Element => {
       {assigning !== null && <AssignDialog review={assigning} onClose={() => setAssigning(null)} />}
       {viewingGoals !== null && (
         <GoalsDialog review={viewingGoals} onClose={() => setViewingGoals(null)} />
+      )}
+      {assessing !== null && (
+        <AssessmentDialog
+          review={assessing}
+          cycle={cycleOf(assessing)}
+          onClose={() => setAssessing(null)}
+        />
       )}
     </PageContainer>
   );

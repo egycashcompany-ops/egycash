@@ -6,12 +6,16 @@ import {
   type ClosePerformanceCycle,
   type ClosePerformanceGoal,
   type CreatePerformanceCycle,
+  type ExcusePerformanceReview,
+  type FinalizePerformanceReview,
   type CreatePerformanceGoal,
   type ListPerformanceCyclesQuery,
   type ListPerformanceGoalsQuery,
   type ListPerformanceReviewsQuery,
   type OpenPerformanceCycle,
   type ProgressPerformanceGoal,
+  type ReturnPerformanceReview,
+  type SubmitPerformanceReview,
   type UpdatePerformanceCycle,
   type UpdatePerformanceGoal,
 } from '@ecms/contracts';
@@ -109,6 +113,43 @@ export const assignPerformanceEvaluator = async (req: Request, res: Response): P
     body,
     reviewScope(req),
   );
+  ok(res, toPerformanceReviewDto(doc));
+};
+
+/**
+ * The four acts. Each takes the review's version and returns the row as it now stands, so a screen
+ * never has to guess what its own click produced.
+ */
+export const submitPerformanceReview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<SubmitPerformanceReview, never, IdParam>(req);
+  const doc = await performanceReviewService.submit(ctx, params.id, body, reviewScope(req));
+  ok(res, toPerformanceReviewDto(doc));
+};
+
+export const returnPerformanceReview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ReturnPerformanceReview, never, IdParam>(req);
+  const doc = await performanceReviewService.returnToEvaluator(
+    ctx,
+    params.id,
+    body,
+    reviewScope(req),
+  );
+  ok(res, toPerformanceReviewDto(doc));
+};
+
+export const finalizePerformanceReview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<FinalizePerformanceReview, never, IdParam>(req);
+  const doc = await performanceReviewService.finalize(ctx, params.id, body, reviewScope(req));
+  ok(res, toPerformanceReviewDto(doc));
+};
+
+export const excusePerformanceReview = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ExcusePerformanceReview, never, IdParam>(req);
+  const doc = await performanceReviewService.excuse(ctx, params.id, body, reviewScope(req));
   ok(res, toPerformanceReviewDto(doc));
 };
 

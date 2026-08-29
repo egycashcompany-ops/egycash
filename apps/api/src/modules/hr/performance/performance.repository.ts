@@ -15,6 +15,7 @@ import {
   type PerformanceReviewStatus,
 } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
+import { BusinessRuleError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { PerformanceCycleModel, type PerformanceCycleDoc } from './cycles/performance-cycle.model';
 import {
@@ -96,6 +97,36 @@ class PerformanceReviewRepository extends BaseRepository<PerformanceReviewDoc> {
       departmentField: 'departmentId',
       softDelete: true,
     });
+  }
+
+  /**
+   * D7 — A FINALIZED REVIEW IS IMMUTABLE, and so is an excused one.
+   *
+   * This is a write CONDITION rather than a check in the service, and the difference is not
+   * stylistic: the condition rides inside the same atomic `findOneAndUpdate` as the write, so a
+   * concurrent finalize cannot be overtaken by a request that read the row a moment earlier. A
+   * pre-check has a window; this does not.
+   *
+   * It also means the rule holds for every write through this repository, including ones nobody
+   * has written yet. `training-immutability.spec.ts` counts update paths because the training
+   * record had no such seam; here the seam is the guard, and the spec beside it proves the seam
+   * is declared rather than counting the callers who respect it.
+   */
+  protected override writeConditions(): FilterQuery<PerformanceReviewDoc> {
+    return { status: { $nin: ['finalized', 'excused'] } } as FilterQuery<PerformanceReviewDoc>;
+  }
+
+  /**
+   * Why a write missed, when it missed because the row is closed.
+   *
+   * Called with the row as it actually is, BEFORE the miss is reported as a version conflict or a
+   * 404 — so somebody trying to edit a finalized review is told that, rather than being told to
+   * refresh and try again with a message that would never come true.
+   */
+  protected override assertWritable(current: PerformanceReviewDoc): void {
+    if (current.status === 'finalized' || current.status === 'excused') {
+      throw new BusinessRuleError(`a ${current.status} review is a record and cannot be changed`);
+    }
   }
 
   async listFiltered(

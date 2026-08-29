@@ -100,15 +100,36 @@ describe('no surface exists for a phase that has not shipped', () => {
   });
 
   /**
-   * And no INPUT for an assessment. The rating column renders what the server holds and there is
-   * no field that writes one — a form posting to an endpoint that does not exist would lose
-   * somebody's work, silently, with the toast saying it saved.
+   * P4 REPLACED the assertion that used to live here.
+   *
+   * Until this phase there was no rating input, and a spec said so. That spec is now false, and it
+   * is REPLACED rather than deleted — a guard that becomes untrue and is quietly removed leaves no
+   * trace that the thing it protected was ever a decision. What remains true, and what this now
+   * asserts, is the half that never changes: the rating is TYPED and its bounds come from the
+   * cycle, so a round rated 1–10 and one rated 1–5 cannot share a hardcoded five.
    */
-  it('the reviews screen writes no rating', () => {
-    const page = read('pages/PerformanceReviewsPage.tsx');
-    expect(page).not.toContain('useSubmitPerformanceReview');
-    expect(page).not.toContain('useFinalizePerformanceReview');
-    expect(page.toLowerCase()).not.toContain('setrating');
+  it('the assessment input is bounded by the cycle, not by a constant', () => {
+    const dialog = read('components/AssessmentDialog.tsx');
+    expect(dialog).toContain('cycle?.scale.min');
+    expect(dialog).toContain('cycle?.scale.max');
+    expect(dialog).toContain('min={scaleMin}');
+    expect(dialog).toContain('max={scaleMax}');
+  });
+
+  /**
+   * And the rating is still never SUGGESTED (D8). A default computed from the goals, or a
+   * «recommended» marker, would be the weighted average arriving as a convenience — which is the
+   * exact failure the design's six absences are about.
+   */
+  it('the assessment screen suggests no rating', () => {
+    const dialog = read('components/AssessmentDialog.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '')
+      .toLowerCase();
+    for (const forbidden of ['suggestedrating', 'recommendedrating', 'defaultrating', 'average']) {
+      expect(dialog, forbidden).not.toContain(forbidden);
+    }
   });
 
   /**

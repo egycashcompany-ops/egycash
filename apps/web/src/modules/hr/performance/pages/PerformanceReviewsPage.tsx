@@ -26,6 +26,7 @@ import { Dialog } from '../../../../shared/ui/Dialog';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { buildQuery, getPage } from '../../../../shared/lib/api-client';
 import { useAssignPerformanceEvaluator, usePerformanceReviews } from '../api/performance-queries';
+import { GoalsDialog } from '../components/GoalsDialog';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -155,6 +156,7 @@ export const PerformanceReviewsPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   const [assigning, setAssigning] = useState<PerformanceReviewDto | null>(null);
+  const [viewingGoals, setViewingGoals] = useState<PerformanceReviewDto | null>(null);
 
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const search = sp.get('q') ?? '';
@@ -231,13 +233,22 @@ export const PerformanceReviewsPage = (): JSX.Element => {
       key: 'actions',
       header: '',
       render: (r) => (
-        <Can permission="performanceCycle.conduct">
-          {r.status === 'draft' && (
-            <Button size="sm" variant="secondary" onClick={() => setAssigning(r)}>
-              {t('performance.review.assignEvaluator')}
+        <div className="flex justify-end gap-2">
+          {/* Goals ride the review row (P3): the row already answers «whose, which round». Gated
+              by the goal's own read key, not the cycle's — different audiences (see hr.module). */}
+          <Can permission="performanceGoal.view">
+            <Button size="sm" variant="secondary" onClick={() => setViewingGoals(r)}>
+              {t('performance.goal.title')}
             </Button>
-          )}
-        </Can>
+          </Can>
+          <Can permission="performanceCycle.conduct">
+            {r.status === 'draft' && (
+              <Button size="sm" variant="secondary" onClick={() => setAssigning(r)}>
+                {t('performance.review.assignEvaluator')}
+              </Button>
+            )}
+          </Can>
+        </div>
       ),
     },
   ];
@@ -285,6 +296,9 @@ export const PerformanceReviewsPage = (): JSX.Element => {
       </div>
 
       {assigning !== null && <AssignDialog review={assigning} onClose={() => setAssigning(null)} />}
+      {viewingGoals !== null && (
+        <GoalsDialog review={viewingGoals} onClose={() => setViewingGoals(null)} />
+      )}
     </PageContainer>
   );
 };

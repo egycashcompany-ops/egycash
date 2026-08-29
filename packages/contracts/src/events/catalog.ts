@@ -183,6 +183,11 @@ import {
   PerformanceCycleEventPayloadV1,
 } from '../modules/hr-performance.js';
 import {
+  HrPerformanceGoalEvents,
+  type HrPerformanceGoalEventName,
+  PerformanceGoalEventPayloadV1,
+} from '../modules/hr-performance-goals.js';
+import {
   FleetEvents,
   type FleetEventName,
   FleetAccidentPayloadV1,
@@ -696,6 +701,11 @@ export const EVENT_ENTITY_NAMES: Readonly<Record<string, LocalizedString>> = {
   // the cycle here is also what keeps the two events honest: they report that a round happened,
   // and nothing about anybody's rating.
   performanceCycle: { en: 'Performance cycle', ar: 'دورة تقييم أداء' },
+  // The GOAL is its own subject, not an action on the review it hangs off: it is created, moved
+  // and closed on its own schedule, several exist per review, and «progressed» is a fact about one
+  // of them rather than about the assessment. The same reasoning that gave `trainingRecord` an
+  // entity rather than leaving it an action on the session.
+  performanceGoal: { en: 'Performance goal', ar: 'هدف أداء' },
   // fleet
   vehicle: { en: 'Vehicle', ar: 'سيارة' },
   odometer: { en: 'Odometer', ar: 'عداد المسافة' },
@@ -789,6 +799,10 @@ export const EVENT_ACTION_NAMES: Readonly<Record<string, LocalizedString>> = {
   packageFailed: { en: 'package failed', ar: 'فشل الحزمة' },
   returned: { en: 'returned', ar: 'إرجاع' },
   closed: { en: 'closed', ar: 'إغلاق' },
+  // P-HR-PRF P3 — a goal moving without ending. Labels are GENERATED from this map, so a new
+  // action word with no entry renders as an English identifier in the Arabic UI; that is what
+  // `catalog.spec.ts`'s localization check refuses, and it has caught exactly this twice.
+  progressed: { en: 'progressed', ar: 'تحديث تقدّم' },
   // P-HR-REQ — a requisition reaching the number it asked for. Not `completed`: that word is
   // already an interview finishing, and a filled requisition is a count reaching a total.
   filled: { en: 'filled', ar: 'اكتمال' },
@@ -1119,7 +1133,8 @@ export type HrCatalogEventName =
   | HrTrainingEnrollmentEventName
   | HrTrainingRecordEventName
   | HrTrainingAttendanceEventName
-  | HrPerformanceEventName;
+  | HrPerformanceEventName
+  | HrPerformanceGoalEventName;
 
 export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.ZodTypeAny | null>> = {
   [HrEvents.ApplicantCreated]: ApplicantEventPayloadV1,
@@ -1272,6 +1287,13 @@ export const HR_EVENT_PAYLOAD_SCHEMAS: Readonly<Record<HrCatalogEventName, z.Zod
   // in which moment they report, and the count is the receipt either way.
   [HrPerformanceEvents.CycleOpened]: PerformanceCycleEventPayloadV1,
   [HrPerformanceEvents.CycleClosed]: PerformanceCycleEventPayloadV1,
+
+  // P3 — one payload for all three, and it carries NO VALUES (see the schema for why): a
+  // subscriber handed a current and a target is an afternoon away from computing a completion
+  // rate, which is exactly the rule D9 refuses.
+  [HrPerformanceGoalEvents.Created]: PerformanceGoalEventPayloadV1,
+  [HrPerformanceGoalEvents.Progressed]: PerformanceGoalEventPayloadV1,
+  [HrPerformanceGoalEvents.Closed]: PerformanceGoalEventPayloadV1,
 };
 
 export const HR_EVENT_SOURCE: EventCatalogSource = {

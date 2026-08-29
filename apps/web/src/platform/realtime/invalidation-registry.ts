@@ -114,6 +114,11 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // the round has to refresh the queue too. Assigning an evaluator moves one row and nothing else.
   'hr.performanceCycle': [['hr', 'performanceCycles'], ['hr', 'performanceReviews']],
   'hr.performanceReview': [['hr', 'performanceReviews']],
+  // A goal renders inside the review row that owns it, so its movement refreshes both families.
+  'hr.performanceGoal': [
+    ['hr', 'performanceGoals'],
+    ['hr', 'performanceReviews'],
+  ],
   'hr.contract': [['hr', 'contracts'], ['hr', 'settlement']],
   'hr.contractBranding': [['hr', 'contracts']],
   'hr.contractTemplate': [['hr', 'contracts']],

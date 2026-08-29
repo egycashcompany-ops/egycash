@@ -4,11 +4,16 @@ import { type Request, type Response } from 'express';
 import {
   type AssignPerformanceEvaluator,
   type ClosePerformanceCycle,
+  type ClosePerformanceGoal,
   type CreatePerformanceCycle,
+  type CreatePerformanceGoal,
   type ListPerformanceCyclesQuery,
+  type ListPerformanceGoalsQuery,
   type ListPerformanceReviewsQuery,
   type OpenPerformanceCycle,
+  type ProgressPerformanceGoal,
   type UpdatePerformanceCycle,
+  type UpdatePerformanceGoal,
 } from '@ecms/contracts';
 import { created, ok, okPage } from '../../../platform/web';
 import { validated } from '../../../infrastructure/http/validate';
@@ -16,7 +21,12 @@ import { authContext } from '../../../platform/auth';
 import { scopeSelector } from '../../../shared/types';
 import { performanceCycleService } from './cycles/performance-cycle.service';
 import { performanceReviewService } from './reviews/performance-review.service';
-import { toPerformanceCycleDto, toPerformanceReviewDto } from './performance.mapper';
+import { performanceGoalService } from './goals/performance-goal.service';
+import {
+  toPerformanceCycleDto,
+  toPerformanceGoalDto,
+  toPerformanceReviewDto,
+} from './performance.mapper';
 
 type IdParam = { id: string };
 
@@ -100,4 +110,47 @@ export const assignPerformanceEvaluator = async (req: Request, res: Response): P
     reviewScope(req),
   );
   ok(res, toPerformanceReviewDto(doc));
+};
+
+// ── Goals ───────────────────────────────────────────────────────────────────
+
+/** A goal is about a PERSON, so every read passes the caller's scope on both axes (D14). */
+const goalScope = (req: Request) => scopeSelector(authContext(req), 'performanceGoal.view');
+
+export const listPerformanceGoals = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, ListPerformanceGoalsQuery>(req);
+  okPage(res, await performanceGoalService.list(query, goalScope(req)), toPerformanceGoalDto);
+};
+
+export const getPerformanceGoal = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, toPerformanceGoalDto(await performanceGoalService.getById(params.id, goalScope(req))));
+};
+
+export const createPerformanceGoal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<CreatePerformanceGoal>(req);
+  const doc = await performanceGoalService.create(ctx, body, goalScope(req));
+  created(res, toPerformanceGoalDto(doc), `/api/v1/hr/performance/goals/${String(doc._id)}`);
+};
+
+export const updatePerformanceGoal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdatePerformanceGoal, never, IdParam>(req);
+  const doc = await performanceGoalService.update(ctx, params.id, body, goalScope(req));
+  ok(res, toPerformanceGoalDto(doc));
+};
+
+export const progressPerformanceGoal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ProgressPerformanceGoal, never, IdParam>(req);
+  const doc = await performanceGoalService.progress(ctx, params.id, body, goalScope(req));
+  ok(res, toPerformanceGoalDto(doc));
+};
+
+export const closePerformanceGoal = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<ClosePerformanceGoal, never, IdParam>(req);
+  const doc = await performanceGoalService.close(ctx, params.id, body, goalScope(req));
+  ok(res, toPerformanceGoalDto(doc));
 };

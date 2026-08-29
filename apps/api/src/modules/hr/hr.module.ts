@@ -100,7 +100,11 @@ import {
   buildTrainingSessionsRouter,
   hrTrainingCertificateAuthorizers,
 } from './training';
-import { buildPerformanceCyclesRouter, buildPerformanceReviewsRouter } from './performance';
+import {
+  buildPerformanceCyclesRouter,
+  buildPerformanceGoalsRouter,
+  buildPerformanceReviewsRouter,
+} from './performance';
 import { buildSettlementRouter } from './settlement';
 import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
@@ -948,6 +952,24 @@ const performanceReviewPermissions = declarePermissions(
   'hr.performance-reviews',
 );
 
+/**
+ * P3. The goal gets its own two keys rather than riding on the cycle's, because the audiences are
+ * different sizes: setting and moving a goal is a line manager working with ONE person, while
+ * `performanceCycle.conduct` opens and closes company rounds. Folding the first into the second
+ * would hand every line manager the power to close a cycle so they could write a goal.
+ *
+ * Both goal pages ride the REVIEWS page id — a goal is worked inside the review it hangs off, and
+ * a page id with no screen behind it is the `hr.employee-loans` mistake again.
+ */
+const performanceGoalPermissions = declarePermissions(
+  'hr',
+  'performanceGoal',
+  { en: 'performance goals', ar: 'أهداف الأداء' },
+  ['view', 'manage'],
+  [],
+  'hr.performance-reviews',
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
   ...attendanceAssignPermissions,
@@ -1037,6 +1059,7 @@ export const hrPermissions: PermissionDef[] = [
   ...trainingRecordPermissions,
   ...performanceCyclePermissions,
   ...performanceReviewPermissions,
+  ...performanceGoalPermissions,
 ];
 
 /**
@@ -1389,6 +1412,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/employee-loans', router: buildEmployeeLoansAdminRouter() },
     { prefix: '/hr/performance/cycles', router: buildPerformanceCyclesRouter() },
     { prefix: '/hr/performance/reviews', router: buildPerformanceReviewsRouter() },
+    { prefix: '/hr/performance/goals', router: buildPerformanceGoalsRouter() },
     { prefix: '/hr/training/courses', router: buildTrainingCoursesRouter() },
     { prefix: '/hr/training/sessions', router: buildTrainingSessionsRouter() },
     { prefix: '/hr/training/nominations', router: buildTrainingNominationsRouter() },

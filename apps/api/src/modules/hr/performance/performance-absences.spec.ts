@@ -97,7 +97,20 @@ describe('D8/D9 — nothing computes a rating', () => {
    * normalisation — so the assertion names those and not the operators.
    */
   it.each(FILES)('$name derives no average or aggregate score', ({ text }) => {
-    names(text, ['average', 'normalize', 'scoresum', 'totalscore', 'computedrating']);
+    names(text, [
+      'average',
+      'normalize',
+      'scoresum',
+      'totalscore',
+      'computedrating',
+      // P3 — a goal's numbers, aggregated. A percentage is a rating wearing a different unit, and
+      // «3 of 5 achieved» is the roll-up that ends up beside an assessment.
+      'progresspercent',
+      'completionrate',
+      'goalscore',
+      'achievementrate',
+      'goalsachieved',
+    ]);
     // `mean` keeps its boundaries: it is a word inside ordinary English identifiers, and banning
     // the substring would forbid anything named `meaning` or `means`.
     expect(code(text)).not.toMatch(/\bmean\b/i);
@@ -135,6 +148,36 @@ describe('D10 — nothing is derived from Attendance, and nothing is written to 
       'latenessscore',
       'attendancescore',
     ]);
+  });
+});
+
+/**
+ * D9 — A GOAL'S OUTCOME IS STATED BY A PERSON, NEVER DERIVED.
+ *
+ * The derivation is one line — `current >= target ? 'achieved' : 'missed'` — and it is wrong in
+ * both directions: a number reached for reasons nobody intended is not an achievement, and a
+ * target missed because the work was cancelled is not a failure. The system holds both numbers
+ * and has no way to tell those apart, which is exactly why it must not compare them.
+ *
+ * The same applies to the clock: nothing closes a goal because `dueAt` passed. A sweep that did
+ * would be this module's first automatic judgement, arriving dressed as tidiness.
+ */
+describe('D9 — no goal outcome is computed', () => {
+  it.each(FILES)('$name never compares current to target', ({ text }) => {
+    const source = code(text);
+    for (const forbidden of [
+      /currentValue\s*[><=]=?\s*(doc\.|input\.|goal\.)?targetValue/,
+      /targetValue\s*[><=]=?\s*(doc\.|input\.|goal\.)?currentValue/,
+    ]) {
+      expect(source, String(forbidden)).not.toMatch(forbidden);
+    }
+    names(text, ['outcomeof', 'isontrack', 'autoclose', 'autoachieve']);
+  });
+
+  it.each(FILES)('$name closes nothing on a date', ({ text }) => {
+    // `dueAt` may be read and shown; what is banned is a comparison feeding a status change, and
+    // the sweep verbs are how that arrives.
+    names(text, ['overduesweep', 'expiregoals', 'closeexpired']);
   });
 });
 

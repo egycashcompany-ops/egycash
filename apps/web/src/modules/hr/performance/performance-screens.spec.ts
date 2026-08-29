@@ -110,4 +110,24 @@ describe('no surface exists for a phase that has not shipped', () => {
     expect(page).not.toContain('useFinalizePerformanceReview');
     expect(page.toLowerCase()).not.toContain('setrating');
   });
+
+  /**
+   * P3's dialog shows a goal's two numbers and never a figure computed FROM them. A progress bar
+   * here would be the module's first invented number, arriving as a UI nicety — and the API-side
+   * absence spec cannot see this file, so the ban is repeated where the temptation lives.
+   */
+  it('the goals dialog computes nothing from the numbers', () => {
+    // CODE ONLY — the file's own comments explain in prose what it deliberately does not do, and
+    // a sentence saying «no percentage» contains the word it bans.
+    const dialog = read('components/GoalsDialog.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '')
+      .toLowerCase();
+    for (const forbidden of ['progresspercent', 'completionrate', 'progressbar', 'percentage']) {
+      expect(dialog, forbidden).not.toContain(forbidden);
+    }
+    // No division of current by target anywhere — the arithmetic itself, not just its name.
+    expect(dialog).not.toMatch(/currentvalue\s*\/\s*(goal\.)?targetvalue/);
+  });
 });

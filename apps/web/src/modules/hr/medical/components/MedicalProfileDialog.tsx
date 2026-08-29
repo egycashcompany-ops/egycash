@@ -18,6 +18,7 @@ import { Field, Input, Select, Textarea, Checkbox } from '../../../../shared/ui/
 import { Spinner } from '../../../../shared/ui/Spinner';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useMedicalProfile, useUpsertMedicalProfile } from '../api/medical-queries';
+import { MedicalHistoryPanel } from './MedicalHistoryPanel';
 
 /** One per line — the honest editor for a list of sentences (D12). */
 const toLines = (values: readonly string[]): string => values.join('\n');
@@ -148,6 +149,19 @@ export const MedicalProfileDialog = ({
           <Field label={t('medical.profile.note')}>
             <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
           </Field>
+
+          {/*
+            The history sits UNDER the profile in the same dialog, because the two answer one
+            question between them: what is true of this person, and what happened to them. Opening
+            the record already cost an audit row (D14); making the history a second click would
+            either cost a second one or tempt somebody to skip auditing it.
+          */}
+          <div className="border-t border-slate-200 pt-3 dark:border-slate-700">
+            <p className="mb-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+              {t('medical.event.history')}
+            </p>
+            <MedicalHistoryPanel employeeId={employeeId} />
+          </div>
         </div>
       )}
     </Dialog>

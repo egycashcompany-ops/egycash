@@ -8,20 +8,33 @@
 // `medicalCheck.*` is RECRUITMENT's key, about an applicant's pre-employment exam (D1). Different
 // subject, different question, different door — and `medical-visibility.spec.ts` refuses to let
 // this feature borrow it.
-import { Router } from 'express';
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import {
+  ErrorCodes,
+  ListMedicalEventsQuerySchema,
   ListMedicalProfilesQuerySchema,
+  RecordMedicalEventSchema,
   UpsertMedicalProfileSchema,
   objectId,
 } from '@ecms/contracts';
 import { asyncHandler, validate } from '../../../platform/web';
+import { AppError } from '../../../shared/errors';
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import {
   getMedicalProfile,
   getMyMedicalProfile,
+  listMedicalEvents,
   listMedicalProfiles,
+  recordMedicalEvent,
   upsertMedicalProfile,
 } from './medical.controller';
 
@@ -69,6 +82,66 @@ export const buildMedicalProfilesRouter = (): Router => {
     authorize('medicalRecord.manage'),
     validate({ body: UpsertMedicalProfileSchema, params: EmployeeIdParamSchema }),
     asyncHandler(upsertMedicalProfile),
+  );
+  return router;
+};
+
+/** A scan or a phone photograph of a signed certificate — the cap images need. */
+const CERTIFICATE_MAX_MB = 25;
+
+const multipartSingle = (): RequestHandler => {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: CERTIFICATE_MAX_MB * 1024 * 1024, files: 1 },
+  }).single('file');
+  return (req: Request, res: Response, next: NextFunction): void => {
+    upload(req, res, (error: unknown) => {
+      if (error === undefined || error === null) {
+        next();
+        return;
+      }
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        next(
+          new AppError(
+            ErrorCodes.FILE_TOO_LARGE,
+            422,
+            `File exceeds the ${String(CERTIFICATE_MAX_MB)} MB cap`,
+          ),
+        );
+        return;
+      }
+      next(error);
+    });
+  };
+};
+
+/**
+ * Medical events — TWO ROUTES, and the two that are missing are the point.
+ *
+ * There is no PATCH and no DELETE (D9). An event records what was said on a day; a correction is a
+ * new event, which is the only account of history that survives «what did we know, and when». The
+ * repository refuses the write at the seam, so declaring the routes would only mean two endpoints
+ * that always fail.
+ *
+ * Recording is multipart because the certificate arrives WITH the event: the row can never be
+ * written again, so there is no «attach it later».
+ */
+export const buildMedicalEventsRouter = (): Router => {
+  const router = Router();
+  router.get(
+    '/',
+    authenticate,
+    authorize('medicalRecord.view'),
+    validate({ query: ListMedicalEventsQuerySchema }),
+    asyncHandler(listMedicalEvents),
+  );
+  router.post(
+    '/',
+    authenticate,
+    authorize('medicalRecord.manage'),
+    multipartSingle(),
+    validate({ body: RecordMedicalEventSchema }),
+    asyncHandler(recordMedicalEvent),
   );
   return router;
 };

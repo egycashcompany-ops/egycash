@@ -1,12 +1,19 @@
 // Thin HTTP mapping only (ADR-003): parse, delegate, respond.
 import { type Request, type Response } from 'express';
-import { type ListMedicalProfilesQuery, type UpsertMedicalProfile } from '@ecms/contracts';
-import { ok, okPage } from '../../../platform/web';
+import {
+  type ListMedicalEventsQuery,
+  type ListMedicalProfilesQuery,
+  type RecordMedicalEvent,
+  type UpsertMedicalProfile,
+} from '@ecms/contracts';
+import { created, ok, okPage } from '../../../platform/web';
 import { validated } from '../../../infrastructure/http/validate';
 import { authContext } from '../../../platform/auth';
 import { scopeSelector } from '../../../shared/types';
 import { medicalProfileService } from './profiles/medical-profile.service';
-import { toMedicalProfileDto } from './medical.mapper';
+import { medicalEventService } from './events/medical-event.service';
+import { type UploadedBinary } from '../../../platform/files';
+import { toMedicalEventDto, toMedicalProfileDto } from './medical.mapper';
 
 type EmployeeIdParam = { employeeId: string };
 
@@ -44,3 +51,47 @@ export const upsertMedicalProfile = async (req: Request, res: Response): Promise
   const doc = await medicalProfileService.upsert(ctx, params.employeeId, body);
   ok(res, toMedicalProfileDto(doc));
 };
+
+// ── Events ──────────────────────────────────────────────────────────────────
+
+const eventScope = (req: Request) => scopeSelector(authContext(req), 'medicalRecord.view');
+
+/**
+ * The list, with each row's document resolved.
+ *
+ * One lookup per row, which is fine at this page size and honest: the row holds no file link
+ * (D9), so there is nothing to denormalize. A page of 25 medical events is not a hot path.
+ */
+export const listMedicalEvents = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { query } = validated<never, ListMedicalEventsQuery>(req);
+  const scope = eventScope(req);
+  const page = await medicalEventService.list(query, scope, ctx);
+  const rows = await Promise.all(
+    page.items.map(async (doc) => {
+      const document = await medicalEventService.documentOf(ctx, String(doc._id), scope);
+      return toMedicalEventDto(doc, document);
+    }),
+  );
+  ok(res, { items: rows, meta: page.meta });
+};
+
+/**
+ * Recording one — multipart, because the certificate arrives with the event rather than after it.
+ *
+ * The event can never be written again (D9), so there is no «attach a document later» endpoint:
+ * the paper and the fact are filed in the same request or the paper is filed against a new event.
+ */
+export const recordMedicalEvent = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<RecordMedicalEvent>(req);
+  const upload = (req as Request & { file?: UploadedBinary }).file ?? null;
+  const doc = await medicalEventService.record(ctx, body, upload);
+  const document = await medicalEventService.documentOf(ctx, String(doc._id), eventScope(req));
+  created(res, toMedicalEventDto(doc, document), `/api/v1/hr/medical/events/${String(doc._id)}`);
+};
+
+// THERE IS NO UPDATE HANDLER AND NO DELETE HANDLER (D9), and their absence is the statement. A
+// handler that threw «this is immutable» for a route nobody declared would be theatre: the
+// enforcement is the repository's write seam, which refuses the write itself, and the absent route
+// is what a reader of this file should find.

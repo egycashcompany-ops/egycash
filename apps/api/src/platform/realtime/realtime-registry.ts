@@ -78,6 +78,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   // P-HR-MED. Follows its own key and nothing else (D3) — the realtime layer must not be the one
   // place a clinical change announces itself to a wider audience than may read it.
   'hr.medicalProfile': { permission: 'medicalRecord.view' },
+  'hr.medicalEvent': { permission: 'medicalRecord.view' },
   'hr.contract': { permission: 'contract.view' },
   'hr.contractBranding': { permission: 'contractTemplate.manage' },
   'hr.contractTemplate': { permission: 'contractTemplate.manage' },

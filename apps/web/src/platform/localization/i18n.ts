@@ -1932,6 +1932,10 @@ const en: Record<string, string> = {
     'A closed cycle cannot be reopened. Every review has to be finalized or excused first.',
   'performance.cycle.searchPlaceholder': 'Cycle name',
 
+  'performance.mine.title': 'My performance',
+  'performance.mine.subtitle': 'Your finalized reviews. A review appears here once it is closed.',
+  'performance.mine.none': 'No finalized review yet.',
+
   'performance.review.assessment': 'Assessment',
   'performance.review.strengths': 'What went well',
   'performance.review.improvements': 'What to work on',
@@ -8076,6 +8080,10 @@ const ar: Record<string, string> = {
   'performance.cycle.closeWarning':
     'الدورة المغلقة لا تُفتح ثانية. يجب اعتماد كل مراجعة أو إعفاؤها قبل الإغلاق.',
   'performance.cycle.searchPlaceholder': 'اسم الدورة',
+
+  'performance.mine.title': 'أدائي',
+  'performance.mine.subtitle': 'مراجعاتك المعتمدة. تظهر المراجعة هنا بعد اعتمادها.',
+  'performance.mine.none': 'لا توجد مراجعة معتمدة بعد.',
 
   'performance.review.assessment': 'التقييم',
   'performance.review.strengths': 'ما سار جيدًا',

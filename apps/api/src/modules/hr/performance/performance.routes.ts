@@ -43,6 +43,7 @@ import {
   getPerformanceGoal,
   getPerformanceReview,
   listPerformanceCycles,
+  listMyPerformanceReviews,
   listPerformanceGoals,
   listPerformanceReviews,
   openPerformanceCycle,
@@ -104,6 +105,24 @@ export const buildPerformanceCyclesRouter = (): Router => {
 
 export const buildPerformanceReviewsRouter = (): Router => {
   const router = Router();
+  /**
+   * D15 — every employee login, no permission key.
+   *
+   * The self-service read, and it is declared BEFORE `/:id` because Express matches in order and
+   * `/:id` would otherwise swallow `me` as an object id. That is the same trap
+   * `platform-routes-exist.spec.ts` was written for after `/platform/job-titles/options` shipped
+   * behind `/:id` and answered 404 to two live screens.
+   *
+   * No `authorize` on purpose: requiring `performanceReview.view` would mean somebody could read
+   * their own assessment only if they could also read everybody's. The narrowing is the employee
+   * id, and it comes from the token.
+   */
+  router.get(
+    '/me',
+    authenticate,
+    validate({ query: ListPerformanceReviewsQuerySchema }),
+    asyncHandler(listMyPerformanceReviews),
+  );
   router.get(
     '/',
     authenticate,

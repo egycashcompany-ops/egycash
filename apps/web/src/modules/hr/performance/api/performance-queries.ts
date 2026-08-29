@@ -148,6 +148,14 @@ export const useExcusePerformanceReview = () =>
     api.excusePerformanceReview(id, body),
   );
 
+/** Its own key, not a filtered reuse of the queue: the two are different reads for different people. */
+export const useMyPerformanceReviews = (params: Record<string, string | number | undefined>) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'myPerformanceReviews', params),
+    queryFn: () => api.listMyPerformanceReviews(params),
+    placeholderData: (prev) => prev,
+  });
+
 // ── Goals ───────────────────────────────────────────────────────────────────
 
 export const usePerformanceGoals = (params: Record<string, string | number | undefined>) =>

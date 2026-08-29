@@ -93,6 +93,47 @@ describe('each screen is gated by the key that matches what it does', () => {
  * would lead to a screen that does not exist, and the fastest way for that to happen is somebody
  * adding the row while the API is still in flight.
  */
+/**
+ * D15 — the self-service screen, which is the one route here with NO permission.
+ *
+ * Its correctness is entirely in what it does not have: no `RequirePermission`, no navigation row,
+ * no page id. Every one of those would be somebody being helpful — «shouldn't this be gated?»,
+ * «shouldn't it be in the menu?» — and each would break it in a different direction. So each is
+ * asserted rather than left to be noticed.
+ */
+describe('the self-service screen is reachable by every employee login', () => {
+  it('is routed without a permission wrapper', () => {
+    const from = ROUTES.indexOf('path="me"');
+    expect(from, 'the me route exists').toBeGreaterThan(-1);
+    const block = ROUTES.slice(from, from + 200);
+    expect(block).toContain('MyPerformancePage');
+    expect(block).not.toContain('RequirePermission');
+  });
+
+  /**
+   * NO NAVIGATION ROW AND NO PAGE ID, the same as My Attendance. A row would advertise it by a
+   * permission it does not have, and a page id with no key behind it breaks the registry's own
+   * assumption that pages are things permissions are assigned to.
+   */
+  it('is advertised by no navigation row and no page', () => {
+    expect(SEED).not.toContain('/performance/me');
+    expect(MANIFEST).not.toContain("route: '/performance/me'");
+    expect(SECTIONS).not.toContain('/performance/me');
+  });
+
+  /** And it draws no trend across rounds — see the page's own note for why. */
+  it('compares nothing across rounds', () => {
+    const page = read('pages/MyPerformancePage.tsx')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+      .replace(/(^|\s)\/\/.*$/gm, '')
+      .toLowerCase();
+    for (const forbidden of ['trend', 'chart', 'sparkline', 'improv' + 'ing', 'average']) {
+      expect(page, forbidden).not.toContain(forbidden);
+    }
+  });
+});
+
 describe('no surface exists for a phase that has not shipped', () => {
   it.each(['goals', 'results', 'history'])('nothing routes to /performance/%s', (unshipped) => {
     expect(ROUTES).not.toContain(`path="${unshipped}"`);

@@ -7,7 +7,7 @@ import { ApiError } from './api-client';
 
 const FRIENDLY: Record<Locale, Record<string, string>> = {
   en: {
-    VALIDATION_ERROR: 'Some fields need your attention.',
+    VALIDATION_FAILED: 'Some fields need your attention.',
     FORBIDDEN: 'You do not have permission to do that.',
     NOT_FOUND: 'That item could not be found.',
     CONFLICT: 'That action conflicts with the current state.',
@@ -26,7 +26,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     UNKNOWN: 'Something went wrong. Please try again.',
   },
   ar: {
-    VALIDATION_ERROR: 'بعض الحقول تحتاج إلى مراجعة.',
+    VALIDATION_FAILED: 'بعض الحقول تحتاج إلى مراجعة.',
     FORBIDDEN: 'ليس لديك صلاحية للقيام بذلك.',
     NOT_FOUND: 'تعذّر العثور على هذا العنصر.',
     CONFLICT: 'هذا الإجراء يتعارض مع الحالة الحالية.',

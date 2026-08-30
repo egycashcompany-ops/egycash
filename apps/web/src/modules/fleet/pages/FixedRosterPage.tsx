@@ -41,7 +41,9 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
-import { errorMessage } from '../../../shared/lib/errors';
+import { errorMessage, validationDetails } from '../../../shared/lib/errors';
+import { cn } from '../../../shared/lib/cn';
+import { vehicleColour } from '../lib/vehicle-colour';
 import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
 import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { CatalogSelect } from '../components/CatalogSelect';
@@ -526,7 +528,24 @@ export const FixedRosterPage = (): JSX.Element => {
       // opts the mutation OUT of the global error toast. Without this the refusal would be
       // silent: the button would stop spinning, the refetch would drop the drags, and the reader
       // would be left guessing. The commonest refusal here is a driver another row still holds.
-      toast.error(errorMessage(error, locale));
+      //
+      // A refusal on THIS screen names the row it refused, and that is worth more than the
+      // friendly generic: the offending vehicle could be any of a hundred, and "some fields need
+      // your attention" gives the reader nothing to act on. `validationDetails` carries the
+      // field and the rule the server actually applied.
+      //
+      // Scoped to this page ON PURPOSE. The server's detail messages are English-only, so
+      // preferring them inside `errorMessage` would put English in front of an Arabic reader on
+      // every screen in the app. Here the trade is worth making — a save of a hundred rows is
+      // unactionable without it — and localising validation details properly is its own change.
+      const detail = validationDetails(error).find((d) => d.message.trim() !== '');
+      toast.error(
+        detail === undefined
+          ? errorMessage(error, locale)
+          : detail.field === undefined || detail.field === ''
+            ? detail.message
+            : `${detail.message} (${detail.field})`,
+      );
     }
   };
 
@@ -583,8 +602,22 @@ export const FixedRosterPage = (): JSX.Element => {
       // vehicle is identified here by its code. The plate is still on the vehicle record, still
       // shown on the screens that are ABOUT the vehicle, and still findable — the search below
       // reads it, so a reader holding a plate number can still reach the row.
+      //
+      // The code carries the VEHICLE'S OWN COLOUR — see `vehicleColour`. A hundred rows of
+      // three-digit numbers that differ by one glyph are hard to keep your place in; a tint
+      // attached to the car gives the eye something to land on before it reads the digits. The
+      // colour is hashed from the vehicle's id, so it is the same on every render and survives
+      // filtering, sorting and the arrival of new vehicles — it says WHICH car, never how the
+      // car is doing.
       render: (row) => (
-        <span className="font-mono text-xs" dir="ltr">
+        <span
+          data-vehicle-colour={row.vehicleId}
+          className={cn(
+            'inline-block rounded-md px-2 py-0.5 font-mono text-xs',
+            vehicleColour(row.vehicleId),
+          )}
+          dir="ltr"
+        >
           {row.code}
         </span>
       ),

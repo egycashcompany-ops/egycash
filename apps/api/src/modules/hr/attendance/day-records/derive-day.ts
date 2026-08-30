@@ -133,7 +133,11 @@ const flagsOf = (punches: readonly EnginePunch[], employeeBranchId: string): Att
   if (punches.some((p) => p.branchIdAtPunch !== null && p.branchIdAtPunch !== employeeBranchId)) {
     flags.push('crossBranchPunch');
   }
+  // AT-D2 (D12.3/D12.4) — two different facts, two different signals. A hand-entry is somebody
+  // typing a time; an approved correction travelled request → manager → HR before it was written.
+  // Until this split both raised `manualPunch`, and a reviewer could not tell them apart.
   if (punches.some((p) => p.source === 'manual')) flags.push('manualPunch');
+  if (punches.some((p) => p.source === 'regularization')) flags.push('regularizedPunch');
   return flags;
 };
 

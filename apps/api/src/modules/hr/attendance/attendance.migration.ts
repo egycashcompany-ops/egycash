@@ -46,8 +46,40 @@ const backfillPunchEmployeeBranch = async (): Promise<void> => {
   }
 };
 
+/**
+ * AT-D2 reclassification — give the punches an approved correction wrote their own source.
+ *
+ * IDENTIFIED EXACTLY, NOT INFERRED. The regularization service stamps every punch it writes with
+ * `note = "regularization <id>"`, so the rows this touches are precisely the rows that service
+ * created. Nothing is matched on a shape, a time window or a guess.
+ *
+ * IS THIS RESTATING EVIDENCE? No, and the distinction is worth being explicit about. D9 forbids
+ * editing what a punch SAYS — its instant, its employee, its direction, its place. None of those
+ * is touched here. What changes is the label describing WHO WROTE IT, and the row was always
+ * written by a regularization; before AT-D2 the vocabulary simply had no word for that, so it
+ * borrowed `manual`. This does not make history different, it makes history able to say what it
+ * always was.
+ *
+ * AND IT MATTERS BEYOND TIDINESS: day records are recomputable from punches. Left alone, every
+ * future recomputation of an old day would keep producing `manualPunch` for a correction that
+ * went through manager and HR approval — the stale signal, for ever.
+ */
+const reclassifyRegularizationPunches = async (): Promise<void> => {
+  const result = await AttendancePunchModel.updateMany(
+    { source: 'manual', note: { $regex: '^regularization ' } },
+    { $set: { source: 'regularization' } },
+  ).exec();
+  if (result.modifiedCount > 0) {
+    logger.info(
+      { punches: result.modifiedCount },
+      'attendance: reclassified regularization-written punches off the manual source (AT-D2)',
+    );
+  }
+};
+
 export const migrateAttendance = async (): Promise<void> => {
   await backfillPunchEmployeeBranch();
+  await reclassifyRegularizationPunches();
 
   const added = await rbacService.addSystemRoleGrants(
     'employee-self-service',

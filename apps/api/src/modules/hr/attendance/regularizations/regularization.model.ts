@@ -1,5 +1,6 @@
 // Regularization requests (v1.1 §2/§7) — the ONLY channel that changes a day, and it changes it
-// the ADR-027 way: on final approval the proposal becomes manual punches, the old punches are
+// the ADR-027 way: on final approval the proposal becomes `regularization` punches (AT-D2 — its
+// own source, so an approved correction is not mistaken for a hand entry), the old punches are
 // superseded, and the day is recomputed. A request against a frozen day is still recorded and
 // stamped `postFreeze`, and the frozen row never moves. NOTHING outside attendance reads that
 // stamp today: there is no retro engine in this repository, and the only built way such a

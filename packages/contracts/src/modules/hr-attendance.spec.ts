@@ -34,9 +34,17 @@ describe('closed vocabularies', () => {
   });
 
   it('pins sources, directions and flags', () => {
-    expect([...ATTENDANCE_PUNCH_SOURCES]).toEqual(['device', 'manual', 'web']);
+    // AT-D2 (D12.3/D12.4) added `regularization` and `regularizedPunch`. Both are deliberate
+    // contract changes, made by the rule the flag vocabulary's own comment states: an approved
+    // two-step correction and an HR hand-entry used to write the same source and raise the same
+    // day flag, so a reviewer could not tell a decision from a keystroke.
+    expect([...ATTENDANCE_PUNCH_SOURCES]).toEqual(['device', 'manual', 'regularization', 'web']);
     expect([...ATTENDANCE_PUNCH_DIRECTIONS]).toEqual(['in', 'out', 'unknown']);
-    expect([...ATTENDANCE_DAY_FLAGS]).toEqual(['crossBranchPunch', 'manualPunch']);
+    expect([...ATTENDANCE_DAY_FLAGS]).toEqual([
+      'crossBranchPunch',
+      'manualPunch',
+      'regularizedPunch',
+    ]);
   });
 
   it('pins the event names and the hr.attendance.* setting keys (D-PR-01)', () => {

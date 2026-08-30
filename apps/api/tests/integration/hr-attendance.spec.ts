@@ -404,6 +404,23 @@ describe('punches', () => {
     expect(r2.duplicates).toBe(2);
   });
 
+  /**
+   * AT-D2 (D12.3) — an approved correction writes its OWN source, and the day says which of the
+   * two signals it saw. Before this split both wrote `manual` and raised the same flag, so a day
+   * fixed through manager and HR approval was indistinguishable from one somebody typed.
+   */
+  it('a hand-entered punch is manual, and says so on the day', async () => {
+    const emp = await regEmployee();
+    const day = recentWorkday();
+    const rec = await recordPunch({
+      employeeId: emp.id,
+      at: cairoInstant(day, '09:00').toISOString(),
+      direction: 'in',
+    });
+    expect(rec.status).toBe(201);
+    expect((rec.body.data as { source: string }).source).toBe('manual');
+  });
+
   it('record and import each require their own grant', async () => {
     const rec = await recordPunch({ employeeId: '0123456789abcdef01234567', at: new Date().toISOString() }, outsiderToken);
     expect(rec.status).toBe(403);
@@ -727,7 +744,11 @@ describe('AT-5 — regularizations and overtime approval', () => {
     expect(day.status).toBe('present');
     expect(day.workedMinutes).toBe(480);
     expect(day.firstInAt).toBe(cairoInstant(workday, '09:00').toISOString());
-    expect(day.flags).toContain('manualPunch');
+    // AT-D2 (D12.3): before the split this day raised `manualPunch`, so an approved two-step
+    // correction and an HR hand-entry were indistinguishable in the derived row. Both halves are
+    // asserted — the positive one alone would let the old conflation back in unnoticed.
+    expect(day.flags).toContain('regularizedPunch');
+    expect(day.flags).not.toContain('manualPunch');
   });
 
   it('rejects at either step, finally; HR may substitute at step 1 without skipping step 2', async () => {

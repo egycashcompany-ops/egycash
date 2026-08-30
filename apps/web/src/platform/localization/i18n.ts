@@ -1774,6 +1774,7 @@ const en: Record<string, string> = {
   'attendance.days.frozenHint':
     'This day was frozen for payroll — corrections flow forward as adjustments',
   'attendance.flag.manualPunch': 'Manual punch',
+  'attendance.flag.regularizedPunch': 'Approved correction',
   'attendance.flag.crossBranchPunch': 'Cross-branch punch',
   'attendance.dayStatus.present': 'Present',
   'attendance.dayStatus.late': 'Late',
@@ -8025,6 +8026,7 @@ const ar: Record<string, string> = {
   'attendance.days.frozen': 'مجمّد',
   'attendance.days.frozenHint': 'جُمّد هذا اليوم للرواتب — التصحيحات تمضي كتسويات لاحقة',
   'attendance.flag.manualPunch': 'بصمة يدوية',
+  'attendance.flag.regularizedPunch': 'تسوية معتمدة',
   'attendance.flag.crossBranchPunch': 'بصمة من فرع آخر',
   'attendance.dayStatus.present': 'حاضر',
   'attendance.dayStatus.late': 'متأخر',

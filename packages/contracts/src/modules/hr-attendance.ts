@@ -35,7 +35,21 @@ export type AttendanceDayStatus = z.infer<typeof AttendanceDayStatusSchema>;
  * `hr.attendance.selfPunchEnabled` (default OFF) — recording it is refused while the setting is
  * off, so the enum value exists before any surface produces it.
  */
-export const ATTENDANCE_PUNCH_SOURCES = ['device', 'manual', 'web'] as const;
+/**
+ * Where a punch came from (D12.3, D12.4 — AT-D2).
+ *
+ * `regularization` IS ITS OWN SOURCE, and separating it from `manual` is the whole of this
+ * change. An approved correction travels request → manager → HR before a single minute is
+ * written; a `manual` row is somebody typing a time. Until AT-D2 both wrote `manual`, so the two
+ * were INDISTINGUISHABLE in the data and raised the same day flag — and under a device-first
+ * model (D12.1) that matters, because the only legitimate non-device punch is an approved
+ * correction. A reader could not tell the one from the other.
+ *
+ * NOTHING OUTSIDE THE REGULARIZATION SERVICE MAY CLAIM IT. `RecordPunchSchema` still accepts only
+ * `manual` and `web`, so a caller cannot dress a hand-entry up as an approved decision — the
+ * source is written by the code that owns the approval, never supplied by a request.
+ */
+export const ATTENDANCE_PUNCH_SOURCES = ['device', 'manual', 'regularization', 'web'] as const;
 export const AttendancePunchSourceSchema = z.enum(ATTENDANCE_PUNCH_SOURCES);
 export type AttendancePunchSource = z.infer<typeof AttendancePunchSourceSchema>;
 
@@ -47,9 +61,19 @@ export type AttendancePunchDirection = z.infer<typeof AttendancePunchDirectionSc
 /**
  * Signals for review, never inputs to arithmetic (§15.1). Closed vocabulary, extended only by
  * contract change: `crossBranchPunch` (D8 — a punch's branch differed from the employee's),
- * `manualPunch` (at least one punch was hand-entered rather than device-recorded).
+ * `manualPunch` (at least one punch was hand-entered rather than device-recorded), and
+ * `regularizedPunch` (AT-D2 — at least one punch came from an APPROVED correction).
+ *
+ * THE THIRD IS A CONTRACT CHANGE MADE ON PURPOSE, by the rule this comment already stated. Before
+ * AT-D2 an approved two-step correction raised `manualPunch`, so a day fixed through manager and
+ * HR approval looked on review exactly like a day somebody typed by hand. They are not the same
+ * signal and a reviewer should not have to guess which one they are looking at.
  */
-export const ATTENDANCE_DAY_FLAGS = ['crossBranchPunch', 'manualPunch'] as const;
+export const ATTENDANCE_DAY_FLAGS = [
+  'crossBranchPunch',
+  'manualPunch',
+  'regularizedPunch',
+] as const;
 export const AttendanceDayFlagSchema = z.enum(ATTENDANCE_DAY_FLAGS);
 export type AttendanceDayFlag = z.infer<typeof AttendanceDayFlagSchema>;
 
@@ -191,7 +215,9 @@ export const RecordPunchSchema = z
     direction: AttendancePunchDirectionSchema.default('unknown'),
     /**
      * `manual` is what an HR hand-entry records. `web` is refused while
-     * `hr.attendance.selfPunchEnabled` is off (D1); `device` rows arrive via import only.
+     * `hr.attendance.selfPunchEnabled` is off (D1); `device` rows arrive via import only, and
+     * `regularization` is written ONLY by the service that owns the approval (D12.3) — a request
+     * may not claim it, or a hand-entry could wear the authority of a decision nobody took.
      */
     source: z.enum(['manual', 'web']).default('manual'),
     /** Where the punch physically happened (D8); defaults to the employee's branch. */
@@ -371,9 +397,9 @@ export type AttendanceRegularizationStatus = z.infer<typeof AttendanceRegulariza
 
 /**
  * A regularization proposes the day's PUNCH TRUTH, not its derived numbers (ADR-027): on final
- * approval the proposal becomes manual punches, the old punches are superseded, and the day is
- * recomputed — never hand-edited. `employeeId` is for the D7 HR direct edit only: a caller
- * holding `attendance.decideRegularization` files for someone else and the request applies
+ * approval the proposal becomes `regularization` punches (AT-D2), the old punches are superseded,
+ * and the day is recomputed — never hand-edited. `employeeId` is for the D7 HR direct edit only:
+ * a caller holding `attendance.decideRegularization` files for someone else and the request applies
  * immediately, with the mandatory reason audited.
  */
 export const CreateAttendanceRegularizationSchema = z

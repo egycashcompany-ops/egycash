@@ -14,6 +14,7 @@ import {
   type CreateFleetVehicle,
   type CreateFleetVehicleType,
   type FleetAccidentDto,
+  type FleetAccidentTotalsDto,
   type FleetCatalogItemDto,
   type FleetDefaultBranchDto,
   type FleetDriverProfileDto,
@@ -224,6 +225,14 @@ export const saveFixedRoster = (
 // ── Accidents (§4.6, FR-10) ─────────────────────────────────────────────────
 export const listAccidents = (params: FleetListParams): Promise<Paginated<FleetAccidentDto>> =>
   getPage<FleetAccidentDto>(`/fleet/accidents${buildQuery(params)}`);
+/**
+ * The figures under the list, over EVERY accident the filters match.
+ *
+ * Takes the filters and nothing else — no page, no size. The endpoint's schema is strict and has
+ * no room for them, so a caller cannot narrow the sum to a page even by mistake.
+ */
+export const accidentSummary = (params: FleetListParams): Promise<FleetAccidentTotalsDto> =>
+  get<FleetAccidentTotalsDto>(`/fleet/accidents/summary${buildQuery(params)}`);
 export const createAccident = (body: CreateFleetAccident): Promise<FleetAccidentDto> =>
   post<FleetAccidentDto>('/fleet/accidents', body);
 export const updateAccident = (id: string, body: UpdateFleetAccident): Promise<FleetAccidentDto> =>

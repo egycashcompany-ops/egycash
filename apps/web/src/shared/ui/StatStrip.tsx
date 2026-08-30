@@ -32,10 +32,30 @@ export interface StatStripItem {
   loading?: boolean;
 }
 
-export const StatStrip = ({ items }: { items: StatStripItem[] }): JSX.Element => (
+/**
+ * How many cells share a row on a wide screen. Four is the shape most strips are, and stays the
+ * default; a five-metric strip needs its own, or the fifth drops to a row of its own and reads as
+ * an afterthought rather than one of the five. Spelled out rather than interpolated because
+ * Tailwind scans source text for class names and never sees a built string.
+ */
+const wideColumns: Record<3 | 4 | 5, string> = {
+  3: 'sm:grid-cols-3',
+  4: 'sm:grid-cols-4',
+  5: 'sm:grid-cols-5',
+};
+
+export const StatStrip = ({
+  items,
+  columns = 4,
+}: {
+  items: StatStripItem[];
+  columns?: 3 | 4 | 5;
+}): JSX.Element => (
   // `gap-px` over a coloured background draws the hairlines — one rule that works in both
   // directions, wraps with the grid, and needs no RTL mirror the way `divide-x` would.
-  <div className="grid grid-cols-2 gap-px bg-slate-100 sm:grid-cols-4 dark:bg-slate-800">
+  <div
+    className={cn('grid grid-cols-2 gap-px bg-slate-100 dark:bg-slate-800', wideColumns[columns])}
+  >
     {items.map((item) => {
       const Icon = item.icon;
       const body = (

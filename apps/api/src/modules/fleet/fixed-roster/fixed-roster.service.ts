@@ -50,12 +50,30 @@ const entityRef = (id: string) => ({
  * and their order are the comparison. A field present here and absent from `next` (or the other
  * way round) would make every save look like a change; adding a field to one without the other
  * is the way this quietly starts rewriting untouched rows.
+ *
+ * A MISSING FIELD IS `null`, AND SAYING SO IS THE WHOLE POINT OF `?.` HERE.
+ *
+ * The reads that feed this are `.lean()`, which returns raw BSON and therefore applies none of
+ * the schema's defaults. `missionTypeId` and `notes` were added after this collection shipped
+ * (see the model), so a row written before that carries no such key at all — and the declared
+ * `Types.ObjectId | null` is an unchecked cast over that raw document, so nothing in the type
+ * system objects.
+ *
+ * Written as `=== null ? null : String(...)`, an absent field failed the `null` test and went to
+ * `String(undefined)` — the nine-character STRING `"undefined"`. That reached the board DTO
+ * (where `?? null` cannot rescue it: it is a perfectly ordinary string), came back in the save
+ * payload untouched, and was refused by the contract as
+ * `must be a 24-hex-char ObjectId (body.rows.N.missionTypeId)` — on a row nobody had edited.
+ *
+ * `?.toString() ?? null` treats absent and null alike, which is what the day board's inherited
+ * branch has always done. The contract is unchanged and still refuses `"undefined"` and `""`;
+ * what changes is that the server stops inventing a value the database never held.
  */
-const snapshot = (doc: FleetFixedCrewDoc) => ({
-  missionTypeId: doc.missionTypeId === null ? null : String(doc.missionTypeId),
-  driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
-  driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
-  notes: doc.notes,
+export const snapshot = (doc: FleetFixedCrewDoc) => ({
+  missionTypeId: doc.missionTypeId?.toString() ?? null,
+  driver1EmployeeId: doc.driver1EmployeeId?.toString() ?? null,
+  driver2EmployeeId: doc.driver2EmployeeId?.toString() ?? null,
+  notes: doc.notes ?? null,
 });
 
 /** An id in the one spelling mongo uses. `null`/`undefined` pass through untouched. */

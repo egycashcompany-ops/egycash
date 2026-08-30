@@ -580,10 +580,12 @@ describe('a drag leaves untouched vehicles alone', () => {
   const legacy = (vehicleId: string, code: string, d2: string) =>
     row(vehicleId, code, null, d2, { planned: true, missionTypeId: 'm1' });
 
-  it('returns an unrelated row IDENTICAL — the same object, not an equal one', () => {
+  it('returns an unrelated row exactly as it came in', () => {
+    // By VALUE: `rowsToSave` measures rows by value, so an unchanged row is not sent whether the
+    // implementation returns the same object or an equal copy.
     const baseline = [legacy('v1', '150', 'e9'), row('v2', '151'), row('v3', '152', 'e3')];
     const after = assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e3');
-    expect(after[0]).toBe(baseline[0]);
+    expect(after[0]).toEqual(baseline[0]);
   });
 
   it('does not drag an untouched legacy row into the payload', () => {

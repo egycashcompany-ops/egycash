@@ -1253,3 +1253,46 @@ describe('the vehicle code carries the vehicle’s colour', () => {
     expect(chip, 'and the inverse in dark mode').toMatch(/dark:text-[a-z]+-(100|200)/);
   });
 });
+
+// ── a refused save says WHICH row it refused ───────────────────────────────
+//
+// The server answers a bad save with code `VALIDATION_FAILED`, a constant top-level message
+// (`Validation failed`) and `details: [{ field, code, message }]` naming the row and the rule.
+// On a hundred-vehicle board the top-level message is unactionable — it is the same sentence
+// whatever went wrong — so this screen reads the detail.
+//
+// It reads it HERE rather than in `errorMessage`, and that placement is the tested claim: the
+// server's detail strings are English-only, so preferring them in the shared helper would put
+// English in front of an Arabic reader on all twelve screens that call it.
+describe('a refused save names the row it refused', () => {
+  const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const dash'));
+
+  it('reads the server’s detail instead of the generic message', () => {
+    expect(commit, 'the save handler asks for the details').toContain('validationDetails(error)');
+    expect(commit, 'and shows the rule the server applied').toContain('detail.message');
+  });
+
+  it('names the field alongside the rule', () => {
+    expect(commit).toContain('detail.field');
+  });
+
+  it('still falls back to the localised copy when there is no detail', () => {
+    // A refusal with no details — or any other error code — must keep its Arabic sentence.
+    expect(commit, 'the localised path is still there').toContain('errorMessage(error, locale)');
+    expect(commit, 'and it is what an empty detail list gets').toMatch(
+      /detail === undefined[\s\S]{0,40}errorMessage\(error, locale\)/,
+    );
+  });
+
+  it('does NOT push the English detail into the shared helper', () => {
+    // The guard on the whole app: `errorMessage` stays generic-and-localised. Its own spec
+    // asserts the same rule from the other side.
+    const shared = readFileSync(join(HERE, '../../shared/lib/errors.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const helper = shared.slice(shared.indexOf('export const errorMessage'));
+    expect(helper.slice(0, helper.indexOf('};')), 'errorMessage reads no details').not.toContain(
+      'details',
+    );
+  });
+});

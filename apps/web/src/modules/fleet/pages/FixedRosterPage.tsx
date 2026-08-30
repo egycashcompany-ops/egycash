@@ -41,7 +41,7 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
-import { errorMessage } from '../../../shared/lib/errors';
+import { errorMessage, validationDetails } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import { vehicleColour } from '../lib/vehicle-colour';
 import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
@@ -528,7 +528,24 @@ export const FixedRosterPage = (): JSX.Element => {
       // opts the mutation OUT of the global error toast. Without this the refusal would be
       // silent: the button would stop spinning, the refetch would drop the drags, and the reader
       // would be left guessing. The commonest refusal here is a driver another row still holds.
-      toast.error(errorMessage(error, locale));
+      //
+      // A refusal on THIS screen names the row it refused, and that is worth more than the
+      // friendly generic: the offending vehicle could be any of a hundred, and "some fields need
+      // your attention" gives the reader nothing to act on. `validationDetails` carries the
+      // field and the rule the server actually applied.
+      //
+      // Scoped to this page ON PURPOSE. The server's detail messages are English-only, so
+      // preferring them inside `errorMessage` would put English in front of an Arabic reader on
+      // every screen in the app. Here the trade is worth making — a save of a hundred rows is
+      // unactionable without it — and localising validation details properly is its own change.
+      const detail = validationDetails(error).find((d) => d.message.trim() !== '');
+      toast.error(
+        detail === undefined
+          ? errorMessage(error, locale)
+          : detail.field === undefined || detail.field === ''
+            ? detail.message
+            : `${detail.message} (${detail.field})`,
+      );
     }
   };
 

@@ -738,12 +738,13 @@ describe('the save payload is the edit, not the board', () => {
     ).toEqual(['v3', 'v4']);
   });
 
-  it('leaves a row the drag did not touch IDENTICAL — the same object, not an equal one', () => {
-    // Value equality is what `changedRows` asks, but identity is the stronger guarantee and the
-    // one that says the row was not rebuilt behind the user's back.
+  it('leaves a row the drag did not touch exactly as it came in', () => {
+    // Compared by VALUE, which is the guarantee that matters: `changedRows` measures rows by
+    // value, so a row equal to its baseline is not sent. Whether the implementation hands back
+    // the same object or an equal copy is its own business.
     const saved = [legacy('v1', '150', 'e9', 'm1'), row('v2', '151'), row('v3', '152', 'e3')];
     const after = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e3');
-    expect(after[0], 'the legacy row is the very row that came in').toBe(saved[0]);
+    expect(after[0], 'the legacy row came back unchanged').toEqual(saved[0]);
   });
 
   it('does not quietly rewrite a stored driver2-only row somebody else created', () => {

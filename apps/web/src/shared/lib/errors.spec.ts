@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { ApiError } from './api-client';
-import { errorDiagnostic, errorMessage, hasError } from './errors';
+import { errorDiagnostic, errorMessage, hasError, validationDetails } from './errors';
 
 const read = (relative: string): string =>
   readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
@@ -97,18 +97,35 @@ describe('the shared state components decide presence through hasError', () => {
   }
 });
 
-// ── a validation refusal has to SAY what it refused ────────────────────────
+// ── a validation refusal reaches an Arabic reader in Arabic ────────────────
 //
 // The server emits code `VALIDATION_FAILED`; the friendly table keyed it `VALIDATION_ERROR`, so
-// the lookup always missed and fell through to the server's own constant top-level message —
-// the bare English `Validation failed`, shown to an Arabic user, with the `details` that name
-// the offending field and rule never rendered at all. On a hundred-vehicle board that is a
-// refusal with no way to act on it.
-describe('a validation refusal names what was refused', () => {
+// the lookup always missed and fell through to the server's own top-level message — the bare
+// English constant `Validation failed`, shown to an Arabic reader on every screen in the app.
+//
+// The fix is the key, and ONLY the key. The `details` the server sends alongside are English-only
+// strings, so preferring them here would trade one English leak for a worse one: a specific
+// English sentence on all twelve screens that call this. A screen that genuinely needs the detail
+// reads it itself through `validationDetails` — Fixed Roster does — and localising validation
+// details properly is its own change.
+describe('a validation refusal is localised, and stays localised', () => {
   const validation = (details: unknown) =>
     new ApiError('VALIDATION_FAILED', 'Validation failed', 400, details as never);
 
-  it('shows the detail the server sent, not the generic top-level message', () => {
+  it('answers in the reader’s own language', () => {
+    expect(errorMessage(validation([]), 'ar')).toBe('بعض الحقول تحتاج إلى مراجعة.');
+    expect(errorMessage(validation(undefined), 'en')).toBe('Some fields need your attention.');
+  });
+
+  it('never shows the server’s bare English constant', () => {
+    // What the wrong key produced. The top-level message is the same string for every cause, so
+    // it was both untranslated AND uninformative.
+    expect(errorMessage(validation(undefined), 'ar')).not.toBe('Validation failed');
+  });
+
+  it('does NOT leak the server’s English detail into the global message', () => {
+    // The regression this guards: a detail preferred here would reach an Arabic reader in English
+    // on every screen. Fixed Roster opts in deliberately; nobody else does.
     const message = errorMessage(
       validation([
         {
@@ -119,21 +136,19 @@ describe('a validation refusal names what was refused', () => {
       ]),
       'ar',
     );
-    expect(message).toContain('mission type not found or inactive');
-    expect(message, 'and it says WHERE').toContain('body.rows.missionTypeId');
-    expect(message, 'never the bare constant').not.toBe('Validation failed');
+    expect(message).toBe('بعض الحقول تحتاج إلى مراجعة.');
+    expect(message).not.toContain('mission type not found or inactive');
   });
 
-  it('falls back to the friendly copy when there is no detail to show', () => {
-    // The key used to be wrong, so even this fell through to raw English.
-    expect(errorMessage(validation([]), 'ar')).toBe('بعض الحقول تحتاج إلى مراجعة.');
-    expect(errorMessage(validation(undefined), 'en')).toBe('Some fields need your attention.');
-  });
-
-  it('ignores a detail carrying no usable message', () => {
-    expect(errorMessage(validation([{ field: 'x', code: 'Y' }]), 'en')).toBe(
-      'Some fields need your attention.',
-    );
+  it('still hands the details to a caller that asks for them', () => {
+    // How a screen opts in: the detail is available, it is simply not the default copy.
+    const error = validation([
+      { field: 'body.rows.0.driver1EmployeeId', code: 'UNKNOWN', message: 'employee not found' },
+    ]);
+    expect(validationDetails(error)).toEqual([
+      { field: 'body.rows.0.driver1EmployeeId', code: 'UNKNOWN', message: 'employee not found' },
+    ]);
+    expect(validationDetails(validation(undefined))).toEqual([]);
   });
 
   it('leaves every other error code exactly as it was', () => {

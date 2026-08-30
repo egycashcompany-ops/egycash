@@ -86,6 +86,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.contractType': { permission: 'contractType.manage' },
   'hr.costCenterAssignment': { permission: 'costCenter.view' },
   'hr.attendanceDay': { permission: 'attendance.view' },
+  // AT-D1 — the registry gates on its own key, not on `attendance.view`: seeing the daily sheet
+  // is not seeing which devices exist and where they stand.
+  'hr.attendanceDevice': { permission: 'attendanceDevice.view' },
   'hr.attendanceDays': { permission: 'attendance.view' },
   'hr.attendancePeriod': { permission: 'attendance.view' },
   'hr.attendancePunch': { permission: 'attendance.view' },

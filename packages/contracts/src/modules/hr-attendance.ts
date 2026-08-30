@@ -242,7 +242,10 @@ export interface AttendancePunchDto {
   direction: AttendancePunchDirection;
   source: AttendancePunchSource;
   deviceId: string | null;
+  /** D12.7 — where the punch physically happened: the DEVICE's branch on an imported row. */
   branchIdAtPunch: string | null;
+  /** The employee's branch at the moment of the punch — the reader's axis (AT-D1). */
+  employeeBranchId: string | null;
   importBatchId: string | null;
   /** D9: set when a later record superseded this one; the row itself never changes. */
   supersededBy: string | null;
@@ -643,3 +646,87 @@ export const HrAttendanceSettingKeys = {
    */
   AbsenceNotify: 'hr.attendance.absenceNotify',
 } as const;
+
+// ── Punch devices (D12.5, D12.7 — AT-D1) ────────────────────────────────────
+
+/**
+ * A punch device is a REAL THING IN A REAL PLACE, and until AT-D1 it was a string.
+ *
+ * `deviceId` lived on the punch as free text: nothing said which devices exist, none could be
+ * deactivated, and none could be observed to have gone quiet. D12.5 makes it an entity so that
+ * those three questions have answers.
+ *
+ * WHAT IS DELIBERATELY ABSENT: protocol, host, port, credentials, polling interval. D12-T — how
+ * rows physically reach ECMS — is OPEN, and a connection field added now would be a guess wearing
+ * a schema. The registry answers «which devices exist and where are they»; it does not answer
+ * «how do we talk to them», and §17.4 of the design says why the second question waits for the
+ * physical unit rather than for an opinion.
+ */
+export const AttendanceDeviceDtoKeys = ['id', 'code', 'name', 'branchId', 'isActive'] as const;
+
+export interface AttendanceDeviceDto {
+  id: string;
+  /**
+   * The identifier the device itself reports on a punch row, and the key `deviceId` resolves
+   * against. Uppercased on write so a device that shouts and a device that whispers are one
+   * device — a punch row arriving as `hq-gate-1` must not create a second registry entry.
+   */
+  code: string;
+  name: string;
+  /**
+   * D12.7 — where the device physically stands. This is what `branchIdAtPunch` records, so a
+   * punch says where it HAPPENED rather than where its owner is filed.
+   */
+  branchId: string;
+  branchName: LocalizedString | null;
+  /** A retired device keeps its history and stops accepting new rows. */
+  isActive: boolean;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Device codes are matched case-insensitively; this is the one normalization, applied on write. */
+export const normalizeDeviceCode = (code: string): string => code.trim().toUpperCase();
+
+export const CreateAttendanceDeviceSchema = z
+  .object({
+    code: z.string().trim().min(1).max(100),
+    name: z.string().trim().min(1).max(200),
+    /** Required: a device that is nowhere cannot answer the question D12.7 exists to answer. */
+    branchId: objectId(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type CreateAttendanceDevice = z.infer<typeof CreateAttendanceDeviceSchema>;
+
+/**
+ * `code` is absent on purpose: it is what historical punches were keyed by, so renaming it would
+ * silently orphan every row that already carries the old value. A mistyped code is a new device
+ * and a deactivated old one — the same stance the punch itself takes towards being wrong.
+ */
+export const UpdateAttendanceDeviceSchema = z
+  .object({
+    name: z.string().trim().min(1).max(200).optional(),
+    branchId: objectId().optional(),
+    isActive: z.boolean().optional(),
+    note: z.string().trim().max(500).nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .refine(
+    (v) =>
+      v.name !== undefined ||
+      v.branchId !== undefined ||
+      v.isActive !== undefined ||
+      v.note !== undefined,
+    { message: 'an update must change something' },
+  );
+export type UpdateAttendanceDevice = z.infer<typeof UpdateAttendanceDeviceSchema>;
+
+export const ListAttendanceDevicesQuerySchema = PaginationQuerySchema.extend({
+  branchId: objectId().optional(),
+  isActive: z.coerce.boolean().optional(),
+  search: z.string().trim().min(1).max(100).optional(),
+}).strict();
+export type ListAttendanceDevicesQuery = z.infer<typeof ListAttendanceDevicesQuerySchema>;

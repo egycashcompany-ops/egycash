@@ -7,11 +7,18 @@ import {
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
+import { scopeSelector } from '../../../../shared/types';
 import { punchService, toPunchDto } from './punch.service';
 
+/**
+ * The reader's reach is resolved and PASSED — see the repository for what happened when it was
+ * not. `attendance.view` is a key the ESS role holds, so an unscoped read here was an org-wide
+ * one for every employee in the company.
+ */
 export const listPunches = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListPunchesQuery, never>(req);
-  const page = await punchService.list(query);
+  const scope = scopeSelector(authContext(req), 'attendance.view');
+  const page = await punchService.list(query, scope);
   okPage(res, page, toPunchDto);
 };
 

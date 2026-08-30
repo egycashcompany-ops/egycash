@@ -63,6 +63,7 @@ import {
   buildAttendanceDaysRouter,
   buildAttendanceExportRouter,
   buildAttendanceOvertimeRouter,
+  buildAttendanceDevicesRouter,
   buildAttendancePunchesRouter,
   buildAttendanceRegularizationsRouter,
   buildAttendanceShiftsRouter,
@@ -1060,8 +1061,31 @@ const medicalInsurancePermissions = declarePermissions(
   'hr.medical-insurance',
 );
 
+/**
+ * The punch-device registry (design v1.3 §17.2, D12.5). API-only in AT-D1.
+ *
+ * DELIBERATELY UNASSIGNED TO A PAGE, and the reason is the same one the punch, import and
+ * recompute keys beside them already carry: the screen these belong on is the device HEALTH
+ * screen, and health is AT-D4. Assigning them to an unrelated page to make a counter look tidy
+ * would make the permission matrix say something untrue about where the key is used.
+ */
+const attendanceDevicePermissions = declarePermissions(
+  'hr',
+  'attendanceDevice',
+  { en: 'punch devices', ar: 'أجهزة البصمة' },
+  [],
+  [
+    { action: 'view', name: { en: 'View punch devices', ar: 'عرض أجهزة البصمة' } },
+    {
+      action: 'manage',
+      name: { en: 'Register and edit punch devices', ar: 'تسجيل أجهزة البصمة وتعديلها' },
+    },
+  ],
+);
+
 const attendancePermissions = [
   ...attendanceShiftAdminPermissions,
+  ...attendanceDevicePermissions,
   ...attendanceAssignPermissions,
   ...attendanceDailyPermissions,
   ...attendanceQueuePermissions,
@@ -1496,6 +1520,7 @@ export const hrModule: ModuleManifest = {
     { prefix: '/hr/contract-types', router: buildContractTypesRouter() },
     { prefix: '/hr/attendance/shifts', router: buildAttendanceShiftsRouter() },
     { prefix: '/hr/attendance/assignments', router: buildAttendanceAssignmentsRouter() },
+    { prefix: '/hr/attendance/devices', router: buildAttendanceDevicesRouter() },
     { prefix: '/hr/attendance/punches', router: buildAttendancePunchesRouter() },
     { prefix: '/hr/attendance/days', router: buildAttendanceDaysRouter() },
     { prefix: '/hr/attendance/regularizations', router: buildAttendanceRegularizationsRouter() },

@@ -1314,7 +1314,7 @@ describe('the fixed draft is persisted', () => {
     // `fleet_fixed_crews` is one standing row per vehicle, with no date, weekday or effective
     // range anywhere in it. A date key here would split one board's draft across a key per day,
     // so a reader would lose their work by doing nothing but waiting past midnight.
-    expect(SOURCE).toContain('useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, EDITABLE)');
+    expect(SOURCE).toContain('useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS)');
     const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
     expect(storage).toContain("FIXED_ROSTER_DRAFT_KEY = 'ecms.fleet.fixedRoster.draft'");
     expect(storage, 'and the constant carries no date').not.toMatch(
@@ -1354,13 +1354,15 @@ describe('the fixed draft is persisted', () => {
 
   it('restores only the fields a reader edits, never facts about the world', () => {
     // A stale `inMaintenance: false` restored over the server's `true` would offer a drop that
-    // FR-5 then refuses.
-    expect(SOURCE).toContain(
-      "const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes']",
-    );
-    expect(SOURCE, 'the board’s own shape is not in the editable set').not.toContain(
-      "'inMaintenance',",
-    );
+    // FR-5 then refuses. The set is now shared by both boards and carries the SHAPE each field's
+    // values must have, so a stored value the server would refuse cannot be restored either —
+    // `draft-storage.spec.ts` holds that behaviour.
+    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
+    expect(storage).toContain("missionTypeId: 'id'");
+    expect(storage).toContain("driver1EmployeeId: 'id'");
+    expect(storage).toContain("driver2EmployeeId: 'id'");
+    expect(storage).toContain("notes: 'text'");
+    expect(storage, 'the board’s own shape is not editable').not.toContain("inMaintenance: '");
   });
 
   it('persisting is not saving — nothing here reaches the API', () => {

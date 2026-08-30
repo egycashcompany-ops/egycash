@@ -895,7 +895,7 @@ describe('each driver list has its own search', () => {
 // ── a day's unsaved work survives a reload, and belongs to that day ────────
 describe('the daily draft is persisted, per day', () => {
   it('keys the draft by DATE — the whole of the cross-day guarantee', () => {
-    expect(SOURCE).toContain('useDraftBoard(rosterDraftKey(date), saved, EDITABLE)');
+    expect(SOURCE).toContain('useDraftBoard(rosterDraftKey(date), saved, ROSTER_EDITABLE_FIELDS)');
   });
 
   it('drops only THIS day’s draft after a successful save', () => {
@@ -908,10 +908,13 @@ describe('the daily draft is persisted, per day', () => {
     );
   });
 
-  it('restores only the fields a reader edits', () => {
-    expect(SOURCE).toContain(
-      "const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes']",
-    );
+  it('restores only the fields a reader edits, and only usable values', () => {
+    // Both boards share one spec, so neither can drift into trusting a field the other checks.
+    expect(SOURCE).toContain('ROSTER_EDITABLE_FIELDS');
+    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
+    for (const field of ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId']) {
+      expect(storage, `${field} is checked as an id`).toContain(`${field}: 'id'`);
+    }
   });
 
   it('never posts the draft anywhere', () => {

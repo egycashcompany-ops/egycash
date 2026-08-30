@@ -34,7 +34,17 @@ const row = (vehicleId: string, code: string, d1: string | null = null): Row => 
   driver1EmployeeId: d1,
 });
 
-const EDITABLE = ['driver1EmployeeId'] as const;
+const EDITABLE = { driver1EmployeeId: 'id' } as const;
+
+/** Real 24-hex ids — the restore rule checks the shape, so the fixtures must hold real ones. */
+const minted = new Map<string, string>();
+const oid = (tag: string): string => {
+  const found = minted.get(tag);
+  if (found !== undefined) return found;
+  const id = `6500000000000000000${String(minted.size + 1).padStart(5, '0')}`;
+  minted.set(tag, id);
+  return id;
+};
 const KEY = 'ecms.test.draft';
 const BOARD: Row[] = [row('v1', '150'), row('v2', '151')];
 
@@ -69,26 +79,26 @@ describe('a reload finds the work that was not saved', () => {
   it('RESTORES the stored draft on mount — this is the whole feature', () => {
     // The scenario: edit, do not save, refresh. React state is gone and the query cache is
     // empty, so the only thing that can bring the edit back is storage.
-    writeDraft(KEY, [row('v1', '150', 'e1'), row('v2', '151')]);
-    expect(crews(mount().draft), 'the edit came back').toEqual(['e1', null]);
+    writeDraft(KEY, [row('v1', '150', oid('e1')), row('v2', '151')]);
+    expect(crews(mount().draft), 'the edit came back').toEqual([oid('e1'), null]);
   });
 
   it('restores it without an effect — it is there on the FIRST render', () => {
     // `renderToStaticMarkup` never runs effects. That this passes at all is the proof.
-    writeDraft(KEY, [row('v1', '150', 'e1'), row('v2', '151')]);
-    expect(mount().draft[0]?.driver1EmployeeId).toBe('e1');
+    writeDraft(KEY, [row('v1', '150', oid('e1')), row('v2', '151')]);
+    expect(mount().draft[0]?.driver1EmployeeId).toBe(oid('e1'));
   });
 
   it('restores nothing for a board that has no stored draft', () => {
-    writeDraft('ecms.test.other', [row('v1', '150', 'e1')]);
+    writeDraft('ecms.test.other', [row('v1', '150', oid('e1'))]);
     expect(crews(mount().draft)).toEqual([null, null]);
   });
 
   it('restores the draft belonging to THIS key, not another', () => {
-    writeDraft('ecms.test.day1', [row('v1', '150', 'day-1'), row('v2', '151')]);
-    writeDraft('ecms.test.day2', [row('v1', '150', 'day-2'), row('v2', '151')]);
-    expect(mount('ecms.test.day1').draft[0]?.driver1EmployeeId).toBe('day-1');
-    expect(mount('ecms.test.day2').draft[0]?.driver1EmployeeId).toBe('day-2');
+    writeDraft('ecms.test.day1', [row('v1', '150', oid('day-1')), row('v2', '151')]);
+    writeDraft('ecms.test.day2', [row('v1', '150', oid('day-2')), row('v2', '151')]);
+    expect(mount('ecms.test.day1').draft[0]?.driver1EmployeeId).toBe(oid('day-1'));
+    expect(mount('ecms.test.day2').draft[0]?.driver1EmployeeId).toBe(oid('day-2'));
   });
 
   it('survives a stored draft that is nonsense', () => {
@@ -101,15 +111,15 @@ describe('a reload finds the work that was not saved', () => {
 describe('editing writes it down', () => {
   it('persists the edit, so the NEXT mount finds it', () => {
     const board = mount();
-    board.setDraft((rows) => rows.map((r) => (r.vehicleId === 'v1' ? { ...r, driver1EmployeeId: 'e1' } : r)));
+    board.setDraft((rows) => rows.map((r) => (r.vehicleId === 'v1' ? { ...r, driver1EmployeeId: oid('e1') } : r)));
     expect(readDraft(KEY, BOARD, EDITABLE), 'it reached storage').not.toBeNull();
-    expect(crews(mount().draft), 'and a reload brings it back').toEqual(['e1', null]);
+    expect(crews(mount().draft), 'and a reload brings it back').toEqual([oid('e1'), null]);
   });
 });
 
 describe('discarding and saving both end the draft', () => {
   const withDraft = (): DraftBoard<Row> => {
-    writeDraft(KEY, [row('v1', '150', 'e1'), row('v2', '151')]);
+    writeDraft(KEY, [row('v1', '150', oid('e1')), row('v2', '151')]);
     return mount();
   };
 
@@ -131,23 +141,23 @@ describe('discarding and saving both end the draft', () => {
   });
 
   it('accepting one board does not throw away another’s', () => {
-    writeDraft('ecms.test.day1', [row('v1', '150', 'a'), row('v2', '151')]);
-    writeDraft('ecms.test.day2', [row('v1', '150', 'b'), row('v2', '151')]);
+    writeDraft('ecms.test.day1', [row('v1', '150', oid('a')), row('v2', '151')]);
+    writeDraft('ecms.test.day2', [row('v1', '150', oid('b')), row('v2', '151')]);
     mount('ecms.test.day1').accept();
     expect(store.has('ecms.test.day1')).toBe(false);
-    expect(mount('ecms.test.day2').draft[0]?.driver1EmployeeId, 'day 2 is untouched').toBe('b');
+    expect(mount('ecms.test.day2').draft[0]?.driver1EmployeeId, 'day 2 is untouched').toBe(oid('b'));
   });
 });
 
 describe('the draft never invents server state', () => {
   it('takes a vehicle the draft never mentioned from the server', () => {
-    writeDraft(KEY, [row('v1', '150', 'e1')]);
-    const grown = [...BOARD, row('v3', '152', 'from-server')];
-    expect(crews(mount(KEY, grown).draft)).toEqual(['e1', null, 'from-server']);
+    writeDraft(KEY, [row('v1', '150', oid('e1'))]);
+    const grown = [...BOARD, row('v3', '152', oid('from-server'))];
+    expect(crews(mount(KEY, grown).draft)).toEqual([oid('e1'), null, oid('from-server')]);
   });
 
   it('holds no draft at all before the board arrives', () => {
-    writeDraft(KEY, [row('v1', '150', 'e1')]);
+    writeDraft(KEY, [row('v1', '150', oid('e1'))]);
     expect(mount(KEY, []).draft, 'nothing to restore against yet').toEqual([]);
   });
 });

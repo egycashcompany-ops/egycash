@@ -52,7 +52,7 @@ import {
   setMission,
 } from '../lib/daily-roster-board';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
-import { rosterDraftKey } from '../lib/draft-storage';
+import { rosterDraftKey, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import { useDraftBoard } from '../lib/useDraftBoard';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -213,12 +213,6 @@ const RosterSlotCell = ({
   );
 };
 
-/**
- * What a reader edits on this board — and therefore the only thing a restored draft may carry
- * over from storage. Everything else on a row is the server's to state.
- */
-const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes'] as const;
-
 export const RosterPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -277,7 +271,7 @@ export const RosterPage = (): JSX.Element => {
     setDraft,
     discard,
     accept: acceptDraft,
-  } = useDraftBoard(rosterDraftKey(date), saved, EDITABLE);
+  } = useDraftBoard(rosterDraftKey(date), saved, ROSTER_EDITABLE_FIELDS);
 
   // What a save would WRITE — edits, plus any operation still only projected from the standing
   // crew. The second half is what carries an unchanged operation through to Operations.

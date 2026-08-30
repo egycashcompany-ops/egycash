@@ -15,7 +15,7 @@
 // What is new is only the third case: when there is no draft in hand for this board, one may
 // be restored from storage. Nothing else about the flow moves.
 import { useMemo, useState } from 'react';
-import { clearDraft, readDraft, writeDraft } from './draft-storage';
+import { clearDraft, readDraft, writeDraft, type EditableFields } from './draft-storage';
 
 export interface DraftBoard<T> {
   /** What the screen renders and edits: the restored or in-hand draft, else the server board. */
@@ -37,8 +37,12 @@ export const useDraftBoard = <T extends { vehicleId: string }>(
    */
   key: string,
   saved: readonly T[],
-  /** The fields a restore may take from storage; everything else comes from the server's row. */
-  editable: readonly (keyof T & string)[],
+  /**
+   * The fields a restore may take from storage, each with the shape its values must have.
+   * Everything else comes from the server's row — and so does any editable field whose stored
+   * value the server would refuse. See `readDraft`.
+   */
+  editable: EditableFields,
 ): DraftBoard<T> => {
   const [edit, setEdit] = useState<{ base: readonly T[]; rows: T[] }>({ base: [], rows: [] });
   // Bumped whenever this screen writes to or clears storage, so the read below re-runs. Without

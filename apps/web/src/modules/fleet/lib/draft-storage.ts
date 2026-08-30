@@ -45,6 +45,55 @@ export const clearDraft = (key: string): void => {
   }
 };
 
+/** What an editable field holds: a reference to another record, or free text the reader typed. */
+export type EditableKind = 'id' | 'text';
+
+/** The editable fields of one board, each with the shape its stored values must have. */
+export type EditableFields = Readonly<Record<string, EditableKind>>;
+
+/**
+ * The four facts a roster row lets a reader edit. Shared by both boards, which edit the same
+ * four, so neither can drift into trusting a field the other checks.
+ */
+export const ROSTER_EDITABLE_FIELDS: EditableFields = {
+  missionTypeId: 'id',
+  driver1EmployeeId: 'id',
+  driver2EmployeeId: 'id',
+  notes: 'text',
+};
+
+const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
+
+/**
+ * May this stored value be laid over the server's?
+ *
+ * THE RULE IS THE CONTRACT'S OWN, RESTATED — not a second, looser one. The server accepts an id
+ * that is null or twenty-four hex characters, and a note that is null or one to five hundred
+ * characters after trimming. Anything else it refuses, so restoring it would only put the reader
+ * back where they started: a board that cannot be saved and does not say why.
+ *
+ * This is NOT validation moving to the client, and it does not relax anything. The server still
+ * decides, and still refuses every value below. What this stops is the BOARD proposing a value
+ * it can already see the server will reject — a value the reader never typed, that arrived from
+ * a draft written by an older build of this screen.
+ *
+ * The strings that matter here are the ones that look like data and are not: `"undefined"` is
+ * what a mapper produces from an absent field (this board's own bug, fixed server-side, but the
+ * drafts it wrote survive in storage); `"null"` and `""` are the same mistake made by hand. All
+ * three are ordinary strings that pass every type check and mean nothing.
+ *
+ * `"undefined"` as a NOTE is left alone: a note is free text, and a reader who typed that word
+ * meant it.
+ */
+const usable = (kind: EditableKind, value: unknown): boolean => {
+  // Nullable on both boards: "no mission", "no driver", "no note".
+  if (value === null) return true;
+  if (typeof value !== 'string') return false;
+  if (kind === 'id') return OBJECT_ID.test(value);
+  const text = value.trim();
+  return text.length > 0 && text.length <= 500;
+};
+
 /**
  * The persisted draft for `key`, RECONCILED against the board the server just sent.
  *
@@ -55,6 +104,11 @@ export const clearDraft = (key: string): void => {
  *    release of this screen, or a user who edited storage by hand. Answered with `null`: the
  *    board falls back to the server's own rows, which is exactly the behaviour before any of
  *    this existed.
+ *  • UNUSABLE — a field holding something the server would refuse: `"undefined"`, `"null"`,
+ *    `""`, a number, an object. Dropped FIELD BY FIELD, so the rest of the draft survives; the
+ *    row keeps the server's own value for that field. A draft whose every field is dropped
+ *    leaves the board equal to the server's, so it does not count as a draft and no unsaved
+ *    banner appears over work nobody did and nobody could save.
  *  • STALE — rows for vehicles the board no longer has. A vehicle sold, or a reader whose
  *    scope changed between the edit and the reload. Those rows are DROPPED rather than
  *    restored, because a draft may only ever speak about vehicles that are actually on the
@@ -73,14 +127,15 @@ export const readDraft = <T extends { vehicleId: string }>(
   key: string,
   saved: readonly T[],
   /**
-   * The fields the reader may actually edit — the ONLY ones taken from storage.
+   * The fields the reader may actually edit, each with the SHAPE its values must have — the only
+   * ones taken from storage, and only when what is stored is usable.
    *
    * Everything else on a row is a fact about the world: the vehicle's code and plate, and
    * whether the workshop holds it today. A reload is exactly when those may have changed, and a
    * stale `inMaintenance: false` restored over the server's `true` would offer a drop that FR-5
    * then refuses. So a restore is a narrow overlay onto the server's row, not a merge of two.
    */
-  editable: readonly (keyof T & string)[],
+  editable: EditableFields,
 ): T[] | null => {
   const stored = read(key);
   if (!Array.isArray(stored) || stored.length === 0) return null;
@@ -98,13 +153,19 @@ export const readDraft = <T extends { vehicleId: string }>(
   const rows = saved.map((row) => {
     const restored = byVehicle.get(row.vehicleId);
     if (restored === undefined) return row;
-    // Built ON the server's row, taking only the editable fields from storage — see `editable`.
-    const merged = { ...row };
-    for (const field of editable) {
-      if (Object.hasOwn(restored, field)) merged[field] = restored[field];
+    // Built ON the server's row, taking an editable field from storage only when what is stored
+    // is USABLE — see `usable`. A field that is missing, or holds something the server would
+    // refuse, simply does not overwrite: the row keeps the server's own value for it, and the
+    // rest of the draft is unaffected.
+    const merged: Record<string, unknown> = { ...row };
+    for (const [field, kind] of Object.entries(editable)) {
+      if (!Object.hasOwn(restored, field)) continue;
+      const value = (restored as Record<string, unknown>)[field];
+      if (!usable(kind, value)) continue;
+      merged[field] = value;
     }
     if (JSON.stringify(merged) !== JSON.stringify(row)) differs = true;
-    return merged;
+    return merged as T;
   });
 
   return differs ? rows : null;

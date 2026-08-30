@@ -50,7 +50,7 @@ import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
-import { FIXED_ROSTER_DRAFT_KEY } from '../lib/draft-storage';
+import { FIXED_ROSTER_DRAFT_KEY, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import { useDraftBoard } from '../lib/useDraftBoard';
 import {
   CREW_SLOTS,
@@ -404,12 +404,6 @@ const CrewSlotCell = ({
   );
 };
 
-/**
- * What a reader edits on this board — and therefore the only thing a restored draft may carry
- * over from storage. Everything else on a row is the server's to state.
- */
-const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes'] as const;
-
 export const FixedRosterPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -443,7 +437,7 @@ export const FixedRosterPage = (): JSX.Element => {
     setDraft,
     discard,
     accept: acceptDraft,
-  } = useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, EDITABLE);
+  } = useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, ROSTER_EDITABLE_FIELDS);
 
   const pending = useMemo(() => changedRows(saved, draft), [saved, draft]);
   const dirty = pending.length > 0;

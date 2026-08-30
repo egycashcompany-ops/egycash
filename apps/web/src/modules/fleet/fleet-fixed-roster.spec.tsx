@@ -1082,7 +1082,13 @@ describe('saving', () => {
     // first paint, so the board would flash empty on arrival — and never runs at all under
     // `renderToStaticMarkup`, which is how this whole file tests the screen. Keying on identity
     // is what makes "the server refused, nothing changed" mean "your draft is still here".
-    expect(SOURCE).toContain('const draft = edit.base === saved ? edit.rows : saved;');
+    // The rule now lives in `useDraftBoard`, shared with the daily board. UNCHANGED: keying on
+    // identity is still what makes "the server refused, nothing changed" mean "your draft is
+    // still here".
+    expect(
+      readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8'),
+    ).toContain('edit.base === saved ? edit.rows');
+    expect(SOURCE, 'and this page uses it').toContain('useDraftBoard(');
     expect(SOURCE, 'the saved board is a stable reference').toMatch(
       /const saved = useMemo\(\(\) => boardQuery\.data\?\.rows \?\? \[\], \[boardQuery\.data\]\)/,
     );
@@ -1294,5 +1300,75 @@ describe('a refused save names the row it refused', () => {
     expect(helper.slice(0, helper.indexOf('};')), 'errorMessage reads no details').not.toContain(
       'details',
     );
+  });
+});
+
+// ── the standing board's unsaved work survives a reload ────────────────────
+//
+// The draft lived in `useState` alone and the query cache is in-memory, so a browser refresh
+// took a morning's crew changes with it. Nothing was "cleared" — nothing was ever written down.
+describe('the fixed draft is persisted', () => {
+  const HOOK = readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8');
+
+  it('keys the draft with NO DATE — this board is not a day', () => {
+    // `fleet_fixed_crews` is one standing row per vehicle, with no date, weekday or effective
+    // range anywhere in it. A date key here would split one board's draft across a key per day,
+    // so a reader would lose their work by doing nothing but waiting past midnight.
+    expect(SOURCE).toContain('useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, EDITABLE)');
+    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
+    expect(storage).toContain("FIXED_ROSTER_DRAFT_KEY = 'ecms.fleet.fixedRoster.draft'");
+    expect(storage, 'and the constant carries no date').not.toMatch(
+      /FIXED_ROSTER_DRAFT_KEY = [^\n]*\$\{/,
+    );
+  });
+
+  it('keeps the render-time draft rule intact', () => {
+    // Moved, not changed: still derived during render (an effect never runs under
+    // `renderToStaticMarkup`, and would flash the board in a browser).
+    expect(HOOK).toContain('edit.base === saved ? edit.rows');
+    expect(HOOK, 'no effect seeds or persists the draft').not.toContain('useEffect');
+  });
+
+  it('writes the draft on every edit, so a reload finds it', () => {
+    expect(HOOK).toMatch(/setDraft[\s\S]{0,300}writeDraft\(key, rows\)/);
+  });
+
+  it('CANCEL clears storage as well as state', () => {
+    // Discarding in memory alone would put the work back on screen at the next reload, which is
+    // the opposite of what the button says.
+    expect(HOOK).toMatch(/discard[\s\S]{0,200}forget\(\)/);
+  });
+
+  it('a successful save drops the draft; a REFUSED save keeps it', () => {
+    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const dash'));
+    expect(commit).toContain('acceptDraft()');
+    expect(
+      commit.indexOf('save.mutateAsync'),
+      'cleared only after the server accepted it',
+    ).toBeLessThan(commit.indexOf('acceptDraft()'));
+    expect(
+      commit.slice(commit.indexOf('catch')),
+      'a refusal is the moment the reader most needs their work',
+    ).not.toContain('acceptDraft()');
+  });
+
+  it('restores only the fields a reader edits, never facts about the world', () => {
+    // A stale `inMaintenance: false` restored over the server's `true` would offer a drop that
+    // FR-5 then refuses.
+    expect(SOURCE).toContain(
+      "const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes']",
+    );
+    expect(SOURCE, 'the board’s own shape is not in the editable set').not.toContain(
+      "'inMaintenance',",
+    );
+  });
+
+  it('persisting is not saving — nothing here reaches the API', () => {
+    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(storage).not.toMatch(/\bfetch\(|saveFixedRoster|planRoster|\bapi\./);
+    expect(storage, 'session-scoped: a draft must not outlive the tab').toContain('sessionStorage');
+    expect(storage).not.toContain('localStorage');
   });
 });

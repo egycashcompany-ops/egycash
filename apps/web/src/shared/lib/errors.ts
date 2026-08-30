@@ -7,7 +7,7 @@ import { ApiError } from './api-client';
 
 const FRIENDLY: Record<Locale, Record<string, string>> = {
   en: {
-    VALIDATION_ERROR: 'Some fields need your attention.',
+    VALIDATION_FAILED: 'Some fields need your attention.',
     FORBIDDEN: 'You do not have permission to do that.',
     NOT_FOUND: 'That item could not be found.',
     CONFLICT: 'That action conflicts with the current state.',
@@ -26,7 +26,7 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     UNKNOWN: 'Something went wrong. Please try again.',
   },
   ar: {
-    VALIDATION_ERROR: 'بعض الحقول تحتاج إلى مراجعة.',
+    VALIDATION_FAILED: 'بعض الحقول تحتاج إلى مراجعة.',
     FORBIDDEN: 'ليس لديك صلاحية للقيام بذلك.',
     NOT_FOUND: 'تعذّر العثور على هذا العنصر.',
     CONFLICT: 'هذا الإجراء يتعارض مع الحالة الحالية.',
@@ -59,9 +59,36 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
  */
 export const hasError = (error: unknown): boolean => error !== undefined && error !== null;
 
+/**
+ * The first thing a validation refusal actually SAYS.
+ *
+ * `ValidationError` carries `details: [{ field, code, message }]` — the field and the rule that
+ * refused it — while its top-level message is the constant `'Validation failed'`. Rendering only
+ * the top level told a user that something was wrong and nothing about what, on a screen where
+ * the offending row could be any of a hundred. The detail is the part worth reading.
+ */
+const firstDetail = (error: ApiError): string | null => {
+  const details: unknown = error.details;
+  if (!Array.isArray(details)) return null;
+  for (const detail of details) {
+    const message = (detail as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim() !== '') {
+      const field = (detail as { field?: unknown }).field;
+      return typeof field === 'string' && field !== '' ? `${message} (${field})` : message;
+    }
+  }
+  return null;
+};
+
 export const errorMessage = (error: unknown, locale: Locale): string => {
   const table = FRIENDLY[locale];
   if (error instanceof ApiError) {
+    // A refusal that names a field beats a friendly generic: the generic is the same sentence for
+    // every possible cause, and the detail is why the save was actually rejected.
+    if (error.code === 'VALIDATION_FAILED') {
+      const detail = firstDetail(error);
+      if (detail !== null) return detail;
+    }
     return table[error.code] ?? (error.message !== '' ? error.message : table.UNKNOWN ?? 'Error');
   }
   if (error instanceof TypeError) return table.NETWORK ?? 'Network error';

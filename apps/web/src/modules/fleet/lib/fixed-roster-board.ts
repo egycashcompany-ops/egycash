@@ -79,6 +79,24 @@ export const assignDriver = (
     // Any OTHER car releases them — that is what makes one driver, one crew true. A car that
     // gives up its FIRST driver this way is left holding only a second, so it is re-seated.
     if (row.vehicleId !== vehicleId) {
+      const releases =
+        row.driver1EmployeeId === employeeId || row.driver2EmployeeId === employeeId;
+      // A car that had nothing to do with this drag comes back UNTOUCHED — the same object, not
+      // an equal one. That is not a micro-optimisation, it is the difference between a save that
+      // works and one that 400s.
+      //
+      // `changedRows` sends every row that differs from the saved board, and `seatOrder` is a
+      // NORMALISATION: run over the whole board it silently promotes the second driver of any row
+      // stored before that rule existed — rows nobody touched. Those rows then differ, so they
+      // travel, and the server re-validates each one against rules it never had to satisfy when
+      // it was written: a driver whose profile has since been deactivated, or a mission type
+      // since archived. One such row anywhere in the fleet failed the WHOLE save, and the board
+      // reported it as a bare `Validation failed` on an edit somewhere else entirely.
+      //
+      // So the rule is: normalise what the gesture TOUCHES. A record the user did not edit is not
+      // this save's business, and correcting it silently was never the intent — the schema still
+      // refuses to WRITE the bad shape, and editing such a row still promotes it.
+      if (!releases) return row;
       return seatOrder({
         ...row,
         driver1EmployeeId: row.driver1EmployeeId === employeeId ? null : row.driver1EmployeeId,

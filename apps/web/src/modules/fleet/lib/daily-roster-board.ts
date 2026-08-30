@@ -80,6 +80,15 @@ export const assignDriver = (
   return rows.map((row) => {
     // Any OTHER car releases them — that is what makes one driver, one vehicle per date true.
     if (row.vehicleId !== vehicleId) {
+      const releases =
+        row.driver1EmployeeId === employeeId || row.driver2EmployeeId === employeeId;
+      // A vehicle with nothing to do with this drag comes back UNTOUCHED. `seatOrder` is a
+      // normalisation, and run over the whole board it rewrites rows the user never edited —
+      // which puts them in the save payload, where the server re-validates them against rules
+      // they were not written under. Worse here than on the fixed board: `rowsToSave` would then
+      // MATERIALISE those rows too, turning a stray promotion into a stored duty assignment.
+      // Normalise what the gesture touches, and nothing else.
+      if (!releases) return row;
       // A vehicle that gives up its FIRST driver this way is left holding only a second, so it
       // is re-seated rather than left in a state the server refuses.
       return seatOrder({

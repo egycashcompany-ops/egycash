@@ -1188,3 +1188,68 @@ describe('driver 2 depends on driver 1', () => {
     expect(handler.slice(0, 260)).toContain('setDriver2(null)');
   });
 });
+
+// ── each vehicle wears its own colour ──────────────────────────────────────
+//
+// A hundred rows of three-digit codes that differ by one glyph are hard to keep your place in.
+// The colour is hashed from the vehicle's ID — not its row index — so it survives filtering,
+// sorting and new vehicles arriving. The rules themselves are in `vehicle-colour.spec.ts`; these
+// assert the BOARD actually wears them.
+
+describe('the vehicle code carries the vehicle’s colour', () => {
+  const chipFor = (markup: string, vehicleId: string): string => {
+    const at = markup.indexOf(`data-vehicle-colour="${vehicleId}"`);
+    return at === -1 ? '' : markup.slice(markup.lastIndexOf('<span', at), markup.indexOf('>', at));
+  };
+
+  it('gives each vehicle a palette class', () => {
+    const markup = render();
+    for (const id of [V1, V2]) {
+      const chip = chipFor(markup, id);
+      expect(chip, `${id} has no colour chip`).not.toBe('');
+      expect(chip, 'and it is a palette entry').toMatch(/bg-[a-z]+-(100|200)/);
+    }
+  });
+
+  it('gives the two vehicles DIFFERENT colours', () => {
+    const markup = render();
+    expect(chipFor(markup, V1)).not.toBe(chipFor(markup, V2));
+  });
+
+  it('keeps a vehicle’s colour when the board is FILTERED to a different set', () => {
+    // The search narrows `rows`, so a colour taken from an array index would repaint the fleet
+    // on every keystroke. This is the regression that would catch it.
+    const all = render();
+    const filtered = render({ route: '/fleet/fixed-roster?q=151' });
+    expect(filtered, 'the filter really did narrow the board').not.toContain(
+      `data-vehicle-colour="${V1}"`,
+    );
+    expect(chipFor(filtered, V2), 'and 151 still wears its own colour').toBe(chipFor(all, V2));
+  });
+
+  it('keeps each colour when the board arrives in a DIFFERENT ORDER', () => {
+    const forward = render();
+    const reversed = render({ qc: client({ ...BOARD, rows: [...BOARD.rows].reverse() }) });
+    expect(chipFor(reversed, V1)).toBe(chipFor(forward, V1));
+    expect(chipFor(reversed, V2)).toBe(chipFor(forward, V2));
+  });
+
+  it('does not repaint the existing vehicles when a new one arrives', () => {
+    const before = render();
+    const withExtra = render({
+      qc: client({
+        ...BOARD,
+        rows: [row('64b1f0abcdefabcdefab7777', '99'), ...BOARD.rows],
+      }),
+    });
+    expect(chipFor(withExtra, V1)).toBe(chipFor(before, V1));
+    expect(chipFor(withExtra, V2)).toBe(chipFor(before, V2));
+  });
+
+  it('is a label, not a status — the code stays the readable thing', () => {
+    const markup = render();
+    const chip = chipFor(markup, V1);
+    expect(chip, 'dark text on a light fill').toMatch(/text-[a-z]+-800/);
+    expect(chip, 'and the inverse in dark mode').toMatch(/dark:text-[a-z]+-(100|200)/);
+  });
+});

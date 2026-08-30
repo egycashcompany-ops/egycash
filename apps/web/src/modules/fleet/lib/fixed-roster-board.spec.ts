@@ -705,3 +705,90 @@ describe('a second driver needs a first', () => {
     ]);
   });
 });
+
+// ── a save carries what the user EDITED, and nothing else ──────────────────
+//
+// The regression that made «حفظ» answer `Validation failed` on a real fleet.
+//
+// `seatOrder` is a normalisation, and it was applied inside `assignDriver`'s "any other car"
+// branch — i.e. to EVERY row on the board. Any row stored before the driver-order rule existed
+// (driver 2 with no driver 1) was therefore silently promoted by a drag somewhere else, which
+// made it DIFFER from the saved board, which put it in the payload. The server then re-validated
+// those untouched rows against rules they were never written under — a driver whose profile has
+// since been deactivated, a mission type since archived — and one such row anywhere in the fleet
+// failed the WHOLE save. On a hundred-vehicle board that is one bad row away from unsaveable.
+describe('the save payload is the edit, not the board', () => {
+  const legacy = (vehicleId: string, code: string, d2: string, mission: string | null) => ({
+    ...row(vehicleId, code, null, d2),
+    missionTypeId: mission,
+  });
+
+  it('sends ONLY the two sides of a move, on a board full of untouched rows', () => {
+    const saved = [
+      legacy('v1', '150', 'e9', 'm-archived'),
+      legacy('v2', '151', 'e8', 'm-archived'),
+      row('v3', '152'),
+      row('v4', '153', 'e3'),
+      row('v5', '154', 'e4', 'e5'),
+    ];
+    const sent = changedRows(saved, assignDriver(saved, 'v3', 'driver1EmployeeId', 'e3'));
+    expect(
+      sent.map((r) => r.vehicleId).sort(),
+      'the receiving car and the releasing car — nobody else',
+    ).toEqual(['v3', 'v4']);
+  });
+
+  it('leaves a row the drag did not touch IDENTICAL — the same object, not an equal one', () => {
+    // Value equality is what `changedRows` asks, but identity is the stronger guarantee and the
+    // one that says the row was not rebuilt behind the user's back.
+    const saved = [legacy('v1', '150', 'e9', 'm1'), row('v2', '151'), row('v3', '152', 'e3')];
+    const after = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e3');
+    expect(after[0], 'the legacy row is the very row that came in').toBe(saved[0]);
+  });
+
+  it('does not quietly rewrite a stored driver2-only row somebody else created', () => {
+    const saved = [legacy('v1', '150', 'e9', 'm1'), row('v2', '151'), row('v3', '152', 'e3')];
+    const after = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e3');
+    expect(crews(after)[0], 'still exactly as stored').toBe('150:-/e9');
+    expect(isDirty(saved, after), 'and it is not part of what is pending').toBe(true);
+    expect(changedRows(saved, after).some((r) => r.vehicleId === 'v1')).toBe(false);
+  });
+
+  it('STILL normalises the row the drag actually empties', () => {
+    // The rule has not been weakened where it applies: a car that gives up its FIRST driver is
+    // left holding only a second, and that IS this gesture's business.
+    const saved = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
+    const after = assignDriver(saved, 'v2', 'driver1EmployeeId', 'e1');
+    expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
+    expect(changedRows(saved, after).map((r) => r.vehicleId).sort()).toEqual(['v1', 'v2']);
+  });
+
+  it('STILL normalises a row edited through the dialog', () => {
+    const saved = [legacy('v1', '150', 'e9', 'm1')];
+    const after = applyEdit(saved, 'v1', {
+      missionTypeId: 'm1',
+      driver1EmployeeId: null,
+      driver2EmployeeId: 'e9',
+      notes: null,
+    });
+    expect(crews(after), 'editing it promotes it — the schema refuses the other shape').toEqual([
+      '150:e9/-',
+    ]);
+  });
+
+  it('an ordinary edit on a big board sends exactly one row', () => {
+    const saved = [
+      row('v1', '150', 'e1'),
+      legacy('v2', '151', 'e9', 'm1'),
+      row('v3', '152', 'e2', 'e3'),
+      legacy('v4', '153', 'e8', 'm2'),
+    ];
+    const after = applyEdit(saved, 'v3', {
+      missionTypeId: 'm-new',
+      driver1EmployeeId: 'e2',
+      driver2EmployeeId: 'e3',
+      notes: null,
+    });
+    expect(changedRows(saved, after).map((r) => r.vehicleId)).toEqual(['v3']);
+  });
+});

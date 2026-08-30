@@ -568,3 +568,65 @@ describe('a vehicle the workshop holds is not materialised', () => {
     }
   });
 });
+
+// ── a drag edits what it touches, and nothing else ─────────────────────────
+//
+// The same defect the fixed board carried, and worse here. `seatOrder` is a normalisation, and
+// applied to EVERY row it silently promotes the second driver of any row stored before that rule
+// existed — rows nobody touched. Those rows then differ from the baseline, so `rowsToSave` sends
+// them; and because this board also MATERIALISES unplanned rows, a stray promotion would become a
+// stored `fleet_duty_assignment` for a vehicle the dispatcher never looked at.
+describe('a drag leaves untouched vehicles alone', () => {
+  const legacy = (vehicleId: string, code: string, d2: string) =>
+    row(vehicleId, code, null, d2, { planned: true, missionTypeId: 'm1' });
+
+  it('returns an unrelated row IDENTICAL — the same object, not an equal one', () => {
+    const baseline = [legacy('v1', '150', 'e9'), row('v2', '151'), row('v3', '152', 'e3')];
+    const after = assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e3');
+    expect(after[0]).toBe(baseline[0]);
+  });
+
+  it('does not drag an untouched legacy row into the payload', () => {
+    const baseline = [legacy('v1', '150', 'e9'), row('v2', '151'), row('v3', '152', 'e3')];
+    const sent = rowsToSave(baseline, assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e3'));
+    expect(sent.map((r) => r.vehicleId).sort(), 'only the two sides of the move').toEqual([
+      'v2',
+      'v3',
+    ]);
+  });
+
+  it('does not count an untouched legacy row as an EDIT', () => {
+    // `rowsToSave` has two doors, and the one above only closes the second. This is the first:
+    // `changedRows` is the edit path, and a stray normalisation makes an untouched row differ
+    // from the baseline — which is an edit the dispatcher never made, sent under their name.
+    const baseline = [legacy('v1', '150', 'e9'), row('v2', '151'), row('v3', '152', 'e3')];
+    const edited = changedRows(baseline, assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e3'));
+    expect(edited.map((r) => r.vehicleId)).not.toContain('v1');
+  });
+
+  it('materialises an untouched projection with the crew it was GIVEN, unpromoted', () => {
+    // An unplanned row that holds something IS sent — that is the projection being made real,
+    // and it happens whether or not anybody dragged anything. What must not happen is the drag
+    // CHANGING what gets written: a stray promotion would store this car with e9 as its first
+    // driver, a crew nobody entered, on a date nobody opened.
+    const baseline = [
+      row('v1', '150', null, 'e9', { planned: false, missionTypeId: 'm1' }),
+      row('v2', '151'),
+      row('v3', '152', 'e3'),
+    ];
+    const sent = rowsToSave(baseline, assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e3'));
+    expect(sent.find((r) => r.vehicleId === 'v1')).toEqual({
+      vehicleId: 'v1',
+      missionTypeId: 'm1',
+      driver1EmployeeId: null,
+      driver2EmployeeId: 'e9',
+      notes: null,
+    });
+  });
+
+  it('STILL normalises the vehicle the drag actually empties', () => {
+    const baseline = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
+    const after = assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e1');
+    expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
+  });
+});

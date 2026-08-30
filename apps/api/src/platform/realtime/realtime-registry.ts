@@ -86,9 +86,6 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'hr.contractType': { permission: 'contractType.manage' },
   'hr.costCenterAssignment': { permission: 'costCenter.view' },
   'hr.attendanceDay': { permission: 'attendance.view' },
-  // AT-D1 — the registry gates on its own key, not on `attendance.view`: seeing the daily sheet
-  // is not seeing which devices exist and where they stand.
-  'hr.attendanceDevice': { permission: 'attendanceDevice.view' },
   'hr.attendanceDays': { permission: 'attendance.view' },
   'hr.attendancePeriod': { permission: 'attendance.view' },
   'hr.attendancePunch': { permission: 'attendance.view' },
@@ -200,4 +197,10 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   'platform.security': 'audit-stream only — the audit screen is where alerts surface',
   // An export is an artifact, not a record with a list screen to refresh.
   'hr.applicantExport': 'export artifact — no screen lists exports',
+  // AT-D1 ships the device registry as an API with no screen; the surface it belongs on is the
+  // device HEALTH screen, and health is AT-D4. It will leave this map in the change that builds
+  // that screen — the same discipline the page registry applies to its own two keys, and never
+  // before. Excluded means «no screen reacts to it», not «hidden»: it still reaches the audit
+  // stream like every other audited entity.
+  'hr.attendanceDevice': 'no screen until AT-D4 builds device health',
 };

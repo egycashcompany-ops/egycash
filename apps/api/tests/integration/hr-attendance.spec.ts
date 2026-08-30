@@ -744,7 +744,11 @@ describe('AT-5 — regularizations and overtime approval', () => {
     expect(day.status).toBe('present');
     expect(day.workedMinutes).toBe(480);
     expect(day.firstInAt).toBe(cairoInstant(workday, '09:00').toISOString());
-    expect(day.flags).toContain('manualPunch');
+    // AT-D2 (D12.3): before the split this day raised `manualPunch`, so an approved two-step
+    // correction and an HR hand-entry were indistinguishable in the derived row. Both halves are
+    // asserted — the positive one alone would let the old conflation back in unnoticed.
+    expect(day.flags).toContain('regularizedPunch');
+    expect(day.flags).not.toContain('manualPunch');
   });
 
   it('rejects at either step, finally; HR may substitute at step 1 without skipping step 2', async () => {

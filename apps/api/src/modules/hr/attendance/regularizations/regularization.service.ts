@@ -2,8 +2,9 @@
 // the Leave R9 shape: the manager step by relationship, the HR step by permission, the subject
 // barred from deciding their own request whatever they hold (C7).
 //
-// Applying an approval is the ADR-027 move, never a row edit: the proposal becomes two manual
-// punches, every previously-active punch attributed to the day is superseded by the new in-punch,
+// Applying an approval is the ADR-027 move, never a row edit: the proposal becomes two punches
+// sourced `regularization` (AT-D2 / D12.3 — an approved correction no longer borrows the word
+// «manual»), every previously-active punch attributed to the day is superseded by the new in-punch,
 // and the day is recomputed. On a FROZEN day the evidence is still recorded and the request is
 // stamped `postFreeze` — but the row is not recomputed and not touched. The correction reaches pay
 // only as a forward payroll adjustment somebody records by hand for a later month (P-HR-04), never

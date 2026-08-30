@@ -1,6 +1,7 @@
 // Filing a regularization (§7). The employee proposes the day's PUNCH TRUTH — an in and an out —
-// and never a derived number: on final approval the proposal becomes manual punches and the day
-// is recomputed (ADR-027). Two steps follow, manager then HR; nothing here can skip either.
+// and never a derived number: on final approval the proposal becomes `regularization` punches
+// (AT-D2 — its own source, not «manual») and the day is recomputed (ADR-027). Two steps follow,
+// manager then HR; nothing here can skip either.
 import { useState } from 'react';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui';

@@ -397,9 +397,9 @@ export type AttendanceRegularizationStatus = z.infer<typeof AttendanceRegulariza
 
 /**
  * A regularization proposes the day's PUNCH TRUTH, not its derived numbers (ADR-027): on final
- * approval the proposal becomes manual punches, the old punches are superseded, and the day is
- * recomputed — never hand-edited. `employeeId` is for the D7 HR direct edit only: a caller
- * holding `attendance.decideRegularization` files for someone else and the request applies
+ * approval the proposal becomes `regularization` punches (AT-D2), the old punches are superseded,
+ * and the day is recomputed — never hand-edited. `employeeId` is for the D7 HR direct edit only:
+ * a caller holding `attendance.decideRegularization` files for someone else and the request applies
  * immediately, with the mandatory reason audited.
  */
 export const CreateAttendanceRegularizationSchema = z

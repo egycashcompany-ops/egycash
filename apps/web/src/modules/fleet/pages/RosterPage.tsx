@@ -357,17 +357,19 @@ export const RosterPage = (): JSX.Element => {
     [board, draft],
   );
 
-  // ── finding a driver, in EITHER list ──────────────────────────────────────
+  // ── finding a driver, in EACH list ────────────────────────────────────────
   //
-  // One box over both panels, because the reader does not know which half the person is in —
-  // that is precisely what they are trying to find out. A search that filtered only the
-  // available list would answer "no such driver" for somebody who is merely on leave, which is
-  // the one answer a dispatcher must not be given.
+  // A box INSIDE each panel, each searching its own list — the same shape as the Fixed Roster's
+  // driver panel, which is where this pattern comes from. Two independent terms rather than one
+  // shared one: the panels answer different questions ("who can I put on a car" and "who is out
+  // today, and why"), and a reader filtering one of them is rarely asking about the other. A
+  // shared term also meant every search visibly emptied whichever panel the person was not in.
   //
   // Panel-local state, not a URL parameter, matching the Fixed Roster: this filters side lists,
   // it does not change what the page is about. The `?q=` above is different — it changes which
   // VEHICLES the board shows, which is worth putting in a link.
-  const [driverSearch, setDriverSearch] = useState('');
+  const [availableSearch, setAvailableSearch] = useState('');
+  const [unavailableSearch, setUnavailableSearch] = useState('');
 
   const unavailable = useMemo(() => board?.unavailableDrivers ?? [], [board]);
   // Both halves indexed together, so one term reaches both. The cards already load these
@@ -398,12 +400,12 @@ export const RosterPage = (): JSX.Element => {
   // two are what the panels RENDER, so clearing the box brings everybody back with no round
   // trip and no state to put right.
   const shownAvailable = useMemo(
-    () => filterDrivers(pool, searchIndex, driverSearch),
-    [pool, searchIndex, driverSearch],
+    () => filterDrivers(pool, searchIndex, availableSearch),
+    [pool, searchIndex, availableSearch],
   );
   const shownUnavailable = useMemo(
-    () => filterDrivers(unavailable, searchIndex, driverSearch),
-    [unavailable, searchIndex, driverSearch],
+    () => filterDrivers(unavailable, searchIndex, unavailableSearch),
+    [unavailable, searchIndex, unavailableSearch],
   );
 
   const [editing, setEditing] = useState<string | null>(null);
@@ -730,28 +732,28 @@ export const RosterPage = (): JSX.Element => {
           />
         </div>
 
-        {/* ONE search box over BOTH columns — see `shownAvailable` / `shownUnavailable`. It sits
-            above the pair rather than inside either, because that is what says it searches the
-            two of them: a box inside the green panel would read as a filter on that panel. Same
-            control and same placeholder as the Fixed Roster's driver search. */}
-        <SearchInput
-          value={driverSearch}
-          onChange={setDriverSearch}
-          placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
-          className="w-full"
-        />
-
         {/* The two lists SIDE BY SIDE, each its own column. Stacked, the unavailable list pushed
             the available one off the fold on a real fleet, and the board lost the height to a
             section nobody drags from. */}
         <div className="grid min-w-0 grid-cols-2 gap-3">
           <div className="min-w-0 rounded-lg border border-emerald-200 bg-emerald-50 shadow-card dark:border-emerald-900 dark:bg-emerald-950/30">
-            <h2 className="px-3 pb-2 pt-3 text-center text-sm font-semibold text-emerald-900 dark:text-emerald-200">
-              {t('fleet.roster.availableTitle')}
-              <span className="ms-1 font-normal text-emerald-700 dark:text-emerald-400">
-                ({formatNumber(pool.length, locale)})
-              </span>
-            </h2>
+            {/* Compact header: the count beside the title and the search directly under it, so
+                the panel spends its height on drivers rather than on chrome — the same block the
+                Fixed Roster's driver panel uses. */}
+            <div className="space-y-2 px-3 pb-2 pt-3">
+              <h2 className="text-center text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                {t('fleet.roster.availableTitle')}
+                <span className="ms-1 font-normal text-emerald-700 dark:text-emerald-400">
+                  ({formatNumber(pool.length, locale)})
+                </span>
+              </h2>
+              <SearchInput
+                value={availableSearch}
+                onChange={setAvailableSearch}
+                placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
+                className="w-full"
+              />
+            </div>
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : shownAvailable.length === 0 ? (
@@ -791,12 +793,20 @@ export const RosterPage = (): JSX.Element => {
               browser will not start a drag from one of these rows at all. The server refuses the
               assignment too (FR-6) — this is what stops the reader attempting it. */}
           <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 shadow-card dark:border-slate-800 dark:bg-slate-900/60">
-            <h2 className="px-3 pb-2 pt-3 text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {t('fleet.roster.unavailableTitle')}
-              <span className="ms-1 font-normal text-slate-500 dark:text-slate-400">
-                ({formatNumber(board?.unavailableDrivers.length ?? 0, locale)})
-              </span>
-            </h2>
+            <div className="space-y-2 px-3 pb-2 pt-3">
+              <h2 className="text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
+                {t('fleet.roster.unavailableTitle')}
+                <span className="ms-1 font-normal text-slate-500 dark:text-slate-400">
+                  ({formatNumber(board?.unavailableDrivers.length ?? 0, locale)})
+                </span>
+              </h2>
+              <SearchInput
+                value={unavailableSearch}
+                onChange={setUnavailableSearch}
+                placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
+                className="w-full"
+              />
+            </div>
             {board === undefined || unavailable.length === 0 ? (
               <EmptyState title={t('fleet.roster.unavailableEmpty')} />
             ) : shownUnavailable.length === 0 ? (

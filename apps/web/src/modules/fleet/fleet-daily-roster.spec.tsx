@@ -766,15 +766,14 @@ describe('a day shows its own board, and only its own', () => {
 
 // ── finding a driver in EITHER list ────────────────────────────────────────
 //
-// A dispatcher hunting for somebody does not know which half they are in — that is the thing
-// they are trying to find out. A search that filtered only the available column would answer
-// "no such driver" for somebody who is merely on leave, which is the one answer they must not
-// be given. So one box, over both panels.
+// Each panel carries its own box, searching its own list — the same shape as the Fixed Roster's
+// driver panel. The two answer different questions ("who can I put on a car" and "who is out
+// today, and why"), so the terms are independent: filtering one panel leaves the other alone.
 //
 // The filtering itself is `filterDrivers`, already proven pure in `driver-search.spec.ts`. What
 // is asserted here is that THIS PAGE routes BOTH lists through it — a page that filtered one
 // and rendered the other raw would pass every test in that file.
-describe('the driver search covers both lists', () => {
+describe('each driver list has its own search', () => {
   const index = new Map([
     [E1, { employeeId: E1, nameAr: 'محمد حاتم', nameEn: 'Mohamed Hatem', code: 'DRV-1' }],
     [E2, { employeeId: E2, nameAr: 'علي سعيد', nameEn: 'Ali Said', code: 'DRV-2' }],
@@ -832,10 +831,41 @@ describe('the driver search covers both lists', () => {
     expect(call, 'the unavailable half is indexed too').toContain('unavailable.map');
   });
 
-  it('renders ONE box above the pair, not one per panel', () => {
+  it('renders ONE box INSIDE each panel — two in all', () => {
     const markup = render();
     const boxes = markup.split('placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder'));
-    expect(boxes.length - 1, 'exactly one driver search box').toBe(1);
+    expect(boxes.length - 1, 'one per driver panel').toBe(2);
+  });
+
+  it('puts each box inside its own panel, not above the pair', () => {
+    // Position is the claim: a box between the table and the two panels would look like it
+    // filtered both. Each must sit after its own panel's heading.
+    const markup = render();
+    const placeholder = 'placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder');
+    for (const title of ['fleet.roster.availableTitle', 'fleet.roster.unavailableTitle']) {
+      const heading = markup.indexOf(t(title));
+      expect(heading, `${title} is on the page`).toBeGreaterThan(-1);
+      const after = markup.indexOf(placeholder, heading);
+      expect(after, `${title} is followed by its own search box`).toBeGreaterThan(-1);
+      // …and nothing but that panel's own list comes between them.
+      expect(markup.slice(heading, after)).not.toContain(t('fleet.roster.unavailableTitle') === t(title) ? t('fleet.roster.availableTitle') : t('fleet.roster.unavailableTitle'));
+    }
+  });
+
+  it('keeps the two terms INDEPENDENT — each list filters by its OWN box', () => {
+    // The point of splitting them: a shared term emptied whichever panel the person was not in.
+    // Asserted on the filter calls themselves rather than on the surrounding block, because a
+    // dependency array naming both terms would satisfy a looser check while the call passed the
+    // wrong one — which is exactly the mistake this guards.
+    expect(SOURCE, 'the available list filters by the available box').toContain(
+      'filterDrivers(pool, searchIndex, availableSearch)',
+    );
+    expect(SOURCE, 'the unavailable list filters by the unavailable box').toContain(
+      'filterDrivers(unavailable, searchIndex, unavailableSearch)',
+    );
+    // Neither may reach for the other's term.
+    expect(SOURCE).not.toContain('filterDrivers(pool, searchIndex, unavailableSearch)');
+    expect(SOURCE).not.toContain('filterDrivers(unavailable, searchIndex, availableSearch)');
   });
 
   it('is DISPLAY ONLY — the draft, the counters and the payload read the unfiltered lists', () => {
@@ -856,7 +886,8 @@ describe('the driver search covers both lists', () => {
   it('does not make the search a URL parameter — it is not what the page is about', () => {
     // `?q=` filters VEHICLES and belongs in a shareable link. Which driver you were hunting for
     // does not, and putting it in the URL would also reset it on every navigation.
-    expect(SOURCE).toContain("const [driverSearch, setDriverSearch] = useState('')");
+    expect(SOURCE).toContain("const [availableSearch, setAvailableSearch] = useState('')");
+    expect(SOURCE).toContain("const [unavailableSearch, setUnavailableSearch] = useState('')");
     expect(SOURCE).not.toContain("sp.get('driver')");
   });
 });

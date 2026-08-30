@@ -3736,6 +3736,16 @@ const en: Record<string, string> = {
   'fleet.accidents.deleteBody':
     'The file is removed from the registry. The full change history stays in the audit log.',
   'fleet.accidents.deleted': 'Accident deleted',
+  'fleet.accidents.columns.serial': '#',
+  'fleet.accidents.fields.remaining': 'Total remaining',
+  'fleet.accidents.fields.notes': 'Notes',
+  'fleet.accidents.searchCode': 'Search by code',
+  'fleet.accidents.searchCulprit': 'Search by name at fault',
+  'fleet.accidents.totals.count': 'Accidents',
+  'fleet.accidents.totals.amountCollected': 'Total collected',
+  'fleet.accidents.totals.companyCost': 'Total company cost',
+  'fleet.accidents.totals.paidAmount': 'Total paid',
+  'fleet.accidents.totals.remaining': 'Total remaining',
 
   // Fleet — violations + grievances (FW-9)
   'fleet.violations.subtitle':
@@ -9936,6 +9946,16 @@ const ar: Record<string, string> = {
   'fleet.accidents.deleteBody':
     'يُزال الملف من السجل، ويبقى تاريخ التغييرات كاملاً في سجل التدقيق.',
   'fleet.accidents.deleted': 'تم حذف الحادث',
+  'fleet.accidents.columns.serial': 'م',
+  'fleet.accidents.fields.remaining': 'إجمالي المتبقي',
+  'fleet.accidents.fields.notes': 'ملاحظات',
+  'fleet.accidents.searchCode': 'ابحث بالكود',
+  'fleet.accidents.searchCulprit': 'ابحث بالمتسبب',
+  'fleet.accidents.totals.count': 'عدد الحوادث',
+  'fleet.accidents.totals.amountCollected': 'اجمالي المبلغ المحصل',
+  'fleet.accidents.totals.companyCost': 'اجمالي حساب الشركة',
+  'fleet.accidents.totals.paidAmount': 'إجمالي ما تم دفعه',
+  'fleet.accidents.totals.remaining': 'اجمالي المتبقي',
 
   // Fleet — violations + grievances (FW-9)
   'fleet.violations.subtitle':

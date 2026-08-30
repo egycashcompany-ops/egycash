@@ -470,6 +470,24 @@ export const useAccidents = (params: FleetListParams, enabled = true) =>
     enabled,
   });
 
+/**
+ * The totals under the accident list — a SECOND request, on purpose.
+ *
+ * It has to be: the page endpoint answers about one page, and these figures are about everything
+ * the filters match. Keyed on the filters alone, so paging or resizing does not refetch it and
+ * cannot change it; it is invalidated with the rest of the accident subtree when a file is
+ * recorded, edited, closed or deleted, because those DO change what the filters match.
+ */
+export const useAccidentSummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    // Under the SAME feature key as the list, so the one accident invalidation already wired for
+    // record/edit/close/delete refreshes the figures too; `summary` only keeps the two apart.
+    queryKey: listKey(MODULE, 'accidents', { summary: true, ...params }),
+    queryFn: () => api.accidentSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
 // Accident mutations (FW-8). One subtree covers the list AND the dashboard's open-files KPI;
 // nothing else derives from accidents (amounts stay stored facts until §13-Q9).
 const useAccidentMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {

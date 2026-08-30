@@ -2,6 +2,7 @@
 import { type Request, type Response } from 'express';
 import {
   type CreateFleetAccident,
+  type FleetAccidentSummaryQuery,
   type ListFleetAccidentsQuery,
   type SetFleetAccidentStatus,
   type UpdateFleetAccident,
@@ -16,6 +17,11 @@ type IdParam = { id: string };
 export const listAccidents = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetAccidentsQuery>(req);
   okPage(res, await fleetAccidentService.list(query), toAccidentDto);
+};
+
+export const accidentSummary = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetAccidentSummaryQuery>(req);
+  ok(res, await fleetAccidentService.summary(query));
 };
 
 export const createAccident = async (req: Request, res: Response): Promise<void> => {

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   CreateFleetAccidentSchema,
+  FleetAccidentSummaryQuerySchema,
   ListFleetAccidentsQuerySchema,
   SetFleetAccidentStatusSchema,
   UpdateFleetAccidentSchema,
@@ -11,6 +12,7 @@ import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
+  accidentSummary,
   createAccident,
   deleteAccident,
   listAccidents,
@@ -28,6 +30,15 @@ export const buildFleetAccidentsRouter = (): Router => {
     authorize('fleetAccident.view'),
     validate({ query: ListFleetAccidentsQuerySchema }),
     asyncHandler(listAccidents),
+  );
+  // The figures under the list. Same filters, same grant, deliberately no pagination — see
+  // `FleetAccidentSummaryQuerySchema`. Declared before nothing dynamic, so no route shadows it.
+  router.get(
+    '/summary',
+    authenticate,
+    authorize('fleetAccident.view'),
+    validate({ query: FleetAccidentSummaryQuerySchema }),
+    asyncHandler(accidentSummary),
   );
   router.post(
     '/',

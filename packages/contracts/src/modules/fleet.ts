@@ -1020,13 +1020,79 @@ export const SetFleetAccidentStatusSchema = z
   .strict();
 export type SetFleetAccidentStatus = z.infer<typeof SetFleetAccidentStatusSchema>;
 
-export const ListFleetAccidentsQuerySchema = PaginationQuerySchema.extend({
+/**
+ * The filters an accident list answers to — stated ONCE, so the page and its totals cannot drift.
+ *
+ * `code` and `vehicleId` are two independent narrowings of the same axis and are deliberately NOT
+ * folded into one: a reader types part of a code to sweep, and picks one from the list to pin.
+ * Sending both means BOTH apply (an AND) — picking `213` while searching `21` shows `213`, and
+ * picking `213` while searching `15` shows nothing at all. Neither may override or silently
+ * cancel the other, because a filter the screen shows as active and the server ignores is a lie
+ * about what the reader is looking at.
+ */
+const accidentFilters = {
   vehicleId: objectId().optional(),
+  /** Part of a vehicle CODE, matched case-insensitively. Resolved against the registry. */
+  code: z.string().trim().min(1).max(50).optional(),
+  /** Part of the at-fault name, matched case-insensitively. */
+  culprit: z.string().trim().min(1).max(200).optional(),
   status: FleetAccidentStatusSchema.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
-}).strict();
+};
+
+export const ListFleetAccidentsQuerySchema = PaginationQuerySchema.extend(accidentFilters).strict();
 export type ListFleetAccidentsQuery = z.infer<typeof ListFleetAccidentsQuerySchema>;
+
+/**
+ * The same filters, WITHOUT pagination — and that absence is the guarantee, not an omission.
+ *
+ * The totals below describe every accident the filters match, not the page in front of the
+ * reader: a figure that changed when you turned the page would be a figure that means nothing.
+ * Because this schema is `.strict()` and has no `page` or `pageSize`, paging cannot reach the
+ * sum even by accident — the request carrying it would be refused.
+ */
+export const FleetAccidentSummaryQuerySchema = z.object(accidentFilters).strict();
+export type FleetAccidentSummaryQuery = z.infer<typeof FleetAccidentSummaryQuerySchema>;
+
+/** Sums over EVERY accident the filters match — never over one page. */
+export interface FleetAccidentTotalsDto {
+  count: number;
+  amountCollected: number;
+  companyCost: number;
+  paidAmount: number;
+  /** Derived, never stored: see `fleetAccidentRemaining`. */
+  remaining: number;
+}
+
+/**
+ * What an accident file still owes: «إجمالي المتبقي».
+ *
+ *   remaining = amountCollected + companyCost − paidAmount
+ *
+ * Derived on READ and stored NOWHERE. There is no column for it, no migration behind it, and no
+ * second copy to fall out of step with the three facts it is made of — change one of them and the
+ * figure follows on the next read.
+ *
+ * It lives in the contract because two places compute it — the row in the table and the sum under
+ * it — and a formula written twice is a formula that will eventually be written two ways.
+ *
+ * ROUNDING IS PART OF THE ANSWER, not presentation. Money entered to the piastre still adds up in
+ * binary floating point, where `0.1 + 0.2 - 0.3` is not zero, and a two-decimal rendering of that
+ * residue is `-0.00` — a debt of nothing, printed with a minus sign. Rounding to the piastre here
+ * settles it once, for the row and the total alike; and a result of zero is returned as POSITIVE
+ * zero, because `Intl.NumberFormat` faithfully prints `-0` as "-0" and no reader has ever been
+ * helped by that.
+ */
+export const fleetAccidentRemaining = (of: {
+  amountCollected: number;
+  companyCost: number;
+  paidAmount: number;
+}): number => {
+  const rounded = Math.round((of.amountCollected + of.companyCost - of.paidAmount) * 100) / 100;
+  // `=== 0` is true of -0 as well, so this is the one place negative zero is turned back.
+  return rounded === 0 ? 0 : rounded;
+};
 
 // ── Violations (§4.7 — one collection, two shapes) ──────────────────────────
 

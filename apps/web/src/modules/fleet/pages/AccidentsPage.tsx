@@ -1,12 +1,32 @@
-// Accidents (FW-8, legacy car_accidents): the §4.6 file registry over FL-6. Amounts are shown
-// exactly as stored — no derived money exists until §13-Q9 defines the formula, so the page
-// sums nothing. The open/closed state is purely the backend's: flipping is one version-aware
-// call in either direction (FR-10, one grant covers both), a no-op flip is refused server-side,
-// and the UI simply offers the ONE direction the current state allows. URL-synced vehicle/
-// status/date-range filters + sortable occurredAt + pagination, per the module idiom.
+// Accidents (FW-8, legacy car_accidents): the §4.6 file registry over FL-6.
+//
+// AMOUNTS. The three money facts are shown exactly as stored, and «إجمالي المتبقي» beside them is
+// DERIVED on read — `amountCollected + companyCost − paidAmount`, the contract's own
+// `fleetAccidentRemaining`, which is also what the server sums for the strip above the table.
+// Nothing about it is stored: no column, no migration, no second copy to fall out of step.
+//
+// THE FIGURES ARE THE SERVER'S. They describe every accident the filters match, not the page in
+// front of the reader, so they come from their own endpoint whose query has no `page` at all —
+// summing the rows in hand would produce a number that changed when you turned the page.
+//
+// OPEN/CLOSED is purely the backend's, and so is the green row: the tint is read from the
+// persisted `status` on every render, never from anything the screen remembers, which is why a
+// refresh cannot lose it and a failed flip cannot invent it. Flipping is one version-aware call in
+// either direction (FR-10, one grant covers both), a no-op flip is refused server-side, and the UI
+// offers the ONE direction the current state allows. There is no Status COLUMN: the state is the
+// row's colour, the direction of its action, and a word for screen readers — three carriers, none
+// of them colour alone.
+//
+// URL-synced filters (code search + vehicle pick + culprit search + date range + status), sortable
+// occurredAt and pagination, per the module idiom.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { MAX_PAGE_SIZE, type FleetAccidentDto, type Locale } from '@ecms/contracts';
+import {
+  MAX_PAGE_SIZE,
+  fleetAccidentRemaining,
+  type FleetAccidentDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
@@ -16,12 +36,14 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
-import { StatusBadge } from '../../../shared/ui/Badge';
+import { SearchInput } from '../../../shared/ui/SearchInput';
+import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, CornerDownIcon, EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
-import { formatDate, formatMoney } from '../../../shared/lib/format';
+import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
 import {
+  useAccidentSummary,
   useAccidents,
   useDeleteAccident,
   useSetAccidentStatus,
@@ -38,7 +60,9 @@ export const AccidentsPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
+  const code = sp.get('code') ?? '';
   const vehicle = sp.get('vehicle') ?? '';
+  const culprit = sp.get('culprit') ?? '';
   const status = sp.get('status') ?? '';
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
@@ -65,21 +89,46 @@ export const AccidentsPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
 
-  const params = useMemo(
+  /**
+   * WHAT THE READER IS LOOKING AT — the filters, and only the filters.
+   *
+   * `code` and `vehicleId` are two narrowings of the same axis and are sent SEPARATELY on purpose:
+   * the server applies both (an AND), so typing part of a code while a vehicle is picked shows
+   * their intersection, and a code the registry does not have shows nothing rather than
+   * everything. Neither control cancels the other, here or there.
+   *
+   * This object is also exactly what the totals are asked for, which is the whole reason it is
+   * split out from the page: the figures below describe THIS set, and paging cannot reach them.
+   */
+  const filters = useMemo(
     () => ({
-      page,
-      pageSize,
-      sortBy: sort.by,
-      sortDir: sort.dir,
+      code: code || undefined,
       vehicleId: vehicle || undefined,
+      culprit: culprit || undefined,
       status: status || undefined,
       from: from || undefined,
       to: to || undefined,
     }),
     [paramsKey],
   );
+  const params = useMemo(
+    () => ({ ...filters, page, pageSize, sortBy: sort.by, sortDir: sort.dir }),
+    [filters, page, pageSize, sort.by, sort.dir],
+  );
   const { data, isLoading, isError, error, refetch } = useAccidents(params);
   const rows = data?.items ?? [];
+  const summary = useAccidentSummary(filters);
+
+  // A serial column counts from the start of the LIST, not of the page: row 26 is row 26 on page
+  // two. The table only ever sees one page, so the offset comes from the server's own meta.
+  const serialOffset = data === undefined ? 0 : (data.meta.page - 1) * data.meta.pageSize;
+
+  const clearFilters = (): void =>
+    // ONE update, all six keys. The code search and the vehicle pick go together — leaving either
+    // behind would hand back a "cleared" bar that is still filtering.
+    patch({ code: null, vehicle: null, culprit: null, status: null, from: null, to: null });
+  const hasFilters =
+    code !== '' || vehicle !== '' || culprit !== '' || status !== '' || from !== '' || to !== '';
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
@@ -120,10 +169,59 @@ export const AccidentsPage = (): JSX.Element => {
     </span>
   );
 
+  /**
+   * The five figures above the table, straight from the server's own sums.
+   *
+   * Nothing here reads `rows`. It could not: `rows` is one page, and these describe the whole
+   * filtered set — which is also why they are given as absent while the request is in flight
+   * rather than as zeros, so the strip shows a skeleton instead of a number that is about to be
+   * contradicted.
+   */
+  const figures = summary.data;
+  const asMoney = (value: number): string => formatMoney(value, 'EGP', locale);
+  const asCount = (value: number): string => formatNumber(value, locale);
+  // `value` is OMITTED, not undefined, while the sums are in flight — `exactOptionalPropertyTypes`
+  // draws that distinction and `StatStrip` reads the absence as "hold the space, do not invent a
+  // number". A zero here would be a claim, and it would be wrong as often as it was right.
+  const figure = (
+    key: string,
+    figureValue: number | undefined,
+    format: (value: number) => string,
+  ): StatStripItem => ({
+    key,
+    label: t(`fleet.accidents.totals.${key}`),
+    loading: summary.isPending,
+    ...(figureValue === undefined ? {} : { value: format(figureValue) }),
+  });
+  const totals: StatStripItem[] = [
+    // A count of files is not money and keeps the reader's own digits; the four sums are money.
+    figure('count', figures?.count, asCount),
+    figure('amountCollected', figures?.amountCollected, asMoney),
+    figure('companyCost', figures?.companyCost, asMoney),
+    figure('paidAmount', figures?.paidAmount, asMoney),
+    figure('remaining', figures?.remaining, asMoney),
+  ];
+
   const columns: Column<FleetAccidentDto>[] = [
     {
+      key: 'serial',
+      header: t('fleet.accidents.columns.serial'),
+      render: (r, index) => (
+        <span className="tabular-nums text-slate-500 dark:text-slate-400">
+          {serialOffset + index + 1}
+          {/*
+            The row's state, for anyone the colour does not reach. With the Status column gone the
+            open/closed fact is carried by the tint and by the direction of the action button —
+            and a reader who has neither the colour nor the close grant would be left with
+            nothing. This is that third carrier, and it costs no width.
+          */}
+          <span className="sr-only"> — {t(`fleet.accidents.status.${r.status}`)}</span>
+        </span>
+      ),
+    },
+    {
       key: 'vehicle',
-      header: t('fleet.odometer.columns.vehicle'),
+      header: t('fleet.vehicles.columns.code'),
       render: (r) => (
         <span className="font-mono text-xs" dir="ltr">
           {codeOf(r.vehicleId)}
@@ -136,27 +234,11 @@ export const AccidentsPage = (): JSX.Element => {
       sortable: true,
       render: (r) => <span className="tabular-nums">{formatDate(r.occurredAt, locale)}</span>,
     },
-    {
-      key: 'status',
-      header: t('fleet.vehicles.columns.status'),
-      render: (r) => (
-        <StatusBadge
-          tone={r.status === 'open' ? 'warning' : 'success'}
-          label={t(`fleet.accidents.status.${r.status}`)}
-        />
-      ),
-    },
     { key: 'culprit', header: t('fleet.accidents.fields.culprit'), render: (r) => r.culprit },
     {
       key: 'statement',
       header: t('fleet.accidents.fields.statement'),
       render: (r) => <span className="block max-w-[18rem] truncate">{r.statement}</span>,
-    },
-    {
-      key: 'companyCost',
-      header: t('fleet.accidents.fields.companyCost'),
-      align: 'end',
-      render: (r) => money(r.companyCost),
     },
     {
       key: 'amountCollected',
@@ -165,10 +247,35 @@ export const AccidentsPage = (): JSX.Element => {
       render: (r) => money(r.amountCollected),
     },
     {
+      key: 'companyCost',
+      header: t('fleet.accidents.fields.companyCost'),
+      align: 'end',
+      render: (r) => money(r.companyCost),
+    },
+    {
       key: 'paidAmount',
       header: t('fleet.accidents.fields.paidAmount'),
       align: 'end',
       render: (r) => money(r.paidAmount),
+    },
+    {
+      // Derived here from the three facts beside it, by the CONTRACT's formula — the same one the
+      // server sums for the strip above, so the column and its total are one statement.
+      key: 'remaining',
+      header: t('fleet.accidents.fields.remaining'),
+      align: 'end',
+      className: 'font-medium',
+      render: (r) => money(fleetAccidentRemaining(r)),
+    },
+    {
+      key: 'notes',
+      header: t('fleet.accidents.fields.notes'),
+      render: (r) =>
+        r.notes === null ? (
+          <span className="text-slate-400 dark:text-slate-600">—</span>
+        ) : (
+          <span className="block max-w-[14rem] truncate">{r.notes}</span>
+        ),
     },
     ...(can('fleetAccident.edit') || can('fleetAccident.close') || can('fleetAccident.delete')
       ? [
@@ -252,10 +359,24 @@ export const AccidentsPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <FilterBar
-          hasActiveFilters={vehicle !== '' || status !== '' || from !== '' || to !== ''}
-          onClear={() => patch({ vehicle: null, status: null, from: null, to: null })}
-        >
+        {/*
+          ONE row on a wide screen — `singleRow` plus a width wrapper on every control, which is
+          what that flag needs: with no wrapping to fall back on, a child left to flex would be
+          squeezed by its neighbours instead of moving to the next line.
+
+          The first two are BOTH about the vehicle and both stay: the box sweeps by code, the
+          dropdown pins one car, and using them together narrows to the intersection rather than
+          letting either replace the other. In Arabic the bar reads from the right exactly as
+          specified: كود بحث ← العربية ← اسم المتسبب ← من ← إلى ← الحالة ← Reset.
+        */}
+        <FilterBar singleRow hasActiveFilters={hasFilters} onClear={clearFilters}>
+          <div className="w-40 shrink-0">
+            <SearchInput
+              value={code}
+              onChange={(term) => patch({ code: term || null })}
+              placeholder={t('fleet.accidents.searchCode')}
+            />
+          </div>
           <VehicleSelect
             value={vehicle}
             onChange={(id) => patch({ vehicle: id || null })}
@@ -263,16 +384,13 @@ export const AccidentsPage = (): JSX.Element => {
             anyStatus
             ariaLabel={t('fleet.odometer.columns.vehicle')}
           />
-          <Select
-            aria-label={t('fleet.vehicles.columns.status')}
-            value={status}
-            onChange={(e) => patch({ status: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.accidents.allStatuses')}</option>
-            <option value="open">{t('fleet.accidents.status.open')}</option>
-            <option value="closed">{t('fleet.accidents.status.closed')}</option>
-          </Select>
+          <div className="w-44 shrink-0">
+            <SearchInput
+              value={culprit}
+              onChange={(term) => patch({ culprit: term || null })}
+              placeholder={t('fleet.accidents.searchCulprit')}
+            />
+          </div>
           <Field label={t('fleet.odometer.from')} htmlFor="accidents-from">
             <Input
               id="accidents-from"
@@ -291,12 +409,34 @@ export const AccidentsPage = (): JSX.Element => {
               className="w-auto"
             />
           </Field>
+          <Select
+            aria-label={t('fleet.vehicles.columns.status')}
+            value={status}
+            onChange={(e) => patch({ status: e.target.value || null })}
+            className="w-auto"
+          >
+            <option value="">{t('fleet.accidents.allStatuses')}</option>
+            <option value="open">{t('fleet.accidents.status.open')}</option>
+            <option value="closed">{t('fleet.accidents.status.closed')}</option>
+          </Select>
         </FilterBar>
+
+        <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
+          <StatStrip columns={5} items={totals} />
+        </div>
 
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(r) => r.id}
+          rowClassName={(r) =>
+            // Read from the PERSISTED status on every render, and from nothing else. A file the
+            // server says is closed is green after a refresh, in another tab, and for the next
+            // reader; a flip that fails leaves the row exactly as the server still has it.
+            r.status === 'closed'
+              ? 'bg-emerald-50 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60'
+              : undefined
+          }
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}

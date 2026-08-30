@@ -4247,6 +4247,195 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
     ]);
   });
 
+  // ── The accident list's filters, and the figures under it ────────────────────
+  //
+  // Every rule here is a rule about what the SERVER returns, so every one of them is asserted over
+  // HTTP against a real collection. The two that matter most cannot be checked any other way: that
+  // a code search and a vehicle pick applied together INTERSECT, and that the totals describe the
+  // whole filtered set rather than the page — which only means anything once there is more than
+  // one page of it.
+  describe('filtering and totals (§4.6 list)', () => {
+    interface Filed {
+      code: string;
+      vehicleId: string;
+    }
+    const filed: Record<string, Filed> = {};
+    const sum = { collected: 0, company: 0, paid: 0 };
+
+    const file = async (
+      code: string,
+      culprit: string,
+      money: { collected: number; company: number; paid: number },
+      occurredAt: string,
+    ): Promise<void> => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken, { code }));
+      const res = await request(app)
+        .post('/api/v1/fleet/accidents')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          occurredAt,
+          culprit,
+          statement: `بيان ${code}`,
+          companyCost: money.company,
+          amountCollected: money.collected,
+          paidAmount: money.paid,
+        });
+      expect(res.status).toBe(201);
+      filed[code] = { code, vehicleId: v.id };
+      sum.collected += money.collected;
+      sum.company += money.company;
+      sum.paid += money.paid;
+    };
+
+    const list = async (query: Record<string, unknown>): Promise<request.Response> =>
+      request(app)
+        .get('/api/v1/fleet/accidents')
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+    const summary = async (query: Record<string, unknown>): Promise<request.Response> =>
+      request(app)
+        .get('/api/v1/fleet/accidents/summary')
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+    /** The vehicle codes behind one filtered page, in the order the server returned them. */
+    const codesOn = async (query: Record<string, unknown>): Promise<string[]> => {
+      const res = await list(query);
+      expect(res.status).toBe(200);
+      const byId = new Map(Object.values(filed).map((f) => [f.vehicleId, f.code]));
+      return data<{ vehicleId: string }[]>(res).map((a) => byId.get(a.vehicleId) ?? a.vehicleId);
+    };
+
+    beforeAll(async () => {
+      // Codes chosen so "FLT21" is a strict prefix of two of them and matches nothing else, and
+      // so one code carries regex punctuation.
+      await file('FLT210', 'اشرف نصحى', { collected: 0, company: 350, paid: 350 }, '2026-06-08');
+      await file('FLT211', 'مصطفى عثمان', { collected: 500, company: 0, paid: 0 }, '2026-03-03');
+      await file('FLT350', 'اشرف نصحى', { collected: 1500, company: 0, paid: 1500 }, '2025-02-01');
+      await file('FLT.99', 'احمد السيد', { collected: 400, company: 500, paid: 900 }, '2026-05-10');
+    });
+
+    it('searches by part of a CODE, which the accident itself does not store', async () => {
+      expect((await codesOn({ code: 'FLT21' })).sort()).toEqual(['FLT210', 'FLT211']);
+      expect(await codesOn({ code: 'FLT350' })).toEqual(['FLT350']);
+    });
+
+    it('narrows to NOTHING for a code no vehicle carries — the filter is never dropped', async () => {
+      const res = await list({ code: 'NO-SUCH-CODE' });
+      expect(res.status).toBe(200);
+      expect(data<unknown[]>(res)).toEqual([]);
+      expect((res.body as { meta: PageMeta }).meta.totalItems).toBe(0);
+    });
+
+    it('treats regex characters as TEXT — `.` is a dot, not "any character"', async () => {
+      // Unescaped, `FLT.99` would also match `FLT099`-shaped codes, and `.*` would match all.
+      expect(await codesOn({ code: 'FLT.99' })).toEqual(['FLT.99']);
+      expect(await codesOn({ code: '.*' })).toEqual([]);
+      expect(await codesOn({ code: 'FLT2.0' })).toEqual([]);
+    });
+
+    it('applies the code search and the vehicle pick TOGETHER — an AND, not a choice', async () => {
+      const pinned = filed['FLT210'] as Filed;
+      // Inside the swept set: the pick survives the sweep.
+      expect(await codesOn({ code: 'FLT21', vehicleId: pinned.vehicleId })).toEqual(['FLT210']);
+      // Outside it: two filters that cannot both hold, and the honest answer is nothing.
+      expect(await codesOn({ code: 'FLT350', vehicleId: pinned.vehicleId })).toEqual([]);
+      // Neither of which is what either filter alone would have said.
+      expect((await codesOn({ code: 'FLT21' })).length).toBe(2);
+      expect(await codesOn({ vehicleId: pinned.vehicleId })).toEqual(['FLT210']);
+    });
+
+    it('searches by part of the culprit’s name', async () => {
+      expect((await codesOn({ culprit: 'اشرف' })).sort()).toEqual(['FLT210', 'FLT350']);
+      expect(await codesOn({ culprit: 'احمد' })).toEqual(['FLT.99']);
+      expect(await codesOn({ culprit: 'لا أحد بهذا الاسم' })).toEqual([]);
+    });
+
+    it('narrows by status and by the date range', async () => {
+      expect((await codesOn({ status: 'open' })).length).toBeGreaterThanOrEqual(4);
+      expect(await codesOn({ status: 'closed', culprit: 'اشرف' })).toEqual([]);
+      expect((await codesOn({ from: '2026-01-01', culprit: 'اشرف' })).sort()).toEqual(['FLT210']);
+      expect((await codesOn({ to: '2025-12-31', culprit: 'اشرف' })).sort()).toEqual(['FLT350']);
+    });
+
+    it('combines every filter at once, each one still narrowing', async () => {
+      expect(
+        await codesOn({
+          code: 'FLT21',
+          vehicleId: (filed['FLT210'] as Filed).vehicleId,
+          culprit: 'اشرف',
+          status: 'open',
+          from: '2026-01-01',
+          to: '2026-12-31',
+        }),
+      ).toEqual(['FLT210']);
+    });
+
+    it('sums the WHOLE filtered set — and pagination cannot move the figures', async () => {
+      // The claim the strip makes. Asked for three different pages of the same search, and the
+      // third asks for a page that does not exist at all.
+      const scope = { culprit: 'اشرف' };
+      const totals = data<{
+        count: number;
+        amountCollected: number;
+        companyCost: number;
+        paidAmount: number;
+        remaining: number;
+      }>(await summary(scope));
+      expect(totals.count).toBe(2);
+      expect(totals.amountCollected).toBe(1500);
+      expect(totals.companyCost).toBe(350);
+      expect(totals.paidAmount).toBe(1850);
+      expect(totals.remaining).toBe(0);
+
+      // The page really is smaller than the set — otherwise this proves nothing.
+      const firstPage = await list({ ...scope, page: 1, pageSize: 1 });
+      expect(data<unknown[]>(firstPage)).toHaveLength(1);
+      expect((firstPage.body as { meta: PageMeta }).meta.totalItems).toBe(2);
+
+      for (const paging of [{ page: 1, pageSize: 1 }, { page: 2, pageSize: 1 }, { page: 9 }]) {
+        await list({ ...scope, ...paging });
+        expect(data<unknown>(await summary(scope)), JSON.stringify(paging)).toEqual(totals);
+      }
+    });
+
+    it('moves the figures when the FILTERS move', async () => {
+      const wide = data<{ count: number }>(await summary({}));
+      const narrow = data<{ count: number }>(await summary({ culprit: 'اشرف' }));
+      expect(wide.count).toBeGreaterThan(narrow.count);
+      expect(narrow.count).toBe(2);
+    });
+
+    it('REFUSES a paged summary — the sums have nowhere to put a page number', async () => {
+      expect((await summary({ page: 2 })).status).toBe(400);
+      expect((await summary({ pageSize: 1 })).status).toBe(400);
+    });
+
+    it('computes remaining as collected + company − paid, over the whole set', async () => {
+      const all = data<{
+        amountCollected: number;
+        companyCost: number;
+        paidAmount: number;
+        remaining: number;
+      }>(await summary({}));
+      expect(all.remaining).toBe(all.amountCollected + all.companyCost - all.paidAmount);
+      expect(Object.is(all.remaining, -0)).toBe(false);
+    });
+
+    it('needs the same grant the list needs', async () => {
+      expect((await request(app).get('/api/v1/fleet/accidents/summary')).status).toBe(401);
+      expect(
+        (
+          await request(app)
+            .get('/api/v1/fleet/accidents/summary')
+            .set('Authorization', `Bearer ${branchAToken}`)
+        ).status,
+      ).toBe(403);
+    });
+  });
+
   it('accidents and violations are their own grants — the branch operator holds none', async () => {
     const res = await request(app)
       .get('/api/v1/fleet/accidents')

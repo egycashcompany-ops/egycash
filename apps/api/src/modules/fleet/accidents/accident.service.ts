@@ -6,12 +6,14 @@
 import {
   FleetEvents,
   type CreateFleetAccident,
+  type FleetAccidentSummaryQuery,
+  type FleetAccidentTotalsDto,
   type ListFleetAccidentsQuery,
   type Paginated,
   type SetFleetAccidentStatus,
   type UpdateFleetAccident,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { ConflictError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -69,14 +71,59 @@ class FleetAccidentService {
     return doc;
   }
 
+  /**
+   * The mongo filter for one set of accident filters — built ONCE, for both the page and its
+   * totals, so the sums under the table can only ever describe the rows the table is drawn from.
+   */
+  private async filterFor(
+    query: FleetAccidentSummaryQuery,
+  ): Promise<FilterQuery<FleetAccidentDoc>> {
+    return fleetAccidentRepository.accidentFilter({
+      vehicleId: query.vehicleId,
+      vehicleIds: await this.codeScope(query.code),
+      culprit: query.culprit,
+      status: query.status,
+      from: query.from,
+      to: query.to,
+    });
+  }
+
+  /**
+   * A typed CODE, resolved to vehicle ids.
+   *
+   * An accident stores its vehicle by id and never carries the code, so "show me 213" is a
+   * question about the registry that has to be answered before this collection can be filtered at
+   * all — the same two-step `maintenance.service` takes for its code filter.
+   *
+   * `undefined` means the reader did not ask, and nothing is narrowed. An EMPTY ARRAY means they
+   * asked about a code no vehicle has, which narrows to nothing — the filter is never dropped for
+   * matching nothing, or the screen would answer an impossible search with the whole fleet.
+   */
+  private async codeScope(code: string | undefined): Promise<string[] | undefined> {
+    if (code === undefined) return undefined;
+    return fleetVehicleRepository.idsByCodeSearch(code);
+  }
+
   async list(query: ListFleetAccidentsQuery): Promise<Paginated<FleetAccidentDoc>> {
     return fleetAccidentRepository.listAccidents({
-      filter: fleetAccidentRepository.accidentFilter(query),
+      filter: await this.filterFor(query),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
     });
+  }
+
+  /**
+   * The figures under the table: how many files the filters match and what they add up to.
+   *
+   * Separate from `list` because it answers a different question — the WHOLE filtered set, not
+   * the page — and the query it takes has no `page` or `pageSize` to give it. Summing the rows
+   * the client happens to be holding would produce a number that changes when the reader turns
+   * the page, which is worse than showing none.
+   */
+  async summary(query: FleetAccidentSummaryQuery): Promise<FleetAccidentTotalsDto> {
+    return fleetAccidentRepository.totals(await this.filterFor(query));
   }
 
   /** Facts edit — audited, version-aware, publishes nothing (§8 lists no accident.updated). */

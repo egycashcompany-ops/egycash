@@ -2464,6 +2464,107 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     expect((await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(409);
   });
 
+  /**
+   * A day this far ahead of TODAY.
+   *
+   * Relative, not a literal like the dates above it: the plan endpoint refuses a date in the
+   * past (`PAST_DATE`), so a hardcoded future date is a test with an expiry — `operations.spec.ts`
+   * had three and they took the suite down when they went stale. The offsets are large and unique
+   * to this block so these days cannot collide with a day another test plans.
+   */
+  const futureDay = (days: number): string => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // ── the inheritance contract, stated as the sequence a dispatcher performs ──
+  //
+  // An unsaved day is a PROJECTION of the standing crew as it is right now; a saved day is a
+  // FACT, and stops listening. Both halves matter, and the second is the one that is easy to
+  // lose: a day that kept re-reading the fixed board would silently rewrite a plan somebody
+  // already committed to.
+  //
+  // The existing model expresses this with nothing added: a `fleet_duty_assignments` document
+  // keyed (vehicle, date) IS the override, and its existence IS `planned`.
+
+  it('CONTRACT — an unsaved day follows Fixed; a saved day stops, and other days do not', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b, c] = [await mkDriver(), await mkDriver(), await mkDriver()];
+    const day1 = futureDay(40);
+    const day2 = futureDay(41);
+
+    // 1–2. Fixed = A → the unsaved day shows A.
+    expect((await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(200);
+    const first = dayRow(data<BoardDto>(await getBoard(day1)), v.id);
+    expect(first?.driver1EmployeeId, 'day 1 inherits A').toBe(a);
+    expect(first?.planned, 'and nothing is stored for it yet').toBe(false);
+
+    // 3–4. Fixed becomes B → the STILL-unsaved day follows it.
+    expect((await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: b }])).status).toBe(200);
+    expect(
+      dayRow(data<BoardDto>(await getBoard(day1)), v.id)?.driver1EmployeeId,
+      'an unsaved day tracks the CURRENT standing crew, not the one it first showed',
+    ).toBe(b);
+
+    // 5. Save day 1 — as the board does: the inherited row is materialised as it stands.
+    expect((await savePlan(day1, [{ vehicleId: v.id, driver1EmployeeId: b }])).status).toBe(200);
+    const saved = dayRow(data<BoardDto>(await getBoard(day1)), v.id);
+    expect(saved?.planned, 'the day is now a stored fact').toBe(true);
+    expect(saved?.driver1EmployeeId).toBe(b);
+
+    // 6–7. Fixed becomes C → day 1 does NOT move. This is the whole point.
+    expect((await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: c }])).status).toBe(200);
+    expect(
+      dayRow(data<BoardDto>(await getBoard(day1)), v.id)?.driver1EmployeeId,
+      'a saved day is independent of every later change to the standing crew',
+    ).toBe(b);
+
+    // 8. …while a day nobody saved still follows the latest Fixed.
+    const other = dayRow(data<BoardDto>(await getBoard(day2)), v.id);
+    expect(other?.driver1EmployeeId, 'day 2 inherits the CURRENT fixed crew').toBe(c);
+    expect(other?.planned, 'and remains unstored').toBe(false);
+
+    // …and reading day 2 did not plan it, nor disturb day 1.
+    expect(dayRow(data<BoardDto>(await getBoard(day2)), v.id)?.planned).toBe(false);
+    expect(dayRow(data<BoardDto>(await getBoard(day1)), v.id)?.driver1EmployeeId).toBe(b);
+  });
+
+  it('CONTRACT — saving one day writes NOTHING for any other date', async () => {
+    // No cross-date leakage, asserted at the collection rather than through the board.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const [a, b] = [await mkDriver(), await mkDriver()];
+    const day1 = futureDay(50);
+    const day2 = futureDay(51);
+    expect((await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(200);
+    expect((await savePlan(day1, [{ vehicleId: v.id, driver1EmployeeId: b }])).status).toBe(200);
+
+    const stored = await mongoose.connection
+      .collection('fleet_duty_assignments')
+      .find({ vehicleId: new Types.ObjectId(v.id), isDeleted: false })
+      .toArray();
+    expect(stored, 'exactly one duty row — for the day that was saved').toHaveLength(1);
+    expect((stored[0]?.date as Date).toISOString().slice(0, 10)).toBe(day1);
+    expect(dayRow(data<BoardDto>(await getBoard(day2)), v.id)?.planned).toBe(false);
+  });
+
+  it('CONTRACT — merely READING an unsaved day never creates an override', async () => {
+    // What a browser refresh does: GET the board, repeatedly. A read that planned the day would
+    // freeze it against a Fixed Roster the dispatcher had not finished editing.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const a = await mkDriver();
+    const day = futureDay(60);
+    expect((await saveFixedCrew([{ vehicleId: v.id, driver1EmployeeId: a }])).status).toBe(200);
+
+    for (let i = 0; i < 3; i += 1) {
+      expect(dayRow(data<BoardDto>(await getBoard(day)), v.id)?.planned).toBe(false);
+    }
+    const stored = await mongoose.connection
+      .collection('fleet_duty_assignments')
+      .countDocuments({ vehicleId: new Types.ObjectId(v.id), isDeleted: false });
+    expect(stored, 'three reads, no writes').toBe(0);
+  });
+
   it('E — none of that touches the standing configuration', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const [a, b] = [await mkDriver(), await mkDriver()];
@@ -2848,6 +2949,112 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       missionTypeId: null,
       notes: null,
     });
+  });
+
+  // ── a row written before the field existed: the KEY IS ABSENT ────────────
+  //
+  // The test above saves through the API, so mongoose applies `default: null` and the key IS
+  // there. That is why it passed while the board was broken: the real pre-existing row has no
+  // such key at all, and `.lean()` applies no defaults, so it arrives as `undefined`.
+  //
+  // The mapper tested `=== null`, so `undefined` went to `String(undefined)` — the STRING
+  // `"undefined"`. It reached the board, came back in the next save payload untouched, and the
+  // contract refused the whole save of a row nobody had edited:
+  //
+  //   must be a 24-hex-char ObjectId (body.rows.1.missionTypeId)
+  //
+  // These write the document the way the database actually holds it — straight to the
+  // collection, bypassing the schema — because that is the only way to have the field absent.
+
+  /** A crew row as it was stored before `missionTypeId`/`notes` existed. No such keys. */
+  const insertLegacyCrew = async (
+    vehicleId: string,
+    fields: Record<string, unknown> = {},
+  ): Promise<void> => {
+    await mongoose.connection.collection('fleet_fixed_crews').insertOne({
+      vehicleId: new Types.ObjectId(vehicleId),
+      driver1EmployeeId: null,
+      driver2EmployeeId: null,
+      isDeleted: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      __v: 0,
+      ...fields,
+    });
+  };
+
+  it('LEGACY — an absent mission type reads as null, never the string "undefined"', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await insertLegacyCrew(v.id);
+
+    const row = rowFor(data<FixedBoardDto>(await getCrews()), v.id);
+    expect(row, 'the vehicle is on the board').toBeDefined();
+    expect(row?.missionTypeId, 'the defect, in one assertion').not.toBe('undefined');
+    expect(row?.missionTypeId).toBeNull();
+    expect(row?.notes).toBeNull();
+  });
+
+  it('LEGACY — an absent driver reads as null too', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await insertLegacyCrew(v.id, { driver1EmployeeId: undefined, driver2EmployeeId: undefined });
+
+    const row = rowFor(data<FixedBoardDto>(await getCrews()), v.id);
+    expect(row?.driver1EmployeeId).toBeNull();
+    expect(row?.driver2EmployeeId).toBeNull();
+    expect(row?.driver1EmployeeId).not.toBe('undefined');
+  });
+
+  it('LEGACY — the board can be SAVED again with such a row on it', async () => {
+    // The user-visible bug: «حفظ» refused the whole board because of an untouched legacy row.
+    // The board is read and sent back exactly as a client does, legacy row included.
+    const legacy = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const edited = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await insertLegacyCrew(legacy.id);
+    const driver = await mkDriver();
+
+    const board = data<FixedBoardDto>(await getCrews());
+    const rows = [legacy.id, edited.id].map((vehicleId) => {
+      const row = rowFor(board, vehicleId);
+      return {
+        vehicleId,
+        missionTypeId: row?.missionTypeId ?? null,
+        driver1EmployeeId: vehicleId === edited.id ? driver : (row?.driver1EmployeeId ?? null),
+        driver2EmployeeId: row?.driver2EmployeeId ?? null,
+        notes: row?.notes ?? null,
+      };
+    });
+
+    const save = await saveCrews(rows);
+    expect(save.status, JSON.stringify(save.body?.error ?? {})).toBe(200);
+    expect(rowFor(data<FixedBoardDto>(await getCrews()), edited.id)?.driver1EmployeeId).toBe(
+      driver,
+    );
+  });
+
+  // ── and the contract is NOT relaxed by any of that ───────────────────────
+
+  it('REFUSES the string "undefined" as a mission type — the fix is upstream, not here', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await saveCrews([{ vehicleId: v.id, missionTypeId: 'undefined' }]);
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain('24-hex-char ObjectId');
+  });
+
+  it('REFUSES an empty string as a mission type', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await saveCrews([{ vehicleId: v.id, missionTypeId: '' }])).status).toBe(400);
+  });
+
+  it('REFUSES a non-hex id of the right length, and any other junk', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (const bad of ['zzzzzzzzzzzzzzzzzzzzzzzz', '123', 'null', '   ']) {
+      expect((await saveCrews([{ vehicleId: v.id, missionTypeId: bad }])).status, bad).toBe(400);
+    }
+  });
+
+  it('ACCEPTS an explicit null — "no mission" is still expressible', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await saveCrews([{ vehicleId: v.id, missionTypeId: null }])).status).toBe(200);
   });
 
   it('EDIT — a work type alone is a change; no driver need be involved', async () => {

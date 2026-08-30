@@ -42,12 +42,21 @@ const entityRef = (id: string) => ({
 const utcDay = (d: Date): Date =>
   new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 
-/** The audited/compared surface of a row — the four planning facts, nothing derived. */
-const snapshot = (doc: FleetDutyAssignmentDoc) => ({
-  missionTypeId: doc.missionTypeId === null ? null : String(doc.missionTypeId),
-  driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
-  driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
-  notes: doc.notes,
+/**
+ * The audited/compared surface of a row — the four planning facts, nothing derived.
+ *
+ * A MISSING FIELD IS `null`. `findForDate` is a `.lean()` read, so no schema default is applied
+ * and an absent key arrives as `undefined`; `=== null ? null : String(...)` would turn that into
+ * the string `"undefined"`, which the board would then hand back as a stored fact and the
+ * contract would refuse on the next save. Every field of this collection shipped with it, so
+ * there is no such row today — this is the same shape as the fixed board's `snapshot`, fixed
+ * alongside it so the two cannot drift and so the trap cannot be re-armed by a field added later.
+ */
+export const snapshot = (doc: FleetDutyAssignmentDoc) => ({
+  missionTypeId: doc.missionTypeId?.toString() ?? null,
+  driver1EmployeeId: doc.driver1EmployeeId?.toString() ?? null,
+  driver2EmployeeId: doc.driver2EmployeeId?.toString() ?? null,
+  notes: doc.notes ?? null,
 });
 
 /** An id in the one spelling mongo uses. `null`/`undefined` pass through untouched. */

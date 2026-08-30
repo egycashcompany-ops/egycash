@@ -372,6 +372,14 @@ describe('punches', () => {
   it('imports device rows idempotently and quarantines bad ones instead of dropping them', async () => {
     const emp = await regEmployee();
     const day = recentWorkday();
+    // AT-D1 (D12.5): a device must be registered before its rows are accepted — an unregistered
+    // one is quarantined rather than stored as a punch nobody can place. Registering it here is
+    // the same act an administrator performs once per wall.
+    const device = await request(app)
+      .post('/api/v1/hr/attendance/devices')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'dev-1', name: 'Gate 1', branchId: BRANCH_ID });
+    expect(device.status).toBe(201);
     const rows = [
       { employeeNumber: emp.employeeNumber, at: cairoInstant(day, '09:00').toISOString(), deviceId: 'dev-1' },
       { employeeNumber: emp.employeeNumber, at: cairoInstant(day, '17:00').toISOString(), deviceId: 'dev-1' },

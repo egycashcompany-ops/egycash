@@ -17,11 +17,12 @@ import {
   type RecordPunch,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../../shared/errors';
-import { type AuthContext } from '../../../../shared/types';
+import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { settingsService } from '../../../../platform/settings';
 import { employeeRepository } from '../../employee-management/employees';
+import { attendanceDeviceRepository } from '../devices/attendance-device.repository';
 import { AttendancePunchModel, type AttendancePunchDoc } from './punch.model';
 import { punchRepository } from './punch.repository';
 
@@ -54,6 +55,7 @@ export const toPunchDto = (doc: AttendancePunchDoc): AttendancePunchDto => ({
   source: doc.source,
   deviceId: doc.deviceId,
   branchIdAtPunch: doc.branchIdAtPunch === null ? null : String(doc.branchIdAtPunch),
+  employeeBranchId: doc.employeeBranchId === null ? null : String(doc.employeeBranchId),
   importBatchId: doc.importBatchId,
   supersededBy: doc.supersededBy === null ? null : String(doc.supersededBy),
   note: doc.note,
@@ -62,8 +64,11 @@ export const toPunchDto = (doc: AttendancePunchDoc): AttendancePunchDto => ({
 });
 
 class PunchService {
-  async list(query: ListPunchesQuery): Promise<Paginated<AttendancePunchDoc>> {
-    return punchRepository.listPunches(query);
+  async list(
+    query: ListPunchesQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<AttendancePunchDoc>> {
+    return punchRepository.listPunches(query, scope);
   }
 
   /** Manual entry (HR) or — once the D1 setting is on — a web self-punch. */
@@ -107,6 +112,9 @@ class PunchService {
           input.branchIdAtPunch !== undefined
             ? new Types.ObjectId(input.branchIdAtPunch)
             : employee.employment.branchId,
+        // The reader's axis, always from the employee — never from the override above, which
+        // says where the punch happened and may legitimately be somewhere else entirely.
+        employeeBranchId: employee.employment.branchId,
         importBatchId: null,
         note: input.note ?? null,
         recordedBy: ctx.userId === null ? null : new Types.ObjectId(ctx.userId),
@@ -156,6 +164,10 @@ class PunchService {
 
     // Employee lookup once per distinct number — device exports repeat the same person all day.
     const byNumber = new Map<string, { id: Types.ObjectId; branchId: Types.ObjectId } | null>();
+    // D12.5/D12.7 — the same once-per-distinct-value cache for the DEVICE, because a batch is
+    // one device repeated thousands of times. Resolving it is what lets the punch record where it
+    // physically happened instead of where its owner is filed.
+    const byDevice = new Map<string, { branchId: Types.ObjectId; isActive: boolean } | null>();
     for (const [index, row] of input.rows.entries()) {
       const windowProblem = punchWindowProblem(row.at, now);
       if (windowProblem !== null) {
@@ -176,6 +188,26 @@ class PunchService {
         quarantined.push({ index, reason: `unknown employeeNumber ${row.employeeNumber}` });
         continue;
       }
+      // D12.5 — an unregistered device is QUARANTINED, never guessed at. Accepting it would mean
+      // storing a punch whose location we cannot state, and the row would look identical to one
+      // from a device somebody had actually placed. The reason travels in the response, so the
+      // fix is «register the device», not «work out why rows vanished».
+      if (!byDevice.has(row.deviceId)) {
+        const found = await attendanceDeviceRepository.findByCodeSystem(row.deviceId);
+        byDevice.set(
+          row.deviceId,
+          found === null ? null : { branchId: found.branchId, isActive: found.isActive },
+        );
+      }
+      const device = byDevice.get(row.deviceId) ?? null;
+      if (device === null) {
+        quarantined.push({ index, reason: `unknown deviceId ${row.deviceId}` });
+        continue;
+      }
+      if (!device.isActive) {
+        quarantined.push({ index, reason: `device ${row.deviceId} is deactivated` });
+        continue;
+      }
       try {
         await punchRepository.create(
           {
@@ -184,7 +216,12 @@ class PunchService {
             direction: row.direction,
             source: 'device',
             deviceId: row.deviceId,
-            branchIdAtPunch: employee.branchId,
+            // D12.7 — THE DEVICE'S branch, not the employee's. The field is documented as «where
+            // the punch physically happened — evidence», and stamping the employee's own branch
+            // made `crossBranchPunch` unable to fire on a device punch at all: the comparison was
+            // a value against itself. This is the fix that gives that flag its meaning back.
+            branchIdAtPunch: device.branchId,
+            employeeBranchId: employee.branchId,
             importBatchId: batchId,
             note: null,
             recordedBy: ctx.userId === null ? null : new Types.ObjectId(ctx.userId),

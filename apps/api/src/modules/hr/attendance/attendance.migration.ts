@@ -5,6 +5,7 @@
 import { logger } from '../../../infrastructure/logging/logger';
 import { rbacService } from '../../../platform/rbac';
 import { shiftService } from './shifts';
+import { AttendancePunchModel } from './punches/punch.model';
 
 /**
  * What Employee Self-Service may do with attendance (§6, AT-6): read their OWN month and file a
@@ -14,7 +15,40 @@ import { shiftService } from './shifts';
  */
 const ESS_ATTENDANCE_GRANTS = ['attendance.view', 'attendance.requestRegularization'];
 
+/**
+ * AT-D1 backfill — give punches written before the split their reader axis.
+ *
+ * WHY IT IS EXACT RATHER THAN A GUESS. Until AT-D1 every import stamped `branchIdAtPunch` with the
+ * EMPLOYEE's branch, and `record()` defaulted it to the same value. So for every row this backfill
+ * touches, the evidence field already holds the employee's branch — copying it across is not an
+ * approximation, it is reading back what was written.
+ *
+ * THE ONE ROW SHAPE WHERE IT WOULD NOT BE: a `record()` call that passed an explicit
+ * `branchIdAtPunch` override pointing somewhere other than the employee's own branch. That path
+ * has no caller in the product — no screen reaches either punch write endpoint — so no such row
+ * can have been created through the application. It is named here rather than hidden, because a
+ * backfill that quietly might be wrong is worse than one that says where its edge is.
+ *
+ * ADDITIVE AND IDEMPOTENT, like everything else in this file: it writes only where the field is
+ * missing, so a second boot matches nothing. It never touches `branchIdAtPunch` — a punch is
+ * evidence (D9), and evidence is not restated.
+ */
+const backfillPunchEmployeeBranch = async (): Promise<void> => {
+  const result = await AttendancePunchModel.updateMany(
+    { employeeBranchId: { $in: [null, undefined] }, branchIdAtPunch: { $ne: null } },
+    [{ $set: { employeeBranchId: '$branchIdAtPunch' } }],
+  ).exec();
+  if (result.modifiedCount > 0) {
+    logger.info(
+      { punches: result.modifiedCount },
+      'attendance: backfilled employeeBranchId on punches written before AT-D1',
+    );
+  }
+};
+
 export const migrateAttendance = async (): Promise<void> => {
+  await backfillPunchEmployeeBranch();
+
   const added = await rbacService.addSystemRoleGrants(
     'employee-self-service',
     ESS_ATTENDANCE_GRANTS,

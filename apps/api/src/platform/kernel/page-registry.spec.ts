@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 71 pages over 265 permissions', () => {
+  it('declares 71 pages over 267 permissions', () => {
     expect(pages).toHaveLength(71);
-    expect(permissions).toHaveLength(265);
+    expect(permissions).toHaveLength(267);
   });
 
   /**
@@ -71,7 +71,11 @@ describe('the assembled page registry', () => {
     // was phase 4, and assigning keys to a page that does not exist would make this registry
     // describe a system nobody can open. Phase 4 built that screen, so the three moved here — in
     // the change that built it, exactly as `employeeLoan` did and never before.
-    expect(permissions.length - assigned.length).toBe(27);
+    // AT-D1 added two: `attendanceDevice.view` and `.manage`. They are unassigned for the reason
+    // this list exists to record — the screen they belong on is the device HEALTH screen, and
+    // health is AT-D4. Routing them to an unrelated page to keep a number still would make this
+    // registry describe a system nobody can open.
+    expect(permissions.length - assigned.length).toBe(29);
   });
 
   it('splits the pages across the four modules as declared', () => {
@@ -94,6 +98,9 @@ describe('the assembled page registry', () => {
         // recompute repair tools, self-service filing, and the overtime release, each of which
         // acts from a surface the caller already stands on.
         'attendance',
+        // AT-D1. The registry is API-only until AT-D4 builds the health screen it belongs on —
+        // and it will leave this list in that change, the way `employeeLoan` did and never before.
+        'attendanceDevice',
         // `employeeLoan` LEFT this list in P-HR-06-B, in the change that routed its screen — the
         // same way `setting`, `notificationTemplate` and the log streams left it, and never before.
         // Phase A's entry here was true when it was written: the only surface was a tab on the

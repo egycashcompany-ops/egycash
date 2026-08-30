@@ -1,15 +1,37 @@
 import { Types, type FilterQuery } from 'mongoose';
 import { type ListPunchesQuery, type Paginated } from '@ecms/contracts';
 import { BaseRepository } from '../../../../shared/base/base.repository';
+import { type ScopeSelector } from '../../../../shared/types';
 import { AttendancePunchModel, type AttendancePunchDoc } from './punch.model';
 
 class PunchRepository extends BaseRepository<AttendancePunchDoc> {
   constructor() {
-    // Evidence never soft-deletes (D9); scope rides the punch's own branch for list reads.
-    super(AttendancePunchModel, { branchField: 'branchIdAtPunch', softDelete: false });
+    // Evidence never soft-deletes (D9).
+    //
+    // THE AXIS IS THE EMPLOYEE'S BRANCH, NOT THE PUNCH'S. Before AT-D1 this scoped on
+    // `branchIdAtPunch`, which was harmless only because import stamped the employee's own branch
+    // into it. D12.7 made that field record the DEVICE's location, so scoping on it would have
+    // silently changed who reads what: a manager would gain other branches' people who punched on
+    // their wall, and lose their own person who punched at head office. Reach follows the person.
+    super(AttendancePunchModel, { branchField: 'employeeBranchId', softDelete: false });
   }
 
-  async listPunches(query: ListPunchesQuery): Promise<Paginated<AttendancePunchDoc>> {
+  /**
+   * THE SCOPE IS PASSED, and before AT-D1 it was not.
+   *
+   * This method declared a branch axis on the class and then called `list` without a selector.
+   * `baseFilter(undefined)` adds no clause, so the read returned every punch in the organization
+   * to every caller holding `attendance.view` — a key the attendance migration grants to the
+   * Employee Self-Service role. The declaration was there; nothing carried it to the query.
+   *
+   * It is fixed here rather than filed away because this phase is about that exact axis on that
+   * exact collection, and shipping a change to which branch a punch records while leaving the read
+   * unscoped would be indefensible.
+   */
+  async listPunches(
+    query: ListPunchesQuery,
+    scope: ScopeSelector,
+  ): Promise<Paginated<AttendancePunchDoc>> {
     const filter: FilterQuery<AttendancePunchDoc> = {};
     if (query.employeeId !== undefined) filter.employeeId = new Types.ObjectId(query.employeeId);
     if (query.source !== undefined) filter.source = query.source;
@@ -27,6 +49,7 @@ class PunchRepository extends BaseRepository<AttendancePunchDoc> {
       sortBy: 'at',
       sortDir: 'desc',
       sortableFields: ['at', 'createdAt'],
+      scope,
     });
   }
 

@@ -389,12 +389,25 @@ export const useDeleteMaintenance = () =>
 // ── Roster / accidents / violations ─────────────────────────────────────────
 const rosterDayKey = (date: string) => [MODULE, 'roster', 'day', date] as const;
 
+/**
+ * One DAY's board. Deliberately WITHOUT `placeholderData` — the exception on this module.
+ *
+ * Everywhere else that option is right: those queries are keyed by a filter or a page, so the
+ * previous answer is the same question's slightly-stale answer and showing it beats a flash of
+ * nothing. Here the key IS the entity's identity. Serving the previous key's data means showing
+ * ANOTHER DAY's roster — not stale data, wrong data — and this board is editable, so the harm
+ * ran past display: with the previous day's rows in hand the page armed «حفظ», and a save inside
+ * that window posted THAT day's crew under the NEW date, silently overwriting the day the
+ * dispatcher had actually planned.
+ *
+ * A skeleton while the day loads is the correct answer to "what is on the board for this date"
+ * when the answer is not known yet.
+ */
 export const useRosterDay = (date: string) =>
   useQuery({
     queryKey: rosterDayKey(date),
     queryFn: () => api.getRosterDay(date),
     enabled: date !== '',
-    placeholderData: (prev) => prev,
   });
 
 // A plan save answers with the refreshed board in the same round-trip (FL-5 point 7), so the

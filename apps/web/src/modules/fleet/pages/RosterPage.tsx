@@ -36,7 +36,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { ChevronEndIcon, ChevronStartIcon, CloseIcon, EditIcon } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { useFleetCatalog, usePlanRoster, useRosterDay } from '../api/fleet-queries';
-import { EmployeeName } from '../components/EmployeeName';
+import { EmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
@@ -51,6 +51,9 @@ import {
   rowsToSave,
   setMission,
 } from '../lib/daily-roster-board';
+import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
+import { rosterDraftKey } from '../lib/draft-storage';
+import { useDraftBoard } from '../lib/useDraftBoard';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -210,6 +213,12 @@ const RosterSlotCell = ({
   );
 };
 
+/**
+ * What a reader edits on this board — and therefore the only thing a restored draft may carry
+ * over from storage. Everything else on a row is the server's to state.
+ */
+const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes'] as const;
+
 export const RosterPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -255,19 +264,20 @@ export const RosterPage = (): JSX.Element => {
   // derived day stays unplanned until somebody actually plans it.
   const saved = useMemo(() => board?.rows ?? [], [board]);
 
-  // The draft, derived DURING render rather than by an effect. An effect runs after the first
-  // paint (so the board would flash) and never runs at all under `renderToStaticMarkup`, which is
-  // how this screen is tested. Holding the base the draft was taken from lets the draft reset
-  // itself the moment the server answers with a different board — a new date, or a completed
-  // save — and stay put in between, so a background refetch cannot undo a drag.
-  const [edit, setEdit] = useState<{ base: FleetRosterRowDto[]; rows: FleetRosterRowDto[] }>({
-    base: [],
-    rows: [],
-  });
-  const draft = edit.base === saved ? edit.rows : saved;
-  const setDraft = (next: (rows: FleetRosterRowDto[]) => FleetRosterRowDto[]): void =>
-    setEdit({ base: saved, rows: next(draft) });
-  const discard = (): void => setEdit({ base: saved, rows: saved });
+  // The draft — the same render-time rule as before, now with a memory across a reload. See
+  // `useDraftBoard`.
+  //
+  // THE KEY CARRIES THE DATE, and that is the whole of the cross-day guarantee. A crew typed
+  // for the 1st is about the 1st; keyed without the date it would greet the 2nd as that day's
+  // pending work — the same class of bug as serving one date's board for another, which this
+  // screen already fixed once in the query layer. `useDraftBoard` reads through a memo on the
+  // key, so moving to another day re-reads storage and moving back finds that day's own draft.
+  const {
+    draft,
+    setDraft,
+    discard,
+    accept: acceptDraft,
+  } = useDraftBoard(rosterDraftKey(date), saved, EDITABLE);
 
   // What a save would WRITE — edits, plus any operation still only projected from the standing
   // crew. The second half is what carries an unchanged operation through to Operations.
@@ -347,6 +357,55 @@ export const RosterPage = (): JSX.Element => {
     [board, draft],
   );
 
+  // ── finding a driver, in EITHER list ──────────────────────────────────────
+  //
+  // One box over both panels, because the reader does not know which half the person is in —
+  // that is precisely what they are trying to find out. A search that filtered only the
+  // available list would answer "no such driver" for somebody who is merely on leave, which is
+  // the one answer a dispatcher must not be given.
+  //
+  // Panel-local state, not a URL parameter, matching the Fixed Roster: this filters side lists,
+  // it does not change what the page is about. The `?q=` above is different — it changes which
+  // VEHICLES the board shows, which is worth putting in a link.
+  const [driverSearch, setDriverSearch] = useState('');
+
+  const unavailable = useMemo(() => board?.unavailableDrivers ?? [], [board]);
+  // Both halves indexed together, so one term reaches both. The cards already load these
+  // records to render each name; same query keys, so this subscribes to the existing entries
+  // rather than fetching anything new.
+  const records = useEmployeeRecords(
+    useMemo(
+      () => [...pool.map((d) => d.employeeId), ...unavailable.map((d) => d.employeeId)],
+      [pool, unavailable],
+    ),
+  );
+  const searchIndex = useMemo(() => {
+    const index = new Map<string, DriverSearchRecord>();
+    for (const [employeeId, employee] of records) {
+      index.set(employeeId, {
+        employeeId,
+        nameAr: employee.personal.fullNameAr,
+        nameEn: employee.personal.fullNameEn,
+        code: employee.code,
+        employeeNumber: employee.employeeNumber,
+      });
+    }
+    return index;
+  }, [records]);
+
+  // FILTERING FOR DISPLAY ONLY. Neither list feeds the draft or the save payload: `pool` is
+  // what the drag rules and the counters read, and `unavailable` is the server's verdict. These
+  // two are what the panels RENDER, so clearing the box brings everybody back with no round
+  // trip and no state to put right.
+  const shownAvailable = useMemo(
+    () => filterDrivers(pool, searchIndex, driverSearch),
+    [pool, searchIndex, driverSearch],
+  );
+  const shownUnavailable = useMemo(
+    () => filterDrivers(unavailable, searchIndex, driverSearch),
+    [unavailable, searchIndex, driverSearch],
+  );
+
   const [editing, setEditing] = useState<string | null>(null);
   const [clearing, setClearing] = useState<FleetRosterRowDto | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -367,6 +426,10 @@ export const RosterPage = (): JSX.Element => {
     if (!dirty) return;
     try {
       await plan.mutateAsync({ dateKey: date, body: { date: new Date(date), rows: pending } });
+      // Saved: what was persisted for THIS DAY is now the server's board and stops being a
+      // draft. Only this day's key is dropped — another day's unsaved work is not this save's
+      // to throw away.
+      acceptDraft();
       toast.success(t('fleet.roster.saved'));
     } catch (error) {
       // The hook defines its own `onError` so a failed save re-reads the day — and defining one
@@ -667,6 +730,17 @@ export const RosterPage = (): JSX.Element => {
           />
         </div>
 
+        {/* ONE search box over BOTH columns — see `shownAvailable` / `shownUnavailable`. It sits
+            above the pair rather than inside either, because that is what says it searches the
+            two of them: a box inside the green panel would read as a filter on that panel. Same
+            control and same placeholder as the Fixed Roster's driver search. */}
+        <SearchInput
+          value={driverSearch}
+          onChange={setDriverSearch}
+          placeholder={t('fleet.fixedRoster.driverSearchPlaceholder')}
+          className="w-full"
+        />
+
         {/* The two lists SIDE BY SIDE, each its own column. Stacked, the unavailable list pushed
             the available one off the fold on a real fleet, and the board lost the height to a
             section nobody drags from. */}
@@ -680,9 +754,15 @@ export const RosterPage = (): JSX.Element => {
             </h2>
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
+            ) : shownAvailable.length === 0 ? (
+              // Searched and found nobody HERE — distinct from "the list is empty", which is a
+              // fact about the day rather than about the term.
+              <p className="px-3 pb-3 text-center text-sm text-emerald-800 dark:text-emerald-300">
+                {t('fleet.fixedRoster.driverSearchEmpty')}
+              </p>
             ) : (
               <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
-                {pool.map((driver) => (
+                {shownAvailable.map((driver) => (
                   <li key={driver.employeeId}>
                     <div
                       data-driver-card={driver.employeeId}
@@ -717,11 +797,15 @@ export const RosterPage = (): JSX.Element => {
                 ({formatNumber(board?.unavailableDrivers.length ?? 0, locale)})
               </span>
             </h2>
-            {board === undefined || board.unavailableDrivers.length === 0 ? (
+            {board === undefined || unavailable.length === 0 ? (
               <EmptyState title={t('fleet.roster.unavailableEmpty')} />
+            ) : shownUnavailable.length === 0 ? (
+              <p className="px-3 pb-3 text-center text-sm text-slate-600 dark:text-slate-300">
+                {t('fleet.fixedRoster.driverSearchEmpty')}
+              </p>
             ) : (
               <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
-                {board.unavailableDrivers.map((driver) => (
+                {shownUnavailable.map((driver) => (
                   <li
                     key={driver.employeeId}
                     data-unavailable-driver={driver.employeeId}

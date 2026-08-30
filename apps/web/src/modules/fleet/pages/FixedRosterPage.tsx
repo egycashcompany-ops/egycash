@@ -50,6 +50,8 @@ import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
+import { FIXED_ROSTER_DRAFT_KEY } from '../lib/draft-storage';
+import { useDraftBoard } from '../lib/useDraftBoard';
 import {
   CREW_SLOTS,
   applyEdit,
@@ -402,6 +404,12 @@ const CrewSlotCell = ({
   );
 };
 
+/**
+ * What a reader edits on this board — and therefore the only thing a restored draft may carry
+ * over from storage. Everything else on a row is the server's to state.
+ */
+const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes'] as const;
+
 export const FixedRosterPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -423,20 +431,19 @@ export const FixedRosterPage = (): JSX.Element => {
   const save = useSaveFixedRoster();
   const saved = useMemo(() => boardQuery.data?.rows ?? [], [boardQuery.data]);
 
-  // The draft the drags edit, derived from the saved board DURING render rather than by an
-  // effect. The difference is not stylistic: an effect runs after the first paint, so the board
-  // would flash empty on arrival — and never runs at all under `renderToStaticMarkup`, which is
-  // how this screen is tested. Holding the base the draft was taken from lets the draft reset
-  // itself the moment the server answers with a different board, and stay put in between, so a
-  // background refetch of the same board cannot undo a drag.
-  const [edit, setEdit] = useState<{ base: FleetFixedCrewRowDto[]; rows: FleetFixedCrewRowDto[] }>({
-    base: [],
-    rows: [],
-  });
-  const draft = edit.base === saved ? edit.rows : saved;
-  const setDraft = (next: (rows: FleetFixedCrewRowDto[]) => FleetFixedCrewRowDto[]): void =>
-    setEdit({ base: saved, rows: next(draft) });
-  const discard = (): void => setEdit({ base: saved, rows: saved });
+  // The draft the drags edit — the same render-time rule as before, now with a memory across a
+  // reload. See `useDraftBoard`.
+  //
+  // The key carries NO DATE, deliberately. `fleet_fixed_crews` is the standing crew of a
+  // vehicle, one row per car, with no date or weekday anywhere in it — this board is not a day.
+  // Inventing a date key here would split one board's draft across as many keys as there are
+  // days, so a reader would lose their work by doing nothing but waiting past midnight.
+  const {
+    draft,
+    setDraft,
+    discard,
+    accept: acceptDraft,
+  } = useDraftBoard(FIXED_ROSTER_DRAFT_KEY, saved, EDITABLE);
 
   const pending = useMemo(() => changedRows(saved, draft), [saved, draft]);
   const dirty = pending.length > 0;
@@ -522,6 +529,10 @@ export const FixedRosterPage = (): JSX.Element => {
     if (!dirty) return;
     try {
       await save.mutateAsync({ rows: pending });
+      // The save succeeded, so what was persisted is now the SERVER's board and stops being a
+      // draft. Dropped here rather than left to expire, so the next reload reads the board the
+      // server holds and nothing else.
+      acceptDraft();
       toast.success(t('fleet.fixedRoster.saved'));
     } catch (error) {
       // The hook defines its own `onError` so a failed save re-reads the board — and defining one

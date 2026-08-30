@@ -22,6 +22,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RosterPage } from './pages/RosterPage';
+import { filterDrivers } from './lib/driver-search';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8');
@@ -401,9 +402,17 @@ describe('where the day comes from', () => {
 
 describe('the daily draft and its Save', () => {
   it('holds the day locally, seeded from the board the server derived', () => {
-    expect(SOURCE, 'a draft, based on the board it came from').toContain(
-      'const draft = edit.base === saved ? edit.rows : saved',
+    // The rule itself now lives in `useDraftBoard`, shared with the fixed board and given a
+    // memory across a reload. It is UNCHANGED: a draft is held together with the server board it
+    // was taken from, compared by identity, so it resets when the server answers with a
+    // different board and stays put in between.
+    const hook = readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    expect(hook, 'a draft, based on the board it came from').toContain(
+      'edit.base === saved ? edit.rows',
     );
+    expect(SOURCE, 'and this page uses it').toContain('useDraftBoard(');
     expect(SOURCE, 'the baseline IS the server’s derived day').toContain(
       'const saved = useMemo(() => board?.rows ?? []',
     );
@@ -467,9 +476,14 @@ describe('the daily draft and its Save', () => {
   });
 
   it('CANCEL restores the last saved day rather than clearing the board', () => {
-    expect(SOURCE, 'discard rebases the draft on the saved board').toContain(
-      'const discard = (): void => setEdit({ base: saved, rows: saved })',
+    const hook = readFileSync(join(HERE, 'lib/useDraftBoard.ts'), 'utf8');
+    expect(hook, 'discard rebases the draft on the saved board').toContain(
+      'setEdit({ base: saved, rows: [...saved] })',
     );
+    expect(hook, 'and clears STORAGE too — «إلغاء» must not survive a reload').toMatch(
+      /discard[\s\S]{0,200}forget\(\)/,
+    );
+    expect(SOURCE, 'the page still offers it').toContain('discard');
   });
 
   it('sends exactly the changed rows, once, on Save', () => {
@@ -747,5 +761,130 @@ describe('a day shows its own board, and only its own', () => {
     const d3 = render({ date: day(3), qc: client(inherited, day(3)) });
     expect(seated(d2, V1), 'the overridden day seats its own driver').toBe(E3);
     expect(seated(d3, V1), 'the inherited day seats the standing one').toBe(E1);
+  });
+});
+
+// ── finding a driver in EITHER list ────────────────────────────────────────
+//
+// A dispatcher hunting for somebody does not know which half they are in — that is the thing
+// they are trying to find out. A search that filtered only the available column would answer
+// "no such driver" for somebody who is merely on leave, which is the one answer they must not
+// be given. So one box, over both panels.
+//
+// The filtering itself is `filterDrivers`, already proven pure in `driver-search.spec.ts`. What
+// is asserted here is that THIS PAGE routes BOTH lists through it — a page that filtered one
+// and rendered the other raw would pass every test in that file.
+describe('the driver search covers both lists', () => {
+  const index = new Map([
+    [E1, { employeeId: E1, nameAr: 'محمد حاتم', nameEn: 'Mohamed Hatem', code: 'DRV-1' }],
+    [E2, { employeeId: E2, nameAr: 'علي سعيد', nameEn: 'Ali Said', code: 'DRV-2' }],
+    [E3, { employeeId: E3, nameAr: 'سامي فؤاد', nameEn: 'Sami Fouad', code: 'DRV-3' }],
+  ]);
+  const available = [
+    { employeeId: E1, assignedVehicleId: null },
+    { employeeId: E3, assignedVehicleId: null },
+  ];
+  const unavailable = [{ employeeId: E2, reason: 'hrLeave' }];
+
+  it('finds a driver who is AVAILABLE', () => {
+    expect(filterDrivers(available, index, 'محمد').map((d) => d.employeeId)).toEqual([E1]);
+  });
+
+  it('finds a driver who is UNAVAILABLE — the half a one-sided search would hide', () => {
+    expect(filterDrivers(unavailable, index, 'علي').map((d) => d.employeeId)).toEqual([E2]);
+    // And the reason travels with them: the row still says WHY they cannot be assigned.
+    expect(filterDrivers(unavailable, index, 'علي')[0]?.reason).toBe('hrLeave');
+  });
+
+  it('matches part of a name, in either language, and the code', () => {
+    for (const term of ['حات', 'hate', 'HATE', 'drv-1']) {
+      expect(filterDrivers(available, index, term).map((d) => d.employeeId), term).toEqual([E1]);
+    }
+  });
+
+  it('answers with an empty list when nobody matches — in both halves', () => {
+    expect(filterDrivers(available, index, 'zzzz')).toEqual([]);
+    expect(filterDrivers(unavailable, index, 'zzzz')).toEqual([]);
+  });
+
+  it('CLEARING the box brings everybody back, on both sides', () => {
+    for (const term of ['', '   ']) {
+      expect(filterDrivers(available, index, term)).toHaveLength(2);
+      expect(filterDrivers(unavailable, index, term)).toHaveLength(1);
+    }
+  });
+
+  it('the page filters the AVAILABLE list', () => {
+    expect(SOURCE).toContain('shownAvailable = useMemo');
+    expect(SOURCE, 'and renders the filtered list, not the pool').toContain('shownAvailable.map(');
+  });
+
+  it('the page filters the UNAVAILABLE list', () => {
+    expect(SOURCE).toContain('shownUnavailable = useMemo');
+    expect(SOURCE, 'and renders the filtered list, not the server array').toContain(
+      'shownUnavailable.map(',
+    );
+  });
+
+  it('indexes BOTH halves, so one term can reach either', () => {
+    const call = SOURCE.slice(SOURCE.indexOf('useEmployeeRecords('), SOURCE.indexOf('searchIndex'));
+    expect(call).toContain('pool.map');
+    expect(call, 'the unavailable half is indexed too').toContain('unavailable.map');
+  });
+
+  it('renders ONE box above the pair, not one per panel', () => {
+    const markup = render();
+    const boxes = markup.split('placeholder="' + t('fleet.fixedRoster.driverSearchPlaceholder'));
+    expect(boxes.length - 1, 'exactly one driver search box').toBe(1);
+  });
+
+  it('is DISPLAY ONLY — the draft, the counters and the payload read the unfiltered lists', () => {
+    // The rule that keeps a search from becoming a data change: the two `shown*` arrays are
+    // rendered and nothing else. `pool` is what the drag rules and counters read.
+    expect(SOURCE, 'the pool still feeds the drag rules').toContain(
+      'availableDrivers(board?.availableDrivers',
+    );
+    for (const forbidden of [
+      'rowsToSave(saved, shown',
+      'hasEdits(saved, shown',
+      'availableDrivers(shown',
+    ]) {
+      expect(SOURCE, `${forbidden} would make a search change the data`).not.toContain(forbidden);
+    }
+  });
+
+  it('does not make the search a URL parameter — it is not what the page is about', () => {
+    // `?q=` filters VEHICLES and belongs in a shareable link. Which driver you were hunting for
+    // does not, and putting it in the URL would also reset it on every navigation.
+    expect(SOURCE).toContain("const [driverSearch, setDriverSearch] = useState('')");
+    expect(SOURCE).not.toContain("sp.get('driver')");
+  });
+});
+
+// ── a day's unsaved work survives a reload, and belongs to that day ────────
+describe('the daily draft is persisted, per day', () => {
+  it('keys the draft by DATE — the whole of the cross-day guarantee', () => {
+    expect(SOURCE).toContain('useDraftBoard(rosterDraftKey(date), saved, EDITABLE)');
+  });
+
+  it('drops only THIS day’s draft after a successful save', () => {
+    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const confirmClear'));
+    expect(commit, 'the save clears the draft').toContain('acceptDraft()');
+    const before = commit.indexOf('plan.mutateAsync');
+    expect(before, 'and only AFTER the server accepted it').toBeLessThan(commit.indexOf('acceptDraft()'));
+    expect(commit.slice(commit.indexOf('catch')), 'a REFUSED save keeps the work').not.toContain(
+      'acceptDraft()',
+    );
+  });
+
+  it('restores only the fields a reader edits', () => {
+    expect(SOURCE).toContain(
+      "const EDITABLE = ['missionTypeId', 'driver1EmployeeId', 'driver2EmployeeId', 'notes']",
+    );
+  });
+
+  it('never posts the draft anywhere', () => {
+    const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
+    expect(storage).not.toMatch(/\bfetch\(|planRoster|saveFixedRoster/);
   });
 });

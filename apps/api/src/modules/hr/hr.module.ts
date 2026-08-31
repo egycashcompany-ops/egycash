@@ -1013,9 +1013,11 @@ const performanceGoalPermissions = declarePermissions(
  * `medicalCheck.*` already exists and is RECRUITMENT's, about an applicant's pre-employment exam
  * (D1). Same word, different subject, different door.
  *
- * The keys are declared and seeded to NOBODY. §8 Q1 asks the owner which role should hold them; a
- * key nobody holds is indistinguishable from a feature that does not work, so that question is the
- * one worth answering before this ships to anybody.
+ * §8 Q1 — RULED. These keys are held by the seeded `hr-medical-officer` role and by nothing else
+ * in HR (`hr.seed.ts`). Before that ruling they were declared and granted to no named role at all,
+ * which meant the only account that could open a medical record was the Super Admin — holding them
+ * the way it holds everything, by being seeded the whole registry. The seed creates the role and
+ * assigns it to nobody: which people read bodies is an owner's decision, not a naming convention's.
  */
 const medicalRecordPermissions = declarePermissions(
   'hr',

@@ -104,6 +104,48 @@ class JobOfferRepository extends BaseRepository<JobOfferDoc> {
       .exec();
   }
 
+  /**
+   * An offer somebody has ALREADY WRITTEN, or that the candidate has already accepted.
+   *
+   * Deliberately NOT `findActiveByApplicantId`: that one counts `waiting`, which is the queue row
+   * this stage materializes when HR moves a candidate here (I11) — the row a first offer is
+   * DRAFTED ON, not an offer. `create` draws the same line one file over (`existingActive.status
+   * !== 'waiting'`); this is that line, asked as a question the queue can use.
+   */
+  async findWrittenByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
+    if (!Types.ObjectId.isValid(applicantId)) return null;
+    return this.model
+      .findOne({
+        applicantId: new Types.ObjectId(applicantId),
+        status: { $in: ['draft', 'sent', 'accepted'] },
+        supersededAt: null,
+        isDeleted: false,
+      })
+      .lean<JobOfferDoc>()
+      .exec();
+  }
+
+  /**
+   * Everyone standing in the Job Offer stage with nothing drafted for them yet — one row per
+   * applicant, oldest arrival first.
+   *
+   * This is the queue's OWN membership, and it asks the only question that decides it: is there a
+   * live `waiting` row? Which stage the candidate came from is not part of the answer and must not
+   * become part of it — screening, an interview, a return to an earlier stage and a straight move
+   * all materialize the same row.
+   */
+  async applicantsWaitingForAnOffer(): Promise<{ applicantId: string; since: Date }[]> {
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; since: Date }>([
+        { $match: { status: 'waiting', supersededAt: null, isDeleted: false } },
+        // One entry per applicant even if several live rows somehow exist: a candidate appears in
+        // the queue once, however many records their history left behind.
+        { $group: { _id: '$applicantId', since: { $min: '$createdAt' } } },
+      ])
+      .exec();
+    return rows.map((row) => ({ applicantId: String(row._id), since: row.since }));
+  }
+
   /** The applicant's accepted offer, if any (the Employee-Creation gate for Stage 5). */
   async findAcceptedByApplicantId(applicantId: string): Promise<JobOfferDoc | null> {
     if (!Types.ObjectId.isValid(applicantId)) return null;

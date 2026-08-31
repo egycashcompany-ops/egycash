@@ -203,4 +203,7 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // before. Excluded means «no screen reacts to it», not «hidden»: it still reaches the audit
   // stream like every other audited entity.
   'hr.attendanceDevice': 'no screen until AT-D4 builds device health',
+  // AT-D3's enrolment map is the same shape and leaves at the same moment: it is administered
+  // from the device screen, so it has no surface of its own to react.
+  'hr.attendanceEnrollment': 'no screen until AT-D4 builds device health',
 };

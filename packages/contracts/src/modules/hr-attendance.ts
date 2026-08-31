@@ -230,17 +230,32 @@ export const RecordPunchSchema = z
 export type RecordPunch = z.infer<typeof RecordPunchSchema>;
 
 /**
- * One device row. Keyed by `employeeNumber` — the permanent identity — because the displayed
- * `code` changes on transfer and device exports outlive transfers.
+ * One device row, carrying EXACTLY ONE identity (AT-D3).
+ *
+ * `employeeNumber` is the permanent ECMS identity — the displayed `code` changes on transfer and
+ * device exports outlive transfers, so the number is what a hand-built or legacy batch names.
+ *
+ * `enrollmentNo` is what a real device reports: its own enrolment id, resolved through the
+ * `{deviceId, enrollmentNo}` mapping. A relay forwarding a device push cannot send an
+ * `employeeNumber`, because the device has never been told one.
+ *
+ * EXACTLY ONE, never both and never neither. Accepting both would create a row with two answers
+ * to «who is this», and the day they disagreed the importer would have to pick one silently —
+ * which is how a punch ends up on the wrong person's month with nothing recording the choice.
  */
 export const ImportPunchRowSchema = z
   .object({
-    employeeNumber: z.string().trim().min(1).max(20),
+    employeeNumber: z.string().trim().min(1).max(20).optional(),
+    enrollmentNo: z.string().trim().min(1).max(64).optional(),
     at: z.coerce.date(),
     direction: AttendancePunchDirectionSchema.default('unknown'),
     deviceId: z.string().trim().min(1).max(100),
   })
-  .strict();
+  .strict()
+  .refine((v) => (v.employeeNumber === undefined) !== (v.enrollmentNo === undefined), {
+    message: 'a row carries exactly one of employeeNumber or enrollmentNo',
+    path: ['employeeNumber'],
+  });
 export type ImportPunchRow = z.infer<typeof ImportPunchRowSchema>;
 
 export const ImportPunchesSchema = z
@@ -756,3 +771,81 @@ export const ListAttendanceDevicesQuerySchema = PaginationQuerySchema.extend({
   search: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListAttendanceDevicesQuery = z.infer<typeof ListAttendanceDevicesQuerySchema>;
+
+/**
+ * ENROLMENT MAPPING (AT-D3, D12-T·6) — who the device thinks it saw.
+ *
+ * A punch device does not know an employee number. It knows the id somebody typed when they
+ * enrolled a finger on it, and the confirmed export from the K40 Pro proves those two are not the
+ * same namespace: its 257 enrolment ids run `1` … `702255` with prefixes 100/101/102/200/300/301/702,
+ * while an ECMS `employeeNumber` is a zero-padded global sequence starting `000001`. Feeding one to
+ * the other would not fail loudly — it would resolve nobody today and could resolve the WRONG
+ * PERSON the day the sequence reaches six figures.
+ *
+ * So the mapping is a stored fact, never a derivation. `{deviceId, enrollmentNo}` is the key, per
+ * DEVICE rather than global: two devices are two enrolment namespaces unless somebody proves
+ * otherwise, and a per-device key that turns out to be globally unique costs nothing, while a
+ * global key that turns out to be per-device silently attributes one person's punches to another.
+ *
+ * The device's own `Name` field is NOT identity and is not stored: 26% of rows in the confirmed
+ * export carry the enrolment id in place of a name, because nobody typed one.
+ */
+export interface AttendanceEnrollmentDto {
+  id: string;
+  /** The registered device this enrolment belongs to. */
+  deviceId: string;
+  deviceCode: string;
+  deviceName: string | null;
+  /** What the device reports for this person — its own id, verbatim. */
+  enrollmentNo: string;
+  employeeId: string;
+  employeeName: LocalizedString | null;
+  employeeNumber: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Trim only. Deliberately NOT uppercased and NOT numeric-normalized, unlike a device code.
+ *
+ * A device code is a name a person chose for a wall, so `hq-gate-1` and `HQ-GATE-1` are one wall.
+ * An enrolment number is an opaque token the device compares byte for byte: `01` and `1` may be
+ * two different people, and deciding they are one would merge two employees' attendance with
+ * nothing to show it happened.
+ */
+export const normalizeEnrollmentNo = (value: string): string => value.trim();
+
+export const CreateAttendanceEnrollmentSchema = z
+  .object({
+    deviceId: objectId(),
+    enrollmentNo: z.string().trim().min(1).max(64),
+    employeeId: objectId(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type CreateAttendanceEnrollment = z.infer<typeof CreateAttendanceEnrollmentSchema>;
+
+/**
+ * `deviceId` and `enrollmentNo` are absent on purpose — together they are the identity this row
+ * exists to assert, and editing either would silently re-point history that has already been
+ * attributed. A mis-typed enrolment is deleted and re-created, not corrected in place.
+ */
+export const UpdateAttendanceEnrollmentSchema = z
+  .object({
+    employeeId: objectId().optional(),
+    note: z.string().trim().max(500).nullable().optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .refine((v) => v.employeeId !== undefined || v.note !== undefined, {
+    message: 'an update must change something',
+  });
+export type UpdateAttendanceEnrollment = z.infer<typeof UpdateAttendanceEnrollmentSchema>;
+
+export const ListAttendanceEnrollmentsQuerySchema = PaginationQuerySchema.extend({
+  deviceId: objectId().optional(),
+  employeeId: objectId().optional(),
+  search: z.string().trim().min(1).max(100).optional(),
+}).strict();
+export type ListAttendanceEnrollmentsQuery = z.infer<typeof ListAttendanceEnrollmentsQuerySchema>;

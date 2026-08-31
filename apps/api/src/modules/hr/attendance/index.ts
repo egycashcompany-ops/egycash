@@ -1,6 +1,7 @@
 // Public surface of the Attendance sub-module (ADR-003 barrels per feature).
 export * from './shifts';
 export * from './devices';
+export * from './enrollments';
 export * from './assignments';
 export * from './punches';
 export * from './day-records';

@@ -12,6 +12,8 @@ import {
   platformPermissions,
   SettingKeys,
   type ApplicantDto,
+  type AwaitingOfferCandidateDto,
+  type EvaluationDto,
   type InterviewDto,
   type JobOfferDto,
   type ScreeningDto,
@@ -569,5 +571,205 @@ describe('job offers — bulk send/withdraw (RW17/I4)', () => {
     expect(result.results.find((r) => r.id === alreadySent.id)?.ok).toBe(false);
     // Only the item that moved wrote history — the refused one produced nothing.
     expect(result.timeline.produced.map((e) => e.type)).toEqual(['offerSent']);
+  });
+});
+
+// ── The awaiting-offer queue (`/job-offers`, the "Ready for an offer" list) ──────────────────
+//
+// The rule under test is one sentence: a candidate is in this queue because they have ARRIVED at
+// the Job Offer stage and nobody has written their offer yet. Which stage they arrived FROM is not
+// part of it, so each case below walks a different route in and expects the same answer.
+//
+// This queue used to be seeded from evaluation APPROVALS and to treat the stage's own `waiting`
+// row as "an offer already exists". Between them, a candidate moved here from screening or an
+// interview was invisible, and moving anybody here at all removed them. Every case below fails on
+// that shape.
+describe('awaiting-offer queue — who is in it, and never which stage they came from', () => {
+  /** The queue as the screen asks for it, narrowed to one candidate by their own code. */
+  const queueFor = async (applicant: ApplicantDto): Promise<AwaitingOfferCandidateDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/job-offers/awaiting')
+      .query({ pageSize: 100, search: applicant.code })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return (res.body.data as AwaitingOfferCandidateDto[]).filter((r) => r.applicantId === applicant.id);
+  };
+
+  const evaluationsOf = async (applicantId: string): Promise<EvaluationDto[]> => {
+    const res = await request(app)
+      .get('/api/v1/hr/evaluations')
+      .query({ applicantId, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    return res.body.data as EvaluationDto[];
+  };
+
+  /** Approve every check that opened for this candidate — the "cleared the checks" route in. */
+  const approveEveryCheck = async (applicantId: string): Promise<void> => {
+    for (const evaluation of await evaluationsOf(applicantId)) {
+      if (evaluation.status !== 'waiting') continue;
+      const decided = await request(app)
+        .patch(`/api/v1/hr/evaluations/${evaluation.id}/decision`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ decision: 'approved', version: evaluation.version });
+      expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    }
+  };
+
+  it('shows a candidate moved straight from registration — no earlier stage decided at all', async () => {
+    // The extreme case, and the cleanest statement of the rule: nothing happened before the move.
+    // There is no source stage to key off, so anything that needs one cannot show this candidate.
+    const applicant = await registerApplicant();
+    await moveToOffer(applicant);
+    expect((await queueFor(applicant)).map((r) => r.applicantId)).toEqual([applicant.id]);
+  });
+
+  it('shows a candidate moved from SCREENING', async () => {
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await moveToOffer(applicant);
+    const [row] = await queueFor(applicant);
+    expect(row?.applicantId).toBe(applicant.id);
+    expect(row?.movedToOffer).toBe(true);
+  });
+
+  it('shows a candidate moved from an INTERVIEW round', async () => {
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+    await moveToOffer(applicant);
+    expect((await queueFor(applicant)).map((r) => r.applicantId)).toEqual([applicant.id]);
+  });
+
+  it('shows a candidate moved from the EVALUATION stage, with none of the checks decided', async () => {
+    // Passing every interview round opens the evaluation phases (I11). Moving from there with the
+    // checks still `waiting` is the case an approvals-seeded queue can never answer: this
+    // candidate has no approved evaluation to be found by.
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview');
+    expect((await evaluationsOf(applicant.id)).length).toBeGreaterThan(0); // the stage really opened
+    await moveToOffer(applicant);
+    expect((await queueFor(applicant)).map((r) => r.applicantId)).toEqual([applicant.id]);
+  });
+
+  it('shows a candidate moved after a PLACEMENT change, and carries the position onto the row', async () => {
+    // Placement is an attribute a candidate carries through the pipeline rather than a stage of its
+    // own, so "moved after placement" is the honest form of that route — and the row shows where
+    // they are being placed, which is what the person writing the offer needs.
+    //
+    // The title is CREATED here rather than reused from `JOB_TITLE_ID`: that constant only ever
+    // appears inside offer terms, and `reassign` resolves the placement against the real job-title
+    // catalogue, where it does not exist. This is the same seeding `hr-placement.spec.ts` does.
+    //
+    // The placement carries the title ALONE, for the same reason: `DEPARTMENT_ID` is the same kind
+    // of offer-terms constant and is no more real to the catalogue. `placement-resolver.ts`
+    // validates each part only when it is supplied, and the position this test asserts comes from
+    // the title — so naming a department here would add a second thing to seed and prove nothing
+    // extra. `hr-placement.spec.ts` is where department and branch placement is covered.
+    const titleRes = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-OFFER-QUEUE', name: { ar: 'صراف', en: 'Teller' }, jobGrade: 'G5' });
+    expect(titleRes.status, JSON.stringify(titleRes.body)).toBe(201);
+    const jobTitleId = (titleRes.body as { data: { id: string } }).data.id;
+
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const reassigned = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/reassign`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        placement: { jobTitleId },
+        reason: 'a vacancy opened',
+        version: (current.body.data as ApplicantDto).version,
+      });
+    expect(reassigned.status, JSON.stringify(reassigned.body)).toBe(200);
+    await moveToOffer(envelope<ApplicantDto>(reassigned).data);
+
+    const [row] = await queueFor(applicant);
+    expect(row?.applicantId).toBe(applicant.id);
+    expect(row?.position).not.toBeNull();
+  });
+
+  it('does NOT show a candidate who has not reached the Job Offer stage', async () => {
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview'); // mid-pipeline, never moved
+    expect(await queueFor(applicant)).toEqual([]);
+  });
+
+  it('drops them the moment somebody writes the offer', async () => {
+    const applicant = await registerApplicant();
+    await moveToOffer(applicant);
+    expect((await queueFor(applicant)).length).toBe(1);
+
+    // Drafting is what the queue is asking for. Once it exists, the row has been served.
+    await draftFor(applicant);
+    expect(await queueFor(applicant)).toEqual([]);
+  });
+
+  it('drops them when they leave the active pipeline — and letting them leave is the point', async () => {
+    // This is two assertions in one, and the second is the larger. A candidate standing at the Job
+    // Offer stage holds a `waiting` row, and when they depart the engine closes it to `withdrawn`
+    // (`LIFECYCLE_CLOSE`). The offer rulebook did not permit `waiting → withdrawn`, so that close
+    // was refused and the whole withdrawal failed with ILLEGAL_TRANSITION — meaning nobody who had
+    // been moved to this stage could be withdrawn or rejected at all. Nothing exercised it: this is
+    // the only place in the suite that withdraws a candidate standing here.
+    const applicant = await registerApplicant();
+    await moveToOffer(applicant);
+    expect((await queueFor(applicant)).length).toBe(1);
+
+    const current = await request(app)
+      .get(`/api/v1/hr/applicants/${applicant.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const withdrawn = await request(app)
+      .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'took another offer', version: (current.body.data as ApplicantDto).version });
+    expect(withdrawn.status, JSON.stringify(withdrawn.body)).toBe(200);
+    expect(envelope<ApplicantDto>(withdrawn).data.status).toBe('withdrawn');
+
+    // The queue row really closed, rather than being left open behind a departed candidate.
+    const offers = await request(app)
+      .get('/api/v1/hr/job-offers')
+      .query({ applicantId: applicant.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(offers.status).toBe(200);
+    expect((offers.body.data as JobOfferDto[]).map((o) => o.status)).toEqual(['withdrawn']);
+
+    expect(await queueFor(applicant)).toEqual([]);
+  });
+
+  it('lists a candidate ONCE even when they qualify every way at the same time', async () => {
+    // Cleared every check AND standing at the stage: two routes in, one person. The queue merges
+    // them by candidate, so the person working it sees one row to act on rather than two.
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview');
+    await approveEveryCheck(applicant.id);
+    await moveToOffer(applicant);
+
+    const rows = await queueFor(applicant);
+    expect(rows.length).toBe(1);
+    expect(rows[0]?.movedToOffer).toBe(true);
+  });
+
+  it('still shows somebody who cleared every check and has NOT been moved yet', async () => {
+    // The other route in, unchanged — this is the row whose button offers to move AND write.
+    const applicant = await registerApplicant();
+    await acceptScreening(applicant.id);
+    await passStage(applicant.id, 'firstInterview');
+    await passStage(applicant.id, 'secondInterview');
+    await approveEveryCheck(applicant.id);
+
+    const [row] = await queueFor(applicant);
+    expect(row?.applicantId).toBe(applicant.id);
+    expect(row?.movedToOffer).toBe(false);
   });
 });

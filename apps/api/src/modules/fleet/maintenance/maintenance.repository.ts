@@ -5,6 +5,15 @@ import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './mai
 
 export interface AlarmBaseline {
   vehicleId: string;
+  /**
+   * The VISIT this baseline came from.
+   *
+   * The alarm has always known the date of the last counting service and nothing about which
+   * visit that was, which left a reader looking at «متأخر ٢٠٠ كم» with no way back to the record
+   * that started the cycle. Carried here rather than looked up again later: the aggregate has
+   * already picked the winning row, and a second query could pick a different one.
+   */
+  visitId: string;
   odometerAtService: number;
   serviceDate: Date;
 }
@@ -80,6 +89,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     if (vehicleIds.length === 0 || countingWorkTypeIds.length === 0) return new Map();
     const rows = await this.model.aggregate<{
       _id: Types.ObjectId;
+      visitId: Types.ObjectId;
       odometerAtService: number;
       outDate: Date;
     }>([
@@ -106,6 +116,9 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           // a mongoose `default` applies on WRITE, so it never reached the rows already there.
           odometerAtService: { $first: { $ifNull: ['$exitOdometer', '$odometerAtService'] } },
           outDate: { $first: '$outDate' },
+          // The same `$first` as the two above, so the id belongs to the very row the counter and
+          // the date were taken from — the sort has already decided which visit that is.
+          visitId: { $first: '$_id' },
         },
       },
     ]);
@@ -114,6 +127,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
         String(row._id),
         {
           vehicleId: String(row._id),
+          visitId: String(row.visitId),
           odometerAtService: row.odometerAtService,
           serviceDate: row.outDate,
         },

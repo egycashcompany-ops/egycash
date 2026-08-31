@@ -17,10 +17,10 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { Button } from '../../../shared/ui/Button';
-import { Badge } from '../../../shared/ui/Badge';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
+import { AlarmBadge, RemainingKm } from '../components/AlarmBadge';
 
 const LEVEL_ORDER = { red: 0, yellow: 1, none: 2 } as const;
 
@@ -92,14 +92,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     {
       key: 'level',
       header: t('fleet.alarms.columns.level'),
-      render: (alarm) =>
-        alarm.level === 'none' ? (
-          <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>
-        ) : (
-          <Badge tone={alarm.level === 'red' ? 'danger' : 'warning'}>
-            {t(`fleet.dashboard.level.${alarm.level}`)}
-          </Badge>
-        ),
+      render: (alarm) => <AlarmBadge level={alarm.level} />,
     },
     {
       key: 'sinceServiceKm',
@@ -112,18 +105,11 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       key: 'remainingKm',
       header: t('fleet.alarms.columns.remaining'),
       align: 'end',
-      render: (alarm) =>
-        alarm.remainingKm === null ? (
-          '—'
-        ) : alarm.remainingKm < 0 ? (
-          <span className="font-medium text-red-600 dark:text-red-400">
-            {t('fleet.dashboard.overdueKm', {
-              km: formatNumber(Math.abs(alarm.remainingKm), locale),
-            })}
-          </span>
-        ) : (
-          formatNumber(alarm.remainingKm, locale)
-        ),
+      // Drawn by the shared cell, exactly as the maintenance screen draws it — the two print the
+      // same figure for the same car, so they read the sign the same way too.
+      render: (alarm) => (
+        <RemainingKm remainingKm={alarm.remainingKm} locale={locale} formatNumber={formatNumber} />
+      ),
     },
     {
       key: 'lastServiceAt',

@@ -41,6 +41,7 @@ const alarm = (
   remainingKm: level === 'red' ? -100 : 500,
   sinceServiceKm: 4000,
   lastServiceAt: '2026-08-01T00:00:00.000Z',
+  lastServiceVisitId: `visit-${code}`,
   ...o,
 });
 

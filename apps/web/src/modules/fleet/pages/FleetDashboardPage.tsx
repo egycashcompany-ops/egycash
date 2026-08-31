@@ -12,6 +12,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { Badge } from '../../../shared/ui/Badge';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
 import { FleetKpi } from '../components/FleetKpi';
+import { AlarmBadge } from '../components/AlarmBadge';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -159,9 +160,7 @@ export const FleetDashboardPage = (): JSX.Element => {
                   <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                     {alarms.slice(0, 8).map((alarm) => (
                       <li key={alarm.vehicleId} className="flex items-center gap-3 px-5 py-3">
-                        <Badge tone={alarm.level === 'red' ? 'danger' : 'warning'}>
-                          {t(`fleet.dashboard.level.${alarm.level}`)}
-                        </Badge>
+                        <AlarmBadge level={alarm.level} />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
                           {alarm.code}
                         </span>

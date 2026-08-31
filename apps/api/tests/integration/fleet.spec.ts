@@ -1539,6 +1539,91 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(alarms.find((a) => a.code === vehicle.code)?.sinceServiceKm).toBe(4850);
   });
 
+  it('names the VISIT the baseline came from, and moves the name when a newer one closes', async () => {
+    // The screens draw «أساس الإنذار» from this id. It has to be the id of the row the counter
+    // and the date were actually taken from, or the mark lands on a visit whose numbers are not
+    // the ones printed beside it.
+    const { vehicle, visit } = await closedVisit({
+      odometerAtService: 120_000,
+      exitOdometer: 120_850,
+    });
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-20' });
+
+    const read = async () =>
+      data<{ code: string; lastServiceVisitId: string | null; sinceServiceKm: number | null }[]>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/alarms')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).find((a) => a.code === vehicle.code);
+
+    expect((await read())?.lastServiceVisitId).toBe(visit.id);
+
+    // A second counting service closes LATER — the baseline is the new one, by the same `$sort`
+    // that already decided the counter and the date.
+    const second = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: vehicle.id,
+        inDate: '2026-09-25',
+        workshopId: await mkCatalog('workshop', 'ورشة الأساس'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 124_900,
+      }),
+    );
+    const out = await checkOut(second.id, {
+      outDate: '2026-09-27',
+      exitOdometer: 124_950,
+      version: second.version,
+    });
+    expect(out.status).toBe(200);
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 126_000, date: '2026-09-30' });
+
+    const after = await read();
+    expect(after?.lastServiceVisitId).toBe(second.id);
+    // …and the id belongs to the very row the distance was measured from: 126,000 − 124,950.
+    expect(after?.sinceServiceKm).toBe(1050);
+  });
+
+  it('names no visit when nothing has counted yet', async () => {
+    // A car whose only workshop history does not count for the alarm has no baseline at all —
+    // and must not borrow the id of a visit that did not set one.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-09-01',
+        workshopId: await mkCatalog('workshop', 'ورشة غير محسوبة'),
+        workTypeId: await mkCatalog('workType', 'غسيل'),
+        odometerAtService: 120_000,
+      }),
+    );
+    const out = await checkOut(opened.id, {
+      outDate: '2026-09-02',
+      exitOdometer: 120_100,
+      version: opened.version,
+    });
+    expect(out.status).toBe(200);
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, reading: 124_000, date: '2026-09-20' });
+
+    const row = data<
+      { code: string; lastServiceVisitId: string | null; lastServiceAt: string | null }[]
+    >(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).find((a) => a.code === v.code);
+    expect(row?.lastServiceVisitId).toBeNull();
+    expect(row?.lastServiceAt).toBeNull();
+  });
+
   it('an OPEN visit is never a baseline — the alarm waits for the car to come out', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const opened = await checkIn({
@@ -1554,7 +1639,14 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ vehicleId: v.id, reading: 124_000, date: '2026-09-20' });
 
-    const alarms = data<{ code: string; sinceServiceKm: number | null; level: string }[]>(
+    const alarms = data<
+      {
+        code: string;
+        sinceServiceKm: number | null;
+        level: string;
+        lastServiceVisitId: string | null;
+      }[]
+    >(
       await request(app)
         .get('/api/v1/fleet/odometer/alarms')
         .set('Authorization', `Bearer ${adminToken}`),
@@ -1565,6 +1657,9 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     const row = alarms.find((a) => a.code === v.code);
     expect(row?.sinceServiceKm).toBeNull();
     expect(row?.level).toBe('none');
+    // …and it names no visit either: the mark on the maintenance screen follows the same rule the
+    // numbers do, so a car still inside the workshop shows nothing marked as its baseline.
+    expect(row?.lastServiceVisitId).toBeNull();
   });
 
   it('reads a visit written before the driver fields existed without breaking', async () => {
@@ -1592,6 +1687,47 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     const dto = data<FleetMaintenanceVisitDto>(reopened);
     expect(dto.outDate).toBeNull();
     expect(dto.exitOdometer).toBeNull();
+  });
+
+  it('reopening the baseline visit takes the baseline back with it', async () => {
+    // Reopening is how a premature check-out is undone. The car is back in the workshop, so its
+    // last service has un-happened: the projection must forget the cycle rather than keep
+    // measuring from a service that is no longer finished.
+    const { vehicle, visit } = await closedVisit({
+      odometerAtService: 120_000,
+      exitOdometer: 120_850,
+    });
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-20' });
+
+    const read = async () =>
+      data<
+        {
+          code: string;
+          lastServiceVisitId: string | null;
+          sinceServiceKm: number | null;
+          level: string;
+        }[]
+      >(
+        await request(app)
+          .get('/api/v1/fleet/odometer/alarms')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).find((a) => a.code === vehicle.code);
+
+    expect((await read())?.lastServiceVisitId).toBe(visit.id);
+
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: visit.version });
+    expect(reopened.status).toBe(200);
+
+    const after = await read();
+    expect(after?.lastServiceVisitId).toBeNull();
+    expect(after?.sinceServiceKm).toBeNull();
+    expect(after?.level).toBe('none');
   });
 
   it('records the custody from the LOGIN, and admits it is nobody when the login is not staff', async () => {

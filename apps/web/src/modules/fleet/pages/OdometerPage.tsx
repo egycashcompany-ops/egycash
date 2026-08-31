@@ -33,6 +33,7 @@ import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms, useOdometerLogs, useVehicles } from '../api/fleet-queries';
+import { AlarmBadge } from '../components/AlarmBadge';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
 import { vehicleCodeOptions } from '../lib/vehicle-code-options';
 import { odometerRange } from '../lib/odometer-range';
@@ -43,17 +44,6 @@ import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 const DEFAULT_PAGE_SIZE = 25;
 /** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
 const VEHICLE_SEARCH_SIZE = 20;
-
-/** The design system's answer for an alarm level — the same one the alarms board uses. */
-const AlarmBadge = ({ level }: { level: FleetAlarmLevel }): JSX.Element => {
-  const t = useT();
-  if (level === 'none') return <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>;
-  return (
-    <Badge tone={level === 'red' ? 'danger' : 'warning'}>
-      {t(`fleet.dashboard.level.${level}`)}
-    </Badge>
-  );
-};
 
 export const OdometerPage = (): JSX.Element => {
   const t = useT();

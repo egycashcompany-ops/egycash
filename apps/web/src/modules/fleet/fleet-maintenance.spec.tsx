@@ -243,6 +243,12 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.spareParts',
   'fleet.odometer.columns.notes',
   'fleet.maintenance.fields.odometerAtService',
+  // The vehicle's derived maintenance alarm, read from the SAME projection the alarms board and
+  // the odometer log read — never recomputed here.
+  'fleet.alarms.columns.level',
+  'fleet.vehicle.lastService',
+  'fleet.alarms.columns.sinceService',
+  'fleet.alarms.columns.remaining',
   'fleet.vehicles.columns.actions',
 ];
 
@@ -589,8 +595,11 @@ describe('the filter bar', () => {
 // ── 4. Permissions ──────────────────────────────────────────────────────────
 
 describe('the row actions follow the permission matrix', () => {
+  // Derived from the column list, not hardcoded: a column added anywhere before the actions
+  // would otherwise silently move this index and make the assertion read the wrong cell.
+  const ACTIONS_INDEX = REQUIRED_COLUMNS.indexOf('fleet.vehicles.columns.actions') + 1;
   const actionsOf = (permissions: string[], v = visit()): string =>
-    cells(render({ permissions, qc: client([v]) }))[11] ?? '';
+    cells(render({ permissions, qc: client([v]) }))[ACTIONS_INDEX] ?? '';
   const html = (permissions: string[], v = visit()): string =>
     tbody(render({ permissions, qc: client([v]) }));
 

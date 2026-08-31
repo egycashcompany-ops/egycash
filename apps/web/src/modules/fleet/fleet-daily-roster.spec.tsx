@@ -28,6 +28,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const RAW = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8');
 /** The page's CODE — the header explains the rules at length and would match either way. */
 const SOURCE = RAW.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+const VIEW_SOURCE = readFileSync(join(HERE, 'lib/roster-view.ts'), 'utf8');
 const SERVICE = readFileSync(
   join(HERE, '../../../../api/src/modules/fleet/roster/roster.service.ts'),
   'utf8',
@@ -256,6 +257,297 @@ describe('the day’s counters', () => {
   });
 });
 
+// ── 3b. the counters are FILTERS ────────────────────────────────────────────
+//
+// This suite has no DOM, so a click cannot be dispatched. What it can prove is both halves of the
+// mechanism: that each chip is a real control carrying the right target (`data-counter` plus the
+// `aria-pressed` state), and that arriving at that target actually narrows the board — which is
+// the same way the mission dropdown above is tested. The rule itself is exercised as a function
+// in `lib/roster-view.spec.ts`.
+
+/** Render the board at a URL, so a chip's destination can be visited the way a click reaches it. */
+const at = (query: string, board: FleetRosterDayDto = FILTERS_BOARD): string =>
+  renderToStaticMarkup(
+    <Provider store={store(['fleetRoster.view', 'fleetRoster.plan'])}>
+      <QueryClientProvider client={client(board)}>
+        <MemoryRouter initialEntries={[`/fleet/roster?date=${day(1)}${query}`]}>
+          <RosterPage />
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Provider>,
+  );
+
+/** Just the table body — what the board is SHOWING. */
+const tbody = (markup: string): string =>
+  markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+
+/** Is this chip drawn as the one being applied? */
+const chipActive = (markup: string, key: string): boolean => {
+  const at_ = markup.indexOf(`data-counter="${key}"`);
+  if (at_ === -1) throw new Error(`no counter ${key}`);
+  const tag = markup.slice(markup.lastIndexOf('<button', at_), markup.indexOf('>', at_) + 1);
+  return tag.includes('aria-pressed="true"');
+};
+
+/**
+ * A day with all four shapes at once, so every chip has something to include AND something to
+ * exclude. A fixture where a filter happens to keep everything proves nothing.
+ *   150 — mission MT, a driver          → تشغيل, MT
+ *   151 — in the workshop, no plan      → صيانة
+ *   152 — in the workshop AND mission MT → صيانة, تشغيل, MT   (the overlap)
+ *   153 — nothing at all                → only إجمالي
+ */
+const V3 = '650000000000000000000003';
+const V4 = '650000000000000000000004';
+const FILTERS_BOARD: FleetRosterDayDto = {
+  ...BOARD,
+  rows: [
+    row(V1, '150', { missionTypeId: MT, driver1EmployeeId: E1 }),
+    row(V2, '151', { inMaintenance: true }),
+    row(V3, '152', { inMaintenance: true, missionTypeId: MT }),
+    row(V4, '153'),
+  ],
+};
+
+describe('the counters filter the board', () => {
+  it('renders each chip as a real button that says whether it is applied', () => {
+    // A tinted span with an onClick is not reachable by keyboard and announces nothing.
+    const markup = at('');
+    for (const key of ['total', 'workshop', 'assigned', MT]) {
+      const idx = markup.indexOf(`data-counter="${key}"`);
+      expect(idx, key).toBeGreaterThan(-1);
+      expect(markup.lastIndexOf('<button', idx), `${key} is a button`).toBeGreaterThan(
+        markup.lastIndexOf('<span', idx),
+      );
+    }
+  });
+
+  it('«إجمالي» shows every row, and is the state with no filter on', () => {
+    const body = tbody(at(''));
+    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
+    expect(chipActive(at(''), 'total'), 'إجمالي is the default').toBe(true);
+  });
+
+  it('«صيانة» shows only the cars the workshop holds', () => {
+    const body = tbody(at('&view=workshop'));
+    expect(body).toContain('151');
+    expect(body).toContain('152');
+    expect(body, 'not the working one').not.toContain('150');
+    expect(body, 'nor the idle one').not.toContain('153');
+  });
+
+  it('«تشغيل» shows only the cars carrying a plan', () => {
+    const body = tbody(at('&view=assigned'));
+    expect(body).toContain('150');
+    expect(body, 'in the workshop but still carrying a mission').toContain('152');
+    expect(body, 'workshop with no plan').not.toContain('151');
+    expect(body, 'nothing at all').not.toContain('153');
+  });
+
+  it('a MISSION chip narrows to that mission — through the dropdown’s own parameter', () => {
+    const body = tbody(at(`&mission=${MT}`));
+    expect(body).toContain('150');
+    expect(body).toContain('152');
+    expect(body).not.toContain('151');
+    expect(body).not.toContain('153');
+    // One axis, one parameter: the chip writes `mission`, so the select follows it.
+    expect(SOURCE, 'no second copy of mission filtering').not.toContain('view: item.id');
+  });
+
+  it('marks the applied chip and only that one', () => {
+    const workshop = at('&view=workshop');
+    expect(chipActive(workshop, 'workshop')).toBe(true);
+    expect(chipActive(workshop, 'total'), 'إجمالي steps aside').toBe(false);
+    expect(chipActive(workshop, 'assigned')).toBe(false);
+    expect(chipActive(workshop, MT)).toBe(false);
+
+    const mission = at(`&mission=${MT}`);
+    expect(chipActive(mission, MT)).toBe(true);
+    expect(chipActive(mission, 'total')).toBe(false);
+  });
+
+  it('keeps every chip’s own colour whether or not it is applied', () => {
+    // The colour tells the six apart; recolouring the applied one would spend it on a state the
+    // ring already carries.
+    const idle = at('');
+    const applied = at('&view=workshop');
+    const tone = (markup: string, key: string): string => {
+      const idx = markup.indexOf(`data-counter="${key}"`);
+      const tag = markup.slice(markup.lastIndexOf('<button', idx), markup.indexOf('>', idx) + 1);
+      // Everything the ACTIVE state adds, removed — what is left is the chip's own colour.
+      return (/class="([^"]*)"/.exec(tag)?.[1] ?? '')
+        .replace(/ring-2 ring-offset-1|ring-0|dark:ring-offset-slate-900/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+    for (const key of ['total', 'workshop', 'assigned', MT]) {
+      expect(tone(idle, key), key).toBe(tone(applied, key));
+    }
+    // …and the six do not share one.
+    const tones = ['total', 'workshop', 'assigned', MT].map((k) => tone(idle, k));
+    expect(new Set(tones).size).toBe(tones.length);
+  });
+
+  it('combines with the code search and the mission — AND, never instead-of', () => {
+    // Workshop ∩ mission = 152 alone; adding a search that excludes it empties the board.
+    expect(tbody(at(`&view=workshop&mission=${MT}`))).toContain('152');
+    expect(tbody(at(`&view=workshop&mission=${MT}`)), 'workshop without the mission').not.toContain(
+      '151',
+    );
+    expect(
+      tbody(at(`&view=workshop&mission=${MT}`)),
+      'the mission outside the workshop',
+    ).not.toContain('150');
+    expect(
+      tbody(at(`&view=workshop&mission=${MT}&q=153`)),
+      'a contradiction shows nothing',
+    ).not.toContain('152');
+  });
+
+  it('ignores a view it does not know instead of emptying the board', () => {
+    const body = tbody(at('&view=nonsense'));
+    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
+  });
+});
+
+describe('the counters count the DAY, never the filtered rows', () => {
+  /** The number printed on one chip. */
+  const shown = (markup: string, key: string): string => {
+    const idx = markup.indexOf(`data-counter="${key}"`);
+    const tag = markup.slice(idx, markup.indexOf('</button>', idx));
+    return tag.slice(tag.lastIndexOf('<span'), tag.lastIndexOf('</span>'));
+  };
+
+  it('reads the same under every filter — this is the whole point', () => {
+    // 4 vehicles: 2 in the workshop, 2 carrying a plan, 2 on mission MT. Narrowing the table to
+    // one of those must not make the other chips report their own filtered view — a tally that
+    // changes when you filter it is a tally of the filter, not of the day.
+    const unfiltered = at('');
+    const totals = ['total', 'workshop', 'assigned', MT].map((k) => shown(unfiltered, k));
+    for (const query of ['&view=workshop', '&view=assigned', `&mission=${MT}`, '&q=150']) {
+      const markup = at(query);
+      expect(
+        ['total', 'workshop', 'assigned', MT].map((k) => shown(markup, k)),
+        query,
+      ).toEqual(totals);
+    }
+  });
+
+  it('counts the whole day even when the table shows one row', () => {
+    const markup = at('&q=153');
+    expect(tbody(markup), 'the table is narrowed').not.toContain('151');
+    expect(shown(markup, 'total'), 'إجمالي still counts four').toContain('٤');
+    expect(shown(markup, 'workshop'), 'صيانة still counts two').toContain('٢');
+  });
+});
+
+describe('Reset', () => {
+  it('is offered only when something is filtered', () => {
+    expect(at(''), 'nothing to undo').not.toContain('data-reset-filters');
+    for (const query of ['&q=150', `&mission=${MT}`, '&view=workshop', '&view=assigned']) {
+      expect(at(query), query).toContain('data-reset-filters');
+    }
+  });
+
+  it('clears q, mission and view together — and leaves the DAY alone', () => {
+    // The button is one `patch` of exactly three keys; `date` is what the screen is about, not a
+    // filter, and a reset that jumped back to today would throw away the day somebody navigated to.
+    expect(SOURCE).toContain('patch({ q: null, mission: null, view: null })');
+    expect(SOURCE, 'the day survives a reset').not.toContain(
+      'patch({ q: null, mission: null, view: null, date: null })',
+    );
+  });
+
+  it('brings every row back and returns «إجمالي» to the applied state', () => {
+    // Cleared is the same address as never-filtered, so this is what the button lands on.
+    const cleared = at('');
+    for (const code of ['150', '151', '152', '153']) expect(tbody(cleared), code).toContain(code);
+    expect(chipActive(cleared, 'total')).toBe(true);
+    for (const key of ['workshop', 'assigned', MT])
+      expect(chipActive(cleared, key), key).toBe(false);
+  });
+});
+
+describe('a car the workshop holds is red, whole', () => {
+  /** The <tr> containing a code. */
+  const rowOf = (markup: string, code: string): string => {
+    const body = tbody(markup);
+    const found = body.split('<tr').find((r) => r.includes(code));
+    if (found === undefined) throw new Error(`no row ${code}`);
+    return found;
+  };
+
+  it('tints the row, not just a badge', () => {
+    const markup = at('');
+    expect(rowOf(markup, '151'), 'the workshop’s car').toContain('bg-rose-50');
+    expect(rowOf(markup, '151'), 'and dark mode too').toContain('dark:bg-rose-950/40');
+  });
+
+  it('leaves an ordinary car alone', () => {
+    const markup = at('');
+    expect(rowOf(markup, '150')).not.toContain('bg-rose-50');
+    expect(rowOf(markup, '153')).not.toContain('bg-rose-50');
+  });
+
+  it('reads `inMaintenance`, never the registry’s `inWorkshop`', () => {
+    // `inWorkshop` is where the car is RIGHT NOW; this board plans a date, often a future one.
+    expect(SOURCE).toContain('row.inMaintenance');
+    expect(SOURCE, 'the registry flag has no place on a dated board').not.toContain(
+      'row.inWorkshop',
+    );
+  });
+
+  it('does not treat a mere ASSIGNMENT as the workshop', () => {
+    // 150 carries a mission and a driver and is not in the workshop; 153 is stored-but-empty.
+    const markup = at('');
+    expect(rowOf(markup, '150'), 'a plan is not a workshop visit').not.toContain('rose');
+    expect(rowOf(markup, '152'), 'and a car with both is still red').toContain('bg-rose-50');
+  });
+
+  it('keeps the tint under every filter', () => {
+    for (const query of ['', '&view=workshop', `&mission=${MT}`, '&q=152']) {
+      const markup = at(query);
+      if (!tbody(markup).includes('152')) continue;
+      expect(rowOf(markup, '152'), query).toContain('bg-rose-50');
+    }
+  });
+
+  it('changes no rule: the drop is still refused and the server still enforces FR-5', () => {
+    expect(SOURCE, 'the drop guard is untouched').toContain(
+      'const droppable = mayPlan && !row.inMaintenance && !needsFirst',
+    );
+    expect(SERVICE, 'and FR-5 still throws server-side').toContain('unassignable (FR-5)');
+  });
+});
+
+describe('a filter never reaches what is SAVED', () => {
+  it('measures the save against the whole day, not the visible rows', () => {
+    // A filtered board that saved only what it was showing would silently drop every edit the
+    // dispatcher made before narrowing.
+    expect(SOURCE).toContain('rowsToSave(saved, draft)');
+    expect(SOURCE, 'never the filtered list').not.toContain('rowsToSave(saved, rows)');
+    expect(SOURCE).toContain('hasEdits(saved, draft)');
+    expect(SOURCE, 'nor for what «إلغاء» would throw away').not.toContain('hasEdits(saved, rows)');
+  });
+
+  it('leaves the day’s save button live while a filter hides the edited row', () => {
+    // 150 is stored-empty-derived on this fixture, so the board has something to materialise; a
+    // filter that shows only 153 must not turn Save off.
+    const narrowed = at('&q=153');
+    expect(narrowed, 'the table is narrowed').not.toContain('>150<');
+    expect(buttonDisabled(narrowed, 'data-save-roster'), 'Save is still live').toBe(false);
+  });
+
+  it('filters the DISPLAY only — the draft itself is never rewritten', () => {
+    expect(SOURCE, 'one filtered list, used for the table').toContain(
+      'visibleRows(draft, { term: search, mission, view })',
+    );
+    expect(SOURCE, 'the pool still reads the whole draft').toContain(
+      'availableDrivers(board?.availableDrivers ?? [], draft)',
+    );
+  });
+});
+
 // ── 4. the two driver lists ─────────────────────────────────────────────────
 
 describe('the driver lists', () => {
@@ -350,7 +642,10 @@ describe('assigning by drag', () => {
   });
 
   it('edits the DRAFT — a drop persists nothing on its own', () => {
-    const drop = SOURCE.slice(SOURCE.indexOf('const dropDriver ='), SOURCE.indexOf('const commit ='));
+    const drop = SOURCE.slice(
+      SOURCE.indexOf('const dropDriver ='),
+      SOURCE.indexOf('const commit ='),
+    );
     expect(drop, 'the drop edits local state').toContain('setDraft(');
     expect(drop, 'and does not save').not.toContain('mutateAsync');
   });
@@ -548,12 +843,14 @@ describe('the mission type is chosen on the row', () => {
   it('offers the catalog’s active items and a way back to none', () => {
     const markup = render();
     expect(markup, 'the catalog name, localized').toContain('نقل أموال (يومي)');
-    expect(markup, 'and an empty option to clear it').toContain(t('fleet.fixedRoster.noMissionType'));
+    expect(markup, 'and an empty option to clear it').toContain(
+      t('fleet.fixedRoster.noMissionType'),
+    );
   });
 
   it('writes the choice into the DRAFT, not to the server', () => {
     expect(SOURCE, 'the cell edits the draft').toContain(
-      'setDraft(() => setMission(draft, row.vehicleId, id === \'\' ? null : id))',
+      "setDraft(() => setMission(draft, row.vehicleId, id === '' ? null : id))",
     );
   });
 
@@ -579,9 +876,13 @@ describe('the vehicle cell', () => {
     // repeated down the board.
     const markup = render();
     expect(markup, 'the plate is gone from the cell').not.toContain('س ص 150');
-    const vehicleCol = SOURCE.slice(SOURCE.indexOf("key: 'vehicle'"), SOURCE.indexOf("key: 'state'"));
+    const vehicleCol = SOURCE.slice(
+      SOURCE.indexOf("key: 'vehicle'"),
+      SOURCE.indexOf("key: 'state'"),
+    );
     expect(vehicleCol, 'and the cell does not render it at all').not.toContain('plateNumber');
-    expect(SOURCE, 'while the search still matches it').toContain(
+    // The search rule now lives in `lib/roster-view.ts`, with the rest of what narrows the board.
+    expect(VIEW_SOURCE, 'while the search still matches it').toContain(
       'row.plateNumber.toLowerCase().includes(term)',
     );
   });
@@ -594,18 +895,30 @@ describe('the day’s counters', () => {
     expect(SOURCE, 'counted off the draft, not the server’s last answer').toContain(
       'for (const row of draft)',
     );
-    const block = SOURCE.slice(SOURCE.indexOf('const counters = useMemo'), SOURCE.indexOf('const pool'));
+    const block = SOURCE.slice(
+      SOURCE.indexOf('const counters = useMemo'),
+      SOURCE.indexOf('const pool'),
+    );
     expect(block, 'the total is the draft’s length').toContain('value: draft.length');
     expect(block, 'the workshop tally reads the draft').toContain(
       'draft.filter((row) => row.inMaintenance).length',
     );
-    expect(block, 'and so does the operating tally').toContain('draft.filter(hasFacts).length');
-    expect(block, 'the memo depends on the draft').toContain('[draft, missionTypes.data, locale, t]');
+    // Named `carriesPlan` and shared with the filter, so the chip cannot count one thing and
+    // show another.
+    expect(block, 'and so does the operating tally').toContain('draft.filter(carriesPlan).length');
+    expect(block, 'the memo depends on the draft').toContain(
+      '[draft, missionTypes.data, locale, t, mission, view]',
+    );
   });
 
   it('names missions from the catalog — nothing is hardcoded', () => {
-    const block = SOURCE.slice(SOURCE.indexOf('const counters = useMemo'), SOURCE.indexOf('const pool'));
-    expect(block, 'one counter per ACTIVE catalog item').toContain('.filter((item) => item.isActive)');
+    const block = SOURCE.slice(
+      SOURCE.indexOf('const counters = useMemo'),
+      SOURCE.indexOf('const pool'),
+    );
+    expect(block, 'one counter per ACTIVE catalog item').toContain(
+      '.filter((item) => item.isActive)',
+    );
     expect(block, 'named by the catalog').toContain('localized(item.name, locale)');
     const markup = render();
     expect(markup, 'the catalog name appears as a counter').toContain('نقل أموال (يومي)');
@@ -664,7 +977,10 @@ describe('driver 2 depends on driver 1', () => {
   });
 
   it('OPENS slot 2 as soon as slot 1 holds somebody', () => {
-    const board: FleetRosterDayDto = { ...BOARD, rows: [row(V1, '150', { driver1EmployeeId: E1 })] };
+    const board: FleetRosterDayDto = {
+      ...BOARD,
+      rows: [row(V1, '150', { driver1EmployeeId: E1 })],
+    };
     const markup = render({ qc: client(board) });
     expect(zone(markup, V1, 'driver2EmployeeId')).not.toContain('data-drop-disabled');
   });
@@ -707,7 +1023,7 @@ describe('a day shows its own board, and only its own', () => {
     // The invariant restated where it is relied on, so a caching option added to the hook later
     // cannot quietly put another day's crew on screen and into the payload again.
     expect(SOURCE, 'the response carries the day it describes, and the page checks it').toContain(
-      "boardQuery.data?.date.slice(0, 10) === date ? boardQuery.data : undefined",
+      'boardQuery.data?.date.slice(0, 10) === date ? boardQuery.data : undefined',
     );
   });
 
@@ -723,9 +1039,10 @@ describe('a day shows its own board, and only its own', () => {
     // The data-integrity half. Armed here, one click posts the wrong day's crew under this date.
     const qc = client(BOARD, day(1));
     const markup = render({ date: day(2), qc });
-    expect(buttonDisabled(markup, 'data-save-roster="true"'), 'nothing to save for a day we have not got').toBe(
-      true,
-    );
+    expect(
+      buttonDisabled(markup, 'data-save-roster="true"'),
+      'nothing to save for a day we have not got',
+    ).toBe(true);
     expect(markup).not.toContain('data-unsaved="true"');
   });
 
@@ -797,7 +1114,10 @@ describe('each driver list has its own search', () => {
 
   it('matches part of a name, in either language, and the code', () => {
     for (const term of ['حات', 'hate', 'HATE', 'drv-1']) {
-      expect(filterDrivers(available, index, term).map((d) => d.employeeId), term).toEqual([E1]);
+      expect(
+        filterDrivers(available, index, term).map((d) => d.employeeId),
+        term,
+      ).toEqual([E1]);
     }
   });
 
@@ -848,7 +1168,11 @@ describe('each driver list has its own search', () => {
       const after = markup.indexOf(placeholder, heading);
       expect(after, `${title} is followed by its own search box`).toBeGreaterThan(-1);
       // …and nothing but that panel's own list comes between them.
-      expect(markup.slice(heading, after)).not.toContain(t('fleet.roster.unavailableTitle') === t(title) ? t('fleet.roster.availableTitle') : t('fleet.roster.unavailableTitle'));
+      expect(markup.slice(heading, after)).not.toContain(
+        t('fleet.roster.unavailableTitle') === t(title)
+          ? t('fleet.roster.availableTitle')
+          : t('fleet.roster.unavailableTitle'),
+      );
     }
   });
 
@@ -899,10 +1223,15 @@ describe('the daily draft is persisted, per day', () => {
   });
 
   it('drops only THIS day’s draft after a successful save', () => {
-    const commit = SOURCE.slice(SOURCE.indexOf('const commit'), SOURCE.indexOf('const confirmClear'));
+    const commit = SOURCE.slice(
+      SOURCE.indexOf('const commit'),
+      SOURCE.indexOf('const confirmClear'),
+    );
     expect(commit, 'the save clears the draft').toContain('acceptDraft()');
     const before = commit.indexOf('plan.mutateAsync');
-    expect(before, 'and only AFTER the server accepted it').toBeLessThan(commit.indexOf('acceptDraft()'));
+    expect(before, 'and only AFTER the server accepted it').toBeLessThan(
+      commit.indexOf('acceptDraft()'),
+    );
     expect(commit.slice(commit.indexOf('catch')), 'a REFUSED save keeps the work').not.toContain(
       'acceptDraft()',
     );

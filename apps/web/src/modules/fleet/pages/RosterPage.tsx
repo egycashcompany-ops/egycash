@@ -33,7 +33,13 @@ import { Input } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
-import { ChevronEndIcon, ChevronStartIcon, CloseIcon, EditIcon } from '../../../shared/ui/icons';
+import {
+  ChevronEndIcon,
+  ChevronStartIcon,
+  CloseIcon,
+  EditIcon,
+  ResetIcon,
+} from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { useFleetCatalog, usePlanRoster, useRosterDay } from '../api/fleet-queries';
 import { EmployeeName, useEmployeeRecords } from '../components/EmployeeName';
@@ -53,6 +59,14 @@ import {
 } from '../lib/daily-roster-board';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
 import { rosterDraftKey, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
+import {
+  COUNTER_TONES,
+  carriesPlan,
+  missionTone,
+  readView,
+  visibleRows,
+  type RosterView,
+} from '../lib/roster-view';
 import { useDraftBoard } from '../lib/useDraftBoard';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -71,9 +85,6 @@ const KNOWN_REASONS = new Set([
   'fleetUnavailability',
   'hrLeave',
 ]);
-
-const hasFacts = (row: FleetRosterRowDto): boolean =>
-  row.missionTypeId !== null || row.driver1EmployeeId !== null || row.driver2EmployeeId !== null;
 
 /**
  * The earliest day a roster may be planned for.
@@ -227,6 +238,15 @@ export const RosterPage = (): JSX.Element => {
   const date = requested < floor ? floor : requested;
   const search = sp.get('q') ?? '';
   const mission = sp.get('mission') ?? '';
+  /**
+   * Which STATE the board is narrowed to, if any — «صيانة» or «تشغيل».
+   *
+   * Read through `readView`, so a hand-typed `?view=nonsense` shows the whole day rather than an
+   * empty board nobody can explain. A mission is NOT a view: the mission chips write the `mission`
+   * parameter the dropdown beside them already owns, which is what keeps the two in step and
+   * stops a second copy of mission filtering existing at all.
+   */
+  const view: RosterView | null = readView(sp.get('view'));
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -250,8 +270,7 @@ export const RosterPage = (): JSX.Element => {
    * save payload again. Everything below reads `board`, so one check covers the table, the
    * counters, the pool, the draft and what «حفظ» sends.
    */
-  const board =
-    boardQuery.data?.date.slice(0, 10) === date ? boardQuery.data : undefined;
+  const board = boardQuery.data?.date.slice(0, 10) === date ? boardQuery.data : undefined;
   // The BASELINE: the day exactly as the server derived it. On an unplanned day that is the
   // standing crew; on a planned day it is the stored assignment. Either way it is what «إلغاء»
   // returns to and what the save measures against — so an untouched board saves NOTHING and a
@@ -290,17 +309,29 @@ export const RosterPage = (): JSX.Element => {
     return item === undefined ? '—' : localized(item.name, locale);
   };
 
-  const term = search.trim().toLowerCase();
-  // The table reads the DRAFT, so an edit is visible the moment it is made. The search still
-  // matches the plate as well as the code — the cell no longer shows the plate, but a dispatcher
-  // holding a plate number in their head is exactly who is typing in this box.
-  const rows = draft.filter(
-    (row) =>
-      (term === '' ||
-        row.code.toLowerCase().includes(term) ||
-        row.plateNumber.toLowerCase().includes(term)) &&
-      (mission === '' || row.missionTypeId === mission),
+  /**
+   * What the table SHOWS. Read off the DRAFT, so an edit is visible the moment it is made.
+   *
+   * All three filters narrow together — code search AND mission AND state — and none replaces
+   * another: «صيانة» plus a mission shows the workshop's cars of that mission, which is the only
+   * reading of two active filters that is not a lie about one of them.
+   *
+   * DISPLAY ONLY. `draft`, the counters, the pool and the save payload below all read the whole
+   * day and never this — see the counters' own note.
+   */
+  const rows = useMemo(
+    () => visibleRows(draft, { term: search, mission, view }),
+    [draft, search, mission, view],
   );
+
+  const filtered = search !== '' || mission !== '' || view !== null;
+  /**
+   * «إعادة ضبط» — every filter off in ONE update, and the day left alone.
+   *
+   * `date` is deliberately not cleared. It is not a filter: it is what the screen is ABOUT, and a
+   * reset that jumped the dispatcher back to today would throw away the day they navigated to.
+   */
+  const resetFilters = (): void => patch({ q: null, mission: null, view: null });
 
   /**
    * The header's tally, counted off the DRAFT — never a hardcoded vocabulary, and never the
@@ -318,18 +349,31 @@ export const RosterPage = (): JSX.Element => {
       byMission.set(row.missionTypeId, (byMission.get(row.missionTypeId) ?? 0) + 1);
     }
     return [
-      { key: 'total', label: t('fleet.roster.counter.total'), value: draft.length, tone: 'brand' },
+      {
+        key: 'total',
+        label: t('fleet.roster.counter.total'),
+        value: draft.length,
+        tone: COUNTER_TONES.total,
+        // «إجمالي» is the absence of a filter, so applying it CLEARS both keys rather than
+        // setting a third value that would then have to mean "no filter".
+        apply: { mission: null, view: null },
+        active: mission === '' && view === null,
+      },
       {
         key: 'workshop',
         label: t('fleet.roster.counter.workshop'),
         value: draft.filter((row) => row.inMaintenance).length,
-        tone: 'rose',
+        tone: COUNTER_TONES.workshop,
+        apply: { view: 'workshop' },
+        active: view === 'workshop',
       },
       {
         key: 'assigned',
         label: t('fleet.roster.counter.assigned'),
-        value: draft.filter(hasFacts).length,
-        tone: 'emerald',
+        value: draft.filter(carriesPlan).length,
+        tone: COUNTER_TONES.assigned,
+        apply: { view: 'assigned' },
+        active: view === 'assigned',
       },
       ...(missionTypes.data?.items ?? [])
         .filter((item) => item.isActive)
@@ -337,10 +381,14 @@ export const RosterPage = (): JSX.Element => {
           key: item.id,
           label: localized(item.name, locale),
           value: byMission.get(item.id) ?? 0,
-          tone: 'slate' as const,
+          tone: missionTone(item.id),
+          // The chip drives the DROPDOWN's parameter, not one of its own: one axis, one filter,
+          // and the select beside it visibly follows.
+          apply: { mission: item.id },
+          active: mission === item.id,
         })),
     ];
-  }, [draft, missionTypes.data, locale, t]);
+  }, [draft, missionTypes.data, locale, t, mission, view]);
 
   // The pool is DERIVED from the draft, never the server's list rendered raw: everyone the draft
   // seats leaves it the instant the drop lands, and comes back the instant a slot is cleared —
@@ -483,7 +531,7 @@ export const RosterPage = (): JSX.Element => {
       render: (row) => (
         <span className="flex flex-wrap items-center gap-1">
           <InWorkshopBadge inWorkshop={row.inMaintenance} />
-          {hasFacts(row) ? (
+          {carriesPlan(row) ? (
             <Badge tone="success">{t('fleet.roster.assigned')}</Badge>
           ) : (
             <Badge tone="neutral">{t('fleet.roster.unassigned')}</Badge>
@@ -564,7 +612,7 @@ export const RosterPage = (): JSX.Element => {
                     <EditIcon className="h-4 w-4" />
                   </button>
                 )}
-                {hasFacts(row) && (
+                {carriesPlan(row) && (
                   <button
                     type="button"
                     className={actionButton}
@@ -657,25 +705,52 @@ export const RosterPage = (): JSX.Element => {
             ariaLabel={t('fleet.roster.fields.mission')}
           />
         </div>
+        {/*
+          Each counter is a real <button>: it narrows the board, so it must be reachable by
+          keyboard and announce its state, which a tinted <span> with an onClick never does.
+          `aria-pressed` is the announcement — this is a view being applied, not a navigation.
+
+          The colour belongs to the CATEGORY and stays put whether or not the chip is the one
+          being applied; the active state is a ring drawn on top. Recolouring the active chip
+          would trade the one thing the colour is for — telling the six apart at a glance — for a
+          state the ring already carries.
+        */}
         {counters.map((counter) => (
-          <span
+          <button
             key={counter.key}
+            type="button"
             data-counter={counter.key}
+            data-active={counter.active ? 'true' : undefined}
+            aria-pressed={counter.active}
+            onClick={() => patch(counter.apply)}
             className={[
-              'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium',
-              counter.tone === 'brand'
-                ? 'bg-brand-600 text-white'
-                : counter.tone === 'rose'
-                  ? 'bg-rose-600 text-white'
-                  : counter.tone === 'emerald'
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-100',
+              'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+              counter.tone,
+              counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
             ].join(' ')}
           >
             <span className="truncate">{counter.label}</span>
             <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
-          </span>
+          </button>
         ))}
+
+        {/* Offered only when there is something to undo — a reset beside no filters is one more
+            control to read and nothing to press. Clears the three view filters together; the day
+            is not one of them. */}
+        {filtered && (
+          <button
+            type="button"
+            data-reset-filters="true"
+            onClick={resetFilters}
+            aria-label={t('common.filters.clear')}
+            title={t('common.filters.clear')}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"
+          >
+            <ResetIcon className="h-3.5 w-3.5" />
+            {t('common.filters.clear')}
+          </button>
+        )}
 
         {/* «حفظ» lives at the END of the filter row, not under the table and not in a footer of
             its own. It belongs to the strip that says what the day currently IS, and `ms-auto`
@@ -717,6 +792,24 @@ export const RosterPage = (): JSX.Element => {
             columns={columns}
             rows={rows}
             rowKey={(row) => row.vehicleId}
+            /*
+              A car the workshop holds on THIS DATE, tinted whole.
+
+              `inMaintenance` and nothing else: it is the server's own FR-5 verdict for the day on
+              screen, the same fact that already refuses the drop above and the save behind it.
+              The registry's `inWorkshop` would be wrong here — that is where the car is right
+              now, and this board is often planning a day that has not happened yet.
+
+              This is a VISUAL indication and changes nothing: the row keeps its data, keeps its
+              place in the table, and the rule that stops it being assigned still lives in
+              `roster.service` where a client cannot reach it. The badge in the code cell stays,
+              so the state is never carried by colour alone.
+            */
+            rowClassName={(row) =>
+              row.inMaintenance
+                ? 'bg-rose-50 text-rose-950 hover:bg-rose-100/70 dark:bg-rose-950/40 dark:text-rose-50 dark:hover:bg-rose-950/60'
+                : undefined
+            }
             // `board === undefined` while the query reports success means the answer on hand is
             // for another date — still waiting for this one, so the table says so rather than
             // rendering an empty day that looks like a fleet with nothing on it.
@@ -835,8 +928,7 @@ export const RosterPage = (): JSX.Element => {
           open={editingRow !== null}
           onClose={() => setEditing(null)}
           onSave={(values) =>
-            editingRow !== null &&
-            setDraft(() => applyEdit(draft, editingRow.vehicleId, values))
+            editingRow !== null && setDraft(() => applyEdit(draft, editingRow.vehicleId, values))
           }
           row={editingRow}
           board={board}

@@ -71,6 +71,7 @@ import {
   type RequirementFilter,
 } from '../lib/crew-board';
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
+import { CrewRosterNotice } from '../components/CrewRosterNotice';
 
 /** `?date=` empty means TOMORROW, resolved by the server — the legacy planning default. */
 export const resolveCrewDate = (raw: string | null): string | null =>
@@ -264,6 +265,7 @@ export const CrewBoardPage = (): JSX.Element => {
         <Card>
           <CardBody className="space-y-3">
             <h2 className="text-sm font-semibold">{t('operations.crew.pool')}</h2>
+            <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
             <Input
               placeholder={t('operations.crew.searchPool')}
               value={search}

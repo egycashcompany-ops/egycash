@@ -29,8 +29,8 @@ export const useSettingDefinitions = (enabled = true) =>
   });
 
 /** The caller's RESOLVED values (user → branch → organization → default). */
-export const useMySettings = () =>
-  useQuery({ queryKey: [...SETTINGS_KEY, 'me'], queryFn: resolveMySettings });
+export const useMySettings = (enabled = true) =>
+  useQuery({ queryKey: [...SETTINGS_KEY, 'me'], queryFn: resolveMySettings, enabled });
 
 /**
  * Write one setting value. `onSettled` lets the calling module also invalidate whatever ITS

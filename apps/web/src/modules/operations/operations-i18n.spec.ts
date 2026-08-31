@@ -135,6 +135,16 @@ const CREW_KEYS = [
   'operations.crew.requirements.saveFailed',
   'operations.crew.requirements.unconfigured',
   'operations.crew.requirements.empty',
+  'operations.crew.departments.title',
+  'operations.crew.departments.hint',
+  'operations.crew.departments.saved',
+  'operations.crew.departments.none',
+  'operations.crew.departments.optionsFailed',
+  'operations.crew.departments.unknownDepartment',
+  'operations.crew.departments.stale',
+  'operations.crew.departments.emptyWarning',
+  'operations.crew.rosterFallback',
+  'operations.crew.rosterFallbackLink',
 ];
 
 /** B4 — the four secured screens. */

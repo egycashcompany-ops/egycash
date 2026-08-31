@@ -34,6 +34,7 @@ import {
   useOperationsCrewDirectory,
   useSetCrewRequirements,
 } from '../api/operations-queries';
+import { CrewDepartmentsCard } from '../components/CrewDepartmentsCard';
 import {
   REQUIREMENT_FLAGS,
   toFlagPayload,
@@ -109,6 +110,10 @@ export const RequirementsPage = (): JSX.Element => {
         title={t('operations.crew.requirements.title')}
         description={t('operations.crew.requirements.subtitle')}
       />
+
+      {/* Who the crew IS, above what the crew CARRIES — the roster below is a consequence of it,
+          and an operator who cannot see the cause reads an incomplete list as a complete one. */}
+      <CrewDepartmentsCard />
 
       <Card className="mb-4">
         <CardBody>

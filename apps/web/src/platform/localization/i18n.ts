@@ -5394,9 +5394,24 @@ const en: Record<string, string> = {
   'operations.crew.requirements.employee': 'Employee',
   'operations.crew.requirements.saveFailed': 'Could not save the change.',
   'operations.crew.requirements.unconfigured':
-    'Showing the people who already have flags recorded — no operations department is configured yet. ' +
-    'Set operations.crewDepartmentIds in system settings and the whole department appears here.',
+    'No operations department is chosen yet, so this list is only the people who already have ' +
+    'flags recorded — anyone hired since is missing from it, and from every crew screen. Choose ' +
+    'the department above and the whole department appears here.',
   'operations.crew.requirements.empty': 'Nobody on the roster yet',
+  'operations.crew.departments.title': 'Operations departments',
+  'operations.crew.departments.hint':
+    'The employees of these departments ARE the operations crew — the roster below, the crew board, the standing crew and the shipment captains all draw from them. Someone hired into a chosen department appears without anyone adding them.',
+  'operations.crew.departments.saved': 'Operations departments saved',
+  'operations.crew.departments.none': 'No active departments to choose from',
+  'operations.crew.departments.optionsFailed':
+    'Could not read the list of departments, so nothing can be chosen here. The current setting is unchanged.',
+  'operations.crew.departments.unknownDepartment': 'Department no longer active',
+  'operations.crew.departments.stale': 'Not found',
+  'operations.crew.departments.emptyWarning':
+    'With no department chosen, the roster falls back to whoever already has flags recorded — new hires will not appear.',
+  'operations.crew.rosterFallback':
+    'No operations department is configured, so this pool is only the people who already have flags recorded — anyone hired since is missing.',
+  'operations.crew.rosterFallbackLink': 'Choose the department',
   // ── Operations B4 — the four secured screens
   'operations.nav.secured': 'Secured shipments',
   'operations.cards.secured': 'The open secured backlog — everything not yet delivered',
@@ -11578,8 +11593,22 @@ const ar: Record<string, string> = {
   'operations.crew.requirements.employee': 'الموظف',
   'operations.crew.requirements.saveFailed': 'تعذّر حفظ التغيير.',
   'operations.crew.requirements.unconfigured':
-    'المعروض هم مَن لديهم بيانات متطلبات بالفعل — لم تُحدَّد إدارة العمليات بعد. اضبط operations.crewDepartmentIds في إعدادات النظام ليظهر كل مَن في الإدارة هنا.',
+    'لم تُحدَّد إدارة العمليات بعد، لذا المعروض هنا هم مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر هنا ولا في أي شاشة من شاشات الطاقم. اختر الإدارة بالأعلى ليظهر كل مَن فيها.',
   'operations.crew.requirements.empty': 'لا يوجد أحد في الكشف بعد',
+  'operations.crew.departments.title': 'إدارات العمليات',
+  'operations.crew.departments.hint':
+    'موظفو هذه الإدارات هم طاقم العمليات — الكشف بالأسفل ولوحة التشغيلة والطاقم الثابت وقادة الشحنات كلها تأخذ منهم. ومَن يُعيَّن في إدارة مختارة يظهر تلقائيًا دون أن يضيفه أحد.',
+  'operations.crew.departments.saved': 'تم حفظ إدارات العمليات',
+  'operations.crew.departments.none': 'لا توجد إدارات نشطة للاختيار منها',
+  'operations.crew.departments.optionsFailed':
+    'تعذّرت قراءة قائمة الإدارات، فلا يمكن الاختيار من هنا. الإعداد الحالي لم يتغيّر.',
+  'operations.crew.departments.unknownDepartment': 'إدارة لم تعد نشطة',
+  'operations.crew.departments.stale': 'غير موجودة',
+  'operations.crew.departments.emptyWarning':
+    'بدون اختيار أي إدارة يعود الكشف إلى مَن لديهم بيانات متطلبات بالفعل فقط — والموظفون الجدد لن يظهروا.',
+  'operations.crew.rosterFallback':
+    'لم تُحدَّد إدارة العمليات، لذا هذه القائمة هي مَن لديهم بيانات متطلبات بالفعل فقط — وكل مَن عُيِّن بعدهم غير ظاهر.',
+  'operations.crew.rosterFallbackLink': 'حدِّد الإدارة',
   // ── العمليات B4 — شاشات المحصنات الأربع
   'operations.nav.secured': 'الشحنات المحصنة',
   'operations.cards.secured': 'سجل المحصنات المفتوح — كل ما لم يُسلَّم بعد',

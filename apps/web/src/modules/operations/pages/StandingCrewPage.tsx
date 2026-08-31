@@ -59,6 +59,7 @@ import {
   toStandingRows,
 } from '../lib/standing-crew';
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
+import { CrewRosterNotice } from '../components/CrewRosterNotice';
 import { POOL_FILTERS } from './CrewBoardPage';
 
 export const StandingCrewPage = (): JSX.Element => {
@@ -212,6 +213,7 @@ export const StandingCrewPage = (): JSX.Element => {
         <Card>
           <CardBody className="space-y-3">
             <h2 className="text-sm font-semibold">{t('operations.crew.pool')}</h2>
+            <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
             <Input
               placeholder={t('operations.crew.searchPool')}
               value={search}

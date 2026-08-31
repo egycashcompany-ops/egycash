@@ -18,6 +18,12 @@ import { ORG_MODULE } from './org-unit-resource';
 const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/branches/options');
 
+// Department options, like the branch ones above: any authenticated user, decoupled from
+// `department.view`. A module that only needs to NAME a department — Operations picking the one
+// its crew works in — has no business demanding the permission to browse HR's org structure.
+const listDepartmentOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/departments/options');
+
 const listDepartments = (branchId?: string): Promise<Paginated<DepartmentDto>> =>
   getPage<DepartmentDto>(
     `/platform/departments${buildQuery({ status: 'active', pageSize: 100, branchId })}`,
@@ -37,6 +43,16 @@ export const useBranchOptions = (enabled = true) =>
   useQuery({
     queryKey: [ORG_MODULE, 'branches', 'options'],
     queryFn: listBranchOptions,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+/** Every active department, org-wide, as {id, code, name} — for pickers, not for browsing. */
+export const useDepartmentReferenceOptions = (enabled = true) =>
+  useQuery({
+    queryKey: [ORG_MODULE, 'departments', 'reference-options'],
+    queryFn: listDepartmentOptions,
     enabled,
     staleTime: 5 * 60_000,
     retry: false,

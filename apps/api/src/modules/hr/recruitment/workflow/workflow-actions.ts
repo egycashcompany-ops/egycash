@@ -54,6 +54,9 @@ const ACTION_PERMISSIONS: Record<WorkflowObject, Record<string, string>> = {
     accept: 'jobOffer.respond',
     reject: 'jobOffer.respond',
     withdraw: 'jobOffer.withdraw',
+    // A lifecycle exit closes the queue row; nobody "does" it from an offers screen — the same
+    // entry, for the same reason, as `close` on screening and evaluation above.
+    close: 'applicant.edit',
     // Set by a return-to-stage, never chosen directly.
     supersede: 'applicant.returnToStage',
     // The scheduled sweep expires an offer; no human action exists for it.

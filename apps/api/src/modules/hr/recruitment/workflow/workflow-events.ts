@@ -107,6 +107,10 @@ const TRANSITION_EVENTS: Record<string, WorkflowEventName> = {
   // ── Offer ─────────────────────────────────────────────────────────────────
   [key('offer', 'waiting', 'draft')]: WorkflowEvents.OfferCreated,
   [key('offer', 'waiting', 'superseded')]: WorkflowEvents.OfferSuperseded,
+  // The candidate departed and the engine closed their queue row. `OfferWithdrawn` is already what
+  // every other arrival at `withdrawn` publishes, and this is the same fact about the same record —
+  // a second event name would split one thing in two for consumers.
+  [key('offer', 'waiting', 'withdrawn')]: WorkflowEvents.OfferWithdrawn,
   [key('offer', 'draft', 'sent')]: WorkflowEvents.OfferSent,
   [key('offer', 'draft', 'withdrawn')]: WorkflowEvents.OfferWithdrawn,
   [key('offer', 'draft', 'superseded')]: WorkflowEvents.OfferSuperseded,

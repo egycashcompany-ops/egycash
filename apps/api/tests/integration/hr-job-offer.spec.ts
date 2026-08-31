@@ -658,6 +658,17 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
     // Placement is an attribute a candidate carries through the pipeline rather than a stage of its
     // own, so "moved after placement" is the honest form of that route — and the row shows where
     // they are being placed, which is what the person writing the offer needs.
+    //
+    // The title is CREATED here rather than reused from `JOB_TITLE_ID`: that constant only ever
+    // appears inside offer terms, and `reassign` resolves the placement against the real job-title
+    // catalogue, where it does not exist. This is the same seeding `hr-placement.spec.ts` does.
+    const titleRes = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'JT-OFFER-QUEUE', name: { ar: 'صراف', en: 'Teller' }, jobGrade: 'G5' });
+    expect(titleRes.status, JSON.stringify(titleRes.body)).toBe(201);
+    const jobTitleId = (titleRes.body as { data: { id: string } }).data.id;
+
     const applicant = await registerApplicant();
     await acceptScreening(applicant.id);
     const current = await request(app)
@@ -667,7 +678,7 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
       .post(`/api/v1/hr/applicants/${applicant.id}/reassign`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        placement: { jobTitleId: JOB_TITLE_ID, departmentId: DEPARTMENT_ID },
+        placement: { jobTitleId, departmentId: DEPARTMENT_ID },
         reason: 'a vacancy opened',
         version: (current.body.data as ApplicantDto).version,
       });
@@ -696,7 +707,13 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
     expect(await queueFor(applicant)).toEqual([]);
   });
 
-  it('drops them when they leave the active pipeline', async () => {
+  it('drops them when they leave the active pipeline — and letting them leave is the point', async () => {
+    // This is two assertions in one, and the second is the larger. A candidate standing at the Job
+    // Offer stage holds a `waiting` row, and when they depart the engine closes it to `withdrawn`
+    // (`LIFECYCLE_CLOSE`). The offer rulebook did not permit `waiting → withdrawn`, so that close
+    // was refused and the whole withdrawal failed with ILLEGAL_TRANSITION — meaning nobody who had
+    // been moved to this stage could be withdrawn or rejected at all. Nothing exercised it: this is
+    // the only place in the suite that withdraws a candidate standing here.
     const applicant = await registerApplicant();
     await moveToOffer(applicant);
     expect((await queueFor(applicant)).length).toBe(1);
@@ -708,7 +725,17 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
       .post(`/api/v1/hr/applicants/${applicant.id}/withdraw`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ reason: 'took another offer', version: (current.body.data as ApplicantDto).version });
-    expect(withdrawn.status).toBe(200);
+    expect(withdrawn.status, JSON.stringify(withdrawn.body)).toBe(200);
+    expect(envelope<ApplicantDto>(withdrawn).data.status).toBe('withdrawn');
+
+    // The queue row really closed, rather than being left open behind a departed candidate.
+    const offers = await request(app)
+      .get('/api/v1/hr/job-offers')
+      .query({ applicantId: applicant.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(offers.status).toBe(200);
+    expect((offers.body.data as JobOfferDto[]).map((o) => o.status)).toEqual(['withdrawn']);
+
     expect(await queueFor(applicant)).toEqual([]);
   });
 

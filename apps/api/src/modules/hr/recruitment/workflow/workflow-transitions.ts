@@ -111,6 +111,13 @@ export const WORKFLOW_TRANSITIONS: Record<WorkflowObject, readonly TransitionDef
   offer: [
     { from: 'waiting', to: 'draft', action: 'draft' },
     { from: 'waiting', to: 'superseded', action: 'supersede', requiresReason: true },
+    // The candidate left the pipeline (I14). Not the withdrawal of an offer — none was ever
+    // written; this is the queue row itself closing, which is why the action is `close` like the
+    // screening and evaluation rows above and NOT `withdraw`. `LIFECYCLE_CLOSE` has always named
+    // `withdrawn` as where an open offer lands when its candidate departs; without this line the
+    // engine asks for a move the rulebook refuses, and withdrawing anybody who had been moved to
+    // the Job Offer stage failed with ILLEGAL_TRANSITION.
+    { from: 'waiting', to: 'withdrawn', action: 'close', requiresReason: true },
     { from: 'draft', to: 'sent', action: 'send' },
     { from: 'draft', to: 'withdrawn', action: 'withdraw', requiresReason: true },
     { from: 'draft', to: 'superseded', action: 'supersede', requiresReason: true },

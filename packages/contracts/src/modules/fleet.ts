@@ -575,7 +575,7 @@ export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
    * a shared link should read as. Resolution to ids happens server-side against the live registry,
    * so a code that no longer exists narrows to nothing rather than being ignored.
    */
-  vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
+  vehicleCodes: vehicleCodesQuery(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   /**
@@ -769,7 +769,7 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
    */
   open: booleanQuery().optional(),
   /** Several vehicles at once, BY CODE — resolved server-side against the live registry. */
-  vehicleCodes: listQuery(z.string().trim().min(1).max(20)),
+  vehicleCodes: vehicleCodesQuery(),
   /**
    * Drivers, already resolved to employee ids by the caller — the same two-step join the odometer
    * uses, because a driver's NAME is HR's fact. A visit matches when the employee drove it in OR

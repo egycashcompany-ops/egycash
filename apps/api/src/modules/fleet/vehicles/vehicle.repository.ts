@@ -61,6 +61,23 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
       .exec();
     return rows.map((row) => String(row._id));
   }
+
+  /**
+   * The ids of the vehicles carrying EXACTLY these codes — the vehicle-code picker's question.
+   *
+   * The exact sibling of `idsByCodeSearch`, and unpaginated, not `isDeleted`-filtered and honest
+   * about emptiness for the same three reasons spelled out there. Exact because a ticked checkbox
+   * names one car and cannot mean "and everything containing it": that is what `search` is for.
+   */
+  async idsByCodes(codes: readonly string[]): Promise<string[]> {
+    if (codes.length === 0) return [];
+    const rows = await this.model
+      .find({ code: { $in: [...codes] } })
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => String(row._id));
+  }
 }
 
 const escaped = (term: string): RegExp =>

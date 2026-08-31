@@ -127,7 +127,16 @@ class FleetViolationService {
 
   async list(query: ListFleetViolationsQuery): Promise<Paginated<FleetViolationDoc>> {
     return fleetViolationRepository.listViolations({
-      filter: fleetViolationRepository.violationFilter(query),
+      filter: fleetViolationRepository.violationFilter({
+        ...query,
+        // A violation stores its vehicle by id and never carries the code, so the picker's codes
+        // are resolved against the registry first — the same two-step accidents and maintenance
+        // take. `undefined` when nothing was picked; `[]` when the codes match no car, which
+        // narrows to nothing rather than dropping the filter.
+        ...(query.vehicleCodes === undefined
+          ? {}
+          : { vehicleIds: await fleetVehicleRepository.idsByCodes(query.vehicleCodes) }),
+      }),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,

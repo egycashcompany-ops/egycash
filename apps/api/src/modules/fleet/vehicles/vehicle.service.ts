@@ -213,6 +213,12 @@ class FleetVehicleService {
     ] as const) {
       if (value !== undefined) clauses.push({ [field]: new Types.ObjectId(value) });
     }
+    // The vehicle-code picker: the cars named EXACTLY, ORed. Exact where `search` is substring,
+    // because a checkbox can only mean the code it ticks. A code no car carries leaves an empty
+    // `$in`, which matches nothing — the honest answer to a pick the registry does not have.
+    if (query.vehicleCodes !== undefined) {
+      clauses.push({ code: { $in: [...query.vehicleCodes] } });
+    }
     // Per-identifier narrowing, ANDed with everything else — see `vehicleIdentifierFilter`.
     for (const [value, field] of [
       [query.code, 'code'],

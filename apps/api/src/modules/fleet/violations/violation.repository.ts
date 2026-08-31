@@ -31,6 +31,12 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
   violationFilter(query: {
     kind?: string | undefined;
     vehicleId?: string | undefined;
+    /**
+     * What the vehicle-code picker resolved to — see `accident.repository`, which draws the same
+     * line for the same reason. `[]` is a real answer (codes no car carries) and narrows to
+     * NOTHING; it is never dropped, or an impossible search would return every violation.
+     */
+    vehicleIds?: readonly string[] | undefined;
     driverEmployeeId?: string | undefined;
     year?: number | undefined;
   }): FilterQuery<FleetViolationDoc> {
@@ -38,6 +44,9 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     if (query.kind !== undefined) clauses.push({ kind: query.kind });
     if (query.vehicleId !== undefined) {
       clauses.push({ vehicleId: new Types.ObjectId(query.vehicleId) });
+    }
+    if (query.vehicleIds !== undefined) {
+      clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
     }
     if (query.driverEmployeeId !== undefined) {
       clauses.push({ driverEmployeeId: new Types.ObjectId(query.driverEmployeeId) });

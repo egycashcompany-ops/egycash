@@ -10,11 +10,18 @@ import { cn } from '../lib/cn';
 import { useT } from '../../platform/localization/useT';
 import { ResetIcon } from './icons';
 
+const singleRowBreakpoint: Record<1400 | 1440 | 1536, string> = {
+  1400: 'min-[1400px]:flex-nowrap',
+  1440: 'min-[1440px]:flex-nowrap',
+  1536: 'min-[1536px]:flex-nowrap',
+};
+
 export const FilterBar = ({
   children,
   onClear,
   hasActiveFilters = false,
   singleRow = false,
+  singleRowFrom = 1400,
 }: {
   children: ReactNode;
   onClear?: () => void;
@@ -36,13 +43,24 @@ export const FilterBar = ({
    * remaining 58px is headroom for a longer translation.
    */
   singleRow?: boolean;
+  /**
+   * The viewport width at which `singleRow` starts holding. MEASURE IT — the default is right for
+   * the five-filter bar described above and for nothing else, because `flex-nowrap` does not
+   * shorten a row that will not fit, it pushes it off the page. A bar with more controls, or with
+   * a larger type size, fits later and must say so: a threshold below where the row actually fits
+   * trades a tidy wrap for a horizontally scrolling page, which is strictly worse than wrapping.
+   *
+   * Spelled out rather than interpolated because Tailwind scans source text for class names and
+   * never sees a built string.
+   */
+  singleRowFrom?: 1400 | 1440 | 1536;
 }): JSX.Element => {
   const t = useT();
   return (
     <div
       className={cn(
         'flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900',
-        singleRow && 'min-[1400px]:flex-nowrap',
+        singleRow && singleRowBreakpoint[singleRowFrom],
       )}
     >
       {children}

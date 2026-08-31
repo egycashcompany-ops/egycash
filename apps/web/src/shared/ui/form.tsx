@@ -15,7 +15,22 @@ import { cn } from '../lib/cn';
 import { ChevronIcon } from './icons';
 
 const controlBase =
-  'w-full rounded-lg border bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
+  'w-full rounded-lg border bg-white px-3 py-2 text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
+
+/**
+ * How big a control's own text is. `compact` is the default and what every control has always
+ * been; `comfortable` is one step up, for a screen that is read for an hour rather than glanced
+ * at, and it exists as a PROP rather than a class a caller passes in.
+ *
+ * That distinction is the whole reason this is here. `cn` is a plain joiner with no
+ * tailwind-merge, so both sizes would reach the class attribute and the winner would be whichever
+ * Tailwind happened to emit last — which, measured in a browser, is `text-sm`. A caller's
+ * `text-base` silently lost. Choosing the class HERE means exactly one font-size ever lands on
+ * the element, and the size a caller asks for is the size they get.
+ */
+export type ControlTextScale = 'compact' | 'comfortable';
+const controlText = (scale: ControlTextScale): string =>
+  scale === 'comfortable' ? 'text-base' : 'text-sm';
 const ring = (error: boolean): string =>
   error
     ? 'border-red-400 focus:border-red-500'
@@ -45,7 +60,10 @@ export const Field = ({
 }): JSX.Element => (
   <div className="space-y-1.5">
     {label !== undefined && (
-      <label htmlFor={htmlFor} className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+      <label
+        htmlFor={htmlFor}
+        className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+      >
         {label}
         {required && <span className="text-red-500"> *</span>}
       </label>
@@ -63,31 +81,53 @@ export const Field = ({
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: boolean;
+  textScale?: ControlTextScale;
 }
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ error = false, className, ...rest }, ref) => (
-    <input ref={ref} className={cn(controlBase, ring(error), className)} {...rest} />
+  ({ error = false, textScale = 'compact', className, ...rest }, ref) => (
+    <input
+      ref={ref}
+      className={cn(controlBase, controlText(textScale), ring(error), className)}
+      {...rest}
+    />
   ),
 );
 Input.displayName = 'Input';
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: boolean;
+  textScale?: ControlTextScale;
 }
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ error = false, className, rows = 4, ...rest }, ref) => (
-    <textarea ref={ref} rows={rows} className={cn(controlBase, ring(error), className)} {...rest} />
+  ({ error = false, textScale = 'compact', className, rows = 4, ...rest }, ref) => (
+    <textarea
+      ref={ref}
+      rows={rows}
+      className={cn(controlBase, controlText(textScale), ring(error), className)}
+      {...rest}
+    />
   ),
 );
 Textarea.displayName = 'Textarea';
 
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   error?: boolean;
+  textScale?: ControlTextScale;
 }
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ error = false, className, children, ...rest }, ref) => (
+  ({ error = false, textScale = 'compact', className, children, ...rest }, ref) => (
     <div className="relative">
-      <select ref={ref} className={cn(controlBase, ring(error), 'appearance-none pe-9', className)} {...rest}>
+      <select
+        ref={ref}
+        className={cn(
+          controlBase,
+          controlText(textScale),
+          ring(error),
+          'appearance-none pe-9',
+          className,
+        )}
+        {...rest}
+      >
         {children}
       </select>
       <ChevronIcon className="pointer-events-none absolute inset-y-0 end-3 my-auto h-4 w-4 text-slate-400" />
@@ -120,7 +160,12 @@ export const Checkbox = ({
   }, [indeterminate]);
 
   return (
-    <label className={cn('flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200', className)}>
+    <label
+      className={cn(
+        'flex cursor-pointer items-center gap-2 text-sm text-slate-700 dark:text-slate-200',
+        className,
+      )}
+    >
       <input
         ref={ref}
         type="checkbox"

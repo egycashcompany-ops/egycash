@@ -75,6 +75,17 @@ export interface DataTableProps<T> {
    * the two tints. Returning `undefined` leaves the row exactly as it was.
    */
   rowClassName?: (row: T) => string | undefined;
+  /**
+   * How big the table's own text is. Orthogonal to `dense`, which is about PADDING: a table can be
+   * tight and legible, or roomy and small, and the two questions have different answers.
+   *
+   * `compact` is the default and what every table has always been. `comfortable` is one step up
+   * the scale for a screen that is read rather than scanned — a register of files somebody works
+   * through for an hour, where `text-xs` headers over `text-sm` cells is a squint, not a density
+   * saving. It moves only the type; the gutters and the row heights follow the text, not a second
+   * decision.
+   */
+  textScale?: 'compact' | 'comfortable';
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -99,8 +110,12 @@ export const DataTable = <T,>({
   hoverable = false,
   dense = false,
   rowClassName,
+  textScale = 'compact',
 }: DataTableProps<T>): JSX.Element => {
-  const cellPadding = dense ? 'px-3 py-2' : 'px-4 py-3';
+  const roomy = textScale === 'comfortable';
+  const cellPadding = dense ? 'px-3 py-2' : roomy ? 'px-4 py-3.5' : 'px-4 py-3';
+  const cellText = roomy ? 'text-base' : 'text-sm';
+  const headerText = roomy ? 'text-sm' : 'text-xs';
   // One prop wins; the loose props remain as the deprecated form.
   const isSelectable = selection !== undefined;
   const selected = selection?.selectedIds ?? new Set<string>();
@@ -180,7 +195,8 @@ export const DataTable = <T,>({
               key={c.key}
               className={cn(
                 cellPadding,
-                'text-sm text-slate-700 dark:text-slate-200',
+                cellText,
+                'text-slate-700 dark:text-slate-200',
                 alignClass[c.align ?? 'start'],
                 // Numeric (end-aligned) columns line up cleanly with lining figures.
                 c.align === 'end' && 'tabular-nums',
@@ -199,12 +215,18 @@ export const DataTable = <T,>({
     <div
       className={cn(
         'overflow-x-auto',
-        !embedded && 'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+        !embedded &&
+          'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
       )}
     >
       <table className="w-full min-w-[40rem] border-collapse">
         <thead>
-          <tr className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400">
+          <tr
+            className={cn(
+              'bg-slate-50 uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400',
+              headerText,
+            )}
+          >
             {isSelectable && (
               <th className="w-10 px-4 py-3">
                 <input

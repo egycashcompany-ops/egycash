@@ -38,7 +38,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
-import { Field, Input, Select } from '../../../shared/ui/form';
+import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, CornerDownIcon, EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
@@ -159,6 +159,11 @@ export const AccidentsPage = (): JSX.Element => {
     toast.success(t('fleet.accidents.deleted'));
     setDeleting(null);
   };
+
+  // One step up the type scale for the filter row, to match the table under it. It is a PROP on
+  // every control rather than a class, because a class would lose: `cn` has no tailwind-merge and
+  // the control's own `text-sm` wins whichever order they are written in — measured, not assumed.
+  const dateLabel = 'shrink-0 text-base font-medium text-slate-600 dark:text-slate-300';
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
@@ -360,75 +365,128 @@ export const AccidentsPage = (): JSX.Element => {
 
       <div className="space-y-4">
         {/*
-          ONE row on a wide screen — `singleRow` plus a width wrapper on every control, which is
-          what that flag needs: with no wrapping to fall back on, a child left to flex would be
-          squeezed by its neighbours instead of moving to the next line.
+          ONE row on desktop — and the two dates are why it was not one before.
+
+          `Field` stacks its label ABOVE the control. Two of those in a row of bare controls make
+          the bar two lines tall, push every neighbour's centre off, and cost the width that made
+          the seventh control wrap. So «من» and «إلى» keep their visible labels and sit BESIDE
+          them: same height as everything else, and the row is a row.
+
+          Every child is `shrink-0` with a width of its own, which is what `singleRow`'s
+          `flex-nowrap` needs — with no wrapping to fall back on, a child left to flex would be
+          squeezed by its neighbours rather than moving to the next line.
+
+          The width lives on a WRAPPER, never on the control. `cn` is a plain joiner: a `w-40`
+          handed to a control whose base is `w-full` does not win, and the browser showed exactly
+          that — date boxes that ignored their width, clipped their own placeholder and ran into
+          the select beside them. Widths are sized to their content (a code is short, a name is
+          not) so the bar spends its space where the typing happens, and each is the width its
+          own contents MEASURE at this type size — a clipped placeholder is a filter nobody can
+          name. `singleRowFrom` is measured the same way: seven controls at this size, with the
+          shell's widest sidebar, fit from 1440 and not before.
+
+          The exception is the two search boxes, which are `flex-1` over a `min-w` floor: a select
+          and a date box have one right width and gain nothing from more, but a box somebody TYPES
+          into does. So the slack a wide screen leaves goes to them instead of sitting empty at the
+          end of the bar, and the floor is what stops `flex-nowrap` squeezing them under their own
+          placeholder on the narrowest screen that still claims one row.
 
           The first two are BOTH about the vehicle and both stay: the box sweeps by code, the
           dropdown pins one car, and using them together narrows to the intersection rather than
           letting either replace the other. In Arabic the bar reads from the right exactly as
-          specified: كود بحث ← العربية ← اسم المتسبب ← من ← إلى ← الحالة ← Reset.
+          specified: كود ← العربية ← اسم المتسبب ← من ← إلى ← الحالة ← Reset.
         */}
-        <FilterBar singleRow hasActiveFilters={hasFilters} onClear={clearFilters}>
-          <div className="w-40 shrink-0">
+        <FilterBar
+          singleRow
+          singleRowFrom={1440}
+          hasActiveFilters={hasFilters}
+          onClear={clearFilters}
+        >
+          <div className="min-w-[8rem] flex-1">
             <SearchInput
               value={code}
               onChange={(term) => patch({ code: term || null })}
               placeholder={t('fleet.accidents.searchCode')}
+              textScale="comfortable"
             />
           </div>
-          <VehicleSelect
-            value={vehicle}
-            onChange={(id) => patch({ vehicle: id || null })}
-            allLabel={t('fleet.odometer.allVehicles')}
-            anyStatus
-            ariaLabel={t('fleet.odometer.columns.vehicle')}
-          />
-          <div className="w-44 shrink-0">
+          <div className="w-36 shrink-0">
+            <VehicleSelect
+              value={vehicle}
+              onChange={(id) => patch({ vehicle: id || null })}
+              allLabel={t('fleet.odometer.allVehicles')}
+              anyStatus
+              ariaLabel={t('fleet.odometer.columns.vehicle')}
+              fullWidth
+              textScale="comfortable"
+            />
+          </div>
+          <div className="min-w-[11rem] flex-1">
             <SearchInput
               value={culprit}
               onChange={(term) => patch({ culprit: term || null })}
               placeholder={t('fleet.accidents.searchCulprit')}
+              textScale="comfortable"
             />
           </div>
-          <Field label={t('fleet.odometer.from')} htmlFor="accidents-from">
-            <Input
-              id="accidents-from"
-              type="date"
-              value={from}
-              onChange={(e) => patch({ from: e.target.value || null })}
-              className="w-auto"
-            />
-          </Field>
-          <Field label={t('fleet.odometer.to')} htmlFor="accidents-to">
-            <Input
-              id="accidents-to"
-              type="date"
-              value={to}
-              onChange={(e) => patch({ to: e.target.value || null })}
-              className="w-auto"
-            />
-          </Field>
-          <Select
-            aria-label={t('fleet.vehicles.columns.status')}
-            value={status}
-            onChange={(e) => patch({ status: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.accidents.allStatuses')}</option>
-            <option value="open">{t('fleet.accidents.status.open')}</option>
-            <option value="closed">{t('fleet.accidents.status.closed')}</option>
-          </Select>
+          <div className="flex shrink-0 items-center gap-2">
+            <label htmlFor="accidents-from" className={dateLabel}>
+              {t('fleet.odometer.from')}
+            </label>
+            <div className="w-44">
+              <Input
+                id="accidents-from"
+                type="date"
+                value={from}
+                onChange={(e) => patch({ from: e.target.value || null })}
+                textScale="comfortable"
+              />
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <label htmlFor="accidents-to" className={dateLabel}>
+              {t('fleet.odometer.to')}
+            </label>
+            <div className="w-44">
+              <Input
+                id="accidents-to"
+                type="date"
+                value={to}
+                onChange={(e) => patch({ to: e.target.value || null })}
+                textScale="comfortable"
+              />
+            </div>
+          </div>
+          <div className="w-32 shrink-0">
+            <Select
+              aria-label={t('fleet.vehicles.columns.status')}
+              value={status}
+              onChange={(e) => patch({ status: e.target.value || null })}
+              textScale="comfortable"
+            >
+              <option value="">{t('fleet.accidents.allStatuses')}</option>
+              <option value="open">{t('fleet.accidents.status.open')}</option>
+              <option value="closed">{t('fleet.accidents.status.closed')}</option>
+            </Select>
+          </div>
         </FilterBar>
 
+        {/*
+          `labelFirst` — the name above the figure, both centred in the tile. Five money totals
+          that differ only by the word beside them are READ, not glanced at: leading with the
+          number would ask the reader to find the figure and then hunt for what it counts.
+        */}
         <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800">
-          <StatStrip columns={5} items={totals} />
+          <StatStrip columns={5} labelFirst items={totals} />
         </div>
 
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(r) => r.id}
+          // A register somebody works through for an hour, not a panel they glance at: one step up
+          // the type scale for the headers and every cell.
+          textScale="comfortable"
           rowClassName={(r) =>
             // Read from the PERSISTED status on every render, and from nothing else. A file the
             // server says is closed is green after a refresh, in another tab, and for the next

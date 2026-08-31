@@ -62,6 +62,7 @@ import { rosterDraftKey, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import {
   COUNTER_TONES,
   carriesPlan,
+  hasDriver,
   missionTone,
   readView,
   visibleRows,
@@ -528,14 +529,26 @@ export const RosterPage = (): JSX.Element => {
     {
       key: 'state',
       header: t('fleet.vehicles.columns.status'),
+      /*
+        TWO DIFFERENT STATEMENTS, and only one of them is about the assignment.
+
+        The assignment badge appears only once somebody is actually ON the car — a driver in
+        either seat. A mission with no crew is an intention, not an assignment, and a row that
+        said «غير معيّنة» before anyone had been considered was answering a question nobody had
+        asked yet; saying nothing is the honest state of a row nobody has touched.
+
+        `hasDriver`, NOT `carriesPlan`: the latter is «تشغيل», which counts a mission too and
+        still does, for the counter and the filter above. The badge asks the narrower question.
+
+        The WORKSHOP badge is not an assignment state and is always shown. It is also the third
+        carrier of that fact — the row's red tint, the direction of its actions, and this word —
+        and `DataTable` requires a tinted row to say what it is in a cell, so hiding it would
+        leave a car red for a reason nothing on screen states.
+      */
       render: (row) => (
         <span className="flex flex-wrap items-center gap-1">
           <InWorkshopBadge inWorkshop={row.inMaintenance} />
-          {carriesPlan(row) ? (
-            <Badge tone="success">{t('fleet.roster.assigned')}</Badge>
-          ) : (
-            <Badge tone="neutral">{t('fleet.roster.unassigned')}</Badge>
-          )}
+          {hasDriver(row) && <Badge tone="success">{t('fleet.roster.assigned')}</Badge>}
         </span>
       ),
     },
@@ -570,9 +583,31 @@ export const RosterPage = (): JSX.Element => {
               value={row.missionTypeId ?? ''}
               ariaLabel={`${row.code} · ${t('fleet.roster.fields.mission')}`}
               allLabel={t('fleet.fixedRoster.noMissionType')}
-              onChange={(id) =>
-                setDraft(() => setMission(draft, row.vehicleId, id === '' ? null : id))
-              }
+              /*
+                A car the workshop holds takes no mission — and this is not a new rule, it is the
+                existing one stopping the reader from trying. The server counts a row carrying a
+                mission as an ASSIGNING row (`assigns` in `roster.service`) and FR-5 refuses it
+                with a 409 naming the vehicle, so the board was offering a save it already knew
+                would come back rejected. The drop targets have worked this way all along.
+
+                `inMaintenance`, the same authoritative flag: the workshop's verdict FOR THIS
+                DATE, never the registry's `inWorkshop`, which is only where the car is today.
+
+                Disabled rather than hidden, so a mission already stored on the row stays visible
+                and legible — the reader can see what the day holds, and simply cannot change it.
+              */
+              disabled={row.inMaintenance}
+              onChange={(id) => {
+                // The GUARD, not just the attribute. `disabled` stops a person — a real click and
+                // every keystroke — but React's handler is attached at the root and still runs for
+                // an event dispatched programmatically, so the attribute alone left the rule
+                // resting on nothing but markup. Checked here, the rule holds however the change
+                // arrives, and survives a future edit that renders this control enabled by
+                // mistake. The server refuses the write either way (FR-5); this keeps the DRAFT
+                // from holding a mission the reader can see and cannot remove.
+                if (row.inMaintenance) return;
+                setDraft(() => setMission(draft, row.vehicleId, id === '' ? null : id));
+              }}
             />
           </div>
         ),

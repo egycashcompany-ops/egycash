@@ -42,6 +42,22 @@ export const carriesPlan = (row: FleetRosterRowDto): boolean =>
   row.missionTypeId !== null || row.driver1EmployeeId !== null || row.driver2EmployeeId !== null;
 
 /**
+ * Does this row have a CREW? A driver in either seat, and nothing else counts.
+ *
+ * Deliberately NOT `carriesPlan`, and the difference is the whole reason both exist. `carriesPlan`
+ * is what «تشغيل» has always meant — a mission OR a driver — and it drives the counter and the
+ * filter. This one answers a narrower question the assignment badge asks: is anybody actually ON
+ * this car? A mission with no driver is an intention, not an assignment, and labelling such a row
+ * «معيّنة» tells the dispatcher a crew exists where none does.
+ *
+ * Two names because they are two facts. Folding them together would make the badge and the
+ * counter agree by accident and drift apart the day either question changes — the same mistake
+ * the «صيانة» state and the «نقل أموال (صيانة)» mission type are kept apart to avoid.
+ */
+export const hasDriver = (row: FleetRosterRowDto): boolean =>
+  row.driver1EmployeeId !== null || row.driver2EmployeeId !== null;
+
+/**
  * The rows the board should SHOW, given everything the URL is asking for.
  *
  * Every filter narrows; none replaces another. `term` matches the code or the plate — the cell no

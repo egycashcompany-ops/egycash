@@ -191,6 +191,21 @@ export const daysInForce = (
   return daysWithin(inPeriod, spans);
 };
 
+/**
+ * Is this calendar day inside the period AND inside one of the employee's employment spans?
+ *
+ * A one-day window through `daysWithin` answers both legs at once and reuses the union handling
+ * that a rehire's gap already depends on, rather than restating the same arithmetic a third time.
+ */
+const employedOn = (
+  day: Date,
+  window: { from: Date; to: Date },
+  spans: readonly DateSpan[],
+): boolean => {
+  const inPeriod = intersect({ from: day, to: day }, window);
+  return inPeriod !== null && daysWithin(inPeriod, spans) === 1;
+};
+
 /** Total order over lines: earnings before deductions, then the catalog's order, then the code. */
 const KIND_RANK: Record<PayItemKind, number> = { earning: 0, deduction: 1 };
 const byPresentation = (a: AssignmentInput, b: AssignmentInput): number =>
@@ -623,6 +638,28 @@ export const computeCompensation = (input: CompensationInput): CompensationEffec
     [...earnings, ...deductions].some((line) => line.quantitySource === 'leaveDays')
   ) {
     warnings.push('leaveDaysAlsoPriced');
+  }
+  // D6-R (owner ruling — option C). An `incomplete` day, punched in and never out, is priced at
+  // NOTHING by `attendance-quantities.ts`, and deliberately so: deciding what an unfinished day
+  // was worth is a labour rule nobody has granted this system. That half of D6 is right and it
+  // stays. The half that was missing is that the silence was total — a day priced at zero looks
+  // exactly like a day nobody worked, so the under-count reached a payslip with nothing to notice
+  // it by.
+  //
+  // Raised only when attendance actually reaches THIS payslip's money, the same restraint
+  // `leaveDaysAlsoPriced` uses above. A period whose items are all fixed amounts is not
+  // under-counted by an unfinished day, and warning there would put a line on every salaried
+  // payslip in any month somebody forgot to check out — which is how a warning stops being read.
+  if (
+    input.attendance !== null &&
+    [...earnings, ...deductions].some((line) => line.quantitySource !== null) &&
+    input.attendance.rows.some(
+      (row) =>
+        row.status === 'incomplete' &&
+        employedOn(toDateOnly(new Date(`${row.workDate}T00:00:00.000Z`)), window, spans),
+    )
+  ) {
+    warnings.push('incompleteDay');
   }
 
   return {

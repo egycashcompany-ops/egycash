@@ -18,10 +18,8 @@
 > production code cites this document by section, and a renumber would break every citation it
 > was written to make openable.
 >
-> **Still NOT settled, and neither is decided here:**
+> **Still NOT settled:**
 >
-> * **D6-R** — an `incomplete` day was designed to *block* payroll calculation; `main` *excludes*
->   it silently. §4 and §16.3 state the divergence and the three ways to close it. **Open.**
 > * **D12-T** — the **transport**: protocol, push or pull, connection, payload shape, device-side
 >   identity and whether the unit reports direction. §17.4 states exactly what is missing and why
 >   guessing any of it is worse than waiting. **Open, and blocking AT-D3 only.**
@@ -48,7 +46,7 @@ proposed. The rulings in this table are binding on the implementation.
 | **D3** | Does a day belong to the calendar date of the **first punch** or of the **shift start**? | **APPROVED — shift start.** A shift starting 31 July 22:00 and ending 1 August 06:00 is one working day owned entirely by 31 July — and therefore by July's payroll period. | A night shift crossing midnight is one working day, not two halves. This choice is baked into the day-record key and is expensive to reverse. |
 | **D4** | Lateness | **APPROVED — grace minutes per shift, then raw late minutes only.** No tiers and no monetary deduction logic inside Attendance, ever. | Tiers (5/15/30) are a payroll deduction policy, and Payroll is the module that should own money. Attendance records the minutes; Payroll decides what they cost. |
 | **D5** | Overtime | **APPROVED — derived automatically from punches, paid only after approval.** Attendance owns the quantity and its approval; Payroll owns the price and the multipliers. | Recording without approving loses nothing and gives Payroll a truthful number. Auto-approving spends money without a decision. |
-| **D6** | Missing checkout | **APPROVED, with a refinement:** the day closes as **`incomplete`**, never guessed — and an `incomplete` day inside a period being calculated **blocks that employee's payroll calculation** until a proper regularization resolves it (see §4). ⚠️ **v1.2: the second half of this ruling was NOT built — see D6-R in §4 and §16.3.** | An assumed 8-hour day is an invented fact that reaches a payslip. `incomplete` is visible and correctable — and it must never be silently priced. |
+| **D6** | Missing checkout | **APPROVED, with a refinement:** the day closes as **`incomplete`**, never guessed — and an `incomplete` day inside a period being calculated **blocks that employee's payroll calculation** until a proper regularization resolves it (see §4). **v1.3: the second half was reopened as D6-R and RULED as option C — the day is named on the payslip rather than blocking it. §4 records the ruling and why A was not taken.** | An assumed 8-hour day is an invented fact that reaches a payslip. `incomplete` is visible and correctable — and it must never be silently priced. |
 | **D7** | Who fixes a wrong record? | **APPROVED, with a refinement: two approval steps, not one.** A regularization goes request → **manager approval → HR approval**, mirroring the Leave chain (`pendingManager → pendingHr`) exactly — not manager-only. HR may still edit directly with a mandatory reason. Post-freeze corrections are `postFreeze` adjustments only — never a restatement (see §7). | Mirrors the Leave request model exactly, so approvals and notifications reuse existing machinery. |
 | **D8** | Punching at another branch | **APPROVED — allowed and recorded** (`branchIdAtPunch`), flagged when it differs from the employee's branch. Payroll and any GL split use the **employee's** branch per ADR-015, never the punch's. | Cash-transport and fleet staff genuinely move. Blocking it would make the honest case impossible; flagging it makes the dishonest case visible. |
 | **D9** | Raw device events | **APPROVED — immutable, kept forever.** No edit, no delete; a wrong punch is superseded via `supersededBy` with the original retained as evidence. Derived day records are recomputable from them. | The raw event is the evidence. Retention policy can be added later; deleting evidence cannot be undone. |
@@ -211,7 +209,7 @@ employee's calculation** and reports the day in the run's errors, rather than gu
 day or assuming an absence. The unblock path is a proper regularization (§7); nothing else
 converts `incomplete` into money.
 
-#### ⚠️ D6-R (v1.2) — designed as a block, built as a silent exclusion. OPEN.
+#### D6-R — SETTLED (owner ruling, 2026-08-31): the day is named, not blocked.
 
 **The rule above was implemented only in its first half.** On `main`:
 
@@ -225,17 +223,36 @@ converts `incomplete` into money.
 So the outcome today is that an unfinished day **passes through the calculation silently** — it is
 not priced, and nobody is told. The design wanted it loud; the code made it quiet.
 
-**This is a divergence between a ruling and the code, not a bug in either.** It is stated here, not
-resolved here. The three ways to close it, each a decision for the owner:
+**This was a divergence between a ruling and the code, not a bug in either.** Three ways to close
+it were put to the owner, and the cost column was measured against `main` before the choice:
 
-| option | what it means | cost |
+| option | what it means | measured cost |
 |---|---|---|
-| **A — block** | Payroll refuses to calculate that employee's line and reports the day in the run's errors, as v1.1 ruled | one `incomplete` day stops a payslip; a run cannot close until every one is regularized |
+| **A — block** | Payroll refuses to calculate that employee's line and reports the day in the run's errors, as v1.1 ruled | **larger than v1.2 stated.** `payroll-run.model.ts` carries counters and lifecycle stamps and **no error surface at all** — no error list, nothing per-employee. A is not a refusal bolted onto an existing report; it is a new structure on the run, plus a decision about what "a run cannot close" means for the lifecycle |
 | **B — keep the current behaviour** | the day contributes nothing and the run proceeds | nothing changes; the silence is accepted as intended |
-| **C — warn** | the day contributes nothing, and the payslip carries a new warning naming it | needs one new value in the closed `CompensationWarning` vocabulary — a contract change |
+| **C — warn** | the day contributes nothing, and the payslip carries a new warning naming it | **one value in a closed vocabulary.** The surface already runs end to end: `payslip.model.ts` persists `warnings[]`, the DTO returns them, and `CompensationCard.tsx` renders them |
 
-**No option is chosen in this revision.** Until it is, the behaviour on `main` is **B by default**,
-which is the honest way to describe it.
+**RULED: C.** The unfinished day keeps contributing nothing — guessing what it was worth is a
+labour rule nobody has granted this system, and that half of D6 was never in question — but the
+payslip now carries `incompleteDay` naming it. The silence is what the ruling was aimed at, and
+the silence is what C ends.
+
+**Why not A, given v1.1 said so.** Two measured reasons, neither of them a preference. First, the
+cost above: the run has nowhere to report a blocked employee, so A is a phase, not a patch.
+Second, the timing: AT-D3 is not built, so no device writes punches yet and every attendance day
+still arrives by hand — blocking payroll on unfinished days *today* would stop payslips at
+exactly the moment the system is least able to prevent them. A stays available and is now cheaper
+to decide, because C makes the days visible first: a block is a decision worth taking against a
+count somebody has seen, not against one nobody can.
+
+**What C deliberately does not do.** It does not repair the day, and it does not price it. The
+unblock path is unchanged and is still a proper regularization (§7).
+
+**The warning is raised only when attendance actually reaches that payslip's money** — at least one
+line carrying a `quantitySource` — and only for days inside the employee's own employment. That
+restraint is the same one `leaveDaysAlsoPriced` already uses. Without it the warning would appear
+on every salaried payslip in any month somebody forgot to punch out, and a warning nobody reads is
+a second silence wearing the first one's clothes.
 
 ---
 
@@ -453,10 +470,10 @@ period:
 
 Rules that ride the contract:
 
-- A row with `status = incomplete` in a period under calculation **blocks that employee's payroll
-  line** until regularized (D6) — the feed never launders an unfinished day into a paid one.
-  ⚠️ **v1.2: not built as stated — see D6-R in §4. The row is excluded from the quantities rather
-  than blocking, and nothing announces it.**
+- A row with `status = incomplete` contributes NOTHING to any quantity — the feed never launders
+  an unfinished day into a paid one (D6). **D6-R as ruled (option C):** it does not block the
+  line; the payslip carries `incompleteDay` naming the day instead, raised only where attendance
+  actually prices that payslip. §4 records the ruling.
 - `absent` prices as a deduction only where no leave and no calendar fact covers the day — the
   engine already guarantees that ordering (§4).
 - Post-freeze corrections arrive as `postFreeze` regularizations and surface in Payroll as
@@ -479,11 +496,11 @@ from the fact that a document exists.
 | §1.4/§1.5 subscribes to `hr.leave.started` / `.ended` / `hr.employee.exited` | all three subscribed; the exit handler recomputes the affected span |
 | §3 five collections, zero changes to existing ones | as designed, including `branchIdAtPunch`, `importBatchId`, `supersededBy`, and the partial unique `{deviceId, at, employeeId}` |
 | §3 unique `{employeeId, workDate}` | as designed — recomputation is idempotent |
-| **D1** sources | `device` · `manual` · `web`; `hr.attendance.selfPunchEnabled` defaults **off** |
+| **D1** sources | `device` · `manual` · `regularization` (AT-D2) · `web`; `hr.attendance.selfPunchEnabled` defaults **off** |
 | **D3** the day is keyed by shift start | as designed |
 | **D5** overtime derived, paid only after approval | `hr.attendance.overtimeRequiresApproval` defaults **on**; `approvedOvertimeMinutes` is separate from the derived figure |
 | **D7** two approval steps | `pendingManager → pendingHr`, the Leave pair |
-| **D8** cross-branch punches recorded and flagged | `crossBranchPunch` · `manualPunch`, closed vocabulary |
+| **D8** cross-branch punches recorded and flagged | `crossBranchPunch` · `manualPunch` · `regularizedPunch` (AT-D2), closed vocabulary |
 | **D9** punches immutable, superseded not edited | as designed |
 | **D10 / §15.1** the feed | **exactly the twelve fields**, held by name in a contract test, and an unfrozen row cannot be mapped |
 | **D-PR-07** freeze owned by the run | one production caller; no freeze endpoint; **no unfreeze anywhere** |
@@ -501,8 +518,10 @@ from the fact that a document exists.
 
 ### 16.3 Diverging
 
-* **D6-R** — the `incomplete` blocking rule. Stated in full in §4; the single open behavioural
-  question in this module.
+* **Nothing.** D6-R was the last entry here — the `incomplete` day was designed to block payroll
+  and built to pass through it silently. Closed by the owner's option-C ruling: the day still
+  contributes nothing, and the payslip now says so. §4 records the ruling and the measured cost
+  that argued against option A.
 
 ### 16.4 Added after the design was written
 

@@ -631,19 +631,27 @@ describe('the filter bar', () => {
   });
 
   it('asks the REGISTRY for codes matching what was typed, not the first page of it', () => {
-    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    // The search term goes to the server; the options are its answer.
-    expect(source).toContain('onSearch={setCodeQuery}');
-    expect(source).toContain('search: codeQuery.trim()');
-    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
+    // The property is the same one this page has always had; it moved into the control every
+    // screen now shares, so it is asserted where it lives — once, instead of once per page.
+    const source = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
+    expect(source).toContain('onSearch: setSearch');
+    expect(source).toContain('search: search.trim()');
+    expect(source).not.toContain('MAX_PAGE_SIZE');
   });
 
   it('builds its options from the search, with the selection kept reachable', () => {
     // `MultiSelect` renders its list only once opened, and the node-env suite cannot open it — so
     // the rule itself lives in `vehicleCodeOptions` and is proven in its own spec. What belongs
-    // here is that the page feeds it the search's answer and the current selection, and no more.
+    // here is that the control feeds it the search's answer and the current selection, and no more.
+    const source = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
+    expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], value)');
+  });
+
+  it('renders that one control rather than assembling its own', () => {
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes)');
+    expect(source).toContain('<VehicleCodeFilter');
+    // A page that kept its own options would be a second answer to drift from the first.
+    expect(source).not.toContain('vehicleCodeOptions');
   });
 
   it('NAMES the chosen codes in the trigger rather than counting them', () => {

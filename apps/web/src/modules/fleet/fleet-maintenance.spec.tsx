@@ -573,9 +573,13 @@ describe('the filter bar', () => {
   });
 
   it('offers the vehicle codes as a SEARCH, never as a page of the registry', () => {
-    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
-    expect(source).toContain('onSearch={setCodeQuery}');
-    expect(source).toContain('vehicleCodeOptions');
+    // Now the shared control's property — one implementation for the six screens that filter by
+    // car, so the page asserts that it renders it rather than re-proving what it no longer owns.
+    const page = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(page).toContain('<VehicleCodeFilter');
+    const control = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
+    expect(control).toContain('onSearch: setSearch');
+    expect(control).toContain('vehicleCodeOptions');
   });
 
   it('resets to page 1 when a filter changes, and not when the page does', () => {

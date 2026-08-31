@@ -389,7 +389,9 @@ describe('the screen is laid out to be read, not scanned', () => {
     const controls = [...bar.matchAll(/<(?:input|select)[^>]*class="([^"]*)"/g)].map(
       (m) => m[1] ?? '',
     );
-    expect(controls.length, 'code, vehicle, culprit, from, to, status').toBe(6);
+    // Five now: the code box and the vehicle dropdown collapsed into ONE vehicle-code picker,
+    // which is a button rather than an input and so is counted separately below.
+    expect(controls.length, 'culprit, from, to, status').toBe(4);
     for (const cls of controls) expect(cls, cls).toContain('text-base');
   });
 
@@ -421,7 +423,7 @@ describe('a failed fetch states the failure instead of inventing a screen', () =
 });
 
 describe('the filter bar', () => {
-  it('carries the seven controls on one row, in the order asked for', () => {
+  it('carries its controls on one row, in the order asked for', () => {
     const html = render();
     // The single-row threshold is this bar's own — see the `singleRowFrom` case below.
     expect(html).toContain('flex-nowrap');
@@ -429,9 +431,9 @@ describe('the filter bar', () => {
     // Matched on things unique to each control rather than on its visible word, which can occur
     // elsewhere in the markup: two placeholders, the "all vehicles" option, the two date ids, and
     // the "all statuses" option.
+    // One vehicle control where there were two — see «one vehicle control» below.
     const order = [
-      'placeholder="كود"',
-      'كل السيارات',
+      'كود السيارة',
       'اسم المتسبب',
       'accidents-from',
       'accidents-to',
@@ -445,10 +447,10 @@ describe('the filter bar', () => {
     }
   });
 
-  it('offers Reset once ANY filter is on — including the code search alone', () => {
+  it('offers Reset once ANY filter is on — including the vehicle codes alone', () => {
     for (const path of [
-      '/fleet/accidents?code=21',
-      '/fleet/accidents?vehicle=v-1',
+      '/fleet/accidents?vehicleCodes=FLT210',
+      '/fleet/accidents?vehicleCodes=FLT210,FLT211',
       '/fleet/accidents?culprit=%D8%A7%D8%B4%D8%B1%D9%81',
       '/fleet/accidents?status=open',
       '/fleet/accidents?from=2026-01-01',
@@ -462,14 +464,17 @@ describe('the filter bar', () => {
     expect(render()).not.toContain('مسح عوامل التصفية');
   });
 
-  it('sends BOTH the code search and the vehicle pick to the server, together', () => {
-    // Seeded ONLY under the key that carries both. A page that dropped either — or that filtered
-    // by code in the browser — would look for a different key and render an empty table.
+  it('sends ONE vehicle question to the server — the codes, ORed', () => {
+    // There used to be two controls on this axis: a substring code box AND a single-car dropdown,
+    // which the server intersected. Picking 215 while typing 216 produced an empty page the filter
+    // bar itself had offered. Seeded ONLY under the unified key, so a page still sending either of
+    // the old two — or filtering in the browser — would look for a different key and render
+    // nothing.
     const html = render({
-      path: '/fleet/accidents?code=15&vehicle=v-1',
+      path: '/fleet/accidents?vehicleCodes=FLT210,FLT211',
       seed: withRows([accident({ statement: 'كلاهما مطبق' })], {
-        list: { code: '15', vehicleId: 'v-1' },
-        summary: { code: '15', vehicleId: 'v-1' },
+        list: { vehicleCodes: ['FLT210', 'FLT211'] },
+        summary: { vehicleCodes: ['FLT210', 'FLT211'] },
       }),
     });
     expect(html).toContain('كلاهما مطبق');

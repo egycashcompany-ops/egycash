@@ -4310,6 +4310,79 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
     expect(data<{ amountCollected: number }>(edit).amountCollected).toBe(750);
   });
 
+  // ── The vehicle-code picker, on violations ─────────────────────────────────
+  //
+  // This screen had a single-car dropdown and no code filter at all. It now asks the same question
+  // the other five ask, in the same words, and a violation stores its vehicle by id — so the codes
+  // are resolved against the registry first, the two-step accidents and maintenance already take.
+
+  describe('filtering violations by vehicle codes', () => {
+    const listBy = async (query: Record<string, unknown>): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ pageSize: 100, ...query })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<{ vehicleId: string }[]>(res).map((r) => r.vehicleId);
+    };
+
+    let carA: FleetVehicleDto;
+    let carB: FleetVehicleDto;
+
+    beforeAll(async () => {
+      const typeId = await violationTypeIdByName('الانتظار في الممنوع');
+      carA = data<FleetVehicleDto>(await createVehicle(adminToken));
+      carB = data<FleetVehicleDto>(await createVehicle(adminToken));
+      for (const car of [carA, carB]) {
+        const res = await request(app)
+          .post('/api/v1/fleet/violations/vehicle')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ vehicleId: car.id, year: 2026, violationTypeId: typeId, count: 1, unitValue: 100 });
+        expect(res.status).toBe(201);
+      }
+    });
+
+    it('names one car, and several as an OR', async () => {
+      expect(await listBy({ vehicleCodes: carA.code })).toEqual([carA.id]);
+      const both = await listBy({ vehicleCodes: `${carA.code},${carB.code}` });
+      expect(both.sort()).toEqual([carA.id, carB.id].sort());
+    });
+
+    it('reads the separators an operator types, and a repeat as one car', async () => {
+      const pair = [carA.id, carB.id].sort();
+      for (const written of [
+        `${carA.code} - ${carB.code}`,
+        `  ${carA.code} ,  ${carB.code} `,
+        `${carA.code},${carB.code},${carA.code}`,
+      ]) {
+        expect((await listBy({ vehicleCodes: written })).sort(), written).toEqual(pair);
+      }
+    });
+
+    it('narrows to NOTHING for a code no car carries — never the whole list', async () => {
+      expect(await listBy({ vehicleCodes: 'NO-SUCH-CODE' })).toEqual([]);
+      // And the unfiltered list really does have rows, so the empty answer above means something.
+      expect((await listBy({})).length).toBeGreaterThan(0);
+    });
+
+    it('composes with the other filters, and pages the narrowed set', async () => {
+      expect(await listBy({ vehicleCodes: carA.code, kind: 'vehicle' })).toEqual([carA.id]);
+      expect(await listBy({ vehicleCodes: carA.code, year: 2026 })).toEqual([carA.id]);
+      expect(await listBy({ vehicleCodes: carA.code, year: 2025 })).toEqual([]);
+
+      const res = await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ vehicleCodes: `${carA.code},${carB.code}`, page: 1, pageSize: 1 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect((res.body as { meta: PageMeta }).meta.totalItems).toBe(2);
+      expect(data<unknown[]>(res).length).toBe(1);
+    });
+
+    it('still honours the deprecated `vehicleId`, for a link saved before the picker', async () => {
+      expect(await listBy({ vehicleId: carA.id })).toEqual([carA.id]);
+    });
+  });
+
   it('FR-9 — a vehicle statement row derives its amount; the client cannot send one', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const typeId6 = await violationTypeIdByName('الانتظار في الممنوع');
@@ -4564,6 +4637,109 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       // Neither of which is what either filter alone would have said.
       expect((await codesOn({ code: 'FLT21' })).length).toBe(2);
       expect(await codesOn({ vehicleId: pinned.vehicleId })).toEqual(['FLT210']);
+    });
+
+    // ── The vehicle-code picker: one control, exact, ORed ──────────────────
+    //
+    // This screen used to carry TWO vehicle filters that the server intersected — a substring
+    // `code` box and a single-car dropdown — so picking one car while typing another produced an
+    // empty page the filter bar itself had offered. `vehicleCodes` is the one question now; the
+    // other two stay accepted for saved links and are covered above.
+
+    it('names ONE car exactly', async () => {
+      expect(await codesOn({ vehicleCodes: 'FLT210' })).toEqual(['FLT210']);
+    });
+
+    it('names SEVERAL, and means any of them — an OR, never an AND', async () => {
+      expect((await codesOn({ vehicleCodes: 'FLT210,FLT211' })).sort()).toEqual([
+        'FLT210',
+        'FLT211',
+      ]);
+      expect((await codesOn({ vehicleCodes: 'FLT210,FLT211,FLT350' })).sort()).toEqual([
+        'FLT210',
+        'FLT211',
+        'FLT350',
+      ]);
+    });
+
+    it('reads the separators an operator actually types', async () => {
+      const both = ['FLT210', 'FLT211'];
+      expect((await codesOn({ vehicleCodes: 'FLT210,FLT211' })).sort()).toEqual(both);
+      expect((await codesOn({ vehicleCodes: 'FLT210 - FLT211' })).sort()).toEqual(both);
+      expect((await codesOn({ vehicleCodes: '  FLT210 ,  FLT211  ' })).sort()).toEqual(both);
+      expect((await codesOn({ vehicleCodes: 'FLT210;FLT211' })).sort()).toEqual(both);
+    });
+
+    it('reads a code written twice as the one car it names', async () => {
+      expect(await codesOn({ vehicleCodes: 'FLT210,FLT210,FLT210' })).toEqual(['FLT210']);
+      expect((await codesOn({ vehicleCodes: 'FLT210 - FLT211 - FLT210' })).sort()).toEqual([
+        'FLT210',
+        'FLT211',
+      ]);
+    });
+
+    it('is EXACT — a code that is only a prefix names no car', async () => {
+      // `FLT21` is a strict prefix of two seeded codes, and the substring `code` filter above
+      // returns both for it. The picker returns neither: a ticked checkbox names one car.
+      expect(await codesOn({ vehicleCodes: 'FLT21' })).toEqual([]);
+      expect((await codesOn({ code: 'FLT21' })).length).toBe(2);
+    });
+
+    it('narrows to NOTHING for a code no car carries — the filter is never dropped', async () => {
+      const res = await list({ vehicleCodes: 'NO-SUCH-CODE' });
+      expect(res.status).toBe(200);
+      expect(data<unknown[]>(res)).toEqual([]);
+      expect((res.body as { meta: PageMeta }).meta.totalItems).toBe(0);
+    });
+
+    it('keeps a hyphenated code whole, rather than reading it as two cars', async () => {
+      // The URL is canonical: the picker already resolved the ambiguity and wrote the answer.
+      // Splitting here would turn a code a reader successfully picked into two nobody has.
+      expect(await codesOn({ vehicleCodes: 'FLT.99' })).toEqual(['FLT.99']);
+    });
+
+    it('still narrows with the other filters, each one still narrowing', async () => {
+      expect(
+        await codesOn({ vehicleCodes: 'FLT210,FLT350', culprit: 'اشرف', status: 'open' }),
+      ).toEqual(expect.arrayContaining(['FLT210']));
+      // The date bound still applies on top of the codes.
+      expect(await codesOn({ vehicleCodes: 'FLT210,FLT350', to: '2025-12-31' })).toEqual(['FLT350']);
+    });
+
+    it('pages and sorts the NARROWED set, not the whole one', async () => {
+      const all = await codesOn({ vehicleCodes: 'FLT210,FLT211,FLT350', sortBy: 'date', sortDir: 'asc' });
+      expect(all.length).toBe(3);
+      const first = await list({
+        vehicleCodes: 'FLT210,FLT211,FLT350',
+        sortBy: 'date',
+        sortDir: 'asc',
+        page: 1,
+        pageSize: 2,
+      });
+      expect((first.body as { meta: PageMeta }).meta.totalItems).toBe(3);
+      expect(data<unknown[]>(first).length).toBe(2);
+      const second = await list({
+        vehicleCodes: 'FLT210,FLT211,FLT350',
+        sortBy: 'date',
+        sortDir: 'asc',
+        page: 2,
+        pageSize: 2,
+      });
+      expect(data<unknown[]>(second).length).toBe(1);
+      // Descending is the same three cars, in the opposite order.
+      const desc = await codesOn({ vehicleCodes: 'FLT210,FLT211,FLT350', sortBy: 'date', sortDir: 'desc' });
+      expect(desc).toEqual([...all].reverse());
+    });
+
+    it('is answered by the SUMMARY the same way it answers the table', async () => {
+      const res = await summary({ vehicleCodes: 'FLT210,FLT211' });
+      expect(res.status).toBe(200);
+      const only = await summary({ vehicleCodes: 'FLT210' });
+      expect(only.status).toBe(200);
+      // The figures describe the filtered set, so a narrower filter cannot report a larger count.
+      const countOf = (r: request.Response): number =>
+        (r.body as { data: { count: number } }).data.count;
+      expect(countOf(only)).toBeLessThanOrEqual(countOf(res));
     });
 
     it('searches by part of the culprit’s name', async () => {
@@ -5486,6 +5662,76 @@ describe('the registry filters narrow SERVER-side', () => {
         key,
       ).toEqual([target.id]);
     }
+  });
+
+  // ── The vehicle-code picker, on the registry itself ────────────────────────
+  //
+  // `code` was this page's substring box; the picker that replaced it is EXACT and takes several.
+  // `search` keeps substring — over code, plate, chassis and motor at once — so nothing lost a
+  // capability, it moved to the control that already had it. Both are asserted together below,
+  // because the pair is the point.
+
+  it('names ONE car exactly, and several as an OR', async () => {
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    expect((await list({ vehicleCodes: target.code })).map((v) => v.id)).toEqual([target.id]);
+    const both = (await list({ vehicleCodes: `${target.code},${other.code}` })).map((v) => v.id);
+    expect(both.sort()).toEqual([target.id, other.id].sort());
+  });
+
+  it('reads the separators an operator types, and a repeat as one car', async () => {
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    const pair = [target.id, other.id].sort();
+    for (const written of [
+      `${target.code},${other.code}`,
+      `${target.code} - ${other.code}`,
+      `  ${target.code} ,  ${other.code}  `,
+      `${target.code},${other.code},${target.code}`,
+    ]) {
+      expect((await list({ vehicleCodes: written })).map((v) => v.id).sort(), written).toEqual(pair);
+    }
+  });
+
+  it('is EXACT where `search` is substring — the two answer different questions', async () => {
+    // A strict prefix of a real code: `search` finds the car, the picker finds nothing. This is
+    // the whole reason the substring capability moved rather than being deleted.
+    const prefix = target.code.slice(0, Math.max(1, target.code.length - 1));
+    expect((await list({ search: prefix })).map((v) => v.id)).toContain(target.id);
+    expect(await list({ vehicleCodes: prefix })).toEqual([]);
+  });
+
+  it('narrows to NOTHING for a code no car carries', async () => {
+    expect(await list({ vehicleCodes: 'NO-SUCH-CODE' })).toEqual([]);
+  });
+
+  it('composes with the other filters, and does not disturb them', async () => {
+    expect(
+      (await list({ vehicleCodes: target.code, operationId, branchId: branchBId })).map((v) => v.id),
+    ).toEqual([target.id]);
+    // A real code with someone else's operation matches nothing — still an AND across axes.
+    const stranger = await mkCatalogItem('operation', 'تشغيل آخر', 'Other operation');
+    expect(await list({ vehicleCodes: target.code, operationId: stranger })).toEqual([]);
+  });
+
+  it('pages and sorts the NARROWED set', async () => {
+    const a = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    const b = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
+    const codes = `${a.code},${b.code}`;
+    const asc = (await list({ vehicleCodes: codes, sortBy: 'code', sortDir: 'asc' })).map((v) => v.code);
+    expect(asc.length).toBe(2);
+    expect([...asc].sort()).toEqual(asc);
+    const desc = (await list({ vehicleCodes: codes, sortBy: 'code', sortDir: 'desc' })).map((v) => v.code);
+    expect(desc).toEqual([...asc].reverse());
+
+    const page1 = await request(app)
+      .get('/api/v1/fleet/vehicles')
+      .query({ vehicleCodes: codes, sortBy: 'code', sortDir: 'asc', page: 1, pageSize: 1 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((page1.body as { meta: PageMeta }).meta.totalItems).toBe(2);
+    expect(data<FleetVehicleDto[]>(page1).map((v) => v.code)).toEqual([asc[0]]);
+  });
+
+  it('still honours the deprecated substring `code`, for a link saved before the picker', async () => {
+    expect((await list({ code: target.code })).map((v) => v.id)).toEqual([target.id]);
   });
 
   it('ANDs the identifier filters — two conditions narrow further, they do not widen', async () => {

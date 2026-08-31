@@ -40,6 +40,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
@@ -60,10 +61,8 @@ import {
   useMaintenanceAlarms,
   useMaintenanceVisits,
   useReopenMaintenance,
-  useVehicles,
-} from '../api/fleet-queries';
+  } from '../api/fleet-queries';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
-import { vehicleCodeOptions } from '../lib/vehicle-code-options';
 import { EmployeeName } from '../components/EmployeeName';
 import { AlarmBadge, RemainingKm } from '../components/AlarmBadge';
 import {
@@ -73,8 +72,6 @@ import {
 } from '../components/MaintenanceDialogs';
 
 const DEFAULT_PAGE_SIZE = 25;
-/** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
-const VEHICLE_SEARCH_SIZE = 20;
 
 /** A csv URL parameter as the list it stands for; an absent one is an empty list, never `['']`. */
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
@@ -188,20 +185,6 @@ export const MaintenancePage = (): JSX.Element => {
     return map;
   }, [alarmsQuery.data]);
 
-  // The code FILTER asks the registry itself, one search at a time — a fleet outgrows any single
-  // page, so joining against one would bound the answer at `MAX_PAGE_SIZE` cars. The row's own
-  // code arrives on the row, resolved server-side.
-  const [codeQuery, setCodeQuery] = useState('');
-  const vehicles = useVehicles({
-    search: codeQuery.trim() === '' ? undefined : codeQuery.trim(),
-    pageSize: VEHICLE_SEARCH_SIZE,
-    sortBy: 'code',
-    sortDir: 'asc',
-  });
-  const vehicleOptions = useMemo(
-    () => vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes),
-    [vehicles.data, vehicleCodes.join(',')],
-  );
 
   // The three catalogs the screen names — the same admin-owned lists the Fleet Catalogs screen
   // edits, read through the same per-kind cached hook one request at a time.
@@ -587,17 +570,10 @@ export const MaintenancePage = (): JSX.Element => {
             <span className="whitespace-nowrap">{t('fleet.maintenance.outRange')}</span>
             {dateBound('fleet.maintenance.outRange', outFrom, 'outFrom')}
           </label>
-          <MultiSelect
+          <VehicleCodeFilter
             className="shrink-0"
-            // The chosen codes are named in the trigger, not counted: a registry runs to hundreds
-            // of cars and "3" says nothing about WHICH three the reader is looking at.
-            showSelectedValues
-            label={t('fleet.odometer.columns.vehicle')}
-            options={vehicleOptions}
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
-            onSearch={setCodeQuery}
-            searching={vehicles.isFetching}
           />
           {mayFilterByDriver && (
             <div className="w-40 min-w-0">

@@ -80,7 +80,7 @@ class FleetAccidentService {
   ): Promise<FilterQuery<FleetAccidentDoc>> {
     return fleetAccidentRepository.accidentFilter({
       vehicleId: query.vehicleId,
-      vehicleIds: await this.codeScope(query.code),
+      vehicleIds: await this.vehicleScope(query),
       culprit: query.culprit,
       status: query.status,
       from: query.from,
@@ -89,19 +89,35 @@ class FleetAccidentService {
   }
 
   /**
-   * A typed CODE, resolved to vehicle ids.
+   * The vehicle codes the reader named, resolved to vehicle ids.
    *
    * An accident stores its vehicle by id and never carries the code, so "show me 213" is a
    * question about the registry that has to be answered before this collection can be filtered at
    * all — the same two-step `maintenance.service` takes for its code filter.
    *
    * `undefined` means the reader did not ask, and nothing is narrowed. An EMPTY ARRAY means they
-   * asked about a code no vehicle has, which narrows to nothing — the filter is never dropped for
+   * asked about codes no vehicle has, which narrows to nothing — the filter is never dropped for
    * matching nothing, or the screen would answer an impossible search with the whole fleet.
+   *
+   * TWO SHAPES, one answer. `vehicleCodes` is the filter bar's picker: exact, several, ORed.
+   * `code` is the single substring box it replaced, kept working for saved links. Asked together
+   * they UNION — both name cars the reader wants, so refusing their sum would answer a wider
+   * question with a narrower page. `vehicleId` stays its own clause in the repository, where it
+   * intersects, because a dropdown pick is a different kind of statement.
    */
-  private async codeScope(code: string | undefined): Promise<string[] | undefined> {
-    if (code === undefined) return undefined;
-    return fleetVehicleRepository.idsByCodeSearch(code);
+  private async vehicleScope(query: {
+    vehicleCodes?: readonly string[] | undefined;
+    code?: string | undefined;
+  }): Promise<string[] | undefined> {
+    if (query.vehicleCodes === undefined && query.code === undefined) return undefined;
+    const ids = new Set<string>();
+    if (query.vehicleCodes !== undefined) {
+      for (const id of await fleetVehicleRepository.idsByCodes(query.vehicleCodes)) ids.add(id);
+    }
+    if (query.code !== undefined) {
+      for (const id of await fleetVehicleRepository.idsByCodeSearch(query.code)) ids.add(id);
+    }
+    return [...ids];
   }
 
   async list(query: ListFleetAccidentsQuery): Promise<Paginated<FleetAccidentDoc>> {

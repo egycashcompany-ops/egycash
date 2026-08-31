@@ -17,13 +17,14 @@
 // row's colour, the direction of its action, and a word for screen readers — three carriers, none
 // of them colour alone.
 //
-// URL-synced filters (code search + vehicle pick + culprit search + date range + status), sortable
+// URL-synced filters (vehicle codes + culprit search + date range + status), sortable
 // occurredAt and pagination, per the module idiom.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
   fleetAccidentRemaining,
+  splitVehicleCodeList,
   type FleetAccidentDto,
   type Locale,
 } from '@ecms/contracts';
@@ -49,7 +50,7 @@ import {
   useSetAccidentStatus,
   useVehicles,
 } from '../api/fleet-queries';
-import { VehicleSelect } from '../components/VehicleSelect';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -60,8 +61,7 @@ export const AccidentsPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
 
-  const code = sp.get('code') ?? '';
-  const vehicle = sp.get('vehicle') ?? '';
+  const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
   const culprit = sp.get('culprit') ?? '';
   const status = sp.get('status') ?? '';
   const from = sp.get('from') ?? '';
@@ -102,8 +102,7 @@ export const AccidentsPage = (): JSX.Element => {
    */
   const filters = useMemo(
     () => ({
-      code: code || undefined,
-      vehicleId: vehicle || undefined,
+      vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
       culprit: culprit || undefined,
       status: status || undefined,
       from: from || undefined,
@@ -126,9 +125,9 @@ export const AccidentsPage = (): JSX.Element => {
   const clearFilters = (): void =>
     // ONE update, all six keys. The code search and the vehicle pick go together — leaving either
     // behind would hand back a "cleared" bar that is still filtering.
-    patch({ code: null, vehicle: null, culprit: null, status: null, from: null, to: null });
+    patch({ vehicleCodes: null, culprit: null, status: null, from: null, to: null });
   const hasFilters =
-    code !== '' || vehicle !== '' || culprit !== '' || status !== '' || from !== '' || to !== '';
+    vehicleCodes.length > 0 || culprit !== '' || status !== '' || from !== '' || to !== '';
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
@@ -402,25 +401,14 @@ export const AccidentsPage = (): JSX.Element => {
           hasActiveFilters={hasFilters}
           onClear={clearFilters}
         >
-          <div className="min-w-[8rem] flex-1">
-            <SearchInput
-              value={code}
-              onChange={(term) => patch({ code: term || null })}
-              placeholder={t('fleet.accidents.searchCode')}
-              textScale="comfortable"
-            />
-          </div>
-          <div className="w-36 shrink-0">
-            <VehicleSelect
-              value={vehicle}
-              onChange={(id) => patch({ vehicle: id || null })}
-              allLabel={t('fleet.odometer.allVehicles')}
-              anyStatus
-              ariaLabel={t('fleet.odometer.columns.vehicle')}
-              fullWidth
-              textScale="comfortable"
-            />
-          </div>
+          {/* ONE vehicle control. Until this there were two — a substring code box AND a
+              single-car dropdown — and the server intersected them, so picking 215 and typing 216
+              produced an empty page the filter bar itself had offered. */}
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+          />
           <div className="min-w-[11rem] flex-1">
             <SearchInput
               value={culprit}
@@ -514,7 +502,14 @@ export const AccidentsPage = (): JSX.Element => {
         open={recordOpen}
         onClose={() => setRecordOpen(false)}
         accident={null}
-        initialVehicleId={vehicle}
+        // Carried over from the filter, but only when it names ONE car — the same rule the other
+        // screens' dialogs use. The id comes from the registry page this screen already holds to
+        // print codes on its rows; the DIALOG still picks a single vehicle, as it should.
+        initialVehicleId={
+          vehicleCodes.length === 1
+            ? (vehiclesQuery.data?.items.find((v) => v.code === vehicleCodes[0])?.id ?? '')
+            : ''
+        }
       />
       <AccidentFormDialog
         open={editing !== null}

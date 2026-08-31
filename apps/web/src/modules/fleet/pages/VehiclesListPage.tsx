@@ -6,13 +6,14 @@
 // The catalogs slice extended it to the frozen column order (§7) and the two filter groups (§10).
 // Every filter is SERVER-side, which is what keeps it correct across pagination: a client-side
 // filter would only ever narrow the page you are looking at.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   type FleetCatalogKind,
   type FleetVehicleDto,
   type Locale,
   type LocalizedString,
+  splitVehicleCodeList,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -20,6 +21,8 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { migrateLegacyVehicleCodeParam } from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -57,7 +60,7 @@ export const VehiclesListPage = (): JSX.Element => {
 
   const status = sp.get('status') ?? '';
   const typeId = sp.get('type') ?? '';
-  const code = sp.get('code') ?? '';
+  const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
   const plate = sp.get('plate') ?? '';
   const chassis = sp.get('chassis') ?? '';
   const motor = sp.get('motor') ?? '';
@@ -83,6 +86,17 @@ export const VehiclesListPage = (): JSX.Element => {
     if (resetPage && !('page' in updates)) next.delete('page');
     setSp(next);
   };
+  // A saved link from before the picker — the rule, and why, live beside their own test in
+  // `migrateLegacyVehicleCodeParam`. Applied with `replace` so the rewrite does not become a
+  // history entry the reader has to press Back through twice.
+  const legacyCode = sp.get('code');
+  useEffect(() => {
+    const migrated = migrateLegacyVehicleCodeParam(sp);
+    if (migrated !== null) setSp(migrated, { replace: true });
+    // Keyed on the legacy value alone: `sp` changes on every filter edit, and re-running there
+    // would fight the very rewrite this just made.
+  }, [legacyCode]);
+
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
@@ -90,7 +104,7 @@ export const VehiclesListPage = (): JSX.Element => {
   const hasActiveFilters =
     status !== '' ||
     typeId !== '' ||
-    code !== '' ||
+    vehicleCodes.length > 0 ||
     plate !== '' ||
     chassis !== '' ||
     motor !== '' ||
@@ -107,7 +121,7 @@ export const VehiclesListPage = (): JSX.Element => {
       sortDir: sort.dir,
       status: status || undefined,
       typeId: typeId || undefined,
-      code: code || undefined,
+      vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
       plateNumber: plate || undefined,
       chassisNumber: chassis || undefined,
       motorNumber: motor || undefined,
@@ -437,7 +451,7 @@ export const VehiclesListPage = (): JSX.Element => {
             patch({
               status: null,
               type: null,
-              code: null,
+              vehicleCodes: null,
               plate: null,
               chassis: null,
               motor: null,
@@ -460,15 +474,11 @@ export const VehiclesListPage = (): JSX.Element => {
             Direction is untouched: the bar inherits RTL from the page, so in Arabic the row reads
             الكود → اللوحة → الشاسيه → الموتور from the right.
           */}
-          <div className="w-32">
-            <Input
-              aria-label={t('fleet.vehicles.columns.code')}
-              placeholder={t('fleet.vehicles.columns.code')}
-              value={code}
-              onChange={(e) => patch({ code: e.target.value || null })}
-              dir="ltr"
-            />
-          </div>
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+          />
           <div className="w-36">
             <Input
               aria-label={t('fleet.vehicles.columns.plate')}

@@ -149,7 +149,7 @@ export const OdometerPage = (): JSX.Element => {
 
   // The maintenance figure, per vehicle, from the SAME derived projection the alarms board reads.
   // One call for the whole page; the join here is display only — the level filter is server-side.
-  const alarmsQuery = useMaintenanceAlarms(can('fleetOdometer.view'));
+  const alarmsQuery = useMaintenanceAlarms();
   const alarmByVehicle = useMemo(() => {
     const map = new Map<string, { sinceServiceKm: number | null; level: FleetAlarmLevel }>();
     for (const alarm of alarmsQuery.data ?? []) {

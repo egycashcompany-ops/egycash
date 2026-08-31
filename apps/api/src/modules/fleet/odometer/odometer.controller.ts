@@ -10,7 +10,6 @@ import {
 import { created, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toOdometerLogDto } from '../fleet.mappers';
-import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { fleetOdometerService } from './odometer.service';
 
 type IdParam = { id: string };
@@ -33,10 +32,6 @@ export const expectedOdometerReading = async (req: Request, res: Response): Prom
     vehicleId: query.vehicleId,
     expectedReading: await fleetOdometerService.expectedReading(query.vehicleId),
   });
-};
-
-export const listMaintenanceAlarms = async (_req: Request, res: Response): Promise<void> => {
-  ok(res, await computeAlarms());
 };
 
 export const correctOdometer = async (req: Request, res: Response): Promise<void> => {

@@ -15,6 +15,7 @@ import {
   checkInMaintenance,
   checkOutMaintenance,
   deleteMaintenance,
+  listMaintenanceAlarms,
   listMaintenanceVisits,
   reopenMaintenance,
   updateMaintenance,
@@ -30,6 +31,22 @@ export const buildFleetMaintenanceRouter = (): Router => {
     authorize('fleetMaintenance.view'),
     validate({ query: ListFleetMaintenanceQuerySchema }),
     asyncHandler(listMaintenanceVisits),
+  );
+  /**
+   * The alarm projection, for the audience that runs the workshop (FR-3).
+   *
+   * The SAME handler and therefore the same `computeAlarms()` as `GET /fleet/odometer/alarms`;
+   * only `authorize(...)` differs. Whoever records a service can see what it did to the cycle
+   * without also being granted the odometer log, and neither route can drift from the other
+   * because there is one projection and one function behind both.
+   *
+   * Safe above the `:id` routes and independent of ordering: this router has no `GET /:id`.
+   */
+  router.get(
+    '/alarms',
+    authenticate,
+    authorize('fleetMaintenance.view'),
+    asyncHandler(listMaintenanceAlarms),
   );
   router.post(
     '/',

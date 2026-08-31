@@ -24,6 +24,7 @@ import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queri
 import {
   useExpectedReading,
   useFleetCatalog,
+  useCanReadAlarms,
   useMaintenanceAlarms,
   useMaintenanceVisits,
   useVehicle,
@@ -104,9 +105,13 @@ const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const canOdometer = can('fleetOdometer.view');
   const canMaintenance = can('fleetMaintenance.view');
+  // The last READING is the odometer log's own fact; the ALARM is the derived projection, which
+  // either audience may read. Gating both on the odometer permission hid a maintenance fact
+  // behind a log permission.
+  const canAlarms = useCanReadAlarms();
 
   const expected = useExpectedReading(vehicle.id, canOdometer);
-  const alarms = useMaintenanceAlarms(canOdometer);
+  const alarms = useMaintenanceAlarms();
   const lastVisit = useMaintenanceVisits(
     { vehicleId: vehicle.id, open: false, pageSize: 1, sortBy: 'outDate', sortDir: 'desc' },
     canMaintenance,
@@ -149,7 +154,7 @@ const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
           caption={t('fleet.vehicle.lastReadingHint')}
         />
       )}
-      {canOdometer && (
+      {canAlarms && (
         <FleetKpi
           label={t('fleet.dashboard.alarms')}
           icon={GaugeIcon}

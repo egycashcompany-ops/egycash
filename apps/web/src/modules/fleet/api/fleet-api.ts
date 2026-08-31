@@ -175,8 +175,24 @@ export const listOdometerLogs = (
   getPage<FleetOdometerLogDto>(`/fleet/odometer${buildQuery(params)}`);
 export const expectedOdometerReading = (vehicleId: string): Promise<FleetExpectedReadingDto> =>
   get<FleetExpectedReadingDto>(`/fleet/odometer/expected${buildQuery({ vehicleId })}`);
+/**
+ * The alarm projection, through the ODOMETER's door (`fleetOdometer.view`).
+ *
+ * There are two doors to one answer — see `listMaintenanceAlarmsForMaintenance`. Which one a
+ * reader goes through is decided ONCE, by permission, inside `useMaintenanceAlarms`; nothing
+ * calls either of these directly.
+ */
 export const listMaintenanceAlarms = (): Promise<FleetMaintenanceAlarmDto[]> =>
   get<FleetMaintenanceAlarmDto[]>('/fleet/odometer/alarms');
+/**
+ * The SAME projection, through the MAINTENANCE door (`fleetMaintenance.view`).
+ *
+ * Same `computeAlarms()` behind the same handler on the server — the paths differ only in the
+ * permission they demand, so these two functions return the same rows for the same fleet and
+ * exist solely so a maintenance reader is not asked for the odometer log's permission.
+ */
+export const listMaintenanceAlarmsForMaintenance = (): Promise<FleetMaintenanceAlarmDto[]> =>
+  get<FleetMaintenanceAlarmDto[]>('/fleet/maintenance/alarms');
 export const recordOdometer = (body: RecordFleetOdometer): Promise<FleetOdometerLogDto> =>
   post<FleetOdometerLogDto>('/fleet/odometer', body);
 export const correctOdometer = (

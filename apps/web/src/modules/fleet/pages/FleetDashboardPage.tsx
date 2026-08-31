@@ -20,6 +20,7 @@ import { AlertIcon, GaugeIcon, TruckIcon, WrenchIcon } from '../../../shared/ui/
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import {
   useAccidents,
+  useCanReadAlarms,
   useMaintenanceAlarms,
   useMaintenanceVisits,
   useVehicles,
@@ -40,14 +41,15 @@ export const FleetDashboardPage = (): JSX.Element => {
 
   const canVehicles = can('fleetVehicle.view');
   const canMaintenance = can('fleetMaintenance.view');
-  const canAlarms = can('fleetOdometer.view');
+  // Whoever may read the alarm projection — either door. Same condition the hook gates on.
+  const canAlarms = useCanReadAlarms();
   const canAccidents = can('fleetAccident.view');
   const anyCard = canVehicles || canMaintenance || canAlarms || canAccidents;
 
   // KPI sources — pageSize 1: only the pagination meta (total) is needed.
   const activeVehicles = useVehicles({ status: 'active', pageSize: 1 }, canVehicles);
   const openVisits = useMaintenanceVisits({ open: true, pageSize: 1 }, canMaintenance);
-  const alarmsQuery = useMaintenanceAlarms(canAlarms);
+  const alarmsQuery = useMaintenanceAlarms();
   const openAccidents = useAccidents({ status: 'open', pageSize: 1 }, canAccidents);
 
   // Panel sources.

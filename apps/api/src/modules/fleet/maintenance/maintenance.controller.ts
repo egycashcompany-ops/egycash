@@ -10,9 +10,28 @@ import {
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toMaintenanceVisitDto } from '../fleet.mappers';
+import { computeAlarms } from './maintenance-alarm';
 import { fleetMaintenanceService } from './maintenance.service';
 
 type IdParam = { id: string };
+
+/**
+ * The maintenance alarm projection (FR-3) — ONE handler, mounted on two routes.
+ *
+ * The alarm is a maintenance fact derived from odometer readings, so two audiences legitimately
+ * ask for it: the odometer log (`GET /fleet/odometer/alarms`, `fleetOdometer.view`) and the
+ * maintenance screens (`GET /fleet/maintenance/alarms`, `fleetMaintenance.view`). Those are two
+ * PERMISSION boundaries over one answer, and the distinction matters: whoever runs the workshop
+ * should see the state of the cycle without being handed the odometer log as well.
+ *
+ * It lives here, with `computeAlarms`, precisely so the second route cannot become a second
+ * implementation. Both routes reference this function; there is nothing to keep in step, because
+ * there is only one thing. `authorize(...)` is the only difference between them, which is the
+ * entire point — the permission differs, the projection does not.
+ */
+export const listMaintenanceAlarms = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await computeAlarms());
+};
 
 export const listMaintenanceVisits = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetMaintenanceQuery>(req);

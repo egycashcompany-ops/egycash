@@ -127,7 +127,7 @@ const store = (permissions: string[]) =>
  */
 const client = (alarms: FleetMaintenanceAlarmDto[] = [ALARM]): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(['fleet', 'odometer', 'alarms'], alarms);
+  qc.setQueryData(['fleet', 'alarms'], alarms);
   return qc;
 };
 
@@ -202,13 +202,37 @@ describe('there is exactly ONE alarm implementation', () => {
     }
   });
 
-  it('which is ONE endpoint and ONE query key', () => {
-    // One `listMaintenanceAlarms` in the api surface, one query key in the hook: three readers
-    // therefore share a cache entry and cannot hold different answers for the same car.
-    expect((API.match(/export const listMaintenanceAlarms/g) ?? []).length).toBe(1);
+  it('which is TWO permission doors and exactly ONE query key', () => {
+    // The projection is exposed twice on the server — once per permission — so the api surface
+    // has two fetchers, and both fetch the SAME shape from a path that differs only in its door.
     expect(API).toContain("get<FleetMaintenanceAlarmDto[]>('/fleet/odometer/alarms')");
+    expect(API).toContain("get<FleetMaintenanceAlarmDto[]>('/fleet/maintenance/alarms')");
+
+    // But there is ONE key. This is the whole guarantee: one key is one cache entry, so no
+    // reader — however many permissions they hold — can end up with two copies of the projection
+    // that could answer differently for the same car. A second key is the defect to prevent.
     expect(QUERIES, "and MODULE is what the seeds below assume").toContain("const MODULE = 'fleet'");
-    expect((QUERIES.match(/\[MODULE, 'odometer', 'alarms'\]/g) ?? []).length).toBe(1);
+    expect((QUERIES.match(/\[MODULE, 'alarms'\]/g) ?? []).length).toBe(1);
+    expect(QUERIES, 'no source name leaks into the key').not.toMatch(
+      /\[MODULE, '(?:odometer|maintenance)', 'alarms'\]/,
+    );
+
+    // And the choice between the doors is made in ONE place — the hook — not in the screens.
+    expect(QUERIES).toMatch(/queryFn:\s*viaMaintenance\s*\?/);
+    for (const [name, source] of [
+      ['maintenance', MAINTENANCE],
+      ['alarms', ALARMS],
+      ['odometer', ODOMETER],
+    ] as const) {
+      // A quoted path is a REQUEST; the same words in prose are not. What must not exist on a
+      // screen is a URL it could fetch — where the projection comes from is the hook's business.
+      expect(source, `${name} builds no alarm request of its own`).not.toMatch(
+        /['"`]\/fleet\/\w+\/alarms['"`]/,
+      );
+      expect(source, `${name} picks no door of its own`).not.toContain(
+        'listMaintenanceAlarmsForMaintenance',
+      );
+    }
   });
 
   it('draws a level ONE way — the badge is a component, not three copies', () => {

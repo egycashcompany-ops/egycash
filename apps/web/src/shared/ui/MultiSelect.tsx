@@ -75,8 +75,10 @@ export const MultiSelect = ({
   /** Show the search box only when the list is long enough for it to earn its space. */
   searchThreshold = 7,
   onSearch,
+  onCommitSearch,
   searching = false,
   showSelectedValues = false,
+  chips = false,
   placeholder,
   className,
 }: {
@@ -96,6 +98,14 @@ export const MultiSelect = ({
    * offered, however few of them came back.
    */
   onSearch?: (query: string) => void;
+  /**
+   * Enter pressed in the search box, with whatever is typed there.
+   *
+   * For a filter whose values can be WRITTEN as well as picked — a list of vehicle codes pasted
+   * out of a message. The owner decides what the text means and calls `onChange`; this only says
+   * when. Opt-in: without it, Enter does what it always did.
+   */
+  onCommitSearch?: (raw: string) => void;
   /** Fetching the remote answer — only meaningful alongside `onSearch`. */
   searching?: boolean;
   /**
@@ -115,6 +125,15 @@ export const MultiSelect = ({
    * repeating the same words inside the control says nothing twice. `label` still answers the
    * screen reader either way.
    */
+  /**
+   * Show the selection as removable chips at the top of the panel.
+   *
+   * Off by default, so the filters that read as a count keep reading as one. A filter whose values
+   * are individually meaningful — which CARS — needs them nameable and removable one at a time,
+   * and the panel is where a reader is already looking when they manage a selection. Putting them
+   * under the trigger instead would push every filter bar that hosts one out of shape.
+   */
+  chips?: boolean;
   placeholder?: string;
   className?: string;
 }): JSX.Element => {
@@ -209,10 +228,38 @@ export const MultiSelect = ({
                     setQuery(e.target.value);
                     onSearch?.(e.target.value);
                   }}
+                  onKeyDown={(e) => {
+                    if (onCommitSearch === undefined || e.key !== 'Enter') return;
+                    e.preventDefault();
+                    onCommitSearch(query);
+                    setQuery('');
+                    onSearch?.('');
+                  }}
                   placeholder={t('common.search')}
                   className="w-full rounded-md border border-slate-200 bg-white py-1.5 pe-2 ps-8 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
                 />
               </div>
+            </div>
+          )}
+
+          {chips && selected > 0 && (
+            <div className="flex flex-wrap gap-1 border-b border-slate-100 p-2 dark:border-slate-700">
+              {value.map((code) => (
+                <span
+                  key={code}
+                  className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800 dark:bg-brand-950 dark:text-brand-200"
+                >
+                  <span dir="ltr">{code}</span>
+                  <button
+                    type="button"
+                    aria-label={`${t('common.filters.clearOne')} ${code}`}
+                    onClick={() => toggle(code)}
+                    className="text-brand-500 hover:text-brand-800 dark:hover:text-brand-100"
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
             </div>
           )}
 

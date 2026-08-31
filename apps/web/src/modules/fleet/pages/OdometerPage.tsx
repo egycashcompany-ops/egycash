@@ -26,24 +26,22 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
-import { useMaintenanceAlarms, useOdometerLogs, useVehicles } from '../api/fleet-queries';
+import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
 import { AlarmBadge } from '../components/AlarmBadge';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
-import { vehicleCodeOptions } from '../lib/vehicle-code-options';
 import { odometerRange } from '../lib/odometer-range';
 import { EmployeeName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 
 const DEFAULT_PAGE_SIZE = 25;
-/** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
-const VEHICLE_SEARCH_SIZE = 20;
 
 export const OdometerPage = (): JSX.Element => {
   const t = useT();
@@ -131,21 +129,6 @@ export const OdometerPage = (): JSX.Element => {
   // joined here from one page of the registry, which silently bounded the answer at
   // `MAX_PAGE_SIZE` vehicles: every car past that page printed a dash instead of its code.
 
-  // The code FILTER asks the registry itself, one search at a time. A fleet outgrows any single
-  // page, so the options are what the server matched for what the user typed — never the first N
-  // cars. Codes already chosen are merged in so they stay visible, and unselectable, while the
-  // search shows something else.
-  const [codeQuery, setCodeQuery] = useState('');
-  const vehicles = useVehicles({
-    search: codeQuery.trim() === '' ? undefined : codeQuery.trim(),
-    pageSize: VEHICLE_SEARCH_SIZE,
-    sortBy: 'code',
-    sortDir: 'asc',
-  });
-  const vehicleOptions = useMemo(
-    () => vehicleCodeOptions(vehicles.data?.items ?? [], vehicleCodes),
-    [vehicles.data, vehicleCodes.join(',')],
-  );
 
   // The maintenance figure, per vehicle, from the SAME derived projection the alarms board reads.
   // One call for the whole page; the join here is display only — the level filter is server-side.
@@ -321,17 +304,10 @@ export const OdometerPage = (): JSX.Element => {
 
           {/* Several cars at once, picked by the code the registry calls them by — the same code
               the URL carries, so a filtered view is a link somebody else can read. */}
-          <MultiSelect
+          <VehicleCodeFilter
             className="shrink-0"
-            // The chosen codes are named in the trigger, not counted: a registry runs to hundreds
-            // of cars and "3" tells the reader nothing about WHICH three they are looking at.
-            showSelectedValues
-            label={t('fleet.odometer.columns.vehicle')}
-            options={vehicleOptions}
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
-            onSearch={setCodeQuery}
-            searching={vehicles.isFetching}
           />
           {/* Either bound alone is a valid question ("from the 1st", "up to the 18th"), and the
               same date in both is one day — the server's `to` covers the whole day it names.

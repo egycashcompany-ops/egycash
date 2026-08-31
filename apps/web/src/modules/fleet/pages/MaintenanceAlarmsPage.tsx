@@ -16,6 +16,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { Button } from '../../../shared/ui/Button';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
@@ -149,19 +150,12 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
           hasActiveFilters={levels.length > 0 || vehicleCodes.length > 0}
           onClear={() => patch({ level: null, vehicleCodes: null })}
         >
-          <MultiSelect
+          {/* The same control as every other screen — but fed from the BOARD it already holds
+              rather than a registry search, because this page is the whole fleet's alarms, not a
+              page of them. That is also why its filtering stays client-side: there is no paginated
+              list here to narrow server-side. */}
+          <VehicleCodeFilter
             className="shrink-0"
-            // The chosen codes are NAMED in the trigger rather than counted: a board runs to
-            // hundreds of cars, and "3" says nothing about which three are being chased.
-            showSelectedValues
-            // ALWAYS searchable, rather than only once the list is long enough to earn the box.
-            // The component's default is right for a fixed vocabulary — a handful of statuses is
-            // read, not searched — but this list is a fleet: its length is whatever the board
-            // happens to report today, and a control that grows a search box on Tuesday and
-            // loses it on Wednesday teaches nobody where to type. Screen-local, through the
-            // component's own prop: no other bar changes.
-            searchThreshold={0}
-            label={t('fleet.odometer.columns.vehicle')}
             options={vehicleOptions}
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}

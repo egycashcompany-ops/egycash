@@ -23,6 +23,8 @@
 // exactly the error this function exists to prevent — the answer is the `from` of the first move,
 // which is a recorded fact rather than today's state.
 
+import { toDateOnly } from './business-date';
+
 /** One recorded department move, as the action log stores it. */
 export interface DepartmentMove {
   from: string | null;
@@ -43,14 +45,22 @@ export const departmentAt = (
 ): string | null => {
   if (moves.length === 0) return current;
 
+  // Both sides are normalized to a business date before anything is compared. The action log
+  // stores `effectiveDate` as `new Date()` for a move taking effect today, so it carries a TIME,
+  // while `at` is a date-only boundary — a payslip's period end. Compared raw, a transfer recorded
+  // on the LAST DAY of a month sorted after that month's end and the walk treated it as not yet in
+  // force, attributing the month to the department the employee had just left. On every other day
+  // the time-of-day fell below the boundary and the same code was right, which is how a rule this
+  // small stayed wrong: it only ever failed one day in thirty.
   const ordered = [...moves].sort(
-    (a, b) => a.effectiveDate.getTime() - b.effectiveDate.getTime(),
+    (a, b) => toDateOnly(a.effectiveDate).getTime() - toDateOnly(b.effectiveDate).getTime(),
   );
 
   // The last move that had already taken effect by `at`.
+  const on = toDateOnly(at).getTime();
   let inForce: DepartmentMove | undefined;
   for (const move of ordered) {
-    if (move.effectiveDate.getTime() <= at.getTime()) inForce = move;
+    if (toDateOnly(move.effectiveDate).getTime() <= on) inForce = move;
     else break;
   }
 

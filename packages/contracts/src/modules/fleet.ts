@@ -239,6 +239,89 @@ export type ChangeFleetVehicleStatus = z.infer<typeof ChangeFleetVehicleStatusSc
 /** One identifier filter: substring, case-insensitive — the list page's per-column search boxes. */
 const identifierFilter = () => z.string().trim().min(1).max(60).optional();
 
+// ── Vehicle codes, as a filter (one control, six screens) ───────────────────
+//
+// Every screen that filters by car asks the same question — "which cars?" — so they ask it in one
+// vocabulary: `vehicleCodes=215,216,217`, exact, ORed.
+//
+// THE HYPHEN PROBLEM. `215-216-217` is three cars; `A-15` is one car whose code contains a hyphen.
+// Nothing about the two strings tells them apart — a vehicle code is free text
+// (`z.string().max(20)`), so both shapes are legal. Splitting always would shred `A-15`; never
+// splitting would make `215-216-217` a code nobody has.
+//
+// It is settled by splitting the JOB in two, so neither half ever has to guess:
+//
+//   • `parseVehicleCodes` reads what a PERSON TYPED, and resolves the ambiguity by LOOKING IT UP —
+//     a hyphenated run stays whole when it is a code the registry knows, and splits when it is not.
+//     The filter box passes the codes its own search just returned, which is the right reference
+//     because that search ran on the very text being parsed: type `A-15` and the registry answers
+//     with `A-15`, so it survives; paste `215-216-217` and the registry answers with nothing, so it
+//     splits. No heuristic about digits or length.
+//
+//   • `splitVehicleCodeList` reads the URL, which is CANONICAL and therefore never ambiguous: the
+//     filter box already resolved it and wrote the codes comma-joined. So this half splits on
+//     separators a code cannot contain and leaves hyphens alone — which is what lets `A-15` survive
+//     a reload, the one thing splitting here would quietly break.
+
+/** Separators no vehicle code contains: commas, semicolons, newlines, whitespace, a spaced dash. */
+const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+|\s+/;
+
+const dedupeCodes = (parts: readonly string[]): string[] => {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    const code = part.trim();
+    if (code === '') continue;
+    const key = code.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(code);
+  }
+  return out;
+};
+
+/**
+ * The codes a URL names — separators only, hyphens left intact.
+ *
+ * The canonical direction: `?vehicleCodes=A-15` is one car, because that is what the filter box
+ * wrote when the reader picked it.
+ */
+export const splitVehicleCodeList = (raw: string | readonly string[]): string[] =>
+  dedupeCodes(Array.isArray(raw) ? (raw as readonly string[]) : String(raw).split(CODE_SEPARATORS));
+
+/**
+ * The codes a PERSON typed or pasted, hyphenated runs resolved against what the registry knows.
+ *
+ * `known` is that reference — omit it and a hyphenated run splits, which is the right default for
+ * free text nobody has vouched for.
+ */
+export const parseVehicleCodes = (
+  raw: string | readonly string[],
+  known: readonly string[] = [],
+): string[] => {
+  const recognized = new Set(known.map((code) => code.trim().toLowerCase()));
+  const expanded = splitVehicleCodeList(raw).flatMap((token) =>
+    token.includes('-') && !recognized.has(token.toLowerCase()) ? token.split('-') : [token],
+  );
+  return dedupeCodes(expanded);
+};
+
+/**
+ * `vehicleCodes` as a query field.
+ *
+ * Deliberately NOT `listQuery()`: that helper splits on commas alone and keeps duplicates, and it
+ * is shared by branch, status, level and alert filters whose meaning must not move for this.
+ */
+export const vehicleCodesQuery = (max = 50) =>
+  z.preprocess(
+    (raw) => {
+      if (raw === undefined || raw === null) return undefined;
+      const codes = splitVehicleCodeList(raw as string | readonly string[]);
+      return codes.length === 0 ? undefined : codes;
+    },
+    z.array(z.string().trim().min(1).max(20)).min(1).max(max).optional(),
+  );
+
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   status: FleetVehicleStatusSchema.optional(),
   /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). */
@@ -246,8 +329,21 @@ export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   branchId: listQuery(objectId()),
   /** Substring match across code/plate/chassis/motor at once. */
   search: z.string().trim().min(1).max(100).optional(),
+  /**
+   * The cars named EXACTLY, ORed — the filter bar's vehicle-code picker (one control, six screens).
+   *
+   * Exact, where `search` stays substring: they answer different questions, and the picker's
+   * checkboxes can only mean the codes they tick. A code no car carries narrows to NOTHING rather
+   * than being dropped, so an unrecognized pick is reported honestly instead of widening the page.
+   */
+  vehicleCodes: vehicleCodesQuery(),
   // Per-identifier filters, ANDed with each other and with `search`: narrowing by plate AND
   // chassis is a different question from searching either, and the list page asks both.
+  /**
+   * @deprecated Superseded by `vehicleCodes`. Substring, single-valued — the shape the list page
+   * used before the picker. Still honoured so a saved link or a direct API caller keeps working;
+   * the UI no longer writes it.
+   */
   code: identifierFilter(),
   plateNumber: identifierFilter(),
   chassisNumber: identifierFilter(),
@@ -1039,8 +1135,22 @@ export type SetFleetAccidentStatus = z.infer<typeof SetFleetAccidentStatusSchema
  * about what the reader is looking at.
  */
 const accidentFilters = {
+  /**
+   * The cars named EXACTLY, ORed — resolved to ids against the registry, since an accident stores
+   * its vehicle by id and never carries the code.
+   *
+   * This is the whole vehicle question on this screen. It replaced two controls that could ask
+   * contradictory things at once: a dropdown naming one car AND a typed code naming another, which
+   * intersected to an empty page the filter bar itself said was possible.
+   */
+  vehicleCodes: vehicleCodesQuery(),
+  /** @deprecated Superseded by `vehicleCodes`; still honoured for saved links. */
   vehicleId: objectId().optional(),
-  /** Part of a vehicle CODE, matched case-insensitively. Resolved against the registry. */
+  /**
+   * Part of a vehicle CODE, matched case-insensitively. Resolved against the registry.
+   *
+   * @deprecated Superseded by `vehicleCodes`, which is exact. Still honoured for saved links.
+   */
   code: z.string().trim().min(1).max(50).optional(),
   /** Part of the at-fault name, matched case-insensitively. */
   culprit: z.string().trim().min(1).max(200).optional(),
@@ -1187,6 +1297,12 @@ export interface FleetGrievanceDto {
 
 export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
   kind: FleetViolationKindSchema.optional(),
+  /**
+   * The cars named EXACTLY, ORed — resolved to ids, as on accidents: a violation stores its
+   * vehicle by id. A code no car carries narrows to nothing.
+   */
+  vehicleCodes: vehicleCodesQuery(),
+  /** @deprecated Superseded by `vehicleCodes`; still honoured for saved links. */
   vehicleId: objectId().optional(),
   driverEmployeeId: objectId().optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),

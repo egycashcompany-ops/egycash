@@ -18,6 +18,8 @@
 // drifting afterwards. How the salary is USED — percentages, proration, the leave shortfall — is
 // untouched.
 
+import { toDateOnly } from '../../shared/business-date';
+
 /** The same shape the employee document and the calculation both already speak. */
 export interface Money {
   amount: number;
@@ -74,6 +76,14 @@ export const readableChanges = (rows: readonly RawSalaryChange[]): SalaryChange[
  *
  * With no changes recorded the answer is today's value for every date — which is not a fallback
  * but the truth: a salary nobody ever changed has always been what it is.
+ *
+ * BOTH SIDES ARE NORMALIZED TO A BUSINESS DATE FIRST, and that is not defensive tidying — it is
+ * the fix for a defect that could only fire on one day a month. The action log stores
+ * `effectiveDate` as `new Date()` for a change taking effect today, so it carries a TIME; the date
+ * asked about is a period boundary at UTC midnight. Comparing the two raw made a raise recorded on
+ * the LAST DAY of a month sort after that month's end, so the walk undid it and the month it was
+ * granted in was priced at the old salary. On every other day the time-of-day fell below the
+ * boundary and the same code was right, which is why it survived: it was wrong one day in thirty.
  */
 export const salaryAsOf = (
   current: Money | null,
@@ -81,11 +91,12 @@ export const salaryAsOf = (
   at: Date,
 ): Money | null => {
   let value = current;
+  const on = toDateOnly(at).getTime();
   const newestFirst = [...changes].sort(
-    (a, b) => b.effectiveDate.getTime() - a.effectiveDate.getTime(),
+    (a, b) => toDateOnly(b.effectiveDate).getTime() - toDateOnly(a.effectiveDate).getTime(),
   );
   for (const change of newestFirst) {
-    if (change.effectiveDate.getTime() <= at.getTime()) break;
+    if (toDateOnly(change.effectiveDate).getTime() <= on) break;
     value = change.from;
   }
   return value;

@@ -27,6 +27,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -97,7 +98,7 @@ const register = async (placement?: Record<string, string>): Promise<ApplicantDt
     .send({
       sourceId: await sourceId(),
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
       ...(placement === undefined ? {} : { placement }),
     });
@@ -253,7 +254,7 @@ describe('placement at intake (RW1)', () => {
       .send({
         sourceId: await sourceId(),
         intakeChannel: 'internal',
-        identity: { fullNameAr: 'أحمد', nationality: 'Egyptian' },
+        identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد', nationality: 'Egyptian' },
         contact: { primaryPhone: nextPhone() },
         placement: { jobTitleId: '64b1f0aaaaaaaaaaaaaaaaab' },
       });

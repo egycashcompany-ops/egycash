@@ -1,6 +1,7 @@
 // Sprint 4.1 — HR / Recruitment: Applicants (Stage 1) integration suite. The first
 // Layer 2 business module: boots with the HR manifest, exercises the intake pipeline
-// (manual + National-ID-derived + ID-less), duplicate flagging, live-ID uniqueness,
+// (manual + National-ID-derived; ID-less registration is retired — see the guard below),
+// duplicate flagging, live-ID uniqueness,
 // source catalog, identity verification, withdrawal, list/filter/Arabic-search, audited
 // masked export, attachments via the platform Files service, and permission gating.
 // Runs against an in-memory Mongo replica set (MONGO_TEST_URI overrides), as in
@@ -21,6 +22,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, counter, envelope, mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 const VALID_NID_A = '29001011500018'; // 1990-01-01, Kafr El Sheikh, male
@@ -78,7 +80,7 @@ const sourceIdByKey = async (key: string): Promise<string> => {
 const registerBody = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
   sourceId: over.sourceId,
   intakeChannel: 'internal',
-  identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+  identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
   contact: { primaryPhone: '01012345678' },
   ...over,
 });
@@ -195,16 +197,42 @@ describe('registration (intake pipeline)', () => {
     expect(counter(body.counters, 'screening')).toBeDefined();
   });
 
-  it('registers an ID-less applicant (identity-unverified, no national ID)', async () => {
+  /**
+   * ID-LESS REGISTRATION IS RETIRED, and this is the test that used to prove it worked.
+   *
+   * Sprint 4.1 (OQ-24) allowed an applicant to be created on a name alone and supply the number
+   * later at the ID gate. That is withdrawn by an explicit business decision: a person entering
+   * this system is identified by their National ID at the moment they are created. The test is
+   * inverted rather than deleted — the behaviour still needs a guard, it is simply the opposite
+   * guard, and a reader who comes looking for the old capability finds the reason here.
+   *
+   * The ID gate itself is NOT retired: `verify-identity` still accepts a National ID, which is
+   * how records registered ID-less before this rule acquire one.
+   */
+  it('refuses a registration with no national ID', async () => {
     const sourceId = await sourceIdByKey('walkIn');
     const res = await request(app)
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send(registerBody({ sourceId, contact: { primaryPhone: '01033334444' } }));
-    expect(res.status).toBe(201);
-    const dto = mutated<ApplicantDto>(res);
-    expect(dto.identityVerification).toBe('unverified');
-    expect(dto.nationalIdMasked).toBeNull();
+      .send({
+        ...registerBody({ sourceId, contact: { primaryPhone: '01033334444' } }),
+        identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('refuses a registration whose national ID is not a real one', async () => {
+    const sourceId = await sourceIdByKey('walkIn');
+    const res = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        ...registerBody({ sourceId, contact: { primaryPhone: '01033335555' } }),
+        // Structurally wrong: month 13. The format rule was never replaced by the new
+        // required rule — both hold.
+        identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian', nationalId: '29813011234567' },
+      });
+    expect(res.status).toBe(400);
   });
 
   it('registers a direct-intake applicant with NO Job Request and stores religion + card expiry', async () => {
@@ -217,6 +245,7 @@ describe('registration (intake pipeline)', () => {
           sourceId,
           jobRequisitionId: undefined,
           identity: {
+            nationalId: nextNationalId(),
             fullNameAr: 'منى علي',
             nationality: 'Egyptian',
             religion: 'مسلم',
@@ -435,7 +464,7 @@ describe('list, search, export', () => {
     await request(app)
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send(registerBody({ sourceId, identity: { fullNameAr: 'إبراهيم', nationality: 'Egyptian' }, contact: { primaryPhone: '01030303030' } }));
+      .send(registerBody({ sourceId, identity: { nationalId: nextNationalId(), fullNameAr: 'إبراهيم', nationality: 'Egyptian' }, contact: { primaryPhone: '01030303030' } }));
     // Search "ابراهيم" (bare alef) must find "إبراهيم" (hamza-under alef).
     const res = await request(app)
       .get('/api/v1/hr/applicants')
@@ -453,7 +482,7 @@ describe('list, search, export', () => {
     const created = await request(app)
       .post('/api/v1/hr/applicants')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send(registerBody({ sourceId, identity: { fullNameAr: 'سلمى فؤاد', nationality: 'Egyptian' }, contact: { primaryPhone: '01040404040' } }));
+      .send(registerBody({ sourceId, identity: { nationalId: nextNationalId(), fullNameAr: 'سلمى فؤاد', nationality: 'Egyptian' }, contact: { primaryPhone: '01040404040' } }));
     expect(created.status).toBe(201);
     // A mutation answers with the workflow envelope, so the DTO is a level in (I6).
     const { code } = mutated<ApplicantDto>(created);

@@ -29,6 +29,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { envelope, mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 const JOB_TITLE_ID = '64b1f0cccccccccccccccc01';
@@ -114,7 +115,7 @@ const hiredEmployee = async (): Promise<EmployeeDto> => {
       .send({
         sourceId,
         intakeChannel: 'internal',
-        identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+        identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
         contact: { primaryPhone: nextPhone() },
       }),
   );

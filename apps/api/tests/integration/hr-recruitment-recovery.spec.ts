@@ -101,7 +101,7 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .send({
       sourceId: await sourceId(),
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);

@@ -9,6 +9,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
+  splitVehicleCodeList,
   type FleetViolationDto,
   type FleetViolationRollupDto,
   type Locale,
@@ -34,7 +35,7 @@ import {
   useViolationRollup,
   useViolations,
 } from '../api/fleet-queries';
-import { VehicleSelect } from '../components/VehicleSelect';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { EmployeeName } from '../components/EmployeeName';
 import {
   DriverViolationDialog,
@@ -53,7 +54,7 @@ export const ViolationsPage = (): JSX.Element => {
 
   const view = sp.get('view') === 'rollup' ? 'rollup' : 'list';
   const kind = sp.get('kind') ?? '';
-  const vehicle = sp.get('vehicle') ?? '';
+  const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
   const yearParam = sp.get('year') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -85,7 +86,7 @@ export const ViolationsPage = (): JSX.Element => {
       sortBy: sort.by,
       sortDir: sort.dir,
       kind: kind || undefined,
-      vehicleId: vehicle || undefined,
+      vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
       year: yearParam || undefined,
     }),
     [paramsKey],
@@ -94,10 +95,17 @@ export const ViolationsPage = (): JSX.Element => {
   // The rollup's axis is the year (required by the API); the list's optional year filter and
   // the rollup's axis share the URL param, defaulting to the current year on the board.
   const rollupYear = Number(yearParam) >= 2000 ? Number(yearParam) : currentYear();
-  const rollupQuery = useViolationRollup(rollupYear, vehicle || undefined, view === 'rollup');
-
-  // Unfiltered registry map so rows of retired vehicles still resolve to their codes.
+  // Unfiltered registry map so rows of retired vehicles still resolve to their codes — and the
+  // lookup the rollup below needs to turn a chosen CODE back into the id its axis takes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
+  // The ROLLUP's axis is one (vehicle, year) — that is the figure it reports, and widening it is
+  // a different feature. So it follows the shared filter only when the filter names ONE car, and
+  // otherwise reports the year unnarrowed rather than inventing a sum across a selection.
+  const soleVehicleId =
+    vehicleCodes.length === 1
+      ? vehiclesQuery.data?.items.find((v) => v.code === vehicleCodes[0])?.id
+      : undefined;
+  const rollupQuery = useViolationRollup(rollupYear, soleVehicleId, view === 'rollup');
   const codeOf = (vehicleId: string): string =>
     vehiclesQuery.data?.items.find((v) => v.id === vehicleId)?.code ?? vehicleId.slice(-8);
   const types = useFleetCatalog('violationType');
@@ -351,8 +359,8 @@ export const ViolationsPage = (): JSX.Element => {
 
       <div className="space-y-4">
         <FilterBar
-          hasActiveFilters={kind !== '' || vehicle !== '' || yearParam !== ''}
-          onClear={() => patch({ kind: null, vehicle: null, year: null })}
+          hasActiveFilters={kind !== '' || vehicleCodes.length > 0 || yearParam !== ''}
+          onClear={() => patch({ kind: null, vehicleCodes: null, year: null })}
         >
           {view === 'list' && (
             <Select
@@ -366,12 +374,10 @@ export const ViolationsPage = (): JSX.Element => {
               <option value="driver">{t('fleet.violations.kind.driver')}</option>
             </Select>
           )}
-          <VehicleSelect
-            value={vehicle}
-            onChange={(id) => patch({ vehicle: id || null })}
-            allLabel={t('fleet.odometer.allVehicles')}
-            anyStatus
-            ariaLabel={t('fleet.odometer.columns.vehicle')}
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
           <Field label={t('fleet.violations.fields.year')} htmlFor="violations-year">
             <Input
@@ -424,13 +430,15 @@ export const ViolationsPage = (): JSX.Element => {
         open={recordVehicleOpen}
         onClose={() => setRecordVehicleOpen(false)}
         violation={null}
-        initialVehicleId={vehicle}
+        // Carried over only when the filter names ONE car; the dialog still picks a single vehicle.
+        initialVehicleId={soleVehicleId ?? ''}
       />
       <DriverViolationDialog
         open={recordDriverOpen}
         onClose={() => setRecordDriverOpen(false)}
         violation={null}
-        initialVehicleId={vehicle}
+        // Carried over only when the filter names ONE car; the dialog still picks a single vehicle.
+        initialVehicleId={soleVehicleId ?? ''}
       />
       <VehicleViolationDialog
         open={editing?.kind === 'vehicle'}

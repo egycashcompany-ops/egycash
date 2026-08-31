@@ -341,9 +341,11 @@ describe('the registry table renders the frozen column order', () => {
   // `SearchInput` already does it — and that is a structural fact worth pinning, since the visual
   // symptom is invisible to typecheck and to every other assertion in this file.
   it('gives each identifier filter a width wrapper instead of letting it stretch', () => {
+    // The CODE filter is no longer one of these: it became the shared vehicle-code picker, whose
+    // trigger sizes to its own content the way every other bar's picker does. The three physical
+    // identifiers are still boxes, and still need the wrapper.
     const html = withRows([vehicle()]);
     for (const [label, width] of [
-      [t('fleet.vehicles.columns.code'), 'w-32'],
       [t('fleet.vehicles.columns.plate'), 'w-36'],
       [t('fleet.vehicles.columns.chassis'), 'w-40'],
       [t('fleet.vehicles.columns.motor'), 'w-40'],

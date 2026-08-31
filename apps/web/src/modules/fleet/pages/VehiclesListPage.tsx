@@ -22,6 +22,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { migrateLegacyVehicleCodeParam } from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -85,19 +86,15 @@ export const VehiclesListPage = (): JSX.Element => {
     if (resetPage && !('page' in updates)) next.delete('page');
     setSp(next);
   };
-  // A saved link from before the picker: `?code=FLT21` meant "codes CONTAINING 21", and substring
-  // is `search`'s job now. Sending it to `vehicleCodes` instead would silently answer a different
-  // question — exact — and find nothing. Rewritten once, in place, so the link keeps working and
-  // the URL says what it now means.
+  // A saved link from before the picker — the rule, and why, live beside their own test in
+  // `migrateLegacyVehicleCodeParam`. Applied with `replace` so the rewrite does not become a
+  // history entry the reader has to press Back through twice.
   const legacyCode = sp.get('code');
   useEffect(() => {
-    if (legacyCode === null || legacyCode === '') return;
-    const next = new URLSearchParams(sp);
-    next.delete('code');
-    if ((next.get('search') ?? '') === '') next.set('search', legacyCode);
-    setSp(next, { replace: true });
-    // Deliberately keyed on the legacy value alone: `sp` changes on every filter edit, and
-    // re-running there would fight the very rewrite this just made.
+    const migrated = migrateLegacyVehicleCodeParam(sp);
+    if (migrated !== null) setSp(migrated, { replace: true });
+    // Keyed on the legacy value alone: `sp` changes on every filter edit, and re-running there
+    // would fight the very rewrite this just made.
   }, [legacyCode]);
 
   const changeSort = (by: string): void => {

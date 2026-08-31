@@ -111,11 +111,12 @@ const triggers = (markup: string): Record<string, string> =>
  * how the OPEN panel behaves are asserted here instead — scoped to one picker, so a claim about
  * the cars can never be satisfied by the alarms beside them.
  */
-const pickerSource = (label: string): string => {
+/** One control's markup out of the filter bar — `tag` opens it, `label` identifies which one. */
+const pickerSource = (label: string, tag = '<MultiSelect'): string => {
   const bar = SOURCE.slice(SOURCE.indexOf('<FilterBar'), SOURCE.indexOf('</FilterBar>'));
   const at = bar.indexOf(label);
   expect(at, `a picker labelled ${label}`).toBeGreaterThan(-1);
-  return bar.slice(bar.lastIndexOf('<MultiSelect', at), bar.indexOf('/>', at) + 2);
+  return bar.slice(bar.lastIndexOf(tag, at), bar.indexOf('/>', at) + 2);
 };
 
 const VEHICLE = t('fleet.odometer.columns.vehicle');
@@ -263,8 +264,10 @@ describe('searching the car picker', () => {
     // If the page ever handed the picker a slice, or took the search over from it, typing would
     // quietly answer "which of these few" instead of "which car". Both are guarded here because
     // neither is visible from the closed trigger a node test can read.
-    const picker = pickerSource("t('fleet.odometer.columns.vehicle')");
+    const picker = pickerSource('<VehicleCodeFilter', '<VehicleCodeFilter');
     expect(picker, 'the options are the board').toContain('options={vehicleOptions}');
+    // This screen passes its own options, so the shared control skips the registry search that
+    // the other five use — see `VehicleCodeFilter`, where `remote` is false without them.
     expect(picker, 'the component does its own searching').not.toContain('onSearch');
     expect(SOURCE, 'the board is never trimmed before it becomes options').not.toMatch(
       /alarmsQuery\.data[\s\S]{0,80}\.slice\(/,
@@ -278,8 +281,9 @@ describe('searching the car picker', () => {
     // on Tuesday and loses it on Wednesday teaches nobody where to type.
     //
     // Two halves, both checkable, and the rule they compose is `length >= 0`, which always holds:
-    const picker = pickerSource("t('fleet.odometer.columns.vehicle')");
-    expect(picker, 'this screen asks for the box unconditionally').toContain('searchThreshold={0}');
+    // Asked for once, in the control every screen shares, rather than screen by screen.
+    const control = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
+    expect(control, 'the box is unconditional').toContain('searchThreshold={0}');
 
     const small = [alarm('150', 'red'), alarm('151', 'yellow'), alarm('152', 'none')];
     expect(alarmVehicleOptions(small, []).length, 'a board too small for the default').toBeLessThan(

@@ -70,6 +70,12 @@ export const VehicleCodeFilter = ({
       onChange={onChange}
       showSelectedValues
       chips
+      // Always searchable, on all six screens. The component's default of 7 is right for a fixed
+      // vocabulary — a handful of statuses is read, not searched — but a fleet is not that: its
+      // length is whatever the registry holds today, and a control that grows a search box on
+      // Tuesday and loses it on Wednesday teaches nobody where to type. It is also where the
+      // codes are TYPED, so it cannot be conditional on how many happen to be offered.
+      searchThreshold={0}
       {...(remote
         ? { onSearch: setSearch, searching: vehicles.isFetching }
         : {})}

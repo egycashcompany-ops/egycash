@@ -13,10 +13,11 @@ import { asyncHandler, validate } from '../../../platform/web';
 import {
   correctOdometer,
   expectedOdometerReading,
-  listMaintenanceAlarms,
   listOdometerLogs,
   recordOdometer,
 } from './odometer.controller';
+// The SAME handler `/fleet/maintenance/alarms` is mounted with — one projection, two permissions.
+import { listMaintenanceAlarms } from '../maintenance/maintenance.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -37,7 +38,8 @@ export const buildFleetOdometerRouter = (): Router => {
     validate({ query: FleetVehicleIdQuerySchema }),
     asyncHandler(expectedOdometerReading),
   );
-  // FR-3 — the derived alarm projection for every active vehicle, computed on read.
+  // FR-3 — the derived alarm projection for every active vehicle, computed on read. Kept exactly
+  // as it was: this is the odometer audience's door to it, and existing clients still use it.
   router.get(
     '/alarms',
     authenticate,

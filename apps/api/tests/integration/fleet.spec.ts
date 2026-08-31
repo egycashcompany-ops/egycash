@@ -1173,6 +1173,89 @@ describe('a fleet larger than one page of the registry', () => {
   });
 });
 
+describe('the alarm projection has two permission doors and one answer', () => {
+  // The alarm is a maintenance fact derived from odometer readings, so both audiences have a
+  // claim on it. Each gets its OWN door — and neither door lets a reader through the other one.
+  let maintenanceOnly = '';
+  let odometerOnly = '';
+  let neither = '';
+
+  const MAINTENANCE_URL = '/api/v1/fleet/maintenance/alarms';
+  const ODOMETER_URL = '/api/v1/fleet/odometer/alarms';
+
+  beforeAll(async () => {
+    const roleFor = async (key: string, name: string) =>
+      rbacService.createRole(
+        { name: { en: name, ar: name }, permissionKeys: [key] },
+        adminUserId,
+      );
+    const grant = async (email: string, key: string, name: string): Promise<string> => {
+      const role = await roleFor(key, name);
+      const userId = await mkUser(email);
+      await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+      return login(email);
+    };
+    maintenanceOnly = await grant('alarm-maint@ecms.local', 'fleetMaintenance.view', 'Workshop reader');
+    odometerOnly = await grant('alarm-odo@ecms.local', 'fleetOdometer.view', 'Odometer reader');
+    await mkUser('alarm-none@ecms.local');
+    neither = await login('alarm-none@ecms.local');
+  });
+
+  const getAlarms = (url: string, token: string) =>
+    request(app).get(url).set('Authorization', `Bearer ${token}`);
+
+  it('lets a MAINTENANCE reader through the maintenance door', async () => {
+    expect((await getAlarms(MAINTENANCE_URL, maintenanceOnly)).status).toBe(200);
+  });
+
+  it('lets an ODOMETER reader through the odometer door', async () => {
+    expect((await getAlarms(ODOMETER_URL, odometerOnly)).status).toBe(200);
+  });
+
+  it('and neither reader gets in through the OTHER door', async () => {
+    // The second door exists to make a maintenance reader independent of the odometer log — not
+    // to hand either of them the other's permission. A 200 here would be exactly that.
+    expect((await getAlarms(ODOMETER_URL, maintenanceOnly)).status).toBe(403);
+    expect((await getAlarms(MAINTENANCE_URL, odometerOnly)).status).toBe(403);
+  });
+
+  it('a reader with neither permission is refused at both, and so is an anonymous one', async () => {
+    expect((await getAlarms(MAINTENANCE_URL, neither)).status).toBe(403);
+    expect((await getAlarms(ODOMETER_URL, neither)).status).toBe(403);
+    expect((await request(app).get(MAINTENANCE_URL)).status).toBe(401);
+    expect((await request(app).get(ODOMETER_URL)).status).toBe(401);
+  });
+
+  it('and the two doors answer with the SAME projection, field for field', async () => {
+    // One handler over one `computeAlarms()`. If these ever diverge, the alarm has stopped being
+    // a single source of truth — which is the whole thing this design exists to prevent.
+    const viaMaintenance = data<Record<string, unknown>[]>(
+      await getAlarms(MAINTENANCE_URL, maintenanceOnly),
+    );
+    const viaOdometer = data<Record<string, unknown>[]>(await getAlarms(ODOMETER_URL, odometerOnly));
+
+    const byVehicle = (rows: Record<string, unknown>[]) =>
+      Object.fromEntries(rows.map((row) => [String(row.vehicleId), row]));
+    expect(byVehicle(viaMaintenance)).toEqual(byVehicle(viaOdometer));
+
+    // …and it is a real projection being compared, not two empty lists agreeing about nothing.
+    expect(viaMaintenance.length).toBeGreaterThan(0);
+    for (const row of viaMaintenance) {
+      expect(Object.keys(row).sort()).toEqual(
+        [
+          'code',
+          'lastServiceAt',
+          'lastServiceVisitId',
+          'level',
+          'remainingKm',
+          'sinceServiceKm',
+          'vehicleId',
+        ].sort(),
+      );
+    }
+  });
+});
+
 describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => {
   const workTypeIdByName = async (name: string): Promise<string> => {
     const res = await request(app)

@@ -37,6 +37,7 @@ import {
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
+import { useCan } from '../../../platform/rbac/Can';
 import { useSetSetting } from '../../../platform/settings/settings-api';
 import * as api from './fleet-api';
 import { type FleetListParams } from './fleet-api';
@@ -316,15 +317,45 @@ export const useExpectedReading = (vehicleId: string, enabled = true) =>
     enabled: enabled && vehicleId !== '',
   });
 
-export const useMaintenanceAlarms = (enabled = true) =>
-  useQuery({
-    queryKey: [MODULE, 'odometer', 'alarms'],
-    queryFn: api.listMaintenanceAlarms,
+/**
+ * The alarm projection — ONE cache entry, whichever door the reader is allowed through.
+ *
+ * The server exposes the same projection twice, because two permissions legitimately want it:
+ * `fleetMaintenance.view` (the workshop screens) and `fleetOdometer.view` (the odometer log).
+ * Choosing between them here, rather than in each of the five callers, is what makes the choice
+ * a property of the hook instead of a rule five screens have to remember — and one of them
+ * already got it wrong, gating the alarms on the ODOMETER permission from the maintenance page.
+ *
+ * The key is deliberately source-INDEPENDENT. With one key there is exactly one cache entry and
+ * therefore exactly one request, so a reader holding both permissions cannot end up with two
+ * copies of the projection that could answer differently for the same car. That is a structural
+ * guarantee, not a discipline: there is no second key to fill.
+ *
+ * Maintenance wins when both are held — it is the narrower audience for a maintenance fact — and
+ * a reader with neither permission runs no query at all rather than collecting a 403.
+ *
+ * `useCanReadAlarms` is the same condition, exported for the screens that show or hide a panel
+ * on it. One definition, used by both, so a panel can never be hidden from somebody the query
+ * would happily have answered for — which is exactly the bug this replaces.
+ */
+export const useCanReadAlarms = (): boolean => {
+  const can = useCan();
+  return can('fleetMaintenance.view') || can('fleetOdometer.view');
+};
+
+export const useMaintenanceAlarms = (enabled = true) => {
+  const can = useCan();
+  const viaMaintenance = can('fleetMaintenance.view');
+  const viaOdometer = can('fleetOdometer.view');
+  return useQuery({
+    queryKey: [MODULE, 'alarms'],
+    queryFn: viaMaintenance ? api.listMaintenanceAlarmsForMaintenance : api.listMaintenanceAlarms,
     // Derived on the server per request (FR-3); a short stale window keeps the board honest
     // without hammering the projection.
     staleTime: 30_000,
-    enabled,
+    enabled: enabled && (viaMaintenance || viaOdometer),
   });
+};
 
 export const useMaintenanceVisits = (params: FleetListParams, enabled = true) =>
   useQuery({

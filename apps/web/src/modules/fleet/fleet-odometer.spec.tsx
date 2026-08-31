@@ -133,7 +133,7 @@ const client = (
       { id: 'v2', code: '151', plateNumber: 'س ص 151' },
     ]),
   );
-  qc.setQueryData(['fleet', 'odometer', 'alarms'], alarms);
+  qc.setQueryData(['fleet', 'alarms'], alarms);
   return qc;
 };
 
@@ -234,7 +234,7 @@ describe('the odometer table', () => {
       VEHICLE_SEARCH_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
-    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+    qc.setQueryData(['fleet', 'alarms'], [alarm()]);
 
     const serials = firstCells(render({ route: '/fleet/odometer?page=2', qc }));
     expect(serials, 'page 2 of 25 starts at 26').toEqual(['٢٦', '٢٧', '٢٨']);
@@ -253,7 +253,7 @@ describe('the odometer table', () => {
       VEHICLE_SEARCH_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
-    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+    qc.setQueryData(['fleet', 'alarms'], [alarm()]);
 
     // 2 × 200 + 1 = 401, not 2 × 500 + 1 = 1001.
     expect(firstCells(render({ route: '/fleet/odometer?page=3&size=500', qc }))).toEqual([
@@ -423,7 +423,7 @@ describe('the server answers the whole question — the page never slices', () =
       VEHICLE_SEARCH_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
-    qc.setQueryData(['fleet', 'odometer', 'alarms'], [alarm()]);
+    qc.setQueryData(['fleet', 'alarms'], [alarm()]);
     return qc;
   };
 

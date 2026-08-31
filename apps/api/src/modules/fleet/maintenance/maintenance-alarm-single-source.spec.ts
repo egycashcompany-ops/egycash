@@ -53,6 +53,57 @@ describe('one alarm rule', () => {
   });
 });
 
+describe('two doors, one handler', () => {
+  const ROUTES = join(FLEET, 'maintenance/maintenance.routes.ts');
+  const ODOMETER_ROUTES = join(FLEET, 'odometer/odometer.routes.ts');
+
+  it('the projection is exposed twice, under two DIFFERENT permissions', () => {
+    // Two audiences want one fact. The workshop should see the state of the cycle without also
+    // being handed the odometer log, and the odometer log keeps the door it always had.
+    expect(read(ROUTES)).toMatch(/'\/alarms',\s*\n\s*authenticate,\s*\n\s*authorize\('fleetMaintenance\.view'\)/);
+    expect(read(ODOMETER_ROUTES)).toMatch(/'\/alarms',\s*\n\s*authenticate,\s*\n\s*authorize\('fleetOdometer\.view'\)/);
+  });
+
+  it('by the SAME handler — the second route is not a second implementation', () => {
+    // Both routers reference one function, and it is defined once, next to the rule it serves.
+    const owner = read(join(FLEET, 'maintenance/maintenance.controller.ts'));
+    expect((owner.match(/export const listMaintenanceAlarms\b/g) ?? []).length).toBe(1);
+    expect(read(ODOMETER_ROUTES), 'the odometer router imports it rather than defining one').toContain(
+      "import { listMaintenanceAlarms } from '../maintenance/maintenance.controller'",
+    );
+    expect(read(join(FLEET, 'odometer/odometer.controller.ts')), 'and no copy is left behind')
+      .not.toContain('listMaintenanceAlarms');
+
+    // Exactly one definition in the whole module, wherever it might have been re-declared.
+    const defined = sources.filter((f) => /export const listMaintenanceAlarms\b/.test(read(f)));
+    expect(defined.map((f) => f.slice(FLEET.length + 1))).toEqual([
+      'maintenance/maintenance.controller.ts',
+    ]);
+  });
+
+  it('and that handler holds no projection of its own', () => {
+    // It is a two-line HTTP boundary over `computeAlarms()`. A filter, a map or a second query
+    // here would make one door answer differently from the other.
+    const owner = read(join(FLEET, 'maintenance/maintenance.controller.ts'));
+    const body = owner.slice(owner.indexOf('export const listMaintenanceAlarms'));
+    const handler = body.slice(0, body.indexOf('};') + 2);
+    expect(handler).toContain('await computeAlarms()');
+    expect(handler, 'nothing is filtered').not.toMatch(/\.filter\(|\.map\(|\.slice\(/);
+    expect(handler, 'no second query').not.toMatch(/Repository\.|\.aggregate\(|\.find\(/);
+  });
+
+  it('nothing else calls the projection over HTTP', () => {
+    // `computeAlarms` has other legitimate callers inside the API (the odometer `alerts` filter
+    // and the sweep). What must not exist is a SECOND controller answering with it, because that
+    // is where a third, subtly different alarm endpoint would begin.
+    const controllers = sources.filter((f) => f.endsWith('.controller.ts'));
+    const answering = controllers.filter((f) => /ok\(res, await computeAlarms\(\)\)/.test(read(f)));
+    expect(answering.map((f) => f.slice(FLEET.length + 1))).toEqual([
+      'maintenance/maintenance.controller.ts',
+    ]);
+  });
+});
+
 describe('the alarm is derived on read, never stored', () => {
   const schemas = sources.filter((f) => f.endsWith('.model.ts'));
 

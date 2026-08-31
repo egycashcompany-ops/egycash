@@ -13,10 +13,12 @@
 // maintenance status, and is deliberately not offered here as one.
 //
 // THE ALARM COLUMNS ARE THE SERVER'S PROJECTION, READ — never recomputed here. They come from the
-// SAME `GET /fleet/odometer/alarms` that the alarms board and the odometer log read, through the
-// same `useMaintenanceAlarms` hook and the same query key, so the three screens cannot disagree
-// about a vehicle: one engine (`computeAlarm`), one request, one cache entry. A future change to
-// the rule moves all three at once because there is only one thing to change.
+// same `useMaintenanceAlarms` hook, on the same query key, that the alarms board and the odometer
+// log read, so the three screens cannot disagree about a vehicle: one engine (`computeAlarm`),
+// one cache entry. WHICH endpoint serves it is the hook's business, not this screen's — the same
+// projection is exposed behind `fleetMaintenance.view` and behind `fleetOdometer.view`, and the
+// hook picks the door the reader actually holds. A future change to the rule moves all three
+// screens at once because there is only one thing to change.
 //
 // They describe the VEHICLE, not the row. Several visits of one car therefore repeat its figures,
 // which is correct — «متبقٍ ٤٠٠ كم» is a fact about the car, not about the visit being looked at.
@@ -170,7 +172,7 @@ export const MaintenancePage = (): JSX.Element => {
   /**
    * The vehicle's maintenance alarm, from the ONE server projection the other two screens read.
    *
-   * `useMaintenanceAlarms` is the same hook, the same endpoint and the same query key the alarms
+   * `useMaintenanceAlarms` is the same hook and the same query key the alarms
    * board and the odometer log use, so all three repaint together and none of them can hold a
    * different answer for the same car. Nothing about the level, the interval or the thresholds is
    * decided here — this screen only looks the vehicle up.
@@ -179,7 +181,7 @@ export const MaintenancePage = (): JSX.Element => {
    * see the workshop but not the odometer gets the visits without these four columns rather than a
    * 403 that would take the whole page down — see the report's open question about that grant.
    */
-  const alarmsQuery = useMaintenanceAlarms(can('fleetOdometer.view'));
+  const alarmsQuery = useMaintenanceAlarms();
   const alarmByVehicle = useMemo(() => {
     const map = new Map<string, FleetMaintenanceAlarmDto>();
     for (const alarm of alarmsQuery.data ?? []) map.set(alarm.vehicleId, alarm);

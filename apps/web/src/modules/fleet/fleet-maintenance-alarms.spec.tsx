@@ -56,7 +56,7 @@ const client = (board: FleetMaintenanceAlarmDto[] = BOARD): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // The ONLY key the screen may read. Nothing seeds a vehicle registry: if the page went looking
   // for one, its options would come back empty and the selection tests would fail.
-  qc.setQueryData(['fleet', 'odometer', 'alarms'], board);
+  qc.setQueryData(['fleet', 'alarms'], board);
   return qc;
 };
 
@@ -322,11 +322,17 @@ describe('searching the car picker', () => {
 describe('the request', () => {
   it('carries no filter at all — the narrowing is the in-memory projection it always was', () => {
     const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
-    const line = api.slice(api.indexOf('listMaintenanceAlarms'));
-    expect(line.slice(0, line.indexOf(';'))).toContain(`'/fleet/odometer/alarms'`);
-    expect(line.slice(0, line.indexOf(';')), 'no query string is built').not.toContain(
-      'buildQuery',
-    );
+    // BOTH doors to the projection — the odometer's and the maintenance one — and neither builds
+    // a query string: the board is fetched whole and narrowed in memory, as it always was.
+    for (const [fn, path] of [
+      ['listMaintenanceAlarms', '/fleet/odometer/alarms'],
+      ['listMaintenanceAlarmsForMaintenance', '/fleet/maintenance/alarms'],
+    ] as const) {
+      const decl = api.slice(api.indexOf(`export const ${fn} =`));
+      const body = decl.slice(0, decl.indexOf(';'));
+      expect(body, `${fn} calls ${path}`).toContain(`'${path}'`);
+      expect(body, `${fn} builds no query string`).not.toContain('buildQuery');
+    }
     // And the page asks for the board once, without parameters of its own.
     expect(SOURCE).toContain('useMaintenanceAlarms()');
   });

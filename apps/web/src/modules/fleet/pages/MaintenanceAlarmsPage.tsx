@@ -1,8 +1,8 @@
 // Maintenance alarms (FW-6, legacy /cars_alarm): the FR-3 projection exactly as the server
 // derives it per request — remaining = interval − (latest reading − counter at last counting
-// service) — nothing recomputed here. `GET /fleet/odometer/alarms` takes no query at all and
-// answers with the WHOLE board, so both filters are client-side over live data; triage order is
-// red first, most-overdue first.
+// service) — nothing recomputed here. The projection takes no query at all and answers with the
+// WHOLE board, so both filters are client-side over live data; triage order is red first,
+// most-overdue first.
 //
 // Both filters take more than one answer, because both questions usually have more than one:
 // "which cars am I chasing?" is a shortlist, and "which alarms?" is «أحمر وأصفر, not the quiet

@@ -520,6 +520,170 @@ describe('a car the workshop holds is red, whole', () => {
   });
 });
 
+describe('a car the workshop holds takes no mission', () => {
+  /** The mission `<select>` of one row, as a tag — '' when the row has none. */
+  const missionTag = (markup: string, code: string): string => {
+    const at_ = markup.indexOf(`${code} · ${t('fleet.roster.fields.mission')}`);
+    if (at_ === -1) return '';
+    return markup.slice(markup.lastIndexOf('<select', at_), markup.indexOf('>', at_) + 1);
+  };
+  const isDisabled = (tag: string): boolean => / disabled=""/.test(tag) || / disabled>/.test(tag);
+
+  it('DISABLES the mission control on an in-workshop row', () => {
+    // Not a new rule: the server counts a row carrying a mission as an ASSIGNING row and FR-5
+    // refuses it, so the board was offering a save it already knew would come back a 409.
+    const markup = at('');
+    expect(missionTag(markup, '151'), 'the workshop’s car').not.toBe('');
+    expect(isDisabled(missionTag(markup, '151'))).toBe(true);
+  });
+
+  it('leaves it editable on an ordinary row', () => {
+    const markup = at('');
+    expect(isDisabled(missionTag(markup, '150')), 'a working car').toBe(false);
+    expect(isDisabled(missionTag(markup, '153')), 'an idle car').toBe(false);
+  });
+
+  it('still SHOWS a mission the row already holds, disabled but legible', () => {
+    // 152 is in the workshop and carries MT. Hiding or blanking it would lose what the day says.
+    // React renders a controlled <select> by marking the chosen <option selected>, not by putting
+    // `value` on the select — so the value is asserted where it actually lands.
+    const markup = at('');
+    const at_ = markup.indexOf(`152 · ${t('fleet.roster.fields.mission')}`);
+    const element = markup.slice(
+      markup.lastIndexOf('<select', at_),
+      markup.indexOf('</select>', at_) + 9,
+    );
+    expect(isDisabled(missionTag(markup, '152')), 'not editable').toBe(true);
+    expect(element, 'the stored mission is the selected option').toContain(
+      `<option value="${MT}" selected="">`,
+    );
+    expect(element, 'and its name is readable').toContain('نقل أموال (يومي)');
+  });
+
+  it('guards the HANDLER too, not only the attribute', () => {
+    // A real browser refuses a click on a disabled select, but React's onChange is attached at the
+    // root and still fires for a programmatically dispatched event — so the attribute alone left
+    // the rule resting on markup. Found in the browser, fixed here.
+    expect(SOURCE).toContain('if (row.inMaintenance) return;');
+  });
+
+  it('reads `inMaintenance`, not the registry’s `inWorkshop` and not a mere assignment', () => {
+    expect(SOURCE).toContain('disabled={row.inMaintenance}');
+    expect(SOURCE, 'the registry flag has no place on a dated board').not.toContain(
+      'disabled={row.inWorkshop}',
+    );
+    expect(SOURCE, 'nor does having a crew').not.toContain('disabled={hasDriver(row)}');
+  });
+
+  it('changes no server rule — FR-5 still refuses the write', () => {
+    expect(SERVICE, 'a mission alone is an ASSIGNING row').toContain(
+      'row.missionTypeId != null || rowDrivers(row).length > 0',
+    );
+    expect(SERVICE).toContain('unassignable (FR-5)');
+  });
+});
+
+describe('the assignment badge needs a DRIVER, not a mission', () => {
+  const stateCell = (markup: string, code: string): string => {
+    const body = tbody(markup);
+    const row_ = body.split('<tr').find((r) => r.includes(`>${code}<`));
+    if (row_ === undefined) throw new Error(`no row ${code}`);
+    // The state column sits between the code cell and the mission select.
+    const end = row_.indexOf(`${code} · ${t('fleet.roster.fields.mission')}`);
+    return end === -1 ? row_ : row_.slice(0, end);
+  };
+  const assigned = t('fleet.roster.assigned');
+
+  /** A day covering every combination the rule distinguishes. */
+  const CREW_BOARD: FleetRosterDayDto = {
+    ...BOARD,
+    rows: [
+      row(V1, '160'), // nothing at all
+      row(V2, '161', { driver1EmployeeId: E1 }), // driver 1 only
+      row(V3, '162', { driver2EmployeeId: E3 }), // driver 2 only
+      row(V4, '163', { driver1EmployeeId: E1, driver2EmployeeId: E3 }), // both
+      row('650000000000000000000005', '164', { missionTypeId: MT }), // a mission, no crew
+    ],
+  };
+
+  it('shows NOTHING for a row with no drivers', () => {
+    expect(stateCell(at('', CREW_BOARD), '160')).not.toContain(assigned);
+  });
+
+  it('shows it for driver 1 alone', () => {
+    expect(stateCell(at('', CREW_BOARD), '161')).toContain(assigned);
+  });
+
+  it('shows it for driver 2 alone', () => {
+    expect(stateCell(at('', CREW_BOARD), '162')).toContain(assigned);
+  });
+
+  it('shows it when both seats are filled', () => {
+    expect(stateCell(at('', CREW_BOARD), '163')).toContain(assigned);
+  });
+
+  it('does NOT show it for a mission with no crew — an intention is not an assignment', () => {
+    // The whole point of the rule, and the one case `carriesPlan` would have got wrong.
+    expect(stateCell(at('', CREW_BOARD), '164')).not.toContain(assigned);
+  });
+
+  it('never prints the old «غير معيّنة» badge — silence is the state of an untouched row', () => {
+    const markup = at('', CREW_BOARD);
+    expect(markup).not.toContain('غير معيّنة');
+    expect(SOURCE, 'and the label is gone from the code').not.toContain('fleet.roster.unassigned');
+  });
+
+  it('keeps the WORKSHOP badge, which is not an assignment state', () => {
+    // It is also the third carrier of that fact beside the row's tint — `DataTable` requires a
+    // tinted row to say what it is in a cell.
+    const markup = at('');
+    expect(stateCell(markup, '151'), 'workshop car with no crew').toContain(
+      t('fleet.vehicles.inWorkshop'),
+    );
+    expect(stateCell(markup, '151'), 'and no assignment claim').not.toContain(assigned);
+  });
+
+  it('uses `hasDriver`, and leaves «تشغيل» on `carriesPlan`', () => {
+    // Two facts, two names. Folding them would make the badge and the counter agree by accident.
+    expect(SOURCE).toContain('hasDriver(row) && <Badge');
+    expect(SOURCE, 'the counter is untouched').toContain('draft.filter(carriesPlan).length');
+    expect(VIEW_SOURCE, 'and the two predicates stay separate').toContain('export const hasDriver');
+  });
+});
+
+describe('neither change reaches the filters, the counters or the save', () => {
+  it('leaves the tallies exactly as they were', () => {
+    const markup = at('');
+    const shown = (key: string): string => {
+      const idx = markup.indexOf(`data-counter="${key}"`);
+      const tag = markup.slice(idx, markup.indexOf('</button>', idx));
+      return tag.slice(tag.lastIndexOf('<span'), tag.lastIndexOf('</span>'));
+    };
+    // 4 vehicles: 2 in the workshop, 2 carrying a plan (150 and 152, one of them crewless).
+    expect(shown('total')).toContain('٤');
+    expect(shown('workshop')).toContain('٢');
+    expect(shown('assigned'), '«تشغيل» still counts a mission, badge or no badge').toContain('٢');
+  });
+
+  it('leaves the filters narrowing exactly as they did', () => {
+    expect(tbody(at('&view=assigned')), '152 has a mission and no crew').toContain('152');
+    expect(tbody(at('&view=workshop'))).toContain('151');
+    expect(tbody(at(`&mission=${MT}`))).toContain('150');
+  });
+
+  it('leaves the save measured against the whole day', () => {
+    expect(SOURCE).toContain('rowsToSave(saved, draft)');
+    expect(buttonDisabled(at(''), 'data-save-roster'), 'Save is live as before').toBe(false);
+  });
+
+  it('leaves the workshop row red and the drop still refused', () => {
+    const body = tbody(at(''));
+    const row151 = body.split('<tr').find((r) => r.includes('151')) ?? '';
+    expect(row151).toContain('bg-rose-50');
+    expect(SOURCE).toContain('const droppable = mayPlan && !row.inMaintenance && !needsFirst');
+  });
+});
+
 describe('a filter never reaches what is SAVED', () => {
   it('measures the save against the whole day, not the visible rows', () => {
     // A filtered board that saved only what it was showing would silently drop every edit the

@@ -15,6 +15,7 @@ export const CatalogSelect = ({
   allLabel,
   id,
   ariaLabel,
+  disabled = false,
 }: {
   kind: FleetCatalogKind;
   value: string;
@@ -23,6 +24,15 @@ export const CatalogSelect = ({
   allLabel?: string;
   id?: string;
   ariaLabel?: string;
+  /**
+   * Show the current value but refuse to change it.
+   *
+   * A DISABLED select, not a swap to plain text: the reader keeps seeing the same control in the
+   * same place holding the same name, so a row whose value cannot be edited still reads as the
+   * same kind of row. Replacing it with text would make an unchangeable value look like a
+   * different sort of data, and would move everything beside it.
+   */
+  disabled?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -35,6 +45,7 @@ export const CatalogSelect = ({
       aria-label={ariaLabel}
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      disabled={disabled}
       className="w-auto"
     >
       <option value="">{allLabel ?? t('common.select')}</option>

@@ -20,6 +20,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
 import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, counter, envelope, mutated } from './helpers/workflow-envelope';
 import { nextNationalId } from './helpers/national-id';
@@ -294,6 +295,41 @@ describe('registration (intake pipeline)', () => {
     const flagged = mutated<ApplicantDto>(second);
     expect(flagged.duplicateFlag).toBe(true);
     expect(flagged.duplicateOf.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('reports the version the flagging left behind, so the next act is not a phantom conflict', async () => {
+    // Flagging a duplicate is a WRITE — it carries its own `$inc: { __v: 1 }`. The version in the
+    // registration response is what the client sends back on their very next call, so if it were
+    // read from before that write, that call would be refused as STALE_DOCUMENT with nobody on the
+    // other side of the conflict. Two applicants on one phone is the cheapest way to make the flag
+    // fire; the version that comes back with the second is what is actually under test.
+    const sourceId = await sourceIdByKey('facebook');
+    const shared = '01097979797';
+    const first = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(registerBody({ sourceId, contact: { primaryPhone: shared } }));
+    expect(first.status).toBe(201);
+    const second = await request(app)
+      .post('/api/v1/hr/applicants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send(registerBody({ sourceId, contact: { primaryPhone: shared } }));
+    expect(second.status).toBe(201);
+    const flagged = mutated<ApplicantDto>(second);
+    // The flag really did fire — otherwise this test would pass without exercising anything.
+    expect(flagged.duplicateFlag).toBe(true);
+
+    // Directly: the reported version is the stored one.
+    const stored = await ApplicantModel.findById(flagged.id).lean<{ __v: number }>().exec();
+    expect(stored).not.toBeNull();
+    expect(flagged.version).toBe(stored?.__v);
+
+    // And in the terms a user would meet it in: the next act goes through.
+    const next = await request(app)
+      .post(`/api/v1/hr/applicants/${flagged.id}/withdraw`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: 'acting straight after registration', version: flagged.version });
+    expect(next.status, JSON.stringify(next.body)).toBe(200);
   });
 
   it('rejects an unknown / inactive source', async () => {

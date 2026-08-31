@@ -30,6 +30,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -93,7 +94,7 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .send({
       sourceId: await sourceId(),
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);
@@ -883,7 +884,7 @@ describe('evaluations — queue filters (search, branch)', () => {
         sourceId: await sourceId(),
         intakeChannel: 'internal',
         branchId,
-        identity: { fullNameAr, nationality: 'Egyptian' },
+        identity: { nationalId: nextNationalId(), fullNameAr, nationality: 'Egyptian' },
         contact: { primaryPhone: nextPhone() },
       });
     expect(created.status).toBe(201);

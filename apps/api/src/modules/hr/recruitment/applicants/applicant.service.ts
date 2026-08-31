@@ -339,8 +339,15 @@ class ApplicantService {
     });
     if (candidates.length === 0) return doc;
     const duplicateOf = candidates.map((c) => c._id);
-    await applicantRepository.setDuplicateFlag(String(doc._id), duplicateOf, by);
-    return { ...doc, duplicateFlag: true, duplicateOf };
+    // Flagging is a WRITE, with its own `$inc: { __v: 1 }` — so `doc` is a version behind the
+    // moment it lands, and that version is what the registration response hands the client to send
+    // back on their next call. Return what was actually persisted; otherwise the candidate's very
+    // next action is refused as STALE_DOCUMENT on a record no one else touched.
+    const flagged = await applicantRepository.setDuplicateFlag(String(doc._id), duplicateOf, by);
+    // Unreachable in practice — the row was created moments ago — but flagging never blocks a
+    // registration, so fall back to the local copy with the one increment applied rather than
+    // throwing on a duplicate-flag hiccup.
+    return flagged ?? { ...doc, duplicateFlag: true, duplicateOf, __v: doc.__v + 1 };
   }
 
   async list(query: ListApplicantsQuery, scope: ScopeSelector): Promise<Paginated<ApplicantDoc>> {

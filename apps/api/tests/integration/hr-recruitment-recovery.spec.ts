@@ -76,11 +76,23 @@ const mkUser = async (email: string): Promise<string> => {
 const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
 
 /**
- * A distinct valid Egyptian national ID per call. The ID gate refuses to verify a candidate who
- * has none, and a live candidate's national ID is unique, so every applicant needs its own.
+ * A distinct valid Egyptian national ID per call, each carrying a birth date of its own. The ID
+ * gate refuses to verify a candidate who has none, and a live candidate's national ID is unique,
+ * so every applicant needs its own.
+ *
+ * The date moves with the serial for the reason spelled out in `helpers/national-id.ts`: a
+ * National ID derives the applicant's birth date, duplicate detection matches on
+ * `{ searchName, birthDate }`, and every candidate in this file shares one name — so a constant
+ * date would make each registration a "duplicate" of the one before it.
  */
 let nidCounter = 10_000;
-const nextNationalId = (): string => `299123101${String(nidCounter++).padStart(5, '0')}`;
+const nextNationalId = (): string => {
+  const n = nidCounter++;
+  const dd = String((n % 28) + 1).padStart(2, '0');
+  const mm = String((Math.floor(n / 28) % 12) + 1).padStart(2, '0');
+  const yy = String((1980 + (Math.floor(n / 336) % 20)) % 100).padStart(2, '0');
+  return `2${yy}${mm}${dd}01${String(n).padStart(5, '0')}`;
+};
 
 const sourceId = async (): Promise<string> => {
   const res = await request(app)
@@ -101,7 +113,7 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .send({
       sourceId: await sourceId(),
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);

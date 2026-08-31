@@ -173,13 +173,22 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
     return this.model.find(filter).limit(20).lean<ApplicantDoc[]>().exec();
   }
 
+  /**
+   * Flags the row, and hands back the document AS PERSISTED.
+   *
+   * The `$inc` below is a real write: the caller's copy of the applicant is a version behind the
+   * instant this runs. That matters because the version travels to the client and comes back as
+   * the optimistic-concurrency check — a stale one in a registration response makes the
+   * candidate's very NEXT action fail with STALE_DOCUMENT, on a record nobody else touched.
+   * Returning the updated document is what keeps the caller's copy honest.
+   */
   async setDuplicateFlag(
     id: string,
     duplicateOf: Types.ObjectId[],
     by: string | null,
-  ): Promise<void> {
-    await this.model
-      .updateOne(
+  ): Promise<ApplicantDoc | null> {
+    return this.model
+      .findOneAndUpdate(
         { _id: new Types.ObjectId(id) },
         {
           $set: {
@@ -189,7 +198,9 @@ class ApplicantRepository extends BaseRepository<ApplicantDoc> {
           },
           $inc: { __v: 1 },
         },
+        { new: true },
       )
+      .lean<ApplicantDoc>()
       .exec();
   }
 

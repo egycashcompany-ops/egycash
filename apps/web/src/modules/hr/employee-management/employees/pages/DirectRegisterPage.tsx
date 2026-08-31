@@ -12,6 +12,7 @@ import {
   type EmploymentType,
   type Locale,
   type MaritalStatus,
+  parseNationalId,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useCan } from '../../../../../platform/rbac/Can';
@@ -81,7 +82,14 @@ export const DirectRegisterPage = (): JSX.Element => {
   const rehireMatch = useRehireCheck(nationalId);
 
   const submit = async (): Promise<void> => {
-    if (fullNameAr.trim().length < 2 || primaryPhone.trim() === '') {
+    // The National ID is required to create an employee, so it is guarded here with the other
+    // two: reaching the server to be told would cost a round-trip and land the message on the
+    // form rather than the field.
+    if (
+      fullNameAr.trim().length < 2 ||
+      primaryPhone.trim() === '' ||
+      parseNationalId(nationalId.trim()) === null
+    ) {
       toast.error(t('employees.register.identityRequired'));
       return;
     }
@@ -94,7 +102,10 @@ export const DirectRegisterPage = (): JSX.Element => {
         identity: {
           fullNameAr: fullNameAr.trim(),
           ...(fullNameEn.trim() === '' ? {} : { fullNameEn: fullNameEn.trim() }),
-          ...(nationalId.trim() === '' ? {} : { nationalId: nationalId.trim() }),
+          // Sent even when blank, so a missing one is reported against THIS field rather than as
+          // a form-level "Required" with nothing to attach it to. `NationalIdSchema` trims and
+          // folds Arabic-Indic digits, so whitespace is rejected by the same rule as a bad number.
+          nationalId: nationalId.trim(),
           nationality: 'Egyptian',
           ...(maritalStatus === '' ? {} : { maritalStatus: maritalStatus as MaritalStatus }),
           ...(religion.trim() === '' ? {} : { religion: religion.trim() }),
@@ -197,7 +208,7 @@ export const DirectRegisterPage = (): JSX.Element => {
               <Field label={t('applicants.form.fullNameEn')}>
                 <Input value={fullNameEn} onChange={(e) => setFullNameEn(e.target.value)} maxLength={200} dir="ltr" />
               </Field>
-              <Field label={t('applicants.form.nationalId')}>
+              <Field label={t('applicants.form.nationalId')} required>
                 <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} maxLength={14} dir="ltr" />
               </Field>
               <Field label={t('applicants.form.maritalStatus')}>

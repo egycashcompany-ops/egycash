@@ -36,6 +36,7 @@ import { settingsService } from '../../src/platform/settings';
 import { organizationService } from '../../src/platform/organization';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -113,7 +114,7 @@ const mkEmployee = async (withNid = true): Promise<EmployeeDto> => {
       personal: {
         identity: {
           fullNameAr: 'موظف العقود',
-          ...(withNid ? { nationalId: nextNid() } : {}),
+          nationalId: nextNid(),
           nationality: 'Egyptian',
         },
         contact: { primaryPhone: nextPhone() },
@@ -133,7 +134,16 @@ const mkEmployee = async (withNid = true): Promise<EmployeeDto> => {
       entryStatus: 'active',
     });
   expect(res.status).toBe(201);
-  return res.body.data as EmployeeDto;
+  const employee = res.body.data as EmployeeDto;
+  if (!withNid) {
+    // Registration REQUIRES a National ID, so an employee without one can no longer be created
+    // through the API — but plenty of them exist, filed before that rule. The caller wants that
+    // record, so put the row in the state those records are actually in. Clearing the stored
+    // field is the whole of it: `employee.nationalId` resolves from `personal.nationalId`
+    // (contract-variables.ts), which is what makes the variable report below fire.
+    await EmployeeModel.updateOne({ _id: employee.id }, { $set: { 'personal.nationalId': null } }).exec();
+  }
+  return employee;
 };
 
 const mkType = async (over: Record<string, unknown> = {}): Promise<ContractTypeDto> => {

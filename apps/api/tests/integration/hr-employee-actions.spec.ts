@@ -34,6 +34,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 let JOB_TITLE_ID = ''; // real job title (the engine validates org referents at application time)
@@ -108,7 +109,7 @@ const registerApplicant = async (): Promise<ApplicantDto> => {
     .send({
       sourceId,
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);
@@ -684,11 +685,14 @@ describe('personnel actions — scheduling (effective dating)', () => {
 });
 
 describe('direct registration (D4) + person guard (F2/I6) + personal edits (I4)', () => {
-  const directBody = (nid: string | undefined): Record<string, unknown> => ({
+  // Always carries an ID: direct registration requires one, so there is no longer a caller that
+  // omits it. Kept as a plain field rather than a conditional spread — the spread is what hid the
+  // omission from a payload-level scan when the requirement landed.
+  const directBody = (nid: string): Record<string, unknown> => ({
     personal: {
       identity: {
         fullNameAr: 'موظف قديم',
-        ...(nid === undefined ? {} : { nationalId: nid }),
+        nationalId: nid,
         nationality: 'Egyptian',
       },
       contact: { primaryPhone: nextPhone() },
@@ -745,7 +749,7 @@ describe('direct registration (D4) + person guard (F2/I6) + personal edits (I4)'
     const res = await request(app)
       .post('/api/v1/hr/employees/direct')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send(directBody(undefined));
+      .send(directBody(nextNid()));
     expect(res.status).toBe(201);
     const emp = res.body.data as EmployeeDto;
     const newPhone = nextPhone();

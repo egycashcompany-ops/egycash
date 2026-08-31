@@ -25,8 +25,10 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { ApplicantModel } from '../../src/modules/hr/recruitment/applicants/applicant.model';
 import { type AuthContext } from '../../src/shared/types';
 import { actionEnabled, bulkEnvelope, counter, envelope, mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 let replSet: MongoMemoryReplSet | null = null;
@@ -93,7 +95,7 @@ const registerApplicant = async (
     .send({
       sourceId,
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
       ...over,
     });
@@ -623,6 +625,18 @@ describe('screening — candidate-attribute filters (age, education)', () => {
           : { identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian', nationalId } }),
         ...(level === undefined ? {} : { education: { level } }),
       });
+      if (nationalId === undefined) {
+        // Registration REQUIRES a National ID, and an ID always derives a birth date — so a
+        // candidate of unknown age can no longer be REGISTERED. They still exist: everyone filed
+        // before that rule has both fields empty. That is the record this case is about, so write
+        // the row into it. The age filter reads `birthDate` off the applicant registry
+        // (screening.service.ts resolves ages through `idsMatchingAttributesSystem`), so this is
+        // the state the filter actually sees.
+        await ApplicantModel.updateOne(
+          { _id: applicant.id },
+          { $set: { nationalId: null, birthDate: null } },
+        ).exec();
+      }
       return applicant.code;
     };
 
@@ -631,7 +645,7 @@ describe('screening — candidate-attribute filters (age, education)', () => {
       thirtyExactly: await mk(nid(a30.century, a30.yy, mm, dd, '11111'), 'bachelor'),
       twentyFive: await mk(nid(a25.century, a25.yy, mm, dd, '22222'), 'diploma'),
       fortyOne: await mk(nid(a41.century, a41.yy, mm, dd, '33333'), 'bachelor'),
-      // No national ID → no birth date, and no education record either.
+      // No national ID on file → no birth date, and no education record either.
       noBirthDate: await mk(undefined, undefined),
     };
   }, 60_000);

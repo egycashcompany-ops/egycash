@@ -40,13 +40,20 @@ export const RECRUITMENT_FORM_BUILTINS = [
 export type RecruitmentFormBuiltin = (typeof RECRUITMENT_FORM_BUILTINS)[number];
 
 /**
- * Two fields cannot be switched off or made optional: an applicant with no name and no phone is
- * not a record anybody can act on, and the API rejects it anyway. Encoding it here means the
- * builder can grey them out instead of letting an admin produce a form that always fails.
+ * Three fields cannot be switched off or made optional: an applicant with no name, no phone and
+ * no National ID is not a record anybody can act on, and the API rejects it anyway. Encoding it
+ * here means the builder can grey them out instead of letting an admin produce a form that
+ * always fails.
+ *
+ * `nationalId` joined this list when `IdentityInputSchema` stopped accepting a missing one. The
+ * two must move together: a public form that omits it would collect answers the registration
+ * endpoint then refuses, and the applicant — who cannot see why — would simply be unable to
+ * apply.
  */
 export const RECRUITMENT_FORM_MANDATORY: readonly RecruitmentFormBuiltin[] = [
   'fullNameAr',
   'primaryPhone',
+  'nationalId',
 ];
 
 /** The four the frozen request names, in order — what a fresh install starts with. */

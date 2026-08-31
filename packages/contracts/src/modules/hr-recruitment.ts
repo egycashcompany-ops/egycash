@@ -210,16 +210,32 @@ const SourceDetailSchema = z
 // ── Applicant registration & updates ────────────────────────────────────────
 
 /**
- * The identity block. All fields optional at registration EXCEPT the Arabic full name
- * (plan §7: "Registration (name)"); the National ID is optional (ID-less registration,
- * §2.1 rule 2). When a National ID is supplied it must be structurally valid; birth date,
- * gender and place of birth are then derived server-side (never trusted from the client).
+ * The identity block. The Arabic full name and the National ID are required at registration;
+ * everything else is optional. Birth date, gender and place of birth are derived server-side
+ * from the National ID and never trusted from the client.
+ *
+ * THE NATIONAL ID WAS OPTIONAL, AND IS NOT ANY MORE. Sprint 4.1 (OQ-24) allowed ID-less
+ * registration — an applicant could be created on a name alone and supply the number later at
+ * the ID gate. That is retired by an explicit business decision: a person entering this system
+ * is identified by their National ID at the moment they are created.
+ *
+ * What that decision does NOT touch, on purpose:
+ *   · editing — `UpdateEmployeePersonalSchema` takes `IdentityInputSchema.partial()`, so every
+ *     existing record, including the ID-less ones already in the database, still saves;
+ *   · the ID gate — `ConfirmApplicantIdentitySchema` keeps its optional National ID, which is
+ *     how those existing records get one.
+ *
+ * The rule therefore binds the two CREATE paths (`RegisterApplicantSchema`,
+ * `DirectRegisterEmployeeSchema`) and nothing else.
  */
 export const IdentityInputSchema = z
   .object({
     fullNameAr: arabicName(z.string().min(2).max(200)),
     fullNameEn: englishName(z.string().max(200)).optional(),
-    nationalId: NationalIdSchema.optional(),
+    // Required. `NationalIdSchema` trims and folds Arabic-Indic digits to ASCII before judging,
+    // so "  ٢٩٨…  " is the same number and "   " fails the format check rather than slipping
+    // through as a blank — no separate emptiness rule is needed or wanted here.
+    nationalId: NationalIdSchema,
     nationality: z.string().max(100).default('Egyptian'),
     photoFileId: objectId().optional(),
     maritalStatus: MaritalStatusSchema.optional(),

@@ -30,6 +30,7 @@ import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 // EVERY ORG REFERENT HERE IS REAL, and the requisition most of all. A requisition validates its
@@ -105,7 +106,7 @@ const registerApplicant = async (jobRequisitionId?: string): Promise<ApplicantDt
       ...(jobRequisitionId === undefined ? {} : { jobRequisitionId }),
       sourceId,
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'أحمد محمد', nationality: 'Egyptian' },
       contact: { primaryPhone: nextPhone() },
     });
   expect(res.status).toBe(201);

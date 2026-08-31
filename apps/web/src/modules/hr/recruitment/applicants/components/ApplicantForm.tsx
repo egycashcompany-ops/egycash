@@ -395,7 +395,11 @@ export const ApplicantForm = ({
       const identity = {
         fullNameAr: f.fullNameAr.trim(),
         ...(str(f.fullNameEn) ? { fullNameEn: f.fullNameEn.trim() } : {}),
-        ...(str(f.nationalId) ? { nationalId: f.nationalId.trim() } : {}),
+        // Sent even when blank. Omitting it makes Zod report a MISSING key, which arrives as a
+        // form-level error with no field to attach to; sending the empty string makes it a
+        // `nationalId` error, which `msg('nationalId')` renders under the input the person is
+        // looking at. `NationalIdSchema` trims and folds digits, so whitespace fails the same way.
+        nationalId: f.nationalId.trim(),
         nationality: f.nationality.trim() === '' ? NATIONALITY_EGYPTIAN : f.nationality.trim(),
         ...(f.maritalStatus === '' ? {} : { maritalStatus: f.maritalStatus }),
         ...(str(f.religion) ? { religion: f.religion.trim() } : {}),
@@ -580,6 +584,7 @@ export const ApplicantForm = ({
             <>
               <Field
                 label={t('applicants.form.nationalId')}
+                required
                 error={msg('nationalId')}
                 hint={t('applicants.form.nationalIdHint')}
               >

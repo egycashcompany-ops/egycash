@@ -98,12 +98,21 @@ const KEY = 'applicants.validation.';
 const required = KEY + 'required';
 
 /**
- * One field's verdict. An empty optional field is always fine — "required" is decided by the
- * caller (it depends on the mode), never by the rule, so the two never drift apart.
+ * One field's verdict. An empty optional field is always fine.
+ *
+ * `nationalId` joined the required set when `IdentityInputSchema` stopped accepting a missing
+ * one. It is listed here rather than left to the caller because it is no longer mode-dependent:
+ * the applicant form renders the field in CREATE mode only, and the public form builder cannot
+ * switch it off (`RECRUITMENT_FORM_MANDATORY`) — so there is no surface left that draws this
+ * field and would accept it blank.
+ *
+ * Without this the field carried a `required` marker that nothing enforced: blur said nothing,
+ * and the server's refusal arrived in the form-level error list instead of under the input the
+ * person was looking at.
  */
 export const validateField = (name: FieldName, raw: string): string | undefined => {
   const value = raw.trim();
-  const isRequired = name === 'fullNameAr' || name === 'primaryPhone';
+  const isRequired = name === 'fullNameAr' || name === 'primaryPhone' || name === 'nationalId';
   if (value === '') return isRequired ? required : undefined;
 
   switch (name) {

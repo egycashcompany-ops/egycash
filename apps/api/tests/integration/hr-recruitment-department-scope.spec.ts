@@ -31,6 +31,7 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { type AuthContext } from '../../src/shared/types';
 import { mutated } from './helpers/workflow-envelope';
+import { nextNationalId } from './helpers/national-id';
 
 const PASSWORD = 'Str0ng#Pass!';
 
@@ -106,7 +107,7 @@ const register = async (departmentId: string): Promise<ApplicantDto> => {
     .send({
       sourceId,
       intakeChannel: 'internal',
-      identity: { fullNameAr: 'مرشح النطاق', nationality: 'Egyptian' },
+      identity: { nationalId: nextNationalId(), fullNameAr: 'مرشح النطاق', nationality: 'Egyptian' },
       contact: { primaryPhone: `0109900000${String(nid++)}` },
       placement: { jobTitleId: JOB_TITLE, departmentId, branchId: BRANCH },
     });

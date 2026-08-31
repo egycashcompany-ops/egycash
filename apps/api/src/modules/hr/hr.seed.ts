@@ -21,6 +21,7 @@ import {
   type CreateInterviewStage,
 } from '@ecms/contracts';
 import { notificationTemplateService } from '../../platform/notifications';
+import { rbacService } from '../../platform/rbac';
 import { ensureAnnouncementTemplate } from './announcements';
 import {
   applicantSourceService,
@@ -757,4 +758,46 @@ export const seedHrRecruitment = async (): Promise<void> => {
     variables: ['type', 'disbursedAt', 'installmentCount', 'firstPeriod'],
     defaultExpiryHours: null,
   });
+
+  await ensureMedicalOfficerRole();
+};
+
+/** The one role that reads bodies (P-HR-MED D3, §8 Q1 as ruled). */
+export const HR_MEDICAL_OFFICER_ROLE_KEY = 'hr-medical-officer';
+
+/**
+ * P-HR-MED §8 Q1 — RULED: clinical access is a named role, and it holds NOTHING else.
+ *
+ * D3 separated the clinical keys from every other HR key precisely so that reading somebody's
+ * salary band does not come with reading their blood type. That separation was real in the
+ * permission catalog and absent from every database: the keys were declared and granted to no
+ * named role, so the only account that could open a medical record was the Super Admin — which
+ * holds them the way it holds everything, by being seeded the whole registry. A door whose only
+ * key is on the master ring is not the door D3 designed.
+ *
+ * `ensureManagedRole`, not `ensureSystemRole`, and the choice is load-bearing twice over:
+ *
+ *   · `isSystem` is one of the two things that make a holder PRIVILEGED, and privileged accounts
+ *     are forced through TOTP enrollment. These are ordinary module permissions and have no
+ *     business changing how their holder logs in — the same reasoning `gold.seed.ts` records for
+ *     its portal customer role;
+ *   · it re-asserts the grant set on every boot, so this role cannot quietly grow. Somebody who
+ *     adds `employee.view` to it in the Roles screen finds it gone at the next deploy, which for
+ *     the one role that reads clinical data is the behaviour to want. An organization needing a
+ *     wider bundle builds its own role rather than widening this one.
+ *
+ * THE INSURANCE KEYS ARE DELIBERATELY NOT HERE. `medicalInsurance.*` is administrative, and D4
+ * scopes the card by branch precisely because benefits work is delegable; folding it in would mean
+ * that delegating card administration hands out clinical access — the exact leak the two key
+ * families were split to prevent.
+ *
+ * Assigned to NOBODY by the seed. Which people hold it is not a decision code can make, and a seed
+ * that guessed would be handing out medical records on a naming convention.
+ */
+const ensureMedicalOfficerRole = async (): Promise<void> => {
+  await rbacService.ensureManagedRole(
+    HR_MEDICAL_OFFICER_ROLE_KEY,
+    { en: 'HR Medical Officer', ar: 'المسؤول الطبي' },
+    ['medicalRecord.view', 'medicalRecord.manage'],
+  );
 };

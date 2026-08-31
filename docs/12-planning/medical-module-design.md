@@ -175,9 +175,29 @@ M2 first because the permission model is the module, and everything after it inh
 
 None of these blocks the module.
 
-1. **Who, by name, may read clinical data?** (D3) — this ships with a single `medicalRecord.view`
-   key held by nobody until it is granted. The benefits keys (`medicalInsurance.*`, D3-b) are a separate and probably larger group. If the company has a specific role — an HR medical
-   officer, a safety officer — say so and it becomes a seeded role rather than a manual grant.
+1. ~~**Who, by name, may read clinical data?** (D3)~~ — **ANSWERED (owner ruling, 2026-08-31): a
+   seeded `hr-medical-officer` role, holding `medicalRecord.view` and `medicalRecord.manage` and
+   nothing else.** Created by `hr.seed.ts` at boot — not by `seed-data.ts`, whose own header says
+   production never runs it — and assigned to nobody, because which people read bodies is a
+   decision code cannot make.
+
+   **One correction to what this question claimed.** It said the key was "held by nobody". That
+   was not accurate: `seed-data.ts` grants Super Admin `rbacService.registeredPermissionKeys()`,
+   the whole registry, so that one account has always held it. The real defect was narrower and
+   worse than "nobody can read" — the only key to the clinical door was on the master ring, which
+   is precisely the arrangement D3 was written to prevent. The seeded HR account never held it
+   (`platform-admin` gets only `moduleId === 'platform'` keys), so the module did ship unusable
+   for its intended reader.
+
+   The role is created with `ensureManagedRole`, and both consequences are deliberate: it is NOT a
+   system role, so holding it does not make an account privileged and does not force TOTP
+   enrollment on it; and its grant set is re-asserted on every boot, so the role cannot quietly
+   grow — a key added by hand in the Roles screen is gone at the next deploy. An organization that
+   needs a wider bundle builds its own role rather than widening this one.
+
+   `medicalInsurance.*` (D3-b) stays OUT of it, and that is the point of the split: D4 scopes the
+   card by branch because benefits administration is delegable, so folding those keys in would
+   mean delegating card work hands out clinical access.
 2. **Is medical insurance company-wide or per band?** (D10) — the tier is recorded as written
    either way; the question is whether a tier is ever DERIVED from a grade, which would be a rule.
 3. **What follows an «unfit» verdict?** (D7, D11) — today: nothing automatic, and a person acts
@@ -191,5 +211,5 @@ None of these blocks the module.
    Management and it is not this module's to make, but it is the gap most likely to matter on the
    day it matters.
 
-Question 1 is the only one worth answering before M2 ships, and only because a key nobody holds is
-indistinguishable from a feature that does not work.
+Question 1 is answered above. The five that remain are all real questions about how the company
+works, and none of them blocks the module.

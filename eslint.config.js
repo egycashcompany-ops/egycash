@@ -4,6 +4,7 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import boundaries from 'eslint-plugin-boundaries';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
@@ -238,6 +239,32 @@ export default tseslint.config(
         Response: 'readonly',
         URL: 'readonly',
       },
+    },
+  },
+
+  /**
+   * The Rules of Hooks, enforced — the gap that let React error #310 reach production.
+   *
+   * A hooks-order violation is invisible to every other gate: it typechecks, it builds, and the
+   * component renders correctly right up until the render where the count changes. Then React
+   * throws "Rendered more hooks than during the previous render" — in production, minified to a
+   * number, on whichever screen the user happened to open. No test in this repo can catch it
+   * either: the web harness renders to static markup, so it never performs a SECOND render of the
+   * same component, which is the only moment the mismatch exists.
+   *
+   * `rules-of-hooks` is the one check that sees it, and it sees it statically, in every file.
+   * Errors, not warnings — a warning here is a production crash nobody read.
+   *
+   * `exhaustive-deps` is deliberately NOT enabled: it is a correctness HEURISTIC with a large
+   * false-positive surface, and this codebase documents its intentional dependency omissions in
+   * prose beside them. Turning it on would mean either mass-disabling it or churning working
+   * effects. `rules-of-hooks` has no such ambiguity — every report is a real defect.
+   */
+  {
+    files: ['apps/web/src/**/*.ts', 'apps/web/src/**/*.tsx'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
     },
   },
 

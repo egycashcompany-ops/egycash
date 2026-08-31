@@ -94,7 +94,10 @@ export const DirectRegisterPage = (): JSX.Element => {
         identity: {
           fullNameAr: fullNameAr.trim(),
           ...(fullNameEn.trim() === '' ? {} : { fullNameEn: fullNameEn.trim() }),
-          ...(nationalId.trim() === '' ? {} : { nationalId: nationalId.trim() }),
+          // Sent even when blank, so a missing one is reported against THIS field rather than as
+          // a form-level "Required" with nothing to attach it to. `NationalIdSchema` trims and
+          // folds Arabic-Indic digits, so whitespace is rejected by the same rule as a bad number.
+          nationalId: nationalId.trim(),
           nationality: 'Egyptian',
           ...(maritalStatus === '' ? {} : { maritalStatus: maritalStatus as MaritalStatus }),
           ...(religion.trim() === '' ? {} : { religion: religion.trim() }),
@@ -197,7 +200,7 @@ export const DirectRegisterPage = (): JSX.Element => {
               <Field label={t('applicants.form.fullNameEn')}>
                 <Input value={fullNameEn} onChange={(e) => setFullNameEn(e.target.value)} maxLength={200} dir="ltr" />
               </Field>
-              <Field label={t('applicants.form.nationalId')}>
+              <Field label={t('applicants.form.nationalId')} required>
                 <Input value={nationalId} onChange={(e) => setNationalId(e.target.value)} maxLength={14} dir="ltr" />
               </Field>
               <Field label={t('applicants.form.maritalStatus')}>

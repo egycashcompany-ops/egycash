@@ -16,20 +16,45 @@ const DEFAULTS: RecruitmentFormField[] = [
   builtin('educationLevel'),
 ];
 
+const NID = '29801011234567';
+
 describe('missingRequired', () => {
   it('names the fields a candidate left blank', () => {
-    expect(missingRequired(DEFAULTS, { fullNameAr: 'أحمد محمد' })).toEqual(['primaryPhone']);
-    expect(missingRequired(DEFAULTS, { fullNameAr: '  ', primaryPhone: '01012345678' })).toEqual([
-      'fullNameAr',
+    expect(missingRequired(DEFAULTS, { fullNameAr: 'أحمد محمد' })).toEqual([
+      'nationalId',
+      'primaryPhone',
     ]);
-    expect(missingRequired(DEFAULTS, { fullNameAr: 'أحمد', primaryPhone: '01012345678' })).toEqual([]);
+    expect(
+      missingRequired(DEFAULTS, { fullNameAr: '  ', nationalId: NID, primaryPhone: '01012345678' }),
+    ).toEqual(['fullNameAr']);
+    expect(
+      missingRequired(DEFAULTS, {
+        fullNameAr: 'أحمد',
+        nationalId: NID,
+        primaryPhone: '01012345678',
+      }),
+    ).toEqual([]);
   });
 
-  it('holds name and phone required even when the stored form says otherwise', () => {
+  it('holds the National ID required even though the seeded form marks it optional', () => {
+    // `builtin('nationalId')` above is NOT flagged required — the mandatory list is what makes it
+    // so. This is the assertion that would have caught the two moving apart: registration refuses
+    // an applicant without a National ID, so a public form that lets one through would collect
+    // answers the endpoint then rejects, with nothing on the page to explain why.
+    expect(missingRequired(DEFAULTS, { fullNameAr: 'أحمد', primaryPhone: '01012345678' })).toEqual([
+      'nationalId',
+    ]);
+  });
+
+  it('holds name, phone and National ID required even when the stored form says otherwise', () => {
     // Belt and braces: the schema refuses to save such a form, and the mapper refuses to honour
     // one that got in some other way.
-    const tampered = [builtin('fullNameAr', false), builtin('primaryPhone', false)];
-    expect(missingRequired(tampered, {})).toEqual(['fullNameAr', 'primaryPhone']);
+    const tampered = [
+      builtin('fullNameAr', false),
+      builtin('primaryPhone', false),
+      builtin('nationalId', false),
+    ];
+    expect(missingRequired(tampered, {})).toEqual(['fullNameAr', 'primaryPhone', 'nationalId']);
   });
 
   it('reads a required checkbox as "must be ticked"', () => {

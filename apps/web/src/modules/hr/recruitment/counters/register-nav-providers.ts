@@ -7,7 +7,13 @@ import { stageOfKind, stagesOfKind, useRecruitmentStageCounts } from './stage-co
 /** The stage kinds that fan out into children, and the singleton stages that just get a badge. */
 const useStages = () => useRecruitmentStageCounts().data?.stages;
 
-const children = (kind: 'interview' | 'evaluation'): NavChildren => {
+// NAMED AS HOOKS BECAUSE THEY ARE ONE. Each reads `useStages`, so each is a React hook and may
+// only be called from a component that calls it unconditionally — which `DynamicAppRow` does, and
+// which is why this has always been correct at runtime. What it was not is CHECKABLE: named
+// `children`/`singleton`/`employees`, `rules-of-hooks` could not tell a hook from a helper and
+// reported all three. Naming them for what they are lets the rule verify the contract instead of
+// being disabled over it.
+const useStageChildren = (kind: 'interview' | 'evaluation'): NavChildren => {
   const stages = useStages();
   const rows = stagesOfKind(stages, kind);
   return {
@@ -22,7 +28,7 @@ const children = (kind: 'interview' | 'evaluation'): NavChildren => {
   };
 };
 
-const singleton = (kind: 'applicants' | 'screening' | 'jobOffer'): NavChildren => {
+const useSingletonStage = (kind: 'applicants' | 'screening' | 'jobOffer'): NavChildren => {
   const stage = stageOfKind(useStages(), kind);
   return { count: stage?.count ?? null, children: [] };
 };
@@ -33,7 +39,7 @@ const singleton = (kind: 'applicants' | 'screening' | 'jobOffer'): NavChildren =
  * by typing its URL. The counters endpoint omits the stage entirely when the caller cannot hire,
  * so the row simply does not appear for them.
  */
-const employees = (): NavChildren => {
+const useEmployeesReady = (): NavChildren => {
   const stage = stageOfKind(useStages(), 'employeesReady');
   if (stage === undefined) return { count: null, children: [] };
   return {
@@ -49,16 +55,24 @@ const employees = (): NavChildren => {
   };
 };
 
+// One named hook per route: a provider registered as an anonymous arrow that calls a hook is the
+// same violation in a different shape, and `rules-of-hooks` is right to say so.
+const useInterviewChildren = (): NavChildren => useStageChildren('interview');
+const useEvaluationChildren = (): NavChildren => useStageChildren('evaluation');
+const useApplicantsStage = (): NavChildren => useSingletonStage('applicants');
+const useScreeningStage = (): NavChildren => useSingletonStage('screening');
+const useJobOfferStage = (): NavChildren => useSingletonStage('jobOffer');
+
 let registered = false;
 
 /** Idempotent — safe to call from module load and from tests. */
 export const registerRecruitmentNavProviders = (): void => {
   if (registered) return;
   registered = true;
-  registerNavChildrenProvider('/interviews', () => children('interview'));
-  registerNavChildrenProvider('/evaluations', () => children('evaluation'));
-  registerNavChildrenProvider('/applicants', () => singleton('applicants'));
-  registerNavChildrenProvider('/screening', () => singleton('screening'));
-  registerNavChildrenProvider('/job-offers', () => singleton('jobOffer'));
-  registerNavChildrenProvider('/employees', employees);
+  registerNavChildrenProvider('/interviews', useInterviewChildren);
+  registerNavChildrenProvider('/evaluations', useEvaluationChildren);
+  registerNavChildrenProvider('/applicants', useApplicantsStage);
+  registerNavChildrenProvider('/screening', useScreeningStage);
+  registerNavChildrenProvider('/job-offers', useJobOfferStage);
+  registerNavChildrenProvider('/employees', useEmployeesReady);
 };

@@ -25,8 +25,7 @@ import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { MoveToOfferButton } from '../../applicants/components/MoveToOfferButton';
 import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
-import { useWorkflowState } from '../../shared/useWorkflowMutation';
-import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
+import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
 import {
   useDecideEvaluation,
   useEvaluation,
@@ -92,16 +91,12 @@ export const EvaluationDetailPage = (): JSX.Element => {
     }
   };
 
-  // The bar draws where the CANDIDATE stands, not where this screen sits — the two are
-  // different facts and used to be conflated (see RecruitmentStepBar).
-  const stage = useWorkflowState(ev.applicantId)?.stage?.kind ?? null;
-
   return (
     <PageContainer>
       <PageHeader
         title={localized(ev.phaseName, locale)}
         description={ev.applicantName}
-        aside={<RecruitmentStepBar current={stage} viewing="evaluation" />}
+        aside={<ApplicantStepBar applicantId={ev.applicantId} viewing="evaluation" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },

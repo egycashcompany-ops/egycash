@@ -26,8 +26,7 @@ import { CandidateTimeline } from '../../timeline/components/CandidateTimeline';
 import { useApplicant } from '../../applicants/api/applicant-queries';
 import { RecommendationCard } from '../../shared/RecommendationCard';
 import { useJobOffer } from '../api/job-offer-queries';
-import { useWorkflowState } from '../../shared/useWorkflowMutation';
-import { RecruitmentStepBar } from '../../shared/RecruitmentStepBar';
+import { ApplicantStepBar } from '../../shared/ApplicantStepBar';
 
 type ActionKind = 'send' | 'accept' | 'reject' | 'withdraw' | null;
 
@@ -63,15 +62,11 @@ export const JobOfferDetailPage = (): JSX.Element => {
   const isSent = o.status === 'sent';
   const canRevise = isDraft || isSent;
 
-  // The bar draws where the CANDIDATE stands, not where this screen sits — the two are
-  // different facts and used to be conflated (see RecruitmentStepBar).
-  const stage = useWorkflowState(o.applicantId)?.stage?.kind ?? null;
-
   return (
     <PageContainer>
       <PageHeader
         title={t('offers.detail.title', { name: o.applicantName })}
-        aside={<RecruitmentStepBar current={stage} viewing="jobOffer" />}
+        aside={<ApplicantStepBar applicantId={o.applicantId} viewing="jobOffer" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.offers'), to: '/job-offers' },

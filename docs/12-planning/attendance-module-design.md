@@ -18,11 +18,10 @@
 > production code cites this document by section, and a renumber would break every citation it
 > was written to make openable.
 >
-> **Still NOT settled:**
->
-> * **D12-T** — the **transport**: protocol, push or pull, connection, payload shape, device-side
->   identity and whether the unit reports direction. §17.4 states exactly what is missing and why
->   guessing any of it is worse than waiting. **Open, and blocking AT-D3 only.**
+> **Nothing is left open.** D12-T — the transport — was answered on 2026-08-31 from the physical
+> unit, a real 12,732-row export and the owner's statement about the network. §17.4 records each
+> fact with what established it, including the measurement showing the vendor's file export is
+> unusable and why that makes the device's own push the ingestion path.
 >
 > HR order: Attendance → Payroll → Training → Performance → Medical → Termination.
 
@@ -580,35 +579,67 @@ shapes stay named neutrally, exactly as v1.2 left them:
 | **device → ECMS (push)** | the device initiates HTTP to the server on its own. Needs an **ingress that ECMS does not have**: a route outside the permission model, a non-JSON body, and a way to authenticate a device rather than a user. |
 | **file import** | punch files are uploaded and processed. Needs an upload path and a parser; the Files module already exists. |
 
-### 17.4 D12-T — the transport. **OPEN, and blocking.**
+### 17.4 D12-T — the transport. **SETTLED (owner-supplied evidence, 2026-08-31).**
 
-Six facts are required before a single line of connector code is worth writing. **Not one of them
-is discoverable from this repository**, because no integration was ever built:
+Six of the seven facts §17.4 demanded were answered from the physical unit and a real export; the
+seventh was answered by the owner. Every one is recorded with what answered it, because a fact
+whose source is not stated is a guess with better manners.
 
-1. the make and model, **confirmed against the physical unit**;
-2. the protocol it actually speaks, as configured;
-3. **push or pull** — and, decisively, whether the ECMS host can reach the device's network at all.
-   A cloud server cannot pull from a device on an office LAN without an agent inside that network,
-   and that single fact changes the whole shape of the work;
-4. connection details;
-5. the wire/export format — **one real export file answers this, and questions 6 and 7 with it**;
-6. what identifies the employee on the device: our employee number, or the device's own enrolment
-   id (import keys on `employeeNumber` today);
-7. whether the unit reports IN/OUT or only a timestamp (the engine pairs first-in/last-out when the
-   direction is `unknown`).
+| # | fact | answer | how it was established |
+|---|---|---|---|
+| 1 | make and model | **ZKTeco K40 Pro**. SN `GED7241700280`, MAC `00:17:61:10:35:1e`, platform `ZLM60_TFT`, firmware `8.0.4.3-20230515` | photographed from the unit's own Device Info and Firmware Info screens |
+| 2 | protocol | **ADMS** (`Server Mode: ADMS`), with **Push Service `2.0.33S-20220613`** present on the unit | the unit's Cloud Server Setting and Firmware Info screens |
+| 3 | push or pull | **PUSH** — the device initiates. And **ECMS cannot reach the device's network**, so a **local relay inside that network** receives the push and forwards it | the ADMS mode above; the network fact stated by the owner |
+| 4 | connection | `Server Address` is `0.0.0.0` — **unconfigured**. `Enable Domain Name: ON`, `HTTPS: ON`, `Enable Proxy Server: OFF` | the unit's Cloud Server Setting screen |
+| 5 | wire format | the vendor's **file export is unusable** — see the box below | measured over a 12,732-row export from this device |
+| 6 | device-side identity | **`Ac-No`, the device's own enrolment id — NOT the ECMS employee number** | measured: 257 distinct ids over `1` … `702255`, prefixes 100/101/102/200/300/301/702, against a zero-padded global sequence starting `000001` |
+| 7 | IN/OUT | **timestamp only.** The export has no direction column at all | measured: the six columns are `Ac-No`, `Name`, `sTime`, `Verify Mode`, `Machine`, `Exception` |
 
-**A note on hardware, recorded as provenance and not as a decision.** v1.2 §17 stated that *"the
-organization has ZKTeco K40 Pro hardware on the network."* That sentence has never been confirmed
-against the unit, and it sat in a document that had never reached `main` — so the only place in the
-entire system naming the hardware was one nobody could open. It is preserved here as the origin of
-the claim. **It is not a design input, no adapter is being written against it, and D12.6 exists
-precisely so that the answer is a leaf rather than a foundation.**
+**The v1.2 hardware sentence turned out to be right, and it is worth saying why that changes
+nothing about how it was treated.** «ZKTeco K40 Pro» sat in a document nobody could open, unverified,
+and was recorded in v1.3 as provenance rather than as a design input. It has now been confirmed —
+by a photograph of the unit, not by the sentence. Had it been wrong, nothing built between those
+two revisions would have had to change, which is the property that made it safe to carry.
 
-**Why guessing is worse than waiting.** A connector built on an assumed format does not fail
-loudly; it produces *plausible* punches — shifted by a timezone, paired in the wrong order, or
-attributed to the wrong person by an enrolment id that happened to collide with an employee number.
-Those rows flow into the derivation, the freeze and the payroll feed. The failure surfaces as a
-wrong salary weeks later, with the evidence trail pointing at a machine that "worked".
+#### The export file is EVIDENCE THAT THE FILE PATH IS THE WRONG PATH
+
+A 12,732-row export from this device, taken through the vendor's own export dialog, carries three
+independent corruptions. Each alone would disqualify it; together they are the §17.4 failure mode
+happening in a file somebody would otherwise have imported.
+
+| corruption | measured | what it would have produced |
+|---|---|---|
+| **63% of rows have no timestamp at all** | 8,021 of 12,732 rows have an empty `sTime`, in five contiguous blocks that align exactly with the five months in the file | two thirds of a month's attendance silently absent — every one of those days derived as `absent` |
+| **the AM/PM marker is destroyed** | every surviving timestamp ends in `U+FFFD`, the replacement character; hours run **1–12**, so the clock is 12-hour and the marker is the only thing separating 03:00 from 15:00 | every punch ambiguous by twelve hours — a morning arrival priced as an afternoon one |
+| **day and month cannot be told apart** | the surviving rows are five clean month-blocks (4,5,6,7,8) whose second component **never exceeds 12**, and 37.0% of rows survive against the 39.3% expected if only days 1–12 do | a locale-dependent date coercion happened. Which component is the day is not recoverable from the file, and reading it wrongly moves a punch by months |
+
+The third is the one worth staring at: the file *looks* complete and sorted, every surviving row
+*looks* well-formed, and nothing in it announces that a spreadsheet reinterpreted two thirds of its
+dates on the way out. That is exactly what §17.4 predicted — *"a connector built on an assumed
+format does not fail loudly; it produces plausible punches"* — and it is the reason the ingestion
+path is the device's own push, never a file somebody exports.
+
+#### The shape that follows
+
+```
+K40 Pro  ──ADMS push (HTTP, device-initiated)──►  local relay, inside the office network
+                                                        │
+                                                        └──HTTPS──►  ECMS
+                                                                     POST /hr/attendance/punches/import
+```
+
+The relay exists because of fact 3 and nothing else: ECMS cannot reach the device, and the device
+can reach the relay. It is a forwarder — it translates one payload into the import contract and
+holds rows until ECMS acknowledges them. It decides nothing: not who an enrolment is, not which
+branch a punch belongs to, not whether a row is late enough to quarantine. Every one of those
+answers already lives in ECMS, and a relay that duplicated any of them would be a second place
+where attendance could be wrong.
+
+**AT-D3 builds the half that is transport-independent** — the enrolment map (fact 6), because no
+transport can attribute a punch to a person without it, and the measurement above proves ECMS
+currently cannot. **AT-D4 builds the relay and the device health surface**, and the exclusivity
+switch stays behind that health work exactly as D12.8 requires: device-only attendance must not be
+switched on before somebody can see that a device has gone quiet.
 
 ### 17.5 What proceeds without D12-T, and what does not
 
@@ -616,8 +647,8 @@ wrong salary weeks later, with the evidence trail pointing at a machine that "wo
 |---|---|
 | **AT-D1** — device entity, registry, branch scope, `branchIdAtPunch` from the device (D12.5, D12.7) | **no** — and it fixes a dead flag today |
 | **AT-D2** — `regularization` split from `manual` (D12.3, D12.4) | **no** — and it ends a live conflation today |
-| **AT-D3** — port, adapter, ingestion funnel (D12.6) | **yes, entirely** |
-| **AT-D4** — health, last-seen, alarm (D12.8) | partly |
+| **AT-D3** — the enrolment map: which device id is which employee (D12-T·6) | **no** — the mapping is transport-independent, and no transport can attribute a punch without it |
+| **AT-D4** — the relay, the ADMS receiver and device health (D12.6, D12.8) | **yes, entirely** |
 | **AT-D5** — exclusivity, gated on AT-D4 (D12.1, D12.8) | no |
 
 **Nothing in the shipped module depends on D12-T being answered.** Manual and web punches work, the
@@ -693,11 +724,14 @@ document, so the "frozen design" that **26** files across the API and the web ci
   can never fire on a device punch, because import stamps the employee's own branch into a field
   documented as *where the punch physically happened* (D12.7). And an approved two-step
   regularization is **indistinguishable in the data** from an HR hand-entry — both `manual` (D12.3).
-- **D12-T — transport still OPEN (§17.4).** Protocol, push/pull, connection, wire format,
-  device-side identity and direction reporting. None is discoverable from this repository, and none
-  is assumed. The v1.2 hardware sentence is preserved as **provenance, explicitly not as a design
-  input** — it was never confirmed against the unit, and it lived in a document nobody could open.
-- **D6-R unchanged and still open.** It was not among the rulings, so it is not touched here.
+- **D12-T — transport ANSWERED (§17.4, 2026-08-31).** From the unit itself, a real export and the
+  owner's statement about the network. The v1.2 hardware sentence turned out to be correct, and it
+  was still right to carry it as **provenance rather than as a design input**: nothing built between
+  the two revisions would have had to change had it been wrong, which is the property that made it
+  safe to carry. The export measurement is the other half of the answer — it disqualifies the file
+  path and leaves the device's own push as the ingestion route.
+- **D6-R — ANSWERED (option C, 2026-08-31).** An unfinished day is named on the payslip rather than
+  blocking it; §4 records the ruling and the measured cost that argued against blocking.
 
-**Not frozen against further change; frozen against guessing.** AT-D1 and AT-D2 proceed on the
-settled model. AT-D3 does not begin until D12-T is answered from the physical device.
+**Not frozen against further change; frozen against guessing.** Every decision in this document now
+rests on a ruling or a measurement, and §17.4 names which.

@@ -215,6 +215,7 @@ describe('the compensation vocabulary', () => {
       'legacyAllowancesIgnored',
       'netBelowZero',
       'leaveDaysAlsoPriced',
+      'incompleteDay',
     ]);
   });
 

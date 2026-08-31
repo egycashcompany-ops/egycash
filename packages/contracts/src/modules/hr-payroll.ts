@@ -363,11 +363,19 @@ export type CompensationLineOrigin = (typeof COMPENSATION_LINE_ORIGINS)[number];
  *     snapshot counts the LEDGER's days by the leave type's own counting mode, halves included.
  *     Neither is wrong and neither is "the" number, so this reports the collision rather than
  *     silently dropping a line the organization deliberately assigned.
+ *   • `incompleteDay` (D6-R) — the frozen period contains a day this employee never completed: a
+ *     punch in, no punch out. Attendance closes such a day as `incomplete` and never guesses what
+ *     it was worth, so it contributes ZERO to every quantity a pay item multiplies. That is the
+ *     safe half of D6 and it stays; what was missing is that nobody was told. Until this warning
+ *     the day passed through the calculation in silence, and a day priced at nothing looks exactly
+ *     like a day that was never worked. Raised only when attendance actually reaches this
+ *     payslip's money — see the rules module — so it names a real under-count, not a hypothetical.
  */
 export const COMPENSATION_WARNINGS = [
   'legacyAllowancesIgnored',
   'netBelowZero',
   'leaveDaysAlsoPriced',
+  'incompleteDay',
 ] as const;
 export type CompensationWarning = (typeof COMPENSATION_WARNINGS)[number];
 

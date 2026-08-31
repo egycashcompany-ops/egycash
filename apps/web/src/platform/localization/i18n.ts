@@ -1564,6 +1564,8 @@ const en: Record<string, string> = {
   'payroll.compensation.warning.netBelowZero': 'Deductions exceed earnings this month.',
   'payroll.compensation.warning.leaveDaysAlsoPriced':
     'A pay item on this employee is priced per day of leave, and leave is already deducted below. The same absence is being charged twice — and by two different counts, since attendance counts every calendar day of a leave while the ledger counts by the leave type’s own rule.',
+  'payroll.compensation.warning.incompleteDay':
+    'A day in this period was never completed — someone punched in and no punch out ever arrived. Attendance does not guess what such a day was worth, so it counted as nothing here. Regularize the day if it should have been paid.',
   'payroll.compensation.quantity': 'Counted',
   'payroll.compensation.unit.days': 'days',
   'payroll.compensation.unit.minutes': 'minutes',
@@ -7839,6 +7841,8 @@ const ar: Record<string, string> = {
   'payroll.compensation.warning.netBelowZero': 'الاستقطاعات تتجاوز الاستحقاقات هذا الشهر.',
   'payroll.compensation.warning.leaveDaysAlsoPriced':
     'للموظف بند أجر يُسعَّر بيوم الإجازة، والإجازة مخصومة بالأسفل أصلًا. الغياب نفسه يُحتسب مرتين، وبعددين مختلفين: الحضور يعدّ كل يوم تقويمي في الإجازة، والدفتر يعدّ بقاعدة نوع الإجازة نفسه.',
+  'payroll.compensation.warning.incompleteDay':
+    'يوم في هذه الفترة لم يكتمل — سُجّل دخول ولم تصل بصمة انصراف. الحضور لا يخمّن قيمة يوم كهذا، فاحتُسب بصفر هنا. سوِّ اليوم إن كان يستحق أجرًا.',
   'payroll.compensation.quantity': 'المحسوب',
   'payroll.compensation.unit.days': 'يومًا',
   'payroll.compensation.unit.minutes': 'دقيقة',

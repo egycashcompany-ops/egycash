@@ -2466,7 +2466,8 @@ const en: Record<string, string> = {
   'employees.register.subtitle':
     'Direct onboarding without a recruitment pipeline (existing workforce / walk-in hire).',
   'employees.register.ocrTitle': 'National ID capture (optional)',
-  'employees.register.identityRequired': 'The Arabic full name and primary phone are required.',
+  'employees.register.identityRequired':
+    'The Arabic full name, the National ID and the primary phone are required.',
   'employees.register.employmentRequired':
     'Branch, department, job title and start date are required.',
   'employees.register.done': 'Employee {{code}} registered.',
@@ -8709,7 +8710,8 @@ const ar: Record<string, string> = {
   'employees.register.subtitle':
     'تسجيل مباشر دون المرور بمسار التوظيف (القوى العاملة الحالية / تعيين مباشر).',
   'employees.register.ocrTitle': 'التقاط بطاقة الرقم القومي (اختياري)',
-  'employees.register.identityRequired': 'الاسم الكامل بالعربية ورقم الهاتف الأساسي مطلوبان.',
+  'employees.register.identityRequired':
+    'الاسم الكامل بالعربية والرقم القومي ورقم الهاتف الأساسي مطلوبة.',
   'employees.register.employmentRequired': 'الفرع والإدارة والمسمى الوظيفي وتاريخ البدء مطلوبة.',
   'employees.register.done': 'تم تسجيل الموظف {{code}}.',
   'employees.register.rehireMatch':

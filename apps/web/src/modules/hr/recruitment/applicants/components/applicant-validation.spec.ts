@@ -19,7 +19,8 @@ const address = (patch: Partial<AddressForm> = {}): AddressForm => ({
 const form = (patch: Partial<FormState> = {}): FormState => ({
   fullNameAr: 'أحمد محمد',
   fullNameEn: '',
-  nationalId: '',
+  // A create-mode fixture must carry one: registration requires it now.
+  nationalId: '29001011201234',
   nationality: 'Egyptian',
   maritalStatus: '',
   religion: '',
@@ -58,6 +59,10 @@ describe('validateField', () => {
     expect(validateField('secondaryPhone', '   ')).toBeUndefined();
     expect(validateField('fullNameAr', '')).toBe('applicants.validation.required');
     expect(validateField('primaryPhone', '')).toBe('applicants.validation.required');
+    // The National ID joined the required set. Blank and whitespace both report it, so the
+    // `required` marker on the field is backed by a check rather than being decoration.
+    expect(validateField('nationalId', '')).toBe('applicants.validation.required');
+    expect(validateField('nationalId', '   ')).toBe('applicants.validation.required');
   });
 
   it('holds the Arabic name to Arabic and the Latin name to Latin', () => {
@@ -122,7 +127,15 @@ describe('validateForm', () => {
     expect(validateForm(form(), 'create')).toEqual({});
   });
 
-  it('does not demand identity fields when editing', () => {
+  it('demands the National ID when creating', () => {
+    expect(validateForm(form({ nationalId: '' }), 'create').nationalId).toBe(
+      'applicants.validation.required',
+    );
+  });
+
+  it('does not demand identity fields when editing — existing records stay editable', () => {
+    // The whole reason the rule binds CREATE only: there are records in the database with no
+    // National ID, and an edit form that demanded one would lock their own correction out.
     expect(validateForm(form({ nationalId: '' }), 'edit')).toEqual({});
   });
 

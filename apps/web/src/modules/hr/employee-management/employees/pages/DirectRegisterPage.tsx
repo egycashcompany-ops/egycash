@@ -12,6 +12,7 @@ import {
   type EmploymentType,
   type Locale,
   type MaritalStatus,
+  parseNationalId,
 } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useCan } from '../../../../../platform/rbac/Can';
@@ -81,7 +82,14 @@ export const DirectRegisterPage = (): JSX.Element => {
   const rehireMatch = useRehireCheck(nationalId);
 
   const submit = async (): Promise<void> => {
-    if (fullNameAr.trim().length < 2 || primaryPhone.trim() === '') {
+    // The National ID is required to create an employee, so it is guarded here with the other
+    // two: reaching the server to be told would cost a round-trip and land the message on the
+    // form rather than the field.
+    if (
+      fullNameAr.trim().length < 2 ||
+      primaryPhone.trim() === '' ||
+      parseNationalId(nationalId.trim()) === null
+    ) {
       toast.error(t('employees.register.identityRequired'));
       return;
     }

@@ -662,6 +662,12 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
     // The title is CREATED here rather than reused from `JOB_TITLE_ID`: that constant only ever
     // appears inside offer terms, and `reassign` resolves the placement against the real job-title
     // catalogue, where it does not exist. This is the same seeding `hr-placement.spec.ts` does.
+    //
+    // The placement carries the title ALONE, for the same reason: `DEPARTMENT_ID` is the same kind
+    // of offer-terms constant and is no more real to the catalogue. `placement-resolver.ts`
+    // validates each part only when it is supplied, and the position this test asserts comes from
+    // the title — so naming a department here would add a second thing to seed and prove nothing
+    // extra. `hr-placement.spec.ts` is where department and branch placement is covered.
     const titleRes = await request(app)
       .post('/api/v1/platform/job-titles')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -678,7 +684,7 @@ describe('awaiting-offer queue — who is in it, and never which stage they came
       .post(`/api/v1/hr/applicants/${applicant.id}/reassign`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        placement: { jobTitleId, departmentId: DEPARTMENT_ID },
+        placement: { jobTitleId },
         reason: 'a vacancy opened',
         version: (current.body.data as ApplicantDto).version,
       });

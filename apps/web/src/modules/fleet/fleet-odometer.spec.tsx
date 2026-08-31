@@ -87,6 +87,7 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   remainingKm: 3000,
   sinceServiceKm: 2000,
   lastServiceAt: '2026-06-01T00:00:00.000Z',
+  lastServiceVisitId: 'visit-1',
   ...o,
 });
 

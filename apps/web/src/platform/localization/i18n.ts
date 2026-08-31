@@ -3630,6 +3630,7 @@ const en: Record<string, string> = {
   'fleet.maintenance.inRange': 'Checked in',
   'fleet.maintenance.outRange': 'Checked out',
   'fleet.maintenance.legacyParts': 'Recorded as text',
+  'fleet.maintenance.isAlarmBaseline': 'Alarm baseline',
   'fleet.alarms.subtitle':
     'Derived per request from readings and the last counted service — never stored',
   'fleet.alarms.columns.level': 'Level',
@@ -9845,6 +9846,7 @@ const ar: Record<string, string> = {
   'fleet.maintenance.inRange': 'تاريخ الدخول',
   'fleet.maintenance.outRange': 'تاريخ الخروج',
   'fleet.maintenance.legacyParts': 'مسجلة كنص',
+  'fleet.maintenance.isAlarmBaseline': 'أساس الإنذار',
   'fleet.alarms.subtitle': 'تُشتق عند كل طلب من القراءات وآخر صيانة محسوبة — لا تُخزن أبداً',
   'fleet.alarms.columns.level': 'المستوى',
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',

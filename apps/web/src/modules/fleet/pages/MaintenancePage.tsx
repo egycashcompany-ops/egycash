@@ -11,11 +11,23 @@
 // it `open` ↔ `closed` and §2.6 stores no status beside them. «داخل الورشة» and «خرج من الورشة» are
 // the two halves of that field. The derived alarm level (FR-3) is a property of the VEHICLE, not a
 // maintenance status, and is deliberately not offered here as one.
+//
+// THE ALARM COLUMNS ARE THE SERVER'S PROJECTION, READ — never recomputed here. They come from the
+// SAME `GET /fleet/odometer/alarms` that the alarms board and the odometer log read, through the
+// same `useMaintenanceAlarms` hook and the same query key, so the three screens cannot disagree
+// about a vehicle: one engine (`computeAlarm`), one request, one cache entry. A future change to
+// the rule moves all three at once because there is only one thing to change.
+//
+// They describe the VEHICLE, not the row. Several visits of one car therefore repeat its figures,
+// which is correct — «متبقٍ ٤٠٠ كم» is a fact about the car, not about the visit being looked at.
+// What IS about the row is `lastServiceVisitId`: the visit that set the current baseline is marked,
+// so a reader can see which service the countdown is measured from.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
   type FleetCatalogItemDto,
+  type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type Locale,
 } from '@ecms/contracts';
@@ -43,6 +55,7 @@ import { formatDate, formatNumber, localized } from '../../../shared/lib/format'
 import {
   useDeleteMaintenance,
   useFleetCatalog,
+  useMaintenanceAlarms,
   useMaintenanceVisits,
   useReopenMaintenance,
   useVehicles,
@@ -50,6 +63,7 @@ import {
 import { useDriverHrFilter } from '../api/driver-hr-filter';
 import { vehicleCodeOptions } from '../lib/vehicle-code-options';
 import { EmployeeName } from '../components/EmployeeName';
+import { AlarmBadge, RemainingKm } from '../components/AlarmBadge';
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -152,6 +166,25 @@ export const MaintenancePage = (): JSX.Element => {
     !blocked && !emptyMatch,
   );
   const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
+
+  /**
+   * The vehicle's maintenance alarm, from the ONE server projection the other two screens read.
+   *
+   * `useMaintenanceAlarms` is the same hook, the same endpoint and the same query key the alarms
+   * board and the odometer log use, so all three repaint together and none of them can hold a
+   * different answer for the same car. Nothing about the level, the interval or the thresholds is
+   * decided here — this screen only looks the vehicle up.
+   *
+   * Gated on `fleetOdometer.view` because that is the grant the endpoint carries. A reader who may
+   * see the workshop but not the odometer gets the visits without these four columns rather than a
+   * 403 that would take the whole page down — see the report's open question about that grant.
+   */
+  const alarmsQuery = useMaintenanceAlarms(can('fleetOdometer.view'));
+  const alarmByVehicle = useMemo(() => {
+    const map = new Map<string, FleetMaintenanceAlarmDto>();
+    for (const alarm of alarmsQuery.data ?? []) map.set(alarm.vehicleId, alarm);
+    return map;
+  }, [alarmsQuery.data]);
 
   // The code FILTER asks the registry itself, one search at a time — a fleet outgrows any single
   // page, so joining against one would bound the answer at `MAX_PAGE_SIZE` cars. The row's own
@@ -353,6 +386,75 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.maintenance.fields.odometerAtService'),
       align: 'end',
       render: (visit) => formatNumber(visit.odometerAtService, locale),
+    },
+    {
+      // ── the vehicle's alarm, read from the shared projection ────────────────
+      key: 'alarmLevel',
+      header: t('fleet.alarms.columns.level'),
+      render: (visit) => {
+        const alarm = alarmByVehicle.get(visit.vehicleId);
+        if (alarm === undefined) return dash;
+        return (
+          <span className="flex items-center gap-1.5">
+            <AlarmBadge level={alarm.level} />
+            {/*
+              THIS visit is the one the countdown is measured from. `lastServiceVisitId` is the
+              server's own answer — the id of the row its baseline aggregate picked — so the mark
+              cannot drift from the figures beside it the way a second client-side "find the last
+              closed counting visit" would.
+            */}
+            {alarm.lastServiceVisitId === visit.id && (
+              <Badge tone="success">{t('fleet.maintenance.isAlarmBaseline')}</Badge>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'lastServiceAt',
+      header: t('fleet.vehicle.lastService'),
+      render: (visit) => {
+        const alarm = alarmByVehicle.get(visit.vehicleId);
+        if (alarm === undefined) return dash;
+        // No closed counting visit yet — the same sentence the alarms board prints, because it is
+        // the same state: there is no cycle to measure, not a cycle with nothing in it.
+        return alarm.lastServiceAt === null ? (
+          <span className="text-slate-500 dark:text-slate-400">{t('fleet.alarms.noBaseline')}</span>
+        ) : (
+          <span className="tabular-nums">{formatDate(alarm.lastServiceAt, locale)}</span>
+        );
+      },
+    },
+    {
+      key: 'sinceServiceKm',
+      header: t('fleet.alarms.columns.sinceService'),
+      align: 'end',
+      render: (visit) => {
+        const alarm = alarmByVehicle.get(visit.vehicleId);
+        if (alarm === undefined || alarm.sinceServiceKm === null) return dash;
+        return (
+          <span className="tabular-nums">
+            {t('fleet.odometer.kmValue', { km: formatNumber(alarm.sinceServiceKm, locale) })}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'remainingKm',
+      header: t('fleet.alarms.columns.remaining'),
+      align: 'end',
+      render: (visit) => {
+        const alarm = alarmByVehicle.get(visit.vehicleId);
+        if (alarm === undefined) return dash;
+        // A negative remainder is OVERDUE, and says so — see `RemainingKm`.
+        return (
+          <RemainingKm
+            remainingKm={alarm.remainingKm}
+            locale={locale}
+            formatNumber={formatNumber}
+          />
+        );
+      },
     },
     {
       key: 'actions',

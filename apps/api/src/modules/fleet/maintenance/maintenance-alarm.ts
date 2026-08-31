@@ -124,6 +124,7 @@ export const computeAlarms = async (
       remainingKm: result.remainingKm,
       sinceServiceKm: result.sinceServiceKm,
       lastServiceAt: baseline === null ? null : baseline.serviceDate.toISOString(),
+      lastServiceVisitId: baseline?.visitId ?? null,
     };
   });
 };

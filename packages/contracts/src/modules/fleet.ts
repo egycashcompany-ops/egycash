@@ -509,6 +509,14 @@ export interface FleetMaintenanceAlarmDto {
   remainingKm: number | null;
   sinceServiceKm: number | null;
   lastServiceAt: string | null;
+  /**
+   * The VISIT that set the baseline — the last closed, alarm-counting workshop visit.
+   *
+   * `null` for exactly the reason `lastServiceAt` is: no such visit exists, so there is no cycle
+   * to measure and no record to point at. Present so a reader looking at a remaining-km figure can
+   * reach the service it is counted from, on any screen that shows the alarm.
+   */
+  lastServiceVisitId: string | null;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────

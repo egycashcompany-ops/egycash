@@ -33,6 +33,7 @@ import {
   type UpdateOperationsShipment,
 } from '@ecms/contracts';
 import { featureKey, listKey } from '../../../shared/lib/query-keys';
+import { useSetSetting } from '../../../platform/settings/settings-api';
 import { store } from '../../../store';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { executionErrorMessage, isStateConflict } from '../mobile/execution-errors';
@@ -361,6 +362,23 @@ export const useSetCrewRequirements = () => {
       body: SetOperationsCrewRequirements;
     }) => api.setCrewRequirements(employeeId, body),
     onSuccess: invalidate,
+  });
+};
+
+/**
+ * Operations settings write. The platform owns the endpoint; what OPERATIONS knows is that
+ * `operations.crewDepartmentIds` decides who the crew IS — so changing it moves the pool, the
+ * board that draws from the pool, and the standing crew built out of the same people. Invalidating
+ * only the roster would leave a planner looking at a board whose empty slots no longer match the
+ * names now on offer.
+ */
+export const useSetOperationsSetting = () => {
+  const qc = useQueryClient();
+  const invalidate = useRosterInvalidation();
+  return useSetSetting(() => {
+    void invalidate();
+    void qc.invalidateQueries({ queryKey: operationsKeys.crewBoard });
+    void qc.invalidateQueries({ queryKey: operationsKeys.standingCrew });
   });
 };
 

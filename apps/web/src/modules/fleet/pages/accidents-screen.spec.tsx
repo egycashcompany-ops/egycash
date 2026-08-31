@@ -49,7 +49,13 @@ const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
 });
 
 const vehicle = (id: string, code: string): FleetVehicleDto =>
-  ({ id, code, plateNumber: `س ص ${code}`, status: 'active', inWorkshop: false }) as FleetVehicleDto;
+  ({
+    id,
+    code,
+    plateNumber: `س ص ${code}`,
+    status: 'active',
+    inWorkshop: false,
+  }) as FleetVehicleDto;
 
 const totals = (over: Partial<FleetAccidentTotalsDto> = {}): FleetAccidentTotalsDto => ({
   count: 180,
@@ -206,7 +212,9 @@ describe('the columns the reader asked for, in order', () => {
   it('shows NO status column — the state is the colour, the action and a word for screen readers', () => {
     const html = render({ seed: withRows([accident({ status: 'closed' })]) });
     expect(html).not.toContain('<th'.concat('>الحالة'));
-    const headers = [...html.matchAll(/<th[^>]*>(?:<[^>]+>)*([^<]*)/g)].map((m) => (m[1] ?? '').trim());
+    const headers = [...html.matchAll(/<th[^>]*>(?:<[^>]+>)*([^<]*)/g)].map((m) =>
+      (m[1] ?? '').trim(),
+    );
     expect(headers).not.toContain('الحالة');
     // …but the word is still THERE, for a reader the tint does not reach.
     expect(rowWith(html, 'فنوس شمال')).toContain('sr-only');
@@ -288,7 +296,8 @@ describe('the figures above the table are the SERVER’s', () => {
     // Seed the rows but NOT the totals: a strip that defaulted to 0 would state, briefly and
     // confidently, that the search is worth nothing.
     const html = render({
-      seed: (qc) => qc.setQueryData(listKey('fleet', 'accidents', listParams()), paged([accident()])),
+      seed: (qc) =>
+        qc.setQueryData(listKey('fleet', 'accidents', listParams()), paged([accident()])),
     });
     expect(html).not.toContain('22,005.00');
     expect(html, 'a skeleton, not a number').toContain('animate-pulse');
@@ -339,6 +348,62 @@ describe('the green row is the DATABASE’s status', () => {
   });
 });
 
+describe('the screen is laid out to be read, not scanned', () => {
+  // The pixels are proven in a browser; what these hold is the WIRING that produces them, so a
+  // later edit cannot quietly drop a prop and leave the screen looking like it did before.
+  it('names each total ABOVE its figure, and centres both', () => {
+    const html = render({ seed: withRows([accident()]) });
+    const strip = html.slice(html.indexOf('grid-cols-5'));
+    const label = strip.indexOf('اجمالي المبلغ المحصل');
+    const value = strip.indexOf('22,005.00');
+    expect(label, 'the label is in the markup').toBeGreaterThan(-1);
+    expect(value, 'and so is the figure').toBeGreaterThan(-1);
+    expect(label, 'the label comes first').toBeLessThan(value);
+    expect(strip, 'and the tile centres its contents').toContain('items-center');
+    expect(strip).toContain('text-center');
+  });
+
+  it('gives the totals a figure larger than the word beside it', () => {
+    const strip = render({ seed: withRows([accident()]) }).slice(
+      render({ seed: withRows([accident()]) }).indexOf('grid-cols-5'),
+    );
+    expect(strip, 'the figure').toContain('text-2xl');
+    expect(strip, 'the label, one step down').toContain('text-sm');
+  });
+
+  it('runs the table one step up the type scale', () => {
+    const html = render({ seed: withRows([accident()]) });
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
+    const bodyRow = rowWith(html, 'فنوس شمال');
+    expect(head, 'headers are no longer text-xs').not.toContain('text-xs');
+    expect(head).toContain('text-sm');
+    expect(bodyRow, 'and the cells are no longer text-sm').toContain('text-base');
+  });
+
+  it('sizes the filter controls to match, and keeps them on ONE row on desktop', () => {
+    const html = render();
+    // The threshold is this bar's own, measured: seven controls at this size do not fit at 1400.
+    expect(html).toContain('min-[1440px]:flex-nowrap');
+    expect(html).not.toContain('min-[1400px]:flex-nowrap');
+    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
+    const controls = [...bar.matchAll(/<(?:input|select)[^>]*class="([^"]*)"/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(controls.length, 'code, vehicle, culprit, from, to, status').toBe(6);
+    for (const cls of controls) expect(cls, cls).toContain('text-base');
+  });
+
+  it('puts «من» and «إلى» BESIDE their boxes, not above them', () => {
+    // A stacked label is what made the bar two rows tall and pushed the seventh control off it.
+    const html = render();
+    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
+    const group = bar.slice(bar.indexOf('accidents-from') - 400, bar.indexOf('accidents-from'));
+    expect(group, 'the label and the box share a row').toContain('flex shrink-0 items-center');
+    expect(bar).toContain('for="accidents-from"');
+    expect(bar).toContain('for="accidents-to"');
+  });
+});
+
 describe('a failed fetch states the failure instead of inventing a screen', () => {
   it('shows no rows, no green, and no figures when the list fails', () => {
     const html = render({
@@ -358,15 +423,16 @@ describe('a failed fetch states the failure instead of inventing a screen', () =
 describe('the filter bar', () => {
   it('carries the seven controls on one row, in the order asked for', () => {
     const html = render();
-    expect(html).toContain('min-[1400px]:flex-nowrap');
+    // The single-row threshold is this bar's own — see the `singleRowFrom` case below.
+    expect(html).toContain('flex-nowrap');
     const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
     // Matched on things unique to each control rather than on its visible word, which can occur
     // elsewhere in the markup: two placeholders, the "all vehicles" option, the two date ids, and
     // the "all statuses" option.
     const order = [
-      'ابحث بالكود',
+      'placeholder="كود"',
       'كل السيارات',
-      'ابحث بالمتسبب',
+      'اسم المتسبب',
       'accidents-from',
       'accidents-to',
       'كل الحالات',

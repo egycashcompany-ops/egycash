@@ -47,9 +47,27 @@ const wideColumns: Record<3 | 4 | 5, string> = {
 export const StatStrip = ({
   items,
   columns = 4,
+  labelFirst = false,
 }: {
   items: StatStripItem[];
   columns?: 3 | 4 | 5;
+  /**
+   * Put the LABEL above the figure and give both a size you can read across a desk.
+   *
+   * The default puts the number first and aligns everything to the reading edge, which is right
+   * for a band the reader glances at while their attention is on the list below it. It is wrong
+   * for a strip that is being READ — five money totals whose only difference is which word sits
+   * beside them. Leading with the number there asks the reader to find the figure and then hunt
+   * for what it counts; leading with the label reads as a sentence and lands the figure where the
+   * eye already is.
+   *
+   * This also CENTRES each tile, horizontally and vertically. Edge-aligned tiles of five different
+   * label lengths give five ragged columns of numbers with nothing to line them up; centred, each
+   * figure sits under its own label and the row reads as five of one thing. The tiles are grid
+   * cells and stretch to the tallest, so `justify-center` keeps every figure on the same line even
+   * when one label wraps and the others do not.
+   */
+  labelFirst?: boolean;
 }): JSX.Element => (
   // `gap-px` over a coloured background draws the hairlines — one rule that works in both
   // directions, wraps with the grid, and needs no RTL mirror the way `divide-x` would.
@@ -58,6 +76,38 @@ export const StatStrip = ({
   >
     {items.map((item) => {
       const Icon = item.icon;
+      const figure =
+        item.loading === true ? (
+          <Skeleton className={cn('w-10', labelFirst ? 'h-7' : 'h-5')} />
+        ) : (
+          <span
+            className={cn(
+              'block font-semibold leading-tight tabular-nums',
+              labelFirst ? 'text-2xl' : 'text-xl',
+              item.value === undefined
+                ? 'text-slate-300 dark:text-slate-600'
+                : item.active === true
+                  ? 'text-brand-700 dark:text-brand-300'
+                  : 'text-slate-900 dark:text-white',
+            )}
+          >
+            {item.value ?? '—'}
+          </span>
+        );
+      const label = (
+        <span
+          className={cn(
+            'block truncate leading-tight',
+            labelFirst
+              ? // First line of a tile that is being read, not glanced at: big enough to name the
+                // figure under it without competing with it, and darker than a caption would be.
+                'text-sm font-medium text-slate-600 dark:text-slate-300'
+              : 'text-[11px] text-slate-500 dark:text-slate-400',
+          )}
+        >
+          {item.label}
+        </span>
+      );
       const body = (
         <>
           {Icon !== undefined && (
@@ -70,32 +120,28 @@ export const StatStrip = ({
               )}
             />
           )}
-          <span className="min-w-0">
-            {item.loading === true ? (
-              <Skeleton className="h-5 w-10" />
+          {/* Both orders are drawn from the same two spans — only their sequence differs. */}
+          <span className={cn('min-w-0', labelFirst && 'flex w-full flex-col items-center gap-2')}>
+            {labelFirst ? (
+              <>
+                {label}
+                {figure}
+              </>
             ) : (
-              <span
-                className={cn(
-                  'block text-xl font-semibold leading-tight tabular-nums',
-                  item.value === undefined
-                    ? 'text-slate-300 dark:text-slate-600'
-                    : item.active === true
-                      ? 'text-brand-700 dark:text-brand-300'
-                      : 'text-slate-900 dark:text-white',
-                )}
-              >
-                {item.value ?? '—'}
-              </span>
+              <>
+                {figure}
+                {label}
+              </>
             )}
-            <span className="block truncate text-[11px] leading-tight text-slate-500 dark:text-slate-400">
-              {item.label}
-            </span>
           </span>
         </>
       );
 
       const shell = cn(
-        'flex items-center gap-2.5 px-4 py-2.5 text-start',
+        'flex gap-2.5',
+        labelFirst
+          ? 'flex-col items-center justify-center px-5 py-4 text-center'
+          : 'items-center px-4 py-2.5 text-start',
         item.active === true ? 'bg-brand-50/70 dark:bg-brand-950/40' : 'bg-white dark:bg-slate-900',
       );
 

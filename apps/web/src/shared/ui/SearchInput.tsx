@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { useT } from '../../platform/localization/useT';
 import { cn } from '../lib/cn';
+import { type ControlTextScale } from './form';
 import { CloseIcon, SearchIcon } from './icons';
 
 export const SearchInput = ({
@@ -12,12 +13,19 @@ export const SearchInput = ({
   placeholder,
   debounceMs = 300,
   className,
+  textScale = 'compact',
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
   debounceMs?: number;
   className?: string;
+  /**
+   * How big the box's own text is — a PROP rather than a class, for the reason `form.tsx` spells
+   * out: `cn` has no tailwind-merge, so a size passed as a class would be fighting the one already
+   * there and losing. `className` still styles the wrapper, which is where width belongs.
+   */
+  textScale?: ControlTextScale;
 }): JSX.Element => {
   const t = useT();
   const [text, setText] = useState(value);
@@ -52,7 +60,10 @@ export const SearchInput = ({
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder ?? t('common.search')}
-        className="w-full rounded-lg border border-slate-200 bg-white py-2 pe-9 ps-9 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+        className={cn(
+          'w-full rounded-lg border border-slate-200 bg-white py-2 pe-9 ps-9 text-slate-800 placeholder:text-slate-400 focus:border-brand-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100',
+          textScale === 'comfortable' ? 'text-base' : 'text-sm',
+        )}
       />
       {text !== '' && (
         <button

@@ -1,7 +1,7 @@
 // `noAlarmReason` — the guard that stopped the calculation, named.
 //
-// `level: 'none'` is five different situations wearing one word: a cycle measured and found
-// healthy, and four separate reasons a cycle could not be measured at all. Everything downstream
+// `level: 'none'` is six different situations wearing one word: a cycle measured and found
+// healthy, and five separate reasons a cycle could not be measured at all. Everything downstream
 // showed them identically, so a reader could not tell "this car is fine" from "this car's type
 // has no service interval", nor know what to go and fix.
 //
@@ -30,6 +30,24 @@ const READINGS = [
   { label: 'reading BEFORE the service', latestReading: 104_000, latestReadingDate: D('2026-06-01') },
   { label: 'reading ON the service day', latestReading: 104_000, latestReadingDate: D(SERVICE_DAY) },
   { label: 'reading AFTER the service', latestReading: 104_000, latestReadingDate: D('2026-06-20') },
+  // The same three dates with a reading BELOW the baseline. Position against the baseline and
+  // position in time are independent axes, and the guard that reads one must not be reachable by
+  // moving the other — so both are varied together rather than one at a time.
+  {
+    label: 'reading BELOW the baseline, BEFORE the service',
+    latestReading: 99_900,
+    latestReadingDate: D('2026-06-01'),
+  },
+  {
+    label: 'reading BELOW the baseline, ON the service day',
+    latestReading: 99_900,
+    latestReadingDate: D(SERVICE_DAY),
+  },
+  {
+    label: 'reading BELOW the baseline, AFTER the service',
+    latestReading: 99_900,
+    latestReadingDate: D('2026-06-20'),
+  },
 ] as const;
 
 const BASELINES = [
@@ -47,6 +65,7 @@ const expectedReason = (input: AlarmInput): string | null => {
   if (input.latestReading === null || input.latestReadingDate === null) return 'noReading';
   if (input.baselineCounter === null || input.baselineDate === null) return 'noService';
   if (input.latestReadingDate <= input.baselineDate) return 'readingOlderThanService';
+  if (input.latestReading < input.baselineCounter) return 'baselineAboveReading';
   return null;
 };
 
@@ -60,9 +79,9 @@ const CASES = INTERVALS.flatMap((i) =>
 );
 
 describe('every combination reports the guard that actually fired', () => {
-  it('covers all 16 of them', () => {
+  it('covers all 28 of them', () => {
     expect(CASES).toHaveLength(INTERVALS.length * READINGS.length * BASELINES.length);
-    expect(CASES).toHaveLength(16);
+    expect(CASES).toHaveLength(28);
   });
 
   for (const { label, input } of CASES) {
@@ -153,6 +172,34 @@ describe('the specific traps, named', () => {
       expect(input.baselineDate).not.toBeNull();
       expect(input.intervalKm).toBeGreaterThan(0);
     }
+  });
+
+  it('baselineAboveReading presupposes EVERY guard before it — including the date one', () => {
+    // The last guard, so it carries the most preconditions: it may only be reported when the
+    // interval exists, both numbers exist, AND the reading is already newer than the service.
+    // A reading below the baseline on or before the service day belongs to the date guard, and
+    // reaching this label there would mean the new guard had been moved in front of it.
+    for (const { input } of CASES) {
+      if (computeAlarm(input).noAlarmReason !== 'baselineAboveReading') continue;
+      expect(input.intervalKm).toBeGreaterThan(0);
+      expect(input.latestReading).not.toBeNull();
+      expect(input.latestReadingDate).not.toBeNull();
+      expect(input.baselineCounter).not.toBeNull();
+      expect(input.baselineDate).not.toBeNull();
+      expect(input.latestReadingDate!.getTime()).toBeGreaterThan(input.baselineDate!.getTime());
+      expect(input.latestReading!).toBeLessThan(input.baselineCounter!);
+    }
+  });
+
+  it('a reading below the baseline BEFORE the service is still readingOlderThanService', () => {
+    // Both conditions hold at once. The date guard is first, so it is the one that answers —
+    // the exact drift a guard inserted in the wrong place would produce.
+    expect(run({ latestReading: 99_900, latestReadingDate: D('2026-06-01') }).noAlarmReason).toBe(
+      'readingOlderThanService',
+    );
+    expect(run({ latestReading: 99_900, latestReadingDate: D(SERVICE_DAY) }).noAlarmReason).toBe(
+      'readingOlderThanService',
+    );
   });
 });
 

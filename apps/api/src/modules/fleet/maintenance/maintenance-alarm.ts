@@ -34,7 +34,7 @@ export interface AlarmResult {
    * WHICH guard returned, or `null` when the arithmetic ran.
    *
    * Reported from inside the guards themselves — the only place that knows. Deriving it anywhere
-   * else would mean a second copy of these four conditions, free to drift from the ones that
+   * else would mean a second copy of these five conditions, free to drift from the ones that
    * actually decide; this function stays the single source of truth for both the answer and the
    * reason there isn't one.
    *
@@ -48,6 +48,11 @@ export interface AlarmResult {
  * remaining = interval − (latestReading − counterAtLastService). Guards preserved from the
  * legacy view: no rule / no readings / no baseline ⇒ no data (never a false alarm), and a
  * reading OLDER than the last service says nothing about the new cycle.
+ *
+ * One guard the legacy did not have, added last so the four above keep their exact order and
+ * meaning: a reading BELOW the baseline it would be measured from. The legacy printed the
+ * negative result; this refuses it, because a negative distance travelled is not a small
+ * distance — it is two numbers that did not come off the same counter.
  */
 export const computeAlarm = (input: AlarmInput): AlarmResult => {
   const none = (noAlarmReason: FleetNoAlarmReason): AlarmResult => ({
@@ -60,6 +65,16 @@ export const computeAlarm = (input: AlarmInput): AlarmResult => {
   if (input.latestReading === null || input.latestReadingDate === null) return none('noReading');
   if (input.baselineCounter === null || input.baselineDate === null) return none('noService');
   if (input.latestReadingDate <= input.baselineDate) return none('readingOlderThanService');
+  // Both numbers exist and the reading is temporally eligible — and it is still BELOW the
+  // baseline. `latestReading - baselineCounter` would be a negative distance travelled, which is
+  // not a small figure to be shown cautiously: it is proof that the two came off different
+  // counters, so the subtraction measures nothing. Refused for the same reason the four guards
+  // above are — an unanswerable question gets no answer rather than a confident wrong one.
+  //
+  // Last, deliberately: it is the only guard that needs BOTH values present and the date already
+  // settled, so it can only be asked once the others have passed. It says nothing about which of
+  // the two numbers is wrong, and it does not make the baseline trustworthy.
+  if (input.latestReading < input.baselineCounter) return none('baselineAboveReading');
 
   const sinceServiceKm = input.latestReading - input.baselineCounter;
   const remainingKm = input.intervalKm - sinceServiceKm;

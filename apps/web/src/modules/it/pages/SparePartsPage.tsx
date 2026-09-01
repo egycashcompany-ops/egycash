@@ -9,6 +9,7 @@
 // `onHandQty` is DENORMALIZED from the movements by the same atomic write, so the number in this
 // table and the rows in the drawer can never disagree.
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type ItSparePartDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -28,6 +29,12 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { useItSparePartMovements, useItSpareParts } from '../api/it-queries';
 import { ReceiveStockDialog, SparePartDialog } from '../components/SparePartDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['q', 'active', 'belowMin', 'size', 'sort'] as const;
+
+const DEFAULT_SORT = 'name:asc';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -81,15 +88,37 @@ export const SparePartsPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
 
-  const [search, setSearch] = useState('');
-  const [active, setActive] = useState('true');
-  const [belowMin, setBelowMin] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sort, setSort] = useState<{ by: string; dir: 'asc' | 'desc' }>({
-    by: 'name',
-    dir: 'asc',
-  });
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to. A value equal to the screen's
+  // own default is left OFF the URL, so a bare arrival still means exactly what it meant before.
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const search = sp.get('q') ?? '';
+  const setSearch = (value: string): void => patch({ q: value });
+  const active = sp.get('active') ?? 'true';
+  const setActive = (value: string): void => patch({ active: value === 'true' ? null : value });
+  const belowMin = sp.get('belowMin') ?? '';
+  const setBelowMin = (value: string): void => patch({ belowMin: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const setPageSize = (next: number): void => patch({ size: String(next) });
+  const [sortBy, sortDir] = (sp.get('sort') ?? DEFAULT_SORT).split(':');
+  const sort = { by: sortBy ?? 'name', dir: sortDir === 'desc' ? 'desc' : 'asc' } as {
+    by: string;
+    dir: 'asc' | 'desc';
+  };
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ItSparePartDto | null>(null);
@@ -110,8 +139,10 @@ export const SparePartsPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useItSpareParts(params);
 
-  const changeSort = (by: string): void =>
-    setSort((prev) => ({ by, dir: prev.by === by && prev.dir === 'asc' ? 'desc' : 'asc' }));
+  const changeSort = (by: string): void => {
+    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
+    patch({ sort: `${by}:${dir}` === DEFAULT_SORT ? null : `${by}:${dir}` });
+  };
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';

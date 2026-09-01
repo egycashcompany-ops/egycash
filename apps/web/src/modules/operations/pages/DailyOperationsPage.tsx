@@ -45,6 +45,22 @@ import {
 } from '../lib/day-board';
 import { ShipmentStatusBadge, ShipmentTypeBadge } from '../components/ShipmentBadges';
 import { ShipmentFormDialog } from '../components/ShipmentFormDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/**
+ * Remembered across visits: the eight filters, and NOT `date`. The day is what the board IS —
+ * it opens on today, server-side — so restoring last Tuesday would answer a question nobody
+ * asked. The filters narrow whichever day is open, which is exactly what is worth keeping.
+ */
+const REMEMBERED_FILTERS = [
+  'bank',
+  'origin',
+  'destination',
+  'area',
+  'notes',
+  'type',
+  'received',
+] as const;
 
 /** `?date=` empty means today, resolved by the server. */
 export const resolveBoardDate = (raw: string | null): string | null =>
@@ -65,7 +81,28 @@ export const DailyOperationsPage = (): JSX.Element => {
   const setReceived = useSetShipmentReceived();
   const remove = useDeleteOperationsShipment();
 
-  const [filters, setFilters] = useState<DayBoardFilters>(EMPTY_DAY_BOARD_FILTERS);
+  // The eight filters live in the URL so the board is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Filtering still happens in the browser over
+  // the day the server returned; only where the state LIVES has changed. Written with `replace`,
+  // because narrowing the board is a view of it rather than a place to go Back to.
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const filters: DayBoardFilters = {
+    bank: sp.get('bank') ?? '',
+    origin: sp.get('origin') ?? '',
+    destination: sp.get('destination') ?? '',
+    area: sp.get('area') ?? '',
+    notes: sp.get('notes') ?? '',
+    type: (sp.get('type') ?? '') as DayBoardFilters['type'],
+    received: (sp.get('received') ?? '') as DayBoardFilters['received'],
+  };
+  const setFilters = (next: DayBoardFilters): void => {
+    const params = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(next)) {
+      if (value === '') params.delete(name);
+      else params.set(name, value);
+    }
+    setSp(params, { replace: true });
+  };
   const [editing, setEditing] = useState<OperationsShipmentDto | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -82,8 +119,7 @@ export const DailyOperationsPage = (): JSX.Element => {
     [shipments, filters, banks.data, branches.data],
   );
 
-  const setFilter = (patch: Partial<DayBoardFilters>): void =>
-    setFilters((prev) => ({ ...prev, ...patch }));
+  const setFilter = (patch: Partial<DayBoardFilters>): void => setFilters({ ...filters, ...patch });
 
   const canEdit = can('operationsShipment.edit');
   const canDelete = can('operationsShipment.delete');
@@ -247,13 +283,14 @@ export const DailyOperationsPage = (): JSX.Element => {
       <FilterBar
         hasActiveFilters={hasActiveFilter(filters) || date !== null}
         onClear={() => {
-          setFilters(EMPTY_DAY_BOARD_FILTERS);
-          // The day goes back to the default too. `date` is not one of the eight filters — it is
-          // what the board IS — but "clear" that left yesterday on screen would be a reset the
-          // user can see failing, so it returns the whole view to its default: today, unfiltered.
+          // ONE write. The day goes back to the default alongside the filters: `date` is not one of
+          // the eight — it is what the board IS — but a "clear" that left yesterday on screen would
+          // be a reset the user can see failing. Two separate writes would not do it, because the
+          // second would be built from the params the first had already replaced.
           const next = new URLSearchParams(sp);
+          for (const name of Object.keys(EMPTY_DAY_BOARD_FILTERS)) next.delete(name);
           next.delete('date');
-          setSp(next);
+          setSp(next, { replace: true });
         }}
       >
         {/*

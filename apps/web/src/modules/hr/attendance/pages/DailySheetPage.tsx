@@ -5,6 +5,7 @@
 // (§1, D5). The one write the sheet offers is the overtime APPROVAL, which releases derived
 // minutes rather than valuing them, and it appears only for a caller holding the key.
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type AttendanceDayDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
@@ -18,6 +19,10 @@ import { DaysTable } from '../components/DaysTable';
 import { OvertimeApprovalDialog } from '../components/OvertimeApprovalDialog';
 import { downloadAttendanceExport } from '../api/attendance-api';
 import { useAttendanceDays } from '../api/attendance-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['branch', 'section'] as const;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -26,9 +31,27 @@ export const DailySheetPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [date, setDate] = useState(today);
-  const [branchId, setBranchId] = useState('');
-  const [sectionId, setSectionId] = useState('');
-  const [page, setPage] = useState(1);
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to.
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const branchId = sp.get('branch') ?? '';
+  const setBranchId = (value: string): void => patch({ branch: value });
+  const sectionId = sp.get('section') ?? '';
+  const setSectionId = (value: string): void => patch({ section: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [approving, setApproving] = useState<AttendanceDayDto | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);

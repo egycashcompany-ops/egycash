@@ -29,27 +29,34 @@ import { useLocation, type useSearchParams } from 'react-router-dom';
 
 /**
  * Storage is keyed by PATHNAME, so no screen can read another's filters and nobody has to invent a
- * unique name for 43 of them. A route carrying an id (`/interviews/stage/:stageId`) therefore gets
- * one entry per stage — which is right: those queues are different queues.
+ * unique name for eighty of them. A route carrying an id (`/interviews/stage/:stageId`) therefore
+ * gets one entry per stage — which is right: those queues are different queues.
+ *
+ * `scope` splits one pathname further, and exists for exactly one shape: a screen whose TAB lives
+ * in the query string. There, one URL serves several lists that share nothing — the spare-parts tab
+ * and the software tab of `/it/software` filter different things by different names — so a single
+ * entry per path would hand each tab the previous tab's filters. The tab itself is never stored; it
+ * only says which drawer to open.
  *
  * Only for screens whose path is stable while they are open. A detail page filtering by an
  * unbounded id would grow an entry per record, and must not use this hook.
  */
-const key = (pathname: string): string => `ecms.filters.${pathname}`;
+const key = (pathname: string, scope: string): string =>
+  scope === '' ? `ecms.filters.${pathname}` : `ecms.filters.${pathname}#${scope}`;
 
 /** Same prefix the locale and theme preferences use — client-side, per browser, no server round trip. */
-const read = (pathname: string): string => {
+const read = (pathname: string, scope: string): string => {
   try {
-    return window.localStorage.getItem(key(pathname)) ?? '';
+    return window.localStorage.getItem(key(pathname, scope)) ?? '';
   } catch {
     // Private mode, or storage disabled. A screen that cannot remember still works.
     return '';
   }
 };
 
-const write = (pathname: string, value: string): void => {
+const write = (pathname: string, scope: string, value: string): void => {
   try {
-    window.localStorage.setItem(key(pathname), value);
+    window.localStorage.setItem(key(pathname, scope), value);
   } catch {
     /* not remembering is not an error worth showing anyone */
   }
@@ -127,6 +134,28 @@ export const runFilterPass = ({
   return { restore, record: restore === '' };
 };
 
+/**
+ * The URL a screen shows after switching tabs: everything the tab does not own, then what the tab
+ * being opened had saved.
+ *
+ * Switching is not an arrival, so the "a URL that says something wins" rule cannot decide it — the
+ * URL always says something, namely the filters of the tab being LEFT. Carrying those across is the
+ * leak the scope exists to prevent, so the remembered names are dropped and the new tab's own are
+ * put back. Everything else on the URL — the tab, a board date — is not this hook's to touch.
+ */
+export const scopedView = (
+  current: URLSearchParams,
+  remembered: readonly string[],
+  saved: string,
+): string => {
+  const next = new URLSearchParams();
+  for (const [name, value] of current) {
+    if (!remembered.includes(name)) next.append(name, value);
+  }
+  for (const [name, value] of new URLSearchParams(saved)) next.append(name, value);
+  return next.toString();
+};
+
 export const useRememberedFilters = (
   [sp, setSp]: ReturnType<typeof useSearchParams>,
   /**
@@ -145,10 +174,17 @@ export const useRememberedFilters = (
    * reimposes itself over either would be a bug wearing a helpful face.
    */
   fallback = '',
+  /**
+   * Which drawer of a tabbed screen these filters belong to — the tab's own value, never stored as
+   * a filter. Leave it out and the screen gets one memory for its path, which is what all but a
+   * handful want.
+   */
+  scope = '',
 ): void => {
   const { pathname } = useLocation();
   const settled = useRef(false);
   const navigating = useRef(false);
+  const opened = useRef(scope);
   // React Router rebuilds `setSp` whenever the params object changes, so it cannot be left out of
   // the dependencies and cannot be relied on to change only when the view does. Remembering what
   // was last written keeps a re-render from rewriting the same string on a busy list.
@@ -157,11 +193,20 @@ export const useRememberedFilters = (
   const keep = rememberedOnly(sp, remembered);
 
   useEffect(() => {
+    // A tab switch is the one move that changes which memory is in play without being an arrival.
+    if (settled.current && scope !== opened.current) {
+      opened.current = scope;
+      navigating.current = true;
+      setSp(new URLSearchParams(scopedView(sp, remembered, read(pathname, scope))), {
+        replace: true,
+      });
+      return;
+    }
     const action = runFilterPass({
       settled: settled.current,
       navigating: navigating.current,
       current,
-      saved: settled.current ? '' : read(pathname),
+      saved: settled.current ? '' : read(pathname, scope),
       fallback,
     });
     settled.current = true;
@@ -170,9 +215,9 @@ export const useRememberedFilters = (
       setSp(new URLSearchParams(action.restore), { replace: true });
       return;
     }
-    const entry = `${pathname}\n${keep}`;
+    const entry = `${pathname}#${scope}\n${keep}`;
     if (!action.record || written.current === entry) return;
     written.current = entry;
-    write(pathname, keep);
-  }, [pathname, current, keep, fallback, setSp]);
+    write(pathname, scope, keep);
+  }, [pathname, scope, current, keep, fallback, remembered, sp, setSp]);
 };

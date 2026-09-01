@@ -30,6 +30,15 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAtmMachines, useAtmRefLabels, useBulkDeleteAtmMachines } from '../api/atm-queries';
 import { BulkMachinesDialog, MachineDialog, RefLabelDialog } from '../components/DataEditDialogs';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'q',
+  'sort',
+  'size',
+] as const;
 
 /** The three things this page administers, in the order the legacy page presented them. */
 export const ATM_DATA_TABS = ['machines', 'bank', 'area'] as const;
@@ -50,6 +59,8 @@ export const DataEditPage = (): JSX.Element => {
 
   const tabParam = sp.get('tab');
   const tab: AtmDataTab = isTab(tabParam) ? tabParam : 'machines';
+  // Each tab filters a different catalogue, so each keeps its own memory; the tab is not a filter.
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
   const active = sp.get('active') ?? '';
   const search = sp.get('q') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);

@@ -20,6 +20,14 @@ import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { useItCatalogItems } from '../api/it-queries';
 import { CatalogItemDialog } from '../components/CatalogItemDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'sort',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -29,6 +37,7 @@ const isKind = (value: string | null): value is ItCatalogKind =>
 export const ItCatalogsPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const kindParam = sp.get('kind');
   const kind: ItCatalogKind = isKind(kindParam) ? kindParam : 'assetCategory';

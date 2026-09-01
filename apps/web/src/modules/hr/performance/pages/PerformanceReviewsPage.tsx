@@ -32,6 +32,13 @@ import {
 } from '../api/performance-queries';
 import { GoalsDialog } from '../components/GoalsDialog';
 import { AssessmentDialog } from '../components/AssessmentDialog';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'status',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -160,6 +167,7 @@ export const PerformanceReviewsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [assigning, setAssigning] = useState<PerformanceReviewDto | null>(null);
   const [viewingGoals, setViewingGoals] = useState<PerformanceReviewDto | null>(null);
   const [assessing, setAssessing] = useState<PerformanceReviewDto | null>(null);

@@ -29,12 +29,20 @@ import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenMaintenancesForm } from '../components/OpenMaintenancesForm';
 import { ConfirmActionDialog } from '../components/ReplenishmentDialogs';
 import { CloseMaintenanceDialog, EditMaintenanceDialog } from '../components/MaintenanceDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'areas',
+  'banks',
+] as const;
 
 export const MaintenancePage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const banks = useMemo(() => (sp.get('banks') ?? '').split(',').filter(Boolean), [sp]);
   const areas = useMemo(() => (sp.get('areas') ?? '').split(',').filter(Boolean), [sp]);

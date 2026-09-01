@@ -10,8 +10,10 @@
 // looks odd until you ask what the alternative would do: tell a clinic somebody is uninsured on the
 // authority of a cron job.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type InsuranceCardDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
@@ -31,10 +33,14 @@ const STATUS_TONE: Record<InsuranceCardDto['status'], Tone> = {
   ended: 'neutral',
 };
 
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['q'] as const;
+
 export const InsuranceCardsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [sp, setSp] = useState(() => new URLSearchParams());
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [editing, setEditing] = useState<InsuranceCardDto | null>(null);
   const [issuing, setIssuing] = useState(false);
 
@@ -49,7 +55,7 @@ export const InsuranceCardsPage = (): JSX.Element => {
       if (v === null || v === '') next.delete(k);
       else next.set(k, v);
     }
-    setSp(next);
+    setSp(next, { replace: true });
   };
 
   const columns: Column<InsuranceCardDto>[] = [

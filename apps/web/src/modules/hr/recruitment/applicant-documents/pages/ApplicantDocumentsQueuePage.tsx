@@ -8,11 +8,20 @@
 // one PERSON's four or five documents — accept, accept, refuse this one with a reason — and pushing
 // a route between each of those makes a two-minute job into navigation.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { EmptyState, LoadingState, Pagination, SearchInput } from '../../../../../shared/ui';
 import { ApplicantDocumentReview } from '../components/ApplicantDocumentReview';
 import { useApplicantDocumentSets } from '../api/applicant-document-queries';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/**
+ * Remembered across visits, PER TAB: the waiting queue and the full list are different views
+ * that share a URL, so each keeps its own search. `tab` says which one to open and is never
+ * itself remembered; `page` is derived and never kept.
+ */
+const REMEMBERED_FILTERS = ['q'] as const;
 
 const TABS = ['waiting', 'all'] as const;
 type Tab = (typeof TABS)[number];
@@ -21,9 +30,28 @@ const PAGE_SIZE = 20;
 
 export const ApplicantDocumentsQueuePage = (): JSX.Element => {
   const t = useT();
-  const [tab, setTab] = useState<Tab>('waiting');
-  const [search, setSearch] = useState('');
-  const [page, setPage] = useState(1);
+  // The search lives in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // queue is a view of this screen rather than a place to go Back to.
+  const [sp, setSp] = useSearchParams();
+  const tabParam = sp.get('tab');
+  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'waiting';
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const setTab = (value: Tab): void => patch({ tab: value === 'waiting' ? null : value });
+  const search = sp.get('q') ?? '';
+  const setSearch = (value: string): void => patch({ q: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [open, setOpen] = useState<string | null>(null);
 
   const query = useApplicantDocumentSets({

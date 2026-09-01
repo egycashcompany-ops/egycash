@@ -17,6 +17,8 @@ describe('computeAlarm (§4.4 — derived, guarded)', () => {
       level: 'yellow',
       remainingKm: 1000,
       sinceServiceKm: 9000,
+      // Computed, so there is no reason it could not be: see `maintenance-alarm-reason.spec.ts`.
+      noAlarmReason: null,
     });
   });
 
@@ -28,14 +30,26 @@ describe('computeAlarm (§4.4 — derived, guarded)', () => {
       level: 'red',
       remainingKm: -1000,
       sinceServiceKm: 11_000,
+      noAlarmReason: null,
     });
   });
 
   it('no rule / no readings / no baseline ⇒ no data, never a false alarm', () => {
-    const none = { level: 'none', remainingKm: null, sinceServiceKm: null };
-    expect(computeAlarm({ ...base, intervalKm: 0 })).toEqual(none);
-    expect(computeAlarm({ ...base, latestReading: null, latestReadingDate: null })).toEqual(none);
-    expect(computeAlarm({ ...base, baselineCounter: null, baselineDate: null })).toEqual(none);
+    // The figures are the same "no data" they always were; each now also SAYS which guard
+    // produced it, which is what `maintenance-alarm-reason.spec.ts` exists to pin exhaustively.
+    const none = (noAlarmReason: string) => ({
+      level: 'none',
+      remainingKm: null,
+      sinceServiceKm: null,
+      noAlarmReason,
+    });
+    expect(computeAlarm({ ...base, intervalKm: 0 })).toEqual(none('noInterval'));
+    expect(computeAlarm({ ...base, latestReading: null, latestReadingDate: null })).toEqual(
+      none('noReading'),
+    );
+    expect(computeAlarm({ ...base, baselineCounter: null, baselineDate: null })).toEqual(
+      none('noService'),
+    );
   });
 
   it('a reading older than the last service says nothing about the new cycle (legacy guard)', () => {
@@ -61,12 +75,22 @@ describe('the thresholds come from settings, not from the code', () => {
 
   it('reaching the interval is red under the defaults — the cycle is spent', () => {
     const spent = { ...driven, latestReading: 121_000 };
-    expect(computeAlarm(spent)).toEqual({ level: 'red', remainingKm: 0, sinceServiceKm: 5000 });
+    expect(computeAlarm(spent)).toEqual({
+      level: 'red',
+      remainingKm: 0,
+      sinceServiceKm: 5000,
+      noAlarmReason: null,
+    });
   });
 
   it('overrunning the interval stays red and reports the overrun, not a floor of zero', () => {
     const over = { ...driven, latestReading: 121_300 };
-    expect(computeAlarm(over)).toEqual({ level: 'red', remainingKm: -300, sinceServiceKm: 5300 });
+    expect(computeAlarm(over)).toEqual({
+      level: 'red',
+      remainingKm: -300,
+      sinceServiceKm: 5300,
+      noAlarmReason: null,
+    });
   });
 
   it('a service today with no distance since is zero driven, never an alarm', () => {
@@ -75,6 +99,8 @@ describe('the thresholds come from settings, not from the code', () => {
       level: 'none',
       remainingKm: 5000,
       sinceServiceKm: 0,
+      // A MEASURED `none` — the healthy car. Distinct from the four that could not be measured.
+      noAlarmReason: null,
     });
   });
 

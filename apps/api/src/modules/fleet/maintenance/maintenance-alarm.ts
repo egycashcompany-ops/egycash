@@ -6,6 +6,7 @@ import {
   FleetSettingKeys,
   type FleetAlarmLevel,
   type FleetMaintenanceAlarmDto,
+  type FleetNoAlarmReason,
 } from '@ecms/contracts';
 import { settingsService } from '../../../platform/settings';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
@@ -29,6 +30,18 @@ export interface AlarmResult {
   level: FleetAlarmLevel;
   remainingKm: number | null;
   sinceServiceKm: number | null;
+  /**
+   * WHICH guard returned, or `null` when the arithmetic ran.
+   *
+   * Reported from inside the guards themselves — the only place that knows. Deriving it anywhere
+   * else would mean a second copy of these four conditions, free to drift from the ones that
+   * actually decide; this function stays the single source of truth for both the answer and the
+   * reason there isn't one.
+   *
+   * `null` on the computed path even when `level` is `'none'`: that is a measured, healthy cycle,
+   * not a missing answer, and the two must not read alike.
+   */
+  noAlarmReason: FleetNoAlarmReason | null;
 }
 
 /**
@@ -37,17 +50,22 @@ export interface AlarmResult {
  * reading OLDER than the last service says nothing about the new cycle.
  */
 export const computeAlarm = (input: AlarmInput): AlarmResult => {
-  const none: AlarmResult = { level: 'none', remainingKm: null, sinceServiceKm: null };
-  if (input.intervalKm <= 0) return none;
-  if (input.latestReading === null || input.latestReadingDate === null) return none;
-  if (input.baselineCounter === null || input.baselineDate === null) return none;
-  if (input.latestReadingDate <= input.baselineDate) return none;
+  const none = (noAlarmReason: FleetNoAlarmReason): AlarmResult => ({
+    level: 'none',
+    remainingKm: null,
+    sinceServiceKm: null,
+    noAlarmReason,
+  });
+  if (input.intervalKm <= 0) return none('noInterval');
+  if (input.latestReading === null || input.latestReadingDate === null) return none('noReading');
+  if (input.baselineCounter === null || input.baselineDate === null) return none('noService');
+  if (input.latestReadingDate <= input.baselineDate) return none('readingOlderThanService');
 
   const sinceServiceKm = input.latestReading - input.baselineCounter;
   const remainingKm = input.intervalKm - sinceServiceKm;
   const level: FleetAlarmLevel =
     remainingKm <= input.redKm ? 'red' : remainingKm <= input.yellowKm ? 'yellow' : 'none';
-  return { level, remainingKm, sinceServiceKm };
+  return { level, remainingKm, sinceServiceKm, noAlarmReason: null };
 };
 
 const allActiveVehicles = async () => {
@@ -125,6 +143,8 @@ export const computeAlarms = async (
       sinceServiceKm: result.sinceServiceKm,
       lastServiceAt: baseline === null ? null : baseline.serviceDate.toISOString(),
       lastServiceVisitId: baseline?.visitId ?? null,
+      // Straight from the guards. Re-deriving it here would be a second copy of the rule.
+      noAlarmReason: result.noAlarmReason,
     };
   });
 };

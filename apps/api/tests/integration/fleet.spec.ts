@@ -1291,11 +1291,26 @@ describe('the alarm projection has two permission doors and one answer', () => {
           'lastServiceAt',
           'lastServiceVisitId',
           'level',
+          'noAlarmReason',
           'remainingKm',
           'sinceServiceKm',
           'vehicleId',
         ].sort(),
       );
+      // The reason travels with the figures, and agrees with them: a stated reason means the
+      // calculation did not run, so there are no numbers — and vice versa.
+      if (row.noAlarmReason === null) {
+        expect(row.sinceServiceKm).not.toBeNull();
+      } else {
+        expect(row.level).toBe('none');
+        expect(row.sinceServiceKm).toBeNull();
+        expect([
+          'noInterval',
+          'noReading',
+          'noService',
+          'readingOlderThanService',
+        ]).toContain(row.noAlarmReason);
+      }
     }
   });
 });
@@ -1756,6 +1771,32 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(after?.lastServiceVisitId).toBe(second.id);
     // …and the id belongs to the very row the distance was measured from: 126,000 − 124,950.
     expect(after?.sinceServiceKm).toBe(1050);
+  });
+
+  it('says WHY there is no alarm — the guard that stopped it, not a bare «none»', async () => {
+    // A vehicle with a counted service and a reading taken BEFORE it: the cycle cannot be
+    // measured, and the reason has to say which of the four situations this is. Without it the
+    // reader sees the same word as a healthy car and has nothing to act on.
+    const { vehicle } = await closedVisit({ odometerAtService: 120_000, exitOdometer: 120_850 });
+
+    const reasonFor = async (code: string) =>
+      data<{ code: string; noAlarmReason: string | null; level: string }[]>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/alarms')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).find((a) => a.code === code);
+
+    // No reading at all yet ⇒ the SECOND guard, not "no service": the service exists.
+    expect((await reasonFor(vehicle.code))?.noAlarmReason).toBe('noReading');
+
+    // A reading dated BEFORE the service (which closed on 3 September) ⇒ the fourth guard.
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-01' });
+    const stale = await reasonFor(vehicle.code);
+    expect(stale?.noAlarmReason).toBe('readingOlderThanService');
+    expect(stale?.level).toBe('none');
   });
 
   it('names no visit when nothing has counted yet', async () => {

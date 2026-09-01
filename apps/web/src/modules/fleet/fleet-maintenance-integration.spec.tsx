@@ -57,6 +57,7 @@ const ALARM: FleetMaintenanceAlarmDto = {
   sinceServiceKm: 5250,
   lastServiceAt: '2026-06-01T00:00:00.000Z',
   lastServiceVisitId: VISIT,
+  noAlarmReason: null,
 };
 
 const visit = (over: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisitDto =>

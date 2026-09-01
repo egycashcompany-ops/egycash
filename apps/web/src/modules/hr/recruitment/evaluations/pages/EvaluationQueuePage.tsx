@@ -22,7 +22,14 @@ import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { OpenEvaluationDialog } from '../components/OpenEvaluationDialog';
 import { useBulkEvaluations, useEvaluations } from '../api/evaluation-queries';
 import { type EvaluationListParams } from '../api/evaluation-api';
-import { useRememberedQueue } from '../../shared/useRememberedQueue';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -31,7 +38,7 @@ export const EvaluationQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
-  useRememberedQueue('evaluations', [sp, setSp]);
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [openDialog, setOpenDialog] = useState(false);
 
   const status = sp.get('status') ?? '';

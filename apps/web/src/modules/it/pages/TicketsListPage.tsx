@@ -34,6 +34,19 @@ import { TicketStatusBadge } from '../components/TicketStatusBadge';
 import { SlaIndicator } from '../components/SlaIndicator';
 import { ItUserName } from '../components/ItUserName';
 import { CreateTicketDialog } from '../components/TicketDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'category',
+  'priority',
+  'q',
+  'status',
+  'size',
+  'sort',
+  'view',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -49,6 +62,7 @@ export const TicketsListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const view: View = isView(sp.get('view')) ? (sp.get('view') as View) : 'queue';
   const search = sp.get('q') ?? '';

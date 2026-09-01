@@ -21,6 +21,13 @@ import { formatDate } from '../../../shared/lib/format';
 import { useCancelUnavailability, useUnavailability } from '../api/fleet-queries';
 import { EmployeeName } from '../components/EmployeeName';
 import { UnavailabilityDialog } from '../components/UnavailabilityDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -29,6 +36,7 @@ export const AttendancePage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const coversDate = sp.get('date') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);

@@ -18,6 +18,15 @@ import { EmployeeFileFilters, type EmployeeFileFiltersState } from '../component
 import { CreateEmployeeFileDialog } from '../components/CreateEmployeeFileDialog';
 import { useEmployeeFiles } from '../api/employee-file-queries';
 import { type EmployeeFileListParams } from '../api/employee-file-api';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -26,6 +35,7 @@ export const EmployeeFilesListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [createOpen, setCreateOpen] = useState(false);
 
   const filters: EmployeeFileFiltersState = {

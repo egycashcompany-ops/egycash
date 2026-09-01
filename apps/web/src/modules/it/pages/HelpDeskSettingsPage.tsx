@@ -25,6 +25,14 @@ import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { localized } from '../../../shared/lib/format';
 import { useItTicketPriorities } from '../api/it-queries';
 import { TicketPriorityDialog } from '../components/TicketPriorityDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -32,6 +40,7 @@ export const HelpDeskSettingsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const active = sp.get('active') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);

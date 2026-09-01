@@ -21,12 +21,22 @@ import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { useItVendors } from '../api/it-queries';
 import { VendorFormDialog } from '../components/VendorFormDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'q',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
 export const VendorsPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = sp.get('q') ?? '';
   const active = sp.get('active') ?? '';

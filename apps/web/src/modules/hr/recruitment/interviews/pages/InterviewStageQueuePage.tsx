@@ -35,6 +35,22 @@ import {
   useStartInterview,
   useStartScheduledInterviewRow,
 } from '../api/interview-queries';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'al',
+  'applicant',
+  'branch',
+  'il',
+  'interviewer',
+  'outcome',
+  'q',
+  'sf',
+  'st',
+  'status',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -47,6 +63,7 @@ export const InterviewStageQueuePage = (): JSX.Element => {
   const navigate = useNavigate();
   const { stageId = '' } = useParams();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const status = (sp.get('status') ?? 'waiting') as InterviewStatus;
   // The stage comes from the route and the status from the tab strip, so the bar omits both and

@@ -25,6 +25,14 @@ import {
   metalOptions,
 } from '../components/gold-labels';
 import { fmtDate, fmtWeightValue } from '../lib/gold-format';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'metal',
+  'q',
+  'status',
+] as const;
 
 const PAGE_SIZE = 12;
 
@@ -48,6 +56,7 @@ const EditorLoader = ({
 export const GoldTransfersPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const search = sp.get('q') ?? '';
   const statuses = readList(sp, 'status');
   const metals = readList(sp, 'metal');

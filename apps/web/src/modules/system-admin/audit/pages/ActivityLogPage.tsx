@@ -20,11 +20,19 @@ import { EmptyState } from '../../../../shared/ui/states/EmptyState';
 import { formatDateTime } from '../../../../shared/lib/format';
 import { useActivityLogs } from '../api/audit-api';
 import { readActivityFilters, withParam } from '../lib/audit-filters';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'entityId',
+  'entityType',
+] as const;
 
 export const ActivityLogPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const filters = readActivityFilters(sp);
   const query = useActivityLogs(filters);

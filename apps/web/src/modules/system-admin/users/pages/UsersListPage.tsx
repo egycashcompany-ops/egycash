@@ -46,6 +46,16 @@ import { AccountStatusBadge, UserStatusBadge } from '../components/UserStatusBad
 import { UserFormDialog } from '../components/UserFormDialog';
 import { useBranchOptions, useSystemUsers } from '../api/user-queries';
 import { type SystemUserListParams } from '../api/user-api';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'branch',
+  'q',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -54,6 +64,7 @@ export const UsersListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [creating, setCreating] = useState(false);
 
   const search = sp.get('q') ?? '';

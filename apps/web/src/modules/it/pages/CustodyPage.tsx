@@ -20,6 +20,16 @@ import { EyeIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useItAssignments, useItBranchOptions } from '../api/it-queries';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'branch',
+  'employee',
+  'open',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -28,6 +38,7 @@ export const CustodyPage = (): JSX.Element => {
   const navigate = useNavigate();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   // Default `open` — the register's whole purpose is "currently out".
   const openParam = sp.get('open') ?? 'true';

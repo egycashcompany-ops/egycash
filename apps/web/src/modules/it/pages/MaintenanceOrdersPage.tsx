@@ -27,6 +27,17 @@ import { formatDate } from '../../../shared/lib/format';
 import { useItMaintenanceOrders } from '../api/it-queries';
 import { MaintenanceStatusBadge } from '../components/MaintenanceStatusBadge';
 import { CreateMaintenanceOrderDialog } from '../components/MaintenanceOrderDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'kind',
+  'q',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -36,6 +47,7 @@ export const MaintenanceOrdersPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';

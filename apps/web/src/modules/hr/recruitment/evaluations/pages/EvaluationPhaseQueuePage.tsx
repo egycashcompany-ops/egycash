@@ -28,6 +28,19 @@ import { EvaluationStatusBadge } from '../components/EvaluationStatusBadge';
 import { GenerateBatchDialog } from '../../evaluation-batches/components/GenerateBatchDialog';
 import { RecordResultDialog } from '../components/RecordResultDialog';
 import { useBulkEvaluations, useEvaluationPhases, useEvaluations } from '../api/evaluation-queries';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'al',
+  'applicant',
+  'branch',
+  'cf',
+  'ct',
+  'q',
+  'status',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -42,6 +55,7 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
   const navigate = useNavigate();
   const { phaseId = '' } = useParams();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const status = (sp.get('status') ?? 'waiting') as EvaluationStatus;
   // The phase comes from the route and the status from the tab strip, so the bar carries only the

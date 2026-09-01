@@ -41,6 +41,23 @@ import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { LicenseImagePreviewDialog, VehicleLicenseImageCell } from '../components/VehicleLicenseImage';
 import { printVehicle } from '../components/vehicle-print';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'branch',
+  'chassis',
+  'insurance',
+  'licenseClass',
+  'motor',
+  'operation',
+  'plate',
+  'status',
+  'type',
+  'vehicleCodes',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -57,6 +74,7 @@ export const VehiclesListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const status = sp.get('status') ?? '';
   const typeId = sp.get('type') ?? '';

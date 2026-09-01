@@ -30,6 +30,17 @@ import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
 import { ItCatalogSelect } from '../components/ItCatalogSelect';
 import { useAssetLabels } from '../components/useAssetLabels';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'branch',
+  'category',
+  'q',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -39,6 +50,7 @@ export const AssetsListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';

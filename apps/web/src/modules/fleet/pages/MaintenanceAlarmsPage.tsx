@@ -22,6 +22,13 @@ import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
 import { AlarmBadge, RemainingKm, alarmRowTint } from '../components/AlarmBadge';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'level',
+  'vehicleCodes',
+] as const;
 
 const LEVEL_ORDER = { red: 0, yellow: 1, none: 2 } as const;
 
@@ -32,6 +39,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   // `level` keeps its name and now reads as a LIST, so a bookmarked `?level=red` still means
   // exactly what it used to.

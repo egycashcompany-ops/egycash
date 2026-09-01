@@ -31,6 +31,16 @@ import { ManagedRoleBadge } from '../components/ManagedRoleBadge';
 import { RoleFormDialog } from '../components/RoleFormDialog';
 import { useRoles } from '../api/role-queries';
 import { type RoleListParams } from '../api/role-api';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'managed',
+  'q',
+  'unassigned',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -39,6 +49,7 @@ export const RolesListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [creating, setCreating] = useState(false);
 
   const search = sp.get('q') ?? '';

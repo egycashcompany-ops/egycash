@@ -42,6 +42,17 @@ import {
   GrievanceDialog,
   VehicleViolationDialog,
 } from '../components/ViolationDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'kind',
+  'vehicleCodes',
+  'year',
+  'size',
+  'sort',
+  'view',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 const currentYear = (): number => new Date().getFullYear();
@@ -51,6 +62,7 @@ export const ViolationsPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const view = sp.get('view') === 'rollup' ? 'rollup' : 'list';
   const kind = sp.get('kind') ?? '';

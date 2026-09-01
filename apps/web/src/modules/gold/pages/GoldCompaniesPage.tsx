@@ -25,12 +25,20 @@ import { CompanyDialog } from '../components/CompanyDialog';
 import { CompanyLogo } from '../components/CompanyLogo';
 import { companyTypeLabel, companyTypeOptions } from '../components/gold-labels';
 import { fmtDate } from '../lib/gold-format';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'type',
+] as const;
 
 const PAGE_SIZE = 12;
 
 export const GoldCompaniesPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const search = sp.get('q') ?? '';
   const types = readList(sp, 'type');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);

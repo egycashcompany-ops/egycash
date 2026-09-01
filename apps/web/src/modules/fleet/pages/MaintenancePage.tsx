@@ -71,6 +71,22 @@ import {
   CheckOutDialog,
   MaintenanceEditDialog,
 } from '../components/MaintenanceDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'driver',
+  'from',
+  'notes',
+  'outFrom',
+  'parts',
+  'state',
+  'vehicleCodes',
+  'workTypes',
+  'workshops',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -82,6 +98,7 @@ export const MaintenancePage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const from = sp.get('from') ?? '';
   const outFrom = sp.get('outFrom') ?? '';

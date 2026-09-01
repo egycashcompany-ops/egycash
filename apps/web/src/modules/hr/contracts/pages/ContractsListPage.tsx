@@ -25,6 +25,15 @@ import { useContracts, useContractTypes } from '../api/contract-queries';
 import { ContractStatusBadge } from '../components/ContractStatusBadge';
 import { AmendRenewDialog, TerminateDialog } from '../components/ContractActionDialogs';
 import { downloadContractPdf, printContract } from '../components/contract-doc-actions';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'expiring',
+  'q',
+  'status',
+  'type',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -47,6 +56,7 @@ export const ContractsListPage = (): JSX.Element => {
   const navigate = useNavigate();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const { data: types } = useContractTypes();
   const [dialog, setDialog] = useState<{ mode: 'amend' | 'renew' | 'terminate'; contract: ContractDto } | null>(null);
 

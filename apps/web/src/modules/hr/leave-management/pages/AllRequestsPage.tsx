@@ -11,6 +11,13 @@ import { EmptyState, FilterBar, Pagination } from '../../../../shared/ui';
 import { Select } from '../../../../shared/ui/form';
 import { useLeaveRequests, useLeaveTypes, useUnreconciledLeave } from '../api/leave-queries';
 import { RequestsTable } from '../components/RequestsTable';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'status',
+  'type',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -18,6 +25,7 @@ export const AllRequestsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const { data: types } = useLeaveTypes();
   const { data: unreconciled } = useUnreconciledLeave(can('leave.approve'));
 

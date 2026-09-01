@@ -26,6 +26,14 @@ import {
   Select,
 } from '../../../../shared/ui';
 import { usePermissionCatalog } from '../api/role-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'held',
+  'module',
+  'q',
+] as const;
 
 /** Group in a stable order rather than whatever the registry happens to emit. */
 const byModule = (permissions: PermissionDto[]): [string, PermissionDto[]][] => {
@@ -46,6 +54,7 @@ export const PermissionCatalogPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = (sp.get('q') ?? '').trim().toLowerCase();
   const moduleFilter = sp.get('module') ?? '';

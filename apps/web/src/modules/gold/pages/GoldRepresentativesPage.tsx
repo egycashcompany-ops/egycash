@@ -20,12 +20,19 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { useDeleteGoldRepresentative, useGoldRepresentatives } from '../api/gold-queries';
 import { RepresentativeDialog } from '../components/RepresentativeDialog';
 import { fmtDate } from '../lib/gold-format';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+] as const;
 
 const PAGE_SIZE = 12;
 
 export const GoldRepresentativesPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const search = sp.get('q') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const paramsKey = sp.toString();

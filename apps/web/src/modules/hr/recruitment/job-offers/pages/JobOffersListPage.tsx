@@ -22,7 +22,17 @@ import { OfferStatusBadge } from '../components/OfferStatusBadge';
 import { OfferFilters, type OfferFiltersState } from '../components/OfferFilters';
 import { useJobOffers, useBulkJobOffers } from '../api/job-offer-queries';
 import { type JobOfferListParams } from '../api/job-offer-api';
-import { useRememberedQueue } from '../../shared/useRememberedQueue';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'awaiting',
+  'q',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -31,7 +41,7 @@ export const JobOffersListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
-  useRememberedQueue('jobOffers', [sp, setSp]);
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const filters: OfferFiltersState = {
     search: sp.get('q') ?? '',

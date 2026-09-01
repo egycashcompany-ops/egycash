@@ -61,6 +61,12 @@ import {
   clearSlot,
   type CrewSlot,
 } from '../lib/fixed-roster-board';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+] as const;
 
 /** The one thing a drag carries. Read on drop; nothing else is inferred from the event. */
 const DRAG_TYPE = 'application/x-ecms-driver';
@@ -409,6 +415,7 @@ export const FixedRosterPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const mayPlan = can('fleetRoster.plan');
 
   const search = sp.get('q') ?? '';

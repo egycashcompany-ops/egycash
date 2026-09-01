@@ -43,6 +43,13 @@ import {
   filterSettingGroups,
   settingLabelKey,
 } from '../lib/settings-view';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'owner',
+  'q',
+] as const;
 
 export const SettingsPage = (): JSX.Element => {
   const t = useT();
@@ -52,6 +59,7 @@ export const SettingsPage = (): JSX.Element => {
   // Addressable, like every other list in this module: the filters live in the URL so a screen
   // full of them can be sent to somebody else.
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const query = sp.get('q') ?? '';
   const owner = sp.get('owner') ?? '';
   const setParam = (name: string, value: string): void => {

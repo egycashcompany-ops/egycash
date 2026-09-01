@@ -41,6 +41,18 @@ import { odometerRange } from '../lib/odometer-range';
 import { EmployeeName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'alerts',
+  'driver',
+  'from',
+  'to',
+  'vehicleCodes',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -49,6 +61,7 @@ export const OdometerPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const vehicleCodes = (sp.get('vehicleCodes') ?? '').split(',').filter((c) => c !== '');
   // What the URL asks for, and what is actually sent. They differ only on arrival: with neither

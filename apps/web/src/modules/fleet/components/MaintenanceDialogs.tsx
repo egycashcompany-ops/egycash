@@ -12,18 +12,22 @@ import { Combobox } from '../../../shared/ui/Combobox';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatDate, formatNumber } from '../../../shared/lib/format';
 import {
   useFleetCatalog,
   useCheckInMaintenance,
   useCheckOutMaintenance,
   useExpectedReading,
+  useOdometerBracket,
   useUpdateMaintenance,
   useVehicles,
 } from '../api/fleet-queries';
 import { useCan } from '../../../platform/rbac/Can';
 import { vehicleCodeLabel } from '../lib/vehicle-code-options';
-import { workshopOdometerLooksWrong } from '../lib/workshop-odometer-warning';
+import {
+  workshopOdometerBreach,
+  workshopOdometerWarningKey,
+} from '../lib/workshop-odometer-warning';
 import { CatalogSelect } from './CatalogSelect';
 import { OptionalEmployeeField } from './OptionalEmployeeField';
 
@@ -66,6 +70,29 @@ const SparePartsField = ({
       onChange={onChange}
     />
   );
+};
+
+/**
+ * The counter warning for one field: which bound was crossed, named with the reading and the day
+ * that set it.
+ *
+ * A bound without its date cannot be acted on — "below 59,800" is a riddle, "below the 59,800
+ * recorded on 20 August" tells somebody exactly which record to go and look at. Returns
+ * `undefined` (not an empty string) so `Field` renders no warning row at all.
+ */
+const counterWarning = (
+  counter: number | null,
+  bracket: { lowerBound: number | null; lowerBoundAt: string | null; upperBound: number | null; upperBoundAt: string | null } | null,
+  t: (key: string, params?: Record<string, string>) => string,
+  locale: 'ar' | 'en',
+): string | undefined => {
+  const breach = workshopOdometerBreach({ counter, bracket });
+  const key = workshopOdometerWarningKey(breach);
+  if (key === null || bracket === null) return undefined;
+  const km = breach === 'belowChain' ? bracket.lowerBound : bracket.upperBound;
+  const at = breach === 'belowChain' ? bracket.lowerBoundAt : bracket.upperBoundAt;
+  if (km === null || at === null) return undefined;
+  return t(key, { km: formatNumber(km, locale), date: formatDate(at, locale) });
 };
 
 export const CheckInDialog = ({
@@ -163,15 +190,18 @@ export const CheckInDialog = ({
   );
   const checkIn = useCheckInMaintenance();
 
+  // The bracket for THIS visit's own date — so a back-dated check-in is compared with the chain
+  // as it stood then, not as it stands now.
+  const bracket = useOdometerBracket(vehicleId, inDate, open && vehicleId !== '' && inDate !== '');
   const odometerNumber = Number(odometer);
-  // Advice only — see `workshopOdometerLooksWrong`. It is deliberately absent from `complete`
+  // Advice only — see `workshop-odometer-warning`. It is deliberately absent from `complete`
   // below: a suspicious counter is still a counter somebody may have good reason to record.
-  const counterLooksWrong = workshopOdometerLooksWrong({
-    counter: odometer === '' ? null : odometerNumber,
-    expectedReading: expected.data?.expectedReading ?? null,
-    visitDate: inDate,
-    asOf: expected.data?.asOf ?? null,
-  });
+  const counterWarningText = counterWarning(
+    odometer === '' ? null : odometerNumber,
+    bracket.data ?? null,
+    t,
+    locale,
+  );
   const complete =
     vehicleId !== '' &&
     inDate !== '' &&
@@ -246,13 +276,7 @@ export const CheckInDialog = ({
                     km: formatNumber(expected.data.expectedReading, locale),
                   })
             }
-            warning={
-              counterLooksWrong && expected.data?.expectedReading != null
-                ? t('fleet.maintenance.odometerBelowChain', {
-                    km: formatNumber(expected.data.expectedReading, locale),
-                  })
-                : undefined
-            }
+            warning={counterWarningText}
           >
             <Input
               type="number"
@@ -308,11 +332,6 @@ export const CheckOutDialog = ({
       setDriverOut('');
     }
   }, [open]);
-  const can = useCan();
-  const expected = useExpectedReading(
-    visit?.vehicleId ?? '',
-    open && visit !== null && can('fleetOdometer.view'),
-  );
   const exitNumber = Number(exitOdometer);
   const exitValid = exitOdometer !== '' && Number.isInteger(exitNumber) && exitNumber >= 0;
   // The workshop cannot hand the car back on a lower reading than it arrived on. The server
@@ -321,12 +340,17 @@ export const CheckOutDialog = ({
   // Advice, and a different thing entirely: no server rule refuses this, and the save goes
   // through. It matters most here — the exit reading becomes the alarm's baseline, so a typo
   // does not stay in this row, it moves the next service.
-  const counterLooksWrong = workshopOdometerLooksWrong({
-    counter: exitOdometer === '' ? null : exitNumber,
-    expectedReading: expected.data?.expectedReading ?? null,
-    visitDate: outDate,
-    asOf: expected.data?.asOf ?? null,
-  });
+  const bracket = useOdometerBracket(
+    visit?.vehicleId ?? '',
+    outDate,
+    open && visit !== null && outDate !== '',
+  );
+  const counterWarningText = counterWarning(
+    exitOdometer === '' ? null : exitNumber,
+    bracket.data ?? null,
+    t,
+    locale,
+  );
 
   const checkOut = useCheckOutMaintenance();
 
@@ -388,13 +412,7 @@ export const CheckOutDialog = ({
                 })
           }
           error={belowEntry ? t('fleet.maintenance.exitBelowEntry') : undefined}
-          warning={
-            !belowEntry && counterLooksWrong && expected.data?.expectedReading != null
-              ? t('fleet.maintenance.odometerBelowChain', {
-                  km: formatNumber(expected.data.expectedReading, locale),
-                })
-              : undefined
-          }
+          warning={belowEntry ? undefined : counterWarningText}
         >
           <Input
             type="number"
@@ -442,19 +460,19 @@ export const MaintenanceEditDialog = ({
     }
   }, [open, visit]);
 
-  const can = useCan();
-  const expected = useExpectedReading(
-    visit?.vehicleId ?? '',
-    open && visit !== null && can('fleetOdometer.view'),
-  );
   const update = useUpdateMaintenance();
+  const bracket = useOdometerBracket(
+    visit?.vehicleId ?? '',
+    inDate,
+    open && visit !== null && inDate !== '',
+  );
   const odometerNumber = Number(odometer);
-  const counterLooksWrong = workshopOdometerLooksWrong({
-    counter: odometer === '' ? null : odometerNumber,
-    expectedReading: expected.data?.expectedReading ?? null,
-    visitDate: inDate,
-    asOf: expected.data?.asOf ?? null,
-  });
+  const counterWarningText = counterWarning(
+    odometer === '' ? null : odometerNumber,
+    bracket.data ?? null,
+    t,
+    locale,
+  );
   const complete =
     inDate !== '' &&
     workshopId !== '' &&
@@ -505,13 +523,7 @@ export const MaintenanceEditDialog = ({
         <Field
           label={t('fleet.maintenance.fields.odometerAtService')}
           required
-          warning={
-            counterLooksWrong && expected.data?.expectedReading != null
-              ? t('fleet.maintenance.odometerBelowChain', {
-                  km: formatNumber(expected.data.expectedReading, locale),
-                })
-              : undefined
-          }
+          warning={counterWarningText}
         >
           <Input
             type="number"

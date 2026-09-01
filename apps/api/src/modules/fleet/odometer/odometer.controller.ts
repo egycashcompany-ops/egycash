@@ -3,6 +3,7 @@
 import { type Request, type Response } from 'express';
 import {
   type CorrectFleetOdometer,
+  type FleetOdometerBracketQuery,
   type FleetVehicleIdQuery,
   type ListFleetOdometerQuery,
   type RecordFleetOdometer,
@@ -33,6 +34,29 @@ export const expectedOdometerReading = async (req: Request, res: Response): Prom
     vehicleId: query.vehicleId,
     expectedReading: expected.reading,
     asOf: expected.asOf === null ? null : expected.asOf.toISOString(),
+  });
+};
+
+/**
+ * The bracket for one vehicle on one date.
+ *
+ * Exported from the ODOMETER module because the chain is what it answers about, and mounted on
+ * two routers — the same two-doors-one-handler shape the alarm projection has. Its real audience
+ * is the workshop:
+ * the three maintenance dialogs ask it while somebody types a counter, and they must be able to
+ * ask it under a maintenance permission rather than an odometer one, or the warning silently
+ * disappears for exactly the people who type the number.
+ */
+export const odometerBracket = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetOdometerBracketQuery>(req);
+  const bracket = await fleetOdometerService.bracket(query.vehicleId, query.on);
+  ok(res, {
+    vehicleId: query.vehicleId,
+    on: query.on.toISOString(),
+    lowerBound: bracket.lowerBound,
+    lowerBoundAt: bracket.lowerBoundAt === null ? null : bracket.lowerBoundAt.toISOString(),
+    upperBound: bracket.upperBound,
+    upperBoundAt: bracket.upperBoundAt === null ? null : bracket.upperBoundAt.toISOString(),
   });
 };
 

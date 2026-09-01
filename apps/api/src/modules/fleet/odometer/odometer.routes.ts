@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   CorrectFleetOdometerSchema,
+  FleetOdometerBracketQuerySchema,
   FleetVehicleIdQuerySchema,
   ListFleetOdometerQuerySchema,
   RecordFleetOdometerSchema,
@@ -14,6 +15,7 @@ import {
   correctOdometer,
   expectedOdometerReading,
   listOdometerLogs,
+  odometerBracket,
   recordOdometer,
 } from './odometer.controller';
 // The SAME handler `/fleet/maintenance/alarms` is mounted with — one projection, two permissions.
@@ -37,6 +39,15 @@ export const buildFleetOdometerRouter = (): Router => {
     authorize('fleetOdometer.view'),
     validate({ query: FleetVehicleIdQuerySchema }),
     asyncHandler(expectedOdometerReading),
+  );
+  // Where a counter dated `on` would have to sit to be a point on this chain. The odometer
+  // audience's door to it; `/fleet/maintenance/odometer-bracket` is the workshop's, same handler.
+  router.get(
+    '/bracket',
+    authenticate,
+    authorize('fleetOdometer.view'),
+    validate({ query: FleetOdometerBracketQuerySchema }),
+    asyncHandler(odometerBracket),
   );
   // FR-3 — the derived alarm projection for every active vehicle, computed on read. Kept exactly
   // as it was: this is the odometer audience's door to it, and existing clients still use it.

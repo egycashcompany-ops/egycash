@@ -1310,6 +1310,7 @@ describe('the alarm projection has two permission doors and one answer', () => {
           'noService',
           'readingOlderThanService',
           'baselineAboveReading',
+          'baselineBelowChain',
         ]).toContain(row.noAlarmReason);
       }
     }
@@ -1798,6 +1799,155 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     const stale = await reasonFor(vehicle.code);
     expect(stale?.noAlarmReason).toBe('readingOlderThanService');
     expect(stale?.level).toBe('none');
+  });
+
+  it('the odometer bracket answers through BOTH doors, identically', async () => {
+    // The rule is only useful to the people who type a workshop counter, and they hold
+    // maintenance permissions rather than odometer ones. One handler, two `authorize(...)`.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const record = async (reading: number, date: string) =>
+      request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, reading, date });
+    expect((await record(100_000, '2026-09-01')).status).toBe(201);
+    expect((await record(140_000, '2026-09-10')).status).toBe(201);
+
+    const ask = async (path: string) =>
+      request(app)
+        .get(path)
+        .query({ vehicleId: v.id, on: '2026-09-05' })
+        .set('Authorization', `Bearer ${adminToken}`);
+
+    const viaOdometer = await ask('/api/v1/fleet/odometer/bracket');
+    const viaMaintenance = await ask('/api/v1/fleet/maintenance/odometer-bracket');
+    expect(viaOdometer.status).toBe(200);
+    expect(viaMaintenance.status).toBe(200);
+    expect(data(viaMaintenance)).toEqual(data(viaOdometer));
+
+    const bracket = data<{
+      lowerBound: number | null;
+      upperBound: number | null;
+      lowerBoundAt: string | null;
+      upperBoundAt: string | null;
+    }>(viaOdometer);
+    // On 5 September the chain stood at 100,000, and the next reading — 140,000 — is still ahead.
+    expect(bracket.lowerBound).toBe(100_000);
+    expect(bracket.upperBound).toBe(140_000);
+    expect(bracket.lowerBoundAt).toContain('2026-09-01');
+    expect(bracket.upperBoundAt).toContain('2026-09-10');
+  });
+
+  it('the bracket is a property of the DATE, which is what makes back-dating legitimate', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    for (const [reading, date] of [
+      [100_000, '2026-09-01'],
+      [400_000, '2026-10-01'],
+    ] as const) {
+      expect(
+        (
+          await request(app)
+            .post('/api/v1/fleet/odometer')
+            .set('Authorization', `Bearer ${adminToken}`)
+            .send({ vehicleId: v.id, reading, date })
+        ).status,
+      ).toBe(201);
+    }
+    const on = async (day: string) =>
+      data<{ lowerBound: number | null; upperBound: number | null }>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/bracket')
+          .query({ vehicleId: v.id, on: day })
+          .set('Authorization', `Bearer ${adminToken}`),
+      );
+
+    // A visit closed in September is bracketed by September's chain, not by where it has since run.
+    expect(await on('2026-09-15')).toEqual({ lowerBound: 100_000, upperBound: 400_000 });
+    // Before the first reading there is no lower bound at all; after the last, no upper one.
+    expect((await on('2026-08-01')).lowerBound).toBeNull();
+    expect((await on('2026-12-01')).upperBound).toBeNull();
+    // The day a reading was taken belongs to the LOWER side — the same boundary the alarm's
+    // same-day rule draws, from the other number.
+    expect((await on('2026-09-01')).lowerBound).toBe(100_000);
+  });
+
+  it('refuses a baseline the chain had already passed, end to end', async () => {
+    // The car-200 shape, driven through the real HTTP surface: every write below is accepted by
+    // the rules as they stand, and none of them is changed by this PR.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const record = async (reading: number, date: string) =>
+      request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, reading, date });
+    expect((await record(59_800, '2026-08-20')).status).toBe(201);
+
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-08-30',
+      workshopId: await mkCatalog('workshop', 'ورشة القوس'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 50_000,
+    });
+    expect(opened.status).toBe(201);
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    const out = await checkOut(open.id, {
+      outDate: '2026-08-31',
+      exitOdometer: 50_000,
+      version: open.version,
+    });
+    // NON-BLOCKING: the visit is recorded exactly as entered. The counter is authoritative.
+    expect(out.status, 'the bracket never refuses a visit').toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(out).exitOdometer).toBe(50_000);
+
+    // A reading after the service — every earlier guard passes, so the arithmetic is reached.
+    expect((await record(59_850, '2026-09-05')).status).toBe(201);
+
+    const row = data<
+      { code: string; noAlarmReason: string | null; level: string; sinceServiceKm: number | null }[]
+    >(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).find((a) => a.code === v.code);
+
+    expect(row?.noAlarmReason).toBe('baselineBelowChain');
+    expect(row?.level).toBe('none');
+    // 9,850 km that were not driven since the service never reaches the reader.
+    expect(row?.sinceServiceKm).toBeNull();
+  });
+
+  it('and still measures a cycle whose baseline DOES sit on the chain', async () => {
+    // The control for the test above: same shape, one number changed so the bracket holds.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const record = async (reading: number, date: string) =>
+      request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, reading, date });
+    expect((await record(59_800, '2026-08-20')).status).toBe(201);
+
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-08-30',
+      workshopId: await mkCatalog('workshop', 'ورشة القوس السليم'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 59_800,
+    });
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    expect(
+      (await checkOut(open.id, { outDate: '2026-08-31', exitOdometer: 59_900, version: open.version }))
+        .status,
+    ).toBe(200);
+    expect((await record(60_400, '2026-09-05')).status).toBe(201);
+
+    const row = data<{ code: string; noAlarmReason: string | null; sinceServiceKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).find((a) => a.code === v.code);
+    expect(row?.noAlarmReason).toBeNull();
+    expect(row?.sinceServiceKm).toBe(500);
   });
 
   it('refuses to report a NEGATIVE distance since the service, end to end', async () => {

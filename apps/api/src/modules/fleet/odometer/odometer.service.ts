@@ -51,6 +51,14 @@ export interface ExpectedReading {
   asOf: Date | null;
 }
 
+/** Both ends of the bracket for one vehicle on one date, dates included. */
+export interface OdometerBracket {
+  lowerBound: number | null;
+  lowerBoundAt: Date | null;
+  upperBound: number | null;
+  upperBoundAt: Date | null;
+}
+
 /** A page of logs plus the codes for exactly the vehicles ON that page — one lookup, not one per row. */
 export type OdometerLogPage = Paginated<FleetOdometerLogDoc> & {
   codes: ReadonlyMap<string, string>;
@@ -135,6 +143,27 @@ class FleetOdometerService {
     return {
       reading: Math.max(latest.outReading, latest.inReading ?? latest.outReading),
       asOf: latest.date,
+    };
+  }
+
+  /**
+   * Where a counter measured on `on` would have to sit to be a point on this vehicle's chain.
+   *
+   * The bracket is a property of a DATE as well as a vehicle, which is what makes a back-dated
+   * visit legitimate rather than suspicious: the same car answers differently for a visit closed
+   * last month than for one closed today, and the counter that belonged to last month is only
+   * "below the chain" if the chain had already passed it BY THEN.
+   *
+   * Answers a bracket for a vehicle with no readings at all — both sides null, which the rule
+   * reads as "nothing to compare against" rather than as a violation.
+   */
+  async bracket(vehicleId: string, on: Date): Promise<OdometerBracket> {
+    const { lower, upper } = await fleetOdometerRepository.chainBounds(vehicleId, on);
+    return {
+      lowerBound: lower?.reading ?? null,
+      lowerBoundAt: lower?.date ?? null,
+      upperBound: upper?.reading ?? null,
+      upperBoundAt: upper?.date ?? null,
     };
   }
 

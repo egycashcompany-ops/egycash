@@ -10,6 +10,24 @@ export interface LatestReading {
   date: Date;
 }
 
+/** One end of the bracket: a reading and the date it was taken on. */
+export interface ChainBound {
+  reading: number;
+  date: Date;
+}
+
+/**
+ * The chain's order, as a TOTAL order.
+ *
+ * `outReading` alone does not order the chain: FR-2 refuses a new reading BELOW the floor and
+ * accepts one equal to it, so two rows can legitimately share a value. MongoDB's sort is not
+ * stable, so at that point "the latest reading" — and the DATE that travels with it — became
+ * whichever row the server happened to return. `_id` is monotonic per insert, so it settles the
+ * tie the way the chain was actually written, and every query that picks "the highest" uses this
+ * same order rather than a private one.
+ */
+const NEWEST_FIRST = { outReading: -1, _id: -1 } as const;
+
 class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   constructor() {
     super(FleetOdometerLogModel, {});
@@ -29,7 +47,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   ): Promise<FleetOdometerLogDoc | null> {
     return this.model
       .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
-      .sort({ outReading: -1 })
+      .sort(NEWEST_FIRST)
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
       .exec();
@@ -40,17 +58,32 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     entry: FleetOdometerLogDoc,
     session?: ClientSession,
   ): Promise<{ prev: FleetOdometerLogDoc | null; next: FleetOdometerLogDoc | null }> {
-    const base = { vehicleId: entry.vehicleId, isDeleted: false, _id: { $ne: entry._id } };
+    // Strictly-lower / strictly-higher WOULD skip a row that ties this one's value, leaving a
+    // tied pair with no relationship in either direction — so the comparison falls back to `_id`
+    // at equal readings, which is the same total order `NEWEST_FIRST` imposes.
+    const base = { vehicleId: entry.vehicleId, isDeleted: false };
+    const lower = {
+      $or: [
+        { outReading: { $lt: entry.outReading } },
+        { outReading: entry.outReading, _id: { $lt: entry._id } },
+      ],
+    };
+    const higher = {
+      $or: [
+        { outReading: { $gt: entry.outReading } },
+        { outReading: entry.outReading, _id: { $gt: entry._id } },
+      ],
+    };
     const [prev, next] = await Promise.all([
       this.model
-        .findOne({ ...base, outReading: { $lt: entry.outReading } })
-        .sort({ outReading: -1 })
+        .findOne({ ...base, ...lower })
+        .sort({ outReading: -1, _id: -1 })
         .session(session ?? null)
         .lean<FleetOdometerLogDoc>()
         .exec(),
       this.model
-        .findOne({ ...base, outReading: { $gt: entry.outReading } })
-        .sort({ outReading: 1 })
+        .findOne({ ...base, ...higher })
+        .sort({ outReading: 1, _id: 1 })
         .session(session ?? null)
         .lean<FleetOdometerLogDoc>()
         .exec(),
@@ -73,7 +106,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
           isDeleted: false,
         },
       },
-      { $sort: { vehicleId: 1, outReading: -1 } },
+      { $sort: { vehicleId: 1, outReading: -1, _id: -1 } },
       {
         $group: {
           _id: '$vehicleId',
@@ -88,6 +121,108 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         String(row._id),
         {
           vehicleId: String(row._id),
+          reading: Math.max(row.outReading, row.inReading ?? row.outReading),
+          date: row.date,
+        },
+      ]),
+    );
+  }
+
+  /**
+   * Midnight UTC of the day AFTER `on` — the exclusive end of the day `on` names.
+   *
+   * Both a visit date and a reading date arrive as `<input type="date">` → midnight UTC, so a
+   * bare `$lte` would already cover them; the next midnight is used for the same reason
+   * `logFilter`'s `to` bound is, so a reading stamped with a TIME on that day still counts as
+   * that day rather than falling through to the following one and reading as "later".
+   */
+  private static dayAfter(on: Date): Date {
+    const end = new Date(on);
+    end.setUTCHours(0, 0, 0, 0);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return end;
+  }
+
+  /**
+   * The two bounds a counter measured on `on` would have to sit between to be a point on this
+   * vehicle's chain: the highest reading dated on or before that day, and the lowest dated after
+   * it. Either may be absent, and an absent bound constrains nothing — a car whose first reading
+   * comes after its service has no lower bound, one not read since has no upper bound.
+   *
+   * Two indexed look-ups rather than one aggregate, because the two questions are not symmetric.
+   * The chain is monotonic, so the HIGHEST value on the early side is `max(outReading, inReading)`
+   * of the row with the greatest `outReading` — the same value `latestReadings` computes, for the
+   * same reason: one physical reading is shared by two rows and must not measure differently
+   * depending on which row a query reached. The LOWEST value on the late side is simply the
+   * smallest `outReading` there, since a row's `inReading` is never below its own `outReading`.
+   */
+  async chainBounds(
+    vehicleId: string,
+    on: Date,
+  ): Promise<{ lower: ChainBound | null; upper: ChainBound | null }> {
+    const end = FleetOdometerRepository.dayAfter(on);
+    const base = { vehicleId: new Types.ObjectId(vehicleId), isDeleted: false };
+    const [early, late] = await Promise.all([
+      this.model
+        .findOne({ ...base, date: { $lt: end } })
+        .sort(NEWEST_FIRST)
+        .lean<FleetOdometerLogDoc>()
+        .exec(),
+      this.model
+        .findOne({ ...base, date: { $gte: end } })
+        .sort({ outReading: 1, _id: 1 })
+        .lean<FleetOdometerLogDoc>()
+        .exec(),
+    ]);
+    return {
+      lower:
+        early === null
+          ? null
+          : { reading: Math.max(early.outReading, early.inReading ?? early.outReading), date: early.date },
+      upper: late === null ? null : { reading: late.outReading, date: late.date },
+    };
+  }
+
+  /**
+   * The LOWER bound for many vehicles at once, each against its OWN date — the alarm projection's
+   * read, where a per-vehicle round trip would be one query per car in the fleet.
+   *
+   * Only the lower side: the projection already holds each vehicle's latest reading, which is the
+   * tightest upper bound available to it without a second pass.
+   */
+  async lowerBoundsAt(
+    pairs: readonly { vehicleId: string; on: Date }[],
+  ): Promise<Map<string, ChainBound>> {
+    if (pairs.length === 0) return new Map();
+    const rows = await this.model.aggregate<{
+      _id: Types.ObjectId;
+      outReading: number;
+      inReading: number | null;
+      date: Date;
+    }>([
+      {
+        $match: {
+          isDeleted: false,
+          $or: pairs.map((pair) => ({
+            vehicleId: new Types.ObjectId(pair.vehicleId),
+            date: { $lt: FleetOdometerRepository.dayAfter(pair.on) },
+          })),
+        },
+      },
+      { $sort: { vehicleId: 1, outReading: -1, _id: -1 } },
+      {
+        $group: {
+          _id: '$vehicleId',
+          outReading: { $first: '$outReading' },
+          inReading: { $first: '$inReading' },
+          date: { $first: '$date' },
+        },
+      },
+    ]);
+    return new Map(
+      rows.map((row) => [
+        String(row._id),
+        {
           reading: Math.max(row.outReading, row.inReading ?? row.outReading),
           date: row.date,
         },

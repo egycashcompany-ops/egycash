@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   CheckInFleetMaintenanceSchema,
   CheckOutFleetMaintenanceSchema,
+  FleetOdometerBracketQuerySchema,
   ListFleetMaintenanceQuerySchema,
   ReopenFleetMaintenanceSchema,
   UpdateFleetMaintenanceSchema,
@@ -20,6 +21,8 @@ import {
   reopenMaintenance,
   updateMaintenance,
 } from './maintenance.controller';
+// The SAME handler `/fleet/odometer/bracket` is mounted with — one rule, two permissions.
+import { odometerBracket } from '../odometer/odometer.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -47,6 +50,23 @@ export const buildFleetMaintenanceRouter = (): Router => {
     authenticate,
     authorize('fleetMaintenance.view'),
     asyncHandler(listMaintenanceAlarms),
+  );
+  /**
+   * The odometer bracket for a vehicle on a date — the workshop's door to it.
+   *
+   * The counter typed into a check-in, a check-out or an edit is exactly the number this rule is
+   * about, so the people typing it must be able to ask. Behind `fleetOdometer.view` alone the
+   * request would 403 for a maintenance-only operator and the dialog would render normally with
+   * no warning at all — a safety net that disappears silently for precisely its audience, which
+   * is worse than not having one. Same handler as `/fleet/odometer/bracket`, only the
+   * `authorize(...)` differs, so the two answers cannot drift.
+   */
+  router.get(
+    '/odometer-bracket',
+    authenticate,
+    authorize('fleetMaintenance.view'),
+    validate({ query: FleetOdometerBracketQuerySchema }),
+    asyncHandler(odometerBracket),
   );
   router.post(
     '/',

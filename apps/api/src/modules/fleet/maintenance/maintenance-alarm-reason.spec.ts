@@ -55,6 +55,11 @@ const BASELINES = [
   { label: 'service on 10 June', baselineCounter: BASELINE, baselineDate: D(SERVICE_DAY) },
 ] as const;
 
+// The bracket's lower half is exercised in its own file. Held at `null` — "the chain had nothing
+// on record that early" — throughout this matrix, so every expectation below is the behaviour
+// this file already pinned, proved unchanged by the guard added beside it.
+const NO_LOWER_BOUND = { baselineLowerBound: null } as const;
+
 /**
  * What SHOULD be reported, written out independently of the implementation: the first true
  * condition in the guards' own order. Deliberately a plain re-statement rather than a call into
@@ -64,6 +69,9 @@ const expectedReason = (input: AlarmInput): string | null => {
   if (input.intervalKm <= 0) return 'noInterval';
   if (input.latestReading === null || input.latestReadingDate === null) return 'noReading';
   if (input.baselineCounter === null || input.baselineDate === null) return 'noService';
+  if (input.baselineLowerBound !== null && input.baselineCounter < input.baselineLowerBound) {
+    return 'baselineBelowChain';
+  }
   if (input.latestReadingDate <= input.baselineDate) return 'readingOlderThanService';
   if (input.latestReading < input.baselineCounter) return 'baselineAboveReading';
   return null;
@@ -73,7 +81,7 @@ const CASES = INTERVALS.flatMap((i) =>
   READINGS.flatMap((r) =>
     BASELINES.map((b) => ({
       label: `${i.label} · ${r.label} · ${b.label}`,
-      input: { ...i, ...r, ...b, yellowKm: YELLOW, redKm: RED } as AlarmInput,
+      input: { ...i, ...r, ...b, ...NO_LOWER_BOUND, yellowKm: YELLOW, redKm: RED } as AlarmInput,
     })),
   ),
 );
@@ -114,6 +122,7 @@ describe('the specific traps, named', () => {
       latestReadingDate: D('2026-06-20'),
       baselineCounter: BASELINE,
       baselineDate: D(SERVICE_DAY),
+      ...NO_LOWER_BOUND,
       ...over,
     });
 
@@ -213,6 +222,7 @@ describe('a computed answer carries NO reason — including a healthy one', () =
       latestReadingDate: D('2026-06-20'),
       baselineCounter: BASELINE,
       baselineDate: D(SERVICE_DAY),
+      ...NO_LOWER_BOUND,
     });
 
   it('a healthy car is `none` with FIGURES and no reason — not a missing answer', () => {

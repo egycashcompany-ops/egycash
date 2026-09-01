@@ -318,6 +318,30 @@ export const useExpectedReading = (vehicleId: string, enabled = true) =>
   });
 
 /**
+ * The odometer bracket for a vehicle on a date — ONE cache entry, whichever door is open.
+ *
+ * The same discipline `useMaintenanceAlarms` follows below: the key names the ANSWER (vehicle +
+ * date), never the route, so one reader holding both permissions still fills one entry, and a
+ * reader holding either gets the same cached bracket.
+ *
+ * The date is part of the key because it is part of the question. A visit closed last month has
+ * a different bracket from one closed today, and that is exactly what makes a back-dated counter
+ * legitimate rather than suspicious — so a changed date must fetch, not reuse.
+ */
+export const useOdometerBracket = (vehicleId: string, on: string, enabled = true) => {
+  const can = useCan();
+  const viaMaintenance = can('fleetMaintenance.view');
+  const viaOdometer = can('fleetOdometer.view');
+  return useQuery({
+    queryKey: [MODULE, 'odometer', 'bracket', vehicleId, on],
+    queryFn: () =>
+      viaMaintenance ? api.odometerBracketForMaintenance(vehicleId, on) : api.odometerBracket(vehicleId, on),
+    staleTime: 30_000,
+    enabled: enabled && vehicleId !== '' && on !== '' && (viaMaintenance || viaOdometer),
+  });
+};
+
+/**
  * The alarm projection — ONE cache entry, whichever door the reader is allowed through.
  *
  * The server exposes the same projection twice, because two permissions legitimately want it:

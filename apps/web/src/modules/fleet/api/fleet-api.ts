@@ -20,6 +20,7 @@ import {
   type FleetDriverProfileDto,
   type FleetDriverUnavailabilityDto,
   type FleetExpectedReadingDto,
+  type FleetOdometerBracketDto,
   type FleetGrievanceDto,
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
@@ -175,6 +176,22 @@ export const listOdometerLogs = (
   getPage<FleetOdometerLogDto>(`/fleet/odometer${buildQuery(params)}`);
 export const expectedOdometerReading = (vehicleId: string): Promise<FleetExpectedReadingDto> =>
   get<FleetExpectedReadingDto>(`/fleet/odometer/expected${buildQuery({ vehicleId })}`);
+/**
+ * The odometer bracket for a vehicle on a date, through the ODOMETER's door.
+ *
+ * Two doors again, for the same reason the alarm projection has two: the people who type a
+ * workshop counter hold maintenance permissions, not necessarily odometer ones, and a safety net
+ * only the odometer audience can reach is a safety net missing from the audience that needs it.
+ * `useOdometerBracket` picks the door once, by permission.
+ */
+export const odometerBracket = (vehicleId: string, on: string): Promise<FleetOdometerBracketDto> =>
+  get<FleetOdometerBracketDto>(`/fleet/odometer/bracket${buildQuery({ vehicleId, on })}`);
+/** The SAME answer, through the MAINTENANCE door — one handler on the server, one rule. */
+export const odometerBracketForMaintenance = (
+  vehicleId: string,
+  on: string,
+): Promise<FleetOdometerBracketDto> =>
+  get<FleetOdometerBracketDto>(`/fleet/maintenance/odometer-bracket${buildQuery({ vehicleId, on })}`);
 /**
  * The alarm projection, through the ODOMETER's door (`fleetOdometer.view`).
  *

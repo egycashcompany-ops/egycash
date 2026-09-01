@@ -162,7 +162,7 @@ export const FleetDashboardPage = (): JSX.Element => {
                   <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                     {alarms.slice(0, 8).map((alarm) => (
                       <li key={alarm.vehicleId} className="flex items-center gap-3 px-5 py-3">
-                        <AlarmBadge level={alarm.level} />
+                        <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />
                         <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
                           {alarm.code}
                         </span>

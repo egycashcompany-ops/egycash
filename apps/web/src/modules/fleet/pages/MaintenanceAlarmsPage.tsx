@@ -101,7 +101,9 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     {
       key: 'level',
       header: t('fleet.alarms.columns.level'),
-      render: (alarm) => <AlarmBadge level={alarm.level} />,
+      render: (alarm) => (
+        <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />
+      ),
     },
     {
       key: 'sinceServiceKm',

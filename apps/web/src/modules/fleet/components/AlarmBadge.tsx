@@ -7,7 +7,7 @@
 //
 // Presentation ONLY. The level itself is `computeAlarm`'s, derived server-side per request; this
 // module decides no threshold and recomputes nothing.
-import { type FleetAlarmLevel } from '@ecms/contracts';
+import { type FleetAlarmLevel, type FleetNoAlarmReason } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Badge } from '../../../shared/ui/Badge';
 
@@ -59,9 +59,37 @@ export const alarmCellTint = (level: FleetAlarmLevel | undefined): string | unde
     ? `${ALARM_TINT[level].cell} rounded-md px-2 py-1`
     : undefined;
 
-export const AlarmBadge = ({ level }: { level: FleetAlarmLevel }): JSX.Element => {
+/**
+ * The alarm's LEVEL, and — when there isn't one — what stopped it being calculated.
+ *
+ * «لا يوجد» used to mean five different things: a healthy cycle, and each of four separate
+ * reasons the cycle could not be measured at all. A reader looking at it had no way to tell
+ * "this car is fine" from "this car's type has no service interval", and no way to know what
+ * to go and fix. The server names the guard that stopped it; this reads that out.
+ *
+ * The reason is the SERVER's — never re-derived here. Three of the four cannot even be seen from
+ * the client: the interval lives on the vehicle type, and the reading and its date are not in
+ * this projection. A screen guessing from what it happens to hold would state a wrong cause.
+ */
+export const AlarmBadge = ({
+  level,
+  noAlarmReason = null,
+}: {
+  level: FleetAlarmLevel;
+  /** `null` = the alarm was computed, so `level` is the whole answer. */
+  noAlarmReason?: FleetNoAlarmReason | null;
+}): JSX.Element => {
   const t = useT();
-  if (level === 'none') return <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>;
+  if (level === 'none') {
+    // A computed `none` is a healthy car: it keeps the word it has always had.
+    return (
+      <Badge tone="neutral">
+        {noAlarmReason === null
+          ? t('fleet.vehicle.alarmNone')
+          : t(`fleet.alarms.noAlarmReason.${noAlarmReason}`)}
+      </Badge>
+    );
+  }
   return (
     <Badge tone={level === 'red' ? 'danger' : 'warning'}>
       {t(`fleet.dashboard.level.${level}`)}

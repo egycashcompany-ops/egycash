@@ -88,6 +88,7 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   sinceServiceKm: 2000,
   lastServiceAt: '2026-06-01T00:00:00.000Z',
   lastServiceVisitId: 'visit-1',
+  noAlarmReason: null,
   ...o,
 });
 
@@ -383,11 +384,19 @@ describe('the distance since the last service', () => {
     expect(red).not.toBe(yellow);
   });
 
-  it('says NOTHING when the projection refused to compute a distance', () => {
-    // No maintenance rule, no service on file, or a reading older than the last service: the
-    // backend deliberately returns null rather than a false alarm, and so does the cell.
-    const body = tbody(withAlarm('none', null));
-    expect(body).toContain('—');
+  it('says WHY there is no distance, instead of an unexplained dash', () => {
+    // The backend returns null rather than a false alarm — but it also says which guard stopped
+    // it, and that is the useful half. A dash told the reader only that the column was empty.
+    //
+    // Note the fixture is coherent in a way the old one was not: no distance means the
+    // calculation did not run, so there is always a reason. The two cannot both be null.
+    const body = tbody(
+      render({
+        qc: client([log()], [alarm({ level: 'none', sinceServiceKm: null, noAlarmReason: 'noService' })]),
+      }),
+    );
+    expect(body).toContain(t('fleet.alarms.noAlarmReason.noService'));
+    // …and it is no longer the word that hid five different situations.
     expect(body).not.toContain(t('fleet.vehicle.alarmNone'));
   });
 

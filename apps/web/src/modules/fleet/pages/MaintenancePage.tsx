@@ -404,7 +404,7 @@ export const MaintenancePage = (): JSX.Element => {
           <span
             className={cn('inline-flex items-center gap-1.5', alarmCellTint(alarm.level))}
           >
-            <AlarmBadge level={alarm.level} />
+            <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />
             {/*
               THIS visit is the one the countdown is measured from. `lastServiceVisitId` is the
               server's own answer — the id of the row its baseline aggregate picked — so the mark

@@ -591,6 +591,29 @@ export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────
 
 /** Query-time projection per vehicle; attached to odometer lists and the vehicle profile. */
+/**
+ * WHY a vehicle has no alarm figure — the guard that stopped `computeAlarm`, named.
+ *
+ * `level: 'none'` means two entirely different things: a car whose cycle was measured and found
+ * healthy, and a car whose cycle could not be measured at all. Four separate conditions produce
+ * the second, and every one of them used to reach the reader as the same word. This says which.
+ *
+ * `null` means the alarm WAS computed — including a computed `none`, which is a healthy car and
+ * not a missing answer.
+ */
+export type FleetNoAlarmReason =
+  /** The vehicle's TYPE has no maintenance interval, so there is no cycle to measure against. */
+  | 'noInterval'
+  /** The vehicle has no odometer reading at all. */
+  | 'noReading'
+  /** No closed, alarm-counting workshop visit yet — nothing to measure FROM. */
+  | 'noService'
+  /**
+   * There is a service and a reading, but the reading predates the service: it describes the
+   * cycle BEFORE the last one and says nothing about distance since.
+   */
+  | 'readingOlderThanService';
+
 export interface FleetMaintenanceAlarmDto {
   vehicleId: string;
   code: string;
@@ -607,6 +630,14 @@ export interface FleetMaintenanceAlarmDto {
    * reach the service it is counted from, on any screen that shows the alarm.
    */
   lastServiceVisitId: string | null;
+  /**
+   * The guard that stopped the calculation, or `null` when it ran.
+   *
+   * The FIRST guard in `computeAlarm`'s own order, not every condition that happens to hold: it
+   * names what actually stopped the arithmetic. Fixing it can reveal the next one, which is the
+   * honest behaviour — the answer was never "one thing is missing", only "this is what stopped it".
+   */
+  noAlarmReason: FleetNoAlarmReason | null;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────

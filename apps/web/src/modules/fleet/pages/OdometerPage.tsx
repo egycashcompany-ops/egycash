@@ -34,7 +34,8 @@ import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
-import { AlarmBadge } from '../components/AlarmBadge';
+import { cn } from '../../../shared/lib/cn';
+import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
 import { odometerRange } from '../lib/odometer-range';
 import { EmployeeName } from '../components/EmployeeName';
@@ -249,7 +250,11 @@ export const OdometerPage = (): JSX.Element => {
           return <span className="text-slate-400">—</span>;
         }
         return (
-          <span className="flex flex-wrap items-center gap-2">
+          // The tint is on this element, NOT on the row: a row here is one READING, and a car has
+          // many — tinting them all would show five alarms for one car.
+          <span
+            className={cn('inline-flex flex-wrap items-center gap-2', alarmCellTint(alarm.level))}
+          >
             <span className="tabular-nums">
               {t('fleet.odometer.kmValue', { km: formatNumber(alarm.sinceServiceKm, locale) })}
             </span>

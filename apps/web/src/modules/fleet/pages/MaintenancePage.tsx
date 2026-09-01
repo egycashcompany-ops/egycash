@@ -64,7 +64,8 @@ import {
   } from '../api/fleet-queries';
 import { useDriverHrFilter } from '../api/driver-hr-filter';
 import { EmployeeName } from '../components/EmployeeName';
-import { AlarmBadge, RemainingKm } from '../components/AlarmBadge';
+import { cn } from '../../../shared/lib/cn';
+import { AlarmBadge, RemainingKm, alarmCellTint } from '../components/AlarmBadge';
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -397,7 +398,12 @@ export const MaintenancePage = (): JSX.Element => {
         const alarm = alarmByVehicle.get(visit.vehicleId);
         if (alarm === undefined) return dash;
         return (
-          <span className="flex items-center gap-1.5">
+          // Tinted HERE and never on the row. The row's own colour already says something else —
+          // green means the car has left the workshop — and an alarm painted across it would take
+          // a colour that is spoken for. Inside the cell the two coexist: the green frames this.
+          <span
+            className={cn('inline-flex items-center gap-1.5', alarmCellTint(alarm.level))}
+          >
             <AlarmBadge level={alarm.level} />
             {/*
               THIS visit is the one the countdown is measured from. `lastServiceVisitId` is the

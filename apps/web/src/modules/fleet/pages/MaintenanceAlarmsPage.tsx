@@ -21,7 +21,7 @@ import { Button } from '../../../shared/ui/Button';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
-import { AlarmBadge, RemainingKm } from '../components/AlarmBadge';
+import { AlarmBadge, RemainingKm, alarmRowTint } from '../components/AlarmBadge';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
@@ -181,6 +181,9 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
           columns={columns}
           rows={rows}
           rowKey={(alarm) => alarm.vehicleId}
+          // One row IS one vehicle here, so the level belongs to the whole row — this is the one
+          // screen where that is true, and the triage sort already puts the red ones on top.
+          rowClassName={(alarm) => alarmRowTint(alarm.level)}
           loading={alarmsQuery.isPending}
           error={alarmsQuery.isError ? alarmsQuery.error : undefined}
           onRetry={() => void alarmsQuery.refetch()}

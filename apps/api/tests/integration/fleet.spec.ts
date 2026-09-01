@@ -1791,11 +1791,17 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     // No reading at all yet ⇒ the SECOND guard, not "no service": the service exists.
     expect((await reasonFor(vehicle.code))?.noAlarmReason).toBe('noReading');
 
-    // A reading dated BEFORE the service (which closed on 3 September) ⇒ the fourth guard.
+    // A reading dated BEFORE the service (which closed on 3 September) ⇒ the stale-reading guard.
+    //
+    // The reading is deliberately BELOW the exit counter. It has to be: a reading dated before
+    // the service that sits ABOVE it is a bracket violation — the car had already driven further
+    // than it supposedly left the workshop on — and that is answered by `baselineBelowChain`,
+    // which is a different situation with its own test. This one is about a car whose numbers
+    // agree and whose newest reading is simply too old to describe the new cycle.
     await request(app)
       .post('/api/v1/fleet/odometer')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ vehicleId: vehicle.id, reading: 124_850, date: '2026-09-01' });
+      .send({ vehicleId: vehicle.id, reading: 119_500, date: '2026-09-01' });
     const stale = await reasonFor(vehicle.code);
     expect(stale?.noAlarmReason).toBe('readingOlderThanService');
     expect(stale?.level).toBe('none');
@@ -1853,13 +1859,16 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
         ).status,
       ).toBe(201);
     }
-    const on = async (day: string) =>
-      data<{ lowerBound: number | null; upperBound: number | null }>(
+    const on = async (day: string) => {
+      const dto = data<{ lowerBound: number | null; upperBound: number | null }>(
         await request(app)
           .get('/api/v1/fleet/odometer/bracket')
           .query({ vehicleId: v.id, on: day })
           .set('Authorization', `Bearer ${adminToken}`),
       );
+      // Only the two numbers — the dates and the echoed `on` are asserted in the test above.
+      return { lowerBound: dto.lowerBound, upperBound: dto.upperBound };
+    };
 
     // A visit closed in September is bracketed by September's chain, not by where it has since run.
     expect(await on('2026-09-15')).toEqual({ lowerBound: 100_000, upperBound: 400_000 });

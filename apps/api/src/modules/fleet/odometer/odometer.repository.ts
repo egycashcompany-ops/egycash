@@ -150,11 +150,17 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
    * comes after its service has no lower bound, one not read since has no upper bound.
    *
    * Two indexed look-ups rather than one aggregate, because the two questions are not symmetric.
-   * The chain is monotonic, so the HIGHEST value on the early side is `max(outReading, inReading)`
-   * of the row with the greatest `outReading` — the same value `latestReadings` computes, for the
-   * same reason: one physical reading is shared by two rows and must not measure differently
-   * depending on which row a query reached. The LOWEST value on the late side is simply the
-   * smallest `outReading` there, since a row's `inReading` is never below its own `outReading`.
+   *
+   * BOTH SIDES READ `outReading` ONLY, AND THAT IS THE WHOLE SUBTLETY. A row's `inReading` is not
+   * a reading taken on that row's date — it is the SHARED reading that opens the next period, so
+   * it was measured on the NEXT row's date. `latestReadings` is right to take `max(out, in)`,
+   * because it asks "how far has this car got?" and has no date bound at all. Here the question
+   * is bounded BY a date, and folding in `inReading` would import a future reading into the past:
+   * a car read at 100,000 on the 1st and 400,000 on the 1st of next month has one row dated the
+   * 1st carrying both numbers, and asking for the bracket mid-month must answer 100,000.
+   *
+   * Nothing is lost by dropping it. That shared reading belongs to the row that opens with it,
+   * and that row is dated after the boundary — so the upper look-up finds the very same number.
    */
   async chainBounds(
     vehicleId: string,
@@ -175,10 +181,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         .exec(),
     ]);
     return {
-      lower:
-        early === null
-          ? null
-          : { reading: Math.max(early.outReading, early.inReading ?? early.outReading), date: early.date },
+      lower: early === null ? null : { reading: early.outReading, date: early.date },
       upper: late === null ? null : { reading: late.outReading, date: late.date },
     };
   }
@@ -197,7 +200,6 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     const rows = await this.model.aggregate<{
       _id: Types.ObjectId;
       outReading: number;
-      inReading: number | null;
       date: Date;
     }>([
       {
@@ -214,20 +216,13 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         $group: {
           _id: '$vehicleId',
           outReading: { $first: '$outReading' },
-          inReading: { $first: '$inReading' },
           date: { $first: '$date' },
         },
       },
     ]);
-    return new Map(
-      rows.map((row) => [
-        String(row._id),
-        {
-          reading: Math.max(row.outReading, row.inReading ?? row.outReading),
-          date: row.date,
-        },
-      ]),
-    );
+    // The opening reading only, for the reason spelled out on `chainBounds` — the closing one was
+    // measured on the NEXT row's date and does not belong to a bound cut at this one.
+    return new Map(rows.map((row) => [String(row._id), { reading: row.outReading, date: row.date }]));
   }
 
   async listLogs(params: ListParams<FleetOdometerLogDoc>): Promise<Paginated<FleetOdometerLogDoc>> {

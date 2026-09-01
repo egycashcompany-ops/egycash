@@ -27,6 +27,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { scopedView } from './useRememberedFilters';
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../../');
 const text = (rel: string): string => readFileSync(join(SRC, rel), 'utf8');
@@ -69,9 +70,9 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/gold/portal/pages/PortalBarsPage.tsx', []],
   ['modules/gold/portal/pages/PortalReportsPage.tsx', ['tab']],
   ['modules/hr/attendance/pages/DailySheetPage.tsx', []],
-  ['modules/hr/attendance/pages/RegularizationQueuePage.tsx', []],
+  ['modules/hr/attendance/pages/RegularizationQueuePage.tsx', ['tab']],
   ['modules/hr/contracts/pages/ContractsListPage.tsx', []],
-  ['modules/hr/employee-loans/pages/EmployeeLoansAdminPage.tsx', []],
+  ['modules/hr/employee-loans/pages/EmployeeLoansAdminPage.tsx', ['tab']],
   ['modules/hr/employee-management/employee-files/pages/EmployeeFilesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesReadyPage.tsx', []],
@@ -386,5 +387,75 @@ describe('the detector agrees with the partition', () => {
       ([path, why]) => why !== undefined && !looksFilterCapable(text(path)),
     ).map(([path]) => path);
     expect(stale).toEqual([]);
+  });
+});
+
+/**
+ * The screens whose TAB lives in the query string, with the tab's default value.
+ *
+ * One URL, several lists that share nothing: the archive tab of the loans ledger filters by status
+ * and type, the queue tab does not offer those controls at all. A single memory per path would hand
+ * each tab the previous tab's narrowing — and, worse, hand it back on the NEXT visit to a tab that
+ * renders no control to clear it. So these keep one memory per (pathname, tab).
+ */
+const TAB_SCOPED: readonly (readonly [string, string])[] = [
+  ['modules/atm/pages/DataEditPage.tsx', 'machines'],
+  ['modules/gold/portal/pages/PortalReportsPage.tsx', 'movement'],
+  ['modules/hr/attendance/pages/RegularizationQueuePage.tsx', 'queue'],
+  ['modules/hr/employee-loans/pages/EmployeeLoansAdminPage.tsx', 'queue'],
+  ['modules/hr/payroll/pages/PayrollAdjustmentsPage.tsx', 'queue'],
+  ['modules/hr/recruitment/applicant-documents/pages/ApplicantDocumentsQueuePage.tsx', 'waiting'],
+  ['modules/it/pages/SoftwarePage.tsx', 'products'],
+];
+
+describe('a tabbed screen keeps one memory per tab', () => {
+  it('covers every screen whose tab lives in the query string', () => {
+    // Kept in step with the exclusion lists above: a screen that excludes `tab` is a screen whose
+    // tab is in the URL, and every one of those must be scoped or its filters cross tabs.
+    const excludesTab = COVERED.filter(([, ex]) => ex.includes('tab'))
+      .map(([p]) => p)
+      .sort();
+    expect(TAB_SCOPED.map(([p]) => p).sort()).toEqual(excludesTab);
+    expect(TAB_SCOPED).toHaveLength(7);
+  });
+
+  it.each(TAB_SCOPED.map(([path, fallback]) => ({ path, fallback })))(
+    '$path reads its tab from the URL and passes it as the scope',
+    ({ path, fallback }) => {
+      const src = text(path);
+      // The tab comes from the URL, not from local state — held locally it would reset to the
+      // default on every visit while the filters came back, which is the leak itself.
+      expect(src).toMatch(/sp\.get\('tab'\)/);
+      expect(src).not.toMatch(/useState<Tab>/);
+      expect(src).toContain(`useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab)`);
+      // The default tab stays OFF the URL, so a bare arrival still means what it always meant.
+      expect(src).toContain(`'${fallback}' ? null :`);
+      // And the tab is never itself a remembered filter.
+      expect(declared(src)).not.toContain('tab');
+    },
+  );
+
+  it.each(TAB_SCOPED.map(([path]) => ({ path })))(
+    'filters set on one tab of $path cannot follow the reader to another',
+    ({ path }) => {
+      const keep = declared(text(path));
+      const onTabA = new URLSearchParams([
+        ['tab', 'a'],
+        ...keep.map((k): [string, string] => [k, 'x']),
+      ]);
+      // Switching to a tab that has saved nothing leaves the tab and nothing else.
+      expect(scopedView(onTabA, keep, '')).toBe('tab=a');
+      // Switching to a tab that saved something gets THAT, never the tab being left.
+      const arriving = `${keep[0] as string}=y`;
+      expect(scopedView(onTabA, keep, arriving)).toBe(`tab=a&${arriving}`);
+    },
+  );
+
+  it('leaves every other covered screen keyed by pathname alone', () => {
+    const scoped = new Set(TAB_SCOPED.map(([p]) => p));
+    const strays = COVERED.filter(
+      ([p]) => !scoped.has(p) && /REMEMBERED_FILTERS, '', /.test(text(p)),
+    ).map(([p]) => p);
+    expect(strays).toEqual([]);
   });
 });

@@ -74,20 +74,37 @@ export const alarmCellTint = (level: FleetAlarmLevel | undefined): string | unde
 export const AlarmBadge = ({
   level,
   noAlarmReason = null,
+  reasonDisplay = 'text',
 }: {
   level: FleetAlarmLevel;
   /** `null` = the alarm was computed, so `level` is the whole answer. */
   noAlarmReason?: FleetNoAlarmReason | null;
+  /**
+   * How much room the reason may take.
+   *
+   * `'text'` spells it out, and belongs where ONE row is ONE vehicle — the alarms board. There it
+   * is the answer to the column's question and it is said once per car.
+   *
+   * `'tooltip'` keeps the short word and hangs the sentence off it. That is for a table whose
+   * rows are something else: the maintenance screen lists VISITS and the odometer log lists
+   * READINGS, so one car occupies several rows, and a per-vehicle sentence repeated down every
+   * one of them reads as several different problems instead of one — the same noise a per-row
+   * tint would have made, which is why the tint went on the cell there.
+   */
+  reasonDisplay?: 'text' | 'tooltip';
 }): JSX.Element => {
   const t = useT();
   if (level === 'none') {
-    // A computed `none` is a healthy car: it keeps the word it has always had.
+    // A computed `none` is a healthy car: it keeps the word it has always had, and says no more.
+    if (noAlarmReason === null) return <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>;
+    const reason = t(`fleet.alarms.noAlarmReason.${noAlarmReason}`);
+    if (reasonDisplay === 'text') return <Badge tone="neutral">{reason}</Badge>;
+    // Wrapped rather than passed to `Badge`: a `title` prop on the design system's pill would
+    // widen a component every feature shares, for one screen's layout problem.
     return (
-      <Badge tone="neutral">
-        {noAlarmReason === null
-          ? t('fleet.vehicle.alarmNone')
-          : t(`fleet.alarms.noAlarmReason.${noAlarmReason}`)}
-      </Badge>
+      <span title={reason}>
+        <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>
+      </span>
     );
   }
   return (

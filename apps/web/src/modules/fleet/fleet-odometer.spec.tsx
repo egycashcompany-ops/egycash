@@ -384,20 +384,38 @@ describe('the distance since the last service', () => {
     expect(red).not.toBe(yellow);
   });
 
-  it('says WHY there is no distance, instead of an unexplained dash', () => {
-    // The backend returns null rather than a false alarm — but it also says which guard stopped
-    // it, and that is the useful half. A dash told the reader only that the column was empty.
-    //
-    // Note the fixture is coherent in a way the old one was not: no distance means the
-    // calculation did not run, so there is always a reason. The two cannot both be null.
+  it('shows a DASH when there is no distance — this column is a distance', () => {
+    // The reason the projection refused is a fact about the VEHICLE, and rows here are READINGS.
+    // Saying it in this cell repeats it down every reading of the same car, which reads as
+    // several problems instead of one. It is said once per car, on the alarms board.
     const body = tbody(
       render({
-        qc: client([log()], [alarm({ level: 'none', sinceServiceKm: null, noAlarmReason: 'noService' })]),
+        qc: client(
+          [log()],
+          [alarm({ level: 'none', sinceServiceKm: null, noAlarmReason: 'noService' })],
+        ),
       }),
     );
-    expect(body).toContain(t('fleet.alarms.noAlarmReason.noService'));
-    // …and it is no longer the word that hid five different situations.
-    expect(body).not.toContain(t('fleet.vehicle.alarmNone'));
+    expect(body).toContain('—');
+    expect(body, 'no reason sentence in a numeric column').not.toContain(
+      t('fleet.alarms.noAlarmReason.noService'),
+    );
+  });
+
+  it('and never prints a reason, whichever one it is', () => {
+    for (const reason of [
+      'noInterval',
+      'noReading',
+      'noService',
+      'readingOlderThanService',
+    ] as const) {
+      const body = tbody(
+        render({
+          qc: client([log()], [alarm({ level: 'none', sinceServiceKm: null, noAlarmReason: reason })]),
+        }),
+      );
+      expect(body, reason).not.toContain(t(`fleet.alarms.noAlarmReason.${reason}`));
+    }
   });
 
   it('says nothing for a vehicle the projection does not cover at all', () => {

@@ -148,13 +148,9 @@ export const OdometerPage = (): JSX.Element => {
   // One call for the whole page; the join here is display only — the level filter is server-side.
   const alarmsQuery = useMaintenanceAlarms();
   const alarmByVehicle = useMemo(() => {
-    const map = new Map<string, Pick<FleetMaintenanceAlarmDto, 'sinceServiceKm' | 'level' | 'noAlarmReason'>>();
+    const map = new Map<string, Pick<FleetMaintenanceAlarmDto, 'sinceServiceKm' | 'level'>>();
     for (const alarm of alarmsQuery.data ?? []) {
-      map.set(alarm.vehicleId, {
-        sinceServiceKm: alarm.sinceServiceKm,
-        level: alarm.level,
-        noAlarmReason: alarm.noAlarmReason,
-      });
+      map.set(alarm.vehicleId, { sinceServiceKm: alarm.sinceServiceKm, level: alarm.level });
     }
     return map;
   }, [alarmsQuery.data]);
@@ -250,12 +246,12 @@ export const OdometerPage = (): JSX.Element => {
         const alarm = alarmByVehicle.get(log.vehicleId);
         // No rule, no service on file, or a vehicle that has left the registry: say nothing
         // rather than print a distance the projection deliberately refused to compute.
-        // The vehicle is not in the projection at all — nothing is known, so nothing is said.
-        if (alarm === undefined) return <span className="text-slate-400">—</span>;
-        // There is no DISTANCE, but there is a reason there isn't one, and it is the useful
-        // thing to show: a dash here told the reader only that the column was empty.
-        if (alarm.sinceServiceKm === null) {
-          return <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />;
+        // A DISTANCE column, and only that. The reason an alarm is unavailable is a fact about the
+        // VEHICLE, and rows here are READINGS — one car has many, so a sentence repeated down all
+        // of them reads as several problems instead of one. It is said once per car, on the
+        // alarms board, where a row IS a vehicle.
+        if (alarm === undefined || alarm.sinceServiceKm === null) {
+          return <span className="text-slate-400">—</span>;
         }
         return (
           // The tint is on this element, NOT on the row: a row here is one READING, and a car has
@@ -266,7 +262,7 @@ export const OdometerPage = (): JSX.Element => {
             <span className="tabular-nums">
               {t('fleet.odometer.kmValue', { km: formatNumber(alarm.sinceServiceKm, locale) })}
             </span>
-            <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />
+            <AlarmBadge level={alarm.level} />
           </span>
         );
       },

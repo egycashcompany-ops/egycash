@@ -134,42 +134,57 @@ const client = (alarms: FleetMaintenanceAlarmDto[]): QueryClient => {
 const alarmsBoard = (a: FleetMaintenanceAlarmDto): string =>
   draw(<MaintenanceAlarmsPage />, '/fleet/maintenance-alarms', client([a]));
 
-const maintenance = (a: FleetMaintenanceAlarmDto): string => {
+/** `count` VISITS of the SAME car — the shape that made the sentence repeat down the column. */
+const maintenanceWithVisits = (a: FleetMaintenanceAlarmDto, count: number): string => {
   const qc = client([a]);
+  const items = Array.from({ length: count }, (_unused, i) => ({
+    id: `${VISIT}${i}`,
+    vehicleId: VEHICLE,
+    vehicleCode: '150',
+    driverInEmployeeId: null,
+    driverOutEmployeeId: null,
+    inDate: '2026-06-01T00:00:00.000Z',
+    outDate: null,
+    workshopId: 'w1',
+    workTypeId: 'wt1',
+    spareParts: [],
+    sparePartIds: [],
+    odometerAtService: 275_000,
+    exitOdometer: null,
+    takenInByEmployeeId: null,
+    takenOutByEmployeeId: null,
+    notes: null,
+    version: 0,
+    createdAt: '2026-06-01T00:00:00.000Z',
+    updatedAt: '2026-06-01T00:00:00.000Z',
+  }));
   qc.setQueryData(
     listKey('fleet', 'maintenance', { page: 1, pageSize: 25, sortBy: 'inDate', sortDir: 'desc' }),
-    {
-      items: [
-        {
-          id: VISIT,
-          vehicleId: VEHICLE,
-          vehicleCode: '150',
-          driverInEmployeeId: null,
-          driverOutEmployeeId: null,
-          inDate: '2026-06-01T00:00:00.000Z',
-          outDate: null,
-          workshopId: 'w1',
-          workTypeId: 'wt1',
-          spareParts: [],
-          sparePartIds: [],
-          odometerAtService: 275_000,
-          exitOdometer: null,
-          takenInByEmployeeId: null,
-          takenOutByEmployeeId: null,
-          notes: null,
-          version: 0,
-          createdAt: '2026-06-01T00:00:00.000Z',
-          updatedAt: '2026-06-01T00:00:00.000Z',
-        },
-      ],
-      meta: { page: 1, pageSize: 25, totalItems: 1, totalPages: 1 },
-    },
+    { items, meta: { page: 1, pageSize: 25, totalItems: count, totalPages: 1 } },
   );
   return draw(<MaintenancePage />, '/fleet/maintenance', qc);
 };
 
-const odometer = (a: FleetMaintenanceAlarmDto): string => {
+const maintenance = (a: FleetMaintenanceAlarmDto): string => maintenanceWithVisits(a, 1);
+
+/** `count` READINGS of the SAME car — five of these printed the sentence five times. */
+const odometerWithLogs = (a: FleetMaintenanceAlarmDto, count: number): string => {
   const qc = client([a]);
+  const items = Array.from({ length: count }, (_unused, i) => ({
+    id: `log-${i}`,
+    vehicleId: VEHICLE,
+    vehicleCode: '150',
+    date: '2026-08-20T00:00:00.000Z',
+    outReading: 280_300 - i,
+    inReading: null,
+    km: null,
+    driver1EmployeeId: null,
+    driver2EmployeeId: null,
+    notes: null,
+    version: 0,
+    createdAt: '2026-08-20T00:00:00.000Z',
+    updatedAt: '2026-08-20T00:00:00.000Z',
+  }));
   qc.setQueryData(
     listKey('fleet', 'odometer', {
       page: 1,
@@ -182,29 +197,12 @@ const odometer = (a: FleetMaintenanceAlarmDto): string => {
       alerts: undefined,
       driverEmployeeIds: undefined,
     }),
-    {
-      items: [
-        {
-          id: 'log-1',
-          vehicleId: VEHICLE,
-          vehicleCode: '150',
-          date: '2026-08-20T00:00:00.000Z',
-          outReading: 280_300,
-          inReading: null,
-          km: null,
-          driver1EmployeeId: null,
-          driver2EmployeeId: null,
-          notes: null,
-          version: 0,
-          createdAt: '2026-08-20T00:00:00.000Z',
-          updatedAt: '2026-08-20T00:00:00.000Z',
-        },
-      ],
-      meta: { page: 1, pageSize: 25, totalItems: 1, totalPages: 1 },
-    },
+    { items, meta: { page: 1, pageSize: 25, totalItems: count, totalPages: 1 } },
   );
   return draw(<OdometerPage />, '/fleet/odometer', qc);
 };
+
+const odometer = (a: FleetMaintenanceAlarmDto): string => odometerWithLogs(a, 1);
 
 const SCREENS = [
   ['maintenance-alarms', alarmsBoard],
@@ -212,23 +210,56 @@ const SCREENS = [
   ['odometer', odometer],
 ] as const;
 
-describe('all three screens say the reason, and say the same one', () => {
+describe('each screen says the reason at the size its rows can carry', () => {
+  // The screens differ in what ONE ROW is, and that decides how much room the reason may take.
+  // A per-vehicle sentence printed on a per-visit or per-reading row repeats down the column and
+  // reads as several problems instead of one — the same noise a per-row tint would have made.
   for (const reason of REASONS) {
-    it(`«${translate('ar', `fleet.alarms.noAlarmReason.${reason}`)}» reaches every screen`, () => {
-      for (const [name, render] of SCREENS) {
-        const markup = render(alarm({ noAlarmReason: reason }));
-        expect(markup, `${name} states the reason`).toContain(
-          translate('ar', `fleet.alarms.noAlarmReason.${reason}`),
-        );
-        // …and does not fall back to the word that hid it.
-        expect(markup, `${name} drops the catch-all`).not.toContain(
-          translate('ar', 'fleet.vehicle.alarmNone'),
-        );
-      }
+    it(`«${translate('ar', `fleet.alarms.noAlarmReason.${reason}`)}» — in full on the board, as a tooltip on maintenance, absent from the odometer`, () => {
+      const text = translate('ar', `fleet.alarms.noAlarmReason.${reason}`);
+      const a = alarm({ noAlarmReason: reason });
+
+      // One row IS one vehicle: the sentence is the answer, said once — as VISIBLE text.
+      // `toContain(text)` alone cannot tell that apart from the text sitting in a `title`
+      // attribute, so the shape is asserted: printed as the badge's own child, and not hidden
+      // behind a hover the reader would have to discover.
+      const onBoard = alarmsBoard(a);
+      expect(onBoard, 'the alarms board spells it out').toContain(`>${text}<`);
+      expect(onBoard, 'and does not demote it to a tooltip').not.toContain(`title="${text}"`);
+
+      // Rows are VISITS: the short word shows, the sentence hangs off it.
+      const onMaintenance = maintenance(a);
+      expect(onMaintenance, 'maintenance keeps the short word').toContain(
+        translate('ar', 'fleet.vehicle.alarmNone'),
+      );
+      expect(onMaintenance, 'and carries the reason as a tooltip').toContain(`title="${text}"`);
+
+      // Rows are READINGS: a distance column stays a distance column.
+      const onOdometer = odometer(a);
+      expect(onOdometer, 'the odometer prints no reason at all').not.toContain(text);
+      expect(onOdometer, 'not even as a tooltip').not.toContain(`title="${text}"`);
     });
   }
 
-  it('a HEALTHY car keeps «لا يوجد» and is given no reason', () => {
+  it('a car with SEVERAL readings does not repeat its reason once per reading', () => {
+    // The defect this replaces: five readings of one car printed the same sentence five times.
+    const text = translate('ar', 'fleet.alarms.noAlarmReason.noService');
+    const markup = odometerWithLogs(alarm({ noAlarmReason: 'noService' }), 4);
+    expect(markup.split('—').length - 1, 'four dashed cells').toBeGreaterThanOrEqual(4);
+    expect(markup.split(text).length - 1, 'and the reason nowhere').toBe(0);
+  });
+
+  it('a car with SEVERAL visits does not repeat the sentence down the maintenance column', () => {
+    // `noInterval` deliberately: `noService`'s wording is shared with the «آخر صيانة» column,
+    // which legitimately prints it per row, and counting it would count that column too.
+    const text = translate('ar', 'fleet.alarms.noAlarmReason.noInterval');
+    const markup = maintenanceWithVisits(alarm({ noAlarmReason: 'noInterval' }), 3);
+    // The sentence appears only inside `title` attributes — never as visible text in a cell.
+    expect(markup.split(`>${text}<`).length - 1, 'not printed in any cell').toBe(0);
+    expect(markup.split(`title="${text}"`).length - 1, 'carried as a tooltip per row').toBe(3);
+  });
+
+  it('a HEALTHY car keeps «لا يوجد» everywhere and is given no reason', () => {
     // The distinction the change exists for: this `none` was measured, and inventing a cause for
     // it would be the same lie in the opposite direction.
     for (const [name, render] of SCREENS) {
@@ -276,9 +307,15 @@ describe('the reason is the server’s, and is written in ONE place', () => {
       //  field, not inferring why the alarm is missing. What must not happen is a page turning
       //  that, or anything else it holds, into a REASON — which the checks above and below
       //  forbid: no reason literal, no reason string, and the server's value passed through.)
-      expect(source, `${page} passes it through`).toMatch(
-        /noAlarmReason=\{alarm\.noAlarmReason\}/,
-      );
+      // Where a page shows the reason at all, it passes the SERVER's value straight through.
+      // The odometer shows none, so it passes none — that is the point of this PR, not a gap.
+      if (page !== 'OdometerPage') {
+        expect(source, `${page} passes it through`).toMatch(
+          /noAlarmReason=\{alarm\.noAlarmReason\}/,
+        );
+      } else {
+        expect(source, 'the odometer asks for no reason').not.toContain('noAlarmReason');
+      }
     }
   });
 

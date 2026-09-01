@@ -3631,6 +3631,8 @@ const en: Record<string, string> = {
   'fleet.maintenance.outRange': 'Checked out',
   'fleet.maintenance.legacyParts': 'Recorded as text',
   'fleet.maintenance.isAlarmBaseline': 'Alarm baseline',
+  'fleet.maintenance.odometerBelowChain':
+    'Below the last recorded reading ({{km}} km) — check the number. It will be saved as entered.',
   'fleet.alarms.subtitle':
     'Derived per request from readings and the last counted service — never stored',
   'fleet.alarms.columns.level': 'Level',
@@ -9862,6 +9864,8 @@ const ar: Record<string, string> = {
   'fleet.maintenance.outRange': 'تاريخ الخروج',
   'fleet.maintenance.legacyParts': 'مسجلة كنص',
   'fleet.maintenance.isAlarmBaseline': 'أساس الإنذار',
+  'fleet.maintenance.odometerBelowChain':
+    'أقل من آخر قراءة مسجّلة ({{km}} كم) — راجع الرقم. سيُحفظ كما هو.',
   'fleet.alarms.subtitle': 'تُشتق عند كل طلب من القراءات وآخر صيانة محسوبة — لا تُخزن أبداً',
   'fleet.alarms.columns.level': 'المستوى',
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',

@@ -28,9 +28,11 @@ export const recordOdometer = async (req: Request, res: Response): Promise<void>
 
 export const expectedOdometerReading = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, FleetVehicleIdQuery>(req);
+  const expected = await fleetOdometerService.expectedReading(query.vehicleId);
   ok(res, {
     vehicleId: query.vehicleId,
-    expectedReading: await fleetOdometerService.expectedReading(query.vehicleId),
+    expectedReading: expected.reading,
+    asOf: expected.asOf === null ? null : expected.asOf.toISOString(),
   });
 };
 

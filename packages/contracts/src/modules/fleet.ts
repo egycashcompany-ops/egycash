@@ -466,6 +466,17 @@ export interface FleetExpectedReadingDto {
   vehicleId: string;
   /** null = the vehicle has no readings yet. */
   expectedReading: number | null;
+  /**
+   * The date of the READING THAT SET `expectedReading` — the same document, never another.
+   *
+   * Without it "this counter is below the chain" cannot be told apart from "this visit is being
+   * entered for a date before the chain got there", and a workshop counter legitimately sits
+   * below the floor on a back-dated visit. `null` exactly when `expectedReading` is null.
+   *
+   * Note it is the date of the highest reading, which is how the floor is chosen — not
+   * necessarily the most recent one by date. That is the honest description of the value.
+   */
+  asOf: string | null;
 }
 
 export const FleetVehicleIdQuerySchema = z.object({ vehicleId: objectId() }).strict();

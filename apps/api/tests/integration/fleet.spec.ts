@@ -684,6 +684,50 @@ describe('odometer continuity (FR-2, §4.3 — FL-4)', () => {
     expect(data<{ expectedReading: number }>(expected).expectedReading).toBe(1500);
   });
 
+  it('dates the expected reading with the date of the READING THAT SET IT', async () => {
+    // `asOf` exists so a client can tell "this counter is below the chain" apart from "this
+    // visit is dated before the chain got there". That only works if the date belongs to the
+    // very row the floor came from — a date from any other reading would misjudge exactly the
+    // back-dated case it was added for.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    expect((await record(v.id, 1000, '2026-07-10')).status).toBe(201);
+    expect((await record(v.id, 1500, '2026-07-11')).status).toBe(201);
+
+    const ask = async () =>
+      data<{ expectedReading: number | null; asOf: string | null }>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/expected')
+          .query({ vehicleId: v.id })
+          .set('Authorization', `Bearer ${adminToken}`),
+      );
+
+    const first = await ask();
+    expect(first.expectedReading).toBe(1500);
+    // The floor is 1,500 — the reading recorded FOR 11 July, not the 1,000 of the 10th.
+    expect(first.asOf?.slice(0, 10)).toBe('2026-07-11');
+
+    // A further reading moves both together, still from one row.
+    expect((await record(v.id, 2000, '2026-07-20')).status).toBe(201);
+    const second = await ask();
+    expect(second.expectedReading).toBe(2000);
+    expect(second.asOf?.slice(0, 10)).toBe('2026-07-20');
+  });
+
+  it('and answers null for both when the vehicle has no readings at all', async () => {
+    // Not a zero floor dated today: there is nothing on record, and the client must be able to
+    // tell that apart so it draws no conclusion from it.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .get('/api/v1/fleet/odometer/expected')
+      .query({ vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<{ expectedReading: number | null; asOf: string | null }>(res)).toMatchObject({
+      expectedReading: null,
+      asOf: null,
+    });
+  });
+
   it('the odometer never runs backwards — a lower reading is refused (FR-2)', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     await record(v.id, 5000, '2026-07-10');
@@ -1534,6 +1578,48 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(out.status).toBe(200);
     return { vehicle, visit: data<FleetMaintenanceVisitDto>(out) };
   };
+
+  it('a workshop counter that contradicts the odometer chain is RECORDED, not refused', async () => {
+    // The warning for this lives in the UI, and it is advice. The server must keep accepting the
+    // visit: a 409 here would turn a mistyped counter into a LOST workshop visit, which is the
+    // worse outcome — and a back-dated visit legitimately carries a counter below the chain.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const readingRes = await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, reading: 280_500, date: '2026-08-30' });
+    expect(readingRes.status).toBe(201);
+
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-08-31',
+      workshopId: await mkCatalog('workshop', 'ورشة التحذير'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 28_000, // a dropped digit — far below the chain
+    });
+    expect(opened.status).toBe(201);
+    // …and stored EXACTLY as sent: nothing clamped it to the floor or corrected it.
+    expect(data<FleetMaintenanceVisitDto>(opened).odometerAtService).toBe(28_000);
+
+    // The chain is untouched by it — a workshop visit writes no odometer reading of its own.
+    const logs = data<{ outReading: number }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer')
+        .query({ vehicleId: v.id, pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(logs.map((l) => l.outReading)).toEqual([280_500]);
+
+    // And the floor still comes from the READING, never from the workshop counter.
+    expect(
+      data<{ expectedReading: number | null; asOf: string | null }>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/expected')
+          .query({ vehicleId: v.id })
+          .set('Authorization', `Bearer ${adminToken}`),
+      ),
+    ).toMatchObject({ expectedReading: 280_500, asOf: expect.stringContaining('2026-08-30') });
+  });
 
   it('stores the exit reading and refuses one below the reading it came in on', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));

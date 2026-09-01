@@ -45,6 +45,12 @@ export interface OdometerLogWithCode {
   vehicleCode: string | null;
 }
 
+/** The FR-2 floor, and the date of the reading it came from. Both from one document. */
+export interface ExpectedReading {
+  reading: number | null;
+  asOf: Date | null;
+}
+
 /** A page of logs plus the codes for exactly the vehicles ON that page — one lookup, not one per row. */
 export type OdometerLogPage = Paginated<FleetOdometerLogDoc> & {
   codes: ReadonlyMap<string, string>;
@@ -115,11 +121,21 @@ class FleetOdometerService {
     return { doc: outcome.created, vehicleCode: outcome.code };
   }
 
-  /** H2's fate — the server, not the client, says what reading is expected next. */
-  async expectedReading(vehicleId: string): Promise<number | null> {
+  /**
+   * H2's fate — the server, not the client, says what reading is expected next.
+   *
+   * `asOf` is the date OF THAT SAME DOCUMENT, read from the row the floor was taken from rather
+   * than looked up again: a second query could pick a different row and date a floor it did not
+   * produce. The floor itself is unchanged — this is the same `findLatest` and the same `max`
+   * that FR-2 refuses new readings against.
+   */
+  async expectedReading(vehicleId: string): Promise<ExpectedReading> {
     const latest = await fleetOdometerRepository.findLatest(vehicleId);
-    if (latest === null) return null;
-    return Math.max(latest.outReading, latest.inReading ?? latest.outReading);
+    if (latest === null) return { reading: null, asOf: null };
+    return {
+      reading: Math.max(latest.outReading, latest.inReading ?? latest.outReading),
+      asOf: latest.date,
+    };
   }
 
   /**

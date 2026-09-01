@@ -578,7 +578,7 @@ describe('the filter bar', () => {
     const page = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(page).toContain('<VehicleCodeFilter');
     const control = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
-    expect(control).toContain('onSearch: setSearch');
+    expect(control).toContain('onSearch={consume}');
     expect(control).toContain('vehicleCodeOptions');
   });
 

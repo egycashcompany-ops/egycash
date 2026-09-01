@@ -242,68 +242,51 @@ const identifierFilter = () => z.string().trim().min(1).max(60).optional();
 // ── Vehicle codes, as a filter (one control, six screens) ───────────────────
 //
 // Every screen that filters by car asks the same question — "which cars?" — so they ask it in one
-// vocabulary: `vehicleCodes=215,216,217`, exact, ORed.
+// vocabulary: `vehicleCodes=215,216,217`, exact, ORed. One parser reads it, and the filter box and
+// the query schema both run that one, so what a person types and what the server matches cannot
+// drift.
 //
-// THE HYPHEN PROBLEM. `215-216-217` is three cars; `A-15` is one car whose code contains a hyphen.
-// Nothing about the two strings tells them apart — a vehicle code is free text
-// (`z.string().max(20)`), so both shapes are legal. Splitting always would shred `A-15`; never
-// splitting would make `215-216-217` a code nobody has.
+// THE HYPHEN, and the rule that settles it without guessing. A vehicle code is free text
+// (`z.string().max(20)`), so `A-15` and `FLT-210` are legal codes and `215-216-217` is three cars
+// written together. Nothing about the characters tells them apart.
 //
-// It is settled by splitting the JOB in two, so neither half ever has to guess:
+// So the separator is not the dash — it is the SPACE around it. `215 - 216 - 217` is three, because
+// a code cannot contain a space; `215-216` is one code, because it might genuinely be one. That
+// keeps every real hyphenated code intact, costs the reader one space when they mean a list, and
+// has no second interpretation to be surprised by: the same text always parses the same way, here,
+// on the URL, and on the server.
 //
-//   • `parseVehicleCodes` reads what a PERSON TYPED, and resolves the ambiguity by LOOKING IT UP —
-//     a hyphenated run stays whole when it is a code the registry knows, and splits when it is not.
-//     The filter box passes the codes its own search just returned, which is the right reference
-//     because that search ran on the very text being parsed: type `A-15` and the registry answers
-//     with `A-15`, so it survives; paste `215-216-217` and the registry answers with nothing, so it
-//     splits. No heuristic about digits or length.
-//
-//   • `splitVehicleCodeList` reads the URL, which is CANONICAL and therefore never ambiguous: the
-//     filter box already resolved it and wrote the codes comma-joined. So this half splits on
-//     separators a code cannot contain and leaves hyphens alone — which is what lets `A-15` survive
-//     a reload, the one thing splitting here would quietly break.
+// The alternative — asking the registry whether the whole run happens to be a code — reads better
+// in the easy cases and worse in the hard one: the same string would split or not depending on what
+// the search had answered a moment earlier, so a reader who typed the same thing twice could get
+// two different filters.
 
 /** Separators no vehicle code contains: commas, semicolons, newlines, whitespace, a spaced dash. */
 const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+|\s+/;
 
-const dedupeCodes = (parts: readonly string[]): string[] => {
+/**
+ * The vehicle codes a piece of text names — deduplicated, in the order first written.
+ *
+ * Used for what a person types into the filter box AND for what arrives on the URL, deliberately:
+ * one function means `?vehicleCodes=A-15` reloads as the code the reader picked, rather than as two
+ * codes nobody has.
+ */
+export const splitVehicleCodeList = (raw: string | readonly string[]): string[] => {
+  const parts = Array.isArray(raw) ? (raw as readonly string[]) : String(raw).split(CODE_SEPARATORS);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const part of parts) {
     const code = part.trim();
     if (code === '') continue;
+    // A lone dash is punctuation the reader is in the middle of typing (`150 -`), not a car. No
+    // code is only dashes, so dropping it costs nothing and stops `-` becoming a search term.
+    if (/^-+$/.test(code)) continue;
     const key = code.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(code);
   }
   return out;
-};
-
-/**
- * The codes a URL names — separators only, hyphens left intact.
- *
- * The canonical direction: `?vehicleCodes=A-15` is one car, because that is what the filter box
- * wrote when the reader picked it.
- */
-export const splitVehicleCodeList = (raw: string | readonly string[]): string[] =>
-  dedupeCodes(Array.isArray(raw) ? (raw as readonly string[]) : String(raw).split(CODE_SEPARATORS));
-
-/**
- * The codes a PERSON typed or pasted, hyphenated runs resolved against what the registry knows.
- *
- * `known` is that reference — omit it and a hyphenated run splits, which is the right default for
- * free text nobody has vouched for.
- */
-export const parseVehicleCodes = (
-  raw: string | readonly string[],
-  known: readonly string[] = [],
-): string[] => {
-  const recognized = new Set(known.map((code) => code.trim().toLowerCase()));
-  const expanded = splitVehicleCodeList(raw).flatMap((token) =>
-    token.includes('-') && !recognized.has(token.toLowerCase()) ? token.split('-') : [token],
-  );
-  return dedupeCodes(expanded);
 };
 
 /**

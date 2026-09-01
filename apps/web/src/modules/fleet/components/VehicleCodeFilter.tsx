@@ -7,20 +7,27 @@
 // possible. This is the one control, and `vehicleCodes=215,216,217` is the one URL shape.
 //
 // TYPED AS WELL AS PICKED. An operator is usually reading codes off a message — `215 - 216 - 217`
-// — so the search box doubles as the input: Enter commits whatever is written, parsed by the
-// shared `parseVehicleCodes`. The parser resolves the hyphen ambiguity against `known`, and the
-// right reference is the search's own answer, because that search ran on the very text being
-// parsed. Type `A-15` and the registry returns `A-15`, so it stays one code; paste `215-216-217`
-// and the registry returns nothing, so it splits into three.
+// — so the search box doubles as the input, and it TAKES each code the moment its separator is
+// typed. `215 - 216 - 217` ticks 215, then 216, and leaves 217 in the box as the live search.
+//
+// That is not a flourish; without it the box was unusable for the thing it is for. The whole text
+// went to the registry as one search term, so the instant a separator was typed the term became
+// `150 - ` — which names no car — and the list answered "no results" over a box the reader was
+// halfway through filling. Reading the completed codes out and searching only on the fragment
+// still being typed is what keeps the list answering the question actually being asked.
+//
+// A code cannot contain a space, so the space around a dash is what makes it a separator:
+// `215 - 216` is two cars and `A-15` is one code, always, with no second reading.
 //
 // The options come from the registry a shortlist at a time (`onSearch`), never from one page of
 // it: a fleet outgrows any page, and a joined-against list would silently stop at its size. Alarms
 // is the exception and passes its own `options` — it already holds the whole board.
 import { useMemo, useState } from 'react';
-import { parseVehicleCodes } from '@ecms/contracts';
+import { splitVehicleCodeList } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { useT } from '../../../platform/localization/useT';
 import { useVehicles } from '../api/fleet-queries';
+import { readTypedVehicleCodes } from '../lib/typed-vehicle-codes';
 import { vehicleCodeOptions } from '../lib/vehicle-code-options';
 
 /** How many cars one search offers. Enough to pick from, small enough to stay one request. */
@@ -43,8 +50,24 @@ export const VehicleCodeFilter = ({
   className?: string;
 }): JSX.Element => {
   const t = useT();
+  // What is still being TYPED — the trailing fragment, after the completed codes have been taken
+  // into the selection. It is both the registry's search term and the box's text.
   const [search, setSearch] = useState('');
   const remote = options === undefined;
+
+  const add = (codes: readonly string[]): void => {
+    if (codes.length === 0) return;
+    const merged = [...value];
+    for (const code of codes) if (!merged.includes(code)) merged.push(code);
+    if (merged.length !== value.length) onChange(merged);
+  };
+
+  /** The rule, and why, live beside their own test in `readTypedVehicleCodes`. */
+  const consume = (raw: string): void => {
+    const { chosen, typing } = readTypedVehicleCodes(raw);
+    add(chosen);
+    setSearch(typing);
+  };
 
   // Only asked when this control is sourcing its own options; the alarm board passes its own.
   const vehicles = useVehicles(
@@ -76,17 +99,14 @@ export const VehicleCodeFilter = ({
       // Tuesday and loses it on Wednesday teaches nobody where to type. It is also where the
       // codes are TYPED, so it cannot be conditional on how many happen to be offered.
       searchThreshold={0}
-      {...(remote
-        ? { onSearch: setSearch, searching: vehicles.isFetching }
-        : {})}
+      searchValue={search}
+      onSearch={consume}
+      {...(remote ? { searching: vehicles.isFetching } : {})}
+      // Enter takes whatever is left in the box, separator or not — the last code of a list needs
+      // no trailing punctuation to be meant.
       onCommitSearch={(raw) => {
-        // The registry's answer to THIS text is what settles `A-15` against `215-216-217`.
-        const known = shown.map((option) => option.value);
-        const typed = parseVehicleCodes(raw, known);
-        if (typed.length === 0) return;
-        const merged = [...value];
-        for (const code of typed) if (!merged.includes(code)) merged.push(code);
-        onChange(merged);
+        add(splitVehicleCodeList(raw));
+        setSearch('');
       }}
       {...(className === undefined ? {} : { className })}
     />

@@ -1,29 +1,36 @@
 // Reading a link written before the vehicle-code picker existed.
 //
 // The registry's vehicle filter used to be `?code=`, and it was a SUBSTRING: `?code=FLT21` meant
-// "every car whose code contains FLT21". The picker that replaced it is exact, so sending that
-// text on to `vehicleCodes` would answer a different question — and answer it with nothing, since
-// no car is called `FLT21`.
+// "every car whose code contains FLT21". The picker that replaced it is exact. So the old text can
+// mean either of the two controls that now exist, and which one depends on a fact about the
+// registry rather than about the text:
 //
-// Substring over identifiers is `search`'s job, and always was: it spans code, plate, chassis and
-// motor. So the link is rewritten to the control that still means what it meant. Once, in place,
-// so the URL afterwards says what it now does — a link that keeps working but keeps lying about
-// which filter is on is worse than one that fails loudly.
+//   • it NAMES a car        → the picker. `?code=FLT210` → `?vehicleCodes=FLT210`, the same rows.
+//   • it names no car       → `search`, which is where substring lives now and spans code, plate,
+//                             chassis and motor. `?code=FLT21` → `?search=FLT21`.
 //
-// An explicit `search` already on the link wins: it is the newer expression of the same intent,
-// and overwriting it would discard what the reader last chose.
+// Routing everything to `search` would widen a link that named one car into a search across four
+// fields; routing everything to the picker would read a partial code exactly and find nothing. The
+// lookup is what avoids both, and it is cheap: one registry search the page already knows how to do.
+//
+// An explicit value already on the link wins in either direction: it is the newer expression of the
+// same intent, and overwriting it would discard what the reader last chose.
 
 /**
  * The rewritten query string for a legacy registry link, or `null` when there is nothing to do.
  *
- * Pure, and returns the whole next `URLSearchParams` rather than mutating: the caller applies it
- * with `replace`, and a decision this small should be assertable without rendering a page.
+ * `namesAVehicle` is the registry's answer about the legacy value — the caller looks it up, so this
+ * stays pure and the decision is assertable without rendering a page.
  */
-export const migrateLegacyVehicleCodeParam = (sp: URLSearchParams): URLSearchParams | null => {
+export const migrateLegacyVehicleCodeParam = (
+  sp: URLSearchParams,
+  namesAVehicle: boolean,
+): URLSearchParams | null => {
   const legacy = sp.get('code');
   if (legacy === null || legacy.trim() === '') return null;
   const next = new URLSearchParams(sp);
   next.delete('code');
-  if ((next.get('search') ?? '').trim() === '') next.set('search', legacy);
+  const key = namesAVehicle ? 'vehicleCodes' : 'search';
+  if ((next.get(key) ?? '').trim() === '') next.set(key, legacy);
   return next;
 };

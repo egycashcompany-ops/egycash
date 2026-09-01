@@ -76,6 +76,7 @@ export const MultiSelect = ({
   searchThreshold = 7,
   onSearch,
   onCommitSearch,
+  searchValue,
   searching = false,
   showSelectedValues = false,
   chips = false,
@@ -106,6 +107,14 @@ export const MultiSelect = ({
    * when. Opt-in: without it, Enter does what it always did.
    */
   onCommitSearch?: (raw: string) => void;
+  /**
+   * Take ownership of the search text.
+   *
+   * For a filter whose box is also an INPUT: the owner may consume part of what was typed — turning
+   * `150 - 215` into a chosen `150` and a still-being-typed `215` — and it can only show that by
+   * putting the remainder back. Omit it and the box keeps its own text, as every other filter does.
+   */
+  searchValue?: string;
   /** Fetching the remote answer — only meaningful alongside `onSearch`. */
   searching?: boolean;
   /**
@@ -139,7 +148,12 @@ export const MultiSelect = ({
 }): JSX.Element => {
   const t = useT();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
+  const [ownQuery, setOwnQuery] = useState('');
+  // Controlled when the owner passes `searchValue`; its own otherwise.
+  const query = searchValue ?? ownQuery;
+  const setQuery = (next: string): void => {
+    if (searchValue === undefined) setOwnQuery(next);
+  };
   const boxRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(boxRef, () => setOpen(false), open);
 

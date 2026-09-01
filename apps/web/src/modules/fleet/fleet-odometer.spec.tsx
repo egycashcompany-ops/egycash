@@ -634,7 +634,10 @@ describe('the filter bar', () => {
     // The property is the same one this page has always had; it moved into the control every
     // screen now shares, so it is asserted where it lives — once, instead of once per page.
     const source = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
-    expect(source).toContain('onSearch: setSearch');
+    // What reaches the registry is the fragment still being TYPED, not the whole box: a box
+    // reading `150 - ` would otherwise search for a car called `150 - ` and answer "no results"
+    // over a half-written list. `consume` is what separates the two — see its own spec.
+    expect(source).toContain('onSearch={consume}');
     expect(source).toContain('search: search.trim()');
     expect(source).not.toContain('MAX_PAGE_SIZE');
   });

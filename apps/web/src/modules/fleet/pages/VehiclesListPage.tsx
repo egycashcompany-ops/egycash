@@ -90,12 +90,23 @@ export const VehiclesListPage = (): JSX.Element => {
   // `migrateLegacyVehicleCodeParam`. Applied with `replace` so the rewrite does not become a
   // history entry the reader has to press Back through twice.
   const legacyCode = sp.get('code');
+  // Which of the two controls the old text meant depends on the REGISTRY, not on the text: a value
+  // that names a car is a pick, one that does not is a substring search. So it is looked up — one
+  // search, and only while such a link is being read.
+  const legacyLookup = useVehicles(
+    { search: legacyCode ?? '', pageSize: 1, sortBy: 'code', sortDir: 'asc' },
+    legacyCode !== null && legacyCode.trim() !== '',
+  );
+  const legacyNamesAVehicle = (legacyLookup.data?.items ?? []).some((v) => v.code === legacyCode);
   useEffect(() => {
-    const migrated = migrateLegacyVehicleCodeParam(sp);
+    // Nothing is rewritten until the lookup has answered: migrating early would send every link to
+    // `search`, including the ones that name a car.
+    if (legacyCode !== null && legacyCode.trim() !== '' && !legacyLookup.isSuccess) return;
+    const migrated = migrateLegacyVehicleCodeParam(sp, legacyNamesAVehicle);
     if (migrated !== null) setSp(migrated, { replace: true });
-    // Keyed on the legacy value alone: `sp` changes on every filter edit, and re-running there
-    // would fight the very rewrite this just made.
-  }, [legacyCode]);
+    // Keyed on the legacy value and the lookup's answer: `sp` changes on every filter edit, and
+    // re-running there would fight the very rewrite this just made.
+  }, [legacyCode, legacyLookup.isSuccess, legacyNamesAVehicle]);
 
   const changeSort = (by: string): void => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';

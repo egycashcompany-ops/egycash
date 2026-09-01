@@ -26,6 +26,15 @@ import {
 } from '../components/gold-labels';
 import { useGoldCompanyOptions } from '../components/useGoldCompanyOptions';
 import { fmtDate, fmtWeightValue } from '../lib/gold-format';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'company',
+  'metal',
+  'q',
+  'status',
+] as const;
 
 const PAGE_SIZE = 12;
 
@@ -49,6 +58,7 @@ const EditorLoader = ({
 export const GoldDeliveryPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const search = sp.get('q') ?? '';
   const companies = readList(sp, 'company');
   const statuses = readList(sp, 'status');

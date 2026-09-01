@@ -21,7 +21,21 @@ import { ScreeningFilters, type ScreeningFiltersState } from '../components/Scre
 import { useBulkScreenings, useScreenings } from '../api/screening-queries';
 import { readList, writeList } from '../../../../../shared/lib/list-param';
 import { type ScreeningListParams } from '../api/screening-api';
-import { useRememberedQueue } from '../../shared/useRememberedQueue';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'af',
+  'al',
+  'applicant',
+  'at',
+  'cf',
+  'ct',
+  'edu',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -30,9 +44,9 @@ export const ScreeningQueuePage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, 'status=waiting');
   // A screening exists for every registered applicant already, so the queue's job is the work
   // still waiting on someone — not a ledger of every screening ever decided.
-  useRememberedQueue('screening', [sp, setSp], 'status=waiting');
 
   const filters: ScreeningFiltersState = {
     status: readList(sp, 'status') as ScreeningFiltersState['status'],

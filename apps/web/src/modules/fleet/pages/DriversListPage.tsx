@@ -44,6 +44,23 @@ import {
   DriverLicenseImageCell,
   DriverLicenseImagePreviewDialog,
 } from '../components/DriverLicenseImage';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'area',
+  'branch',
+  'emp',
+  'gov',
+  'img',
+  'job',
+  'phone',
+  'q',
+  'spec',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -75,6 +92,7 @@ export const DriversListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = sp.get('q') ?? '';
   const area = sp.get('area') ?? '';

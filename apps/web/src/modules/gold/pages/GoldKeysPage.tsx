@@ -34,6 +34,12 @@ import { BranchTag } from '../components/BranchTag';
 import { useGoldCompanyOptions } from '../components/useGoldCompanyOptions';
 import { fmtDateTime, fmtNumber } from '../lib/gold-format';
 import { printReceiptHtml } from '../lib/gold-print';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'status',
+] as const;
 
 const PAGE_SIZE = 12;
 
@@ -51,6 +57,7 @@ export const GoldKeysPage = (): JSX.Element => {
   const t = useT();
   const me = useAppSelector((state) => state.auth.me);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const status = sp.get('status') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const paramsKey = sp.toString();

@@ -27,12 +27,19 @@ import {
   useResendGoldPortalSetupLink,
 } from '../api/gold-queries';
 import { PortalAccountDialog } from '../components/PortalAccountDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+] as const;
 
 const PAGE_SIZE = 15;
 
 export const GoldPortalAccountsPage = (): JSX.Element => {
   const t = useT();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const search = sp.get('q') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const paramsKey = sp.toString();

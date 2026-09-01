@@ -21,6 +21,16 @@ import { formatDate } from '../../../../../shared/lib/format';
 import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { useEmployees } from '../api/employee-queries';
 import { type EmployeeListParams } from '../api/employee-api';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'status',
+  'size',
+  'sort',
+  'view',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 /**
@@ -46,6 +56,7 @@ export const EmployeesListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const canSettle = can('employee.viewCompensation');
   const search = sp.get('q') ?? '';

@@ -34,12 +34,23 @@ import { downloadAuditExport, useAuditLogs } from '../api/audit-api';
 import { AuditDetailPanel } from '../components/AuditDetailPanel';
 import { auditActionLabelKey, auditActions } from '../lib/audit-labels';
 import { readAuditFilters, withParam } from '../lib/audit-filters';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'action',
+  'entityId',
+  'entityType',
+  'from',
+  'to',
+] as const;
 
 export const AuditLogPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [selected, setSelected] = useState<AuditLogDto | null>(null);
   const [exporting, setExporting] = useState(false);
 

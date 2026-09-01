@@ -34,6 +34,13 @@ import { useAppSelector } from '../../../../store';
 import { useCreateTemplate, useTemplates } from '../api/template-api';
 import { TemplateFormDialog } from '../components/TemplateFormDialog';
 import { emptyDraft, toCreateBody, type TemplateDraft } from '../lib/template-form';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'category',
+  'status',
+] as const;
 
 const PAGE_SIZE = 20;
 
@@ -52,6 +59,7 @@ export const TemplatesListPage = (): JSX.Element => {
   // Addressable, like every other list in this module: the filters live in the URL so a screen
   // full of them can be sent to somebody else.
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const status = sp.get('status') ?? '';
   const category = sp.get('category') ?? '';
   const page = Number(sp.get('page') ?? '1');

@@ -26,7 +26,20 @@ import { BulkReassignDialog } from '../components/BulkReassignDialog';
 import { ApplicantFilters, type ApplicantFiltersState } from '../components/ApplicantFilters';
 import { useApplicants, useApplicantSources, useBulkApplicants } from '../api/applicant-queries';
 import { exportApplicantsCsv, type ApplicantListParams } from '../api/applicant-api';
-import { useRememberedQueue } from '../../shared/useRememberedQueue';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'channel',
+  'dup',
+  'files',
+  'identity',
+  'q',
+  'source',
+  'status',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -35,7 +48,7 @@ export const ApplicantsListPage = (): JSX.Element => {
   const locale = useAppSelector((state) => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
-  useRememberedQueue('applicants', [sp, setSp]);
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   // ── URL-derived state ──────────────────────────────────────────────────────
   const filters: ApplicantFiltersState = {

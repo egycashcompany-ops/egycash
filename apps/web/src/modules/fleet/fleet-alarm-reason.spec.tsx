@@ -1,14 +1,14 @@
-// «لا يوجد» used to mean five things. Now it says which one.
+// «لا يوجد» used to mean six things. Now it says which one.
 //
-// Four separate guards stop the alarm being calculated, and a fifth situation — a cycle measured
+// Five separate guards stop the alarm being calculated, and a sixth situation — a cycle measured
 // and found healthy — produced the same word. The reader could not tell "this car is fine" from
 // "this car's type has no service interval", and had nothing to act on.
 //
-// The reason comes from the SERVER, and this file's real job is to keep it that way. Three of the
-// four causes are invisible from the client: the interval lives on the vehicle type, and the
-// latest reading and its date are not in this projection at all. A screen guessing from what it
-// happens to hold would state a cause that is wrong — so no screen may reason about it, and the
-// text may exist in exactly one place.
+// The reason comes from the SERVER, and this file's real job is to keep it that way. Four of the
+// five causes are invisible from the client: the interval lives on the vehicle type, and the
+// latest reading, its date and the baseline counter are not in this projection at all. A screen
+// guessing from what it happens to hold would state a cause that is wrong — so no screen may
+// reason about it, and the text may exist in exactly one place.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -42,6 +42,7 @@ const REASONS: FleetNoAlarmReason[] = [
   'noReading',
   'noService',
   'readingOlderThanService',
+  'baselineAboveReading',
 ];
 
 // ── 1. Every reason is sayable, in both languages ───────────────────────────
@@ -57,12 +58,34 @@ describe('every reason has words', () => {
     }
   });
 
-  it('and they read as four DIFFERENT sentences', () => {
-    // Four causes wearing one sentence would be the same defect in a new place.
+  it('and they read as five DIFFERENT sentences', () => {
+    // Five causes wearing one sentence would be the same defect in a new place.
     const arabic = REASONS.map((r) => translate('ar', `fleet.alarms.noAlarmReason.${r}`));
     expect(new Set(arabic).size).toBe(REASONS.length);
     // …and none of them is the old catch-all word.
     expect(arabic).not.toContain(translate('ar', 'fleet.vehicle.alarmNone'));
+  });
+});
+
+describe('the new reason describes the COMPARISON, not a verdict on the baseline', () => {
+  // What the guard actually knows is that two numbers do not compare. Which of them is untrue is
+  // a provenance question this PR does not answer, so the sentence must not answer it either —
+  // «العداد خطأ» would be a claim the code cannot support, on either number.
+  const key = 'fleet.alarms.noAlarmReason.baselineAboveReading';
+
+  it('names both sides — the recorded reading and the maintenance baseline', () => {
+    expect(translate('ar', key)).toContain('قراءة العداد');
+    expect(translate('ar', key)).toContain('صيانة');
+    expect(translate('en', key).toLowerCase()).toContain('reading');
+    expect(translate('en', key).toLowerCase()).toContain('baseline');
+  });
+
+  it('and calls neither of them wrong', () => {
+    const verdicts = [/خطأ/, /خاطئ/, /غير صحيح/, /wrong/i, /invalid/i, /incorrect/i, /error/i];
+    for (const word of verdicts) {
+      expect(translate('ar', key), `ar states no verdict (${String(word)})`).not.toMatch(word);
+      expect(translate('en', key), `en states no verdict (${String(word)})`).not.toMatch(word);
+    }
   });
 });
 
@@ -296,8 +319,10 @@ describe('the reason is the server’s, and is written in ONE place', () => {
 
   it('and no page DERIVES the reason — it only passes the server’s through', () => {
     // The trap: `lastServiceAt === null` looks like it proves "no service", but the guards run in
-    // order and an earlier one may have fired. Three of the four causes are not in this
-    // projection at all, so any client-side inference is a guess.
+    // order and an earlier one may have fired. Four of the five causes are not in this
+    // projection at all, so any client-side inference is a guess. `baselineAboveReading` is the
+    // starkest: the client holds NEITHER the reading nor the baseline counter, so it cannot even
+    // form the comparison, let alone report its outcome.
     for (const page of PAGES) {
       const source = read(`pages/${page}.tsx`);
       for (const reason of REASONS) {

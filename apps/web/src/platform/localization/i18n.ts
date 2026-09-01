@@ -3640,6 +3640,8 @@ const en: Record<string, string> = {
   'fleet.alarms.noAlarmReason.noReading': 'No odometer reading',
   'fleet.alarms.noAlarmReason.noService': 'No counted service yet',
   'fleet.alarms.noAlarmReason.readingOlderThanService': 'Awaiting a reading after the service',
+  'fleet.alarms.noAlarmReason.baselineAboveReading':
+    'The recorded reading is below the maintenance baseline — the two do not compare',
   'fleet.alarms.columns.sinceService': 'Since service (km)',
   'fleet.alarms.columns.remaining': 'Remaining (km)',
   'fleet.alarms.noBaseline': 'No counted service yet',
@@ -9876,6 +9878,8 @@ const ar: Record<string, string> = {
   'fleet.alarms.noAlarmReason.noReading': 'لا قراءة عداد',
   'fleet.alarms.noAlarmReason.noService': 'لا صيانة محسوبة بعد',
   'fleet.alarms.noAlarmReason.readingOlderThanService': 'في انتظار قراءة عداد بعد الصيانة',
+  'fleet.alarms.noAlarmReason.baselineAboveReading':
+    'قراءة العداد المسجّلة أقل من عداد آخر صيانة — الرقمان غير قابلين للمقارنة',
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',
   'fleet.alarms.columns.remaining': 'المتبقي (كم)',
   'fleet.alarms.noBaseline': 'لا صيانة محسوبة بعد',

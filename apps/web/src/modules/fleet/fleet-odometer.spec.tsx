@@ -408,6 +408,7 @@ describe('the distance since the last service', () => {
       'noReading',
       'noService',
       'readingOlderThanService',
+      'baselineAboveReading',
     ] as const) {
       const body = tbody(
         render({

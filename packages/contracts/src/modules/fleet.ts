@@ -595,7 +595,7 @@ export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema
  * WHY a vehicle has no alarm figure — the guard that stopped `computeAlarm`, named.
  *
  * `level: 'none'` means two entirely different things: a car whose cycle was measured and found
- * healthy, and a car whose cycle could not be measured at all. Four separate conditions produce
+ * healthy, and a car whose cycle could not be measured at all. Five separate conditions produce
  * the second, and every one of them used to reach the reader as the same word. This says which.
  *
  * `null` means the alarm WAS computed — including a computed `none`, which is a healthy car and
@@ -612,7 +612,17 @@ export type FleetNoAlarmReason =
    * There is a service and a reading, but the reading predates the service: it describes the
    * cycle BEFORE the last one and says nothing about distance since.
    */
-  | 'readingOlderThanService';
+  | 'readingOlderThanService'
+  /**
+   * The reading is eligible in every other way, yet it sits BELOW the baseline it would be
+   * measured from — so the subtraction would produce a negative distance travelled.
+   *
+   * That is not a distance; it is a sign that the two numbers are not readings of the same
+   * counter (a mistyped exit reading, a replaced instrument, a workshop that wrote a trip meter).
+   * A defensive integrity guard, and nothing more: it does NOT say which of the two is wrong, and
+   * it does not make the baseline trustworthy — that remains a separate domain question.
+   */
+  | 'baselineAboveReading';
 
 export interface FleetMaintenanceAlarmDto {
   vehicleId: string;

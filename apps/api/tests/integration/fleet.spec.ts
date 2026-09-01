@@ -1309,6 +1309,7 @@ describe('the alarm projection has two permission doors and one answer', () => {
           'noReading',
           'noService',
           'readingOlderThanService',
+          'baselineAboveReading',
         ]).toContain(row.noAlarmReason);
       }
     }
@@ -1775,7 +1776,7 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
 
   it('says WHY there is no alarm — the guard that stopped it, not a bare «none»', async () => {
     // A vehicle with a counted service and a reading taken BEFORE it: the cycle cannot be
-    // measured, and the reason has to say which of the four situations this is. Without it the
+    // measured, and the reason has to say which of the five situations this is. Without it the
     // reader sees the same word as a healthy car and has nothing to act on.
     const { vehicle } = await closedVisit({ odometerAtService: 120_000, exitOdometer: 120_850 });
 
@@ -1797,6 +1798,56 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     const stale = await reasonFor(vehicle.code);
     expect(stale?.noAlarmReason).toBe('readingOlderThanService');
     expect(stale?.level).toBe('none');
+  });
+
+  it('refuses to report a NEGATIVE distance since the service, end to end', async () => {
+    // Nothing links the workshop counter to the odometer chain — different endpoints, different
+    // collections, no shared transaction and no cross-check at write time — so a visit can close
+    // on a counter far above every reading the car has. The subtraction then comes out negative,
+    // which is not a small distance but proof that the two numbers are not the same instrument's.
+    //
+    // Reached through the real HTTP surface precisely because it is reachable there: every write
+    // below is accepted by the rules as they stand, and none of them is changed by this PR.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const record = async (reading: number, date: string) =>
+      request(app)
+        .post('/api/v1/fleet/odometer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, reading, date });
+
+    expect((await record(90_000, '2026-09-01')).status).toBe(201);
+
+    // A counter with an extra digit, accepted: check-out only requires exit >= entry.
+    const opened = await checkIn({
+      vehicleId: v.id,
+      inDate: '2026-09-02',
+      workshopId: await mkCatalog('workshop', 'ورشة العداد الأعلى'),
+      workTypeId: await countingWorkTypeId(),
+      odometerAtService: 900_000,
+    });
+    expect(opened.status).toBe(201);
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    const out = await checkOut(open.id, {
+      outDate: '2026-09-03',
+      exitOdometer: 900_500,
+      version: open.version,
+    });
+    expect(out.status, 'the visit is still recorded, not refused').toBe(200);
+
+    // A reading AFTER the service — every earlier guard passes, so the arithmetic is reached.
+    expect((await record(90_100, '2026-09-05')).status).toBe(201);
+
+    const row = data<{ code: string; noAlarmReason: string | null; level: string; sinceServiceKm: number | null; remainingKm: number | null }[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/alarms')
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).find((a) => a.code === v.code);
+
+    expect(row?.noAlarmReason).toBe('baselineAboveReading');
+    expect(row?.level).toBe('none');
+    // The figures are absent, not negative: −810,400 used to travel the wire as a measured answer.
+    expect(row?.sinceServiceKm).toBeNull();
+    expect(row?.remainingKm).toBeNull();
   });
 
   it('names no visit when nothing has counted yet', async () => {

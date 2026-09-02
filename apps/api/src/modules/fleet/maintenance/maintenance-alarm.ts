@@ -123,14 +123,17 @@ const allActiveVehicles = async () => {
   }
 };
 
-/** Alarm projection for a set of vehicles (or every active vehicle). Query-time, per FR-3. */
-export const computeAlarms = async (
-  vehicleIds?: readonly string[],
-): Promise<FleetMaintenanceAlarmDto[]> => {
-  const vehicles =
-    vehicleIds === undefined
-      ? await allActiveVehicles()
-      : await Promise.all(vehicleIds.map((id) => fleetVehicleRepository.getById(id)));
+/**
+ * Alarm projection for every ACTIVE vehicle. Query-time, per FR-3.
+ *
+ * It used to take an optional list of ids, and no caller ever passed one — all four go through
+ * the no-argument path. The unused branch was not merely dead but DIFFERENT: it skipped the
+ * `status: 'active'` filter this one applies, and answered a soft-deleted id with a thrown
+ * `NotFoundError` rather than an empty projection. Two behaviours behind one name, and the one
+ * nobody ran was the one nobody tested.
+ */
+export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
+  const vehicles = await allActiveVehicles();
   if (vehicles.length === 0) return [];
 
   const ids = vehicles.map((v) => String(v._id));

@@ -5606,7 +5606,7 @@ const en: Record<string, string> = {
   'gold.common.custodianHint':
     'Vault custodians are ECMS employees — the same people the rest of the platform knows.',
   'gold.common.pickEmployee': 'Search for an employee…',
-  'gold.common.pickVehicle': 'Search by plate or code…',
+  'gold.common.pickVehicle': 'Search by vehicle code…',
   'gold.common.pickerNoAccess': 'You do not have permission to search this list.',
   'gold.common.clear': 'Clear',
   'gold.common.noResults': 'Nothing matched.',
@@ -11811,7 +11811,7 @@ const ar: Record<string, string> = {
   'gold.common.supervisor2': 'مشرف ثان خزينة',
   'gold.common.custodianHint': 'أمناء الخزن موظفون في ECMS — نفس الأشخاص المعروفين في باقي النظام.',
   'gold.common.pickEmployee': 'ابحث عن موظف…',
-  'gold.common.pickVehicle': 'ابحث برقم اللوحة أو الكود…',
+  'gold.common.pickVehicle': 'ابحث بكود السيارة…',
   'gold.common.pickerNoAccess': 'ليست لديك صلاحية البحث في هذه القائمة.',
   'gold.common.clear': 'مسح',
   'gold.common.noResults': 'لا توجد نتائج',

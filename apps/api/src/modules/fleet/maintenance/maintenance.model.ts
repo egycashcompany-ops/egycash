@@ -11,7 +11,15 @@ export interface FleetMaintenanceVisitDoc extends BaseDocFields {
   outDate: Date | null;
   workshopId: Types.ObjectId;
   workTypeId: Types.ObjectId;
-  /** Legacy free text, read-only — see the DTO. Never written any more. */
+  /**
+   * Legacy free text, still ACCEPTED and stored verbatim — see the DTO.
+   *
+   * The web form does not send it and `sparePartIds` replaced it, but the check-in and update
+   * contracts still take it so a caller written before the catalog existed is not refused
+   * outright, and the service still writes exactly what it was given. It is never matched against
+   * the catalog: guessing which part a spelling meant is the silent data loss the catalog
+   * replaced.
+   */
   spareParts: string[];
   sparePartIds: Types.ObjectId[];
   odometerAtService: number;

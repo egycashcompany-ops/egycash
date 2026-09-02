@@ -741,9 +741,13 @@ export interface FleetMaintenanceVisitDto {
   workshopId: string;
   workTypeId: string;
   /**
-   * Free-text parts, as visits recorded before the catalog existed carry them. READ-ONLY now:
-   * nothing writes to it any more, and it is kept because those words are the only record of
-   * what was fitted — a migration could only have matched them by name and dropped the rest.
+   * Free-text parts, as visits recorded before the catalog existed carry them.
+   *
+   * `sparePartIds` replaced it and the web form does not send it — but it is still ACCEPTED on
+   * check-in and on update, and stored verbatim, so a caller written before the catalog existed
+   * is not refused outright. It is never matched against the catalog: guessing which part a
+   * spelling meant is exactly the silent data loss the catalog replaced, which is also why these
+   * words were kept rather than migrated.
    */
   spareParts: string[];
   /** Parts chosen from the `sparePart` catalog. The field new visits write. */

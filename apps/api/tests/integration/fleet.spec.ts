@@ -374,6 +374,86 @@ describe('vehicle types + catalogs', () => {
       .send({ kind: 'workshop', name: { ar: 'ورشة', en: 'Shop' } });
     expect(res.status).toBe(403);
   });
+
+  it('a MAINTENANCE-only reader can list the vocabulary its own screens point at', async () => {
+    // The catalogs are the module's vocabulary, not the vehicle registry's. Behind
+    // `fleetVehicle.view` alone this reader opened a check-in dialog with three empty pickers and
+    // a table that could not name the workshop it was showing — and nothing said so: the request
+    // 403s and a select is simply empty.
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Workshop clerk', ar: 'كاتب ورشة' },
+        permissionKeys: ['fleetMaintenance.view', 'fleetMaintenance.checkIn'],
+      },
+      adminUserId,
+    );
+    const userId = await mkUser('fleet-workshop@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await login('fleet-workshop@ecms.local');
+
+    for (const kind of ['workshop', 'workType', 'sparePart']) {
+      const res = await request(app)
+        .get('/api/v1/fleet/catalog-items')
+        .query({ kind, pageSize: 50 })
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status, kind).toBe(200);
+    }
+
+    // …and reading a vocabulary is not reading the records that use it. The visits themselves
+    // still need their own permission, which this reader happens to have — the registry it does
+    // NOT have stays closed.
+    expect(
+      (await request(app).get('/api/v1/fleet/vehicles').set('Authorization', `Bearer ${token}`))
+        .status,
+    ).toBe(403);
+  });
+
+  it('and a VIOLATIONS-only reader can list violation types', async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Violations clerk', ar: 'كاتب مخالفات' },
+        permissionKeys: ['fleetViolation.view', 'fleetViolation.record'],
+      },
+      adminUserId,
+    );
+    const userId = await mkUser('fleet-violations@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await login('fleet-violations@ecms.local');
+
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'violationType', pageSize: 50 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+
+    // Reading the vocabulary still grants no WRITE to it.
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/fleet/catalog-items')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ kind: 'violationType', name: { ar: 'نوع', en: 'Type' } })
+      ).status,
+    ).toBe(403);
+  });
+
+  it('a reader with NO fleet permission at all is still refused', async () => {
+    // The widening is a list of audiences, not an opening. Somebody outside every one of them
+    // must still be turned away, or `authorizeAny` would have become `authenticate`.
+    const role = await rbacService.createRole(
+      { name: { en: 'Outsider', ar: 'خارجي' }, permissionKeys: ['employee.view'] },
+      adminUserId,
+    );
+    const userId = await mkUser('fleet-outsider@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await login('fleet-outsider@ecms.local');
+
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workshop' })
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(403);
+  });
 });
 
 describe('vehicle registry (FR-1, §4.1)', () => {

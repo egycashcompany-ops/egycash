@@ -561,6 +561,47 @@ export interface FleetExpectedReadingDto {
 export const FleetVehicleIdQuerySchema = z.object({ vehicleId: objectId() }).strict();
 export type FleetVehicleIdQuery = z.infer<typeof FleetVehicleIdQuerySchema>;
 
+/**
+ * Where a workshop counter dated `on` would have to sit to be a point on the odometer chain.
+ *
+ * The maintenance visit's counters and `fleet_odometer_logs` are written by different endpoints
+ * into different collections, and nothing links them — so "is this counter a reading of the same
+ * instrument?" has never been answerable. It is answerable in ONE way that needs no new data: a
+ * reading is monotonic in time, so a counter measured on day D must sit at or above everything
+ * recorded on or before D, and at or below everything recorded after it.
+ *
+ *     lowerBound ≤ counter ≤ upperBound
+ *
+ * Both sides are `null` when that side of the chain is empty, and a `null` side simply does not
+ * constrain — a car whose first ever reading comes after its service has no lower bound, and one
+ * that has not been read since has no upper bound. Neither absence is suspicious.
+ *
+ * The dates come back beside the numbers because a bound without its date cannot be explained to
+ * the person typing: "below the 59,800 recorded on 20 August" is actionable, "below 59,800" is a
+ * riddle. Each date belongs to the very row its number came from.
+ */
+export interface FleetOdometerBracketDto {
+  vehicleId: string;
+  /** The date the bracket was computed FOR — echoed back, so a stale answer is recognisable. */
+  on: string;
+  /** Highest reading dated on or before `on`; `null` when the chain has none that early. */
+  lowerBound: number | null;
+  lowerBoundAt: string | null;
+  /** Lowest reading dated after `on`; `null` when the chain has none that late. */
+  upperBound: number | null;
+  upperBoundAt: string | null;
+}
+
+/**
+ * The bracket asks about a DATE as well as a vehicle: the same car has a different bracket for a
+ * visit closed last month than for one closed today, which is exactly why a back-dated visit may
+ * legitimately carry a counter far below where the chain has since reached.
+ */
+export const FleetOdometerBracketQuerySchema = z
+  .object({ vehicleId: objectId(), on: z.coerce.date() })
+  .strict();
+export type FleetOdometerBracketQuery = z.infer<typeof FleetOdometerBracketQuerySchema>;
+
 export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
   /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
@@ -622,7 +663,21 @@ export type FleetNoAlarmReason =
    * A defensive integrity guard, and nothing more: it does NOT say which of the two is wrong, and
    * it does not make the baseline trustworthy — that remains a separate domain question.
    */
-  | 'baselineAboveReading';
+  | 'baselineAboveReading'
+  /**
+   * The baseline sits BELOW a reading the odometer chain already held on the service date.
+   *
+   * A counter measured when the car left the workshop cannot be lower than one recorded before it
+   * left — an odometer does not run backwards. So this pair is not two readings of one instrument,
+   * and the distance between them is not a distance. Reported ahead of `readingOlderThanService`
+   * deliberately: waiting for a newer reading is a state that heals itself, and this one does not
+   * — a fresh reading would only be subtracted from the same unusable baseline.
+   *
+   * It says the two numbers do not line up. It does NOT say which of them is untrue: the workshop
+   * counter stays the authoritative record of what the workshop measured, and no rule here
+   * replaces it with a chain reading.
+   */
+  | 'baselineBelowChain';
 
 export interface FleetMaintenanceAlarmDto {
   vehicleId: string;

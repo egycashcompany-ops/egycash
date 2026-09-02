@@ -9,6 +9,9 @@ const base = {
   latestReadingDate: new Date('2026-08-01'),
   baselineCounter: 116_000,
   baselineDate: new Date('2026-06-01'),
+  // No reading on record from before the service, so the bracket's lower half constrains nothing
+  // — every expectation in this file is the arithmetic, unchanged, exactly as it always was.
+  baselineLowerBound: null,
 };
 
 describe('computeAlarm (§4.4 — derived, guarded)', () => {

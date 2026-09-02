@@ -1,69 +1,81 @@
-// Is a workshop counter contradicting the odometer chain?
+// Does a workshop counter contradict the odometer chain?
 //
-// `odometerAtService` and `exitOdometer` are typed by hand, and a dropped digit turns
-// «٢٨٠٬٥٠٠» into «٢٨٬٠٠٠» without anything objecting: the workshop counters are recorded
-// independently of `fleet_odometer_logs`, and no server rule compares them. The exit reading in
-// particular becomes the baseline every later maintenance calculation measures from, so a typo
-// there does not stay in its own row — it moves the next service.
+// `odometerAtService` and `exitOdometer` are typed by hand, and a dropped digit turns «٢٨٠٬٥٠٠»
+// into «٢٨٬٠٠٠» without anything objecting: the workshop counters are recorded independently of
+// `fleet_odometer_logs`, in a different collection, through a different endpoint, with no
+// reference between them. The exit reading in particular becomes the baseline every later
+// maintenance calculation measures from, so a typo there does not stay in its own row — it moves
+// the next service.
 //
 // SO THIS WARNS, AND ONLY WARNS. It is advice at the moment of typing, not a rule: the save goes
 // through untouched, the value is never rewritten, no request is refused and nothing is written
-// to the odometer chain. A blocking rule here would be wrong, because a workshop counter that
-// disagrees with the chain is often perfectly correct — see the two cases below.
+// to the odometer chain. The workshop's counter stays the authoritative record of what the
+// workshop measured. A blocking rule here would be wrong — a mistyped counter must never cost
+// somebody the visit, and a counter that disagrees with the chain is sometimes simply right.
 //
-// THE NARROWEST RULE THAT CAN BE JUSTIFIED. `expectedReading` already has an exact meaning in
-// this system: it is the FR-2 floor, `max(outReading, inReading)` of the highest reading on
-// record, and `record()` REFUSES a new reading below it. So a counter below that floor is a
-// number the odometer chain itself would not accept today. That is the whole of the suspicion —
-// and it is one-sided, plus conditional on the date, because two divergences are legitimate:
+// WHAT REPLACED THE ONE-SIDED CHECK. The first version of this compared the counter against the
+// FR-2 floor — `max(outReading, inReading)` of the highest reading on record — and needed a date
+// condition bolted on beside it, because a back-dated visit legitimately carries a counter below
+// where the chain has since reached. That rule was sound but half a rule: it could see a counter
+// that had fallen below the chain and could not see one that had risen above it, and it compared
+// against the chain's global maximum rather than against the chain AS IT STOOD on the visit's own
+// day.
 //
-//   • ABOVE the floor is normal. A car drives between recorded readings, so a counter higher
-//     than anything on record is the expected case, not an error. Never warned about.
-//   • BELOW the floor is normal TOO on a back-dated visit. Entering last month's visit today
-//     should carry last month's counter, which is legitimately below where the chain has since
-//     reached. So the visit's own date must be at or after the date of the reading that set the
-//     floor — `asOf` — before "below" means anything at all.
-//
-// Hence: `counter < expectedReading && visitDate >= asOf`. Anything narrower misses the dropped
-// digit; anything wider cries wolf over correct data, and a warning that is usually wrong is a
-// warning people stop reading.
+// The bracket answers both at once, and answers the date question structurally instead of by a
+// side condition: the server computes the bounds FOR THE VISIT'S OWN DATE, so a back-dated visit
+// is compared with the chain as it was then — which is why no `visitDate >= asOf` clause survives
+// here. The rule itself lives in `@ecms/contracts` because the API's alarm projection runs the
+// same function; a second copy on this side would be free to disagree about the same visit.
+import {
+  odometerBracketBreach,
+  type FleetOdometerBracketBreach,
+  type FleetOdometerBracketDto,
+} from '@ecms/contracts';
 
 export interface WorkshopOdometerCheck {
   /** The counter as typed. `null` while the field is empty or not yet a number. */
   counter: number | null;
-  /** The FR-2 floor from `GET /fleet/odometer/expected`. `null` = the car has no readings. */
-  expectedReading: number | null;
-  /** The visit's OWN date — `inDate` on check-in, `outDate` on check-out. Never `new Date()`. */
-  visitDate: string | null;
-  /** The date of the reading that set the floor, from the same response. */
-  asOf: string | null;
+  /**
+   * The bracket for THIS VISIT'S date, from `GET /fleet/{odometer,maintenance}/…bracket`.
+   * `null` while it is still loading, or when the reader may not ask for it.
+   */
+  bracket: Pick<FleetOdometerBracketDto, 'lowerBound' | 'upperBound'> | null;
 }
 
-/** Midnight UTC for a `yyyy-mm-dd` or an ISO timestamp; `null` if it is neither. */
-const day = (value: string | null): number | null => {
-  if (value === null || value === '') return null;
-  const parsed = new Date(value);
-  const time = parsed.getTime();
-  if (Number.isNaN(time)) return null;
-  return Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate());
+/**
+ * Which side of the chain the counter fell outside, or `null` when there is nothing to say.
+ *
+ * Every unknown answers `null`: no bracket yet, no counter yet, or a bracket with no bounds at
+ * all. A warning drawn from a missing fact is a false alarm, and a warning that is usually wrong
+ * is one people stop reading.
+ */
+export const workshopOdometerBreach = (
+  check: WorkshopOdometerCheck,
+): FleetOdometerBracketBreach | null => {
+  if (check.bracket === null) return null;
+  return odometerBracketBreach(check.counter, {
+    lowerBound: check.bracket.lowerBound,
+    upperBound: check.bracket.upperBound,
+  });
 };
 
 /**
- * `true` when the counter looks like a mistake worth a second glance — never when it merely
- * differs from the chain. Every unknown answers `false`: with no reading on record, no date on
- * the visit, or no `asOf`, there is nothing to compare against, and a warning drawn from a
- * missing fact would be a guess.
+ * The same question as a boolean, for the callers that only need to know whether to show
+ * anything. Kept as a thin alias rather than a second rule.
  */
-export const workshopOdometerLooksWrong = (check: WorkshopOdometerCheck): boolean => {
-  const { counter, expectedReading } = check;
-  if (counter === null || !Number.isFinite(counter)) return false;
-  if (expectedReading === null) return false;
-  // One-sided: only BELOW the floor is suspicious. At or above it is ordinary driving.
-  if (counter >= expectedReading) return false;
+export const workshopOdometerLooksWrong = (check: WorkshopOdometerCheck): boolean =>
+  workshopOdometerBreach(check) !== null;
 
-  const visit = day(check.visitDate);
-  const floorSetOn = day(check.asOf);
-  if (visit === null || floorSetOn === null) return false;
-  // A visit dated before the floor was recorded is back-dated, and belongs below it.
-  return visit >= floorSetOn;
+/**
+ * The translation key for a breach, or `null`. Two sides, two sentences: which bound was crossed
+ * decides what an operator should go and look at, so collapsing them into one message would
+ * remove the only actionable part.
+ */
+export const workshopOdometerWarningKey = (
+  breach: FleetOdometerBracketBreach | null,
+): 'fleet.maintenance.counterBelowChain' | 'fleet.maintenance.counterAboveChain' | null => {
+  if (breach === null) return null;
+  return breach === 'belowChain'
+    ? 'fleet.maintenance.counterBelowChain'
+    : 'fleet.maintenance.counterAboveChain';
 };

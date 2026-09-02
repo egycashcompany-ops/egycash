@@ -29,6 +29,9 @@ const base: AlarmInput = {
   latestReadingDate: D(AFTER),
   baselineCounter: BASELINE,
   baselineDate: D(SERVICE_DAY),
+  // The bracket's lower half is unset throughout this file: D4 is the UPPER-side guard, and
+  // holding the other one at "no bound" is what proves the two are separate refusals.
+  baselineLowerBound: null,
 };
 
 const run = (over: Partial<AlarmInput> = {}) => computeAlarm({ ...base, ...over });
@@ -201,6 +204,7 @@ describe('the car-200 shape', () => {
     latestReadingDate: D(latestReadingDate),
     baselineCounter: 50_000,
     baselineDate: D('2026-08-31'),
+    baselineLowerBound: null,
   });
 
   it('a later eligible reading BELOW the baseline is refused, not shown as −100 km', () => {
@@ -216,7 +220,10 @@ describe('the car-200 shape', () => {
     // 599,000 typed for 59,900 at check-out. Before this guard the projection answered
     // `sinceServiceKm: -539,150` with `noAlarmReason: null`: a car reported as measured and
     // healthy, and silent until the chain climbed past the typo.
-    const result = computeAlarm({ ...car200(59_850, '2026-09-02'), baselineCounter: 599_000 });
+    const result = computeAlarm({
+      ...car200(59_850, '2026-09-02'),
+      baselineCounter: 599_000,
+    });
     expect(result).toEqual(REFUSED);
   });
 

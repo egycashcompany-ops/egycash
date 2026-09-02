@@ -3631,8 +3631,10 @@ const en: Record<string, string> = {
   'fleet.maintenance.outRange': 'Checked out',
   'fleet.maintenance.legacyParts': 'Recorded as text',
   'fleet.maintenance.isAlarmBaseline': 'Alarm baseline',
-  'fleet.maintenance.odometerBelowChain':
-    'Below the last recorded reading ({{km}} km) — check the number. It will be saved as entered.',
+  'fleet.maintenance.counterBelowChain':
+    'Below the {{km}} km already recorded on {{date}} — check the number. It will be saved as entered.',
+  'fleet.maintenance.counterAboveChain':
+    'Above the {{km}} km recorded later, on {{date}} — check the number. It will be saved as entered.',
   'fleet.alarms.subtitle':
     'Derived per request from readings and the last counted service — never stored',
   'fleet.alarms.columns.level': 'Level',
@@ -3642,6 +3644,8 @@ const en: Record<string, string> = {
   'fleet.alarms.noAlarmReason.readingOlderThanService': 'Awaiting a reading after the service',
   'fleet.alarms.noAlarmReason.baselineAboveReading':
     'The recorded reading is below the maintenance baseline — the two do not compare',
+  'fleet.alarms.noAlarmReason.baselineBelowChain':
+    'The service counter is below a reading already recorded by that date — the two do not compare',
   'fleet.alarms.columns.sinceService': 'Since service (km)',
   'fleet.alarms.columns.remaining': 'Remaining (km)',
   'fleet.alarms.noBaseline': 'No counted service yet',
@@ -9870,8 +9874,10 @@ const ar: Record<string, string> = {
   'fleet.maintenance.outRange': 'تاريخ الخروج',
   'fleet.maintenance.legacyParts': 'مسجلة كنص',
   'fleet.maintenance.isAlarmBaseline': 'أساس الإنذار',
-  'fleet.maintenance.odometerBelowChain':
-    'أقل من آخر قراءة مسجّلة ({{km}} كم) — راجع الرقم. سيُحفظ كما هو.',
+  'fleet.maintenance.counterBelowChain':
+    'أقل من {{km}} كم المسجّلة بالفعل يوم {{date}} — راجع الرقم. سيُحفظ كما هو.',
+  'fleet.maintenance.counterAboveChain':
+    'أعلى من {{km}} كم المسجّلة لاحقاً يوم {{date}} — راجع الرقم. سيُحفظ كما هو.',
   'fleet.alarms.subtitle': 'تُشتق عند كل طلب من القراءات وآخر صيانة محسوبة — لا تُخزن أبداً',
   'fleet.alarms.columns.level': 'المستوى',
   'fleet.alarms.noAlarmReason.noInterval': 'نوع السيارة بلا مسافة صيانة',
@@ -9880,6 +9886,8 @@ const ar: Record<string, string> = {
   'fleet.alarms.noAlarmReason.readingOlderThanService': 'في انتظار قراءة عداد بعد الصيانة',
   'fleet.alarms.noAlarmReason.baselineAboveReading':
     'قراءة العداد المسجّلة أقل من عداد آخر صيانة — الرقمان غير قابلين للمقارنة',
+  'fleet.alarms.noAlarmReason.baselineBelowChain':
+    'عداد الصيانة أقل من قراءة مسجّلة قبل تاريخها — الرقمان غير قابلين للمقارنة',
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',
   'fleet.alarms.columns.remaining': 'المتبقي (كم)',
   'fleet.alarms.noBaseline': 'لا صيانة محسوبة بعد',

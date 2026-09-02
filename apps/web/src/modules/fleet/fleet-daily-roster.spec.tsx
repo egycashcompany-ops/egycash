@@ -1035,9 +1035,7 @@ describe('the vehicle cell', () => {
   });
 
   it('does NOT show the plate number under it', () => {
-    // A second identifier under every row of the column the eye scans for one. The plate is
-    // still SEARCHABLE — a dispatcher holding a plate number types it above — it just is not
-    // repeated down the board.
+    // A second identifier under every row of the column the eye scans for one.
     const markup = render();
     expect(markup, 'the plate is gone from the cell').not.toContain('س ص 150');
     const vehicleCol = SOURCE.slice(
@@ -1045,10 +1043,21 @@ describe('the vehicle cell', () => {
       SOURCE.indexOf("key: 'state'"),
     );
     expect(vehicleCol, 'and the cell does not render it at all').not.toContain('plateNumber');
-    // The search rule now lives in `lib/roster-view.ts`, with the rest of what narrows the board.
-    expect(VIEW_SOURCE, 'while the search still matches it').toContain(
-      'row.plateNumber.toLowerCase().includes(term)',
+  });
+
+  it('and does not SEARCH it either — the board answers by code, like every other car box', () => {
+    // This asserted the opposite until the whole application was made to name a car by its code:
+    // the box was «الكود أو رقم اللوحة» and the filter read both fields. That combination was the
+    // problem, not either half of it. With the plate gone from the cell, a plate search returned a
+    // row whose only visible identifier was not what had been typed and nothing said why.
+    //
+    // The rule now lives in `lib/vehicle-code-match.ts`, built on the canonical parser, so this
+    // board answers `150 - 151` exactly as the filter bars do. Behaviour is pinned there and in
+    // `vehicle-code-search.spec.ts`; what is checked here is that the board reaches for it.
+    expect(VIEW_SOURCE, 'the shared matcher, not a comparison of its own').toContain(
+      'matchesVehicleCode(row.code, term)',
     );
+    expect(VIEW_SOURCE, 'and no plate is consulted anywhere in it').not.toContain('plateNumber');
   });
 });
 

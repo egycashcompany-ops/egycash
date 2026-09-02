@@ -8,6 +8,7 @@
 // list. Each is the module's own call to a published endpoint — Gold never imports HR's, Fleet's
 // or the platform's code.
 import {
+  vehicleCodeSearchQuery,
   type CreateGoldBar,
   type CreateGoldCompany,
   type CreateGoldDelivery,
@@ -84,12 +85,24 @@ export const searchEmployees = (search: string, pageSize = 10): Promise<Paginate
 export const getEmployee = (id: string): Promise<EmployeeDto> =>
   get<EmployeeDto>(`/hr/employees/${id}`);
 
-/** Integration 1 — the vehicle whose plate the receiving receipt prints. */
+/**
+ * Integration 1 — the car that carried the shipment, found by its CODE.
+ *
+ * `vehicleCodeSearchQuery` and not a plain `search`: this is the query behind a picker whose box
+ * asks for a vehicle code, and Fleet's `search` spans the plate, chassis and motor as well. Typing
+ * a plate here used to offer whichever car carries it, listed under a code nobody had typed — so a
+ * receiving clerk could pick, and stamp a receipt with, a car they never asked for.
+ *
+ * The receipt still STORES the plate; `VehiclePicker` reads it off the matched car. What changed
+ * is only which field the registry is asked to match.
+ */
 export const searchVehicles = (
-  search: string,
+  code: string,
   pageSize = 10,
 ): Promise<Paginated<FleetVehicleDto>> =>
-  getPage<FleetVehicleDto>(`/fleet/vehicles${buildQuery({ search, pageSize })}`);
+  getPage<FleetVehicleDto>(
+    `/fleet/vehicles${buildQuery({ ...vehicleCodeSearchQuery(code), pageSize })}`,
+  );
 
 /**
  * Integration 3 — the ECMS branches every gold document is stamped with.

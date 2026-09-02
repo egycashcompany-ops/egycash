@@ -4,7 +4,12 @@
 // together — the characters cannot tell them apart. The separator is therefore the SPACE around a
 // dash, not the dash: a code cannot contain a space, so the same text always parses the same way.
 import { describe, expect, it } from 'vitest';
-import { splitVehicleCodeList, vehicleCodesQuery } from '../index.js';
+import {
+  ListFleetVehiclesQuerySchema,
+  splitVehicleCodeList,
+  vehicleCodeSearchQuery,
+  vehicleCodesQuery,
+} from '../index.js';
 
 describe('splitVehicleCodeList — the separators', () => {
   it('reads a single code', () => {
@@ -115,5 +120,39 @@ describe('vehicleCodesQuery — the same parse, as a schema', () => {
   it('refuses more codes than a filter bar can mean', () => {
     const many = Array.from({ length: 51 }, (_, i) => `C${String(i)}`).join(',');
     expect(schema.safeParse(many).success).toBe(false);
+  });
+});
+
+describe('vehicleCodeSearchQuery — what a vehicle-code box asks the registry', () => {
+  it('asks about the CODE, and about no other identifier', () => {
+    // The whole point. `search` spans code, plate, chassis and motor at once; a control labelled
+    // with the code must never ask it, or a plate offers a car under a code nobody typed.
+    expect(vehicleCodeSearchQuery('150')).toEqual({ code: '150' });
+    expect(vehicleCodeSearchQuery('150')).not.toHaveProperty('search');
+    expect(vehicleCodeSearchQuery('150')).not.toHaveProperty('plateNumber');
+    expect(vehicleCodeSearchQuery('150')).not.toHaveProperty('chassisNumber');
+    expect(vehicleCodeSearchQuery('150')).not.toHaveProperty('motorNumber');
+  });
+
+  it('asks NOTHING for an empty box, rather than narrowing to nothing', () => {
+    // Spread into a params object, `{}` has to leave the query unnarrowed — the same distinction
+    // `vehicleCodesQuery` draws between `undefined` and `[]`.
+    expect(vehicleCodeSearchQuery('')).toEqual({});
+    expect(vehicleCodeSearchQuery('   ')).toEqual({});
+  });
+
+  it('trims, because the box is typed into', () => {
+    expect(vehicleCodeSearchQuery('  150  ')).toEqual({ code: '150' });
+  });
+
+  it('produces a query the registry endpoint actually accepts', () => {
+    // `.strict()` up there, so a field spelled wrong here would be REJECTED rather than ignored:
+    // this is what ties the helper to the endpoint it is built for.
+    const parsed = ListFleetVehiclesQuerySchema.parse({
+      ...vehicleCodeSearchQuery('150'),
+      pageSize: 50,
+    });
+    expect(parsed.code).toBe('150');
+    expect(parsed.search).toBeUndefined();
   });
 });

@@ -526,9 +526,10 @@ export const RosterPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
-      // The CODE alone. The plate was a second identifier under every row of a column the eye
-      // scans for one, and the code is the one this fleet dispatches by — the plate is still
-      // searchable above, which is where a plate number is actually used.
+      // The CODE alone, and it is also the only thing the box above searches. The plate was a
+      // second identifier under every row of a column the eye scans for one, and the code is what
+      // this fleet dispatches by. It stays on the vehicle record and on the screens that are ABOUT
+      // a car; what it no longer does is decide which rows this board shows.
       render: (row) => (
         <span className="font-mono text-xs" dir="ltr">
           {row.code}

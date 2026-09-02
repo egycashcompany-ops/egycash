@@ -305,6 +305,28 @@ export const vehicleCodesQuery = (max = 50) =>
     z.array(z.string().trim().min(1).max(20)).min(1).max(max).optional(),
   );
 
+/**
+ * The registry query a VEHICLE-CODE selector asks — code only, and nothing else.
+ *
+ * Every control in the application whose job is to pick or filter A CAR asks by the code: the
+ * multi-select on the six filtered fleet screens, the pickers in the odometer and maintenance
+ * dialogs, and Gold's receiving picker. They all send this, so "what does a vehicle-code box
+ * search?" has ONE answer written down once, in the same file as the parser that reads the box.
+ *
+ * It is `code` and not `search` because those are different questions. `search` is the registry
+ * page's own box, deliberately spanning code, plate, chassis and motor at once — right for
+ * BROWSING the registry, wrong for a control labelled with the code, where a plate number matching
+ * some other car offers that car under a heading that says its code. A reader who ticks it filters
+ * by a car they never asked for and cannot see why it was offered.
+ *
+ * The trailing fragment of a typed list arrives here (`readTypedVehicleCodes` takes the completed
+ * codes out first), so an empty or whitespace term is normal and asks for no narrowing at all.
+ */
+export const vehicleCodeSearchQuery = (term: string): { code?: string } => {
+  const code = term.trim();
+  return code === '' ? {} : { code };
+};
+
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   status: FleetVehicleStatusSchema.optional(),
   /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). */
@@ -323,9 +345,14 @@ export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   // Per-identifier filters, ANDed with each other and with `search`: narrowing by plate AND
   // chassis is a different question from searching either, and the list page asks both.
   /**
-   * @deprecated Superseded by `vehicleCodes`. Substring, single-valued — the shape the list page
-   * used before the picker. Still honoured so a saved link or a direct API caller keeps working;
-   * the UI no longer writes it.
+   * Substring over the CODE alone — what every vehicle-code selector searches.
+   *
+   * The sibling of `vehicleCodes` rather than a leftover of it: that one is the EXACT cars a set
+   * of ticked checkboxes names, this one is the substring a half-typed code is still matching. A
+   * picker needs both — it narrows the offered list with `code` as the operator types, and filters
+   * the page with `vehicleCodes` once they tick. Build it with `vehicleCodeSearchQuery`.
+   *
+   * Distinct from `search`, which spans four identifiers at once and belongs to the registry page.
    */
   code: identifierFilter(),
   plateNumber: identifierFilter(),

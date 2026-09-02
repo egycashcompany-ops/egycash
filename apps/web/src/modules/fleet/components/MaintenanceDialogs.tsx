@@ -3,7 +3,11 @@
 // the custody and the exit date), and the facts edit. All version-aware; the counter hint is
 // the server's expected reading, never a client computation.
 import { useEffect, useMemo, useState } from 'react';
-import { type FleetMaintenanceVisitDto, type Locale } from '@ecms/contracts';
+import {
+  vehicleCodeSearchQuery,
+  type FleetMaintenanceVisitDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -152,10 +156,13 @@ export const CheckInDialog = ({
   // Cars already IN a workshop are dropped from the shortlist, as the old select did: the server
   // refuses them under FR-4 anyway, and this only spares a guaranteed 409. It trims what the
   // server matched — it never stands in for the search.
+  //
+  // Matched on the CODE alone (`vehicleCodeSearchQuery`) — the same question the box's label asks,
+  // and the same one every other vehicle picker in the application now asks.
   const vehicles = useVehicles(
     {
       status: 'active',
-      search: codeQuery.trim() === '' ? undefined : codeQuery.trim(),
+      ...vehicleCodeSearchQuery(codeQuery),
       pageSize: VEHICLE_SEARCH_SIZE,
       sortBy: 'code',
       sortDir: 'asc',

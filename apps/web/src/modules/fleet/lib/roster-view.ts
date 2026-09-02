@@ -22,6 +22,7 @@
 // with the code search: no filter cancels another, and a bar showing two active filters shows
 // their intersection.
 import { type FleetRosterRowDto } from '@ecms/contracts';
+import { matchesVehicleCode } from './vehicle-code-match';
 
 /** The two STATE views. A mission is not one of these — it travels as `mission=<id>`. */
 export const ROSTER_VIEWS = ['workshop', 'assigned'] as const;
@@ -60,9 +61,10 @@ export const hasDriver = (row: FleetRosterRowDto): boolean =>
 /**
  * The rows the board should SHOW, given everything the URL is asking for.
  *
- * Every filter narrows; none replaces another. `term` matches the code or the plate — the cell no
- * longer prints the plate, but a dispatcher holding a plate number in their head is exactly who
- * is typing in that box.
+ * Every filter narrows; none replaces another. `term` is read as VEHICLE CODES, by the canonical
+ * parser every other code box in the application is read with — so it takes a list (`150 - 151`
+ * shows both cars) and it matches the code alone. It used to match the plate as well, which meant
+ * the board could answer with a row whose only visible identifier was not what had been typed.
  *
  * This is display only. The draft, the counters, the driver pool and what «حفظ» sends all read
  * the WHOLE day and never this result — a filter is a way of looking at the board, not a way of
@@ -72,15 +74,11 @@ export const visibleRows = (
   rows: readonly FleetRosterRowDto[],
   filters: { term?: string; mission?: string; view?: RosterView | null },
 ): FleetRosterRowDto[] => {
-  const term = (filters.term ?? '').trim().toLowerCase();
+  const term = filters.term ?? '';
   const mission = filters.mission ?? '';
   const view = filters.view ?? null;
   return rows.filter((row) => {
-    if (term !== '') {
-      const matches =
-        row.code.toLowerCase().includes(term) || row.plateNumber.toLowerCase().includes(term);
-      if (!matches) return false;
-    }
+    if (!matchesVehicleCode(row.code, term)) return false;
     if (mission !== '' && row.missionTypeId !== mission) return false;
     if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'assigned' && !carriesPlan(row)) return false;

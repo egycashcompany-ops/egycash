@@ -57,4 +57,20 @@ describe('vehicleIdentifierFilter — ONE identifier, so filters can be ANDed', 
     const filter = vehicleIdentifierFilter('chassisNumber', 'ch-1') as Record<string, unknown>;
     expect(rx(filter, 'chassisNumber').test('CH-150')).toBe(true);
   });
+
+  /**
+   * `code` is what every VEHICLE-CODE selector in the web app sends (`vehicleCodeSearchQuery`),
+   * and the reason it sends that instead of `search` is this asymmetry: one field is asked, so a
+   * plate, chassis or motor number typed into a box labelled with the code finds nothing rather
+   * than offering some other car under a code the reader never typed.
+   */
+  it('asks the CODE and nothing else — the guarantee the code pickers rest on', () => {
+    const filter = vehicleIdentifierFilter('code', 'س ص 150') as Record<string, unknown>;
+    expect(Object.keys(filter)).toEqual(['code']);
+    // The plate of car 150. The four-identifier search finds the car; this deliberately does not.
+    expect(rx(filter, 'code').test('150')).toBe(false);
+    expect((vehicleSearchFilter('س ص 150') as { $or: Record<string, unknown>[] }).$or).toHaveLength(
+      4,
+    );
+  });
 });

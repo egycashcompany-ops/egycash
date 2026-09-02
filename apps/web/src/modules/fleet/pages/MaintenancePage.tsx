@@ -430,10 +430,12 @@ export const MaintenancePage = (): JSX.Element => {
       render: (visit) => {
         const alarm = alarmByVehicle.get(visit.vehicleId);
         if (alarm === undefined) return dash;
-        // No closed counting visit yet — the same sentence the alarms board prints, because it is
-        // the same state: there is no cycle to measure, not a cycle with nothing in it.
+        // A DATE column: no closed counting visit means no date, and an absent value here reads
+        // as the same dash every other absent value on this row does. WHY there is no service is
+        // the level column's answer, carried there as a tooltip (PR #384) because a row here is a
+        // VISIT and a per-vehicle sentence repeated down the column reads as several problems.
         return alarm.lastServiceAt === null ? (
-          <span className="text-slate-500 dark:text-slate-400">{t('fleet.alarms.noBaseline')}</span>
+          dash
         ) : (
           <span className="tabular-nums">{formatDate(alarm.lastServiceAt, locale)}</span>
         );

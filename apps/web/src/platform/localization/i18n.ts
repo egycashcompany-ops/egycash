@@ -3648,7 +3648,6 @@ const en: Record<string, string> = {
     'The service counter is below a reading already recorded by that date — the two do not compare',
   'fleet.alarms.columns.sinceService': 'Since service (km)',
   'fleet.alarms.columns.remaining': 'Remaining (km)',
-  'fleet.alarms.noBaseline': 'No counted service yet',
   'fleet.alarms.allAlarms': 'All alarms',
   'fleet.alarms.refresh': 'Refresh',
 
@@ -9890,7 +9889,6 @@ const ar: Record<string, string> = {
     'عداد الصيانة أقل من قراءة مسجّلة قبل تاريخها — الرقمان غير قابلين للمقارنة',
   'fleet.alarms.columns.sinceService': 'منذ الخدمة (كم)',
   'fleet.alarms.columns.remaining': 'المتبقي (كم)',
-  'fleet.alarms.noBaseline': 'لا صيانة محسوبة بعد',
   'fleet.alarms.allAlarms': 'كل الإنذارات',
   'fleet.alarms.refresh': 'تحديث',
 

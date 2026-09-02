@@ -125,9 +125,16 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     {
       key: 'lastServiceAt',
       header: t('fleet.vehicle.lastService'),
+      // A DATE column, so an absent date reads as one — the same dash the two figures beside it
+      // use. It used to print a sentence, and that sentence was byte-identical to the reason the
+      // LEVEL column prints for the very same car: «لا صيانة محسوبة بعد» appeared twice on one
+      // row, in adjacent columns, which reads as two findings about a car that has one.
+      //
+      // The reason belongs to the level column and stays there (PR #383/#384); this column
+      // answers only "when", and the honest answer to "when" is nothing.
       render: (alarm) =>
         alarm.lastServiceAt === null ? (
-          t('fleet.alarms.noBaseline')
+          <span className="text-slate-400 dark:text-slate-600">—</span>
         ) : (
           <span className="tabular-nums">{formatDate(alarm.lastServiceAt, locale)}</span>
         ),

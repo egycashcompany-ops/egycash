@@ -319,11 +319,23 @@ describe('the maintenance screen and the baseline visit', () => {
       sinceServiceKm: null,
       lastServiceAt: null,
       lastServiceVisitId: null,
+      // What the SERVER actually sends for this car: the guard that stopped the calculation,
+      // named (PR #383). Leaving it null modelled a car whose cycle was measured and found
+      // healthy, which is a different state and not the one this test is about.
+      noAlarmReason: 'noService',
     };
     const markup = maintenance([noBaseline]);
     expect(markup).not.toContain('أساس الإنذار');
-    expect(markup, 'and it says so, in the alarms board’s own words').toContain(
-      'لا صيانة محسوبة بعد',
+    // WHERE it says so matters, and `toContain` cannot tell visible text from a `title`. On this
+    // screen a row is a VISIT, so the reason is carried as a tooltip on the level cell (PR #384)
+    // and the «آخر صيانة» column — a DATE column — shows a dash like every other absent value.
+    // It used to print the sentence there too, byte-identical to the level column's, so one car
+    // read as two findings.
+    expect(markup, 'the reason is on the level cell, as a tooltip').toContain(
+      'title="لا صيانة محسوبة بعد"',
+    );
+    expect(markup, 'and never as visible text on this screen').not.toContain(
+      '>لا صيانة محسوبة بعد<',
     );
   });
 

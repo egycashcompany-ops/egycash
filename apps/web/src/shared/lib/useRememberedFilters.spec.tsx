@@ -16,6 +16,7 @@ import {
   chooseInitialView,
   rememberedOnly,
   runFilterPass,
+  scopedView,
   useRememberedFilters,
 } from './useRememberedFilters';
 
@@ -178,6 +179,35 @@ describe('runFilterPass — when each of the two things happens', () => {
         fallback: 'status=waiting',
       }).restore,
     ).toBe('status=accepted');
+  });
+});
+
+describe('scopedView — a tab switch is not an arrival', () => {
+  // The screens this exists for keep several lists behind one URL. Switching tabs always leaves a
+  // query string behind, so "a URL that says something wins" cannot decide it: what it says is the
+  // filters of the tab being LEFT.
+  it('drops the leaving tab’s filters and puts the arriving tab’s back', () => {
+    const current = new URLSearchParams('tab=installations&q=office&status=open');
+    expect(scopedView(current, KEEP, 'q=printer')).toBe('tab=installations&q=printer');
+  });
+
+  it('leaves a tab with nothing saved genuinely empty, rather than inheriting', () => {
+    const current = new URLSearchParams('tab=installations&q=office&status=open');
+    expect(scopedView(current, KEEP, '')).toBe('tab=installations');
+  });
+
+  it('keeps a param the screen never declared — not remembering is not the same as deleting', () => {
+    const current = new URLSearchParams('tab=all&active=false&q=office');
+    expect(scopedView(current, KEEP, '')).toBe('tab=all&active=false');
+  });
+
+  it('does not touch what the tab does not own — the tab itself, a board date', () => {
+    const current = new URLSearchParams('tab=closing&date=2026-01-05&q=x');
+    expect(scopedView(current, KEEP, 'q=y')).toBe('tab=closing&date=2026-01-05&q=y');
+  });
+
+  it('is a no-op on a screen with nothing remembered yet', () => {
+    expect(scopedView(new URLSearchParams('tab=all'), KEEP, '')).toBe('tab=all');
   });
 });
 

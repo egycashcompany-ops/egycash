@@ -22,6 +22,14 @@ import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { useCatalogItems } from '../api/fleet-queries';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'active',
+  'sort',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -32,6 +40,7 @@ export const CatalogsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const kindParam = sp.get('kind');
   const kind: FleetCatalogKind = isKind(kindParam) ? kindParam : 'workshop';

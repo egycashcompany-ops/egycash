@@ -22,6 +22,7 @@
 //
 // NOTHING NEW BEHIND IT: no API, no permission, no setting, no event, no rule about money.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Link } from 'react-router-dom';
 import {
   type EmployeeLoanDto,
@@ -33,17 +34,34 @@ import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { Badge, Button, DataTable, EmptyState, Pagination, type Column } from '../../../../shared/ui';
+import {
+  Badge,
+  Button,
+  DataTable,
+  EmptyState,
+  Pagination,
+  type Column,
+} from '../../../../shared/ui';
 import { Dialog } from '../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney } from '../../../../shared/lib/format';
-import { useAllLoans, useDecideLoanFromList, useDisburseLoanFromList } from '../api/employee-loans-queries';
+import {
+  useAllLoans,
+  useDecideLoanFromList,
+  useDisburseLoanFromList,
+} from '../api/employee-loans-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['status', 'type'] as const;
 
 const PAGE_SIZE = 25;
 
 const TABS = ['queue', 'toDisburse', 'all'] as const;
 type Tab = (typeof TABS)[number];
+
+const isTab = (value: string | null): value is Tab => TABS.includes(value as Tab);
 
 /** Each worklist tab is ONE status, fixed — a dropdown can be changed and a worklist should not. */
 const TAB_STATUS: Record<Tab, string> = {
@@ -67,10 +85,35 @@ export const EmployeeLoansAdminPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [tab, setTab] = useState<Tab>('queue');
-  const [status, setStatus] = useState('');
-  const [type, setType] = useState('');
-  const [page, setPage] = useState(1);
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to.
+  //
+  // The tab is in the URL too, and is the SCOPE rather than a filter: `status` and `type` narrow
+  // the ARCHIVE tab and are rendered only there.
+  // Held locally it would reset to the default on every visit while the filters came back, so a
+  // reader would return to a tab wearing another tab's narrowing, with no control to clear it.
+  const [sp, setSp] = useSearchParams();
+  const tabParam = sp.get('tab');
+  const tab: Tab = isTab(tabParam) ? tabParam : 'queue';
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const setTab = (value: Tab): void => patch({ tab: value === 'queue' ? null : value });
+  const status = sp.get('status') ?? '';
+  const setStatus = (value: string): void => patch({ status: value });
+  const type = sp.get('type') ?? '';
+  const setType = (value: string): void => patch({ type: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
   const [disbursing, setDisbursing] = useState<EmployeeLoanDto | null>(null);
 
   const canApprove = can('employeeLoan.approve');

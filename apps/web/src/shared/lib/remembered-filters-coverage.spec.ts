@@ -1,43 +1,62 @@
-// The persistence contract, checked against the source.
+// The persistence census: every screen in the application, classified exactly once.
 //
-// `useRememberedFilters` only remembers what a screen DECLARES, which is the property that makes it
-// safe — and the same property that lets it rot silently. Add a filter to a screen and forget its
-// name here and nothing breaks: the filter works, the screen works, and it is the one filter that
-// quietly stops being remembered. No runtime test can see that, because both versions run.
+// The guard this replaces proved that the screens on a list were correct. It could not prove the
+// list was the application — a page in neither the covered nor the excluded list was not a failure,
+// it was invisible. So a developer could add `useSearchParams` and a `<SearchInput>` to a new list
+// page and ship it with no persistence and a green suite.
 //
-// So the invariant is structural, and it is TOTALITY: every query param a screen reads is either
-// remembered or named as deliberately excluded. There is no third state, and a param that appears
-// without a decision fails this test.
+// This one is a PARTITION. Every `*Page.tsx` in the app belongs to exactly one of four lists, and
+// the union must equal what is on disk. A new page file is in none of them, so the suite fails
+// until somebody decides which it is. That guarantee needs no heuristic and has no blind spot for
+// new screens; the detector below is only a second opinion about the ones already classified.
 //
-// The three named exclusions each have a reason that is not "it looked unimportant":
+// The four states, and what each means:
 //
-//   • `code` on the vehicle registry — the legacy param the URL migration consumes and deletes.
-//     Remembering it would resurrect a parameter the app has already moved off.
-//   • `date` on fleet attendance — the day being viewed, not a filter of it. Restoring it shows a
-//     stale day, which is worse than showing today.
-//   • `actorUserId` and `moduleId` on the audit log — read by `readAuditFilters` but rendered by no
-//     control on the page. A remembered filter nobody can see or clear is a trap, and the absence
-//     of a control is the evidence. THE GENERAL RULE: a param a screen cannot clear is never kept.
+//   COVERED             calls `useRememberedFilters`, and every param it reads is either
+//                       remembered or named here as deliberately excluded.
+//   EXCLUDED            has query state a reader can change, which must NOT survive a visit.
+//                       Every entry carries the reason, and every reason is a fact about the code.
+//   MIGRATION_PENDING   filters a list but keeps them in local state, so there is nothing to
+//                       remember yet. Empty — the twelve that were here have been migrated.
+//   NOT_FILTER_CAPABLE  everything else: forms, detail pages, dashboards, wizards.
 //
 // `page` is excluded everywhere and needs no per-screen entry: it is derived, not chosen, and every
 // screen's own `patch()` already drops it whenever a filter changes.
 import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readdirSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { scopedView } from './useRememberedFilters';
 
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '../../');
 const text = (rel: string): string => readFileSync(join(SRC, rel), 'utf8');
 
-/** Every screen that remembers its filters, with the params it deliberately does NOT remember. */
-const OPTED_IN: readonly (readonly [string, readonly string[]])[] = [
+/** Every page file on disk — the census this partition must exactly cover. */
+const pageFiles = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) return pageFiles(full);
+    return entry.name.endsWith('Page.tsx') && !entry.name.endsWith('.spec.tsx')
+      ? [relative(SRC, full)]
+      : [];
+  });
+
+/** Screens that remember their filters, with the params each deliberately does NOT remember. */
+const COVERED: readonly (readonly [string, readonly string[]])[] = [
+  ['modules/atm/pages/DataEditPage.tsx', ['tab']],
+  ['modules/atm/pages/MachinesPage.tsx', []],
+  ['modules/atm/pages/MaintenancePage.tsx', []],
+  ['modules/atm/pages/ReplenishmentsPage.tsx', []],
   ['modules/fleet/pages/AccidentsPage.tsx', []],
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
+  ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
   ['modules/fleet/pages/DriversListPage.tsx', []],
   ['modules/fleet/pages/FixedRosterPage.tsx', []],
   ['modules/fleet/pages/MaintenanceAlarmsPage.tsx', []],
   ['modules/fleet/pages/MaintenancePage.tsx', []],
   ['modules/fleet/pages/OdometerPage.tsx', []],
+  ['modules/fleet/pages/RosterPage.tsx', ['date']],
   ['modules/fleet/pages/VehiclesListPage.tsx', ['code']],
   ['modules/fleet/pages/ViolationsPage.tsx', []],
   ['modules/gold/pages/GoldBarsPage.tsx', []],
@@ -48,12 +67,26 @@ const OPTED_IN: readonly (readonly [string, readonly string[]])[] = [
   ['modules/gold/pages/GoldReceivingPage.tsx', []],
   ['modules/gold/pages/GoldRepresentativesPage.tsx', []],
   ['modules/gold/pages/GoldTransfersPage.tsx', []],
+  ['modules/gold/portal/pages/PortalBarsPage.tsx', []],
+  ['modules/gold/portal/pages/PortalReportsPage.tsx', ['tab']],
+  ['modules/hr/attendance/pages/DailySheetPage.tsx', []],
+  ['modules/hr/attendance/pages/RegularizationQueuePage.tsx', ['tab']],
   ['modules/hr/contracts/pages/ContractsListPage.tsx', []],
+  ['modules/hr/employee-loans/pages/EmployeeLoansAdminPage.tsx', ['tab']],
   ['modules/hr/employee-management/employee-files/pages/EmployeeFilesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesListPage.tsx', []],
   ['modules/hr/employee-management/employees/pages/EmployeesReadyPage.tsx', []],
   ['modules/hr/leave-management/pages/AllRequestsPage.tsx', []],
+  ['modules/hr/medical/pages/InsuranceCardsPage.tsx', []],
+  ['modules/hr/medical/pages/MedicalProfilesPage.tsx', []],
+  ['modules/hr/payroll/pages/PayItemsPage.tsx', []],
+  ['modules/hr/payroll/pages/PayrollAdjustmentsPage.tsx', ['tab']],
+  ['modules/hr/performance/pages/PerformanceCyclesPage.tsx', []],
+  ['modules/hr/performance/pages/PerformanceReviewsPage.tsx', []],
+  ['modules/hr/recruitment/applicant-documents/pages/ApplicantDocumentsQueuePage.tsx', ['tab']],
+  ['modules/hr/recruitment/applicant-sources/pages/ApplicantSourcesPage.tsx', []],
   ['modules/hr/recruitment/applicants/pages/ApplicantsListPage.tsx', []],
+  ['modules/hr/recruitment/evaluation-batches/pages/EvaluationBatchesPage.tsx', []],
   ['modules/hr/recruitment/evaluations/pages/EvaluationPhaseQueuePage.tsx', []],
   ['modules/hr/recruitment/evaluations/pages/EvaluationQueuePage.tsx', []],
   ['modules/hr/recruitment/hiring-documents/pages/HiringDocsListPage.tsx', []],
@@ -61,12 +94,30 @@ const OPTED_IN: readonly (readonly [string, readonly string[]])[] = [
   ['modules/hr/recruitment/interviews/pages/InterviewStageQueuePage.tsx', []],
   ['modules/hr/recruitment/job-offers/pages/JobOffersListPage.tsx', []],
   ['modules/hr/recruitment/screening/pages/ScreeningQueuePage.tsx', []],
+  ['modules/hr/training/pages/TrainingCoursesPage.tsx', []],
+  ['modules/hr/training/pages/TrainingNominationsPage.tsx', []],
+  ['modules/hr/training/pages/TrainingRecordsPage.tsx', []],
+  ['modules/hr/training/pages/TrainingSessionsPage.tsx', []],
   ['modules/it/pages/AssetsListPage.tsx', []],
   ['modules/it/pages/CustodyPage.tsx', []],
   ['modules/it/pages/HelpDeskSettingsPage.tsx', []],
+  ['modules/it/pages/ItCatalogsPage.tsx', ['kind']],
+  ['modules/it/pages/LicensesPage.tsx', []],
   ['modules/it/pages/MaintenanceOrdersPage.tsx', []],
+  ['modules/it/pages/MaintenancePlansPage.tsx', []],
+  ['modules/it/pages/SoftwarePage.tsx', ['tab']],
+  ['modules/it/pages/SparePartsPage.tsx', []],
   ['modules/it/pages/TicketsListPage.tsx', []],
   ['modules/it/pages/VendorsPage.tsx', []],
+  ['modules/operations/pages/DailyOperationsPage.tsx', ['date']],
+  ['modules/operations/pages/StandingCrewPage.tsx', []],
+  ['modules/organization/application-categories/pages/ApplicationCategoriesListPage.tsx', []],
+  ['modules/organization/applications/pages/ApplicationsListPage.tsx', []],
+  ['modules/organization/branches/pages/BranchesListPage.tsx', []],
+  ['modules/organization/cost-centers/pages/CostCentersListPage.tsx', []],
+  ['modules/organization/departments/pages/DepartmentsListPage.tsx', []],
+  ['modules/organization/job-titles/pages/JobTitlesListPage.tsx', []],
+  ['modules/organization/sections/pages/SectionsListPage.tsx', []],
   ['modules/system-admin/audit/pages/ActivityLogPage.tsx', []],
   ['modules/system-admin/audit/pages/AuditLogPage.tsx', ['actorUserId', 'moduleId']],
   ['modules/system-admin/notification-templates/pages/TemplatesListPage.tsx', []],
@@ -76,33 +127,162 @@ const OPTED_IN: readonly (readonly [string, readonly string[]])[] = [
   ['modules/system-admin/users/pages/UsersListPage.tsx', []],
 ];
 
-/**
- * Screens that own URL state and a filter bar and STILL must not remember, each for a reason the
- * mechanism cannot infer. Listed so that adding the hook to one of them fails rather than passes.
- */
-const OPTED_OUT: readonly (readonly [string, string])[] = [
-  ['modules/atm/pages/DataEditPage.tsx', '`tab` is a role="tab" strip, not a filter'],
-  ['modules/fleet/pages/CatalogsPage.tsx', '`kind` is a role="tab" strip, not a filter'],
-  ['modules/it/pages/ItCatalogsPage.tsx', '`kind` is a role="tab" strip, not a filter'],
-  ['modules/operations/pages/DailyOperationsPage.tsx', 'its filters are local state; `date` is what the board IS'],
-  ['modules/system-admin/roles/components/UserEffectivePermissionsTab.tsx', 'a tab inside a :id detail route'],
+/** Screens whose query state must not survive a visit. Every reason is a fact about the code. */
+const EXCLUDED: readonly (readonly [string, string])[] = [
+  ['modules/atm/pages/DailyReportPage.tsx', '`date` opens on cairoToday() \u2014 the day the report IS'],
+  ['modules/atm/pages/MailLogPage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
+  ['modules/atm/pages/MaintenanceDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
+  ['modules/atm/pages/ReplenishmentsDonePage.tsx', '`from` opens on cairoToday() \u2014 a day of finished work, not a chosen range'],
+  ['modules/operations/mobile/CaptainDayPage.tsx', '`date` is the day being driven'],
+  ['modules/operations/pages/CatalogsPage.tsx', '`kind` selects which catalogue renders \u2014 navigation, not a filter'],
+  ['modules/operations/pages/CrewAttendancePage.tsx', '`date` is the day being recorded'],
+  ['modules/operations/pages/CrewBoardPage.tsx', '`date` resolves server-side to tomorrow \u2014 the day the board IS'],
+  ['modules/operations/pages/RequirementsPage.tsx', '`date` is the day being planned'],
+  ['modules/operations/pages/SecuredDispatchPage.tsx', '`date` resolves to the due day being dispatched'],
 ];
 
 /**
- * The audit screens read their filters through a shared helper rather than inline, and the two
- * readers live in ONE file — so following the import wholesale would credit the activity log with
- * the audit log's params. Only the body of the function a screen actually calls is scanned.
+ * Screens that filter a list from local state, so there is nothing to remember yet.
+ *
+ * Empty, and that is the point: it is where a screen waits when it has been found but not yet
+ * migrated, so "we know about it" and "it works" stay different claims.
  */
+const MIGRATION_PENDING: readonly string[] = [];
+
+/**
+ * Everything else — forms, detail pages, dashboards, wizards.
+ *
+ * A second element is the note left by whoever looked: it is REQUIRED for any page the detector
+ * below finds filter-shaped, so "the heuristic is wrong here" has to be written down by a person
+ * rather than assumed. The twelve that carry one are selects that edit a record, report windows
+ * with no control on the page, and `page`-only lists.
+ */
+const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
+  ['modules/atm/pages/AtmOverviewPage.tsx'],
+  ['modules/atm/pages/MailTicketsPage.tsx'],
+  ['modules/fleet/pages/DriverProfilePage.tsx'],
+  ['modules/fleet/pages/FleetDashboardPage.tsx'],
+  ['modules/fleet/pages/FleetSettingsPage.tsx'],
+  ['modules/fleet/pages/VehicleDetailPage.tsx'],
+  ['modules/gold/pages/GoldDashboardPage.tsx'],
+  ['modules/gold/pages/GoldReportsPage.tsx'],
+  ['modules/gold/pages/GoldVaultSettingsPage.tsx'],
+  ['modules/gold/pages/GoldVaultsBoardPage.tsx'],
+  ['modules/gold/portal/PortalLoginPage.tsx'],
+  ['modules/gold/portal/pages/PortalDrawersPage.tsx'],
+  ['modules/gold/portal/pages/PortalKeysPage.tsx'],
+  ['modules/gold/portal/pages/PortalOverviewPage.tsx'],
+  ['modules/gold/portal/pages/PortalReceiptsPage.tsx'],
+  ['modules/gold/portal/pages/PortalRepresentativesPage.tsx'],
+  ['modules/gold/portal/pages/PortalTransfersPage.tsx'],
+  ['modules/hr/announcements/pages/ComposeAnnouncementPage.tsx'],
+  ['modules/hr/attendance/pages/AssignmentsPage.tsx', 'its search and selects are fields of the "add assignment" dialog, reset on success'],
+  ['modules/hr/attendance/pages/EmployeeMonthPage.tsx', '`month` is the month being read on one employee, on a :id route'],
+  ['modules/hr/attendance/pages/MyAttendancePage.tsx'],
+  ['modules/hr/attendance/pages/ShiftsPage.tsx'],
+  ['modules/hr/contracts/pages/ContractCreatePage.tsx'],
+  ['modules/hr/contracts/pages/ContractDetailPage.tsx', 'the select assigns a category to this contract'],
+  ['modules/hr/contracts/pages/TemplateEditorPage.tsx'],
+  ['modules/hr/contracts/pages/TemplatesListPage.tsx', 'the select edits one template\u2019s language'],
+  ['modules/hr/contracts/pages/VerifyContractPage.tsx'],
+  ['modules/hr/employee-loans/pages/MyLoansPage.tsx'],
+  ['modules/hr/employee-management/employee-files/pages/EmployeeFileDetailPage.tsx'],
+  ['modules/hr/employee-management/employees/pages/DirectRegisterPage.tsx'],
+  ['modules/hr/employee-management/employees/pages/EmployeeCreatePage.tsx'],
+  ['modules/hr/employee-management/employees/pages/EmployeeProfilePage.tsx'],
+  ['modules/hr/leave-management/pages/ApprovalsInboxPage.tsx'],
+  ['modules/hr/leave-management/pages/HolidaysPage.tsx'],
+  ['modules/hr/leave-management/pages/LeaveRequestDetailPage.tsx'],
+  ['modules/hr/leave-management/pages/LeaveTypesPage.tsx', 'the selects are fields of the leave-type form'],
+  ['modules/hr/leave-management/pages/MyLeavePage.tsx'],
+  ['modules/hr/leave-management/pages/TeamCalendarPage.tsx'],
+  ['modules/hr/medical/pages/MyMedicalPage.tsx'],
+  ['modules/hr/notification-rules/pages/NotificationRulesPage.tsx'],
+  ['modules/hr/payroll/pages/MyAdjustmentsPage.tsx'],
+  ['modules/hr/payroll/pages/MyPayslipsPage.tsx'],
+  ['modules/hr/payroll/pages/PayrollReportsPage.tsx'],
+  ['modules/hr/payroll/pages/PayrollRunsPage.tsx'],
+  ['modules/hr/performance/pages/MyPerformancePage.tsx'],
+  ['modules/hr/recruitment/applicant-portal/ApplicantPortalLoginPage.tsx'],
+  ['modules/hr/recruitment/applicant-portal/pages/ApplicantPortalPage.tsx'],
+  ['modules/hr/recruitment/applicants/pages/ApplicantDetailPage.tsx'],
+  ['modules/hr/recruitment/applicants/pages/ApplicantFormPage.tsx'],
+  ['modules/hr/recruitment/evaluation-batches/pages/EvaluationBatchDetailPage.tsx', 'the select records a grade'],
+  ['modules/hr/recruitment/evaluations/pages/EvaluationDetailPage.tsx', 'the select records a decision'],
+  ['modules/hr/recruitment/evaluations/pages/EvaluationPhasesPage.tsx'],
+  ['modules/hr/recruitment/hiring-documents/pages/HiringDocsDetailPage.tsx'],
+  ['modules/hr/recruitment/interviews/pages/InterviewDetailPage.tsx'],
+  ['modules/hr/recruitment/interviews/pages/InterviewStagesPage.tsx'],
+  ['modules/hr/recruitment/job-offers/pages/JobOfferDetailPage.tsx'],
+  ['modules/hr/recruitment/job-offers/pages/JobOfferFormPage.tsx'],
+  ['modules/hr/recruitment/job-requisitions/pages/JobRequisitionDetailPage.tsx'],
+  ['modules/hr/recruitment/job-requisitions/pages/JobRequisitionsListPage.tsx'],
+  ['modules/hr/recruitment/recruitment-form/pages/PublicApplyPage.tsx'],
+  ['modules/hr/recruitment/recruitment-form/pages/RecruitmentFormPage.tsx'],
+  ['modules/hr/recruitment/screening/pages/ScreeningDetailPage.tsx'],
+  ['modules/it/pages/AssetDetailPage.tsx'],
+  ['modules/it/pages/AssetScanPage.tsx'],
+  ['modules/it/pages/ItHomePage.tsx'],
+  ['modules/it/pages/LicenseDetailPage.tsx'],
+  ['modules/it/pages/MaintenanceOrderDetailPage.tsx'],
+  ['modules/it/pages/TicketDetailPage.tsx'],
+  ['modules/operations/mobile/StopDetailPage.tsx'],
+  ['modules/operations/pages/BankReportPage.tsx', '`from`/`to` arrive from the link; the page renders no control for them'],
+  ['modules/operations/pages/CaptainReportPage.tsx', '`from`/`to` arrive from the link; the page renders no control for them'],
+  ['modules/operations/pages/OperationsOverviewPage.tsx'],
+  ['modules/operations/pages/SecuredBacklogPage.tsx', 'reads only `page`'],
+  ['modules/operations/pages/VaultInventoryPage.tsx', 'reads only `page`'],
+  ['modules/operations/pages/VaultReceivePage.tsx'],
+  ['modules/operations/pages/VaultReportPage.tsx'],
+  ['modules/organization/application-categories/pages/ApplicationCategoryDetailPage.tsx'],
+  ['modules/organization/application-categories/pages/ApplicationCategoryFormPage.tsx'],
+  ['modules/organization/application-sections/pages/OrganizeApplicationsPage.tsx'],
+  ['modules/organization/applications/pages/ApplicationDetailPage.tsx'],
+  ['modules/organization/applications/pages/ApplicationFormPage.tsx'],
+  ['modules/organization/branches/pages/BranchDetailPage.tsx'],
+  ['modules/organization/company/CompanyPage.tsx'],
+  ['modules/organization/cost-centers/pages/CostCenterDetailPage.tsx'],
+  ['modules/organization/cost-centers/pages/CostCenterFormPage.tsx'],
+  ['modules/organization/departments/pages/DepartmentDetailPage.tsx'],
+  ['modules/organization/job-titles/pages/JobTitleDetailPage.tsx'],
+  ['modules/organization/job-titles/pages/JobTitleFormPage.tsx'],
+  ['modules/organization/sections/pages/SectionDetailPage.tsx'],
+  ['modules/organization/shared/UnitFormPage.tsx'],
+  ['modules/system-admin/notification-templates/pages/TemplateDetailPage.tsx'],
+  ['modules/system-admin/roles/pages/RoleDetailPage.tsx', '`tab` and `page` on one role, on a :id route'],
+  ['modules/system-admin/users/pages/UserDetailPage.tsx'],
+  ['platform/account/PreferencesPage.tsx'],
+  ['platform/account/SecurityPage.tsx'],
+  ['platform/app/pages/ForbiddenPage.tsx'],
+  ['platform/app/pages/NotFoundPage.tsx'],
+  ['platform/auth/ActivationPage.tsx'],
+  ['platform/auth/ForcePasswordChangePage.tsx'],
+  ['platform/auth/LoginPage.tsx'],
+  ['platform/notifications/pages/NotificationsInboxPage.tsx'],
+];
+
+/**
+ * A second opinion, never the source of truth: does this page look like it filters a list?
+ *
+ * It renders rows AND offers something to narrow them with. Over-flagging is harmless — it only
+ * forces a decision. Under-flagging is the residual risk, and it is why the partition above, not
+ * this function, is what actually holds the guarantee.
+ */
+const looksFilterCapable = (src: string): boolean =>
+  /<DataTable\b|<Table\b|\.items\.map\(|rows=\{/.test(src) &&
+  /<SearchInput\b|<FilterBar\b|<MultiSelect\b|<Select\b|sp\.get\('|readList\(/.test(src);
+
+/** Params a screen reads, however it reads them — inline, through `readList`, or via a helper. */
 const viaHelper = (src: string): string => {
   const call = /read(\w*)Filters\(/.exec(src);
-  const from = /import \{[^}]*read\w*Filters[^}]*\} from '([^']+)'/.exec(src);
-  if (call === null || from === null) return '';
-  const helper = readFileSync(join(SRC, `${(from[1] as string).replace(/^\.\.\//, 'modules/system-admin/audit/')}.ts`), 'utf8');
-  const body = new RegExp(`export const read${call[1] as string}Filters =[\\s\\S]*?\\n};`).exec(helper);
+  if (call === null || !/read\w*Filters[^}]*\} from '/.test(src)) return '';
+  const helper = text('modules/system-admin/audit/lib/audit-filters.ts');
+  const body = new RegExp(`export const read${call[1] as string}Filters =[\\s\\S]*?\\n};`).exec(
+    helper,
+  );
   return body === null ? '' : body[0];
 };
 
-/** Params a screen reads, however it reads them — directly, through `readList`, or by writing one. */
 const paramsRead = (pageSrc: string): Set<string> => {
   const src = `${pageSrc}\n${viaHelper(pageSrc)}`;
   const found = new Set<string>();
@@ -112,7 +292,7 @@ const paramsRead = (pageSrc: string): Set<string> => {
   add(/(?:sp|params|searchParams)\.get\('([^']+)'\)/g);
   add(/readList\(\s*\w+\s*,\s*'([^']+)'\)/g);
   add(/(?:trimmed|dateFrom)\(params, '([^']+)'\)/g);
-  add(/(?:next|sp)\.(?:set|delete)\('([^']+)'/g);
+  add(/(?:next|sp|params|nextParams)\.(?:set|delete)\('([^']+)'/g);
   for (const block of src.matchAll(/patch\(\{([^}]*)\}/gs)) {
     for (const m of (block[1] ?? '').matchAll(/(\w+):/g)) found.add(m[1] as string);
   }
@@ -122,17 +302,39 @@ const paramsRead = (pageSrc: string): Set<string> => {
 /** What a screen declared, read out of its own `REMEMBERED_FILTERS`. */
 const declared = (src: string): string[] => {
   const block = /const REMEMBERED_FILTERS = \[([^\]]*)\] as const;/.exec(src);
-  return block === null ? [] : [...(block[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
+  return block === null
+    ? []
+    : [...(block[1] ?? '').matchAll(/'([^']+)'/g)].map((m) => m[1] as string);
 };
 
-describe('every screen that remembers its filters declares what it remembers', () => {
-  it('covers all 43 opted-in screens', () => {
-    expect(OPTED_IN).toHaveLength(43);
-    const missing = OPTED_IN.filter(([path]) => !text(path).includes('useRememberedFilters('));
-    expect(missing.map(([path]) => path)).toEqual([]);
+describe('the persistence census covers the whole application', () => {
+  const onDisk = pageFiles(SRC).sort();
+  const classified = [
+    ...COVERED.map(([path]) => path),
+    ...EXCLUDED.map(([path]) => path),
+    ...MIGRATION_PENDING,
+    ...NOT_FILTER_CAPABLE.map(([path]) => path),
+  ].sort();
+
+  it('classifies every page file, and classifies nothing that is not one', () => {
+    // A new filtered screen fails HERE, before any heuristic gets a say.
+    expect(classified.filter((p) => !onDisk.includes(p))).toEqual([]);
+    expect(onDisk.filter((p) => !classified.includes(p))).toEqual([]);
   });
 
-  it.each(OPTED_IN.map(([path, excluded]) => ({ path, excluded })))(
+  it('puts every page in exactly one state', () => {
+    const seen = new Set<string>();
+    const twice = classified.filter((p) => (seen.has(p) ? true : (seen.add(p), false)));
+    expect(twice).toEqual([]);
+  });
+
+  it('has nothing left waiting to be migrated', () => {
+    expect(MIGRATION_PENDING).toEqual([]);
+  });
+});
+
+describe('every covered screen declares what it remembers', () => {
+  it.each(COVERED.map(([path, excluded]) => ({ path, excluded })))(
     'leaves no param undecided in $path',
     ({ path, excluded }) => {
       const src = text(path);
@@ -140,26 +342,120 @@ describe('every screen that remembers its filters declares what it remembers', (
       expect(kept.length, `${path} declares no REMEMBERED_FILTERS`).toBeGreaterThan(0);
       // TOTALITY: read ⊆ remembered ∪ excluded ∪ {page}.
       const decided = new Set([...kept, ...excluded, 'page']);
-      const undecided = [...paramsRead(src)].filter((p) => !decided.has(p)).sort();
-      expect(undecided).toEqual([]);
+      expect([...paramsRead(src)].filter((p) => !decided.has(p)).sort()).toEqual([]);
     },
   );
 
   it('never remembers `page`, which the app treats as derived everywhere', () => {
-    const offenders = OPTED_IN.filter(([path]) => declared(text(path)).includes('page'));
-    expect(offenders.map(([path]) => path)).toEqual([]);
+    expect(COVERED.filter(([p]) => declared(text(p)).includes('page')).map(([p]) => p)).toEqual([]);
   });
 
   it('excludes only params the screen actually reads — a stale exclusion is a stale decision', () => {
-    const stale = OPTED_IN.flatMap(([path, excluded]) => {
+    const stale = COVERED.flatMap(([path, excluded]) => {
       const read = paramsRead(text(path));
       return excluded.filter((p) => !read.has(p)).map((p) => `${path}: ${p}`);
     });
     expect(stale).toEqual([]);
   });
+});
 
-  it('keeps the deliberately excluded screens out', () => {
-    const adopted = OPTED_OUT.filter(([path]) => text(path).includes('useRememberedFilters('));
+describe('the excluded screens stay excluded', () => {
+  it('none of them quietly adopted the hook', () => {
+    const adopted = EXCLUDED.filter(([path]) => text(path).includes('useRememberedFilters('));
     expect(adopted.map(([path, why]) => `${path} — ${why}`)).toEqual([]);
+  });
+
+  it('each names a reason', () => {
+    expect(EXCLUDED.filter(([, why]) => why.trim() === '').map(([p]) => p)).toEqual([]);
+  });
+});
+
+describe('the detector agrees with the partition', () => {
+  it('leaves no filter-shaped page unexplained', () => {
+    // A second opinion on the classifications already made. It cannot see everything — some real
+    // filter screens render rows without a table — which is why the partition, not this, is the
+    // guarantee. What it CAN do is refuse to let a filter-shaped page sit in this list unexamined:
+    // flagged and unexplained fails, and the note has to be written by whoever looked.
+    const unexplained = NOT_FILTER_CAPABLE.filter(
+      ([path, why]) => why === undefined && looksFilterCapable(text(path)),
+    ).map(([path]) => path);
+    expect(unexplained).toEqual([]);
+  });
+
+  it('keeps no note on a page it would not flag — a stale note is a stale look', () => {
+    const stale = NOT_FILTER_CAPABLE.filter(
+      ([path, why]) => why !== undefined && !looksFilterCapable(text(path)),
+    ).map(([path]) => path);
+    expect(stale).toEqual([]);
+  });
+});
+
+/**
+ * The screens whose TAB lives in the query string, with the tab's default value.
+ *
+ * One URL, several lists that share nothing: the archive tab of the loans ledger filters by status
+ * and type, the queue tab does not offer those controls at all. A single memory per path would hand
+ * each tab the previous tab's narrowing — and, worse, hand it back on the NEXT visit to a tab that
+ * renders no control to clear it. So these keep one memory per (pathname, tab).
+ */
+const TAB_SCOPED: readonly (readonly [string, string])[] = [
+  ['modules/atm/pages/DataEditPage.tsx', 'machines'],
+  ['modules/gold/portal/pages/PortalReportsPage.tsx', 'movement'],
+  ['modules/hr/attendance/pages/RegularizationQueuePage.tsx', 'queue'],
+  ['modules/hr/employee-loans/pages/EmployeeLoansAdminPage.tsx', 'queue'],
+  ['modules/hr/payroll/pages/PayrollAdjustmentsPage.tsx', 'queue'],
+  ['modules/hr/recruitment/applicant-documents/pages/ApplicantDocumentsQueuePage.tsx', 'waiting'],
+  ['modules/it/pages/SoftwarePage.tsx', 'products'],
+];
+
+describe('a tabbed screen keeps one memory per tab', () => {
+  it('covers every screen whose tab lives in the query string', () => {
+    // Kept in step with the exclusion lists above: a screen that excludes `tab` is a screen whose
+    // tab is in the URL, and every one of those must be scoped or its filters cross tabs.
+    const excludesTab = COVERED.filter(([, ex]) => ex.includes('tab'))
+      .map(([p]) => p)
+      .sort();
+    expect(TAB_SCOPED.map(([p]) => p).sort()).toEqual(excludesTab);
+    expect(TAB_SCOPED).toHaveLength(7);
+  });
+
+  it.each(TAB_SCOPED.map(([path, fallback]) => ({ path, fallback })))(
+    '$path reads its tab from the URL and passes it as the scope',
+    ({ path, fallback }) => {
+      const src = text(path);
+      // The tab comes from the URL, not from local state — held locally it would reset to the
+      // default on every visit while the filters came back, which is the leak itself.
+      expect(src).toMatch(/sp\.get\('tab'\)/);
+      expect(src).not.toMatch(/useState<Tab>/);
+      expect(src).toContain(`useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab)`);
+      // The default tab stays OFF the URL, so a bare arrival still means what it always meant.
+      expect(src).toContain(`'${fallback}' ? null :`);
+      // And the tab is never itself a remembered filter.
+      expect(declared(src)).not.toContain('tab');
+    },
+  );
+
+  it.each(TAB_SCOPED.map(([path]) => ({ path })))(
+    'filters set on one tab of $path cannot follow the reader to another',
+    ({ path }) => {
+      const keep = declared(text(path));
+      const onTabA = new URLSearchParams([
+        ['tab', 'a'],
+        ...keep.map((k): [string, string] => [k, 'x']),
+      ]);
+      // Switching to a tab that has saved nothing leaves the tab and nothing else.
+      expect(scopedView(onTabA, keep, '')).toBe('tab=a');
+      // Switching to a tab that saved something gets THAT, never the tab being left.
+      const arriving = `${keep[0] as string}=y`;
+      expect(scopedView(onTabA, keep, arriving)).toBe(`tab=a&${arriving}`);
+    },
+  );
+
+  it('leaves every other covered screen keyed by pathname alone', () => {
+    const scoped = new Set(TAB_SCOPED.map(([p]) => p));
+    const strays = COVERED.filter(
+      ([p]) => !scoped.has(p) && /REMEMBERED_FILTERS, '', /.test(text(p)),
+    ).map(([p]) => p);
+    expect(strays).toEqual([]);
   });
 });

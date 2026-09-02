@@ -4,6 +4,7 @@
 // Every column is a SERVER fact. An installation's "active" is `removedAt === null`, never a stored
 // status, and the row survives removal so the register can answer what WAS on a machine.
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useNavigate } from 'react-router-dom';
 import {
   type ItSoftwareInstallationDto,
@@ -32,6 +33,17 @@ import {
   RemoveInstallationDialog,
   SoftwareProductDialog,
 } from '../components/SoftwareDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/**
+ * Remembered across visits, PER TAB: products and installations are different lists that happen
+ * to share a URL, so each keeps its own memory. `tab` says which one to open and is never itself
+ * remembered; `page` is derived and never kept.
+ */
+const REMEMBERED_FILTERS = ['q', 'active', 'size'] as const;
+
+const isTab = (value: string | null): value is Tab =>
+  value === 'products' || value === 'installations';
 
 const DEFAULT_PAGE_SIZE = 25;
 const TABS = ['products', 'installations'] as const;
@@ -43,11 +55,32 @@ export const SoftwarePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<Tab>('products');
-  const [search, setSearch] = useState('');
-  const [active, setActive] = useState('true');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to.
+  const [sp, setSp] = useSearchParams();
+  const tabParam = sp.get('tab');
+  const tab: Tab = isTab(tabParam) ? tabParam : 'products';
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const setTab = (value: Tab): void => patch({ tab: value === 'products' ? null : value });
+  const search = sp.get('q') ?? '';
+  const setSearch = (value: string): void => patch({ q: value });
+  const active = sp.get('active') ?? 'true';
+  const setActive = (value: string): void => patch({ active: value === 'true' ? null : value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const setPageSize = (next: number): void => patch({ size: String(next) });
 
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ItSoftwareProductDto | null>(null);

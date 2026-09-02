@@ -28,6 +28,12 @@ import {
   useOpenPerformanceCycle,
   usePerformanceCycles,
 } from '../api/performance-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -148,6 +154,7 @@ export const PerformanceCyclesPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [opening, setOpening] = useState<PerformanceCycleDto | null>(null);
   const [closing, setClosing] = useState<PerformanceCycleDto | null>(null);
 

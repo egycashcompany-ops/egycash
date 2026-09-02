@@ -21,6 +21,16 @@ import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatDate, localized } from '../../../../shared/lib/format';
 import { useApplicationCategoryOptions } from '../../application-categories/application-category-queries';
 import { useApplications, useUpdateApplication } from '../application-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'categoryId',
+  'q',
+  'status',
+  'sort',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -63,6 +73,7 @@ export const ApplicationsListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';

@@ -6,6 +6,7 @@
 //
 // A plan DEACTIVATES rather than deletes (FR-11): the orders it generated point at it forever.
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type ItMaintenancePlanDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -24,6 +25,12 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { useItMaintenancePlans, useSetItMaintenancePlanActive } from '../api/it-queries';
 import { MaintenancePlanDialog } from '../components/MaintenancePlanDialog';
 import { ItAssetLink } from '../components/ItAssetLink';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['active', 'due', 'size', 'sort'] as const;
+
+const DEFAULT_SORT = 'nextDueAt:asc';
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -32,14 +39,35 @@ export const MaintenancePlansPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
 
-  const [active, setActive] = useState('true');
-  const [due, setDue] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
-  const [sort, setSort] = useState<{ by: string; dir: 'asc' | 'desc' }>({
-    by: 'nextDueAt',
-    dir: 'asc',
-  });
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to. A value equal to the screen's
+  // own default is left OFF the URL, so a bare arrival still means exactly what it meant before.
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const active = sp.get('active') ?? 'true';
+  const setActive = (value: string): void => patch({ active: value === 'true' ? null : value });
+  const due = sp.get('due') ?? '';
+  const setDue = (value: string): void => patch({ due: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const setPageSize = (next: number): void => patch({ size: String(next) });
+  const [sortBy, sortDir] = (sp.get('sort') ?? DEFAULT_SORT).split(':');
+  const sort = { by: sortBy ?? 'nextDueAt', dir: sortDir === 'desc' ? 'desc' : 'asc' } as {
+    by: string;
+    dir: 'asc' | 'desc';
+  };
   const [editing, setEditing] = useState<ItMaintenancePlanDto | null>(null);
   const [creating, setCreating] = useState(false);
 
@@ -57,8 +85,10 @@ export const MaintenancePlansPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useItMaintenancePlans(params);
   const setPlanActive = useSetItMaintenancePlanActive();
 
-  const changeSort = (by: string): void =>
-    setSort((prev) => ({ by, dir: prev.by === by && prev.dir === 'asc' ? 'desc' : 'asc' }));
+  const changeSort = (by: string): void => {
+    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
+    patch({ sort: `${by}:${dir}` === DEFAULT_SORT ? null : `${by}:${dir}` });
+  };
 
   const toggle = async (plan: ItMaintenancePlanDto): Promise<void> => {
     try {

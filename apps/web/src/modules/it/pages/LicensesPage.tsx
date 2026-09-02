@@ -8,7 +8,7 @@
 // Over-seats is shown, never blocked. §13-Q5 adopted warn-only, so this is a report someone
 // watches — which is precisely what makes the warn-only stance defensible.
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { IT_LICENSE_STATES, type ItLicenseDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -26,6 +26,10 @@ import { useItLicenses } from '../api/it-queries';
 import { LicenseStateBadge } from '../components/LicenseStateBadge';
 import { ItSoftwareProductName } from '../components/ItSoftwareProductName';
 import { LicenseDialog } from '../components/LicenseDialog';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and page size. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['state', 'overSeats', 'size'] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -35,10 +39,30 @@ export const LicensesPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
 
-  const [state, setState] = useState('');
-  const [overSeats, setOverSeats] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to.
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const state = sp.get('state') ?? '';
+  const setState = (value: string): void => patch({ state: value });
+  const overSeats = sp.get('overSeats') ?? '';
+  const setOverSeats = (value: string): void => patch({ overSeats: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void =>
+    patch({ page: next <= 1 ? null : String(next) }, false);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const setPageSize = (next: number): void => patch({ size: String(next) });
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<ItLicenseDto | null>(null);
 

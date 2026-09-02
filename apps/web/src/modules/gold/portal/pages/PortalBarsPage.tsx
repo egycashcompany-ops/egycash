@@ -1,5 +1,5 @@
 // السبائك — every bar of this customer's metal, wherever it is now.
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type GoldPortalBarDto } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { type Column } from '../../../../shared/ui/DataTable';
@@ -9,11 +9,25 @@ import { barStatusLabel, barStatusTone, metalLabel } from '../../components/gold
 import { fmtWeightValue } from '../../lib/gold-format';
 import { useGoldPortalBars } from '../api/portal-queries';
 import { PORTAL_PAGE_SIZE, PortalList, usePortalPage } from '../PortalList';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filter. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['q'] as const;
 
 export const PortalBarsPage = (): JSX.Element => {
   const t = useT();
   const [page, setPage] = usePortalPage();
-  const [search, setSearch] = useState('');
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const search = sp.get('q') ?? '';
+  // Replaces rather than pushes: a filter is a view of this screen, not a place to go Back to.
+  const setSearch = (value: string): void => {
+    const next = new URLSearchParams(sp);
+    if (value === '') next.delete('q');
+    else next.set('q', value);
+    next.delete('page');
+    setSp(next, { replace: true });
+  };
   const query = useGoldPortalBars({
     page,
     pageSize: PORTAL_PAGE_SIZE,

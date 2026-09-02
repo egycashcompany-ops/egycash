@@ -8,6 +8,7 @@
 // customer registered as a company or an institution therefore has no rows, and is told why rather
 // than left looking at an empty table.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useT } from '../../../../platform/localization/useT';
 import { Button } from '../../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../../shared/ui/form';
@@ -24,6 +25,14 @@ import {
   useGoldPortalMovement,
 } from '../api/portal-queries';
 import { PortalSection } from '../PortalList';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/**
+ * Remembered across visits, PER TAB: only the metal. The reporting PERIOD stays local and
+ * time-relative on purpose — it opens on the current year and the months elapsed so far, and
+ * restoring last spring's window would answer a question nobody asked.
+ */
+const REMEMBERED_FILTERS = ['metal'] as const;
 
 const METALS = ['gold', 'silver'] as const;
 const num = (value: number): string => fmtDecimal2(value);
@@ -229,8 +238,24 @@ const ClosingReport = ({ metalType }: { metalType: string }): JSX.Element => {
 export const PortalReportsPage = (): JSX.Element => {
   const t = useT();
   const me = useGoldPortalMe();
-  const [tab, setTab] = useState<'movement' | 'closing'>('movement');
-  const [metalType, setMetalType] = useState<string>('gold');
+  // The metal lives in the URL so the report is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`: choosing a metal is
+  // a view of this report, not a place to go Back to.
+  const [sp, setSp] = useSearchParams();
+  const tab: 'movement' | 'closing' = sp.get('tab') === 'closing' ? 'closing' : 'movement';
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
+  const patch = (updates: Record<string, string | null>): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    setSp(next, { replace: true });
+  };
+  const setTab = (value: 'movement' | 'closing'): void =>
+    patch({ tab: value === 'movement' ? null : value });
+  const metalType = sp.get('metal') ?? 'gold';
+  const setMetalType = (value: string): void => patch({ metal: value === 'gold' ? null : value });
 
   return (
     <PortalSection

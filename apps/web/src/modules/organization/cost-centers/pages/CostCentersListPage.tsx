@@ -20,6 +20,15 @@ import { StatusBadge } from '../../../../shared/ui/Badge';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { localized } from '../../../../shared/lib/format';
 import { useCostCenters } from '../cost-center-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'status',
+  'sort',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -28,6 +37,7 @@ export const CostCentersListPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';

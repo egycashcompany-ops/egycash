@@ -22,6 +22,7 @@
 // entity, no new permission, no new approval — and because the two questions it sits between,
 // "what is waiting for me?" and "record these", are asked by the same people.
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   type Locale,
   type PayrollAdjustmentDto,
@@ -38,6 +39,14 @@ import { toast } from '../../../../shared/ui/toast/toast-store';
 import { formatMoney, localized } from '../../../../shared/lib/format';
 import { useAdjustments, useDecideAdjustmentFromQueue } from '../api/payroll-queries';
 import { BulkDistributionDialog } from '../components/BulkDistributionDialog';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/**
+ * Remembered across visits, PER TAB: the approval queue and the full ledger are different lists
+ * that share a URL, so each keeps its own filters. `tab` says which one to open and is never
+ * itself remembered; `page` is derived and never kept.
+ */
+const REMEMBERED_FILTERS = ['status', 'kind', 'period'] as const;
 
 const PAGE_SIZE = 25;
 
@@ -55,12 +64,32 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [tab, setTab] = useState<Tab>('queue');
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // ledger is a view of this screen rather than a place to go Back to.
+  const [sp, setSp] = useSearchParams();
+  const tabParam = sp.get('tab');
+  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'queue';
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+  const setTab = (value: Tab): void => patch({ tab: value === 'queue' ? null : value });
   const [distributing, setDistributing] = useState(false);
-  const [status, setStatus] = useState('');
-  const [kind, setKind] = useState('');
-  const [period, setPeriod] = useState('');
-  const [page, setPage] = useState(1);
+  const status = sp.get('status') ?? '';
+  const setStatus = (value: string): void => patch({ status: value });
+  const kind = sp.get('kind') ?? '';
+  const setKind = (value: string): void => patch({ kind: value });
+  const period = sp.get('period') ?? '';
+  const setPeriod = (value: string): void => patch({ period: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
 
   const canApprove = can('payrollAdjustment.approve');
   const decide = useDecideAdjustmentFromQueue();

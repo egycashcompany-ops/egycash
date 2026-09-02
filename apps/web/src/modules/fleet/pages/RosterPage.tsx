@@ -69,6 +69,14 @@ import {
   type RosterView,
 } from '../lib/roster-view';
 import { useDraftBoard } from '../lib/useDraftBoard';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'mission',
+  'q',
+  'view',
+] as const;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -230,6 +238,7 @@ export const RosterPage = (): JSX.Element => {
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   // A roster plans ahead; the past is not plannable. The URL is user-writable, so the floor is
   // applied to what is READ, not only to the picker — `?date=2020-01-01` shows today instead of

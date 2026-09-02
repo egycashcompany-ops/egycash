@@ -33,6 +33,13 @@ import {
   useTrainingSessions,
   useTransitionTrainingSession,
 } from '../api/training-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'status',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -202,6 +209,7 @@ export const TrainingSessionsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [scheduling, setScheduling] = useState(false);
   const [acting, setActing] = useState<{
     session: TrainingSessionDto;

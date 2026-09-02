@@ -24,7 +24,12 @@ const sweepMarkSchema = new Schema<FleetSweepMarkDoc>(
 
 sweepMarkSchema.index({ key: 1 }, { unique: true, name: 'ux_key' });
 
-const FleetSweepMarkModel = model<FleetSweepMarkDoc>(
+/**
+ * Exported so the index step can build `ux_key` — the index this file's own opening line calls
+ * "the idempotency". `autoIndex` is off in production, so until that step existed the guarantee
+ * described here was declared and never enforced.
+ */
+export const FleetSweepMarkModel = model<FleetSweepMarkDoc>(
   'FleetSweepMark',
   sweepMarkSchema,
   'fleet_sweep_marks',

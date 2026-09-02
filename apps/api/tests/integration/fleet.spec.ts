@@ -45,6 +45,7 @@ import { driverAvailabilityOn } from '../../src/modules/fleet/availability/drive
 import { registerLeaveLookup } from '../../src/platform/directory';
 import { emit, subscribe } from '../../src/platform/kernel/event-bus';
 import { rbacService } from '../../src/platform/rbac';
+import { authService } from '../../src/platform/auth';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
@@ -98,6 +99,19 @@ const login = async (email: string): Promise<string> => {
   expect(res.status).toBe(200);
   return (res.body as { data: { accessToken: string } }).data.accessToken;
 };
+
+/**
+ * An access token for a user WITHOUT spending a login.
+ *
+ * `POST /auth/login` is rate limited to 10 per five minutes per IP (auth.routes.ts), and every
+ * request in this file comes from the same one — so logins are a shared, exhaustible budget, and
+ * a fixture that burns one to assert a PERMISSION is spending it on the wrong thing. Signing
+ * directly is equivalent for that purpose: `buildAuthContext` checks the session denylist and
+ * then resolves permissions LIVE from the user's roles, so the token proves nothing by itself and
+ * the authorization assertions are unchanged.
+ */
+const tokenFor = async (userId: string): Promise<string> =>
+  authService.signAccessToken(userId, new Types.ObjectId().toString(), 0);
 
 const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 
@@ -389,7 +403,7 @@ describe('vehicle types + catalogs', () => {
     );
     const userId = await mkUser('fleet-workshop@ecms.local');
     await rbacService.ensureAssignment(userId, String(role._id), 'organization');
-    const token = await login('fleet-workshop@ecms.local');
+    const token = await tokenFor(userId);
 
     for (const kind of ['workshop', 'workType', 'sparePart']) {
       const res = await request(app)
@@ -418,7 +432,7 @@ describe('vehicle types + catalogs', () => {
     );
     const userId = await mkUser('fleet-violations@ecms.local');
     await rbacService.ensureAssignment(userId, String(role._id), 'organization');
-    const token = await login('fleet-violations@ecms.local');
+    const token = await tokenFor(userId);
 
     const res = await request(app)
       .get('/api/v1/fleet/catalog-items')
@@ -446,7 +460,7 @@ describe('vehicle types + catalogs', () => {
     );
     const userId = await mkUser('fleet-outsider@ecms.local');
     await rbacService.ensureAssignment(userId, String(role._id), 'organization');
-    const token = await login('fleet-outsider@ecms.local');
+    const token = await tokenFor(userId);
 
     const res = await request(app)
       .get('/api/v1/fleet/catalog-items')

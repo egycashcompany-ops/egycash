@@ -101,7 +101,15 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           isDeleted: false,
         },
       },
-      { $sort: { vehicleId: 1, outDate: -1 } },
+      // `_id` breaks the tie, and a tie is ordinary here. `outDate` is stored at midnight UTC by
+      // every write path, so two counting visits closed on the same day sort EQUAL — and mongo's
+      // sort is not stable, which made `$first` below pick one of them arbitrarily. The same
+      // request could answer with a different baseline counter, a different date and a different
+      // `visitId` on a refresh.
+      //
+      // Descending `_id`, so the later-recorded of two same-day services wins: the same order
+      // `NEWEST_FIRST` imposes on the odometer chain, for the same reason.
+      { $sort: { vehicleId: 1, outDate: -1, _id: -1 } },
       {
         $group: {
           _id: '$vehicleId',
@@ -117,7 +125,8 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
           odometerAtService: { $first: { $ifNull: ['$exitOdometer', '$odometerAtService'] } },
           outDate: { $first: '$outDate' },
           // The same `$first` as the two above, so the id belongs to the very row the counter and
-          // the date were taken from — the sort has already decided which visit that is.
+          // the date were taken from — and the sort above is a TOTAL order, so which row that is
+          // does not change between two identical requests.
           visitId: { $first: '$_id' },
         },
       },

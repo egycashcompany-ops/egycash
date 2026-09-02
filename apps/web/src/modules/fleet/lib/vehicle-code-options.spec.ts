@@ -7,8 +7,8 @@ const v = (code: string) => ({ code, plateNumber: `س ص ${code}` });
 describe('vehicleCodeOptions', () => {
   it('offers what the search matched', () => {
     expect(vehicleCodeOptions([v('150'), v('151')], [])).toEqual([
-      { value: '150', label: '150 — س ص 150', shortLabel: '150' },
-      { value: '151', label: '151 — س ص 151', shortLabel: '151' },
+      { value: '150', label: '150', shortLabel: '150' },
+      { value: '151', label: '151', shortLabel: '151' },
     ]);
   });
 
@@ -43,12 +43,23 @@ describe('vehicleCodeOptions', () => {
     expect(vehicleCodeOptions([], [])).toEqual([]);
   });
 
-  it('labels a car by the code the operator knows it as, then the plate that confirms it', () => {
-    expect(vehicleCodeLabel(v('150'))).toBe('150 — س ص 150');
+  it('labels a car by its CODE, and by nothing else', () => {
+    // This asserted `150 — س ص 150` until the plate was taken out of every selector in the app: a
+    // car offered for choosing is offered by the code, which is what an operator names it by.
+    expect(vehicleCodeLabel(v('150'))).toBe('150');
   });
 
-  it('carries a SHORT form for the filter trigger — the code, without the plate', () => {
-    // The trigger has one row; the plate belongs in the list where there is space for it.
-    expect(vehicleCodeOptions([v('150')], [])[0]?.shortLabel).toBe('150');
+  it('never lets a plate reach a label, whatever the registry sent with the car', () => {
+    // The summary still CARRIES the plate — callers pass whole vehicles and the search matches on
+    // it — so the guarantee has to be about the label, not about the absence of the data.
+    const [option] = vehicleCodeOptions([{ code: '150', plateNumber: 'ABC123' }], []);
+    expect(option?.label).toBe('150');
+    expect(option?.label).not.toContain('ABC123');
+  });
+
+  it('says the same thing on the trigger as in the list', () => {
+    const [option] = vehicleCodeOptions([v('150')], []);
+    expect(option?.shortLabel).toBe('150');
+    expect(option?.shortLabel).toBe(option?.label);
   });
 });

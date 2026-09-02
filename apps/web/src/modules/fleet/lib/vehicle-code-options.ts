@@ -13,7 +13,7 @@
 export interface VehicleCodeOption {
   value: string;
   label: string;
-  /** What the filter trigger says: the code alone, which is what identifies the car. */
+  /** What the filter trigger says — the same thing the option says, now that both are the code. */
   shortLabel: string;
 }
 
@@ -22,16 +22,25 @@ export interface VehicleSummary {
   plateNumber: string;
 }
 
-/** `150 — س ص 150`: the code the operator knows the car by, and the plate that confirms it. */
-export const vehicleCodeLabel = (vehicle: VehicleSummary): string =>
-  `${vehicle.code} — ${vehicle.plateNumber}`;
+/**
+ * `150`: the code, and nothing else.
+ *
+ * This used to read `150 — س ص 150`, on the reasoning that the plate confirms the car. In practice
+ * it confirmed nothing anyone needed — the code IS how an operator names a car here — while making
+ * every option twice as long, wrapping the narrow filter dropdowns, and putting a second identifier
+ * in front of someone who came to pick the first. A vehicle offered for selection is offered by its
+ * code across the whole application; the plate stays where it answers a question, on the rows and
+ * detail screens that are about the car rather than about choosing one.
+ *
+ * `VehicleSummary` still carries `plateNumber` because callers pass whole vehicles and the registry
+ * search matches on the plate — this decides what is DISPLAYED, not what is searched or stored.
+ */
+export const vehicleCodeLabel = (vehicle: VehicleSummary): string => vehicle.code;
 
 /**
  * The search's answer, with every already-selected code kept in front of it.
  *
- * A selected code the search did not return is shown bare — the registry did not send a plate for
- * it this time, and inventing one would be worse than the code alone. Order puts the selection
- * first so the things you can turn OFF are never below a scroll.
+ * Order puts the selection first so the things you can turn OFF are never below a scroll.
  */
 export const vehicleCodeOptions = (
   matched: readonly VehicleSummary[],

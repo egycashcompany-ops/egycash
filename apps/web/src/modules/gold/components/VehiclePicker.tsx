@@ -77,15 +77,20 @@ export const VehiclePicker = ({
                   <button
                     type="button"
                     onClick={() => {
+                      // The PLATE still travels — the receipt stores it beside the id, so an
+                      // already-printed one keeps meaning what it meant. Only the row's wording
+                      // changed; nothing the receiving flow receives did.
                       onChange(vehicle.id, vehicle.plateNumber);
                       setSearch('');
                     }}
-                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-start text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
+                    {/*
+                      The CODE alone, as everywhere else a car is offered for selection. The plate
+                      used to lead here and the code trailed it in grey, which made this the one
+                      picker in the application that named cars by something else.
+                    */}
                     <span className="truncate text-slate-800 dark:text-slate-200" dir="ltr">
-                      {vehicle.plateNumber}
-                    </span>
-                    <span className="shrink-0 font-mono text-xs text-slate-400" dir="ltr">
                       {vehicle.code}
                     </span>
                   </button>

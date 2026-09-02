@@ -2407,6 +2407,77 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(data<FleetMaintenanceVisitDto>(edited).driverInEmployeeId).toBe(replacement);
   });
 
+  it('a closed visit cannot be edited into leaving before it arrived (FR-4)', async () => {
+    // The design states `outDate ≥ inDate` (FR-4) and check-out enforced it — once, when it sets
+    // `outDate`. `outDate` is deliberately not editable, so the pair looked settled; `inDate` IS
+    // editable, and nothing re-checked the pair. `outDate` is also the alarm's `baselineDate`, so
+    // the impossible row does not stay in its own column.
+    const { visit } = await closedVisit({ inDate: '2026-09-01', outDate: '2026-09-03' });
+
+    const refused = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${visit.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ inDate: '2026-09-10', version: visit.version });
+    expect(refused.status, 'a validation error, not a conflict').toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('inDate');
+
+    // A refused edit writes nothing.
+    const after = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: visit.vehicleId }));
+    expect(after[0]?.inDate).toContain('2026-09-01');
+    expect(after[0]?.outDate).toContain('2026-09-03');
+  });
+
+  it('but the boundary is inclusive — in and out on the SAME day is ordinary work', async () => {
+    // `outDate ≥ inDate`, not `>`. A car in and out the same day is the commonest visit there is,
+    // and refusing it would break real work in order to catch a typo.
+    const { visit } = await closedVisit({ inDate: '2026-09-01', outDate: '2026-09-03' });
+    const sameDay = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${visit.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ inDate: '2026-09-03', version: visit.version });
+    expect(sameDay.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(sameDay).inDate).toContain('2026-09-03');
+  });
+
+  it('an earlier inDate is still accepted, and an OPEN visit is unconstrained', async () => {
+    const { visit } = await closedVisit({ inDate: '2026-09-01', outDate: '2026-09-03' });
+    const earlier = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${visit.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ inDate: '2026-08-28', version: visit.version });
+    expect(earlier.status).toBe(200);
+
+    // No `outDate` yet means no pair to order — the guard must not invent a bound the design
+    // does not place, or a routine correction on an open visit would start being refused.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-09-01',
+        workshopId: await mkCatalog('workshop', 'ورشة المفتوحة'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 92_000,
+      }),
+    );
+    const far = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${opened.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ inDate: '2027-01-01', version: opened.version });
+    expect(far.status).toBe(200);
+  });
+
+  it('and an edit that never mentions inDate is untouched by the rule', async () => {
+    // The check reads `before.inDate` when the request omits it. Reading `undefined` instead
+    // would refuse every unrelated edit on a closed visit — the loudest possible regression.
+    const { visit } = await closedVisit({ inDate: '2026-09-01', outDate: '2026-09-03' });
+    const noted = await request(app)
+      .patch(`/api/v1/fleet/maintenance/${visit.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ notes: 'تعديل لا يمس التواريخ', version: visit.version });
+    expect(noted.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(noted).notes).toBe('تعديل لا يمس التواريخ');
+  });
+
   it('reopening a visit takes the exit DRIVER back with the rest of the exit', async () => {
     const { visit } = await closedVisit();
     expect(visit.driverOutEmployeeId, 'a closed visit has one').not.toBeNull();

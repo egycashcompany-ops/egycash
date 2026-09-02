@@ -282,6 +282,26 @@ class FleetMaintenanceService {
     if (input.driverInEmployeeId !== undefined) {
       await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
     }
+    // FR-4's `outDate ≥ inDate`, against the END STATE of the edit.
+    //
+    // Check-out enforces it once, at the moment it sets `outDate` — and `outDate` is deliberately
+    // not editable here, so it looked settled. But `inDate` IS editable, and moving it past a
+    // date that cannot move back produced a closed visit whose car left before it arrived. The
+    // rule is the design's (FR-4), not a new one; it was simply only ever checked from one side.
+    //
+    // Merged rather than checked on the input alone, the same way the two counters below are and
+    // the same way `unavailability.update` checks its own span: what matters is the pair the row
+    // will HOLD, not the half this particular request happens to carry.
+    const inDate = input.inDate ?? before.inDate;
+    if (before.outDate !== null && inDate > before.outDate) {
+      throw new ValidationError([
+        {
+          field: 'body.inDate',
+          code: 'INVALID',
+          message: 'check-in cannot follow the check-out already recorded for this visit',
+        },
+      ]);
+    }
     // The same rule check-out enforces, against whichever of the two readings this edit leaves
     // in place: an edit that lowers the exit reading below the entry one is the same typo, and it
     // would corrupt the baseline just as quietly.

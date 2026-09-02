@@ -64,9 +64,14 @@ export const VehicleSelect = ({
       {...(textScale === undefined ? {} : { textScale })}
     >
       <option value="">{allLabel ?? t('common.select')}</option>
+      {/*
+        The CODE alone. A car offered for selection is offered by its code everywhere in the
+        application — appending the plate put a second identifier in front of someone who came to
+        pick the first, and made every option long enough to wrap in a filter row.
+      */}
       {vehicles.map((vehicle) => (
         <option key={vehicle.id} value={vehicle.id}>
-          {vehicle.code} — {vehicle.plateNumber}
+          {vehicle.code}
         </option>
       ))}
     </Select>

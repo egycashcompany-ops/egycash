@@ -34,7 +34,10 @@ vi.mock('../../../platform/settings', () => ({
 }));
 vi.mock('../catalogs/catalog-item.repository', () => ({
   fleetCatalogItemRepository: {
-    list: async () => ({ items: [{ _id: workTypeId }], meta: {} }),
+    // The projection asks ONE question about the catalog — which work types count — and the
+    // repository owns the filter. Stubbing that method rather than `list` keeps the mock honest
+    // about the seam the engine actually uses.
+    countingWorkTypeIds: async () => [String(workTypeId)],
   },
 }));
 vi.mock('../vehicle-types/vehicle-type.repository', () => ({

@@ -1869,6 +1869,68 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(after?.sinceServiceKm).toBe(1050);
   });
 
+  it('two services closed on the SAME DAY pick a stable, later baseline', async () => {
+    // `outDate` is stored at midnight UTC by every write path, so two counting visits closed on
+    // one day sort EQUAL — and mongo's sort is not stable, so the baseline (counter, date AND
+    // visit id) was whichever row came back. The same request could answer differently twice.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const workshop = await mkCatalog('workshop', 'ورشة نفس اليوم');
+    const workTypeId = await countingWorkTypeId();
+
+    const closeOn = async (odometer: number, exit: number) => {
+      const opened = data<FleetMaintenanceVisitDto>(
+        await checkIn({
+          vehicleId: v.id,
+          inDate: '2026-09-10',
+          workshopId: workshop,
+          workTypeId,
+          odometerAtService: odometer,
+        }),
+      );
+      const out = await checkOut(opened.id, {
+        outDate: '2026-09-11',
+        exitOdometer: exit,
+        version: opened.version,
+      });
+      expect(out.status).toBe(200);
+      return data<FleetMaintenanceVisitDto>(out);
+    };
+
+    // Two counting visits, both closed on 11 September. FR-4 allows this: the first is closed
+    // before the second is opened, so there is never more than one open visit.
+    const first = await closeOn(300_000, 300_100);
+    const second = await closeOn(300_100, 300_400);
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/fleet/odometer')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ vehicleId: v.id, reading: 301_000, date: '2026-09-15' })
+      ).status,
+    ).toBe(201);
+
+    const readAlarm = async () =>
+      data<{ code: string; lastServiceVisitId: string | null; sinceServiceKm: number | null }[]>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/alarms')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).find((a) => a.code === v.code);
+
+    // The LATER-recorded of the two same-day services is the baseline, and 600 km have been
+    // driven since it — not 900, which is what the earlier one would have measured.
+    const answer = await readAlarm();
+    expect(answer?.lastServiceVisitId).toBe(second.id);
+    expect(answer?.lastServiceVisitId).not.toBe(first.id);
+    expect(answer?.sinceServiceKm).toBe(600);
+
+    // And it is STABLE: the same question, asked again, gets the same answer.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const again = await readAlarm();
+      expect(again?.lastServiceVisitId, `attempt ${attempt}`).toBe(second.id);
+      expect(again?.sinceServiceKm, `attempt ${attempt}`).toBe(600);
+    }
+  });
+
   it('ARCHIVING the counting work type does not erase the fleet\u2019s baselines', async () => {
     // Only one row is seeded with `countsForAlarm`, so archiving it was a single click away from
     // turning every vehicle to `noService` at once — with every visit still in the database and

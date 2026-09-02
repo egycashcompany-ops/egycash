@@ -15,6 +15,25 @@ const ORG = { userId: null, branchId: null };
 const dayKey = (d: Date): string => d.toISOString().slice(0, 10);
 
 /**
+ * The identity of a maintenance-alarm announcement: this car, at this level, on this baseline.
+ *
+ * Exported because it IS the rule — `markOnce` only refuses a duplicate key, so what this
+ * function names is exactly what counts as "a different situation worth telling somebody about".
+ * A test that restated it instead of calling it could not see a component going missing, which is
+ * how the level nearly slipped out unnoticed.
+ *
+ * The baseline is named by the VISIT. `lastServiceAt` is `outDate`, stored at midnight UTC by
+ * every write path, so two counting visits closed on the same day collapsed to one key: the
+ * second service moved the baseline, the cycle restarted, and the crossing that followed was
+ * never announced. `lastServiceVisitId` is the exact row the counter and the date came from.
+ */
+export const alarmMarkKey = (
+  vehicleId: string,
+  level: string,
+  lastServiceVisitId: string | null,
+): string => `alarm:${vehicleId}:${level}:${lastServiceVisitId ?? 'none'}`;
+
+/**
  * License expiry (FR-14): `expiring` inside the warn window, `expired` past the date. Keyed on
  * (subject, expiry date), so renewal — a NEW expiry date — re-arms both announcements.
  */
@@ -72,6 +91,14 @@ export const licenseExpirySweep = async (now: Date = new Date()): Promise<void> 
  * Maintenance alarm (§4.4 additive half): the alarm itself is derived on read; this announces a
  * threshold CROSSING once per (vehicle, level, baseline) — a new service visit is a new baseline,
  * which is exactly when the announcement should re-arm.
+ *
+ * The baseline is named by the VISIT, not by its date. `lastServiceAt` is `outDate`, which every
+ * write path stores at midnight UTC, so two counting visits closed on the same day produced the
+ * same key: the second service moved the baseline, the cycle restarted, and the crossing that
+ * followed was never announced because a mark for that day already existed. A workshop that
+ * finishes two jobs on one car in one day is ordinary, and the DTO has carried
+ * `lastServiceVisitId` — the exact identity of the row the counter and the date were taken from —
+ * since it began reporting a baseline at all.
  */
 export const maintenanceAlarmSweep = async (): Promise<void> => {
   const alarms = await computeAlarms();
@@ -79,8 +106,9 @@ export const maintenanceAlarmSweep = async (): Promise<void> => {
   if (flagged.length === 0) return;
 
   for (const alarm of flagged) {
-    const baseline = alarm.lastServiceAt ?? 'none';
-    if (await markOnce(`alarm:${alarm.vehicleId}:${alarm.level}:${baseline}`)) {
+    // A flagged alarm always has a baseline — the arithmetic cannot have run without one — so the
+    // `null` branch inside the key builder is defensive rather than a case this reaches.
+    if (await markOnce(alarmMarkKey(alarm.vehicleId, alarm.level, alarm.lastServiceVisitId))) {
       await emit(FleetEvents.MaintenanceAlarmRaised, {
         vehicleId: alarm.vehicleId,
         code: alarm.code,

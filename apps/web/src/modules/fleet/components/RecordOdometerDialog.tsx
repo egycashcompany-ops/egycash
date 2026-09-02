@@ -10,7 +10,7 @@
 // answers. What the operator loses without it is the SIGHT of the distance they are about to
 // record, so the dialog previews it from the server's own expected reading rather than asking.
 import { useEffect, useMemo, useState } from 'react';
-import { type Locale } from '@ecms/contracts';
+import { vehicleCodeSearchQuery, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -90,9 +90,13 @@ export const RecordOdometerDialog = ({
   // to be one page of the registry filtered in the browser, which meant the operator could only
   // ever record a reading for a car in the first `MAX_PAGE_SIZE` by code — car 101 could not be
   // chosen at all, and so could not be recorded.
+  //
+  // Matched on the CODE alone (`vehicleCodeSearchQuery`), which is what the box asks for. It used
+  // to send `search`, the registry page's four-identifier box, so typing a plate offered a car
+  // under a code nobody had typed.
   const vehicles = useVehicles(
     {
-      search: codeQuery.trim() === '' ? undefined : codeQuery.trim(),
+      ...vehicleCodeSearchQuery(codeQuery),
       pageSize: VEHICLE_SEARCH_SIZE,
       sortBy: 'code',
       sortDir: 'asc',

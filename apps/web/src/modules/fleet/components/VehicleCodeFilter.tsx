@@ -23,7 +23,7 @@
 // it: a fleet outgrows any page, and a joined-against list would silently stop at its size. Alarms
 // is the exception and passes its own `options` — it already holds the whole board.
 import { useMemo, useState } from 'react';
-import { splitVehicleCodeList } from '@ecms/contracts';
+import { splitVehicleCodeList, vehicleCodeSearchQuery } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { useT } from '../../../platform/localization/useT';
 import { useVehicles } from '../api/fleet-queries';
@@ -70,9 +70,12 @@ export const VehicleCodeFilter = ({
   };
 
   // Only asked when this control is sourcing its own options; the alarm board passes its own.
+  // `code`, never `search`: this control is labelled with the code and offers what it matched, so
+  // it has to match on the code. `search` spans plate, chassis and motor too — typing a plate here
+  // used to offer whichever car carries it, listed under a code the reader never typed.
   const vehicles = useVehicles(
     {
-      ...(search.trim() === '' ? {} : { search: search.trim() }),
+      ...vehicleCodeSearchQuery(search),
       pageSize: SEARCH_SIZE,
       sortBy: 'code',
       sortDir: 'asc',

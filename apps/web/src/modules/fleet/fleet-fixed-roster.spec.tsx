@@ -186,16 +186,24 @@ describe('the fixed-crew screen', () => {
     expect(render(), 'nowhere else on the screen either').not.toContain('س ص 150');
   });
 
-  it('still FINDS a vehicle by its plate, which is not the same as showing it', () => {
-    // Removing a line from a cell must not remove a way in. The search box says «الكود أو رقم
-    // اللوحة» and still means it: a reader holding a plate number reaches the row, they just are
-    // not made to read the plate on every other row to get there.
-    expect(SOURCE, 'the filter still reads the plate').toContain('row.plateNumber.toLowerCase()');
-    const found = tbody(
-      render({ route: '/fleet/fixed-roster?q=' + encodeURIComponent('س ص 150') }),
+  it('FINDS a vehicle by its code, and by nothing else', () => {
+    // This asserted the plate until every car box in the application was made to ask by code.
+    // Removing the plate from the cell while still searching it was the worst of both: a plate
+    // typed above returned a row identified only by a code the reader had not written, with
+    // nothing on it to explain the match. The box now says «ابحث بكود السيارة» and means it.
+    //
+    // Through the shared matcher, so this board reads `150 - 151` the way the filter bars do.
+    expect(SOURCE, 'the shared matcher, not a comparison of its own').toContain(
+      'matchesVehicleCode(row.code, search)',
     );
-    expect(found, 'the matching row is there').toContain('150');
-    expect(found, 'and the other one is filtered out').not.toContain('151');
+    expect(SOURCE, 'and no plate is read to decide what to show').not.toContain('plateNumber');
+    const byCode = tbody(render({ route: '/fleet/fixed-roster?q=150' }));
+    expect(byCode, 'the car whose code was typed is there').toContain('150');
+    expect(byCode, 'and the other one is filtered out').not.toContain('151');
+    const byPlate = tbody(
+      render({ route: '/fleet/fixed-roster?q=' + encodeURIComponent('س ص 999') }),
+    );
+    expect(byPlate, 'a plate number matches no row at all').not.toContain('150');
   });
 
   it('shows the mission type and the note as REAL values, dashed only when empty', () => {

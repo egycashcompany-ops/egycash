@@ -50,6 +50,7 @@ import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
+import { matchesVehicleCode } from '../lib/vehicle-code-match';
 import { FIXED_ROSTER_DRAFT_KEY, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import { useDraftBoard } from '../lib/useDraftBoard';
 import {
@@ -510,13 +511,10 @@ export const FixedRosterPage = (): JSX.Element => {
     [pool, searchIndex, driverSearch],
   );
 
-  const term = search.trim().toLowerCase();
-  const rows = draft.filter(
-    (row) =>
-      term === '' ||
-      row.code.toLowerCase().includes(term) ||
-      row.plateNumber.toLowerCase().includes(term),
-  );
+  // By CODE, through the shared matcher — the same parser and the same folding the daily board and
+  // every filter bar in the application read a code box with, so `150 - 151` names two cars here
+  // too. It used to match the plate as well, on a board whose cells print only the code.
+  const rows = draft.filter((row) => matchesVehicleCode(row.code, search));
 
   const drop = (vehicleId: string, slot: CrewSlot, employeeId: string): void => {
     setOver(null);
@@ -609,11 +607,11 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
-      // The CODE alone. The plate sat under it as a second line and cost every row the height of
-      // a line to say a thing this board never asks: a fixed crew belongs to the vehicle, and the
-      // vehicle is identified here by its code. The plate is still on the vehicle record, still
-      // shown on the screens that are ABOUT the vehicle, and still findable — the search below
-      // reads it, so a reader holding a plate number can still reach the row.
+      // The CODE alone, and it is also the only thing the box above searches. The plate sat under
+      // it as a second line and cost every row the height of a line to say a thing this board
+      // never asks: a fixed crew belongs to the vehicle, and the vehicle is identified here by its
+      // code. The plate is still on the vehicle record and still shown on the screens that are
+      // ABOUT the vehicle; what it no longer does is decide which rows this board shows.
       //
       // The code carries the VEHICLE'S OWN COLOUR — see `vehicleColour`. A hundred rows of
       // three-digit numbers that differ by one glyph are hard to keep your place in; a tint

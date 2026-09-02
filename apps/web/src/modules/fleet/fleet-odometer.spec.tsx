@@ -666,7 +666,14 @@ describe('the filter bar', () => {
     // reading `150 - ` would otherwise search for a car called `150 - ` and answer "no results"
     // over a half-written list. `consume` is what separates the two — see its own spec.
     expect(source).toContain('onSearch={consume}');
-    expect(source).toContain('search: search.trim()');
+    // And it asks about the CODE. This read `search: search.trim()` until the whole application
+    // was made to name a car by its code: Fleet's `search` spans plate, chassis and motor too, so
+    // a control labelled with the code offered whichever car carried the typed text in any of the
+    // four — under a code nobody had written. `vehicleCodeSearchQuery` is that query, one helper
+    // for every car box in the application; it is proven against the endpoint's own schema in the
+    // contracts suite, and the census in `vehicle-code-selectors.spec.ts` holds the other boxes.
+    expect(source).toContain('vehicleCodeSearchQuery(search)');
+    expect(source).not.toContain('search: search.trim()');
     expect(source).not.toContain('MAX_PAGE_SIZE');
   });
 
@@ -912,7 +919,10 @@ describe('recording a reading', () => {
     // past `MAX_PAGE_SIZE` by code could not be picked — and therefore could not have a reading
     // recorded at all. The typed query now goes to the server.
     expect(source).toContain('onSearch={setCodeQuery}');
-    expect(source).toContain('search: codeQuery.trim()');
+    // The CODE, not the four-identifier `search` this asserted before — see the filter bar's own
+    // case above for why a box labelled with the code must never ask the wider question.
+    expect(source).toContain('vehicleCodeSearchQuery(codeQuery)');
+    expect(source).not.toContain('search: codeQuery.trim()');
     expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
     // A picked code outlives the search that found it, or the box blanks as the operator types on.
     expect(source).toContain('pickedCode');

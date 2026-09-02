@@ -45,6 +45,7 @@ import { driverAvailabilityOn } from '../../src/modules/fleet/availability/drive
 import { registerLeaveLookup } from '../../src/platform/directory';
 import { emit, subscribe } from '../../src/platform/kernel/event-bus';
 import { rbacService } from '../../src/platform/rbac';
+import { authService } from '../../src/platform/auth';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
@@ -98,6 +99,19 @@ const login = async (email: string): Promise<string> => {
   expect(res.status).toBe(200);
   return (res.body as { data: { accessToken: string } }).data.accessToken;
 };
+
+/**
+ * An access token for a user WITHOUT spending a login.
+ *
+ * `POST /auth/login` is rate limited to 10 per five minutes per IP (auth.routes.ts), and every
+ * request in this file comes from the same one — so logins are a shared, exhaustible budget, and
+ * a fixture that burns one to assert a PERMISSION is spending it on the wrong thing. Signing
+ * directly is equivalent for that purpose: `buildAuthContext` checks the session denylist and
+ * then resolves permissions LIVE from the user's roles, so the token proves nothing by itself and
+ * the authorization assertions are unchanged.
+ */
+const tokenFor = async (userId: string): Promise<string> =>
+  authService.signAccessToken(userId, new Types.ObjectId().toString(), 0);
 
 const data = <T>(res: request.Response): T => (res.body as { data: T }).data;
 
@@ -372,6 +386,86 @@ describe('vehicle types + catalogs', () => {
       .post('/api/v1/fleet/catalog-items')
       .set('Authorization', `Bearer ${branchAToken}`)
       .send({ kind: 'workshop', name: { ar: 'ورشة', en: 'Shop' } });
+    expect(res.status).toBe(403);
+  });
+
+  it('a MAINTENANCE-only reader can list the vocabulary its own screens point at', async () => {
+    // The catalogs are the module's vocabulary, not the vehicle registry's. Behind
+    // `fleetVehicle.view` alone this reader opened a check-in dialog with three empty pickers and
+    // a table that could not name the workshop it was showing — and nothing said so: the request
+    // 403s and a select is simply empty.
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Workshop clerk', ar: 'كاتب ورشة' },
+        permissionKeys: ['fleetMaintenance.view', 'fleetMaintenance.checkIn'],
+      },
+      adminUserId,
+    );
+    const userId = await mkUser('fleet-workshop@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await tokenFor(userId);
+
+    for (const kind of ['workshop', 'workType', 'sparePart']) {
+      const res = await request(app)
+        .get('/api/v1/fleet/catalog-items')
+        .query({ kind, pageSize: 50 })
+        .set('Authorization', `Bearer ${token}`);
+      expect(res.status, kind).toBe(200);
+    }
+
+    // …and reading a vocabulary is not reading the records that use it. The visits themselves
+    // still need their own permission, which this reader happens to have — the registry it does
+    // NOT have stays closed.
+    expect(
+      (await request(app).get('/api/v1/fleet/vehicles').set('Authorization', `Bearer ${token}`))
+        .status,
+    ).toBe(403);
+  });
+
+  it('and a VIOLATIONS-only reader can list violation types', async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Violations clerk', ar: 'كاتب مخالفات' },
+        permissionKeys: ['fleetViolation.view', 'fleetViolation.record'],
+      },
+      adminUserId,
+    );
+    const userId = await mkUser('fleet-violations@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await tokenFor(userId);
+
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'violationType', pageSize: 50 })
+      .set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+
+    // Reading the vocabulary still grants no WRITE to it.
+    expect(
+      (
+        await request(app)
+          .post('/api/v1/fleet/catalog-items')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ kind: 'violationType', name: { ar: 'نوع', en: 'Type' } })
+      ).status,
+    ).toBe(403);
+  });
+
+  it('a reader with NO fleet permission at all is still refused', async () => {
+    // The widening is a list of audiences, not an opening. Somebody outside every one of them
+    // must still be turned away, or `authorizeAny` would have become `authenticate`.
+    const role = await rbacService.createRole(
+      { name: { en: 'Outsider', ar: 'خارجي' }, permissionKeys: ['employee.view'] },
+      adminUserId,
+    );
+    const userId = await mkUser('fleet-outsider@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await tokenFor(userId);
+
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'workshop' })
+      .set('Authorization', `Bearer ${token}`);
     expect(res.status).toBe(403);
   });
 });

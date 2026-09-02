@@ -18,6 +18,7 @@ import {
   FIXED_CREW_VEHICLE_INDEX_OPTIONS,
   FleetFixedCrewModel,
 } from './fixed-roster/fixed-crew.model';
+import { migrateFleetIndexes } from './fleet-indexes';
 
 /**
  * Back-fill `licenseClassId` from the legacy free-text `licenseClass`.
@@ -160,4 +161,9 @@ export const runFleetMigrations = async (): Promise<void> => {
   await migrateVehicleLicenseClasses();
   await reportBranchlessVehicles();
   await migrateFixedCrewIndex();
+  // Every OTHER index the Fleet schemas declare — the deploy step ADR-005 promises and the
+  // repository did not have. `migrateFixedCrewIndex` above stays as it is: it is referenced by
+  // name in its own tests and carries the duplicate-reporting rationale this step generalises.
+  // It runs first, so the index it owns is simply already present by the time this arrives.
+  await migrateFleetIndexes();
 };

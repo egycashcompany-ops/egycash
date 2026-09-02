@@ -1869,6 +1869,71 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(after?.sinceServiceKm).toBe(1050);
   });
 
+  it('ARCHIVING the counting work type does not erase the fleet\u2019s baselines', async () => {
+    // Only one row is seeded with `countsForAlarm`, so archiving it was a single click away from
+    // turning every vehicle to `noService` at once — with every visit still in the database and
+    // nothing on any screen saying why. Archiving means "no longer offered", not "never counted".
+    const { vehicle } = await closedVisit({ odometerAtService: 200_000, exitOdometer: 200_500 });
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: vehicle.id, reading: 201_000, date: '2026-09-20' });
+
+    const readAlarm = async () =>
+      data<{ code: string; sinceServiceKm: number | null; noAlarmReason: string | null }[]>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/alarms')
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).find((a) => a.code === vehicle.code);
+
+    const before = await readAlarm();
+    expect(before?.sinceServiceKm, 'measured while the type is active').toBe(500);
+
+    // Archive the ONE counting work type.
+    const workTypeId = await countingWorkTypeId();
+    const current = data<FleetCatalogItemDto[]>(
+      await request(app)
+        .get('/api/v1/fleet/catalog-items')
+        .query({ kind: 'workType', pageSize: 100 })
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).find((item) => item.id === workTypeId);
+    const archived = await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${workTypeId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: current?.version ?? 0 });
+    expect(archived.status).toBe(200);
+
+    try {
+      // The baseline is a historical fact and survives the archive.
+      const after = await readAlarm();
+      expect(after?.sinceServiceKm, 'still measured after archiving').toBe(500);
+      expect(after?.noAlarmReason).toBeNull();
+
+      // …and the other half of the rule: an archived type may no longer be CHOSEN for a new visit.
+      const v2 = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const refused = await checkIn({
+        vehicleId: v2.id,
+        inDate: '2026-09-21',
+        workshopId: await mkCatalog('workshop', 'ورشة الأرشفة'),
+        workTypeId,
+        odometerAtService: 1000,
+      });
+      expect(refused.status, 'archived types are unchoosable').toBe(400);
+    } finally {
+      // Restore, so the rest of the run sees the seeded state.
+      const reread = data<FleetCatalogItemDto[]>(
+        await request(app)
+          .get('/api/v1/fleet/catalog-items')
+          .query({ kind: 'workType', pageSize: 100 })
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).find((item) => item.id === workTypeId);
+      await request(app)
+        .patch(`/api/v1/fleet/catalog-items/${workTypeId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ isActive: true, version: reread?.version ?? 1 });
+    }
+  });
+
   it('says WHY there is no alarm — the guard that stopped it, not a bare «none»', async () => {
     // A vehicle with a counted service and a reading taken BEFORE it: the cycle cannot be
     // measured, and the reason has to say which of the five situations this is. Without it the

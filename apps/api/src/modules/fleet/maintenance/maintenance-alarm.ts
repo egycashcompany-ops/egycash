@@ -142,12 +142,9 @@ export const computeAlarms = async (
     settingsService.resolve<number>(FleetSettingKeys.AlarmRedKm, { userId: null, branchId: null }),
   ]);
 
-  const countingTypes = await fleetCatalogItemRepository.list({
-    filter: { kind: 'workType', countsForAlarm: true, isActive: true },
-    page: 1,
-    pageSize: 100,
-  });
-  const countingIds = countingTypes.items.map((item) => String(item._id));
+  // Archived types included, and no page limit — see `countingWorkTypeIds`. A baseline is a
+  // historical fact, and retiring the vocabulary that named it does not un-make it.
+  const countingIds = await fleetCatalogItemRepository.countingWorkTypeIds();
 
   const [readings, baselines] = await Promise.all([
     fleetOdometerRepository.latestReadings(ids),

@@ -28,6 +28,13 @@ import { StageBuckets } from '../../shared/StageBuckets';
 import { BatchPackageBadge, BatchStatusBadge } from '../components/BatchStatusBadge';
 import { useBulkEvaluationBatches, useEvaluationBatches } from '../api/evaluation-batch-queries';
 import { useEvaluationPhases } from '../../evaluations/api/evaluation-queries';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'status',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 const STATUSES: EvaluationBatchStatus[] = ['draft', 'issued', 'closed', 'cancelled'];
@@ -37,6 +44,7 @@ export const EvaluationBatchesPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const { phaseKey } = useParams<{ phaseKey?: string }>();
 
   // The catalog is the only thing that maps a stable key to the id the API filters by. While it

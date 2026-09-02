@@ -35,12 +35,20 @@ import { cairoToday, isOpenedToday } from '../lib/operation-view';
 import { LiveTimerCell, useNowTick } from '../components/LiveTimer';
 import { OpenReplenishmentsForm } from '../components/OpenReplenishmentsForm';
 import { ConfirmActionDialog, EditReplenishmentDialog } from '../components/ReplenishmentDialogs';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'areas',
+  'banks',
+] as const;
 
 export const ReplenishmentsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state) => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const banks = useMemo(() => (sp.get('banks') ?? '').split(',').filter(Boolean), [sp]);
   const areas = useMemo(() => (sp.get('areas') ?? '').split(',').filter(Boolean), [sp]);

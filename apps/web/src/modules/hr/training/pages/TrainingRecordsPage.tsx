@@ -23,6 +23,12 @@ import { Field, Input } from '../../../../shared/ui/form';
 import { formatDate } from '../../../../shared/lib/format';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useAttachTrainingCertificate, useTrainingRecords } from '../api/training-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -100,6 +106,7 @@ export const TrainingRecordsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [attaching, setAttaching] = useState<TrainingRecordDto | null>(null);
 
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);

@@ -35,6 +35,14 @@ import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { localized } from '../../../../shared/lib/format';
 import { useCreatePayItem, usePayItems, useUpdatePayItem } from '../api/payroll-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'kind',
+  'q',
+  'status',
+] as const;
 
 const PAGE_SIZE = 25;
 
@@ -42,6 +50,7 @@ export const PayItemsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [editing, setEditing] = useState<PayItemDto | null>(null);
   const [adding, setAdding] = useState(false);
 

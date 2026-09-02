@@ -19,6 +19,7 @@
 //     free person is busy. The rule this screen DOES enforce, server-side, is its own: one person
 //     holds one vehicle in the standing crew.
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -61,6 +62,11 @@ import {
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
 import { CrewRosterNotice } from '../components/CrewRosterNotice';
 import { POOL_FILTERS } from './CrewBoardPage';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's pool filters. */
+const REMEMBERED_FILTERS = ['q', 'flags'] as const;
 
 export const StandingCrewPage = (): JSX.Element => {
   const t = useT();
@@ -76,8 +82,21 @@ export const StandingCrewPage = (): JSX.Element => {
 
   const serverRows = useMemo(() => toStandingRows(standing.data?.rows ?? []), [standing.data]);
   const [rows, setRows] = useState<BoardRow[]>([]);
-  const [search, setSearch] = useState('');
-  const [active, setActive] = useState<RequirementFilter[]>([]);
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const search = sp.get('q') ?? '';
+  const active = readList(sp, 'flags') as RequirementFilter[];
+  // Replaces rather than pushes: narrowing the pool is a view of this board, not a place to go
+  // Back to. The pool is filtered in the browser, so this only moves where the state lives.
+  const patch = (updates: Record<string, string | null>): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    setSp(next, { replace: true });
+  };
+  const setSearch = (value: string): void => patch({ q: value });
   const [adding, setAdding] = useState('');
 
   // The server's list is the truth about WHICH vehicles are in the fleet; the draft is the truth
@@ -158,7 +177,9 @@ export const StandingCrewPage = (): JSX.Element => {
   };
 
   const toggleFilter = (flag: RequirementFilter): void =>
-    setActive((prev) => (prev.includes(flag) ? prev.filter((f) => f !== flag) : [...prev, flag]));
+    patch({
+      flags: writeList(active.includes(flag) ? active.filter((f) => f !== flag) : [...active, flag]),
+    });
 
   return (
     <PageContainer>

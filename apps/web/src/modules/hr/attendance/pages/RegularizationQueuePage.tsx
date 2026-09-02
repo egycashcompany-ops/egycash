@@ -2,7 +2,7 @@
 // tab fed by `/pending-decisions` (my direct reports' MANAGER step, plus the HR step within my
 // scope), and an "all" tab fed by the scoped list. Approving at the manager step advances to
 // pendingHr, never to approved; the server enforces that, and no button here can bypass it.
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type AttendanceRegularizationStatus } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
@@ -11,9 +11,15 @@ import { EmptyState, Pagination } from '../../../../shared/ui';
 import { Field, Select } from '../../../../shared/ui/form';
 import { RegularizationsTable } from '../components/RegularizationsTable';
 import { usePendingRegularizations, useRegularizations } from '../api/attendance-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['status'] as const;
 
 const TABS = ['queue', 'all', 'postFreeze'] as const;
 type Tab = (typeof TABS)[number];
+
+const isTab = (value: string | null): value is Tab => TABS.includes(value as Tab);
 
 const STATUSES: AttendanceRegularizationStatus[] = [
   'pendingManager',
@@ -26,9 +32,32 @@ const STATUSES: AttendanceRegularizationStatus[] = [
 export const RegularizationQueuePage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const [tab, setTab] = useState<Tab>('queue');
-  const [status, setStatus] = useState('');
-  const [page, setPage] = useState(1);
+  // The filters live in the URL so the screen is shareable and survives a reload — and so the
+  // remembered-filters hook has something to remember. Written with `replace`, because narrowing a
+  // list is a view of this screen rather than a place to go Back to.
+  //
+  // The tab is in the URL too, and is the SCOPE rather than a filter: each tab asks a different question, so `status` belongs to the tab it was set on.
+  // Held locally it would reset to the default on every visit while the filters came back, so a
+  // reader would return to a tab wearing another tab's narrowing, with no control to clear it.
+  const [sp, setSp] = useSearchParams();
+  const tabParam = sp.get('tab');
+  const tab: Tab = isTab(tabParam) ? tabParam : 'queue';
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS, '', tab);
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [name, value] of Object.entries(updates)) {
+      if (value === null || value === '') next.delete(name);
+      else next.set(name, value);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next, { replace: true });
+  };
+
+  const setTab = (value: Tab): void => patch({ tab: value === 'queue' ? null : value });
+  const status = sp.get('status') ?? '';
+  const setStatus = (value: string): void => patch({ status: value });
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const setPage = (next: number): void => patch({ page: next <= 1 ? null : String(next) }, false);
 
   const pending = usePendingRegularizations();
   const all = useRegularizations(

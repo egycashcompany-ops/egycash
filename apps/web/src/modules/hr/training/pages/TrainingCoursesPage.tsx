@@ -23,6 +23,12 @@ import { Badge, SearchInput } from '../../../../shared/ui';
 import { Field, Input, Textarea } from '../../../../shared/ui/form';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { useCreateTrainingCourse, useTrainingCourses, useUpdateTrainingCourse } from '../api/training-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -134,6 +140,7 @@ export const TrainingCoursesPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const update = useUpdateTrainingCourse();
   const [editing, setEditing] = useState<TrainingCourseDto | null | undefined>(undefined);
 

@@ -2,7 +2,8 @@
 // branch, with search and an Excel-style export. The legacy exported via a CDN-loaded xlsx build
 // (:986); this exports the same four columns as CSV with a UTF-8 BOM so Excel opens the Arabic
 // correctly — a dependency-free equivalent recorded in the port doc.
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { MAX_PAGE_SIZE, type AtmMachineDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -11,6 +12,10 @@ import { Button } from '../../../shared/ui/Button';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { DownloadIcon } from '../../../shared/ui/icons';
 import { useAtmMachines } from '../api/atm-queries';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filter. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['q'] as const;
 
 export const machinesCsv = (rows: readonly AtmMachineDto[]): string => {
   const escape = (value: string): string =>
@@ -25,7 +30,16 @@ export const machinesCsv = (rows: readonly AtmMachineDto[]): string => {
 
 export const MachinesPage = (): JSX.Element => {
   const t = useT();
-  const [search, setSearch] = useState('');
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const search = sp.get('q') ?? '';
+  // Replaces rather than pushes: a filter is a view of this screen, not a place to go Back to.
+  const setSearch = (value: string): void => {
+    const next = new URLSearchParams(sp);
+    if (value === '') next.delete('q');
+    else next.set('q', value);
+    setSp(next, { replace: true });
+  };
 
   const params = useMemo(
     () => ({

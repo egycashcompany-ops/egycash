@@ -26,6 +26,13 @@ import { toast } from '../../../../shared/ui/toast/toast-store';
 import { NominationStatusBadge } from '../components/NominationStatusBadge';
 import { NominateDialog } from '../components/NominateDialog';
 import { useDecideTrainingNomination, useTrainingNominations } from '../api/training-queries';
+import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'q',
+  'view',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -100,6 +107,7 @@ export const TrainingNominationsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [nominating, setNominating] = useState(false);
   const [deciding, setDeciding] = useState<{
     nomination: TrainingNominationDto;

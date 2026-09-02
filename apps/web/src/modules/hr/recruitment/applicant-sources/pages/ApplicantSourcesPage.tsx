@@ -61,6 +61,17 @@ import {
 import { SourceDialog, type Editing } from '../components/SourceDialog';
 import { SourceIcon } from '../components/SourceIcon';
 import { SourceLinkActions, SourceLinkCell } from '../components/SourceLink';
+import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
+
+/** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = [
+  'kind',
+  'published',
+  'q',
+  'status',
+  'sort',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -85,6 +96,7 @@ export const ApplicantSourcesPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const [editing, setEditing] = useState<Editing | null>(null);
 
   const search = sp.get('q') ?? '';

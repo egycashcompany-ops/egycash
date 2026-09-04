@@ -5,8 +5,9 @@
 //
 //   1. WHO IS THIS. The two sheets overlap: 28 people appear in both, but only 21 of those share a
 //      CODE — seven were rehired under a new one. An identity keyed on the code would create those
-//      seven twice, as two people who are one person. The national ID is the key; the code is the
-//      fallback for the five rows that have no national ID at all.
+//      seven twice, as two people who are one person. The NATIONAL ID is the key, with no fallback:
+//      the registry requires one anyway, so a row without one is refused rather than identified by
+//      something weaker.
 //   2. IN WHAT ORDER. A person who left and came back has to be created, exited and rehired in that
 //      sequence, so their exit rows are sorted before their serving row. Building them the other way
 //      round hits the national-id guard and fails.
@@ -80,8 +81,8 @@ export interface SourceRow {
 
 /** One person, and every row that speaks about them, in the order they must be applied. */
 export interface PersonPlan {
-  /** How this person was identified — a national ID, or a code when they have none. */
-  identity: { kind: 'nationalId' | 'code'; value: string };
+  /** The national ID this person was identified by — the same key both sheets are joined on. */
+  nationalId: string;
   /** The Employee Code, taken VERBATIM from the sheet. Never recomposed (ADR-017). */
   code: string;
   /** The 4-digit tail — the Global Employee Number this person was issued. */
@@ -121,12 +122,6 @@ const splitCode = (code: string): { branchCode: string; number: string } | null 
 const sameDay = (a: Date | null, b: Date | null): boolean =>
   a !== null && b !== null && a.getTime() === b.getTime();
 
-const identityOf = (row: SourceRow): { kind: 'nationalId' | 'code'; value: string } | null => {
-  if (row.nationalId !== null) return { kind: 'nationalId', value: row.nationalId };
-  if (row.code !== null) return { kind: 'code', value: row.code };
-  return null;
-};
-
 /**
  * Build the import plan.
  *
@@ -143,10 +138,8 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
       rejected.push({ sheet: row.sheet, rowNumber: row.rowNumber, code: row.code, reason });
       continue;
     }
-    const identity = identityOf(row);
-    // `unusableReason` already guarantees one exists; this keeps the types honest.
-    if (identity === null) continue;
-    const key = `${identity.kind}:${identity.value}`;
+    // `unusableReason` has already refused a row without one, so this is always present.
+    const key = row.nationalId as string;
     const list = byIdentity.get(key);
     if (list === undefined) byIdentity.set(key, [row]);
     else list.push(row);
@@ -188,9 +181,8 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
       continue;
     }
 
-    const [kind, ...rest] = key.split(':');
     people.push({
-      identity: { kind: kind as 'nationalId' | 'code', value: rest.join(':') },
+      nationalId: key,
       code,
       employeeNumber: formatEmployeeNumber(Number(parts.number)),
       branchCodeAtHire: parts.branchCode,
@@ -213,6 +205,10 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
 const unusableReason = (row: SourceRow): string | null => {
   if (row.code === null) return 'no employee code';
   if (row.fullNameAr === null) return 'no Arabic name';
+  // The registry requires one — it derives birth date, gender and place of birth from it, and the
+  // duplicate-person guard is built on it. Five go-live rows have none, and they are a cell to fill
+  // in rather than a person to invent an identity for.
+  if (row.nationalId === null) return 'no national ID — the registry requires one';
   if (row.hiredAt === null) return 'no hiring date';
   if (row.branchName === null) return 'no site (الموقع)';
   if (row.departmentName === null) return 'no department (الإدارة)';
@@ -220,7 +216,13 @@ const unusableReason = (row: SourceRow): string | null => {
   if (row.sheet === 'resignation') {
     if (row.exit === null || row.exit.effectiveDate === null) return 'no exit date';
     if (row.exit.type === null) {
-      return `exit reason "${row.exit.reason ?? '(blank)'}" is not one of the recognised reasons`;
+      // Two different problems, and they need different fixes — six go-live rows carry an exit DATE
+      // with no reason beside it, which is a cell to fill in rather than a word to teach the
+      // importer. There is no `unknown` exit type to fall back on, and inventing `resignation`
+      // would put a reason on somebody's file that nobody recorded.
+      return row.exit.reason === null
+        ? 'exit reason is blank — fill it in and re-run'
+        : `exit reason "${row.exit.reason}" is not one of the recognised reasons`;
     }
     // Two rows in the go-live sheet end before they begin (`0200810` hired 2024-10-23 and exited
     // 2024-08-27; `0501484` hired 2025-02-19 and exited 2024-01-05). One of the two dates is wrong

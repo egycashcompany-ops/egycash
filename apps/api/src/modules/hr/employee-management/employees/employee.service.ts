@@ -305,6 +305,32 @@ class EmployeeService {
     ctx: AuthContext,
     input: DirectRegisterEmployee,
     scope: ScopeSelector,
+    /**
+     * `provisionLogin: false` creates the employee and NOTHING ELSE — no account, and therefore no
+     * WhatsApp message and no email carrying a setup link. Defaults to true, so every existing
+     * caller behaves exactly as before.
+     *
+     * It exists for the go-live workforce import, where the default would mean ~1,670 real people
+     * receiving a login they were never told to expect, in one burst, with no way to recall it.
+     * Accounts for imported staff are issued deliberately afterwards, in whatever order the company
+     * chooses, through the endpoint that already does that one at a time.
+     */
+    opts: {
+      provisionLogin?: boolean;
+      /**
+       * Use an ALREADY-ISSUED identity instead of allocating a new one.
+       *
+       * Only the go-live import passes this, and only because the codes it carries were issued by
+       * the company years ago and are printed on contracts and insurance filings. ADR-017 says a
+       * code is issued once and frozen; loading history is that issuance having already happened,
+       * not a second way to mint one. Every other caller allocates from the global counter, which
+       * is what keeps numbers unique.
+       *
+       * The caller is responsible for advancing the counter past what it imports, or the next real
+       * hire collides with an imported code on `ux_code`.
+       */
+      identity?: { code: string; employeeNumber: string };
+    } = {},
   ): Promise<{ doc: EmployeeDoc; provisionedLogin: EmployeeLoginProvisionDto | null }> {
     void scope;
     const identity = input.personal.identity;
@@ -430,8 +456,10 @@ class EmployeeService {
 
     const branch = await branchService.getById(e.branchId);
     const doc = await unitOfWork(async (session) => {
-      const employeeNumber = await nextEmployeeNumber(session);
-      const code = buildEmployeeCode(branch.code, employeeNumber);
+      const employeeNumber = opts.identity?.employeeNumber ?? (await nextEmployeeNumber(session));
+      // The hiring branch's code, composed once, here (ADR-017) — unless the identity was issued
+      // long before this system existed and is simply being loaded.
+      const code = opts.identity?.code ?? buildEmployeeCode(branch.code, employeeNumber);
       const hireEvent: EmployeeStatusEvent = {
         from: null,
         to: entry.status,
@@ -519,9 +547,15 @@ class EmployeeService {
       jobOfferId: null,
       origin: 'direct',
     });
-    await this.notifyHire(doc);
-    const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
-    return { doc, provisionedLogin };
+    // Both of these REACH A HUMAN, so both follow the same switch: a manager does not need a
+    // notification about a hire that happened three years ago, and nobody should be texted a
+    // password because their historical record was loaded.
+    if (opts.provisionLogin !== false) {
+      await this.notifyHire(doc);
+      const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
+      return { doc, provisionedLogin };
+    }
+    return { doc, provisionedLogin: null };
   }
 
   /**

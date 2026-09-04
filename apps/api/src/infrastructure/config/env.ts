@@ -249,6 +249,22 @@ const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
+  /**
+   * The D2 boot backfill that gives every employed employee a login — and, with it, a WhatsApp
+   * message and an email carrying their one-time setup link.
+   *
+   * On by default, which is the behaviour every deployment has had. It exists as a switch because
+   * of a specific, foreseeable accident: importing the go-live workforce puts ~1,670 employed
+   * people into the registry, and the NEXT API boot would then message all of them at once, for
+   * real, with no way to recall it. The importer never provisions a login itself, but it cannot
+   * reach across a restart — so the operator turns this off for the import window and back on when
+   * accounts are genuinely meant to go out.
+   */
+  HR_PROVISION_MISSING_LOGINS: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+
   SEED_ADMIN_EMAIL: z.string().email().default('admin@ecms.local'),
   SEED_ADMIN_PASSWORD: z.string().min(8).default('Admin#2026!ecms'),
   SEED_HR_EMAIL: z.string().email().default('hr@ecms.local'),

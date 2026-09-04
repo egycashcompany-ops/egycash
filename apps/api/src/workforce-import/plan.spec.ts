@@ -99,11 +99,17 @@ describe('identity — who is this person', () => {
     expect(people[0]?.serving).toBe(true);
   });
 
-  it('falls back to the code for the rows that carry no national ID', () => {
-    const { people } = buildPlan([
+  /**
+   * Five go-live rows carry no national ID. The registry derives birth date, gender and place of
+   * birth from it and builds the one-person-forever guard on it, so a row without one cannot become
+   * an employee — it is reported as a cell to fill in rather than given a fabricated identity.
+   */
+  it('rejects a row with no national ID, naming what is missing', () => {
+    const { people, rejected } = buildPlan([
       row({ sheet: 'master', rowNumber: 5, code: '0100777', nationalId: null }),
     ]);
-    expect(people[0]?.identity).toEqual({ kind: 'code', value: '0100777' });
+    expect(people).toHaveLength(0);
+    expect(rejected[0]?.reason).toBe('no national ID — the registry requires one');
   });
 
   /**
@@ -114,9 +120,10 @@ describe('identity — who is this person', () => {
   it('keeps two people who share a global number, with their own codes', () => {
     const { people } = buildPlan([
       exited({ rowNumber: 100, code: '0501651', nationalId: '30002170202136' }),
-      exited({ rowNumber: 200, code: '0101651', nationalId: null }),
+      exited({ rowNumber: 200, code: '0101651', nationalId: '29608050104556' }),
     ]);
     expect(people).toHaveLength(2);
+    expect(people.map((p) => p.nationalId).sort()).toEqual(['29608050104556', '30002170202136']);
     expect(people.map((p) => p.employeeNumber)).toEqual(['1651', '1651']);
     expect(people.map((p) => p.code).sort()).toEqual(['0101651', '0501651']);
   });
@@ -190,6 +197,7 @@ describe('refusal — rows that cannot become anything true', () => {
   it.each([
     ['no employee code', { code: null }],
     ['no Arabic name', { fullNameAr: null }],
+    ['no national ID — the registry requires one', { nationalId: null }],
     ['no hiring date', { hiredAt: null }],
     ['no site (الموقع)', { branchName: null }],
     ['no department (الإدارة)', { departmentName: null }],
@@ -198,6 +206,18 @@ describe('refusal — rows that cannot become anything true', () => {
     const { rejected } = buildPlan([row({ sheet: 'master', rowNumber: 4, ...over })]);
     expect(rejected).toHaveLength(1);
     expect(rejected[0]?.reason).toBe(reason);
+  });
+
+  /** Six go-live rows carry an exit date with no reason. That is a cell to fill in, not a
+   *  vocabulary gap, and the report has to say which so somebody knows what to do about it. */
+  it('tells a blank exit reason apart from an unrecognised one', () => {
+    const blank = buildPlan([
+      exited({
+        rowNumber: 9,
+        exit: { type: null, effectiveDate: new Date('2024-03-31T00:00:00.000Z'), reason: null, note: null },
+      }),
+    ]);
+    expect(blank.rejected[0]?.reason).toBe('exit reason is blank — fill it in and re-run');
   });
 
   it('rejects an exit row whose reason could not be mapped, naming the reason', () => {

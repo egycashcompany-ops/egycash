@@ -11,6 +11,43 @@ its entry here in the same PR.
 
 ### Added
 
+- **A workforce reset, for the one time it is needed: the moment before the real workforce lands.**
+  `npm run reset:workforce` removes every employee and everything filed against them, and every
+  account that does not hold `super-admin` or `platform-admin`. Dry run is the default and walks the
+  same path as a real run, so its counts are evidence rather than an estimate; `--write` alone is
+  not enough, `--confirm DELETE` has to be typed as well, so the destructive form cannot be produced
+  by editing a previous command's flags.
+
+  **What it will not do.** If no account holds a surviving role it stops before deleting anything,
+  in both modes — otherwise it empties the account table and leaves nobody able to log in and put it
+  back. Survival is deliberately generous: ANY assignment to a surviving role keeps an account,
+  including an EXPIRED one, because in an operation with no undo keeping one account too many is a
+  nuisance while deleting an administrator whose grant lapsed last week locks a real person out of a
+  system that has just been emptied. And survival is two NAMED roles rather than "holds a system
+  role" — `employee-self-service` is a system role granted to every employee with a login, so that
+  test would spare the entire workforce and the reset would do nothing.
+
+  **What it deliberately leaves alone.** The audit trail, including entries by an account it just
+  deleted: history is not rewritten because the actor was removed. The Global Employee Number
+  counter, reported but never wound back, because lowering a sequence reissues a number somebody
+  already holds on paper. The organization structure and every reference catalogue, which the import
+  expects to find. And eight collections that merely NAME an employee while being records in their
+  own right — the three gold receipt/transfer registers, traffic violations, vehicle odometer logs,
+  vehicle and ATM maintenance visits, and job offers. Those are not modified in any field, not even
+  to clear the reference: the receipt still says who signed for the metal and the violation still
+  says who was driving, and a reference pointing at a deleted employee is the honest state.
+
+  **The set of employee-scoped collections is DERIVED, not listed.** A hand-written list is wrong the
+  first time somebody ships a feature that files something against a person, and wrong silently. The
+  registered schemas are walked at run time for any path naming an employee — which catches
+  `captainEmployeeIds` and `hiredEmployeeId` as well as the bare form — and anything the
+  classification table does not cover STOPS the reset by name. A future collection cannot be quietly
+  skipped and cannot be quietly destroyed; somebody has to decide which it is. Writing it this way
+  paid for itself immediately: a grep found 33 collections, the derivation found 47, and eight of
+  the extra ones were the untouchables above. `users` carries `employeeId` too, so the derived rule
+  alone would have emptied the account table — administrators included — on the first run.
+
+
 - **The go-live workforce import, and two blocks of the employee that had nowhere to land.** The
   company arrives with 2,699 rows of hand-maintained HR spreadsheet — 1,673 people serving and
   1,026 who have left — and roughly fifteen of its columns had no home anywhere in the registry.

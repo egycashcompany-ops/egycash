@@ -92,7 +92,7 @@ describe('toEmployeeDto', () => {
   it('maps the permanent Global Employee Number, derived code, status, and hiring date', () => {
     const dto = toEmployeeDto(baseDoc(), visible);
     expect(dto.employeeNumber).toBe('000125');
-    expect(dto.code).toBe('001000125'); // <CurrentBranchCode><GlobalEmployeeNumber>
+    expect(dto.code).toBe('001000125'); // <BranchCodeAtHire><GlobalEmployeeNumber>, stored as issued
     expect(dto.status).toBe('probation');
     expect(dto.origin).toBe('recruitment');
     expect(dto.userId).toBeNull();

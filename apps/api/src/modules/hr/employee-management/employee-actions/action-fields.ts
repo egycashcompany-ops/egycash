@@ -32,16 +32,9 @@ export const ACTION_AFFECTED_FIELDS: Record<EmployeeActionType, readonly string[
 
   // Career.
   promotion: ['employment.jobTitleId', 'employment.salary'],
-  // `code` moves only when the BRANCH does (the code carries the branch prefix — ADR-017);
-  // `user.placement` is the linked login's org placement following the employee's.
-  transfer: [
-    'code',
-    'branchId',
-    'departmentId',
-    'sectionId',
-    'employment.managerId',
-    'user.placement',
-  ],
+  // No `code` here: the Employee Code is frozen at hire and a transfer does not rewrite it
+  // (ADR-017). `user.placement` is the linked login's org placement following the employee's.
+  transfer: ['branchId', 'departmentId', 'sectionId', 'employment.managerId', 'user.placement'],
   managerChange: ['employment.managerId'],
   salaryChange: ['employment.salary', 'employment.allowances', 'employment.benefits'],
 
@@ -72,8 +65,9 @@ export const ACTION_AFFECTED_FIELDS: Record<EmployeeActionType, readonly string[
   retirement: ['directReports', 'status', 'exit.type', 'exit.eligibleForRehire', 'user.status'],
   death: ['directReports', 'status', 'exit.type', 'exit.eligibleForRehire', 'user.status'],
 
-  // Rehire re-derives the code from the new branch, relinks the offer, and may revive the login.
-  rehire: ['jobOfferId', 'code', 'employment.jobTitleId', 'hiredAt', 'status', 'user.status'],
+  // Rehire relinks the offer and may revive the login. It does NOT touch `code`: the same person
+  // is returning, so they keep the number — and the code — they were originally issued (ADR-017).
+  rehire: ['jobOfferId', 'employment.jobTitleId', 'hiredAt', 'status', 'user.status'],
 
   dataCorrection: ['hiredAt'],
 };

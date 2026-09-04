@@ -3,9 +3,11 @@
 // apply it now (effective date now/past) or leave it `scheduled` for the scheduler task, which
 // applies due actions strictly in effective-date order. Application captures the authoritative
 // `from` values (C1), mutates the employee snapshot, and PROPAGATES to every dependent record
-// (F1): branch transfers recompute the employee code and update the linked user's placement and
-// the Employee File's code/branch; exits auto-suspend the login (D3), settle direct reports and
-// close the employment period; rehires reopen a period on the SAME employee number.
+// (F1): branch transfers update the linked user's placement and the Employee File's branch; exits
+// auto-suspend the login (D3), settle direct reports and close the employment period; rehires
+// reopen a period on the SAME employee number.
+// NOT propagated, deliberately: the Employee Code. It is composed once at hire and frozen there
+// (ADR-017) — no action in this vocabulary renames anybody. See `code-freeze.spec.ts`.
 // Self-actions are rejected outright (I1). Cancels are append-only status flips.
 import { Types } from 'mongoose';
 import {
@@ -33,18 +35,14 @@ import { cairoToday, dateOnlyIso, toDateOnly } from '../../shared/business-date'
 import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { notificationsService } from '../../../../platform/notifications';
-import {
-  branchService,
-  departmentService,
-  jobTitleService,
-  sectionService,
-} from '../../../../platform/organization';
+// No `branchService` here on purpose: nothing in the action vocabulary needs a branch's CODE.
+// Actions move people between branches, and the Employee Code does not follow (ADR-017).
+import { departmentService, jobTitleService, sectionService } from '../../../../platform/organization';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../../platform/files';
 import { userService } from '../../../../platform/users';
 import { jobOfferService } from '../../recruitment/job-offers';
 import { employeeFileService } from '../employee-file';
 import {
-  buildEmployeeCode,
   employeeRepository,
   type EmployeeDoc,
   type EmployeeEntity,
@@ -578,14 +576,11 @@ class EmployeeActionService {
     }
 
     const branchChanged = newBranchId !== String(employee.branchId);
-    const oldCode = employee.code;
 
-    if (branchChanged) {
-      const branch = await branchService.getById(newBranchId);
-      const newCode = buildEmployeeCode(branch.code, employee.employeeNumber);
-      changes.push({ field: 'code', from: oldCode, to: newCode });
-      employee.code = newCode;
-    }
+    // The Employee Code does NOT move with the employee (ADR-017). It was composed at hire from the
+    // hiring branch's code and is frozen there — a transfer changes where somebody works, not the
+    // number they were issued. So there is no `code` change to record here, and the employee's
+    // `branchId` below is what tells the rest of the system where they now are.
     if (newBranchId !== String(employee.branchId)) {
       changes.push({ field: 'branchId', from: String(employee.branchId), to: newBranchId });
     }
@@ -637,7 +632,9 @@ class EmployeeActionService {
     if (branchChanged) {
       await emit(HrEmployeeEvents.EmployeeTransferred, {
         employeeId: String(employee._id),
-        oldCode,
+        // Deprecated and equal by construction — the code is frozen at hire and a transfer does not
+        // rename anybody. `branchId` is what actually moved.
+        oldCode: employee.code,
         newCode: employee.code,
         branchId: newBranchId,
       });
@@ -834,12 +831,11 @@ class EmployeeActionService {
     }
 
     const hiredAt = p['hiringDate'] == null ? new Date() : new Date(String(p['hiringDate']));
-    const branch = await branchService.getById(String(employment.branchId));
-    const newCode = buildEmployeeCode(branch.code, employee.employeeNumber);
-    if (newCode !== employee.code) {
-      changes.push({ field: 'code', from: employee.code, to: newCode });
-      employee.code = newCode;
-    }
+
+    // A rehire keeps the person's original Employee Code, even when they come back into a different
+    // branch (ADR-017 — the code is composed once, at the FIRST hire, and frozen). This is the same
+    // person returning, not a new hire: they keep their Global Employee Number, so they keep the
+    // code that number was issued under. Their `branchId` below records where they are returning to.
 
     changes.push({ field: 'employment.jobTitleId', from: null, to: String(employment.jobTitleId) });
     employee.employment = employment;

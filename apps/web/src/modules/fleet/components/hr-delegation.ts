@@ -52,9 +52,10 @@ export const HR_DELEGATION = {
 /**
  * The employee code is deliberately in NO group.
  *
- * It is derived — `<CurrentBranchCode><employeeNumber>` — and no endpoint in the system writes it;
- * it changes only as a consequence of a branch transfer. Offering an edit action for it would
- * promise something nothing can deliver, so it is named here as an explicit non-target.
+ * It is `<BranchCodeAtHire><employeeNumber>`, composed once when the employee is created and frozen
+ * from then on (ADR-017) — no endpoint in the system writes it, and nothing, not even a transfer,
+ * changes it. Offering an edit action for it would promise something nothing can deliver, so it is
+ * named here as an explicit non-target.
  */
 export const HR_UNDELEGATED_FIELDS = ['employeeCode'] as const;
 

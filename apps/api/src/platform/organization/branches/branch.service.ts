@@ -3,7 +3,6 @@ import { type BranchDto, type CreateBranch } from '@ecms/contracts';
 import { ConflictError } from '../../../shared/errors';
 import { logger } from '../../../infrastructure/logging/logger';
 import { auditService } from '../../audit';
-import { runBranchCodeChangeHandlers } from './branch-code-seam';
 import { OrgUnitService } from '../shared/org-unit';
 import { assertManagerExists } from '../shared/managers';
 import { branchRepository } from './branch.repository';
@@ -52,20 +51,22 @@ export const changeBranchCode = async (
     changes: [{ field: 'code', old: before.code, new: after.code }],
   });
 
-  // HR3-A — the Employee Code is DERIVED from this code and STORED, so every employee in this
-  // branch is now carrying a stale one. The dependents repair themselves through the seam (the
-  // platform may not import a business module), and only the CURRENT value moves: contracts,
-  // hiring documents, payslips and leave requests keep the code they were made with.
+  // NOTHING PROPAGATES FROM HERE, and it is worth saying why, because it used to (HR3-A).
+  //
+  // While the Employee Code was DERIVED from the branch code, correcting a branch's code left every
+  // employee in it carrying a code that derived from nothing, and a seam repaired them. The Employee
+  // Code is now COMPOSED ONCE AT HIRE AND FROZEN (ADR-017) — it records which branch issued the
+  // number, not which code that branch currently goes by. So an employee hired under `010` keeps
+  // `010…` after the branch is renamed to `015`, exactly as they keep it after being transferred
+  // somewhere else entirely. There is no stale value left to repair, and re-deriving one would
+  // rename people whose code is printed on contracts and insurance filings.
+  //
+  // The branch's own audit entry above is the record that the code changed.
   if (before.code !== after.code) {
-    const repaired = await runBranchCodeChangeHandlers({
-      branchId: id,
-      oldCode: before.code,
-      newCode: after.code,
-      by,
-    });
-    if (repaired > 0) {
-      logger.info({ branchId: id, repaired }, 'branch code change propagated to dependents');
-    }
+    logger.info(
+      { branchId: id, oldCode: before.code, newCode: after.code },
+      'branch code changed; employee codes are frozen at hire and are deliberately left alone',
+    );
   }
   return after;
 };

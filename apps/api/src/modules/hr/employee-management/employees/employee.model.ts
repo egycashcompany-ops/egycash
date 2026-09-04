@@ -149,12 +149,19 @@ export interface EmploymentPeriod {
 }
 
 export interface EmployeeDoc extends BaseDocFields {
-  /** PERMANENT identity: the Global Employee Number `000125` — never changes, globally unique (ADR-017). */
+  /**
+   * PERMANENT identity: the Global Employee Number `0125` — allocated once at hire from a single
+   * company-wide counter, and never changed (ADR-017). Not unique-indexed; see the index comment
+   * at the foot of this file.
+   */
   employeeNumber: string;
   /**
-   * Displayed Employee Code, DERIVED as `<CurrentBranchCode><employeeNumber>` (e.g. `001000125`).
-   * Denormalized for search/display; recomputed when the employee transfers branches — only the
-   * prefix changes, the Global Employee Number never does.
+   * The Employee Code — `<BranchCodeAtHire><employeeNumber>`, e.g. `0100004`. COMPOSED ONCE AT HIRE
+   * AND FROZEN: no transfer, rehire or branch-code correction rewrites it (ADR-017).
+   *
+   * Do NOT treat it as derivable from this document. Re-composing it from the employee's CURRENT
+   * branch is wrong and will disagree with the stored value for anyone who has moved — read `code`,
+   * and use `branchId` when you want to know where the employee actually is.
    */
   code: string;
   status: EmployeeStatus;
@@ -402,9 +409,20 @@ const employeeSchema = new Schema<EmployeeDoc>(
   baseSchemaOptions,
 );
 
-// The Global Employee Number is the permanent, organization-wide-unique identity (never changes).
-employeeSchema.index({ employeeNumber: 1 }, { unique: true, name: 'ux_employeeNumber' });
-// The derived Employee Code is also unique at any point in time (branch code + unique number).
+// The Global Employee Number: permanent, never reissued by the allocator, and NOT unique-indexed.
+//
+// The allocator is a single atomic `$inc` on one global key, so it cannot hand the same number out
+// twice — uniqueness for everything this system issues is a property of how numbers are made, and
+// the index was only ever a second line of defence. It is relaxed because the go-live workforce
+// carries two numbers the company itself issued twice on paper, decades of records deep (1311 and
+// 1651, four people, all long since exited). A unique index would have forced us to renumber two of
+// them, and renumbering rewrites the code printed on their file — the exact loss this whole design
+// exists to prevent. Recording history faithfully beats re-asserting a guarantee the allocator
+// already provides.
+employeeSchema.index({ employeeNumber: 1 }, { name: 'ix_employeeNumber' });
+// The Employee Code IS uniquely indexed, and it is the identity people actually use. Two employees
+// sharing a global number still differ here whenever they were hired into different branches, which
+// is true of both legacy pairs.
 employeeSchema.index({ code: 1 }, { unique: true, name: 'ux_code' });
 // At most one employee per accepted offer — prevents duplicate hiring, DB-enforced.
 // (jobOfferId is null for direct registrations — nulls are exempt via the type filter.)

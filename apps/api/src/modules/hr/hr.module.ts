@@ -120,7 +120,6 @@ import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrShiftLabelSeam } from './attendance/shifts/shift-label-seams';
 import { buildEmployeeCostCentersRouter } from './employee-management/cost-center-assignments';
-import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
   dispatchPendingWorkflowEvents,
@@ -161,9 +160,6 @@ registerHrDirectorySeams();
 // this existed the permissive default accepted any well-formed id; from here a reference must name
 // a requisition that exists and is still open.
 setRequisitionValidator(jobRequisitionReferenceValidator);
-// HR3-A — the Employee Code derives from the branch code and is stored, so a branch-code
-// correction has to reach the employees that derived from it.
-registerHrBranchCodeSeams();
 // Workflow consumers (I15): the timeline projection and the audit trail react to published
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();

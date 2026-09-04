@@ -429,7 +429,8 @@ export interface EmployeeDto {
   /** Permanent identity: the Global Employee Number, e.g. `000125` — never changes (ADR-017). */
   employeeNumber: string;
   /**
-   * Displayed Employee Code, derived as `<CurrentBranchCode><employeeNumber>`, e.g. `001000125`.
+   * The Employee Code, `<BranchCodeAtHire><employeeNumber>` (e.g. `0100004`) — composed once at
+   * hire and frozen (ADR-017). It is NOT a projection of the employee's current branch.
    * On a branch transfer only the prefix changes (→ `004000125`); the number stays fixed.
    */
   code: string;
@@ -533,10 +534,20 @@ export const EmployeeActionAppliedPayloadV1 = z.object({
   type: z.string(),
 });
 
-/** Emitted on branch transfers so future modules (badges, payroll keys) can re-key. */
+/**
+ * Emitted on branch transfers so downstream modules (badges, payroll keys) can re-key on the
+ * employee's new placement — `branchId` is the field that carries the move.
+ *
+ * `oldCode`/`newCode` are RETAINED, EQUAL, AND DEPRECATED. The Employee Code is frozen at hire
+ * (ADR-017): a transfer no longer renames anybody, so both fields carry the employee's unchanged
+ * code. They stay in the payload because the event catalogue is a published surface and automations
+ * may already read them; do not build anything new on them, and do not read a rename out of them.
+ */
 export const EmployeeTransferredPayloadV1 = z.object({
   employeeId: objectId(),
+  /** @deprecated Always equal to `newCode` — the code does not change on transfer. */
   oldCode: z.string(),
+  /** @deprecated Always equal to `oldCode` — the code does not change on transfer. */
   newCode: z.string(),
   branchId: objectId().nullable(),
 });

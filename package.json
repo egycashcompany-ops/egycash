@@ -33,7 +33,8 @@
     "automation:preview": "npm run build -w packages/contracts && node scripts/automation-templates.mjs --preview",
     "test:unit": "npm run build -w packages/contracts && npm run test:unit -w apps/api && npm run test -w packages/contracts",
     "test:integration": "npm run build -w packages/contracts && npm run test:integration -w apps/api",
-    "import:workforce": "npm run build -w packages/contracts && npm run import:workforce -w apps/api --"
+    "import:workforce": "npm run build -w packages/contracts && npm run import:workforce -w apps/api --",
+    "reset:workforce": "npm run build -w packages/contracts && npm run reset:workforce -w apps/api --"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",

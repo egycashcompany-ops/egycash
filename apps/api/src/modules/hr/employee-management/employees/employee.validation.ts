@@ -7,6 +7,8 @@ export {
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,
+  UpdateEmployeeInsuranceSchema,
+  UpdateEmployeeOfficerSchema,
   UpdateEmployeePersonalSchema,
 } from '@ecms/contracts';
 

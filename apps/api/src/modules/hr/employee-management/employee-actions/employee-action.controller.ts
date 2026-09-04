@@ -31,6 +31,21 @@ type ActionParam = { id: string; actionId: string };
 const compVisible = (req: Request): boolean =>
   hasPermission(authContext(req), 'employee.viewCompensation');
 
+/**
+ * An ACTION DTO redacts one thing (the salary it carries), but the deprecated status alias answers
+ * with a whole EMPLOYEE, which has three gated blocks. Same three keys as the employees controller.
+ */
+const employeeVisibility = (
+  req: Request,
+): { compensationVisible: boolean; insuranceVisible: boolean; officerVisible: boolean } => {
+  const ctx = authContext(req);
+  return {
+    compensationVisible: hasPermission(ctx, 'employee.viewCompensation'),
+    insuranceVisible: hasPermission(ctx, 'employee.viewInsurance'),
+    officerVisible: hasPermission(ctx, 'employee.viewOfficer'),
+  };
+};
+
 export const createEmploymentAction = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<EmploymentAction, never, IdParam>(req);
@@ -100,11 +115,11 @@ export const cancelEmployeeAction = async (req: Request, res: Response): Promise
 export const listEmployeeActions = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query, params } = validated<never, ListEmployeeActionsQuery, IdParam>(req);
-  const visible = compVisible(req);
+  const visible = { compensationVisible: compVisible(req) };
   okPage(
     res,
     await employeeActionService.list(params.id, query, scopeSelector(ctx, 'employee.view')),
-    (d) => toEmployeeActionDto(d, { compensationVisible: visible }),
+    (d) => toEmployeeActionDto(d, visible),
   );
 };
 
@@ -155,5 +170,5 @@ export const changeEmployeeStatusAlias = async (req: Request, res: Response): Pr
   const { body, params } = validated<ChangeEmployeeStatus, never, IdParam>(req);
   await employeeActionService.statusAlias(ctx, params.id, body, scopeSelector(ctx, 'employee.changeStatus'));
   const employee = await employeeService.getById(params.id, scopeSelector(ctx, 'employee.changeStatus'));
-  ok(res, toEmployeeDto(employee, { compensationVisible: compVisible(req) }));
+  ok(res, toEmployeeDto(employee, employeeVisibility(req)));
 };

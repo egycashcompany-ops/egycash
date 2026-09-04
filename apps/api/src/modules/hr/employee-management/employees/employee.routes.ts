@@ -18,6 +18,8 @@ import {
   registerEmployeeDirect,
   rehireCheck,
   unlinkEmployeeUser,
+  updateEmployeeInsurance,
+  updateEmployeeOfficer,
   updateEmployeePersonal,
 } from './employee.controller';
 import {
@@ -28,6 +30,8 @@ import {
   LinkEmployeeUserSchema,
   ListEmployeesQuerySchema,
   RehireCheckQuerySchema,
+  UpdateEmployeeInsuranceSchema,
+  UpdateEmployeeOfficerSchema,
   UpdateEmployeePersonalSchema,
 } from './employee.validation';
 
@@ -78,6 +82,23 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.editPersonal'),
     validate({ body: UpdateEmployeePersonalSchema, params: EmployeeIdParamSchema }),
     asyncHandler(updateEmployeePersonal),
+  );
+  // The social-insurance file and the officer profile: each replaced whole, each behind its own
+  // manage permission. Neither is a personnel action — the actions engine's vocabulary is closed,
+  // and re-filing an insurance number promotes nobody.
+  router.patch(
+    '/:id/insurance',
+    authenticate,
+    authorize('employee.manageInsurance'),
+    validate({ body: UpdateEmployeeInsuranceSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(updateEmployeeInsurance),
+  );
+  router.patch(
+    '/:id/officer',
+    authenticate,
+    authorize('employee.manageOfficer'),
+    validate({ body: UpdateEmployeeOfficerSchema, params: EmployeeIdParamSchema }),
+    asyncHandler(updateEmployeeOfficer),
   );
   // Employed direct reports (manager tree seed).
   router.get(

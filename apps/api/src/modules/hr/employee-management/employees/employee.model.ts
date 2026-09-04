@@ -13,6 +13,10 @@ import {
   EMPLOYEE_ORIGINS,
   EMPLOYEE_STATUSES,
   EMPLOYMENT_TYPES,
+  INSURANCE_STATUSES,
+  WEAPON_LICENSE_TYPES,
+  type InsuranceStatus,
+  type WeaponLicenseType,
   JOB_VALUE_SOURCES,
   type JobValueSource,
   type EmployeeExitType,
@@ -141,6 +145,33 @@ export interface EmployeeExit {
   by: Types.ObjectId | null;
 }
 
+/**
+ * The employee's social-insurance file. Null until somebody files one.
+ *
+ * The wages here are STATUTORY BRACKETS, not pay — see the contract's comment. Nothing in payroll
+ * reads this block, and `employment.salary` is never populated from it.
+ */
+export interface EmployeeInsuranceRecord {
+  insuranceNumber: string | null;
+  occupation: string | null;
+  occupationCode: string | null;
+  grossWage: number | null;
+  contributionWage: number | null;
+  basicWage: number | null;
+  employerShare: number | null;
+  employeeShare: number | null;
+  status: InsuranceStatus | null;
+}
+
+/** Retired-officer / armed-security facts. Null for the ~90% of the workforce with none. */
+export interface EmployeeOfficerRecord {
+  reserveOfficer: boolean;
+  rank: string | null;
+  weaponLicense: { type: WeaponLicenseType; expiry: Date | null } | null;
+  professionPractice: boolean;
+  retirementDate: Date | null;
+}
+
 /** One hire→exit span. DERIVED from hire/rehire/exit actions — rebuildable, never hand-edited. */
 export interface EmploymentPeriod {
   hiredAt: Date;
@@ -167,6 +198,10 @@ export interface EmployeeDoc extends BaseDocFields {
   status: EmployeeStatus;
   origin: EmployeeOrigin;
   personal: EmployeePersonalData;
+  /** Social-insurance file (التأمينات الاجتماعية) — null until one is filed. */
+  insurance: EmployeeInsuranceRecord | null;
+  /** Officer / armed-security profile (بيانات الضباط) — null for everyone without one. */
+  officer: EmployeeOfficerRecord | null;
   probation: EmployeeProbation | null;
   exit: EmployeeExit | null;
   employmentPeriods: EmploymentPeriod[];
@@ -371,6 +406,41 @@ const exitSchema = new Schema<EmployeeExit>(
   { _id: false },
 );
 
+const insuranceSchema = new Schema<EmployeeInsuranceRecord>(
+  {
+    insuranceNumber: { type: String, default: null },
+    occupation: { type: String, default: null },
+    occupationCode: { type: String, default: null },
+    // Wages are statutory brackets, never pay. Nothing in payroll reads them.
+    grossWage: { type: Number, default: null },
+    contributionWage: { type: Number, default: null },
+    basicWage: { type: Number, default: null },
+    employerShare: { type: Number, default: null },
+    employeeShare: { type: Number, default: null },
+    status: { type: String, enum: [...INSURANCE_STATUSES, null], default: null },
+  },
+  { _id: false },
+);
+
+const weaponLicenseSchema = new Schema<NonNullable<EmployeeOfficerRecord['weaponLicense']>>(
+  {
+    type: { type: String, enum: WEAPON_LICENSE_TYPES, required: true },
+    expiry: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
+const officerSchema = new Schema<EmployeeOfficerRecord>(
+  {
+    reserveOfficer: { type: Boolean, required: true, default: false },
+    rank: { type: String, default: null },
+    weaponLicense: { type: weaponLicenseSchema, default: null },
+    professionPractice: { type: Boolean, required: true, default: false },
+    retirementDate: { type: Date, default: null },
+  },
+  { _id: false },
+);
+
 const employmentPeriodSchema = new Schema<EmploymentPeriod>(
   {
     hiredAt: { type: Date, required: true },
@@ -387,6 +457,8 @@ const employeeSchema = new Schema<EmployeeDoc>(
     status: { type: String, enum: EMPLOYEE_STATUSES, required: true, default: 'probation' },
     origin: { type: String, enum: EMPLOYEE_ORIGINS, required: true, default: 'recruitment' },
     personal: { type: personalSchema, required: true },
+    insurance: { type: insuranceSchema, default: null },
+    officer: { type: officerSchema, default: null },
     probation: { type: probationSchema, default: null },
     exit: { type: exitSchema, default: null },
     employmentPeriods: { type: [employmentPeriodSchema], default: [] },

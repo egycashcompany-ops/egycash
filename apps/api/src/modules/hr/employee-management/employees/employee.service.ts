@@ -21,6 +21,8 @@ import {
   type EmployeeTimelineItemDto,
   type ListEmployeesQuery,
   type Paginated,
+  type UpdateEmployeeInsurance,
+  type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
   EMPLOYED_STATUSES,
   type EmployeeLoginProvisionDto,
@@ -54,6 +56,8 @@ import {
   EmployeeModel,
   type EmployeeDoc,
   type EmployeeMoney,
+  type EmployeeInsuranceRecord,
+  type EmployeeOfficerRecord,
   type EmployeePersonalData,
   type EmployeeProbation,
   type EmployeeStatusEvent,
@@ -232,6 +236,10 @@ class EmployeeService {
           status: entry.status,
           origin: 'recruitment',
           personal: personalFromApplicant(applicant),
+          // A pipeline hire has no insurance file or officer profile yet — the applicant record
+          // carries neither, and HR files them after the hire through their own endpoints.
+          insurance: null,
+          officer: null,
           probation: entry.probation,
           exit: null,
           employmentPeriods: [{ hiredAt, exitedAt: null, exitType: null }],
@@ -440,6 +448,38 @@ class EmployeeService {
           status: entry.status,
           origin: 'direct',
           personal,
+          // Both blocks are optional on the input and null when omitted — "nobody has filed this
+          // yet" is the honest state, and an empty sub-document would claim a filing exists.
+          insurance:
+            input.insurance === undefined
+              ? null
+              : {
+                  insuranceNumber: input.insurance.insuranceNumber ?? null,
+                  occupation: input.insurance.occupation ?? null,
+                  occupationCode: input.insurance.occupationCode ?? null,
+                  grossWage: input.insurance.grossWage ?? null,
+                  contributionWage: input.insurance.contributionWage ?? null,
+                  basicWage: input.insurance.basicWage ?? null,
+                  employerShare: input.insurance.employerShare ?? null,
+                  employeeShare: input.insurance.employeeShare ?? null,
+                  status: input.insurance.status ?? null,
+                },
+          officer:
+            input.officer === undefined
+              ? null
+              : {
+                  reserveOfficer: input.officer.reserveOfficer,
+                  rank: input.officer.rank ?? null,
+                  weaponLicense:
+                    input.officer.weaponLicense == null
+                      ? null
+                      : {
+                          type: input.officer.weaponLicense.type,
+                          expiry: input.officer.weaponLicense.expiry ?? null,
+                        },
+                  professionPractice: input.officer.professionPractice,
+                  retirementDate: input.officer.retirementDate ?? null,
+                },
           probation: entry.probation,
           exit: null,
           employmentPeriods: [{ hiredAt, exitedAt: null, exitType: null }],
@@ -641,6 +681,98 @@ class EmployeeService {
       { by: ctx.userId, version: input.version, scope },
     );
     await auditService.record({ entityRef: entityRef(id), action: 'update', changes });
+    return updated;
+  }
+
+  /**
+   * Replace the social-insurance file whole. Like `updatePersonal` this is a plain audited update,
+   * NOT a personnel action: nobody was promoted or moved because the insurance authority reissued a
+   * number. The block is replaced rather than merged, so clearing a field is expressible — a filing
+   * that no longer carries an occupation code must be able to say so.
+   *
+   * The audit entry records the FIELDS that changed, never their values: these are wage figures.
+   */
+  async updateInsurance(
+    ctx: AuthContext,
+    id: string,
+    input: UpdateEmployeeInsurance,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const before = await employeeRepository.getById(id, scope);
+    const insurance: EmployeeInsuranceRecord = {
+      insuranceNumber: input.insuranceNumber ?? null,
+      occupation: input.occupation ?? null,
+      occupationCode: input.occupationCode ?? null,
+      grossWage: input.grossWage ?? null,
+      contributionWage: input.contributionWage ?? null,
+      basicWage: input.basicWage ?? null,
+      employerShare: input.employerShare ?? null,
+      employeeShare: input.employeeShare ?? null,
+      status: input.status ?? null,
+    };
+
+    const fields: (keyof EmployeeInsuranceRecord)[] = [
+      'insuranceNumber',
+      'occupation',
+      'occupationCode',
+      'grossWage',
+      'contributionWage',
+      'basicWage',
+      'employerShare',
+      'employeeShare',
+      'status',
+    ];
+    const changed = fields.filter((key) => (before.insurance?.[key] ?? null) !== insurance[key]);
+    if (changed.length === 0) throw new BusinessRuleError('nothing to update');
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { insurance },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      // Field names only — a wage bracket is not written into the audit trail in the clear.
+      changes: changed.map((field) => ({ field: `insurance.${field}`, old: '[redacted]', new: '[redacted]' })),
+    });
+    return updated;
+  }
+
+  /** Replace the officer/armed-security profile whole. Same rules as `updateInsurance`. */
+  async updateOfficer(
+    ctx: AuthContext,
+    id: string,
+    input: UpdateEmployeeOfficer,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const before = await employeeRepository.getById(id, scope);
+    const officer: EmployeeOfficerRecord = {
+      reserveOfficer: input.reserveOfficer,
+      rank: input.rank ?? null,
+      weaponLicense:
+        input.weaponLicense == null
+          ? null
+          : { type: input.weaponLicense.type, expiry: input.weaponLicense.expiry ?? null },
+      professionPractice: input.professionPractice,
+      retirementDate: input.retirementDate ?? null,
+    };
+
+    const jsonOf = (v: unknown): string | null => (v == null ? null : JSON.stringify(v));
+    if (jsonOf(before.officer) === jsonOf(officer)) {
+      throw new BusinessRuleError('nothing to update');
+    }
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { officer },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'officer', old: jsonOf(before.officer), new: jsonOf(officer) }],
+    });
     return updated;
   }
 

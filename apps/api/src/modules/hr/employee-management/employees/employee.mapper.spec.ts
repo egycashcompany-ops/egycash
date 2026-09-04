@@ -57,6 +57,8 @@ const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
     status: 'probation',
     origin: 'recruitment',
     personal: personal(),
+    insurance: null,
+    officer: null,
     probation: {
       endDate: new Date('2026-12-20T00:00:00.000Z'),
       confirmedAt: null,
@@ -86,7 +88,7 @@ const baseDoc = (over: Partial<EmployeeDoc> = {}): EmployeeDoc =>
     ...over,
   }) as EmployeeDoc;
 
-const visible = { compensationVisible: true };
+const visible = { compensationVisible: true, insuranceVisible: true, officerVisible: true };
 
 describe('toEmployeeDto', () => {
   it('maps the permanent Global Employee Number, derived code, status, and hiring date', () => {
@@ -118,7 +120,7 @@ describe('toEmployeeDto', () => {
   });
 
   it('redacts salary and allowances without employee.viewCompensation', () => {
-    const dto = toEmployeeDto(baseDoc(), { compensationVisible: false });
+    const dto = toEmployeeDto(baseDoc(), { ...visible, compensationVisible: false });
     expect(dto.compensationVisible).toBe(false);
     expect(dto.employment.salary).toBeNull();
     expect(dto.employment.allowances).toEqual([]);
@@ -134,6 +136,90 @@ describe('toEmployeeDto', () => {
     expect(dto.employment.allowances).toEqual([{ name: 'transport', amount: 1000, currency: 'EGP' }]);
     expect(dto.employment.probationMonths).toBe(3);
     expect(dto.employment.startDate).toBe('2026-10-01T00:00:00.000Z');
+  });
+
+  /**
+   * The insurance and officer blocks, and the thing that makes them worth testing separately: each
+   * is `null` both when it was never filed AND when the caller may not read it, so the flag beside
+   * it is the only way to tell those apart. Getting that pair wrong does not fail a build — it
+   * either leaks a wage bracket or tells the UI an employee has no insurance file when they do.
+   */
+  const INSURANCE = {
+    insuranceNumber: '17987259',
+    occupation: 'اخصائي موارد بشرية',
+    occupationCode: '194200',
+    grossWage: 12600,
+    contributionWage: 12600,
+    basicWage: 2370,
+    employerShare: 2362.5,
+    employeeShare: 1386,
+    status: 'insured' as const,
+  };
+
+  const OFFICER = {
+    reserveOfficer: true,
+    rank: 'عميد',
+    weaponLicense: { type: 'company' as const, expiry: new Date('2026-12-13T00:00:00.000Z') },
+    professionPractice: true,
+    retirementDate: new Date('2022-07-01T00:00:00.000Z'),
+  };
+
+  it('surfaces the insurance file for a viewer, dates as ISO strings', () => {
+    const dto = toEmployeeDto(baseDoc({ insurance: INSURANCE }), visible);
+    expect(dto.insuranceVisible).toBe(true);
+    expect(dto.insurance).toEqual(INSURANCE);
+  });
+
+  it('redacts the insurance file without employee.viewInsurance', () => {
+    const dto = toEmployeeDto(baseDoc({ insurance: INSURANCE }), {
+      ...visible,
+      insuranceVisible: false,
+    });
+    expect(dto.insurance).toBeNull();
+    expect(dto.insuranceVisible).toBe(false);
+  });
+
+  it('distinguishes "no insurance file" from "redacted" by the flag alone', () => {
+    const absent = toEmployeeDto(baseDoc({ insurance: null }), visible);
+    expect(absent.insurance).toBeNull();
+    // The payload matches the redacted case above; only the flag separates them.
+    expect(absent.insuranceVisible).toBe(true);
+  });
+
+  it('surfaces the officer profile for a viewer', () => {
+    const dto = toEmployeeDto(baseDoc({ officer: OFFICER }), visible);
+    expect(dto.officerVisible).toBe(true);
+    expect(dto.officer).toEqual({
+      reserveOfficer: true,
+      rank: 'عميد',
+      weaponLicense: { type: 'company', expiry: '2026-12-13T00:00:00.000Z' },
+      professionPractice: true,
+      retirementDate: '2022-07-01T00:00:00.000Z',
+    });
+  });
+
+  it('redacts the officer profile without employee.viewOfficer', () => {
+    const dto = toEmployeeDto(baseDoc({ officer: OFFICER }), { ...visible, officerVisible: false });
+    expect(dto.officer).toBeNull();
+    expect(dto.officerVisible).toBe(false);
+  });
+
+  it('gates the three blocks independently — one permission never opens another', () => {
+    const dto = toEmployeeDto(baseDoc({ insurance: INSURANCE, officer: OFFICER }), {
+      compensationVisible: false,
+      insuranceVisible: true,
+      officerVisible: false,
+    });
+    expect(dto.employment.salary).toBeNull();
+    expect(dto.insurance).not.toBeNull();
+    expect(dto.officer).toBeNull();
+  });
+
+  it('never lets an insurance wage reach the employment salary', () => {
+    // The whole reason the two are separate: `basicWage` is a statutory bracket, not pay.
+    const dto = toEmployeeDto(baseDoc({ insurance: INSURANCE }), visible);
+    expect(dto.employment.salary).toEqual({ amount: 15000, currency: 'EGP' });
+    expect(dto.insurance?.basicWage).toBe(2370);
   });
 
   it('maps null recruitment references for a direct registration', () => {

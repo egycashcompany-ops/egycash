@@ -1,10 +1,15 @@
 // Employee DTO mapping. Dates are ISO strings; the national id is ALWAYS masked (Security
-// Architecture §3 — unmasking is a separate, audited path); salary/allowances are redacted
-// unless the caller holds `employee.viewCompensation` (`compensationVisible` tells the UI
-// whether "null" means "none" or "hidden").
+// Architecture §3 — unmasking is a separate, audited path). Three blocks are permission-gated and
+// each pairs its payload with a `…Visible` flag, because a redacted block and an absent one are
+// both `null` on the wire and mean opposite things:
+//   salary/allowances  ← employee.viewCompensation  (compensationVisible)
+//   insurance          ← employee.viewInsurance     (insuranceVisible)
+//   officer            ← employee.viewOfficer       (officerVisible)
 import {
   maskNationalId,
   type EmployeeDto,
+  type EmployeeInsuranceDto,
+  type EmployeeOfficerDto,
   type EmployeePersonalDto,
   type EmployeeStatusEventDto,
   type EmploymentDetailsDto,
@@ -111,6 +116,44 @@ const personalDto = (p: EmployeePersonalData): EmployeePersonalDto => ({
   })),
 });
 
+/**
+ * The insurance file, or null when it was never filed OR the caller may not see it. `EmployeeDto`
+ * carries `insuranceVisible` alongside so the UI can tell those two apart — a redacted block and an
+ * absent one look identical otherwise, and "no insurance file" is a very different statement from
+ * "you are not allowed to read this one".
+ */
+const insuranceDto = (doc: EmployeeDoc, visible: boolean): EmployeeInsuranceDto | null =>
+  !visible || doc.insurance == null
+    ? null
+    : {
+        insuranceNumber: doc.insurance.insuranceNumber,
+        occupation: doc.insurance.occupation,
+        occupationCode: doc.insurance.occupationCode,
+        grossWage: doc.insurance.grossWage,
+        contributionWage: doc.insurance.contributionWage,
+        basicWage: doc.insurance.basicWage,
+        employerShare: doc.insurance.employerShare,
+        employeeShare: doc.insurance.employeeShare,
+        status: doc.insurance.status,
+      };
+
+const officerDto = (doc: EmployeeDoc, visible: boolean): EmployeeOfficerDto | null =>
+  !visible || doc.officer == null
+    ? null
+    : {
+        reserveOfficer: doc.officer.reserveOfficer,
+        rank: doc.officer.rank,
+        weaponLicense:
+          doc.officer.weaponLicense == null
+            ? null
+            : {
+                type: doc.officer.weaponLicense.type,
+                expiry: iso(doc.officer.weaponLicense.expiry),
+              },
+        professionPractice: doc.officer.professionPractice,
+        retirementDate: iso(doc.officer.retirementDate),
+      };
+
 const probationDto = (doc: EmployeeDoc): EmployeeProbationDto | null =>
   doc.probation == null
     ? null
@@ -139,13 +182,20 @@ const periodDto = (p: { hiredAt: Date; exitedAt: Date | null; exitType: Employme
   exitType: p.exitType,
 });
 
-export const toEmployeeDto = (doc: EmployeeDoc, opts: { compensationVisible: boolean }): EmployeeDto => ({
+export const toEmployeeDto = (
+  doc: EmployeeDoc,
+  opts: { compensationVisible: boolean; insuranceVisible: boolean; officerVisible: boolean },
+): EmployeeDto => ({
   id: String(doc._id),
   employeeNumber: doc.employeeNumber,
   code: doc.code,
   status: doc.status,
   origin: doc.origin,
   personal: personalDto(doc.personal),
+  insurance: insuranceDto(doc, opts.insuranceVisible),
+  insuranceVisible: opts.insuranceVisible,
+  officer: officerDto(doc, opts.officerVisible),
+  officerVisible: opts.officerVisible,
   probation: probationDto(doc),
   exit: exitDto(doc),
   employmentPeriods: (doc.employmentPeriods ?? []).map(periodDto),

@@ -10,7 +10,7 @@ import {
   applyImportedHistory,
   type ImportedPeriod,
 } from '../modules/hr/employee-management/employees';
-import { nextEmployeeNumber } from '../modules/hr/employee-management/employees/employee-sequence';
+import { raiseEmployeeSequenceTo } from '../modules/hr/employee-management/employees/employee-sequence';
 import { logger } from '../infrastructure/logging/logger';
 import { type AuthContext } from '../shared/types';
 import { readWorkbook } from './read-workbook';
@@ -327,14 +327,7 @@ const personalOf = (row: SourceRow) => ({
  */
 const advanceSequencePast = async (people: readonly PersonPlan[]): Promise<void> => {
   const highest = people.reduce((max, p) => Math.max(max, Number(p.employeeNumber)), 0);
-  let issued = 0;
-  // The allocator only moves forward, one at a time — which is what makes it safe. Walking it is
-  // slower than a direct write and cannot get the counter into a state the allocator would not.
-  for (;;) {
-    const next = await nextEmployeeNumber();
-    issued += 1;
-    if (Number(next) > highest) break;
-    if (issued > highest + 10) throw new Error('employee sequence did not advance as expected');
-  }
-  logger.info({ highest, issued }, 'employee sequence advanced past the imported numbers');
+  if (highest === 0) return;
+  await raiseEmployeeSequenceTo(highest);
+  logger.info({ highest }, 'employee sequence raised past the imported numbers');
 };

@@ -26,6 +26,7 @@ import { userService } from '../../src/platform/users';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { employeeRepository } from '../../src/modules/hr/employee-management/employees';
 import { runImport } from '../../src/workforce-import/run';
+import { nextEmployeeNumber } from '../../src/modules/hr/employee-management/employees/employee-sequence';
 import { nextNationalId } from './helpers/national-id';
 
 let replSet: MongoMemoryReplSet | null = null;
@@ -126,10 +127,24 @@ const writeWorkbook = async (path: string, master: Person[], resignation: Person
   await wb.xlsx.writeFile(path);
 };
 
-beforeAll(async () => {
+/** The house pattern: an external Mongo when one is offered, otherwise an in-memory replica set. */
+const resolveMongoUri = async (): Promise<string> => {
+  const external = process.env.MONGO_TEST_URI;
+  const dbName = `ecms-workforce-import-test-${Date.now()}`;
+  if (external !== undefined && external !== '') {
+    const url = new URL(external);
+    url.pathname = `/${dbName}`;
+    return url.toString();
+  }
   replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-  process.env.MONGO_URI = replSet.getUri(`ecms-workforce-import-${Date.now()}`);
-  await bootPlatform({ modules: moduleManifests });
+  return replSet.getUri(dbName);
+};
+
+beforeAll(async () => {
+  // The URI is PASSED, not set on `process.env`: the env module parses once at import time, so a
+  // late assignment reaches nothing and the boot falls back to localhost. That is what turned this
+  // suite red on its first CI run.
+  await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
   dir = await mkdtemp(join(tmpdir(), 'workforce-import-'));
   const admin = await userService.create(
     {
@@ -294,7 +309,7 @@ describe('the workforce importer', () => {
    * `0001` and collides with an imported employee on `ux_code` — an import that looked fine and
    * hiring that breaks the following week.
    */
-  it('advances the global counter past every imported number', async () => {
+  it('raises the global counter past every imported number', async () => {
     const file = join(dir, 'high.xlsx');
     await writeWorkbook(
       file,
@@ -302,11 +317,24 @@ describe('the workforce importer', () => {
       [],
     );
     await runImport({ file, write: true, actorId: adminId });
-
-    const { nextEmployeeNumber } = await import(
-      '../../src/modules/hr/employee-management/employees/employee-sequence'
-    );
     expect(Number(await nextEmployeeNumber())).toBeGreaterThan(2717);
+  }, 240_000);
+
+  /**
+   * And it only ever raises. A second import whose highest number is LOWER must not wind the
+   * counter back — that would hand out a number somebody already holds, which is the one thing a
+   * sequence must never do.
+   */
+  it('never winds the counter backwards on a later, lower import', async () => {
+    const before = Number(await nextEmployeeNumber());
+    const file = join(dir, 'low.xlsx');
+    await writeWorkbook(
+      file,
+      [{ code: '0100007', nationalId: nextNationalId(), name: 'هالة سمير', hired: new Date('2022-02-01T00:00:00.000Z'), site: 'المهندسين' }],
+      [],
+    );
+    await runImport({ file, write: true, actorId: adminId });
+    expect(Number(await nextEmployeeNumber())).toBeGreaterThan(before);
   }, 240_000);
 
   it('refuses the workbook when a sheet is missing rather than importing half of it', async () => {

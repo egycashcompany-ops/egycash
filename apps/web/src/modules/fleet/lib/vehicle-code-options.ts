@@ -9,6 +9,7 @@
 //
 // Kept out of the components because it is the part with a rule in it, and the part a node-env
 // test can reach: a closed dropdown renders no options at all.
+import { matchesVehicleCode } from './vehicle-code-match';
 
 export interface VehicleCodeOption {
   value: string;
@@ -59,3 +60,29 @@ export const vehicleCodeOptions = (
     .map((code) => ({ value: code, label: code, shortLabel: code }));
   return [...kept, ...found];
 };
+
+/**
+ * The same narrowing, for a picker whose options are NOT a registry search — the alarms board,
+ * which passes the whole live board it already holds.
+ *
+ * There the typing has nothing to send anywhere, so the list has to be narrowed here or not at
+ * all, and "or not at all" is what it was: the control hands `MultiSelect` an `onSearch` on every
+ * screen (it is how a typed code is TAKEN into the selection), and `MultiSelect` reads the mere
+ * presence of that handler as "somebody else is filtering". Nobody was. Typing `150` on the alarms
+ * board left all of the fleet's codes on offer.
+ *
+ * `matchesVehicleCode` rather than a fresh comparison, so a code narrows this list exactly as it
+ * narrows the two roster boards — and an already-selected code stays on offer whatever is typed,
+ * which is the same promise `vehicleCodeOptions` keeps for the searched list: a filter you can set
+ * must stay one you can unset.
+ */
+export const narrowVehicleCodeOptions = <T extends { value: string }>(
+  // Whatever the caller's option shape is — only the code it carries is matched, and the option
+  // is handed back unchanged. The alarms board builds its own from the projection.
+  options: readonly T[],
+  typed: string,
+  selected: readonly string[],
+): T[] =>
+  options.filter(
+    (option) => selected.includes(option.value) || matchesVehicleCode(option.value, typed),
+  );

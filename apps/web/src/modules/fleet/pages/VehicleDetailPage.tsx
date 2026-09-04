@@ -99,7 +99,7 @@ const Row = ({
   </div>
 );
 
-const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
+export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -125,12 +125,54 @@ const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
         ? t('fleet.vehicle.alarmNone')
         : t(`fleet.dashboard.level.${alarm.level}`);
   const alarmCaption =
-    alarm === undefined || alarm.remainingKm === null
-      ? undefined
-      : alarm.remainingKm < 0
-        ? t('fleet.dashboard.overdueKm', { km: formatNumber(Math.abs(alarm.remainingKm), locale) })
-        : t('fleet.dashboard.remainingKm', { km: formatNumber(alarm.remainingKm, locale) });
+    alarm !== undefined && alarm.noAlarmReason !== null
+      ? // «لا يوجد» means two different things and the tile used to say only the word: a car with a
+        // healthy cycle, and a car whose cycle could not be measured at all. The server names the
+        // guard that stopped it, the alarms board prints that name, and this tile — where the empty
+        // caption sat — says the same sentence rather than leaving the reader to guess which of the
+        // two they are looking at. Read from the projection, never inferred here.
+        t(`fleet.alarms.noAlarmReason.${alarm.noAlarmReason}`)
+      : alarm === undefined || alarm.remainingKm === null
+        ? undefined
+        : alarm.remainingKm < 0
+          ? t('fleet.dashboard.overdueKm', {
+              km: formatNumber(Math.abs(alarm.remainingKm), locale),
+            })
+          : t('fleet.dashboard.remainingKm', { km: formatNumber(alarm.remainingKm, locale) });
   const visit = lastVisit.data?.items[0];
+  /**
+   * The service this tile names must be the one the countdown beside it is measured FROM.
+   *
+   * The visits query answers a different question — "the last closed visit of any kind" — and the
+   * two part company the moment a NON-counting visit closes after the baseline: the alarm keeps
+   * counting from the periodic service, while this tile moved on to the panel-beating that closed
+   * last week. Two «آخر صيانة» on one screen, one of them contradicting the remaining-km figure
+   * printed inches away, and a third answer on the alarms board.
+   *
+   * So the date comes from the projection, which is the server's own choice of baseline, and the
+   * counter is shown only when the visit this page happens to hold IS that baseline — identified
+   * by `lastServiceVisitId`, not by re-deciding which visit counts. A vehicle with no alarm row at
+   * all (the projection covers ACTIVE vehicles) keeps the visit-derived answer it has always had.
+   */
+  const baselineVisit =
+    visit === undefined || visit.outDate === null
+      ? undefined
+      : // No alarm row at all: nothing to contradict, and this tile is the only place the visit is
+        // shown. A row that names a DIFFERENT visit as the baseline is what the counter must not
+        // be printed under.
+        alarm === undefined || alarm.lastServiceVisitId === visit.id
+        ? visit
+        : undefined;
+  const lastServiceValue =
+    alarm !== undefined
+      ? alarm.lastServiceAt === null
+        ? t('fleet.vehicle.noService')
+        : formatDate(alarm.lastServiceAt, locale)
+      : alarms.data === undefined || lastVisit.data === undefined
+        ? undefined
+        : visit?.outDate == null
+          ? t('fleet.vehicle.noService')
+          : formatDate(visit.outDate, locale);
 
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -166,21 +208,19 @@ const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Element => {
         <FleetKpi
           label={t('fleet.vehicle.lastService')}
           icon={WrenchIcon}
-          value={
-            lastVisit.data === undefined
-              ? undefined
-              : visit?.outDate == null
-                ? t('fleet.vehicle.noService')
-                : formatDate(visit.outDate, locale)
-          }
+          value={lastServiceValue}
           caption={
-            visit?.outDate == null
+            baselineVisit === undefined
               ? undefined
-              : // The reading the car LEFT the workshop on — the same baseline the alarm counts
-                // from. Visits closed before that number was collected carry `null`, and fall
-                // back to the arrival reading, which is what those rows have always shown.
+              : // The reading the car LEFT the workshop on — of the visit the SERVER named as the
+                // baseline, so this number and the countdown above it describe one service. Visits
+                // closed before that reading was collected carry `null` and fall back to the
+                // arrival reading, which is what those rows have always shown.
                 t('fleet.vehicle.lastServiceAt', {
-                  km: formatNumber(visit.exitOdometer ?? visit.odometerAtService, locale),
+                  km: formatNumber(
+                    baselineVisit.exitOdometer ?? baselineVisit.odometerAtService,
+                    locale,
+                  ),
                 })
           }
         />
@@ -333,9 +373,7 @@ export const VehicleDetailPage = (): JSX.Element => {
                   </span>
                 </Row>
                 <Row label={t('fleet.vehicles.fields.licenseClass')}>
-                  {vehicle.licenseClassId === null
-                    ? '—'
-                    : (licenseClassName ?? '—')}
+                  {vehicle.licenseClassId === null ? '—' : (licenseClassName ?? '—')}
                 </Row>
                 <Row label={t('fleet.vehicles.fields.operation')}>
                   {vehicle.operationId === null ? '—' : (operationName ?? '—')}

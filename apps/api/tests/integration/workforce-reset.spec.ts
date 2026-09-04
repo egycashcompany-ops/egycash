@@ -45,9 +45,28 @@ const HR_ADMIN = oid();
 const STAFF = oid();
 const APPLICANT = oid();
 const EMPLOYEE = oid();
-const SUPER_ROLE = oid();
-const PLATFORM_ROLE = oid();
-const ESS_ROLE = oid();
+
+// Resolved in `seed()`, not generated here: the boot seeds some of these roles itself, so the
+// fixture has to adopt whatever id boot gave them rather than assert one of its own.
+let SUPER_ROLE: Types.ObjectId;
+let PLATFORM_ROLE: Types.ObjectId;
+let ESS_ROLE: Types.ObjectId;
+
+/**
+ * Adopt the role boot created, or create it. The boot already seeds `employee-self-service` (and
+ * may seed the two administrator roles), so inserting them here collides on `ux_key`; the id that
+ * matters is the one the assignments point at, whoever wrote the row.
+ */
+const ensureRole = async (key: string): Promise<Types.ObjectId> => {
+  await db()
+    .collection('roles')
+    .updateOne({ key } as never, { $setOnInsert: { key, isSystem: true } } as never, {
+      upsert: true,
+    });
+  const role = await db().collection('roles').findOne({ key } as never);
+  if (role === null) throw new Error(`role ${key} missing after upsert`);
+  return role._id as Types.ObjectId;
+};
 
 /**
  * Two administrators, two doomed accounts, and — the trap — the doomed ones hold
@@ -55,11 +74,9 @@ const ESS_ROLE = oid();
  * would spare them, and with them the entire workforce.
  */
 const seed = async (): Promise<void> => {
-  await db().collection('roles').insertMany([
-    { _id: SUPER_ROLE, key: 'super-admin', isSystem: true },
-    { _id: PLATFORM_ROLE, key: 'platform-admin', isSystem: true },
-    { _id: ESS_ROLE, key: 'employee-self-service', isSystem: true },
-  ] as never);
+  SUPER_ROLE = await ensureRole('super-admin');
+  PLATFORM_ROLE = await ensureRole('platform-admin');
+  ESS_ROLE = await ensureRole('employee-self-service');
 
   await db().collection('users').insertMany([
     { _id: ADMIN, username: 'admin@ecms.local', email: 'admin@ecms.local', employeeId: EMPLOYEE },
@@ -207,11 +224,18 @@ describe('the reset itself', () => {
     expect(offer?.code).toBe('JO-2026-000001');
   }, 240_000);
 
-  /** History is not rewritten because the actor's account was removed. */
+  /**
+   * History is not rewritten because the actor's account was removed. Scoped to this actor rather
+   * than counting the whole collection: the boot records its own entries (the org singleton, the
+   * seeded units), and this claim is about the entry whose author has just been deleted.
+   */
   it('leaves the audit trail alone, including entries by a deleted account', async () => {
-    const entries = await db().collection('audit_logs').find({}).toArray();
+    const entries = await db()
+      .collection('audit_logs')
+      .find({ userId: STAFF } as never)
+      .toArray();
     expect(entries).toHaveLength(1);
-    expect(String(entries[0]?.userId)).toBe(String(STAFF));
+    expect(entries[0]?.action).toBe('update');
   });
 
   /**

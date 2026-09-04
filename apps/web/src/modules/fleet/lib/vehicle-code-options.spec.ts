@@ -1,6 +1,10 @@
 // The rule a server-backed code picker lives or dies by: what you have chosen stays reachable.
 import { describe, expect, it } from 'vitest';
-import { vehicleCodeLabel, vehicleCodeOptions } from './vehicle-code-options';
+import {
+  narrowVehicleCodeOptions,
+  vehicleCodeLabel,
+  vehicleCodeOptions,
+} from './vehicle-code-options';
 
 const v = (code: string) => ({ code, plateNumber: `س ص ${code}` });
 
@@ -61,5 +65,50 @@ describe('vehicleCodeOptions', () => {
     const [option] = vehicleCodeOptions([v('150')], []);
     expect(option?.shortLabel).toBe('150');
     expect(option?.shortLabel).toBe(option?.label);
+  });
+});
+
+// ── The board's own list, narrowed here because nothing else narrows it ─────────────────────────
+//
+// The alarms board hands the picker every car it reports on instead of searching the registry, so
+// there is no request for the typing to change. `MultiSelect` reads the presence of an `onSearch`
+// handler as "somebody else is filtering" — and this control passes one on every screen, because
+// that is how a typed code is TAKEN into the selection. Nobody was filtering: typing narrowed
+// nothing at all, on a board that lists the whole fleet.
+describe('narrowVehicleCodeOptions', () => {
+  const opts = (...codes: string[]) =>
+    codes.map((code) => ({ value: code, label: code, shortLabel: code }));
+
+  it('narrows the passed-in list to what is being typed', () => {
+    expect(
+      narrowVehicleCodeOptions(opts('150', '151', '213'), '15', []).map((o) => o.value),
+    ).toEqual(['150', '151']);
+  });
+
+  it('an empty box asks nothing and keeps every car', () => {
+    for (const typed of ['', '   ', '-', ' - ']) {
+      expect(narrowVehicleCodeOptions(opts('150', '213'), typed, []).map((o) => o.value)).toEqual([
+        '150',
+        '213',
+      ]);
+    }
+  });
+
+  it('matches the code the same way the roster boards do — several codes are OR-ed', () => {
+    expect(
+      narrowVehicleCodeOptions(opts('150', '151', '213'), '150 - 213', []).map((o) => o.value),
+    ).toEqual(['150', '213']);
+  });
+
+  it('KEEPS a chosen code whatever is typed, or it cannot be un-chosen', () => {
+    // The same promise `vehicleCodeOptions` keeps for the searched list. A filter you can set must
+    // stay one you can unset, and the panel is the only place to un-tick it.
+    expect(
+      narrowVehicleCodeOptions(opts('150', '213'), '213', ['150']).map((o) => o.value),
+    ).toEqual(['150', '213']);
+  });
+
+  it('offers nothing when nothing matches and nothing is chosen', () => {
+    expect(narrowVehicleCodeOptions(opts('150', '213'), '999', [])).toEqual([]);
   });
 });

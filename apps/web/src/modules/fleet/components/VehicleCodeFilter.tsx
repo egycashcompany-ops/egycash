@@ -21,14 +21,15 @@
 //
 // The options come from the registry a shortlist at a time (`onSearch`), never from one page of
 // it: a fleet outgrows any page, and a joined-against list would silently stop at its size. Alarms
-// is the exception and passes its own `options` — it already holds the whole board.
+// is the exception and passes its own `options` — it already holds the whole board, and there the
+// typing narrows the list here rather than in a request nobody sends.
 import { useMemo, useState } from 'react';
 import { splitVehicleCodeList, vehicleCodeSearchQuery } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { useT } from '../../../platform/localization/useT';
 import { useVehicles } from '../api/fleet-queries';
 import { readTypedVehicleCodes } from '../lib/typed-vehicle-codes';
-import { vehicleCodeOptions } from '../lib/vehicle-code-options';
+import { narrowVehicleCodeOptions, vehicleCodeOptions } from '../lib/vehicle-code-options';
 
 /** How many cars one search offers. Enough to pick from, small enough to stay one request. */
 const SEARCH_SIZE = 50;
@@ -83,9 +84,16 @@ export const VehicleCodeFilter = ({
     remote,
   );
 
+  // Searched: the registry already answered for the fragment being typed. Passed in: nothing did,
+  // so the fragment narrows the list HERE — `MultiSelect` treats an `onSearch` handler as proof
+  // that somebody else is filtering, and this control passes one on every screen because that is
+  // how a typed code is taken into the selection.
   const shown = useMemo(
-    () => options ?? vehicleCodeOptions(vehicles.data?.items ?? [], value),
-    [options, vehicles.data, value.join(',')],
+    () =>
+      options === undefined
+        ? vehicleCodeOptions(vehicles.data?.items ?? [], value)
+        : narrowVehicleCodeOptions(options, search, value),
+    [options, vehicles.data, search, value.join(',')],
   );
 
   return (

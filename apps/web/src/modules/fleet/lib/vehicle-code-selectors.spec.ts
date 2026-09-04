@@ -321,3 +321,25 @@ describe('the census covers every registry query in the application', () => {
     ]);
   });
 });
+
+// ── The one selector that does NOT reach the registry ──────────────────────────────────────────
+describe('a picker given its own options narrows them itself', () => {
+  const FILTER = code('modules/fleet/components/VehicleCodeFilter.tsx');
+
+  it('narrows a passed-in list with the shared matcher', () => {
+    // The alarms board hands the control every car it reports on rather than searching, so no
+    // request changes as the reader types — and `MultiSelect` filters nothing of its own once an
+    // `onSearch` handler is present, which this control passes on every screen because that is how
+    // a typed code is taken into the selection. Typing on that board narrowed nothing at all.
+    expect(FILTER, 'the passed-in list is narrowed here').toContain('narrowVehicleCodeOptions(');
+    // …and specifically by what is being typed, not by some other value that happens to be in
+    // scope: `search` is the trailing fragment, the same thing the registry is asked for.
+    expect(FILTER).toMatch(/narrowVehicleCodeOptions\(\s*options,\s*search,\s*value\s*\)/);
+  });
+
+  it('does not hand a passed-in list straight through', () => {
+    // The shape that was there: `options ?? vehicleCodeOptions(...)` — the caller's list, verbatim,
+    // whatever was typed over it.
+    expect(FILTER).not.toMatch(/options\s*\?\?\s*vehicleCodeOptions/);
+  });
+});

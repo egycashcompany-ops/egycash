@@ -80,6 +80,16 @@ export class OrgResolver {
   private readonly sections = new Map<string, string>();
   private readonly jobTitles = new Map<string, string>();
   readonly created = { branches: 0, departments: 0, sections: 0, jobTitles: 0 };
+  /**
+   * Codes minted during THIS run, across all three catalogs.
+   *
+   * The listing a creation allocates against is fetched before the creation, so two units made in
+   * quick succession would both see the same highest existing code and pick the same next one. This
+   * is what the listing cannot yet know. One array for all three prefixes is deliberate — the codes
+   * are prefixed, so they cannot collide across catalogs, and one list cannot fall out of step with
+   * itself the way three would.
+   */
+  private readonly mintedCodes: string[] = [];
   readonly problems: OrgProblem[] = [];
 
   constructor(
@@ -171,9 +181,14 @@ export class OrgResolver {
       return this.departments.get(cacheKey) as string;
     }
     const made = await departmentService.create(
-      { code: nextCode('DEP', this.created.departments), name: { ar: name, en: name }, branchId },
+      {
+        code: nextFreeCode('DEP', [...page.items.map((d) => d.code), ...this.mintedCodes]),
+        name: { ar: name, en: name },
+        branchId,
+      },
       this.actorId,
     );
+    this.mintedCodes.push(made.code);
     this.created.departments += 1;
     const id = String(made._id);
     this.departments.set(cacheKey, id);
@@ -204,9 +219,14 @@ export class OrgResolver {
       return this.sections.get(cacheKey) as string;
     }
     const made = await sectionService.create(
-      { code: nextCode('SEC', this.created.sections), name: { ar: name, en: name }, departmentId },
+      {
+        code: nextFreeCode('SEC', [...page.items.map((x) => x.code), ...this.mintedCodes]),
+        name: { ar: name, en: name },
+        departmentId,
+      },
       this.actorId,
     );
+    this.mintedCodes.push(made.code);
     this.created.sections += 1;
     const id = String(made._id);
     this.sections.set(cacheKey, id);
@@ -234,7 +254,7 @@ export class OrgResolver {
     }
     const made = await jobTitleService.create(
       {
-        code: nextCode('JOB', this.created.jobTitles),
+        code: nextFreeCode('JOB', [...page.items.map((t) => t.code), ...this.mintedCodes]),
         name: { ar: name, en: name },
         // A grade is required and the workbook has no column for one. `IMPORTED` names where the
         // title came from instead of inventing a grade nobody assigned — HR grades them afterwards,
@@ -243,6 +263,7 @@ export class OrgResolver {
       },
       this.actorId,
     );
+    this.mintedCodes.push(made.code);
     this.created.jobTitles += 1;
     const id = String(made._id);
     this.jobTitles.set(key, id);
@@ -265,6 +286,19 @@ export class OrgResolver {
   }
 }
 
-/** Unit codes must match `^[A-Z0-9][A-Z0-9-]{0,19}$`; the sheet supplies names, not codes. */
-const nextCode = (prefix: string, made: number): string =>
-  `${prefix}-${String(made + 1).padStart(4, '0')}`;
+/**
+ * Allocate the next free `PREFIX-0000` code, counting from what the DATABASE already holds.
+ *
+ * Seeding from this run's own creation count was a real defect, and CI caught it: unit codes are
+ * globally unique, so a SECOND run — the re-run after fixing the rejected rows, say — started again
+ * at `DEP-0001` and collided with the department the first run had made. The failure surfaced as a
+ * person who could not be imported, with the duplicate-key error buried in their rejection reason.
+ */
+export const nextFreeCode = (prefix: string, existing: readonly string[]): string => {
+  const pattern = new RegExp(`^${prefix}-(\\d+)$`, 'u');
+  const highest = existing.reduce((max, code) => {
+    const m = pattern.exec(code);
+    return m === null ? max : Math.max(max, Number(m[1]));
+  }, 0);
+  return `${prefix}-${String(highest + 1).padStart(4, '0')}`;
+};

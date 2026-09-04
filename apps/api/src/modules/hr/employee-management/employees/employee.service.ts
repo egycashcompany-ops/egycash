@@ -21,6 +21,8 @@ import {
   type EmployeeTimelineItemDto,
   type ListEmployeesQuery,
   type Paginated,
+  type UpdateEmployeeInsurance,
+  type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
   EMPLOYED_STATUSES,
   type EmployeeLoginProvisionDto,
@@ -54,6 +56,8 @@ import {
   EmployeeModel,
   type EmployeeDoc,
   type EmployeeMoney,
+  type EmployeeInsuranceRecord,
+  type EmployeeOfficerRecord,
   type EmployeePersonalData,
   type EmployeeProbation,
   type EmployeeStatusEvent,
@@ -232,6 +236,10 @@ class EmployeeService {
           status: entry.status,
           origin: 'recruitment',
           personal: personalFromApplicant(applicant),
+          // A pipeline hire has no insurance file or officer profile yet — the applicant record
+          // carries neither, and HR files them after the hire through their own endpoints.
+          insurance: null,
+          officer: null,
           probation: entry.probation,
           exit: null,
           employmentPeriods: [{ hiredAt, exitedAt: null, exitType: null }],
@@ -297,6 +305,32 @@ class EmployeeService {
     ctx: AuthContext,
     input: DirectRegisterEmployee,
     scope: ScopeSelector,
+    /**
+     * `provisionLogin: false` creates the employee and NOTHING ELSE — no account, and therefore no
+     * WhatsApp message and no email carrying a setup link. Defaults to true, so every existing
+     * caller behaves exactly as before.
+     *
+     * It exists for the go-live workforce import, where the default would mean ~1,670 real people
+     * receiving a login they were never told to expect, in one burst, with no way to recall it.
+     * Accounts for imported staff are issued deliberately afterwards, in whatever order the company
+     * chooses, through the endpoint that already does that one at a time.
+     */
+    opts: {
+      provisionLogin?: boolean;
+      /**
+       * Use an ALREADY-ISSUED identity instead of allocating a new one.
+       *
+       * Only the go-live import passes this, and only because the codes it carries were issued by
+       * the company years ago and are printed on contracts and insurance filings. ADR-017 says a
+       * code is issued once and frozen; loading history is that issuance having already happened,
+       * not a second way to mint one. Every other caller allocates from the global counter, which
+       * is what keeps numbers unique.
+       *
+       * The caller is responsible for advancing the counter past what it imports, or the next real
+       * hire collides with an imported code on `ux_code`.
+       */
+      identity?: { code: string; employeeNumber: string };
+    } = {},
   ): Promise<{ doc: EmployeeDoc; provisionedLogin: EmployeeLoginProvisionDto | null }> {
     void scope;
     const identity = input.personal.identity;
@@ -422,8 +456,10 @@ class EmployeeService {
 
     const branch = await branchService.getById(e.branchId);
     const doc = await unitOfWork(async (session) => {
-      const employeeNumber = await nextEmployeeNumber(session);
-      const code = buildEmployeeCode(branch.code, employeeNumber);
+      const employeeNumber = opts.identity?.employeeNumber ?? (await nextEmployeeNumber(session));
+      // The hiring branch's code, composed once, here (ADR-017) — unless the identity was issued
+      // long before this system existed and is simply being loaded.
+      const code = opts.identity?.code ?? buildEmployeeCode(branch.code, employeeNumber);
       const hireEvent: EmployeeStatusEvent = {
         from: null,
         to: entry.status,
@@ -440,6 +476,38 @@ class EmployeeService {
           status: entry.status,
           origin: 'direct',
           personal,
+          // Both blocks are optional on the input and null when omitted — "nobody has filed this
+          // yet" is the honest state, and an empty sub-document would claim a filing exists.
+          insurance:
+            input.insurance === undefined
+              ? null
+              : {
+                  insuranceNumber: input.insurance.insuranceNumber ?? null,
+                  occupation: input.insurance.occupation ?? null,
+                  occupationCode: input.insurance.occupationCode ?? null,
+                  grossWage: input.insurance.grossWage ?? null,
+                  contributionWage: input.insurance.contributionWage ?? null,
+                  basicWage: input.insurance.basicWage ?? null,
+                  employerShare: input.insurance.employerShare ?? null,
+                  employeeShare: input.insurance.employeeShare ?? null,
+                  status: input.insurance.status ?? null,
+                },
+          officer:
+            input.officer === undefined
+              ? null
+              : {
+                  reserveOfficer: input.officer.reserveOfficer,
+                  rank: input.officer.rank ?? null,
+                  weaponLicense:
+                    input.officer.weaponLicense == null
+                      ? null
+                      : {
+                          type: input.officer.weaponLicense.type,
+                          expiry: input.officer.weaponLicense.expiry ?? null,
+                        },
+                  professionPractice: input.officer.professionPractice,
+                  retirementDate: input.officer.retirementDate ?? null,
+                },
           probation: entry.probation,
           exit: null,
           employmentPeriods: [{ hiredAt, exitedAt: null, exitType: null }],
@@ -479,9 +547,15 @@ class EmployeeService {
       jobOfferId: null,
       origin: 'direct',
     });
-    await this.notifyHire(doc);
-    const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
-    return { doc, provisionedLogin };
+    // Both of these REACH A HUMAN, so both follow the same switch: a manager does not need a
+    // notification about a hire that happened three years ago, and nobody should be texted a
+    // password because their historical record was loaded.
+    if (opts.provisionLogin !== false) {
+      await this.notifyHire(doc);
+      const provisionedLogin = await this.ensureLoginFor(doc, ctx.userId);
+      return { doc, provisionedLogin };
+    }
+    return { doc, provisionedLogin: null };
   }
 
   /**
@@ -641,6 +715,98 @@ class EmployeeService {
       { by: ctx.userId, version: input.version, scope },
     );
     await auditService.record({ entityRef: entityRef(id), action: 'update', changes });
+    return updated;
+  }
+
+  /**
+   * Replace the social-insurance file whole. Like `updatePersonal` this is a plain audited update,
+   * NOT a personnel action: nobody was promoted or moved because the insurance authority reissued a
+   * number. The block is replaced rather than merged, so clearing a field is expressible — a filing
+   * that no longer carries an occupation code must be able to say so.
+   *
+   * The audit entry records the FIELDS that changed, never their values: these are wage figures.
+   */
+  async updateInsurance(
+    ctx: AuthContext,
+    id: string,
+    input: UpdateEmployeeInsurance,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const before = await employeeRepository.getById(id, scope);
+    const insurance: EmployeeInsuranceRecord = {
+      insuranceNumber: input.insuranceNumber ?? null,
+      occupation: input.occupation ?? null,
+      occupationCode: input.occupationCode ?? null,
+      grossWage: input.grossWage ?? null,
+      contributionWage: input.contributionWage ?? null,
+      basicWage: input.basicWage ?? null,
+      employerShare: input.employerShare ?? null,
+      employeeShare: input.employeeShare ?? null,
+      status: input.status ?? null,
+    };
+
+    const fields: (keyof EmployeeInsuranceRecord)[] = [
+      'insuranceNumber',
+      'occupation',
+      'occupationCode',
+      'grossWage',
+      'contributionWage',
+      'basicWage',
+      'employerShare',
+      'employeeShare',
+      'status',
+    ];
+    const changed = fields.filter((key) => (before.insurance?.[key] ?? null) !== insurance[key]);
+    if (changed.length === 0) throw new BusinessRuleError('nothing to update');
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { insurance },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      // Field names only — a wage bracket is not written into the audit trail in the clear.
+      changes: changed.map((field) => ({ field: `insurance.${field}`, old: '[redacted]', new: '[redacted]' })),
+    });
+    return updated;
+  }
+
+  /** Replace the officer/armed-security profile whole. Same rules as `updateInsurance`. */
+  async updateOfficer(
+    ctx: AuthContext,
+    id: string,
+    input: UpdateEmployeeOfficer,
+    scope: ScopeSelector,
+  ): Promise<EmployeeDoc> {
+    const before = await employeeRepository.getById(id, scope);
+    const officer: EmployeeOfficerRecord = {
+      reserveOfficer: input.reserveOfficer,
+      rank: input.rank ?? null,
+      weaponLicense:
+        input.weaponLicense == null
+          ? null
+          : { type: input.weaponLicense.type, expiry: input.weaponLicense.expiry ?? null },
+      professionPractice: input.professionPractice,
+      retirementDate: input.retirementDate ?? null,
+    };
+
+    const jsonOf = (v: unknown): string | null => (v == null ? null : JSON.stringify(v));
+    if (jsonOf(before.officer) === jsonOf(officer)) {
+      throw new BusinessRuleError('nothing to update');
+    }
+
+    const updated = await employeeRepository.updateById(
+      id,
+      { officer },
+      { by: ctx.userId, version: input.version, scope },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'officer', old: jsonOf(before.officer), new: jsonOf(officer) }],
+    });
     return updated;
   }
 

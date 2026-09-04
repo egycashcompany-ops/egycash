@@ -39,3 +39,32 @@ export const nextEmployeeNumber = async (session?: ClientSession): Promise<strin
     .exec();
   return formatEmployeeNumber(doc.value);
 };
+
+/**
+ * Raise the counter so the next allocation is above `value` — for loading employees whose numbers
+ * were issued long before this system existed (the go-live import).
+ *
+ * Without it the next real hire is allocated `0001` and collides with an imported employee on the
+ * unique `code` index: an import that looked fine, and hiring that breaks the following week.
+ *
+ * MONOTONIC BY CONSTRUCTION. The `value: { $lt: value }` filter is what makes a `$set` safe here —
+ * the write matches nothing once the counter is already high enough, so this can only ever raise
+ * the counter and never hand back a number twice, whoever calls it and however often. Doing it by
+ * walking `nextEmployeeNumber` would be one round trip PER NUMBER — 2,718 of them for the go-live
+ * workforce — to reach a state one atomic operation expresses exactly.
+ */
+export const raiseEmployeeSequenceTo = async (value: number): Promise<void> => {
+  if (!Number.isInteger(value) || value < 0) throw new Error('sequence floor must be a whole number');
+  await HrSequenceModel.updateOne(
+    { _id: EMPLOYEE_SEQUENCE_KEY, value: { $lt: value } },
+    { $set: { value } },
+    { upsert: false },
+  ).exec();
+  // `upsert: false` above cannot create the document, so a database that has never hired anybody
+  // needs the row put there — with the same floor, and only if it is still absent.
+  await HrSequenceModel.updateOne(
+    { _id: EMPLOYEE_SEQUENCE_KEY },
+    { $setOnInsert: { value } },
+    { upsert: true },
+  ).exec();
+};

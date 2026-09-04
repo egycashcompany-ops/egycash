@@ -23,6 +23,8 @@ import {
   type Paginated,
   type RehireAction,
   type RehireCheckResultDto,
+  type UpdateEmployeeInsurance,
+  type UpdateEmployeeOfficer,
   type RoleAssignmentDto,
   type UpdateEmployeePersonal,
   type UpdateUser,
@@ -53,6 +55,18 @@ export const registerEmployeeDirect = (
 /** Post-hire personal-data edits — plain audited updates, not personnel actions. */
 export const updateEmployeePersonal = (id: string, body: UpdateEmployeePersonal): Promise<EmployeeDto> =>
   patch<EmployeeDto>(`/hr/employees/${id}/personal`, body);
+
+/** The social-insurance file — replaced whole, so clearing a field is expressible. */
+export const updateEmployeeInsurance = (
+  id: string,
+  body: UpdateEmployeeInsurance,
+): Promise<EmployeeDto> => patch<EmployeeDto>(`/hr/employees/${id}/insurance`, body);
+
+/** The officer / armed-security profile — replaced whole, same as the insurance file. */
+export const updateEmployeeOfficer = (
+  id: string,
+  body: UpdateEmployeeOfficer,
+): Promise<EmployeeDto> => patch<EmployeeDto>(`/hr/employees/${id}/officer`, body);
 
 /** Exited-employee match for a national id (the Rehire prompt). */
 export const rehireCheck = (nationalId: string): Promise<RehireCheckResultDto | null> =>

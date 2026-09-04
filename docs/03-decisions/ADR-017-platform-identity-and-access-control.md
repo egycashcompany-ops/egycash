@@ -47,19 +47,34 @@ and `organization` are **kept** (backward compatible); `section` and `department
 - Accounts are **enabled/disabled** through the existing status lifecycle — an employee who leaves is
   **disabled, never deleted** (history is preserved). Password reset is unchanged.
 
-### 3. Permanent Global Employee Number + a branch-derived Employee Code
+### 3. Permanent Global Employee Number + an Employee Code issued at hire
 
-- The **permanent identity** is the **Global Employee Number** — a company-wide, monotonic, zero-padded
-  sequence (e.g. `000125`) that **never changes** and is globally unique. It is allocated from a
-  **single global** atomic `$inc` sequence (BD-002) on one key inside the hiring transaction —
-  concurrency-safe, no duplicates (a unique `employeeNumber` index backs it). The database treats it
-  (with the Employee `_id`) as the permanent identity.
-- The **displayed Employee Code** is **derived**: `<CurrentBranchCode><GlobalEmployeeNumber>`
-  (e.g. `001` + `000125` → `001000125`). It immediately tells you the employee's current branch.
-- On a **branch transfer**, only the branch prefix changes (`001000125` → `004000125`); the Global
-  Employee Number is fixed. The code is denormalized for search/display and recomputed from
-  `buildEmployeeCode(currentBranchCode, employeeNumber)` whenever the branch changes — the reusable
-  seam a future transfer uses. It is never manually editable.
+- The **permanent identity** is the **Global Employee Number** — a company-wide, monotonic,
+  zero-padded sequence (e.g. `0125`) that **never changes**. It is allocated from a **single global**
+  atomic `$inc` sequence (BD-002) on one key inside the hiring transaction, which is what makes it
+  unique: uniqueness is a property of how numbers are made, not of an index. It is **four digits**
+  wide, matching the numbering the company already uses, and widens past `9999` without truncating.
+- The **Employee Code** is `<BranchCodeAtHire><GlobalEmployeeNumber>` (e.g. `010` + `0004` →
+  `0100004`). It is **composed once, at hire, and stored**. It tells you which branch *hired* the
+  employee — where they work *now* is `branchId`, and only that moves.
+- **Nothing recomputes the code afterwards.** Not a branch transfer, not a rehire into another
+  branch, not a super-admin correcting the branch's own code. `buildEmployeeCode` is called by the
+  two hire paths and nowhere else; `code-freeze.spec.ts` reads the sources and enforces this.
+- **`employeeNumber` is indexed but NOT unique-indexed.** The allocator cannot issue a number twice,
+  so the index was only ever a second line of defence — and the go-live workforce carries two
+  numbers the company itself issued twice on paper (`1311`, `1651`; four people, all exited). A
+  unique index would have forced a renumbering, and renumbering rewrites a code printed on
+  contracts and insurance filings. `code` carries the unique index instead.
+
+**Why frozen, when the opposite rule stood here first.** A derived code keeps the prefix honest
+about where somebody works, which is genuinely useful. It was overturned by evidence: of the 2,699
+employees in the go-live workforce, **148 carry a prefix from a branch they no longer work at** —
+the company transfers people and their code stays. Re-deriving on import would have renamed 148
+real people whose code appears on documents nobody reissues. The prefix answers *who hired you*.
+
+*Consequence to hold onto:* `code` is **not** reconstructible from an employee's current row.
+`buildEmployeeCode(currentBranch.code, employeeNumber)` may legitimately differ from the stored
+`code`. Read the stored value; never re-derive one to compare against it.
 
 ### 4. Branch Code is immutable — except super-admin
 

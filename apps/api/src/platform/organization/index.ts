@@ -36,11 +36,6 @@ export {
 } from './sections';
 export { jobTitleService, buildJobTitlesRouter, type JobTitleDoc } from './job-titles';
 export {
-  registerBranchCodeChangeHandler,
-  clearBranchCodeChangeHandlers,
-  type BranchCodeChangeHandler,
-} from './branches/branch-code-seam';
-export {
   costCenterService,
   buildCostCentersRouter,
   costCenterRepository,

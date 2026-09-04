@@ -49,16 +49,24 @@ records can the user see?" — orthogonal to permissions ("what can the user do?
 - **Disable, never delete.** Departing employees are suspended/archived through the existing status
   lifecycle; history is preserved.
 
-## 3. Permanent Global Employee Number + derived Employee Code
+## 3. Permanent Global Employee Number + an Employee Code issued at hire
 
-The **permanent identity** is the **Global Employee Number** (e.g. `000125`) — a **single global
-atomic counter** (`hr_sequences` key `employee:global`, `$inc` in a transaction), company-wide unique,
-never reused, never changed (unique `employeeNumber` index). The **displayed Employee Code** is
-**derived** as `<CurrentBranchCode><GlobalEmployeeNumber>` (e.g. `001000125`) — it always reflects the
-employee's current branch. On a branch transfer only the prefix changes (`004000125`); the number is
-fixed, and the code is recomputed via `buildEmployeeCode(currentBranchCode, employeeNumber)`. Never
-manually editable. The **Branch Code** is immutable after creation except for a super-admin
-(`PATCH /platform/branches/:id/code`).
+The **permanent identity** is the **Global Employee Number** (e.g. `0125`) — a **single global atomic
+counter** (`hr_sequences` key `employee:global`, `$inc` in a transaction), four digits wide, never
+reused, never changed. The counter is what makes it unique; `employeeNumber` carries a plain index,
+not a unique one (see ADR-017 §3 for the two legacy numbers that settled this).
+
+The **Employee Code** is `<BranchCodeAtHire><GlobalEmployeeNumber>` (e.g. `0100004`), **composed once
+at hire by `buildEmployeeCode` and then frozen**. Nothing recomputes it — not a transfer, not a
+rehire into another branch, not a super-admin correcting the branch's code. It records which branch
+*hired* the employee; `branchId` records where they are *now*, and only that moves. `code` carries
+the unique index, and is never manually editable.
+
+Do not re-derive a code to compare against the stored one: for anyone who has transferred, the two
+legitimately differ. `code-freeze.spec.ts` reads the sources and holds this rule in place.
+
+The **Branch Code** is immutable after creation except for a super-admin
+(`PATCH /platform/branches/:id/code`), and changing it deliberately leaves every employee code alone.
 
 ## 4. Minimal UI (this phase)
 

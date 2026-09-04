@@ -156,6 +156,128 @@ export const UpdateEmployeePersonalSchema = z
   .strict();
 export type UpdateEmployeePersonal = z.infer<typeof UpdateEmployeePersonalSchema>;
 
+// ── Social insurance (التأمينات الاجتماعية) ─────────────────────────────────
+//
+// The employee's file with the national social-insurance authority. It is deliberately NOT part of
+// `employment`, and the wages here are deliberately NOT `employment.salary`.
+//
+// WHY THAT SEPARATION IS THE WHOLE POINT. `اجر الاشتراك` and `الاجر الأساسي` are STATUTORY BRACKET
+// FIGURES — the workforce this was built for shows six distinct values of `الاجر الأساسي` across
+// 1,673 employees (2540, 2370, 2720, 2210, 1920, 0). They are what contributions are computed on,
+// not what anybody is paid. Writing them into `salary` would state a false fact about somebody's
+// pay in the field payroll reads, so the two never touch.
+
+/** Whether the employee is registered with the insurance authority (`الحالة التأمينية`). */
+export const INSURANCE_STATUSES = ['insured', 'notInsured'] as const;
+export const InsuranceStatusSchema = z.enum(INSURANCE_STATUSES);
+export type InsuranceStatus = z.infer<typeof InsuranceStatusSchema>;
+
+/**
+ * A wage figure on the insurance file. Non-negative, and capped well above any real bracket so a
+ * mistyped figure is rejected rather than stored.
+ */
+const insuranceWage = z.number().nonnegative().max(10_000_000);
+
+export const EmployeeInsuranceSchema = z
+  .object({
+    /** `الرقم التاميني` — the authority's own number for this person. */
+    insuranceNumber: z.string().trim().min(1).max(32).nullish(),
+    /** `المهنة` — the occupation AS FILED, which is not always the ECMS job title. */
+    occupation: z.string().trim().min(1).max(120).nullish(),
+    /** `كود المهنة` — the authority's occupation code, e.g. `110510`. */
+    occupationCode: z.string().trim().min(1).max(32).nullish(),
+    /** `الاجر الشامل`. */
+    grossWage: insuranceWage.nullish(),
+    /** `اجر الاشتراك` — the wage contributions are computed on. */
+    contributionWage: insuranceWage.nullish(),
+    /** `الاجر الأساسي` — a statutory bracket, NOT the employee's basic pay. */
+    basicWage: insuranceWage.nullish(),
+    /**
+     * `حصة الشركة` / `حصة العامل`. Stored AS FILED rather than computed, even though they are
+     * ordinarily `contributionWage × 0.1875` and `× 0.11`: in the go-live data three rows disagree
+     * with the formula, and those three are data the company filed. A computed field would erase
+     * the discrepancy instead of surfacing it.
+     */
+    employerShare: insuranceWage.nullish(),
+    employeeShare: insuranceWage.nullish(),
+    status: InsuranceStatusSchema.nullish(),
+  })
+  .strict();
+export type EmployeeInsurance = z.infer<typeof EmployeeInsuranceSchema>;
+
+export const UpdateEmployeeInsuranceSchema = EmployeeInsuranceSchema.extend({
+  version: z.number().int().min(0),
+}).strict();
+export type UpdateEmployeeInsurance = z.infer<typeof UpdateEmployeeInsuranceSchema>;
+
+export interface EmployeeInsuranceDto {
+  insuranceNumber: string | null;
+  occupation: string | null;
+  occupationCode: string | null;
+  grossWage: number | null;
+  contributionWage: number | null;
+  basicWage: number | null;
+  employerShare: number | null;
+  employeeShare: number | null;
+  status: InsuranceStatus | null;
+}
+
+// ── Officer & armed-security profile (بيانات الضباط) ────────────────────────
+//
+// Retired-officer and armed-guard facts, which a cash-in-transit company must hold and which have
+// no home anywhere else: a weapon licence and its expiry, a military rank, whether the profession
+// licence was issued, and the date of referral to pension. Sparse by nature — around a tenth of the
+// workforce carries any of it — so the whole block is null for everybody else rather than a row of
+// empty fields on every employee.
+
+/** `رخصة السلاح` — who the weapon licence is held by/for. */
+export const WEAPON_LICENSE_TYPES = ['personal', 'company', 'motorcycle'] as const;
+export const WeaponLicenseTypeSchema = z.enum(WEAPON_LICENSE_TYPES);
+export type WeaponLicenseType = z.infer<typeof WeaponLicenseTypeSchema>;
+
+export const WeaponLicenseSchema = z
+  .object({
+    type: WeaponLicenseTypeSchema,
+    /** `تاريخ انتهاء رخصة السلاح` — null when the licence carries no recorded expiry. */
+    expiry: z.coerce.date().nullish(),
+  })
+  .strict();
+export type WeaponLicense = z.infer<typeof WeaponLicenseSchema>;
+
+export const EmployeeOfficerSchema = z
+  .object({
+    /** `ظابط احتياط` — a reserve officer. */
+    reserveOfficer: z.boolean().default(false),
+    /** `الرتبة` — the military rank as recorded, e.g. `عميد`, `عقيد`. Free text: the rank
+     *  vocabulary is the armed forces', not ours, and a closed enum here would reject reality. */
+    rank: z.string().trim().min(1).max(80).nullish(),
+    weaponLicense: WeaponLicenseSchema.nullish(),
+    /** `مزاولة المهنة` — the profession-practice licence has been issued. */
+    professionPractice: z.boolean().default(false),
+    /** `تاريخ الاحالة للمعاش للظباط` — referral to pension. */
+    retirementDate: z.coerce.date().nullish(),
+  })
+  .strict();
+export type EmployeeOfficer = z.infer<typeof EmployeeOfficerSchema>;
+
+export const UpdateEmployeeOfficerSchema = EmployeeOfficerSchema.extend({
+  version: z.number().int().min(0),
+}).strict();
+export type UpdateEmployeeOfficer = z.infer<typeof UpdateEmployeeOfficerSchema>;
+
+export interface WeaponLicenseDto {
+  type: WeaponLicenseType;
+  expiry: string | null;
+}
+
+export interface EmployeeOfficerDto {
+  reserveOfficer: boolean;
+  rank: string | null;
+  weaponLicense: WeaponLicenseDto | null;
+  professionPractice: boolean;
+  retirementDate: string | null;
+}
+
 // ── Create from an Accepted Job Offer (recruitment hire path) ───────────────
 
 /**
@@ -202,6 +324,13 @@ export const DirectRegisterEmployeeSchema = z
     hiringDate: z.coerce.date().optional(),
     /** Tenured staff being backfilled may start straight at `active`. */
     entryStatus: z.enum(['probation', 'active']).default('probation'),
+    /**
+     * Optional at registration, and both need their own permission to supply — a caller holding
+     * only `employee.registerDirect` may not write a wage bracket or a weapon licence in passing.
+     * Omitted leaves the block null, which is the honest state for "nobody has filed this yet".
+     */
+    insurance: EmployeeInsuranceSchema.optional(),
+    officer: EmployeeOfficerSchema.optional(),
   })
   .strict();
 export type DirectRegisterEmployee = z.infer<typeof DirectRegisterEmployeeSchema>;
@@ -426,11 +555,12 @@ export interface EmployeeStatusEventDto {
 
 export interface EmployeeDto {
   id: string;
-  /** Permanent identity: the Global Employee Number, e.g. `000125` — never changes (ADR-017). */
+  /** Permanent identity: the Global Employee Number, e.g. `0125` — never changes (ADR-017). */
   employeeNumber: string;
   /**
-   * Displayed Employee Code, derived as `<CurrentBranchCode><employeeNumber>`, e.g. `001000125`.
-   * On a branch transfer only the prefix changes (→ `004000125`); the number stays fixed.
+   * The Employee Code, `<BranchCodeAtHire><employeeNumber>` (e.g. `0100004`) — composed once at
+   * hire and frozen (ADR-017). It is NOT a projection of the employee's current branch: someone
+   * hired in `010` and since transferred still reads `010…`. Never re-derive it for comparison.
    */
   code: string;
   status: EmployeeStatus;
@@ -456,6 +586,16 @@ export interface EmployeeDto {
   employment: EmploymentDetailsDto;
   /** false when salary/allowances were redacted for the caller (no `employee.viewCompensation`). */
   compensationVisible: boolean;
+  /**
+   * The social-insurance file, or null. Null is ambiguous on its own — "not filed" and "you may not
+   * see it" look identical — so `insuranceVisible` disambiguates, exactly as `compensationVisible`
+   * does for salary. Redacted for callers without `employee.viewInsurance`.
+   */
+  insurance: EmployeeInsuranceDto | null;
+  insuranceVisible: boolean;
+  /** The officer/armed-security profile, or null. Redacted without `employee.viewOfficer`. */
+  officer: EmployeeOfficerDto | null;
+  officerVisible: boolean;
   hiredAt: string;
   version: number;
   createdAt: string;
@@ -533,10 +673,20 @@ export const EmployeeActionAppliedPayloadV1 = z.object({
   type: z.string(),
 });
 
-/** Emitted on branch transfers so future modules (badges, payroll keys) can re-key. */
+/**
+ * Emitted on branch transfers so downstream modules (badges, payroll keys) can re-key on the
+ * employee's new placement — `branchId` is the field that carries the move.
+ *
+ * `oldCode`/`newCode` are RETAINED, EQUAL, AND DEPRECATED. The Employee Code is frozen at hire
+ * (ADR-017): a transfer no longer renames anybody, so both fields carry the employee's unchanged
+ * code. They stay in the payload because the event catalogue is a published surface and automations
+ * may already read them; do not build anything new on them, and do not read a rename out of them.
+ */
 export const EmployeeTransferredPayloadV1 = z.object({
   employeeId: objectId(),
+  /** @deprecated Always equal to `newCode` — the code does not change on transfer. */
   oldCode: z.string(),
+  /** @deprecated Always equal to `oldCode` — the code does not change on transfer. */
   newCode: z.string(),
   branchId: objectId().nullable(),
 });

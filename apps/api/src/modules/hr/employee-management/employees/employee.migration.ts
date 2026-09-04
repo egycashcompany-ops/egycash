@@ -10,6 +10,7 @@
 //   - A `hire` Personnel Action (seq 1) is synthesized so every history starts uniformly;
 //     `statusHistory[0]` is linked to it and the trail is frozen thereafter.
 import { type Types } from 'mongoose';
+import { logger } from '../../../../infrastructure/logging/logger';
 import { normalizeArabic } from '../../shared/arabic';
 import { applicantService } from '../../recruitment/applicants';
 // Deliberately NOT the employee-actions barrel: the barrel pulls in the actions service,
@@ -108,6 +109,29 @@ export const personalFromApplicant = (a: {
   certifications: [...a.certifications],
   references: a.references.map((r) => ({ ...r })),
 });
+
+/**
+ * Drop the legacy UNIQUE index on `employeeNumber` so the schema's plain `ix_employeeNumber` can
+ * take over (ADR-017 — see the index comment in `employee.model.ts` for why it is relaxed).
+ *
+ * `autoIndex` is off outside development, and in any case Mongo will not silently downgrade a
+ * built unique index because a declaration changed: the old definition has to be dropped by name.
+ * Guarded on `unique === true` so this is a no-op from the second boot onward, and on a fresh
+ * install where the index never existed.
+ */
+export const migrateEmployeeNumberIndex = async (): Promise<void> => {
+  try {
+    const indexes = await EmployeeModel.collection.indexes();
+    const legacy = indexes.find((ix) => ix.name === 'ux_employeeNumber' && ix.unique === true);
+    if (legacy === undefined) return;
+    await EmployeeModel.collection.dropIndex('ux_employeeNumber');
+    await EmployeeModel.createIndexes();
+    logger.info('employees: ux_employeeNumber dropped; the global number is no longer unique-indexed');
+  } catch (error) {
+    // A missing collection (fresh install) is fine — autoIndex/createIndexes builds the new shape.
+    logger.warn({ err: error }, 'employees: employeeNumber index migration skipped');
+  }
+};
 
 export const migrateEmployeesToRegistry = async (): Promise<number> => {
   const legacy = (await EmployeeModel.collection

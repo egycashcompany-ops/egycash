@@ -1,6 +1,8 @@
 // Thin HTTP mapping only (ADR-003). Uses the platform web kit (module → platform →
-// infrastructure) rather than importing infrastructure directly. Compensation visibility
-// (salary redaction) keys off `employee.viewCompensation` (frozen design §7); the status
+// infrastructure) rather than importing infrastructure directly. Three blocks of the employee are
+// permission-gated and redacted per caller — salary (`employee.viewCompensation`, frozen design
+// §7), the social-insurance file (`employee.viewInsurance`) and the officer profile
+// (`employee.viewOfficer`) — all resolved by the single `visibility` helper below. The status
 // endpoint lives in the employee-actions feature now (deprecated alias).
 import { type Request, type Response } from 'express';
 import {
@@ -11,6 +13,8 @@ import {
   type LinkEmployeeUser,
   type ListEmployeesQuery,
   type RehireCheckQuery,
+  type UpdateEmployeeInsurance,
+  type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
 } from '@ecms/contracts';
 import { created, ok, okPage, validated } from '../../../../platform/web';
@@ -22,8 +26,21 @@ import { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
 
 type IdParam = { id: string };
 
-const compVisible = (req: Request): boolean =>
-  hasPermission(authContext(req), 'employee.viewCompensation');
+/**
+ * Which permission-gated blocks this caller may actually see. One helper rather than three, so a
+ * fourth gated block is added in one place and cannot be forgotten at one of the nine call sites
+ * below — forgetting it would not fail a build, it would quietly leak a wage bracket.
+ */
+const visibility = (
+  req: Request,
+): { compensationVisible: boolean; insuranceVisible: boolean; officerVisible: boolean } => {
+  const ctx = authContext(req);
+  return {
+    compensationVisible: hasPermission(ctx, 'employee.viewCompensation'),
+    insuranceVisible: hasPermission(ctx, 'employee.viewInsurance'),
+    officerVisible: hasPermission(ctx, 'employee.viewOfficer'),
+  };
+};
 
 export const createEmployee = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
@@ -35,7 +52,7 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
   );
   created(
     res,
-    { ...toEmployeeDto(doc, { compensationVisible: compVisible(req) }), provisionedLogin },
+    { ...toEmployeeDto(doc, visibility(req)), provisionedLogin },
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };
@@ -51,7 +68,7 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
   );
   created(
     res,
-    { ...toEmployeeDto(doc, { compensationVisible: compVisible(req) }), provisionedLogin },
+    { ...toEmployeeDto(doc, visibility(req)), provisionedLogin },
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };
@@ -59,9 +76,9 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
 export const listEmployees = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListEmployeesQuery>(req);
-  const visible = compVisible(req);
+  const visible = visibility(req);
   okPage(res, await employeeService.list(query, scopeSelector(ctx, 'employee.view')), (d) =>
-    toEmployeeDto(d, { compensationVisible: visible }),
+    toEmployeeDto(d, visible),
   );
 };
 
@@ -77,9 +94,10 @@ export const getEmployee = async (req: Request, res: Response): Promise<void> =>
   const { params } = validated<never, never, IdParam>(req);
   ok(
     res,
-    toEmployeeDto(await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view')), {
-      compensationVisible: compVisible(req),
-    }),
+    toEmployeeDto(
+      await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view')),
+      visibility(req),
+    ),
   );
 };
 
@@ -93,16 +111,42 @@ export const updateEmployeePersonal = async (req: Request, res: Response): Promi
     body,
     scopeSelector(ctx, 'employee.editPersonal'),
   );
-  ok(res, toEmployeeDto(doc, { compensationVisible: compVisible(req) }));
+  ok(res, toEmployeeDto(doc, visibility(req)));
+};
+
+/** Replace the social-insurance file — an audited update, not a personnel action. */
+export const updateEmployeeInsurance = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdateEmployeeInsurance, never, IdParam>(req);
+  const doc = await employeeService.updateInsurance(
+    ctx,
+    params.id,
+    body,
+    scopeSelector(ctx, 'employee.manageInsurance'),
+  );
+  ok(res, toEmployeeDto(doc, visibility(req)));
+};
+
+/** Replace the officer / armed-security profile — an audited update, not a personnel action. */
+export const updateEmployeeOfficer = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body, params } = validated<UpdateEmployeeOfficer, never, IdParam>(req);
+  const doc = await employeeService.updateOfficer(
+    ctx,
+    params.id,
+    body,
+    scopeSelector(ctx, 'employee.manageOfficer'),
+  );
+  ok(res, toEmployeeDto(doc, visibility(req)));
 };
 
 /** Employed direct reports of this employee (manager tree seed). */
 export const listSubordinates = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
-  const visible = compVisible(req);
+  const visible = visibility(req);
   const reports = await employeeService.subordinates(params.id, scopeSelector(ctx, 'employee.view'));
-  ok(res, reports.map((d) => toEmployeeDto(d, { compensationVisible: visible })));
+  ok(res, reports.map((d) => toEmployeeDto(d, visible)));
 };
 
 /** Composed profile timeline: file milestones + personnel actions + audited personal edits. */
@@ -126,7 +170,7 @@ export const linkEmployeeUser = async (req: Request, res: Response): Promise<voi
     scopeSelector(ctx, 'employee.view'),
     scopeSelector(ctx, 'user.edit'),
   );
-  ok(res, toEmployeeDto(doc, { compensationVisible: compVisible(req) }));
+  ok(res, toEmployeeDto(doc, visibility(req)));
 };
 
 export const unlinkEmployeeUser = async (req: Request, res: Response): Promise<void> => {
@@ -138,7 +182,7 @@ export const unlinkEmployeeUser = async (req: Request, res: Response): Promise<v
     scopeSelector(ctx, 'employee.view'),
     scopeSelector(ctx, 'user.edit'),
   );
-  ok(res, toEmployeeDto(doc, { compensationVisible: compVisible(req) }));
+  ok(res, toEmployeeDto(doc, visibility(req)));
 };
 
 /** Create the login account for an employee (Employee ← one User, ADR-017). Gated by `user.create`. */

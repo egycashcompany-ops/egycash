@@ -11,6 +11,48 @@ its entry here in the same PR.
 
 ### Added
 
+- **The go-live workforce import, and two blocks of the employee that had nowhere to land.** The
+  company arrives with 2,699 rows of hand-maintained HR spreadsheet — 1,673 people serving and
+  1,026 who have left — and roughly fifteen of its columns had no home anywhere in the registry.
+  `npm run import:workforce -- --file <workbook>` reads it, plans it, and reports; `--write` is the
+  only thing that writes, and both take the same path so a dry run is evidence about the run that
+  follows it. Against the real file: **2,635 people importable, 23 rows refused**, each refusal a
+  specific data fault with a named fix rather than a silent drop.
+
+  **The SOCIAL INSURANCE file** (التأمينات الاجتماعية) and **the OFFICER profile** (بيانات الضباط)
+  are now blocks on the employee, each behind its own view/manage permission pair and each redacted
+  per caller like compensation already was. The insurance wages are deliberately NOT
+  `employment.salary` and never become it: `الاجر الأساسي` takes six distinct values across 1,673
+  employees because it is a statutory contribution bracket, not what anybody is paid, and writing
+  it into the field payroll reads would state a false fact about someone's pay. The two
+  contribution shares are stored AS FILED rather than computed, though they are ordinarily
+  `× 0.1875` and `× 0.11` — three rows in the go-live data disagree with the formula, and those
+  three are what the company actually filed.
+
+  **Nothing is sent to anybody.** The default registration path creates a login and delivers a
+  one-time setup link by WhatsApp *and* email; importing the workforce would have sent that to
+  ~1,670 real people in one burst with no way to recall it. `registerDirect` gains
+  `provisionLogin: false` (default unchanged), and the boot backfill that was the same landmine one
+  restart away is now behind `HR_PROVISION_MISSING_LOGINS` (default `true`, behaviour unchanged) —
+  with the importer **refusing to write while it is on**, because by the time that restart happens
+  nobody is at the keyboard.
+
+  **History is written as state, not replayed as decisions.** A personnel action records something
+  somebody decided in this system: it carries an actor, an audit entry, and it notifies every holder
+  of `employee.view`. A resignation from 2021 was not decided here, and replaying 964 of them would
+  assert actors who never clicked anything. The existing registry migration already writes
+  historical state directly; this follows it.
+
+  Identity is the **national ID**, not the code: 28 people appear on both sheets but only 21 share a
+  code — seven were rehired under a new one, and a code-keyed join would create them twice, as two
+  people who are one person. Columns are addressed by `(header, nth occurrence)` because both sheets
+  carry `جهة الحصول` and `تاريخ المؤهل` twice, and a header→index map keeps the last of each pair —
+  quietly replacing 1,256 institutions and 1,651 graduation years with a field filled for 1.3% of
+  employees. The whole sheet layout is fingerprinted before a row is read: one inserted column
+  shifts every field after it by one and writes national IDs into the address column, at scale, with
+  every individual value still looking plausible.
+
+
 - **Gold Vault: the standalone precious-metals system, ported into ECMS as a module.** The
   `egycashcompany-ops/gold` system — vaults and their drawer grids, the bar register, عمليات
   الدخول / الخروج / التحويل, drawer keys, the owner and delegate registers, the board and the five
@@ -434,6 +476,36 @@ Permissions`. Declared in code — a `PageDef` in the contracts and a `pageId` g
   and staging only — it refuses to run when `NODE_ENV=production`.
 
 ### Changed
+
+- **The Employee Code is now ISSUED at hire and frozen there, not derived from the current branch
+  (ADR-017).** It was `<CurrentBranchCode><GlobalEmployeeNumber>` and was recomputed on every branch
+  transfer, on a rehire into another branch, and — through the HR3-A seam — whenever an
+  administrator corrected a branch's own code.
+
+  The reversal is evidence-driven rather than a preference. Of the 2,699 employees in the go-live
+  workforce, **148 carry a prefix from a branch they no longer work at**: the company transfers
+  people and their code stays. Re-deriving on import would have renamed 148 real people whose code
+  is printed on contracts and insurance filings that nobody reissues. The prefix answers *who hired
+  you*; `branchId` answers *where are you now*, and only the second one moves. `buildEmployeeCode`
+  is now called by the two hire paths and nowhere else — the personnel-actions engine no longer
+  imports `branchService` at all, so the whole family of re-derivations is closed structurally
+  rather than by convention, and `code-freeze.spec.ts` reads the engine's source to keep it that
+  way. **The HR3-A branch-code seam is retired** with its premise: codes are no longer derived, so a
+  branch rename leaves them alone deliberately, exactly as a transfer does.
+
+  Two consequences worth stating plainly. `code` is **not** reconstructible from an employee's
+  current row — never re-derive one to compare against the stored value. And
+  `EmployeeTransferred.oldCode`/`newCode` are retained, equal and deprecated: the event catalogue is
+  a published surface that automations may already read.
+
+- **The Global Employee Number is four digits, and no longer unique-indexed.** Four so that `010` +
+  `0004` reproduces the company's own `0100004` byte for byte. The unique index is relaxed to a
+  plain one because the single atomic `$inc` allocator is what makes numbers unique — the index was
+  only ever a second line of defence — and the go-live workforce carries two numbers the company
+  itself issued twice on paper (`1311`, `1651`; four people, all long exited). A unique index would
+  have forced a renumbering, and renumbering rewrites a printed code. `code` carries the unique
+  index instead. A guarded, idempotent boot migration drops the old one.
+
 
 - **A role is now the whole action: applications appear in the sidebar because of the permissions
   they carry.** Navigation used to be the union of two grant tables — the applications assigned to

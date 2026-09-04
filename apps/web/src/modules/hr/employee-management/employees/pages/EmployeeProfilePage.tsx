@@ -24,6 +24,8 @@ import { ActionsMenu } from '../components/actions/ActionsMenu';
 import { ActionHistory } from '../components/ActionHistory';
 import { EmployeeCostCenterCard } from '../components/EmployeeCostCenterCard';
 import { PersonalView } from '../components/PersonalView';
+import { EmployeeInsuranceCard } from '../components/EmployeeInsuranceCard';
+import { EmployeeOfficerCard } from '../components/EmployeeOfficerCard';
 import { EditPersonalDialog } from '../components/EditPersonalDialog';
 import { EmployeeFileDocuments } from '../../employee-files/components/EmployeeFileDocuments';
 import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries';
@@ -353,6 +355,14 @@ export const EmployeeProfilePage = (): JSX.Element => {
             </div>
           </Can>
           <PersonalView personal={e.personal} />
+          {/*
+            The insurance file and the officer profile sit HERE rather than on Overview beside the
+            salary, and deliberately: the wages on the insurance file are statutory brackets, not
+            pay, and placing them next to `employment.salary` would invite exactly the reading the
+            data model refuses. Both are facts about the person on file, which is this tab.
+          */}
+          <EmployeeInsuranceCard e={e} />
+          <EmployeeOfficerCard e={e} />
           <EditPersonalDialog employee={e} open={editPersonal} onClose={() => setEditPersonal(false)} />
         </div>
       )}

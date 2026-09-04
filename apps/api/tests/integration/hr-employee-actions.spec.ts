@@ -338,7 +338,7 @@ beforeEach(async () => {
 });
 
 describe('personnel actions — transfer (F1 propagation)', () => {
-  it('recomputes the employee code prefix and syncs the linked user placement on a branch transfer', async () => {
+  it('keeps the employee code and syncs the linked user placement on a branch transfer', async () => {
     const emp = await hire();
     const userId = await activateLogin(emp);
     const fresh = await reread(emp.id);
@@ -351,9 +351,13 @@ describe('personnel actions — transfer (F1 propagation)', () => {
     });
     expect(res.status).toBe(201);
     const after = await reread(emp.id);
-    // Only the prefix changes; the Global Employee Number never does (ADR-017).
+    // The code is composed once at hire and FROZEN (ADR-017): a transfer moves where somebody
+    // works, not the number they were issued. It keeps the hiring branch's prefix — `001` — even
+    // though the employee now sits in branch `002`, which is exactly what the go-live workforce
+    // shows for the 148 people who were transferred and kept their code.
     expect(after.employeeNumber).toBe(emp.employeeNumber);
-    expect(after.code).toBe(`002${emp.employeeNumber}`);
+    expect(after.code).toBe(emp.code);
+    expect(after.code).toBe(`001${emp.employeeNumber}`);
     expect(after.employment.branchId).toBe(BRANCH2_ID);
     expect(after.employment.departmentId).toBe(DEPARTMENT2_ID);
 
@@ -808,16 +812,17 @@ describe('read APIs — subordinates & composed timeline', () => {
   });
 });
 
-// ── HR3-A — a branch-code change reaches the codes derived from it ──────────
+// ── The Employee Code is issued, not derived (ADR-017) ──────────────────────
 //
-// The Employee Code is `<BranchCode><GlobalEmployeeNumber>` (ADR-017): derived, but STORED on the
-// employee and denormalized onto the Employee File. Correcting a branch's code used to leave every
-// employee in it carrying a code that derived from nothing.
+// `<BranchCodeAtHire><GlobalEmployeeNumber>` is COMPOSED ONCE, AT HIRE, AND STORED. Nothing
+// recomputes it afterwards — not a transfer, not a rehire, and not an administrator correcting the
+// branch's own code (which is what the retired HR3-A seam used to chase).
 //
-// What must hold: the CURRENT value follows, the Global Employee Number never moves, and nothing
-// that was already issued is rewritten.
-describe('branch-code change propagation (HR3-A)', () => {
-  it('re-derives the codes of everyone in the branch, keeping the global number', async () => {
+// This block covers the third of those, because it is the one with no other test: a branch-code
+// change must leave every employee code exactly where it stands. The alternative renames people
+// whose code is printed on contracts and insurance filings that nobody reissues.
+describe('a branch-code change leaves employee codes alone', () => {
+  it('does not touch the code of an employee hired into that branch', async () => {
     const employee = await hire();
     const before = await reread(employee.id);
     const branch = await request(app)
@@ -833,11 +838,9 @@ describe('branch-code change propagation (HR3-A)', () => {
     expect(changed.status, JSON.stringify(changed.body)).toBe(200);
 
     const after = await reread(employee.id);
-    // The prefix moved…
-    expect(after.code.startsWith('009')).toBe(true);
-    expect(before.code.startsWith('009')).toBe(false);
-    // …and the permanent identity did not.
-    expect(after.code.slice(3)).toBe(before.code.slice(3));
+    // The branch now goes by `009`; the employee still carries the code they were issued under.
+    expect(after.code).toBe(before.code);
+    expect(after.code.startsWith('009')).toBe(false);
     expect(after.employeeNumber).toBe(before.employeeNumber);
   }, 120_000);
 
@@ -855,7 +858,7 @@ describe('branch-code change propagation (HR3-A)', () => {
     expect(codes.every((c) => c.startsWith('002'))).toBe(true);
   }, 120_000);
 
-  it('does not touch an employee of another branch', async () => {
+  it('does not touch an employee of another branch either', async () => {
     const other = await hire({ branchId: BRANCH2_ID });
     const before = await reread(other.id);
     const branch = await request(app)
@@ -868,6 +871,46 @@ describe('branch-code change propagation (HR3-A)', () => {
       .send({ code: '010', version });
     expect(changed.status).toBe(200);
     expect((await reread(other.id)).code).toBe(before.code);
+  }, 120_000);
+
+  /**
+   * The rehire arm of the same rule, and the one a reader is most likely to doubt: somebody who
+   * left branch 001 and comes back into branch 002 is the SAME person returning, so they keep the
+   * global number they were issued — and therefore the code that number was issued under.
+   */
+  it('a rehire into a different branch keeps the original code', async () => {
+    const employee = await hire();
+    const hired = await reread(employee.id);
+
+    const exitRes = await action(employee.id, 'exit', {
+      type: 'termination',
+      reason: 'restructuring',
+      eligibleForRehire: true,
+      version: hired.version,
+    });
+    expect(exitRes.status, JSON.stringify(exitRes.body)).toBe(201);
+
+    const afterExit = await reread(employee.id);
+    expect(afterExit.status).toBe('exited');
+
+    const rehired = await action(employee.id, 'rehire', {
+      type: 'rehire',
+      terms: {
+        jobTitleId: JOB_TITLE_ID,
+        departmentId: DEPARTMENT2_ID,
+        branchId: BRANCH2_ID,
+        employmentType: 'fullTime',
+        probationMonths: 3,
+        startDate: START_DATE,
+      },
+      version: afterExit.version,
+    });
+    expect(rehired.status, JSON.stringify(rehired.body)).toBe(201);
+
+    const after = await reread(employee.id);
+    expect(after.code).toBe(hired.code);
+    expect(after.employeeNumber).toBe(hired.employeeNumber);
+    expect(after.employment.branchId).toBe(BRANCH2_ID);
   }, 120_000);
 });
 

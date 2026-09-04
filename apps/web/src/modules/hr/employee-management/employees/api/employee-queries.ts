@@ -14,6 +14,8 @@ import {
   type EmploymentAction,
   type ExitAction,
   type RehireAction,
+  type UpdateEmployeeInsurance,
+  type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
   type UpdateUser,
 } from '@ecms/contracts';
@@ -135,6 +137,33 @@ export const useUpdateEmployeePersonal = (id: string) => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: UpdateEmployeePersonal) => api.updateEmployeePersonal(id, body),
+    onSuccess: (updated: EmployeeDto) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });
+    },
+  });
+};
+
+/**
+ * Both blocks answer with the WHOLE employee, so the detail cache is replaced from the response
+ * rather than invalidated — the server has just told us the new state, and a refetch would ask it
+ * the same question again. The timeline moves too: each write is an audited change.
+ */
+export const useUpdateEmployeeInsurance = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateEmployeeInsurance) => api.updateEmployeeInsurance(id, body),
+    onSuccess: (updated: EmployeeDto) => {
+      qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
+      void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });
+    },
+  });
+};
+
+export const useUpdateEmployeeOfficer = (id: string) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: UpdateEmployeeOfficer) => api.updateEmployeeOfficer(id, body),
     onSuccess: (updated: EmployeeDto) => {
       qc.setQueryData(detailKey(MODULE, FEATURE, id), updated);
       void qc.invalidateQueries({ queryKey: [MODULE, FEATURE, 'timeline', id] });

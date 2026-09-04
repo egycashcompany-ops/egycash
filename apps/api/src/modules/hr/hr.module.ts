@@ -120,7 +120,6 @@ import { addDays, cairoToday } from './shared/business-date';
 import { registerHrIdentitySeams } from './employee-management/employees/identity-seams';
 import { registerHrShiftLabelSeam } from './attendance/shifts/shift-label-seams';
 import { buildEmployeeCostCentersRouter } from './employee-management/cost-center-assignments';
-import { registerHrBranchCodeSeams } from './employee-management/employees/branch-code-seams';
 import { registerHrDirectorySeams } from './directory-seams';
 import {
   dispatchPendingWorkflowEvents,
@@ -161,9 +160,6 @@ registerHrDirectorySeams();
 // this existed the permissive default accepted any well-formed id; from here a reference must name
 // a requisition that exists and is still open.
 setRequisitionValidator(jobRequisitionReferenceValidator);
-// HR3-A — the Employee Code derives from the branch code and is stored, so a branch-code
-// correction has to reach the employees that derived from it.
-registerHrBranchCodeSeams();
 // Workflow consumers (I15): the timeline projection and the audit trail react to published
 // workflow events; the engine itself performs no side effects.
 registerRecruitmentWorkflowConsumers();
@@ -487,6 +483,25 @@ const employeePermissions = declarePermissions(
     {
       action: 'viewSensitive',
       name: { en: 'View sensitive employee data', ar: 'عرض البيانات الحساسة للموظف' },
+    },
+    // The social-insurance file and the officer profile are split view/manage for the same reason
+    // compensation is: the figures on the insurance file are wage brackets, and the officer profile
+    // names weapon licences and military ranks. Neither rides along with `employee.view`.
+    {
+      action: 'viewInsurance',
+      name: { en: 'View social insurance file', ar: 'عرض بيانات التأمينات الاجتماعية' },
+    },
+    {
+      action: 'manageInsurance',
+      name: { en: 'Manage social insurance file', ar: 'إدارة بيانات التأمينات الاجتماعية' },
+    },
+    {
+      action: 'viewOfficer',
+      name: { en: 'View officer profile', ar: 'عرض بيانات الضباط' },
+    },
+    {
+      action: 'manageOfficer',
+      name: { en: 'Manage officer profile', ar: 'إدارة بيانات الضباط' },
     },
     {
       action: 'changeStatus',

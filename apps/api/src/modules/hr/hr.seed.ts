@@ -46,8 +46,13 @@ import {
   applicantDocumentTypeService,
   ensureApplicantDocsCategory,
 } from './recruitment/applicant-documents';
-import { migrateEmployeesToRegistry } from './employee-management/employees';
+import {
+  migrateEmployeeNumberIndex,
+  migrateEmployeesToRegistry,
+} from './employee-management/employees';
 import { migrateEmployeeFiles } from './employee-management/employee-file';
+import { env } from '../../infrastructure/config/env';
+import { logger } from '../../infrastructure/logging/logger';
 import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { ensureEmployeeActionAttachmentsCategory } from './employee-management/employee-actions';
@@ -513,12 +518,24 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await migrateRecruitmentLegacy();
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
+  // ADR-017 — retire the unique index on the Global Employee Number (idempotent, guarded).
+  await migrateEmployeeNumberIndex();
   // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
   // recruitment timeline is now the only history (idempotent).
   await migrateEmployeeFiles();
   // Auth design D2 — every employed employee gets an auto-provisioned login (idempotent).
-  const { employeeService } = await import('./employee-management/employees/employee.service');
-  await employeeService.provisionMissingLogins();
+  //
+  // Each provisioning SENDS: a WhatsApp message and an email carrying a one-time setup link. That
+  // is right for a handful of new hires and wrong for a workforce import, which is why the switch
+  // exists — see `HR_PROVISION_MISSING_LOGINS`. Left on, as every deployment has had it.
+  if (env.HR_PROVISION_MISSING_LOGINS) {
+    const { employeeService } = await import('./employee-management/employees/employee.service');
+    await employeeService.provisionMissingLogins();
+  } else {
+    logger.warn(
+      'HR_PROVISION_MISSING_LOGINS=false — employees without a login keep none and no setup links are sent',
+    );
+  }
   // Leave Management (frozen leave design §12): templates, attachments category, types,
   // holidays, current-year grants, ESS role.
   await ensureLeaveTemplates();

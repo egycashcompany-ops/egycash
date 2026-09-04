@@ -386,9 +386,9 @@ describe('employees — creation from the accepted offer snapshot', () => {
     expect(res.status).toBe(201);
     const emp = res.body.data as EmployeeDto;
 
-    // Unique, human-readable employee number.
-    // Permanent Global Employee Number + derived code <CurrentBranchCode><employeeNumber>.
-    expect(emp.employeeNumber).toMatch(/^\d{6,}$/);
+    // Permanent Global Employee Number (four digits, widening past 9999) + the Employee Code
+    // composed once at hire as <BranchCodeAtHire><employeeNumber> (ADR-017).
+    expect(emp.employeeNumber).toMatch(/^\d{4,}$/);
     expect(emp.code).toBe(`001${emp.employeeNumber}`);
     // Probation-first entry (D1) — the offer's 3 probation months put the hire in probation.
     expect(emp.status).toBe('probation');
@@ -469,11 +469,12 @@ describe('platform identity (ADR-017) — branch code, global sequence, login ac
   it('assigns a permanent Global Employee Number from a single GLOBAL counter; code = branch + number', async () => {
     const first = await hire();
     const second = await hire();
-    // Global Employee Number is 6+ digits and strictly increases (never repeats).
-    expect(first.employeeNumber).toMatch(/^\d{6,}$/);
-    expect(second.employeeNumber).toMatch(/^\d{6,}$/);
+    // Global Employee Number is 4+ digits and strictly increases (never repeats). Strict increase
+    // from ONE counter is what makes it unique — `employeeNumber` carries no unique index.
+    expect(first.employeeNumber).toMatch(/^\d{4,}$/);
+    expect(second.employeeNumber).toMatch(/^\d{4,}$/);
     expect(Number(second.employeeNumber)).toBeGreaterThan(Number(first.employeeNumber));
-    // The displayed code is the current branch code prefixed onto the permanent number.
+    // The code is the HIRING branch's code prefixed onto the permanent number, composed once here.
     expect(first.code).toBe(`001${first.employeeNumber}`);
     expect(second.code).toBe(`001${second.employeeNumber}`);
   });

@@ -45,6 +45,10 @@ const HR_ADMIN = oid();
 const STAFF = oid();
 const APPLICANT = oid();
 const EMPLOYEE = oid();
+// The administrator is on the payroll too, and needs an employee of their OWN: `users.ux_employeeId`
+// is unique, so two accounts cannot name one employee. That is the state the last test here is
+// about — an administrator who survives while the employee they are linked to does not.
+const ADMIN_EMPLOYEE = oid();
 
 // Resolved in `seed()`, not generated here: the boot seeds some of these roles itself, so the
 // fixture has to adopt whatever id boot gave them rather than assert one of its own.
@@ -78,25 +82,49 @@ const seed = async (): Promise<void> => {
   PLATFORM_ROLE = await ensureRole('platform-admin');
   ESS_ROLE = await ensureRole('employee-self-service');
 
+  // `isDeleted: false` on every row is not decoration: `ux_email`, `ux_username` and
+  // `ux_userId_roleId_scope` are all partial on it, so rows without the field are exempt from the
+  // uniqueness the real system enforces. These are meant to be rows the database would accept.
   await db().collection('users').insertMany([
-    { _id: ADMIN, username: 'admin@ecms.local', email: 'admin@ecms.local', employeeId: EMPLOYEE },
-    { _id: HR_ADMIN, username: 'hr@ecms.local', email: 'hr@ecms.local', employeeId: null },
-    { _id: STAFF, username: 'br1000001', email: 'staff@ecms.com', employeeId: EMPLOYEE },
-    { _id: APPLICANT, username: 'applicant-app-2026-000079', email: null, employeeId: null },
+    {
+      _id: ADMIN,
+      username: 'admin@ecms.local',
+      email: 'admin@ecms.local',
+      employeeId: ADMIN_EMPLOYEE,
+      isDeleted: false,
+    },
+    { _id: HR_ADMIN, username: 'hr@ecms.local', email: 'hr@ecms.local', employeeId: null, isDeleted: false },
+    { _id: STAFF, username: 'br1000001', email: 'staff@ecms.com', employeeId: EMPLOYEE, isDeleted: false },
+    {
+      _id: APPLICANT,
+      username: 'applicant-app-2026-000079',
+      email: null,
+      employeeId: null,
+      isDeleted: false,
+    },
   ] as never);
 
   await db().collection('role_assignments').insertMany([
-    { userId: ADMIN, roleId: SUPER_ROLE, validFrom: null, validTo: null },
+    { userId: ADMIN, roleId: SUPER_ROLE, validFrom: null, validTo: null, isDeleted: false },
     // EXPIRED, and it must still save this account: deleting an administrator whose grant lapsed
     // last week locks a real person out of a system that has just been emptied.
-    { userId: HR_ADMIN, roleId: PLATFORM_ROLE, validFrom: null, validTo: new Date('2020-01-01') },
-    { userId: STAFF, roleId: ESS_ROLE, validFrom: null, validTo: null },
-    { userId: APPLICANT, roleId: ESS_ROLE, validFrom: null, validTo: null },
+    {
+      userId: HR_ADMIN,
+      roleId: PLATFORM_ROLE,
+      validFrom: null,
+      validTo: new Date('2020-01-01'),
+      isDeleted: false,
+    },
+    { userId: STAFF, roleId: ESS_ROLE, validFrom: null, validTo: null, isDeleted: false },
+    { userId: APPLICANT, roleId: ESS_ROLE, validFrom: null, validTo: null, isDeleted: false },
   ] as never);
 
   await db()
     .collection('hr_employees')
-    .insertMany([{ _id: EMPLOYEE, code: '0100004', employeeNumber: '0004' }] as never);
+    .insertMany([
+      { _id: EMPLOYEE, code: '0100004', employeeNumber: '0004', isDeleted: false },
+      { _id: ADMIN_EMPLOYEE, code: '0100005', employeeNumber: '0005', isDeleted: false },
+    ] as never);
 
   // Employee-scoped rows, which go.
   await db().collection('hr_payslips').insertMany([{ _id: oid(), employeeId: EMPLOYEE }] as never);
@@ -156,14 +184,14 @@ describe('a dry run', () => {
   it('counts what would go and deletes none of it', async () => {
     const report = await runReset({ write: false });
     expect(report.mode).toBe('dry-run');
-    expect(report.employees).toBe(1);
+    expect(report.employees).toBe(2);
     expect(report.doomed.map((d) => d.username).sort()).toEqual([
       'applicant-app-2026-000079',
       'br1000001',
     ]);
 
     // Nothing moved.
-    expect(await db().collection('hr_employees').countDocuments({})).toBe(1);
+    expect(await db().collection('hr_employees').countDocuments({})).toBe(2);
     expect(await db().collection('users').countDocuments({})).toBe(4);
     expect(await db().collection('hr_payslips').countDocuments({})).toBe(1);
     expect(await db().collection('sessions').countDocuments({})).toBe(1);

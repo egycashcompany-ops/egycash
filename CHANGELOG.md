@@ -11,6 +11,24 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **`hr_job_offers.ux_code` drifted from the schema, and the drift silently broke hiring.** The
+  index was first built as a plain unique index on `code`; the schema later made it partial
+  (`{ code: { $type: 'string' } }`) because a `waiting` offer has no code yet, and a unique index
+  treats every missing value as the same `null`. Mongoose never rewrites an index that already
+  exists under the same name, so every database created before that change still enforces the old
+  shape: the FIRST codeless offer is accepted and the SECOND fails with
+  `E11000 … ux_code dup key: { code: null }`. It surfaces as the backlog materializer refusing to
+  open `waiting` rows — six applicants on a real deployment, on every boot, with nothing to retry
+  or repair it.
+
+  A boot migration now rebuilds the index to the declared shape, ahead of the backlog step it
+  breaks. It first looks for live offers sharing a code and REFUSES the rebuild if it finds any,
+  naming them: dropping a unique index is only safe when the rebuild can succeed, and a failed
+  rebuild would leave the collection with no uniqueness on `code` at all — a silently weakened
+  invariant, worse than the bug being fixed. The decision is a pure function so both guards are
+  tested; a failure anywhere in the repair is logged and never fails the boot, since the old index
+  still enforces uniqueness and the symptom is a backlog that does not open, not corruption.
+
 - **Neither go-live tool could keep its promise not to send anything — including on a dry run.**
   `reset:workforce` and `import:workforce` both call `bootPlatform` before they read a row, and the
   boot is not passive: `hr.seed` runs the D2 login backfill, which creates a login for every

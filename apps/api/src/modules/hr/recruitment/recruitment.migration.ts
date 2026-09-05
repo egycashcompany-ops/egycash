@@ -14,7 +14,13 @@
 // ③ Workflow-refactor backfills (§15): attempt markers, placement snapshots, the `pending` →
 //    `waiting` rename, evaluation phase typing, the business-order phase reorder, offer terms,
 //    and the one-shot unique indexes the attempt-based ones replace.
+// ③b `hr_job_offers.ux_code` — built as a plain unique index before the schema made it partial,
+//    so on an older database every codeless `waiting` offer after the first fails on a shared
+//    `null` and its applicant never enters the queue. Rebuilt to the declared shape, and only
+//    when no two live offers share a code (`job-offers/code-index-migration.ts`).
 import { type Model, type Types } from 'mongoose';
+import { logger } from '../../../infrastructure/logging/logger';
+import { decideCodeIndexRebuild } from './job-offers/code-index-migration';
 import { ApplicantModel } from './applicants/applicant.model';
 import { ScreeningModel } from './screening/screening.model';
 import { InterviewModel } from './interviews/interview.model';
@@ -382,6 +388,60 @@ const dropReplacedIndexes = async (): Promise<void> => {
   }
 };
 
+/** Live offer codes held by more than one document — what makes a rebuild unsafe. */
+const duplicateOfferCodes = async (): Promise<string[]> => {
+  const rows = await JobOfferModel.collection
+    .aggregate<{ _id: string }>([
+      { $match: { code: { $type: 'string' } } },
+      { $group: { _id: '$code', n: { $sum: 1 } } },
+      { $match: { n: { $gt: 1 } } },
+      { $limit: 20 },
+    ])
+    .toArray();
+  return rows.map((r) => r._id);
+};
+
+/**
+ * Rebuild `ux_code` as the PARTIAL index the schema declares (see `code-index-migration.ts`).
+ *
+ * On a database built before the partial filter was added, the index still counts every codeless
+ * offer as the same `null`: the second `waiting` row fails with `E11000 ... dup key: { code: null }`
+ * and the applicant never enters the queue. Nothing retries it, so it repeats on every boot.
+ *
+ * Runs BEFORE `materializeWaitingBacklog`, which is the step the old index breaks — repairing the
+ * index and then leaving the backlog for the next boot would fix nothing today.
+ */
+const rebuildJobOfferCodeIndex = async (): Promise<void> => {
+  try {
+    const indexes = await JobOfferModel.collection.indexes();
+    const existing = indexes.find((ix) => ix.name === 'ux_code');
+    // Only pay for the duplicate scan when a rebuild is actually on the table.
+    const needsCheck = existing !== undefined && existing.partialFilterExpression === undefined;
+    const verdict = decideCodeIndexRebuild(existing, needsCheck ? await duplicateOfferCodes() : []);
+
+    if (verdict.action === 'skip') return;
+    if (verdict.action === 'blocked') {
+      logger.error(
+        { duplicates: verdict.duplicates },
+        'job offers: ux_code left as it is — these codes are held by more than one offer, and ' +
+          'rebuilding a unique index over them would fail and leave the collection with none. ' +
+          'Resolve the duplicates and the next boot will repair the index.',
+      );
+      return;
+    }
+
+    await JobOfferModel.collection.dropIndex('ux_code');
+    await JobOfferModel.createIndexes();
+    logger.info(
+      'job offers: ux_code rebuilt as a partial index — offers with no code yet no longer collide',
+    );
+  } catch (error) {
+    // Never fail the boot over an index repair: the old shape still enforces uniqueness, and the
+    // symptom is a backlog that does not open, not corruption.
+    logger.warn({ err: error }, 'job offers: ux_code index migration skipped');
+  }
+};
+
 /**
  * I14 — a candidate who has left the pipeline must hold no OPEN stage record, because a queue is
  * a plain read over statuses and nothing else marks them as gone (I1/I10). Rows written before
@@ -453,6 +513,8 @@ export const migrateRecruitmentWorkflow = async (): Promise<void> => {
   await reorderPhasesToBusinessOrder();
   await backfillOfferTerms();
   await dropReplacedIndexes();
+  // BEFORE the backlog below, which is the step the drifted `ux_code` breaks.
+  await rebuildJobOfferCodeIndex();
   // LAST — I11's backlog. Every step above normalizes the rows that already exist; this one opens
   // the `waiting` rows that never existed, and it must read the normalized shape (attempt markers,
   // the `pending` → `waiting` rename, phase typing) to resolve where each candidate stands.

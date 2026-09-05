@@ -17,6 +17,12 @@
 //
 // THERE IS NO UNDO. `--write` alone is not enough: `--confirm DELETE` has to be typed too, so the
 // destructive form cannot be produced by editing a previous command's flags.
+//
+// `HR_PROVISION_MISSING_LOGINS=false` IS REQUIRED TO RUN THIS AT ALL, dry run included. This tool
+// provisions nothing itself, but booting the platform runs the HR login backfill, which creates a
+// login for every employed employee that lacks one and sends each of them a WhatsApp message and
+// an email — before this command has counted a single row. The guard is the first thing `main`
+// does, ahead of the boot. See `workforce-boot-guard.ts`.
 import { writeFile } from 'node:fs/promises';
 import { logger } from './infrastructure/logging/logger';
 import { disconnectMongo } from './infrastructure/database/mongo';
@@ -24,6 +30,7 @@ import { closeCache } from './infrastructure/redis/cache';
 import { closeQueues } from './infrastructure/queue/jobs';
 import { bootPlatform } from './platform/kernel/bootstrap';
 import { moduleManifests } from './modules';
+import { assertLoginProvisioningDisabled } from './workforce-boot-guard';
 import { runReset } from './workforce-reset/reset';
 
 const CONFIRMATION = 'DELETE';
@@ -35,6 +42,9 @@ const flag = (name: string): string | null => {
 };
 
 const main = async (): Promise<void> => {
+  // BEFORE THE BOOT, because the boot is what sends the messages. See `workforce-boot-guard.ts`.
+  assertLoginProvisioningDisabled('reset:workforce');
+
   const write = process.argv.includes('--write');
   if (write && flag('confirm') !== CONFIRMATION) {
     throw new Error(

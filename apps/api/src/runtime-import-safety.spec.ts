@@ -1,5 +1,5 @@
-// The api ships seven runtime entrypoints — server, worker, seed, seed:demo, atm:import,
-// fleet:fix-crew-mission, import:workforce — and all of them load
+// The api ships eight runtime entrypoints — server, worker, seed, seed:demo, atm:import,
+// fleet:fix-crew-mission, import:workforce, reset:workforce — and all of them load
 // the module graph through `moduleManifests`. That graph must be importable OUTSIDE a vitest run:
 // one test-only import reachable from it (vitest, a spec helper, a mock) takes every entrypoint
 // down at import time. That is exactly what happened when the automation barrel re-exported
@@ -32,6 +32,9 @@ const RUNTIME_ROOTS = [
   // go-live, by somebody with 2,600 employees waiting on it. Discovering a test-only import at
   // that moment would be the worst timing this repository has to offer.
   './src/workforce-import/run.ts',
+  // reset:workforce. Run once, immediately before the import, against a database somebody is about
+  // to trust with their whole workforce — the very worst moment to meet an import-time crash.
+  './src/workforce-reset/reset.ts',
 ];
 
 describe('runtime import safety', () => {

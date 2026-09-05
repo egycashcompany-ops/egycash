@@ -11,6 +11,24 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The `employeeNumber` index migration matched by name, so it walked past the index it exists to
+  drop.** ADR-017 relaxed the Global Employee Number from unique to plain, because 148 real
+  employees legitimately share one, and `migrateEmployeeNumberIndex` drops the legacy constraint on
+  databases that already built it. It looked for the name `ux_employeeNumber` — which is only what
+  this repository declares *today*. A database whose index predates that naming carries Mongo's own
+  default, `employeeNumber_1`; the migration found nothing, the unique constraint survived, and the
+  go-live import failed with `Duplicate resource` for people whose numbers were perfectly valid. It
+  now matches any unique index keyed on exactly `employeeNumber`, whatever it is called — the same
+  correction as the job-offer `ux_code` drift, which is matched by shape for this very reason.
+
+- **A duplicate-key error now says which constraint it violated.** `E11000` was mapped to a bare
+  `Duplicate resource`. A collection carries several unique indexes, so that message tells the
+  reader nothing, and a bulk import repeats it thousands of times — diagnosing the failure above
+  cost three rounds against a live database for want of one index name. The message now names the
+  FIELDS of the violated index and never the values: the names are schema and safe in a 409 body,
+  while the values are somebody's national ID, email or phone number, and this message reaches API
+  clients. The redaction is pinned by a test.
+
 - **The workforce import failed for an entire branch's workforce at a time, and no dry run could
   have predicted it.** `OrgResolver` looked a branch up by CODE alone, while `branchService.create`
   rejects a duplicate NAME. Any database used before the import already holds its sites under codes

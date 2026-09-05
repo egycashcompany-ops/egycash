@@ -115,18 +115,35 @@ export const personalFromApplicant = (a: {
  * take over (ADR-017 — see the index comment in `employee.model.ts` for why it is relaxed).
  *
  * `autoIndex` is off outside development, and in any case Mongo will not silently downgrade a
- * built unique index because a declaration changed: the old definition has to be dropped by name.
- * Guarded on `unique === true` so this is a no-op from the second boot onward, and on a fresh
- * install where the index never existed.
+ * built unique index because a declaration changed: the old definition has to be dropped.
+ *
+ * MATCHED BY SHAPE, NOT BY NAME. The first version of this looked for the name `ux_employeeNumber`
+ * and nothing else, which is only the name this repository happens to declare today. A database
+ * whose index was built before the schema named it carries Mongo's own default, `employeeNumber_1`
+ * — the migration walked straight past it, the unique constraint survived, and the go-live import
+ * then failed on the 148 people who legitimately share a global number. Any unique index keyed on
+ * exactly `employeeNumber` is the legacy one, whatever it is called.
+ *
+ * A no-op from the second boot onward, and on a fresh install where no such index existed.
  */
 export const migrateEmployeeNumberIndex = async (): Promise<void> => {
   try {
     const indexes = await EmployeeModel.collection.indexes();
-    const legacy = indexes.find((ix) => ix.name === 'ux_employeeNumber' && ix.unique === true);
-    if (legacy === undefined) return;
-    await EmployeeModel.collection.dropIndex('ux_employeeNumber');
+    const legacy = indexes.filter((ix) => {
+      if (ix.unique !== true) return false;
+      const keys = Object.keys(ix.key ?? {});
+      return keys.length === 1 && keys[0] === 'employeeNumber';
+    });
+    if (legacy.length === 0) return;
+    for (const ix of legacy) {
+      if (typeof ix.name !== 'string') continue;
+      await EmployeeModel.collection.dropIndex(ix.name);
+      logger.info(
+        { index: ix.name },
+        'employees: legacy unique index on employeeNumber dropped — the global number may repeat',
+      );
+    }
     await EmployeeModel.createIndexes();
-    logger.info('employees: ux_employeeNumber dropped; the global number is no longer unique-indexed');
   } catch (error) {
     // A missing collection (fresh install) is fine — autoIndex/createIndexes builds the new shape.
     logger.warn({ err: error }, 'employees: employeeNumber index migration skipped');

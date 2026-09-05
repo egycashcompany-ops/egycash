@@ -52,6 +52,31 @@ interface WriteMeta {
 const isDuplicateKeyError = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
 
+/**
+ * Turn `E11000` into a message that says WHICH constraint was violated.
+ *
+ * A bare "Duplicate resource" names nothing, and a collection carries several unique indexes: told
+ * only that something was duplicate, the reader has to guess which, and a bulk operation makes that
+ * guess thousands of times. The go-live workforce import cost three diagnostic rounds to a message
+ * that could have answered it in one.
+ *
+ * The FIELD NAMES are reported, never the values. The names are schema — safe in a 409 body — while
+ * the values are somebody's data, and this message reaches API clients.
+ */
+const duplicateFieldNames = (error: unknown): string[] => {
+  const pattern = (error as { keyPattern?: Record<string, unknown> | null }).keyPattern;
+  return typeof pattern === 'object' && pattern !== null ? Object.keys(pattern) : [];
+};
+
+const duplicateMessage = (error: unknown): string | undefined => {
+  const fields = duplicateFieldNames(error);
+  if (fields.length === 0) return undefined; // keep ConflictError's default
+  return `Duplicate resource — another record already holds this ${fields.join(' + ')}`;
+};
+
+/** Exported for its spec: the value-redaction rule is worth pinning, and it is a pure function. */
+export const duplicateMessageForTest = duplicateMessage;
+
 /** Matches nothing — used when a branch-scoped caller has no branch. */
 const NEVER: FilterQuery<{ _id: unknown }> = {
   _id: new Types.ObjectId('000000000000000000000000'),
@@ -220,7 +245,7 @@ export class BaseRepository<T extends BaseDocFields> {
       if (doc === undefined) throw new NotFoundError('create returned no document');
       return doc.toObject() as T;
     } catch (error) {
-      if (isDuplicateKeyError(error)) throw new ConflictError();
+      if (isDuplicateKeyError(error)) throw new ConflictError(duplicateMessage(error));
       throw error;
     }
   }

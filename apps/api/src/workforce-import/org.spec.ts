@@ -1,7 +1,58 @@
 // The two pure decisions in the org resolver, both of which reach the database and neither of which
 // had a unit test until one of them shipped a bug that only an integration run caught.
 import { describe, expect, it } from 'vitest';
-import { deriveBranchCodes, nextFreeCode } from './org';
+import { deriveBranchCodes, matchBranch, nextFreeCode } from './org';
+
+/**
+ * THE BUG THIS PINS, and it is the second one in this file found only by a real run.
+ *
+ * The resolver looked a branch up by CODE alone, while `branchService.create` rejects a duplicate
+ * NAME. Every database used before the import already holds the sites under codes of its own, so
+ * the lookup missed and the create threw `A branch with this name already exists`. The branch was
+ * then never cached, so the same failure repeated for EVERY person at that site — one stale branch
+ * took its whole workforce down with it.
+ *
+ * A dry run cannot see any of this: it never calls `create`. That is why this is a pure function
+ * with tests rather than a line in the I/O path.
+ */
+describe('matchBranch finds a branch by code OR by name', () => {
+  const ENGINEERS = { _id: 'b1', code: 'BR-001', name: { ar: 'المهندسين' } };
+  const NASR = { _id: 'b2', code: '020', name: { ar: 'مدينة نصر' } };
+
+  it('matches on the code when the code is there', () => {
+    expect(matchBranch([ENGINEERS, NASR], '020', 'مدينة نصر')).toEqual({ id: 'b2', mismatch: null });
+  });
+
+  /** The failing case: the name exists, the sheet's code does not. */
+  it('falls back to the name, and reports the code it disagrees with', () => {
+    const match = matchBranch([ENGINEERS, NASR], '010', 'المهندسين');
+    expect(match?.id).toBe('b1');
+    expect(match?.mismatch).toEqual({ name: 'المهندسين', existingCode: 'BR-001' });
+  });
+
+  /**
+   * The existing branch's code is REPORTED, never returned as something to write: the Branch Code
+   * is a super-admin's to change, not an import's, and employee codes come from the sheet anyway.
+   */
+  it('never proposes rewriting the existing code', () => {
+    const match = matchBranch([ENGINEERS], '010', 'المهندسين');
+    expect(match).not.toHaveProperty('code');
+    expect(Object.keys(match ?? {}).sort()).toEqual(['id', 'mismatch']);
+  });
+
+  it('prefers the code match even when another branch shares the folded name', () => {
+    const renamed = { _id: 'b3', code: '010', name: { ar: 'فرع آخر' } };
+    expect(matchBranch([ENGINEERS, renamed], '010', 'المهندسين')?.id).toBe('b3');
+  });
+
+  it('returns null when the branch is genuinely new, so the caller creates it', () => {
+    expect(matchBranch([ENGINEERS], '030', 'طنطا')).toBeNull();
+  });
+
+  it('matches nothing against an empty catalogue', () => {
+    expect(matchBranch([], '010', 'المهندسين')).toBeNull();
+  });
+});
 
 describe('nextFreeCode counts from what already exists', () => {
   /**

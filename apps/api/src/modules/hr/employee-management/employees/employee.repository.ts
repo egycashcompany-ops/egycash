@@ -112,6 +112,19 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
   }
 
   /**
+   * By code, INCLUDING soft-deleted rows — the question to ask before CREATING one.
+   *
+   * `ux_code` is deliberately not partial on `isDeleted`: the Employee Code is an identity nobody
+   * may reuse, deleted or not. So a soft-deleted employee still holds its code, and
+   * `findByCodeSystem` cannot see it. Anything that checks "is this code free?" with that method
+   * and then inserts gets a clean answer followed by `E11000` on the index, with nothing in the
+   * error to say which employee is in the way.
+   */
+  async findByCodeAnyState(code: string): Promise<EmployeeDoc | null> {
+    return this.model.findOne({ code }).lean<EmployeeDoc>().exec();
+  }
+
+  /**
    * Employee by the PERMANENT Global Employee Number (attendance punch import): device exports
    * outlive transfers, and the displayed `code` changes its branch prefix on transfer while
    * `employeeNumber` never changes (ADR-017).

@@ -157,8 +157,20 @@ const importPerson = async (
   opts: { write: boolean; actorId: string },
 ): Promise<Outcome> => {
   // Idempotence: the code is the identity, and a re-run must not create a second copy of anybody.
-  const existing = await employeeRepository.findByCodeSystem(person.code);
-  if (existing !== null) return 'already-present';
+  //
+  // Asked of EVERY state, not just the live ones, because that is what `ux_code` enforces: a
+  // soft-deleted employee still holds its code. Checking only live rows would report the code free
+  // and then fail the insert on the index, which is an unreadable `Duplicate resource` where a
+  // named reason belongs.
+  const existing = await employeeRepository.findByCodeAnyState(person.code);
+  if (existing !== null) {
+    if (existing.isDeleted !== true) return 'already-present';
+    return {
+      reason:
+        `code ${person.code} is held by a DELETED employee record, which still occupies it in the ` +
+        'unique index. Restore that record or purge it, then re-run.',
+    };
+  }
 
   const org = await resolver.resolve(person.current);
   if (org === null) {

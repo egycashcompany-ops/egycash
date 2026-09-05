@@ -10,7 +10,7 @@
 import mongoose from 'mongoose';
 import { afterEach, describe, expect, it } from 'vitest';
 import '../modules';
-import { SURVIVING_ROLE_KEYS, employeeTargets } from './targets';
+import { APPLICANT_REGISTRY, SURVIVING_ROLE_KEYS, applicantTargets, employeeTargets } from './targets';
 
 const TEMP_MODEL = 'SpecTempEmployeeScoped';
 
@@ -115,6 +115,114 @@ describe('what the classification decides', () => {
       'specialist1EmployeeIds',
       'specialist2EmployeeIds',
     ]);
+  });
+});
+
+describe('the recruitment pipeline (opt-in)', () => {
+  const applicants = applicantTargets();
+  const find = (collection: string) => applicants.find((t) => t.collection === collection);
+
+  it('is satisfied by the repository as it stands', () => {
+    expect(() => applicantTargets()).not.toThrow();
+  });
+
+  /** The same anti-rot property the employee rule has, and for the same reason. */
+  it('stops, naming the collection, when a new applicant-scoped collection appears', () => {
+    mongoose.model(
+      TEMP_MODEL,
+      new mongoose.Schema({ applicantId: mongoose.Schema.Types.ObjectId }),
+      'spec_temp_applicant_scoped',
+    );
+    expect(() => applicantTargets()).toThrow(/spec_temp_applicant_scoped/u);
+  });
+
+  /** And it must stop for one buried in a subdocument array too, not walk past it. */
+  it('stops for an applicant reference nested inside a subdocument array', () => {
+    mongoose.model(
+      TEMP_MODEL,
+      new mongoose.Schema({
+        rows: [new mongoose.Schema({ applicantId: mongoose.Schema.Types.ObjectId })],
+      }),
+      'spec_temp_applicant_scoped',
+    );
+    expect(() => applicantTargets()).toThrow(/spec_temp_applicant_scoped/u);
+    expect(() => applicantTargets()).toThrow(/rows\.applicantId/u);
+  });
+
+  /**
+   * THE ONE A FLAT SCHEMA WALK MISSES. `hr_evaluation_batches` names its candidates ONLY inside
+   * `items[].applicantId` — a subdocument array, which `schema.paths` does not surface. Derived
+   * with a top-level walk the collection is invisible, and a reset would report success while
+   * leaving a batch full of the names of people it had just deleted.
+   */
+  it('finds an applicant named only inside a subdocument array', () => {
+    expect(find('hr_evaluation_batches')?.action).toBe('purge');
+    expect(find('hr_evaluation_batches')?.paths).toContain('items.applicantId');
+  });
+
+  it('purges every stage of somebody’s application', () => {
+    for (const collection of [
+      'hr_screenings',
+      'hr_interviews',
+      'hr_evaluations',
+      'hr_applicant_document_sets',
+      'hr_recruitment_timeline',
+      'hr_recruitment_events',
+    ]) {
+      expect(find(collection)?.action, collection).toBe('purge');
+    }
+  });
+
+  /**
+   * THE DELIBERATE REVERSAL. Job offers are `keep` under the employee rule — an offer is history
+   * that merely names who was hired. Under this rule they are purged: an offer made to an
+   * applicant being erased is not history, it is the dangling half of a deleted record. The two
+   * rules disagree on purpose, and `runReset` is what resolves it.
+   */
+  it('purges job offers, which the employee rule keeps', () => {
+    expect(find('hr_job_offers')?.action).toBe('purge');
+    expect(employeeTargets().find((t) => t.collection === 'hr_job_offers')?.action).toBe('keep');
+  });
+
+  /** The employee rule already decided these; handling them twice would be the bug. */
+  it('defers the collections the employee rule owns', () => {
+    for (const collection of [
+      'hr_employees',
+      'hr_employee_files',
+      'hr_hiring_documents',
+      'hr_job_requisition_fills',
+    ]) {
+      expect(find(collection)?.action, collection).toBe('employees');
+    }
+  });
+
+  /**
+   * Reference data the NEXT recruitment round needs: sources, forms, interview stages, evaluation
+   * phases, document types, requisitions. They carry no applicant reference, so they are never in
+   * this set — emptying them would leave the module unusable rather than empty.
+   */
+  it('never touches the recruitment catalogues', () => {
+    const names = applicants.map((t) => t.collection);
+    for (const catalogue of [
+      'hr_applicant_sources',
+      'hr_recruitment_forms',
+      'hr_interview_stages',
+      'hr_evaluation_phases',
+      'hr_applicant_document_types',
+      'hr_hiring_document_types',
+      'hr_job_requisitions',
+    ]) {
+      expect(names, catalogue).not.toContain(catalogue);
+    }
+  });
+
+  it('names the applicant registry, which has no applicant reference of its own', () => {
+    expect(APPLICANT_REGISTRY).toBe('hr_applicants');
+    expect(applicants.map((t) => t.collection)).not.toContain(APPLICANT_REGISTRY);
+  });
+
+  it('gives every target a reason a reviewer can weigh', () => {
+    for (const t of applicants) expect(t.why.length, t.collection).toBeGreaterThan(10);
   });
 });
 

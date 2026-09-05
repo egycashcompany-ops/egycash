@@ -49,6 +49,8 @@ const EMPLOYEE = oid();
 // is unique, so two accounts cannot name one employee. That is the state the last test here is
 // about — an administrator who survives while the employee they are linked to does not.
 const ADMIN_EMPLOYEE = oid();
+/** A candidate mid-application: untouched by a default run, erased by `--include-recruitment`. */
+const APPLICANT_PERSON = oid();
 
 // Resolved in `seed()`, not generated here: the boot seeds some of these roles itself, so the
 // fixture has to adopt whatever id boot gave them rather than assert one of its own.
@@ -144,6 +146,18 @@ const seed = async (): Promise<void> => {
     .collection('hr_job_offers')
     .insertMany([{ _id: oid(), hiredEmployeeId: EMPLOYEE, code: 'JO-2026-000001' }] as never);
 
+  // The recruitment pipeline, which a DEFAULT run leaves entirely alone.
+  await db()
+    .collection('hr_applicants')
+    .insertMany([{ _id: APPLICANT_PERSON, code: 'APP-2026-000079', isDeleted: false }] as never);
+  await db()
+    .collection('hr_screenings')
+    .insertMany([{ _id: oid(), applicantId: APPLICANT_PERSON }] as never);
+  // Named ONLY inside a subdocument array — invisible to a top-level schema walk.
+  await db()
+    .collection('hr_evaluation_batches')
+    .insertMany([{ _id: oid(), items: [{ applicantId: APPLICANT_PERSON }] }] as never);
+
   // User-scoped rows for a doomed account, and the audit entry that must outlive it.
   await db().collection('sessions').insertMany([{ _id: oid(), userId: STAFF }] as never);
   await db().collection('push_subscriptions').insertMany([{ _id: oid(), userId: STAFF }] as never);
@@ -189,6 +203,11 @@ describe('a dry run', () => {
       'applicant-app-2026-000079',
       'br1000001',
     ]);
+
+    // `null`, not 0: recruitment was not part of this run, which is a different fact from
+    // "there were no applicants".
+    expect(report.applicants).toBeNull();
+    expect(report.recruitment).toEqual([]);
 
     // Nothing moved.
     expect(await db().collection('hr_employees').countDocuments({})).toBe(2);
@@ -284,6 +303,51 @@ describe('the reset itself', () => {
     expect(report.employeeSequence).toBe(2717);
     const after = await db().collection('hr_sequences').findOne({ _id: 'employee:global' as never });
     expect(Number(after?.value)).toBe(2717);
+  }, 240_000);
+});
+
+/**
+ * The opt-in half. Everything above ran WITHOUT `includeRecruitment`, so the pipeline is still
+ * here — which is the first thing worth proving: emptying the workforce must not quietly empty
+ * recruitment too.
+ */
+describe('the recruitment pipeline', () => {
+  it('survives every default run, untouched', async () => {
+    expect(await db().collection('hr_applicants').countDocuments({})).toBe(1);
+    expect(await db().collection('hr_screenings').countDocuments({})).toBe(1);
+    expect(await db().collection('hr_evaluation_batches').countDocuments({})).toBe(1);
+    // And the offer is still whole, because the employee rule calls it history.
+    expect(await db().collection('hr_job_offers').countDocuments({})).toBe(1);
+  });
+
+  it('is emptied when the run asks for it — applicants, stages, and the offer', async () => {
+    const report = await runReset({ write: true, includeRecruitment: true });
+    expect(report.applicants).toBe(1);
+
+    expect(await db().collection('hr_applicants').countDocuments({})).toBe(0);
+    expect(await db().collection('hr_screenings').countDocuments({})).toBe(0);
+    expect(await db().collection('hr_job_offers').countDocuments({})).toBe(0);
+  }, 240_000);
+
+  /**
+   * The collection a top-level schema walk cannot see: its only applicant reference lives in
+   * `items[].applicantId`. Derived flatly it is invisible, and the reset would report success
+   * while leaving a batch naming people it had just deleted.
+   */
+  it('empties the batch whose applicants are only inside a subdocument array', async () => {
+    expect(await db().collection('hr_evaluation_batches').countDocuments({})).toBe(0);
+  });
+
+  /**
+   * The two rules disagree about job offers on purpose, and the report must not show both answers:
+   * a collection being emptied may never also be listed as left alone.
+   */
+  it('moves job offers out of the untouched list when it empties them', async () => {
+    const report = await runReset({ write: false, includeRecruitment: true });
+    expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
+    expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
+    // The other seven are still off limits.
+    expect(report.untouched).toHaveLength(7);
   }, 240_000);
 });
 

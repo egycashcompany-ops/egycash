@@ -9,6 +9,26 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Neither go-live tool could keep its promise not to send anything — including on a dry run.**
+  `reset:workforce` and `import:workforce` both call `bootPlatform` before they read a row, and the
+  boot is not passive: `hr.seed` runs the D2 login backfill, which creates a login for every
+  employed employee that lacks one and sends each of them a WhatsApp message and an email carrying a
+  one-time setup link. So the harmless-by-design invocation — the dry run, the one the operator is
+  told to start with — would have messaged the entire workforce before counting anything. The
+  importer's existing refusal did not cover it twice over: it ran *after* the boot, and only on
+  `--write`.
+
+  Both CLIs now check `HR_PROVISION_MISSING_LOGINS` as the first statement in `main`, ahead of the
+  boot and ahead of parsing `--write`, and refuse while it is true. The variable is therefore a
+  precondition of RUNNING these tools at all, not of writing with them. It refuses rather than
+  warns, and refuses the dry run too, because the asymmetry is total: on a database where everyone
+  already has a login this occasionally declines a run that would have been fine and the operator
+  sets one variable and tries again, whereas the other outcome delivers a setup link to ~1,670 real
+  people at once and nothing can recall a delivered message. The ordering is pinned by a test that
+  reads both CLIs' source, since ordering is exactly what a behavioural test of either would miss.
+
 ### Added
 
 - **A workforce reset, for the one time it is needed: the moment before the real workforce lands.**

@@ -13,8 +13,12 @@
 // IT NEVER CREATES A LOGIN AND NEVER SENDS ANYTHING. `registerDirect` is called with
 // `provisionLogin: false`, so no account is made, no WhatsApp message goes out and no email is
 // sent. That is not a nicety: the default path would deliver a one-time setup link to ~1,670 real
-// employees in one burst, and nothing can recall it. Set `HR_PROVISION_MISSING_LOGINS=false`
-// before the NEXT API restart too — the boot backfill would otherwise do exactly that.
+// employees in one burst, and nothing can recall it.
+//
+// `HR_PROVISION_MISSING_LOGINS=false` IS REQUIRED TO RUN THIS AT ALL, dry run included — not just
+// to write with it, and not only before the next API restart. Booting the platform runs the login
+// backfill, which sends exactly those messages before this command reads a single row. The guard
+// is the first thing `main` does, ahead of the boot. See `workforce-boot-guard.ts`.
 import { readFile, writeFile } from 'node:fs/promises';
 import { logger } from './infrastructure/logging/logger';
 import { disconnectMongo } from './infrastructure/database/mongo';
@@ -24,6 +28,7 @@ import { bootPlatform } from './platform/kernel/bootstrap';
 import { moduleManifests } from './modules';
 import { env } from './infrastructure/config/env';
 import { userService } from './platform/users';
+import { assertLoginProvisioningDisabled } from './workforce-boot-guard';
 import { runImport } from './workforce-import/run';
 
 const flag = (name: string): string | null => {
@@ -33,6 +38,11 @@ const flag = (name: string): string | null => {
 };
 
 const main = async (): Promise<void> => {
+  // BEFORE THE BOOT, because the boot is what sends the messages. This import provisions nothing
+  // itself, but `bootPlatform` runs the login backfill — so the check has to happen here, and has
+  // to cover the dry run too. See `workforce-boot-guard.ts`.
+  assertLoginProvisioningDisabled('import:workforce');
+
   const file = flag('file');
   if (file === null || file === '') {
     throw new Error('usage: import:workforce -- --file <path to the workbook> [--write] [--report <path>]');
@@ -46,17 +56,6 @@ const main = async (): Promise<void> => {
   const admin = await userService.findByEmail(env.SEED_ADMIN_EMAIL);
   if (admin === null) {
     throw new Error(`seed admin ${env.SEED_ADMIN_EMAIL} not found — run \`npm run seed\` first`);
-  }
-
-  if (write && env.HR_PROVISION_MISSING_LOGINS) {
-    // Refuse rather than warn. The import itself provisions nothing, but the next API restart
-    // would provision everyone it just created and message them all — and by then the operator is
-    // no longer at the keyboard to notice.
-    throw new Error(
-      'refusing to write while HR_PROVISION_MISSING_LOGINS=true — the next API restart would ' +
-        'send a setup link by WhatsApp and email to every employee this import creates. Set it to ' +
-        'false, run the import, and turn it back on when accounts are meant to go out.',
-    );
   }
 
   const report = await runImport({ file, write, actorId: String(admin._id) });

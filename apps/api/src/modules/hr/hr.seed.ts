@@ -47,7 +47,7 @@ import {
   ensureApplicantDocsCategory,
 } from './recruitment/applicant-documents';
 import {
-  migrateEmployeeNumberIndex,
+  migrateEmployeeIndexes,
   migrateEmployeesToRegistry,
 } from './employee-management/employees';
 import { migrateEmployeeFiles } from './employee-management/employee-file';
@@ -519,7 +519,7 @@ export const seedHrRecruitment = async (): Promise<void> => {
   // Employee-registry boot migration (frozen design §10) — idempotent, legacy docs only.
   await migrateEmployeesToRegistry();
   // ADR-017 — retire the unique index on the Global Employee Number (idempotent, guarded).
-  await migrateEmployeeNumberIndex();
+  await migrateEmployeeIndexes();
   // I5 — drop the re-derived recruitment milestones from legacy Employee Files; the canonical
   // recruitment timeline is now the only history (idempotent).
   await migrateEmployeeFiles();

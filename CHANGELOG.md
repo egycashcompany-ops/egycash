@@ -9,6 +9,33 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **The workforce reset can now empty the recruitment pipeline too, and only when asked.**
+  `--include-recruitment` additionally deletes every applicant and every record filed against one —
+  screenings, interviews, evaluations, evaluation batches, uploaded document sets, the recruitment
+  timeline and its workflow events. It is opt-in because emptying the workforce says nothing about
+  whether people who are mid-application should also go; only "empty the system completely" answers
+  that, and the flag is how somebody says it. It works in both modes, so a dry run shows exactly
+  what it would remove.
+
+  **Job offers are the one deliberate reversal.** The default run classifies them `keep` — an offer
+  is recruitment history that merely names who was hired, and deleting it to remove a person
+  destroys the record of a hiring decision. That reasoning does not survive erasing the applicant
+  themselves: an offer made to somebody being deleted is not history, it is the dangling half of a
+  deleted record. So the two rules disagree by design, the recruitment rule wins when it is
+  enabled, and the report moves the collection out of "left alone" into what was emptied — a
+  collection may never appear in both.
+
+  **The derivation now walks subdocument arrays.** `hr_evaluation_batches` names its candidates
+  only in `items[].applicantId`, which `schema.paths` does not surface, so a top-level walk could
+  not see the collection at all and a reset would have reported success while leaving a batch full
+  of the names of people it had just deleted. The employee side was re-derived the same way and is
+  byte-for-byte unchanged at 47 collections, so this is strictly a widening. The recruitment
+  catalogues — sources, forms, interview stages, evaluation phases, document types, requisitions —
+  carry no applicant reference and are therefore never in the set, which is right: they are
+  configuration the next hiring round needs, not records about a person.
+
 ### Fixed
 
 - **`hr_job_offers.ux_code` drifted from the schema, and the drift silently broke hiring.** The

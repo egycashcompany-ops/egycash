@@ -7,8 +7,10 @@
 import mongoose, { Types } from 'mongoose';
 import { logger } from '../infrastructure/logging/logger';
 import {
+  APPLICANT_REGISTRY,
   SURVIVING_ROLE_KEYS,
   USER_SCOPED_COLLECTIONS,
+  applicantTargets,
   employeeTargets,
   type Target,
 } from './targets';
@@ -39,6 +41,14 @@ export interface ResetReport {
   untouched: { collection: string; documentsNamingAnEmployee: number; why: string }[];
   /** Rows removed alongside the deleted accounts. */
   userScoped: { collection: string; documents: number }[];
+  /**
+   * The recruitment pipeline, emptied only when the run was asked for it. `null` means it was not
+   * part of this run and every applicant stays — the difference matters enough to be a distinct
+   * value rather than a zero.
+   */
+  applicants: number | null;
+  /** Recruitment collections emptied, when included. */
+  recruitment: { collection: string; documents: number; why: string }[];
   /**
    * The Global Employee Number counter, reported and NOT reset. Winding it back would reissue a
    * number somebody already holds on paper; the import raises it when it needs to.
@@ -107,9 +117,18 @@ export const findSurvivors = async (): Promise<SurvivingUser[]> => {
     .sort((a, b) => (a.username ?? a.id).localeCompare(b.username ?? b.id));
 };
 
-export const runReset = async (opts: { write: boolean }): Promise<ResetReport> => {
-  // Throws, by design, if any collection naming an employee is unclassified.
+export const runReset = async (opts: {
+  write: boolean;
+  /** Also empty the recruitment pipeline — every applicant and every stage record. Opt-in. */
+  includeRecruitment?: boolean;
+}): Promise<ResetReport> => {
+  const includeRecruitment = opts.includeRecruitment === true;
+  // Both throw, by design, if any collection naming an employee (or an applicant) is unclassified.
   const targets = employeeTargets();
+  const recruitmentTargets = includeRecruitment
+    ? applicantTargets().filter((t) => t.action === 'purge')
+    : [];
+  const recruitmentNames = new Set(recruitmentTargets.map((t) => t.collection));
   const survivors = await findSurvivors();
 
   // THE REFUSAL THAT MATTERS MOST. An empty survivor list means every account goes, and nobody is
@@ -137,7 +156,13 @@ export const runReset = async (opts: { write: boolean }): Promise<ResetReport> =
     .sort((a, b) => (a.username ?? a.id).localeCompare(b.username ?? b.id));
 
   const purgeTargets = targets.filter((t) => t.action === 'purge');
-  const keepTargets = targets.filter((t) => t.action === 'keep');
+  // `hr_job_offers` is `keep` under the employee rule and `purge` under the recruitment one. When
+  // recruitment is included the recruitment decision wins, and the collection must leave the
+  // "not touched" list — reporting it as untouched while emptying it would be a lie in the one
+  // place an operator relies on.
+  const keepTargets = targets.filter(
+    (t) => t.action === 'keep' && !recruitmentNames.has(t.collection),
+  );
 
   const purged: ResetReport['purged'] = [];
   for (const t of purgeTargets) {
@@ -168,6 +193,18 @@ export const runReset = async (opts: { write: boolean }): Promise<ResetReport> =
     });
   }
 
+  const recruitment: ResetReport['recruitment'] = [];
+  for (const t of recruitmentTargets) {
+    recruitment.push({
+      collection: t.collection,
+      documents: await db().collection(t.collection).countDocuments({}),
+      why: t.why,
+    });
+  }
+  const applicants = includeRecruitment
+    ? await db().collection(APPLICANT_REGISTRY).countDocuments({})
+    : null;
+
   const employees = await db().collection(EMPLOYEES).countDocuments({});
   const sequence = await db().collection('hr_sequences').findOne({ _id: 'employee:global' as never });
   const employeeSequence = sequence === null ? null : Number(sequence.value);
@@ -180,6 +217,11 @@ export const runReset = async (opts: { write: boolean }): Promise<ResetReport> =
 
     for (const t of purgeTargets) await db().collection(t.collection).deleteMany({});
     await db().collection(EMPLOYEES).deleteMany({});
+
+    // The pipeline, then the applicants themselves — the same order as the employee half, so a run
+    // interrupted midway leaves orphaned stage rows rather than stage rows pointing at nobody.
+    for (const t of recruitmentTargets) await db().collection(t.collection).deleteMany({});
+    if (includeRecruitment) await db().collection(APPLICANT_REGISTRY).deleteMany({});
 
     for (const { collection, path } of USER_SCOPED_COLLECTIONS) {
       await db()
@@ -197,7 +239,7 @@ export const runReset = async (opts: { write: boolean }): Promise<ResetReport> =
       .updateMany({ _id: { $in: survivorIds } }, { $set: { employeeId: null } });
 
     logger.warn(
-      { employees, users: doomed.length, survivors: survivors.length },
+      { employees, applicants, users: doomed.length, survivors: survivors.length },
       'workforce reset complete — employees and non-administrator accounts removed',
     );
   }
@@ -210,6 +252,10 @@ export const runReset = async (opts: { write: boolean }): Promise<ResetReport> =
     purged: purged.sort((a, b) => b.documents - a.documents || a.collection.localeCompare(b.collection)),
     untouched: untouched.sort((a, b) => a.collection.localeCompare(b.collection)),
     userScoped: userScoped.sort((a, b) => b.documents - a.documents),
+    applicants,
+    recruitment: recruitment.sort(
+      (a, b) => b.documents - a.documents || a.collection.localeCompare(b.collection),
+    ),
     employeeSequence,
   };
 };

@@ -11,8 +11,28 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Index drift is now reconciled for the employee collection as a whole, not one index at a
+  time.** The go-live import failed a third time, on `ux_offer`: the schema declares it partial
+  (only rows whose `jobOfferId` is a real ObjectId), the database still held it as plain-unique, so
+  every imported employee — all of whom have `jobOfferId: null` — collided with the first. That is
+  why exactly one employee was ever added. It is the same mechanism as `hr_job_offers.ux_code` and
+  the `employeeNumber` migration before it: Mongoose creates a missing index and leaves an existing
+  one alone, it never rewrites one, so any declaration that changes after it ships is silently not
+  enforced on databases that predate the change.
+
+  `reconcileDeclaredIndexes` replaces the bespoke migrations. It compares every index the schema
+  declares against what the collection holds — matching by name first and by key shape second, so
+  an index built under Mongo's default name is still found — and drops and rebuilds any whose
+  enforcement differs (`unique`, `partialFilterExpression`). It never touches an index the schema
+  does not declare: a hand-built index on a production database is a decision, not drift. Applied
+  to the employee collection at boot; the decision is a pure function with the three production
+  drifts and the two harms it must avoid pinned by tests.
+
+  The error that hid this for three rounds now names the field (see below) — that is how the
+  third drift was found in one run instead of three.
+
 - **The `employeeNumber` index migration matched by name, so it walked past the index it exists to
-  drop.** ADR-017 relaxed the Global Employee Number from unique to plain, because 148 real
+  drop.** *(Superseded in the same release by the reconciler above, which subsumes it.)* ADR-017 relaxed the Global Employee Number from unique to plain, because 148 real
   employees legitimately share one, and `migrateEmployeeNumberIndex` drops the legacy constraint on
   databases that already built it. It looked for the name `ux_employeeNumber` — which is only what
   this repository declares *today*. A database whose index predates that naming carries Mongo's own

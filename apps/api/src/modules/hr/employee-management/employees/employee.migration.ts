@@ -10,7 +10,7 @@
 //   - A `hire` Personnel Action (seq 1) is synthesized so every history starts uniformly;
 //     `statusHistory[0]` is linked to it and the trail is frozen thereafter.
 import { type Types } from 'mongoose';
-import { logger } from '../../../../infrastructure/logging/logger';
+import { reconcileDeclaredIndexes } from '../../../../shared/base/index-drift';
 import { normalizeArabic } from '../../shared/arabic';
 import { applicantService } from '../../recruitment/applicants';
 // Deliberately NOT the employee-actions barrel: the barrel pulls in the actions service,
@@ -111,43 +111,20 @@ export const personalFromApplicant = (a: {
 });
 
 /**
- * Drop the legacy UNIQUE index on `employeeNumber` so the schema's plain `ix_employeeNumber` can
- * take over (ADR-017 — see the index comment in `employee.model.ts` for why it is relaxed).
+ * Bring the employee collection's indexes back to what the schema declares.
  *
- * `autoIndex` is off outside development, and in any case Mongo will not silently downgrade a
- * built unique index because a declaration changed: the old definition has to be dropped.
+ * This replaces a bespoke migration that dropped one index by name, and its successor that dropped
+ * one index by shape. Both were the right idea at the wrong altitude: `employeeNumber` was relaxed
+ * from unique to plain (ADR-017), `ux_offer` and `ux_userId` were made partial, and every database
+ * built before any of those changes still enforces the old shape — Mongoose never rewrites an
+ * index that already exists. The go-live import failed on the second of these after the first had
+ * been fixed by hand, which is the signal that the property wanted is "every declared index has
+ * the options it declares", checked for all of them at once. See `shared/base/index-drift.ts`.
  *
- * MATCHED BY SHAPE, NOT BY NAME. The first version of this looked for the name `ux_employeeNumber`
- * and nothing else, which is only the name this repository happens to declare today. A database
- * whose index was built before the schema named it carries Mongo's own default, `employeeNumber_1`
- * — the migration walked straight past it, the unique constraint survived, and the go-live import
- * then failed on the 148 people who legitimately share a global number. Any unique index keyed on
- * exactly `employeeNumber` is the legacy one, whatever it is called.
- *
- * A no-op from the second boot onward, and on a fresh install where no such index existed.
+ * A no-op from the second boot onward, and on a fresh install.
  */
-export const migrateEmployeeNumberIndex = async (): Promise<void> => {
-  try {
-    const indexes = await EmployeeModel.collection.indexes();
-    const legacy = indexes.filter((ix) => {
-      if (ix.unique !== true) return false;
-      const keys = Object.keys(ix.key ?? {});
-      return keys.length === 1 && keys[0] === 'employeeNumber';
-    });
-    if (legacy.length === 0) return;
-    for (const ix of legacy) {
-      if (typeof ix.name !== 'string') continue;
-      await EmployeeModel.collection.dropIndex(ix.name);
-      logger.info(
-        { index: ix.name },
-        'employees: legacy unique index on employeeNumber dropped — the global number may repeat',
-      );
-    }
-    await EmployeeModel.createIndexes();
-  } catch (error) {
-    // A missing collection (fresh install) is fine — autoIndex/createIndexes builds the new shape.
-    logger.warn({ err: error }, 'employees: employeeNumber index migration skipped');
-  }
+export const migrateEmployeeIndexes = async (): Promise<void> => {
+  await reconcileDeclaredIndexes(EmployeeModel as unknown as Parameters<typeof reconcileDeclaredIndexes>[0]);
 };
 
 export const migrateEmployeesToRegistry = async (): Promise<number> => {

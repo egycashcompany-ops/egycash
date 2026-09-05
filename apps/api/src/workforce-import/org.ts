@@ -131,7 +131,7 @@ export class OrgResolver {
       return null;
     }
 
-    const existing = await this.findBranchByCode(code);
+    const existing = await this.findBranch(code, key);
     if (existing !== null) {
       this.branches.set(key, existing);
       return existing;
@@ -149,13 +149,40 @@ export class OrgResolver {
     return id;
   }
 
-  private async findBranchByCode(code: string): Promise<string | null> {
+  /**
+   * Find the branch by its CODE, and failing that by its NAME.
+   *
+   * The name half is not belt-and-braces, it is the difference between an import that runs and one
+   * that does not. `branchService.create` rejects a duplicate NAME, so a database that already
+   * holds "المهندسين" under some other code — every deployment that was used before the import —
+   * makes the create throw `A branch with this name already exists`. The branch is then never
+   * cached, so the SAME failure repeats for every single person at that site: one stale branch
+   * costs the whole branch's workforce.
+   *
+   * A dry run cannot see any of this, because it never calls `create`. That is why the check is
+   * here and not in the plan.
+   *
+   * When the two disagree the EXISTING branch wins and its code is left alone — the Branch Code is
+   * an identity a super-admin owns (ADR-017), not something an import may rewrite underneath the
+   * people already filed against it. The mismatch is reported instead, so a human decides.
+   */
+  private async findBranch(code: string, key: string): Promise<string | null> {
     const page = await branchService.list(
-      { page: 1, pageSize: 200, sortDir: 'asc' },
+      { page: 1, pageSize: 500, sortDir: 'asc' },
       { scope: 'organization', userId: this.actorId, branchId: null, departmentId: null, sectionId: null },
     );
-    const hit = page.items.find((b) => b.code === code);
-    return hit === undefined ? null : String(hit._id);
+    const match = matchBranch(page.items, code, key);
+    if (match === null) return null;
+    if (match.mismatch !== null) {
+      this.note(
+        'branch',
+        `"${match.mismatch.name}" already exists with code ${match.mismatch.existingCode}, but the ` +
+          `sheet places it at ${code}. The existing branch is used as it is and its code is NOT ` +
+          'changed; employee codes come from the sheet either way. Correct the branch code by hand ' +
+          'if the sheet is right.',
+      );
+    }
+    return match.id;
   }
 
   private async department(branchId: string, name: string | null): Promise<string | null> {
@@ -294,6 +321,38 @@ export class OrgResolver {
  * at `DEP-0001` and collided with the department the first run had made. The failure surfaced as a
  * person who could not be imported, with the duplicate-key error buried in their rejection reason.
  */
+/**
+ * Which existing branch, if any, the sheet's site refers to — by CODE first, then by NAME.
+ *
+ * The name half is the difference between an import that runs and one that does not.
+ * `branchService.create` rejects a duplicate NAME, so a database that already holds "المهندسين"
+ * under some other code — every deployment used before the import — makes the create throw. The
+ * branch is then never cached, and the SAME failure repeats for every person at that site: one
+ * stale branch costs its whole workforce. Matching on code alone is what made that possible.
+ *
+ * A dry run cannot catch it, because it never calls `create`. That is exactly why this is a pure
+ * function with tests of its own rather than a line buried in the I/O path.
+ *
+ * When the two disagree the EXISTING branch wins and its code is left alone: the Branch Code is an
+ * identity a super-admin owns (ADR-017), not something an import may rewrite underneath the people
+ * already filed against it. The disagreement is returned so the caller can report it.
+ */
+export const matchBranch = (
+  items: readonly { _id: unknown; code: string; name: { ar: string } }[],
+  code: string,
+  key: string,
+): { id: string; mismatch: { name: string; existingCode: string } | null } | null => {
+  const byCode = items.find((b) => b.code === code);
+  if (byCode !== undefined) return { id: String(byCode._id), mismatch: null };
+
+  const byName = items.find((b) => orgKey(b.name.ar) === key);
+  if (byName === undefined) return null;
+  return {
+    id: String(byName._id),
+    mismatch: { name: byName.name.ar, existingCode: byName.code },
+  };
+};
+
 export const nextFreeCode = (prefix: string, existing: readonly string[]): string => {
   const pattern = new RegExp(`^${prefix}-(\\d+)$`, 'u');
   const highest = existing.reduce((max, code) => {

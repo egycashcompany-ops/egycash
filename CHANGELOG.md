@@ -9,6 +9,34 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The workforce import failed for an entire branch's workforce at a time, and no dry run could
+  have predicted it.** `OrgResolver` looked a branch up by CODE alone, while `branchService.create`
+  rejects a duplicate NAME. Any database used before the import already holds its sites under codes
+  of its own, so the lookup missed and the create threw `A branch with this name already exists` —
+  and because the failure happened before the branch was cached, the SAME failure then repeated for
+  every single person at that site. One stale branch took its whole workforce down with it.
+
+  Branches are now matched by code and, failing that, by folded name — which is what departments,
+  sections and job titles already did; the branch was the one asymmetry. When the two disagree the
+  EXISTING branch wins and its code is left alone: the Branch Code is an identity a super-admin
+  owns (ADR-017), not something an import may rewrite underneath the people already filed against
+  it. The disagreement is reported in `orgProblems` so a human decides.
+
+- **The importer's idempotence check asked a question the unique index does not answer.**
+  `ux_code` on employees is deliberately not partial on `isDeleted` — the Employee Code is an
+  identity nobody may reuse, deleted or not — but the check used `findByCodeSystem`, which filters
+  soft-deleted rows out. A code held by a deleted employee therefore read as free, and the insert
+  then failed on the index with an opaque `Duplicate resource` naming nothing. The check now asks
+  about every state (`findByCodeAnyState`) and rejects the row with a reason that says which record
+  is in the way and what to do about it.
+
+  Both bugs are invisible to a dry run by construction, because a dry run never calls `create`.
+  That is why the branch decision is now a pure, tested function rather than a line in the I/O
+  path: the plan cannot prove the write will succeed, so the write path's logic has to be provable
+  on its own.
+
 ### Added
 
 - **The workforce reset can now empty the recruitment pipeline too, and only when asked.**

@@ -22,6 +22,8 @@ export const sectionService = new OrgUnitService<SectionDoc>('section', sectionR
     } as Partial<SectionDoc>;
   },
   assertManagerExists,
+  // A Section hangs under a Department — see the Department service for why this is here.
+  optionParentId: (doc) => String(doc.departmentId),
   // `description` is a per-unit column the generic update does not know about (ADR-015 seam).
   buildUpdateSet: (input) =>
     input.description !== undefined ? { description: input.description ?? null } : {},

@@ -24,6 +24,16 @@ const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
 const listDepartmentOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/departments/options');
 
+// Sections and Job Titles, on the same terms as the two above. Each option carries `parentId`
+// (a Section's Department; null for a Job Title, which is a flat catalog), so a screen that
+// cascades one picker off another filters these lists in the browser instead of issuing a
+// permission-gated request per selection.
+const listSectionOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/sections/options');
+
+const listJobTitleOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/job-titles/options');
+
 const listDepartments = (branchId?: string): Promise<Paginated<DepartmentDto>> =>
   getPage<DepartmentDto>(
     `/platform/departments${buildQuery({ status: 'active', pageSize: 100, branchId })}`,
@@ -78,6 +88,26 @@ export const useSectionOptions = (departmentId: string | undefined, enabled = tr
     staleTime: 5 * 60_000,
     retry: false,
     select: (page) => page.items,
+  });
+
+/** Every active section, org-wide, as {id, code, name, parentId} — `parentId` is its department. */
+export const useSectionReferenceOptions = (enabled = true) =>
+  useQuery({
+    queryKey: [ORG_MODULE, 'sections', 'reference-options'],
+    queryFn: listSectionOptions,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+
+/** Every active job title, org-wide. `parentId` is always null — the catalog is flat (ADR-015). */
+export const useJobTitleReferenceOptions = (enabled = true) =>
+  useQuery({
+    queryKey: [ORG_MODULE, 'job-titles', 'reference-options'],
+    queryFn: listJobTitleOptions,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 
 export const useUserSearch = (term: string, enabled: boolean) =>

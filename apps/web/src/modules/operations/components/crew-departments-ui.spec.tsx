@@ -29,11 +29,13 @@ const CASH: OrgUnitOptionDto = {
   id: '507f1f77bcf86cd799439011',
   code: 'DEP-01',
   name: { ar: 'نقل الأموال', en: 'Cash transfer' },
+  parentId: null,
 };
 const HR: OrgUnitOptionDto = {
   id: '507f1f77bcf86cd799439012',
   code: 'DEP-02',
   name: { ar: 'الموارد البشرية', en: 'Human resources' },
+  parentId: null,
 };
 
 const me = (permissions: string[]): MeDto => ({

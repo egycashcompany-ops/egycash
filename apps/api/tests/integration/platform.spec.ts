@@ -956,6 +956,43 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(rows.some((r) => r.code === 'JT-CASH-OFFICER')).toBe(true);
   });
 
+  /**
+   * What the employees placement filters cascade on.
+   *
+   * The three lists are fetched once each and narrowed in the browser — a Department to its Branch,
+   * a Section to its Department — so the parent id has to be ON the option. Without it, narrowing
+   * means a `department.view`-gated request per selection, which is the permission the options
+   * endpoint exists to avoid needing.
+   */
+  it('carries the parent unit on each dropdown option, so a picker can cascade off another', async () => {
+    const dept = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'DEP-OPT', name: { ar: 'إدارة الخيارات', en: 'Options Dept' }, branchId: branchAId });
+    expect(dept.status).toBe(201);
+    const deptId = (dept.body as { data: { id: string } }).data.id;
+
+    const section = await request(app)
+      .post('/api/v1/platform/sections')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'SEC-OPT', name: { ar: 'قسم الخيارات', en: 'Options Section' }, departmentId: deptId });
+    expect(section.status).toBe(201);
+
+    type Opt = { id: string; code: string; parentId: string | null };
+    const read = async (path: string): Promise<Opt[]> => {
+      const res = await request(app)
+        .get(`/api/v1/platform/${path}/options`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: Opt[] }).data;
+    };
+
+    expect((await read('departments')).find((o) => o.code === 'DEP-OPT')?.parentId).toBe(branchAId);
+    expect((await read('sections')).find((o) => o.code === 'SEC-OPT')?.parentId).toBe(deptId);
+    // A Branch hangs under nothing, and says so rather than inventing a parent.
+    expect((await read('branches')).find((o) => o.id === branchAId)?.parentId).toBeNull();
+  });
+
   it('serves job-title dropdown options to any authenticated caller, without `jobTitle.view`', async () => {
     // THE DEFECT THIS CLOSES. Branches, departments and sections get `/options` from
     // `makeOrgUnitRouter`; job titles have a hand-written router and never gained it. The
@@ -976,7 +1013,12 @@ describe('login → permission → scoped data → audit trail', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ status: 'inactive', version: 0 });
 
-    type Option = { id: string; code: string; name: { ar: string; en: string } };
+    type Option = {
+      id: string;
+      code: string;
+      name: { ar: string; en: string };
+      parentId: string | null;
+    };
     const asAdmin = await request(app)
       .get('/api/v1/platform/job-titles/options')
       .set('Authorization', `Bearer ${adminToken}`);
@@ -985,10 +1027,15 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(options.some((o) => o.code === 'JT-OPT-A')).toBe(true);
     // Active only — a dropdown that offers a retired title invites somebody to pick it.
     expect(options.some((o) => o.code === 'JT-OPT-Z')).toBe(false);
-    // Three fields and no fourth: no grade, no salary band, no shift defaults.
+    // These four fields and no fifth: no grade, no salary band, no shift defaults. The point is
+    // what a dropdown option must NOT carry, and it still holds — `parentId` is the id of the unit
+    // this one hangs under, the same non-sensitive kind of identifier as `id` itself.
     const one = options.find((o) => o.code === 'JT-OPT-A') as Option;
-    expect(Object.keys(one).sort()).toEqual(['code', 'id', 'name']);
+    expect(Object.keys(one).sort()).toEqual(['code', 'id', 'name', 'parentId']);
     expect(one.name.ar).toBe('سائق');
+    // Null for a job title specifically: the catalog is flat, with no hierarchy to hang from
+    // (ADR-015). A Department's would be its Branch, a Section's its Department.
+    expect(one.parentId).toBeNull();
 
     // The decoupling `org-unit.http.ts` states for the other three units, stated the same way
     // here: somebody who may write a notification rule must be able to NAME a job title without

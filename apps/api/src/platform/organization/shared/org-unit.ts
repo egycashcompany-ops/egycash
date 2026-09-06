@@ -9,6 +9,7 @@ import {
   type ListOrgUnitsQuery,
   type LocalizedString,
   type OrgUnitDto,
+  type OrgUnitOptionDto,
   type Paginated,
 } from '@ecms/contracts';
 import { BusinessRuleError } from '../../../shared/errors';
@@ -23,6 +24,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 // barrel re-exports — but the edge that closed the cycle is gone.
 import { auditService } from '../../audit/audit.service';
 import { emit } from '../../kernel/event-bus';
+import { collectOptions } from './all-options';
 
 export interface OrgUnitDoc extends BaseDocFields {
   code: string;
@@ -108,6 +110,14 @@ export interface OrgUnitHooks<TDoc extends OrgUnitDoc> {
    * omitted-field semantics.
    */
   buildUpdateSet?: (input: Record<string, unknown>) => Record<string, unknown>;
+  /**
+   * Optional: the unit this one hangs under, for `options()` — a Department's Branch, a Section's
+   * Department. Omitted where a unit hangs under nothing, which is what a Branch does.
+   *
+   * It is what lets a caller cascade one dropdown off another from a SINGLE fetch of each list,
+   * instead of a `<unit>.view`-gated request per selection.
+   */
+  optionParentId?: (doc: TDoc) => string | null;
 }
 
 export class OrgUnitService<TDoc extends OrgUnitDoc> {
@@ -262,21 +272,26 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
   }
 
   /**
-   * Minimal active-unit options ({id, code, name}) for populating reference dropdowns across the app
-   * (e.g. the Branch selector on the Department / Section forms). Organization-wide and NOT gated by
-   * the unit's data-scope `view` permission — it exposes only non-sensitive identifiers a form needs.
+   * Every ACTIVE unit as a dropdown option, organization-wide and NOT gated by the unit's data-scope
+   * `view` permission — it exposes only non-sensitive identifiers a form or a filter needs.
+   *
+   * Paged to exhaustion by `collectOptions` — see that file for why a single large page was wrong.
    */
-  async options(): Promise<{ id: string; code: string; name: LocalizedString }[]> {
-    const page = await this.repository.list({
-      filter: { status: 'active' } as FilterQuery<TDoc>,
-      page: 1,
-      pageSize: 500,
-      sortBy: 'code',
-      sortDir: 'asc',
-      sortableFields: ['code'],
-      scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
-    });
-    return page.items.map((u) => ({ id: String(u._id), code: u.code, name: u.name }));
+  async options(): Promise<OrgUnitOptionDto[]> {
+    const parentOf = this.hooks.optionParentId;
+    return collectOptions<TDoc>(
+      (page, pageSize) =>
+        this.repository.list({
+          filter: { status: 'active' } as FilterQuery<TDoc>,
+          page,
+          pageSize,
+          sortBy: 'code',
+          sortDir: 'asc',
+          sortableFields: ['code'],
+          scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+        }),
+      (doc) => (parentOf === undefined ? null : parentOf(doc)),
+    );
   }
 
   baseDto(doc: TDoc): OrgUnitDto {

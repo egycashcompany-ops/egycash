@@ -57,6 +57,52 @@ export const QUADRUPLE_NAME_PARTS = 4;
 export const isQuadrupleName = (value: string): boolean =>
   countNameParts(value) >= QUADRUPLE_NAME_PARTS;
 
+// ── A full name, as a login profile stores it ────────────────────────────────
+//
+// An employee record holds ONE full name per language; a login profile holds a first name and a
+// last name. Somewhere that gap has to be crossed, and it was being crossed in two places at once:
+// the server derived the two parts when it auto-provisions an account at hire, and the manual
+// "create login" dialog asked a human to retype them into four empty boxes — for a person whose
+// name the system already knew. Two answers to one question, and only one of them was ever right.
+//
+// So the rule lives here, once, and both sides read it.
+
+/**
+ * The FIRST part of a name, and everything after it.
+ *
+ * Deliberately simpler than `countNameParts`: that one advises on whether a name is quadruple and
+ * has to understand compound parts to do it. This one only has to answer "what does this person go
+ * by, and what is the rest" — the first word and the remainder — which no binder rule changes.
+ *
+ * A single-word name repeats itself rather than leaving the last name empty, because the profile
+ * requires both and half a name is not an improvement on a repeated one.
+ */
+export const splitFullName = (full: string): { first: string; last: string } => {
+  const parts = full.trim().split(/\s+/).filter((part) => part !== '');
+  const first = parts[0] ?? full.trim();
+  return { first, last: parts.slice(1).join(' ') || first };
+};
+
+/**
+ * The `firstName` / `lastName` pair a login profile carries, derived from an employee's full names.
+ *
+ * The English side falls back to the ARABIC name when the record has no English one. That looks
+ * odd written down and is right in practice: the profile requires both languages, most records
+ * carry only the Arabic name, and a profile that says «محمد» under English is readable — where an
+ * empty one is a form that cannot be submitted at all.
+ */
+export const loginProfileNames = (
+  fullNameAr: string,
+  fullNameEn: string | null,
+): { firstName: { ar: string; en: string }; lastName: { ar: string; en: string } } => {
+  const ar = splitFullName(fullNameAr);
+  const en = splitFullName(fullNameEn ?? fullNameAr);
+  return {
+    firstName: { ar: ar.first, en: en.first },
+    lastName: { ar: ar.last, en: en.last },
+  };
+};
+
 // ── Email ───────────────────────────────────────────────────────────────────
 // One `@`, a dotted domain, ASCII only. Stricter than `z.string().email()`, which accepts a
 // dotless domain like `a@b` — valid by the RFC, never valid as a contact address on a job form.

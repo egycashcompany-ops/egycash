@@ -4,7 +4,8 @@
 // not an inline `split(' ').length`: a compound part inflates the count, and a name with fewer
 // parts than words deflates it. Every case below is an ordinary Egyptian name, not an edge case.
 import { describe, expect, it } from 'vitest';
-import { countNameParts, isQuadrupleName } from './field-rules';
+import { countNameParts, isQuadrupleName, loginProfileNames, splitFullName } from './field-rules';
+import { LocalizedStringSchema } from './localized';
 
 describe('counting name parts', () => {
   it('counts plain names by word', () => {
@@ -51,5 +52,68 @@ describe('the quadruple test', () => {
     expect(isQuadrupleName('أحمد محمد')).toBe(false);
     expect(isQuadrupleName('أحمد محمد علي')).toBe(false);
     expect(isQuadrupleName('محمد عبد الله علي')).toBe(false);
+  });
+});
+
+// ── The first/last split a login profile stores ──────────────────────────────
+//
+// A different question from counting parts, and deliberately a simpler rule: "what does this person
+// go by, and what is the rest". It exists because the answer has to be the SAME in two places — the
+// server splitting a name when it provisions an account at hire, and the create-login dialog
+// filling its boxes from the employee record instead of asking someone to retype a stored name.
+describe('splitFullName', () => {
+  it('takes the first word, and everything after it', () => {
+    expect(splitFullName('محمد أحمد علي حسن')).toEqual({ first: 'محمد', last: 'أحمد علي حسن' });
+    expect(splitFullName('Mohamed Ahmed Ali')).toEqual({ first: 'Mohamed', last: 'Ahmed Ali' });
+  });
+
+  it('repeats a single-word name rather than leaving the last name empty', () => {
+    // The profile requires both. Half a name is not an improvement on a repeated one, and an empty
+    // box is a form that cannot be submitted.
+    expect(splitFullName('محمد')).toEqual({ first: 'محمد', last: 'محمد' });
+  });
+
+  it('survives the spacing a pasted name actually arrives with', () => {
+    expect(splitFullName('  محمد   أحمد  ')).toEqual({ first: 'محمد', last: 'أحمد' });
+    expect(splitFullName('محمد\tأحمد')).toEqual({ first: 'محمد', last: 'أحمد' });
+  });
+
+  it('does not crash on an empty name', () => {
+    expect(splitFullName('')).toEqual({ first: '', last: '' });
+    expect(splitFullName('   ')).toEqual({ first: '', last: '' });
+  });
+});
+
+describe('loginProfileNames', () => {
+  it('builds both languages from both full names', () => {
+    expect(loginProfileNames('محمد أحمد علي', 'Mohamed Ahmed Ali')).toEqual({
+      firstName: { ar: 'محمد', en: 'Mohamed' },
+      lastName: { ar: 'أحمد علي', en: 'Ahmed Ali' },
+    });
+  });
+
+  it('falls back to the ARABIC name when the record carries no English one', () => {
+    // Most records do not. A profile reading «محمد» under English is readable; an empty one cannot
+    // be submitted at all, since `LocalizedStringSchema` requires both sides.
+    expect(loginProfileNames('محمد أحمد علي', null)).toEqual({
+      firstName: { ar: 'محمد', en: 'محمد' },
+      lastName: { ar: 'أحمد علي', en: 'أحمد علي' },
+    });
+  });
+
+  it('produces a value LocalizedStringSchema accepts', () => {
+    // The whole point of the fallback: what comes out of here is submitted straight to
+    // `CreateEmployeeLoginSchema`, whose two name fields are `LocalizedStringSchema` (min(1) both
+    // sides). A name that arrives empty on either side would make the dialog unsubmittable.
+    const names = loginProfileNames('محمد', null);
+    expect(LocalizedStringSchema.safeParse(names.firstName).success).toBe(true);
+    expect(LocalizedStringSchema.safeParse(names.lastName).success).toBe(true);
+  });
+
+  it('keeps a compound name whole on the last-name side', () => {
+    // `splitFullName` takes only the first word, so «عبد» never ends up stranded as a first name
+    // separated from what it binds to — unless the person's own first part IS the compound, which
+    // is the one case a first-word rule cannot see and a human can fix in the box.
+    expect(loginProfileNames('محمد عبد الله علي', null).lastName.ar).toBe('عبد الله علي');
   });
 });

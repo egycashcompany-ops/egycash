@@ -13,6 +13,7 @@ import { Types } from 'mongoose';
 import {
   HrEmployeeEvents,
   HrEmployeeTemplates,
+  loginProfileNames,
   parseNationalId,
   type CreateEmployee,
   type CreateEmployeeLogin,
@@ -970,19 +971,19 @@ class EmployeeService {
    * the Employee Code. The platform User is the authority for the link (`user.employeeId`, unique);
    * the employee's `userId` is a denormalized back-reference set here.
    */
-  /** Split a full name into localized first/last parts for the user profile. */
+  /**
+   * Split a full name into localized first/last parts for the user profile.
+   *
+   * The rule itself is `loginProfileNames`, in the contracts, because the CREATE-LOGIN dialog needs
+   * the same answer: it fills its four name boxes from the employee rather than asking a human to
+   * retype a name the system already holds. Two implementations of one rule is how the two paths
+   * would come to disagree about the same person.
+   */
   private profileNamesOf(employee: EmployeeDoc): {
     firstName: { ar: string; en: string };
     lastName: { ar: string; en: string };
   } {
-    const split = (full: string): [string, string] => {
-      const parts = full.trim().split(/\s+/);
-      const first = parts[0] ?? full;
-      return [first, parts.slice(1).join(' ') || first];
-    };
-    const [arFirst, arLast] = split(employee.personal.fullNameAr);
-    const [enFirst, enLast] = split(employee.personal.fullNameEn ?? employee.personal.fullNameAr);
-    return { firstName: { ar: arFirst, en: enFirst }, lastName: { ar: arLast, en: enLast } };
+    return loginProfileNames(employee.personal.fullNameAr, employee.personal.fullNameEn);
   }
 
   /**
@@ -1109,7 +1110,10 @@ class EmployeeService {
       throw new BusinessRuleError('an exited employee cannot receive a login account');
     }
     const createUser: CreateUser = {
-      email: input.email,
+      // Only when there IS one. The account stays reachable either way: `username` below falls back
+      // to the Employee Code, and `userService.create` refuses an account with neither identifier —
+      // the same shape `ensureLoginFor` has always used for employees whose record carries no email.
+      ...(input.email === undefined ? {} : { email: input.email }),
       firstName: input.firstName,
       lastName: input.lastName,
       ...(input.phone === undefined ? {} : { phone: input.phone }),

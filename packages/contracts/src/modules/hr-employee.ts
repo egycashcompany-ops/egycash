@@ -358,10 +358,19 @@ export type ChangeEmployeeStatus = z.infer<typeof ChangeEmployeeStatusSchema>;
 // ── Login account for an Employee (ADR-017) ─────────────────────────────────
 // Every login belongs to one Employee. The organizational placement (branch/department/section/
 // job title) is copied from the Employee, never supplied here. `username` defaults to the Employee
-// Code when omitted. An email is required and remains a valid login identifier.
+// Code when omitted.
+//
+// The email is OPTIONAL, and this schema was the last place in the platform that insisted on one.
+// An account needs a login IDENTIFIER, not an email — `CreateUserSchema` has said so for as long as
+// it has existed, the administrator's own account form offers email and username as alternatives,
+// and the auto-provisioning path at hire already creates accounts for the many employees whose
+// record carries no email. On THIS path an identifier is never in doubt: the username falls back to
+// the Employee Code, which every employee has. Requiring an email here only forced HR to invent one
+// for a person who does not have one — a fake address on a real account, and one more thing that
+// can be wrong. When given it is still validated, and still a login identifier.
 export const CreateEmployeeLoginSchema = z
   .object({
-    email: z.string().email(),
+    email: z.string().email().optional(),
     username: UsernameSchema.optional(),
     firstName: LocalizedStringSchema,
     lastName: LocalizedStringSchema,

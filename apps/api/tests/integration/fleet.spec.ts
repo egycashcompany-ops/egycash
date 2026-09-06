@@ -668,9 +668,10 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
     const employeeId = await mkEmployee();
     const enrolled = await mkDriverProfile(employeeId);
     await emit('hr.employee.exited', { employeeId, code: '000999', exitType: 'resignation' });
-    // Read the PROFILE, not the registry. The registry is who drives for this company, so an
-    // exited person is off it entirely (asserted below) and the row they used to occupy can no
-    // longer carry the answer to "was the profile deactivated".
+    // Read the PROFILE by id, not the registry. The row is keyed on the person now and no longer
+    // carries `isActive` — and this test EMITS the event rather than exiting anybody, so HR still
+    // has them employed and still lists them, which is correct. Whether leaving the company takes
+    // somebody off the registry is asserted where somebody actually leaves it, below.
     const readProfile = async (): Promise<FleetDriverProfileDto> => {
       const res = await request(app)
         .get(`/api/v1/fleet/drivers/${enrolled.id}`)
@@ -680,15 +681,6 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
     };
     await waitFor(async () => (await readProfile()).isActive === false);
     expect((await readProfile()).isActive).toBe(false);
-
-    const listed = await request(app)
-      .get('/api/v1/fleet/drivers')
-      .query({ employeeIds: employeeId, pageSize: 100 })
-      .set('Authorization', `Bearer ${adminToken}`);
-    expect(
-      data<FleetDriverRowDto[]>(listed),
-      'and somebody who has left is no longer on the registry',
-    ).toHaveLength(0);
   });
 });
 
@@ -6143,6 +6135,26 @@ describe('who is on the drivers registry — the org chart, not a list Fleet kee
     expect(bare, 'an employed driver is on the registry before anyone records a licence')
       .toBeDefined();
     expect(bare?.profile).toBeNull();
+  });
+
+  it('and somebody who has left the company is not on it', async () => {
+    // Written against the employee record rather than an event, because that is what the roster
+    // reads: the by-job-titles seam keeps only the employed statuses. Fleet's `hr.employee.exited`
+    // subscriber deactivates its own profile and cannot touch HR's status — two separate effects
+    // of one departure, and this is the HR half.
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    await EmployeeModel.updateOne(
+      { _id: new Types.ObjectId(employeeId) },
+      { $set: { status: 'exited' } },
+    );
+
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: employeeId, pageSize: MAX_PAGE_SIZE })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverRowDto[]>(res)).toHaveLength(0);
   });
 
   it('and a seat that requires no driving test is not on it', async () => {

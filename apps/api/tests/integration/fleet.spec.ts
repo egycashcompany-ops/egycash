@@ -15,6 +15,7 @@ import {
   platformPermissions,
   type FleetCatalogItemDto,
   type FleetDriverProfileDto,
+  type FleetDriverRowDto,
   type FleetDriverUnavailabilityDto,
   type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
@@ -132,7 +133,7 @@ const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
 
 /** HR employee via the real direct-registration endpoint — Fleet never fabricates one. */
 const mkEmployee = async (
-  over: { fullNameAr?: string; phone?: string; governorate?: string } = {},
+  over: { fullNameAr?: string; phone?: string; governorate?: string; jobTitleId?: string } = {},
 ): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
@@ -160,7 +161,7 @@ const mkEmployee = async (
         references: [],
       },
       employment: {
-        jobTitleId: jobTitleAId,
+        jobTitleId: over.jobTitleId ?? jobTitleAId,
         departmentId: departmentAId,
         branchId: branchAId,
         employmentType: 'fullTime',
@@ -283,7 +284,15 @@ beforeAll(async () => {
   const title = await request(app)
     .post('/api/v1/platform/job-titles')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ code: 'FL-DRV', name: { ar: 'سائق', en: 'Driver' }, jobGrade: 'G1' });
+    .send({
+      code: 'FL-DRV',
+      name: { ar: 'سائق', en: 'Driver' },
+      jobGrade: 'G1',
+      // WHO IS A DRIVER IS THE ORG CHART: the registry is every employed person whose job title
+      // requires a driving test. This file's employees are drivers, so their seat carries the
+      // flag — without it none of them is on the registry and every roster read below is empty.
+      requiresDrivingTest: true,
+    });
   expect(title.status).toBe(201);
   jobTitleAId = (title.body as { data: { id: string } }).data.id;
 
@@ -657,17 +666,29 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
 
   it('hr.employee.exited deactivates the profile (event-driven, no HR import)', async () => {
     const employeeId = await mkEmployee();
-    await mkDriverProfile(employeeId);
+    const enrolled = await mkDriverProfile(employeeId);
     await emit('hr.employee.exited', { employeeId, code: '000999', exitType: 'resignation' });
-    const readProfile = async (): Promise<FleetDriverProfileDto | undefined> => {
-      const listed = await request(app)
-        .get('/api/v1/fleet/drivers')
-        .query({ pageSize: 100 })
+    // Read the PROFILE, not the registry. The registry is who drives for this company, so an
+    // exited person is off it entirely (asserted below) and the row they used to occupy can no
+    // longer carry the answer to "was the profile deactivated".
+    const readProfile = async (): Promise<FleetDriverProfileDto> => {
+      const res = await request(app)
+        .get(`/api/v1/fleet/drivers/${enrolled.id}`)
         .set('Authorization', `Bearer ${adminToken}`);
-      return data<FleetDriverProfileDto[]>(listed).find((d) => d.employeeId === employeeId);
+      expect(res.status).toBe(200);
+      return data<FleetDriverProfileDto>(res);
     };
-    await waitFor(async () => (await readProfile())?.isActive === false);
-    expect((await readProfile())?.isActive).toBe(false);
+    await waitFor(async () => (await readProfile()).isActive === false);
+    expect((await readProfile()).isActive).toBe(false);
+
+    const listed = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: employeeId, pageSize: 100 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      data<FleetDriverRowDto[]>(listed),
+      'and somebody who has left is no longer on the registry',
+    ).toHaveLength(0);
   });
 });
 
@@ -4220,12 +4241,15 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       .query({ pageSize: MAX_PAGE_SIZE })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    const rows = data<FleetDriverProfileDto[]>(res);
+    // Rows that HAVE a profile, only. The registry now lists every driver in the org chart, so
+    // being ON it says nothing about whether a profile survived — which is precisely what this
+    // audit exists to detect. The question is unchanged; it is read out of the row instead.
+    const rows = data<FleetDriverRowDto[]>(res).filter((row) => row.profile !== null);
     return {
-      ids: rows.map((d) => d.employeeId).sort(),
+      ids: rows.map((row) => row.employeeId).sort(),
       active: rows
-        .filter((d) => d.isActive)
-        .map((d) => d.employeeId)
+        .filter((row) => row.profile?.isActive === true)
+        .map((row) => row.employeeId)
         .sort(),
     };
   };
@@ -4306,8 +4330,10 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       .get('/api/v1/fleet/drivers')
       .query({ pageSize: MAX_PAGE_SIZE })
       .set('Authorization', `Bearer ${adminToken}`);
-    const profile = data<FleetDriverProfileDto[]>(listed).find((d) => d.employeeId === d1);
-    expect(profile, 'the driver profile still exists').toBeDefined();
+    const row = data<FleetDriverRowDto[]>(listed).find((r) => r.employeeId === d1);
+    expect(row, 'the driver is still on the registry').toBeDefined();
+    const profile = row?.profile;
+    expect(profile, 'the driver profile still exists').not.toBeNull();
     expect(profile?.isActive, 'and is still active').toBe(true);
     expect(profile?.licenseNumber, 'with its licence untouched').toBeTruthy();
   });
@@ -6088,6 +6114,72 @@ describe('the driver license image', () => {
   });
 });
 
+describe('who is on the drivers registry — the org chart, not a list Fleet keeps', () => {
+  // The failure this replaced: membership WAS the profile, and the only thing that could create
+  // one was an endpoint no screen had called since PR #257. So «الحركة» showed nothing however
+  // many drivers the company hired, and an empty registry looked exactly like an empty fleet.
+
+  it('a driving seat puts you on it — with a profile, or with none recorded yet', async () => {
+    const recorded = await mkEmployee();
+    const enrolled = await mkDriverProfile(recorded);
+    const notYetRecorded = await mkEmployee();
+
+    // Narrowed by id rather than read off a page, so the assertion cannot turn on how many
+    // employees the rest of this file happens to have created before it.
+    const rows = data<FleetDriverRowDto[]>(
+      await request(app)
+        .get('/api/v1/fleet/drivers')
+        .query({ employeeIds: [recorded, notYetRecorded].join(','), pageSize: MAX_PAGE_SIZE })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(rows.map((row) => row.employeeId).sort()).toEqual([recorded, notYetRecorded].sort());
+
+    const withProfile = rows.find((row) => row.employeeId === recorded);
+    expect(withProfile?.profile?.id, 'what Fleet has recorded is on the row').toBe(enrolled.id);
+
+    // The whole point: a driver Fleet knows nothing about is still a driver, and null says
+    // "nothing recorded yet" rather than inventing a licence nobody entered.
+    const bare = rows.find((row) => row.employeeId === notYetRecorded);
+    expect(bare, 'an employed driver is on the registry before anyone records a licence')
+      .toBeDefined();
+    expect(bare?.profile).toBeNull();
+  });
+
+  it('and a seat that requires no driving test is not on it', async () => {
+    const clerk = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code: 'FL-CLK', name: { ar: 'كاتب', en: 'Clerk' }, jobGrade: 'G1' });
+    expect(clerk.status).toBe(201);
+    const employeeId = await mkEmployee({
+      jobTitleId: (clerk.body as { data: { id: string } }).data.id,
+    });
+
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({ employeeIds: employeeId, pageSize: MAX_PAGE_SIZE })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverRowDto[]>(res)).toHaveLength(0);
+  });
+
+  it('a driver with nothing recorded matches no fleet-owned filter', async () => {
+    // Not an omission: "licences expiring before March" is not a question about a licence that was
+    // never entered, and answering it with those rows would bury the ones that really do expire.
+    const notYetRecorded = await mkEmployee();
+    const filtered = await request(app)
+      .get('/api/v1/fleet/drivers')
+      .query({
+        employeeIds: notYetRecorded,
+        isActive: 'true',
+        pageSize: MAX_PAGE_SIZE,
+      })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(filtered.status).toBe(200);
+    expect(data<FleetDriverRowDto[]>(filtered)).toHaveLength(0);
+  });
+});
+
 describe('the drivers list filters narrow SERVER-side', () => {
   it('filters on the fleet-owned area, and on whether a scan is on file', async () => {
     const withScan = await mkDriverProfile(await mkEmployee());
@@ -6107,7 +6199,7 @@ describe('the drivers list filters narrow SERVER-side', () => {
       .query({ area, pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(byArea.status).toBe(200);
-    const areaIds = data<FleetDriverProfileDto[]>(byArea).map((d) => d.id);
+    const areaIds = data<FleetDriverRowDto[]>(byArea).map((row) => row.profile?.id);
     expect(areaIds).toContain(withScan.id);
     expect(areaIds).not.toContain(withoutScan.id);
 
@@ -6115,7 +6207,7 @@ describe('the drivers list filters narrow SERVER-side', () => {
       .get('/api/v1/fleet/drivers')
       .query({ hasLicenseImage: 'true', pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
-    const withImageIds = data<FleetDriverProfileDto[]>(withImage).map((d) => d.id);
+    const withImageIds = data<FleetDriverRowDto[]>(withImage).map((row) => row.profile?.id);
     expect(withImageIds).toContain(withScan.id);
     expect(withImageIds).not.toContain(withoutScan.id);
 
@@ -6127,7 +6219,7 @@ describe('the drivers list filters narrow SERVER-side', () => {
       .get('/api/v1/fleet/drivers')
       .query({ hasLicenseImage: 'false', pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
-    const withoutImageIds = data<FleetDriverProfileDto[]>(withoutImage).map((d) => d.id);
+    const withoutImageIds = data<FleetDriverRowDto[]>(withoutImage).map((row) => row.profile?.id);
     expect(withoutImageIds).toContain(withoutScan.id);
     expect(withoutImageIds).not.toContain(withScan.id);
   });
@@ -6179,7 +6271,7 @@ describe('the HR half of the drivers filter — two server-side queries, joined 
       .query({ employeeIds: targetEmployee, pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(drivers.status).toBe(200);
-    const ids = data<FleetDriverProfileDto[]>(drivers).map((d) => d.id);
+    const ids = data<FleetDriverRowDto[]>(drivers).map((row) => row.profile?.id);
     expect(ids).toEqual([target.id]);
     expect(ids).not.toContain(other.id);
   });
@@ -6229,7 +6321,7 @@ describe('the HR half of the drivers filter — two server-side queries, joined 
       .query({ employeeIds: '64b1f0dddddddddddddddd99', pageSize: 25 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
-    expect(data<FleetDriverProfileDto[]>(res)).toHaveLength(0);
+    expect(data<FleetDriverRowDto[]>(res)).toHaveLength(0);
   });
 });
 

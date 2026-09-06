@@ -100,16 +100,52 @@ describe('identity — who is this person', () => {
   });
 
   /**
-   * Five go-live rows carry no national ID. The registry derives birth date, gender and place of
-   * birth from it and builds the one-person-forever guard on it, so a row without one cannot become
-   * an employee — it is reported as a cell to fill in rather than given a fabricated identity.
+   * Five go-live rows carry no national ID — four leavers and the company's own first employee,
+   * hired before it kept the paperwork. They used to be refused, which kept five real people out of
+   * their own company's registry to preserve a column. The registry itself never required it: the
+   * employee service stores `nationalId: null` and skips the duplicate-person guard for it.
+   *
+   * What is NOT done here is as important: no placeholder is invented. The service DERIVES birth
+   * date, gender and place of birth from this number, so a made-up one would manufacture three more
+   * facts about a real person and file them as true. Absent is recorded as absent.
    */
-  it('rejects a row with no national ID, naming what is missing', () => {
+  it('imports a person the company holds no national ID for, recording it as absent', () => {
     const { people, rejected } = buildPlan([
-      row({ sheet: 'master', rowNumber: 5, code: '0100777', nationalId: null }),
+      row({ sheet: 'master', rowNumber: 5, code: '0100000', nationalId: null }),
     ]);
-    expect(people).toHaveLength(0);
-    expect(rejected[0]?.reason).toBe('no national ID — the registry requires one');
+    expect(rejected).toHaveLength(0);
+    expect(people).toHaveLength(1);
+    expect(people[0]?.nationalId).toBeNull();
+    expect(people[0]?.code).toBe('0100000');
+  });
+
+  /** With no national ID to join on, the employee code is the identity — it is unique, so two rows
+   *  carrying one are the same person's two spells, not two people. */
+  it('joins the sheets by code when neither row has a national ID', () => {
+    const { people } = buildPlan([
+      exited({ rowNumber: 40, code: '0100000', nationalId: null }),
+      row({
+        sheet: 'master',
+        rowNumber: 88,
+        code: '0100000',
+        nationalId: null,
+        hiredAt: new Date('2023-06-01T00:00:00.000Z'),
+      }),
+    ]);
+    expect(people).toHaveLength(1);
+    expect(people[0]?.spells).toHaveLength(2);
+    expect(people[0]?.serving).toBe(true);
+  });
+
+  /** The two key spaces are prefixed apart, so a person with no ID is never merged into one who has
+   *  one — even if the digits were ever to line up. */
+  it('keeps a person with no national ID separate from one who has one', () => {
+    const { people } = buildPlan([
+      row({ sheet: 'master', rowNumber: 5, code: '0100000', nationalId: null }),
+      row({ sheet: 'master', rowNumber: 6, code: '0100001', nationalId: '28106012104454' }),
+    ]);
+    expect(people).toHaveLength(2);
+    expect(people.map((p) => p.nationalId)).toEqual([null, '28106012104454']);
   });
 
   /**
@@ -197,7 +233,6 @@ describe('refusal — rows that cannot become anything true', () => {
   it.each([
     ['no employee code', { code: null }],
     ['no Arabic name', { fullNameAr: null }],
-    ['no national ID — the registry requires one', { nationalId: null }],
     ['no hiring date', { hiredAt: null }],
     ['no site (الموقع)', { branchName: null }],
     ['no department (الإدارة)', { departmentName: null }],

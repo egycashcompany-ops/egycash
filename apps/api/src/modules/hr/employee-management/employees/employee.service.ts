@@ -113,6 +113,27 @@ const salaryForAssignment = async (
   };
 };
 
+/**
+ * What `registerDirect` accepts, which is ONE FIELD wider than what the HTTP route validates.
+ *
+ * `DirectRegisterEmployeeSchema` requires a National ID and goes on requiring it: every request
+ * that arrives over HTTP is parsed by it before it reaches this service, so the UI and the
+ * recruitment flow are unchanged. The go-live workforce import is not a request — it calls this
+ * method directly — and it carries five real people the company holds no National ID for, among
+ * them its own first employee, hired before it kept the paperwork.
+ *
+ * Widening the TYPE does not widen the API. It only writes down what the body below has always
+ * done: every use of `nationalId` is keyed on `!== undefined`, and absence is stored as `null`,
+ * exactly as it is for the Sprint-4.1 records that predate the requirement.
+ */
+export type DirectRegisterEmployeeInput = Omit<DirectRegisterEmployee, 'personal'> & {
+  personal: Omit<DirectRegisterEmployee['personal'], 'identity'> & {
+    identity: Omit<DirectRegisterEmployee['personal']['identity'], 'nationalId'> & {
+      nationalId?: string;
+    };
+  };
+};
+
 class EmployeeService {
   /** Fire-and-forget hiring notification to the reporting manager + the creator. */
   private async notifyHire(doc: EmployeeDoc): Promise<void> {
@@ -303,7 +324,7 @@ class EmployeeService {
    */
   async registerDirect(
     ctx: AuthContext,
-    input: DirectRegisterEmployee,
+    input: DirectRegisterEmployeeInput,
     scope: ScopeSelector,
     /**
      * `provisionLogin: false` creates the employee and NOTHING ELSE — no account, and therefore no

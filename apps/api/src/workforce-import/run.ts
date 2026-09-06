@@ -249,10 +249,12 @@ const personalOf = (row: SourceRow) => ({
   identity: {
     fullNameAr: row.fullNameAr as string,
     ...(row.fullNameEn === null ? {} : { fullNameEn: row.fullNameEn }),
-    // Guaranteed by the planner, which refuses a row without one. The service derives birth date,
-    // gender and place of birth FROM it — the sheet's own values for those are never sent, so the
-    // registry and the national ID cannot disagree.
-    nationalId: row.nationalId as string,
+    // OMITTED, not nulled, when the company holds no national ID: the service keys every use of it
+    // on `!== undefined` and stores `null`, so leaving the key out is what records "we do not have
+    // one". Sending a placeholder would be worse than sending nothing — the service DERIVES birth
+    // date, gender and place of birth from this number, so a made-up one would manufacture three
+    // more facts about a real person and file them as if they were true.
+    ...(row.nationalId === null ? {} : { nationalId: row.nationalId }),
     nationality: 'Egyptian',
     ...(maritalStatus(row.maritalStatus) === null
       ? {}

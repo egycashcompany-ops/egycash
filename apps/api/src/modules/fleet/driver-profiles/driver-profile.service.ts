@@ -13,12 +13,17 @@ import { Types, type FilterQuery } from 'mongoose';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
 import { type AuthContext } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
-import { getDirectoryEmployee } from '../../../platform/directory';
+import {
+  getDirectoryEmployee,
+  listDirectoryEmployeesByJobTitles,
+} from '../../../platform/directory';
+import { jobTitleRepository } from '../../../platform/organization';
 import { emit } from '../../../platform/kernel/event-bus';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { diffChanges } from '../../../shared/utils/diff';
 import { resolveDriverDocsCategoryId } from './driver-files';
 import { fleetDriverProfileRepository } from './driver-profile.repository';
+import { matchesFleetFilters, sortDriverRows } from './driver-roster';
 import { DRIVER_PROFILE_KIND, type FleetDriverProfileDoc } from './driver-profile.model';
 
 const entityRef = (id: string) => ({
@@ -76,6 +81,65 @@ class FleetDriverProfileService {
       changes: diffChanges({}, snapshot(doc)),
     });
     return doc;
+  }
+
+  /**
+   * The registry: every DRIVER, with whatever Fleet has recorded about them.
+   *
+   * WHO IS A DRIVER IS THE ORG CHART. Every employed person whose job title requires a driving
+   * test — the flag the company already sets on the seat, which recruitment already reads as
+   * `isDriver`. Fleet asks the same flag through the platform, so a driver hired this morning is
+   * on the registry this morning and a second list of drivers never has to be maintained.
+   *
+   * This replaces membership-by-profile, which was unreachable: a row existed only if a profile
+   * did, and the only thing that could create one was an endpoint no screen ever called. The
+   * registry therefore showed nothing however many drivers were hired.
+   *
+   * PAGINATED IN MEMORY, deliberately. The roster comes from HR and the profiles from Fleet —
+   * two collections the FR-11 boundary forbids joining in the database — so the join happens here
+   * and the page is cut afterwards. That is sound at this size: the roster is the company's
+   * drivers, hundreds at most, and it is the same trade Operations' crew directory already makes.
+   * What it buys is a page that cannot lie: a filter is applied to the whole roster, never to one
+   * fetched page of it.
+   */
+  async listRoster(
+    query: ListFleetDriversQuery,
+  ): Promise<Paginated<{ employeeId: string; profile: FleetDriverProfileDoc | null }>> {
+    const jobTitleIds = await jobTitleRepository.idsRequiringDrivingTestSystem();
+    const roster = await listDirectoryEmployeesByJobTitles(jobTitleIds);
+    const profiles = await fleetDriverProfileRepository.findForEmployeesSystem(
+      roster.map((employee) => employee.employeeId),
+    );
+    const byEmployee = new Map(profiles.map((doc) => [String(doc.employeeId), doc]));
+
+    let rows = roster.map((employee) => ({
+      employeeId: employee.employeeId,
+      profile: byEmployee.get(employee.employeeId) ?? null,
+    }));
+
+    // The HR half of the filter bar, already resolved to ids by the browser (FR-11): Fleet narrows
+    // its own roster by them and asks HR nothing more.
+    if (query.employeeIds !== undefined) {
+      const wanted = new Set(query.employeeIds);
+      rows = rows.filter((row) => wanted.has(row.employeeId));
+    }
+    // Every Fleet-owned filter asks about the PROFILE, so a driver with none cannot match one —
+    // which is right: "licence expiring before March" is not a question about somebody whose
+    // licence was never recorded, and answering it with them would be a false positive.
+    rows = rows.filter((row) => matchesFleetFilters(row.profile, query));
+
+    const sorted = sortDriverRows(rows, query.sortBy, query.sortDir);
+    const page = query.page;
+    const pageSize = query.pageSize;
+    return {
+      items: sorted.slice((page - 1) * pageSize, page * pageSize),
+      meta: {
+        page,
+        pageSize,
+        totalItems: sorted.length,
+        totalPages: Math.max(1, Math.ceil(sorted.length / pageSize)),
+      },
+    };
   }
 
   async list(query: ListFleetDriversQuery): Promise<Paginated<FleetDriverProfileDoc>> {

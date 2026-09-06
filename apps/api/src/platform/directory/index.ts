@@ -73,12 +73,27 @@ type SelfEmployeeLookup = (userId: string) => Promise<DirectoryEmployee | null>;
  */
 type EmployeesByDepartmentLookup = (departmentIds: string[]) => Promise<DirectoryEmployee[]>;
 
+/**
+ * Everyone EMPLOYED in a set of JOB TITLES — "who holds these seats".
+ *
+ * The sibling of the lookup above, asking along the other axis of the org chart. A department says
+ * where somebody works; a job title says what they do, and some rosters are built from the second:
+ * Fleet's drivers registry is every employee whose seat requires a driving test, because the
+ * company already declares that on the job title and a second list of drivers would go stale the
+ * first time somebody was hired.
+ *
+ * Employed only, for the reason the one above gives: a driver who has left is not on the road, and
+ * making each consumer remember to filter is one forgotten filter away from dispatching them.
+ */
+type EmployeesByJobTitlesLookup = (jobTitleIds: string[]) => Promise<DirectoryEmployee[]>;
+
 let employeeLookup: EmployeeLookup | null = null;
 let employeeBatchLookup: EmployeeBatchLookup | null = null;
 let leaveLookup: LeaveLookup | null = null;
 let attendanceDayLookup: AttendanceDayLookup | null = null;
 let selfEmployeeLookup: SelfEmployeeLookup | null = null;
 let employeesByDepartmentLookup: EmployeesByDepartmentLookup | null = null;
+let employeesByJobTitlesLookup: EmployeesByJobTitlesLookup | null = null;
 
 /** Idempotent — the last registration wins, so a test can install a fake over the real one. */
 export const registerEmployeeLookup = (lookup: EmployeeLookup): void => {
@@ -105,6 +120,10 @@ export const registerEmployeesByDepartmentLookup = (
   lookup: EmployeesByDepartmentLookup,
 ): void => {
   employeesByDepartmentLookup = lookup;
+};
+
+export const registerEmployeesByJobTitlesLookup = (lookup: EmployeesByJobTitlesLookup): void => {
+  employeesByJobTitlesLookup = lookup;
 };
 
 export const getDirectoryEmployee = async (
@@ -137,6 +156,20 @@ export const listDirectoryEmployeesByDepartment = async (
   employeesByDepartmentLookup === null || departmentIds.length === 0
     ? []
     : employeesByDepartmentLookup([...departmentIds]);
+
+/**
+ * Everyone employed in these job titles, or EMPTY when none is asked for or HR is not registered.
+ *
+ * Empty on an empty list is the honest answer and not a shortcut: "nobody holds none of the seats"
+ * is true, and it is also what keeps a caller that has resolved no driving titles from accidentally
+ * asking for the whole company.
+ */
+export const listDirectoryEmployeesByJobTitles = async (
+  jobTitleIds: readonly string[],
+): Promise<DirectoryEmployee[]> =>
+  employeesByJobTitlesLookup === null || jobTitleIds.length === 0
+    ? []
+    : employeesByJobTitlesLookup([...jobTitleIds]);
 
 /**
  * The employee behind a login, or null when the account is not linked to one.

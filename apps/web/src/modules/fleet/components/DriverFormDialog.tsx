@@ -37,7 +37,7 @@ import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ExternalLinkIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
-import { useUpdateDriverProfile } from '../api/fleet-queries';
+import { useCreateDriverProfile, useUpdateDriverProfile } from '../api/fleet-queries';
 import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { EmployeeName, useEmployeeRecord } from './EmployeeName';
 import {
@@ -103,11 +103,22 @@ const HrEditLink = ({
 export const DriverFormDialog = ({
   open,
   onClose,
+  employeeId: subjectId,
   profile,
 }: {
   open: boolean;
   onClose: () => void;
-  /** The profile being edited. null only while the dialog is closed. */
+  /** WHO the row is about. Always known — the registry's rows are people, not profiles. */
+  employeeId: string;
+  /**
+   * What Fleet has recorded about them, or null when nothing has been.
+   *
+   * Null is the ordinary case for a driver the org chart just produced: they hold a seat that
+   * requires a driving test, so they are on the registry, and their licence has not been entered
+   * yet. The form then RECORDS for the first time instead of editing — which is what finally gives
+   * the create endpoint a caller. It had none since «Add Driver» left the UI, so a profile could
+   * not be made at all and the registry stayed empty however many drivers were hired.
+   */
   profile: FleetDriverProfileDto | null;
 }): JSX.Element => {
   const t = useT();
@@ -119,9 +130,10 @@ export const DriverFormDialog = ({
   }, [open, profile]);
 
   const update = useUpdateDriverProfile();
+  const create = useCreateDriverProfile();
 
   // The HR half of the form — the same cached employee record the table row already fetched.
-  const employeeId = profile?.employeeId ?? '';
+  const employeeId = profile?.employeeId ?? subjectId;
   const employee = useEmployeeRecord(employeeId);
   const { data: branches = [] } = useBranches(open && can('branch.view'));
   const { data: jobTitles = [] } = useJobTitles(open && can('jobTitle.view'));
@@ -138,14 +150,30 @@ export const DriverFormDialog = ({
   const complete = form.licenseNumber.trim() !== '' && form.licenseExpiresAt !== '';
 
   const submit = async (): Promise<void> => {
-    if (profile === null) return;
+    const area = form.area.trim() === '' ? null : form.area.trim();
+    // FIRST TIME: the person is on the registry because of their seat, and this is the licence
+    // being written down. `isActive` is not offered here — a profile is created active, and
+    // deactivating one is a decision about a driver who already exists.
+    if (profile === null) {
+      if (subjectId === '') return;
+      await create.mutateAsync({
+        employeeId: subjectId,
+        licenseNumber: form.licenseNumber.trim(),
+        licenseExpiresAt: new Date(form.licenseExpiresAt),
+        specialization: form.specialization,
+        area,
+      });
+      toast.success(t('fleet.drivers.recorded'));
+      onClose();
+      return;
+    }
     await update.mutateAsync({
       id: profile.id,
       body: {
         licenseNumber: form.licenseNumber.trim(),
         licenseExpiresAt: new Date(form.licenseExpiresAt),
         specialization: form.specialization,
-        area: form.area.trim() === '' ? null : form.area.trim(),
+        area,
         isActive: form.isActive,
         version: profile.version,
       },
@@ -158,7 +186,7 @@ export const DriverFormDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
-      title={t('fleet.drivers.edit')}
+      title={profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>

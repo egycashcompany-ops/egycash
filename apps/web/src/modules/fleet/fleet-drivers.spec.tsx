@@ -62,6 +62,18 @@ const page = <T,>(items: T[]) => ({
 
 const EMPLOYEE_ID = 'e1';
 
+/**
+ * A registry ROW: the person, and what Fleet has recorded about them.
+ *
+ * The list stopped returning bare profiles when the roster became the org chart — a driver is on
+ * it because their job title requires a driving test, so the row exists before anybody records a
+ * licence. `profile: null` is that state, and it is the ordinary one for a new hire.
+ */
+const row = (profile: FleetDriverProfileDto | null, employeeId = EMPLOYEE_ID) => ({
+  employeeId,
+  profile,
+});
+
 const driver = (overrides: Partial<FleetDriverProfileDto> = {}): FleetDriverProfileDto => ({
   id: 'd1',
   employeeId: EMPLOYEE_ID,
@@ -157,7 +169,7 @@ const seededClient = (
       employeeIds: undefined,
       ...params,
     }),
-    page(rows),
+    page(rows.map((profile) => row(profile))),
   );
   // The HR record every read-only column reads, under HR's OWN detail key — the same one the HR
   // profile page uses, which is what makes a row cost one request rather than eight. `hr: false`
@@ -219,7 +231,7 @@ const hrFilteredClient = (
         isActive: undefined,
         employeeIds: [],
       }),
-      page([driver()]),
+      page([row(driver())]),
     );
   }
   qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full], {
@@ -581,7 +593,68 @@ describe('editing a driver', () => {
   });
 });
 
-describe('enrolling a driver is gone from the UI', () => {
+describe('a driver whose licence has not been recorded yet', () => {
+  /**
+   * The whole reason the registry changed shape. A person is on it because their SEAT requires a
+   * driving test, so they appear the day they are hired — before anybody has entered a licence.
+   *
+   * Before this the row simply did not exist: membership WAS the profile, and the only endpoint
+   * that could create one had no caller since «Add Driver» left the UI. A company could hire fifty
+   * drivers and the registry showed none of them.
+   */
+  it('appears on the registry, with their HR facts', () => {
+    const qc = seededClient([]);
+    qc.setQueryData(
+      listKey('fleet', 'drivers', {
+        page: 1,
+        pageSize: 25,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+        search: undefined,
+        area: undefined,
+        specialization: undefined,
+        hasLicenseImage: undefined,
+        isActive: undefined,
+        employeeIds: undefined,
+      }),
+      page([row(null)]),
+    );
+    const html = render(<DriversListPage />, { client: qc });
+    expect(html, 'the person is there — HR knows their name').toContain(HR.name);
+    expect(html, 'and the licence says it is missing, not blank').toContain(
+      t('fleet.drivers.notRecorded'),
+    );
+  });
+
+  it('is not called «inactive» in its ROW — nobody decided that', () => {
+    // Scoped to the table body: «غير نشط» is also a value in the status FILTER above it, which is
+    // a different thing and must stay.
+    const qc = seededClient([]);
+    qc.setQueryData(
+      listKey('fleet', 'drivers', {
+        page: 1,
+        pageSize: 25,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+        search: undefined,
+        area: undefined,
+        specialization: undefined,
+        hasLicenseImage: undefined,
+        isActive: undefined,
+        employeeIds: undefined,
+      }),
+      page([row(null)]),
+    );
+    const html = render(<DriversListPage />, { client: qc });
+    const body = html.slice(html.indexOf('<tbody'));
+    expect(body, 'the row says nothing is recorded').toContain(t('fleet.drivers.notRecorded'));
+    expect(body, 'and never claims a decision nobody made').not.toContain(
+      t('fleet.drivers.inactive'),
+    );
+  });
+});
+
+describe('there is still no ENROLMENT — the roster decides who is a driver', () => {
   it('the registry shows no add action', () => {
     const html = render(<DriversListPage />);
     expect(html).not.toContain(t('fleet.drivers.create'));
@@ -602,14 +675,37 @@ describe('enrolling a driver is gone from the UI', () => {
     expect(source).not.toContain('PlusIcon');
   });
 
-  it('the dialog is edit-only — no employee picker, no create call', () => {
+  it('the dialog still has no employee picker — it never chooses WHO', () => {
+    // The point that survives from the old design. Nobody is enrolled INTO the registry: the org
+    // chart puts them there, and this form is only ever opened on a row that already exists.
     const source = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
     expect(source).not.toContain('EmployeeSearchPicker');
-    expect(source).not.toContain('useCreateDriverProfile');
-    expect(source).not.toContain('fleet.drivers.created');
+    expect(source, 'the subject arrives as a prop, it is not searched for').toContain(
+      'employeeId: subjectId',
+    );
   });
 
-  it('but the API still offers create — the endpoint was not removed with the button', () => {
+  /**
+   * This asserted `useCreateDriverProfile` was ABSENT, when membership was the profile and the
+   * hook had no caller anywhere. That was the defect, not the design: the registry could show
+   * nothing however many drivers were hired, because the only thing that could make a row was an
+   * endpoint no screen reached.
+   *
+   * The roster now comes from the org chart, so the create call has a job that is not enrolment —
+   * writing down the licence of somebody who is ALREADY a driver, the first time.
+   */
+  it('records a licence for a driver who has none, and only then', () => {
+    const source = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
+    expect(source).toContain('useCreateDriverProfile');
+    expect(source, 'create is the branch for a row with no profile').toContain(
+      'if (profile === null)',
+    );
+    expect(source, 'and an existing profile is still updated, not recreated').toContain(
+      'update.mutateAsync',
+    );
+  });
+
+  it('the create endpoint and its hook are still published', () => {
     const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
     expect(api).toContain('export const createDriverProfile');
     const queries = readFileSync(join(HERE, 'api/fleet-queries.ts'), 'utf8');

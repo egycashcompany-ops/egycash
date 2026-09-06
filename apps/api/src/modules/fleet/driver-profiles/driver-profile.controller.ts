@@ -14,9 +14,23 @@ import { fleetDriverProfileService } from './driver-profile.service';
 
 type IdParam = { id: string };
 
+/**
+ * The registry — every DRIVER, with what Fleet knows about them.
+ *
+ * A row is a person, not a profile: the roster is the org chart (whoever holds a seat requiring a
+ * driving test) and the profile is what Fleet has recorded, which may be nothing yet. Before this
+ * the list returned profiles alone, so a company could hire fifty drivers and see none of them —
+ * there was no screen that could create a profile.
+ *
+ * HR's facts about each person are still read by the BROWSER under HR's own permission (FR-11);
+ * this hands over the employee id and Fleet's own half, exactly as it did.
+ */
 export const listDriverProfiles = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetDriversQuery>(req);
-  okPage(res, await fleetDriverProfileService.list(query), toDriverProfileDto);
+  okPage(res, await fleetDriverProfileService.listRoster(query), (row) => ({
+    employeeId: row.employeeId,
+    profile: row.profile === null ? null : toDriverProfileDto(row.profile),
+  }));
 };
 
 export const getDriverProfile = async (req: Request, res: Response): Promise<void> => {

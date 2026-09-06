@@ -9,6 +9,7 @@ import {
   registerEmployeeBatchLookup,
   registerEmployeeLookup,
   registerEmployeesByDepartmentLookup,
+  registerEmployeesByJobTitlesLookup,
   registerLeaveLookup,
   registerSelfEmployeeLookup,
 } from '../../platform/directory';
@@ -34,6 +35,21 @@ export const registerHrDirectorySeams = (): void => {
   // the org chart rather than a list it keeps, so it has to be able to ask.
   registerEmployeesByDepartmentLookup(async (departmentIds) => {
     const employees = await employeeRepository.listByDepartmentsSystem(departmentIds);
+    return employees.map((employee) => ({
+      employeeId: String(employee._id),
+      code: employee.code,
+      fullNameAr: employee.personal.fullNameAr,
+      status: employee.status,
+      branchId: String(employee.branchId),
+      departmentId: String(employee.departmentId),
+    }));
+  });
+
+  // The same LIST question along the other axis: "who holds these seats". Fleet's drivers registry
+  // is every employee whose job title requires a driving test, so the roster is the org chart
+  // rather than a list Fleet keeps and has to remember to update.
+  registerEmployeesByJobTitlesLookup(async (jobTitleIds) => {
+    const employees = await employeeRepository.listByJobTitlesSystem(jobTitleIds);
     return employees.map((employee) => ({
       employeeId: String(employee._id),
       code: employee.code,

@@ -420,6 +420,30 @@ export type UpdateFleetDriverProfile = z.infer<typeof UpdateFleetDriverProfileSc
 // name, employee code, job title, governorate, phone and branch are HR's facts, read by the
 // browser from HR's own API with HR's own permission. Filtering a fleet-paginated list on them
 // would mean Fleet querying HR's collection — the one thing the module hierarchy forbids.
+/**
+ * A row on the drivers registry: a DRIVER, and what Fleet knows about them so far.
+ *
+ * WHO IS A DRIVER IS THE ORG CHART, not a list Fleet keeps. It is every employed person whose job
+ * title requires a driving test — `requiresDrivingTest`, the flag the job-title form calls "the
+ * single place driver-ness is decided" and recruitment already reads to decide which documents a
+ * candidate is asked for. Fleet asks the same flag, so a driver hired this morning is on the
+ * registry this morning.
+ *
+ * Before this, membership WAS the profile: a row existed only if somebody had created one, and the
+ * only thing that could create one was an endpoint no screen called. So the registry showed
+ * nothing however many drivers the company hired — the failure this shape removes.
+ *
+ * `profile` is therefore nullable, and null means "nothing recorded yet", never "carries nothing":
+ * the licence number and its expiry are facts Fleet is the authority on and nobody has filled in.
+ * Inventing them would file three made-up facts about a real person, so the row says so instead.
+ */
+export interface FleetDriverRowDto {
+  /** The person. HR's facts about them are read by the browser, under HR's own permission (FR-11). */
+  employeeId: string;
+  /** What Fleet knows: licence, expiry, specialization, area, scan. null until somebody records it. */
+  profile: FleetDriverProfileDto | null;
+}
+
 export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
   specialization: FleetDriverSpecializationSchema.optional(),
   isActive: booleanQuery().optional(),

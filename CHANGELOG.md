@@ -9,6 +9,32 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Four things the employees screens showed a reader that no reader should see.** The list's row
+  count read literally as `{count} موظف`; the personal tab showed `applicants.maritalStatus.married`
+  where it meant "married", and the same for education and military status; and on the profile
+  some people's job title was `#4db1e9` — the last six characters of an id, shown to a person as
+  their job.
+
+  The count: `translate()` fills `{{name}}` and nothing else, and the key used single braces. That
+  turned out to be a class, not a typo — **116 placeholders** across both languages had the same
+  one-character defect and every one of them displayed literally. All are fixed, and a spec now
+  reads the dictionary source and refuses any single-brace placeholder, so the class cannot return.
+
+  The labels: the strings existed all along under `applicants.marital.*`, `applicants.education.*`
+  and `applicants.military.*`; three employee screens asked for them under prefixes that were
+  never defined. They now ask for the ones that are.
+
+  The job title: the profile resolved unit names from browser-side catalogues paginated at 100,
+  and this deployment has 142 job titles, so every title past the hundredth fell through to the
+  id fallback. The profile now reads the `placement` names the server already resolves for the
+  list — the same correction the list itself made — and drops three catalogue queries and three
+  permission gates with it. A unit the server cannot resolve is a dash.
+
+- **Status is the last column of the employees list, not the first**, as asked. The identity opens
+  the row; the coloured badge closes it.
+
 ### Changed
 
 - **The employees list now reads as a placement, not a ledger.** Columns are, in order: status,

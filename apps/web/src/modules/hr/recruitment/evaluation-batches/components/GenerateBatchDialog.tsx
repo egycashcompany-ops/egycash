@@ -65,7 +65,7 @@ export const GenerateBatchDialog = ({
         ...(title.trim() === '' ? {} : { title: title.trim() }),
         ...(scheduledFor === '' ? {} : { scheduledFor: new Date(scheduledFor) }),
       });
-      toast.success(t('batches.created').replace('{code}', batch.code));
+      toast.success(t('batches.created', { code: batch.code }));
       selection.clear();
       setTitle('');
       setScheduledFor('');
@@ -92,7 +92,7 @@ export const GenerateBatchDialog = ({
             disabled={selection.count === 0}
             onClick={() => void submit()}
           >
-            {t('batches.generate.confirm').replace('{n}', String(selection.count))}
+            {t('batches.generate.confirm', { n: selection.count })}
           </Button>
         </>
       }

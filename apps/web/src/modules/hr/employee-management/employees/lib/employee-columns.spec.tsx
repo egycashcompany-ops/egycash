@@ -24,7 +24,7 @@ const employee = (placement: Partial<EmployeeDto['placement']> = {}): EmployeeDt
   }) as unknown as EmployeeDto;
 
 describe('the employees list columns', () => {
-  it('are, in order: status, code, name, site, department, section, job title, hire date', () => {
+  it('are, in order: code, name, site, department, section, job title, hire date, status', () => {
     expect(columns.map((c) => c.key)).toEqual([...EMPLOYEE_COLUMN_ORDER]);
   });
 

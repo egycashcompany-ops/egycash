@@ -242,7 +242,7 @@ export const PhaseBoard = (): JSX.Element => {
                         e.target.checked,
                       )
                     }
-                    aria-label={t('common.selectAllIn').replace('{column}', col.title)}
+                    aria-label={t('common.selectAllIn', { column: col.title })}
                   />
                 )}
                 <h3 className="truncate text-sm font-semibold text-slate-700 dark:text-slate-200">{col.title}</h3>

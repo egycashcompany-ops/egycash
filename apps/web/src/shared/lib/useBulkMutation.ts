@@ -21,18 +21,16 @@ export interface BulkMutationOptions {
 /** The message a partial-success envelope deserves: exact, and never silently optimistic. */
 export const bulkOutcomeMessage = (
   result: BulkActionResultDto,
-  t: (key: string) => string,
+  t: (key: string, params?: Record<string, string | number>) => string,
 ): { message: string; ok: boolean } => {
   if (result.failed === 0) {
-    return { message: t('bulk.result.allOk').replace('{n}', String(result.succeeded)), ok: true };
+    return { message: t('bulk.result.allOk', { n: result.succeeded }), ok: true };
   }
   if (result.succeeded === 0) {
-    return { message: t('bulk.result.allFailed').replace('{n}', String(result.failed)), ok: false };
+    return { message: t('bulk.result.allFailed', { n: result.failed }), ok: false };
   }
   return {
-    message: t('bulk.result.partial')
-      .replace('{ok}', String(result.succeeded))
-      .replace('{failed}', String(result.failed)),
+    message: t('bulk.result.partial', { ok: result.succeeded, failed: result.failed }),
     ok: false,
   };
 };

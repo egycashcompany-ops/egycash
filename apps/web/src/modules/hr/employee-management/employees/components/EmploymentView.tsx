@@ -1,14 +1,16 @@
 // Read-only render of an employee's employment terms (copied from the accepted offer snapshot).
-// Reuses the Job Offer feature's reference hooks + UserName so org/manager names resolve from the
-// same cache — no new API. Falls back to a short reference without directory access.
+//
+// Unit NAMES come from the DTO's `placement`, resolved by the server — not from the browser-side
+// catalogues this used to consult. Those are paginated at 100 and gated by their own `*.view`, so
+// on a deployment with 142 job titles every title past the hundredth rendered as `#4db1e9`: the
+// last six characters of an id, shown to a person as their job. A unit the server could not
+// resolve is a dash, which is at least honest. Manager names still resolve through `UserName`.
 import { type ReactNode } from 'react';
-import { type EmploymentDetailsDto, type Locale } from '@ecms/contracts';
+import { type EmployeePlacementDto, type EmploymentDetailsDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
-import { useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { formatDate, formatMoney, localized } from '../../../../../shared/lib/format';
 import { UserName } from '../../../recruitment/job-offers/components/UserName';
-import { useBranches, useDepartments, useJobTitles } from '../../../recruitment/job-offers/api/job-offer-queries';
 
 const Row = ({ label, children }: { label: string; children: ReactNode }): JSX.Element => (
   <div>
@@ -19,33 +21,27 @@ const Row = ({ label, children }: { label: string; children: ReactNode }): JSX.E
 
 export const EmploymentView = ({
   employment,
+  placement,
   compensationVisible = true,
 }: {
   employment: EmploymentDetailsDto;
+  /** The same placement, resolved to names by the server. */
+  placement: EmployeePlacementDto;
   /** false → salary/allowances were redacted server-side (no employee.viewCompensation). */
   compensationVisible?: boolean;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const branches = useBranches(can('branch.view'));
-  const departments = useDepartments(can('department.view'));
-  const jobTitles = useJobTitles(can('jobTitle.view'));
 
-  const nameOf = (
-    list: { id: string; name: { ar: string; en: string } }[] | undefined,
-    id: string,
-  ): string => {
-    const hit = list?.find((x) => x.id === id);
-    return hit === undefined ? `#${id.slice(-6)}` : localized(hit.name, locale);
-  };
+  const nameOf = (unit: EmployeePlacementDto[keyof EmployeePlacementDto]): string =>
+    unit === null ? '—' : localized(unit.name, locale);
 
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Row label={t('offers.form.jobTitle')}>{nameOf(jobTitles.data, employment.jobTitleId)}</Row>
-        <Row label={t('offers.form.department')}>{nameOf(departments.data, employment.departmentId)}</Row>
-        <Row label={t('offers.form.branch')}>{nameOf(branches.data, employment.branchId)}</Row>
+        <Row label={t('offers.form.jobTitle')}>{nameOf(placement.jobTitle)}</Row>
+        <Row label={t('offers.form.department')}>{nameOf(placement.department)}</Row>
+        <Row label={t('offers.form.branch')}>{nameOf(placement.branch)}</Row>
         <Row label={t('offers.form.manager')}>{employment.managerId === null ? '—' : <UserName id={employment.managerId} />}</Row>
         <Row label={t('offers.form.employmentType')}>{t(`offers.employmentType.${employment.employmentType}`)}</Row>
         <Row label={t('offers.form.salary')}>

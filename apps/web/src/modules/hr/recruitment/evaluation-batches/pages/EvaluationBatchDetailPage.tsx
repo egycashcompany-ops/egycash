@@ -292,12 +292,13 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
               </div>
             </dl>
             <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
-              {t('batches.summary.counts')
-                .replace('{total}', String(batch.counts.total))
-                .replace('{pending}', String(batch.counts.pending))
-                .replace('{approved}', String(batch.counts.approved))
-                .replace('{rejected}', String(batch.counts.rejected))
-                .replace('{voided}', String(batch.counts.voided))}
+              {t('batches.summary.counts', {
+                total: batch.counts.total,
+                pending: batch.counts.pending,
+                approved: batch.counts.approved,
+                rejected: batch.counts.rejected,
+                voided: batch.counts.voided,
+              })}
             </p>
             {batch.cancelledReason !== null && (
               <p className="mt-2 text-sm text-red-600 dark:text-red-400">{batch.cancelledReason}</p>
@@ -331,7 +332,7 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
                   </Button>
                 )}
                 <span className="text-xs text-slate-500">
-                  {t('batches.package.attachments').replace('{n}', String(batch.package.attachmentCount))}
+                  {t('batches.package.attachments', { n: batch.package.attachmentCount })}
                 </span>
               </div>
               {batch.package.error !== null && (

@@ -27,10 +27,10 @@ export const BulkActionBar = ({
         className,
       )}
       role="toolbar"
-      aria-label={t('bulk.selected').replace('{n}', String(count))}
+      aria-label={t('bulk.selected', { n: count })}
     >
       <span className="text-sm font-medium text-brand-800 dark:text-brand-200">
-        {t('bulk.selected').replace('{n}', String(count))}
+        {t('bulk.selected', { n: count })}
       </span>
       <div className="flex flex-wrap items-center gap-2">{children}</div>
       <Button variant="ghost" size="sm" className="ms-auto" onClick={onClear}>

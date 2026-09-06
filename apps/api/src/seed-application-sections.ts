@@ -154,6 +154,9 @@ export const APPLICATION_SECTION_DEFAULTS: Record<string, SectionDef[]> = {
         '/payroll/runs',
         '/payroll/adjustments',
         '/payroll/employee-loans',
+        // The employee's own side of the row above — beside it, because it is the same subject
+        // seen from the other end, and a person who can only ask should find it where asking is.
+        '/payroll/employee-loans/me',
         // Last, because it READS what the four above produce: a report is composed over payslips
         // that a run has already issued.
         '/payroll/reports',

@@ -41,6 +41,17 @@ export const listEmployees = (params: EmployeeListParams): Promise<Paginated<Emp
 
 export const getEmployee = (id: string): Promise<EmployeeDto> => get<EmployeeDto>(`/hr/employees/${id}`);
 
+/**
+ * The caller's OWN file (ESS). No id: the server reads it off the token, which is what lets an
+ * ordinary employee open their own profile without holding `employee.view` — the permission that
+ * would otherwise hand them the whole registry.
+ *
+ * The same `EmployeeDto` as everywhere else, redacted by the caller's own permissions: an employee
+ * gets `compensationVisible: false` and no salary in it.
+ */
+export const getMyEmployeeProfile = (): Promise<EmployeeDto> =>
+  get<EmployeeDto>('/hr/employees/me');
+
 export const createEmployee = (
   body: CreateEmployee,
 ): Promise<EmployeeDto & { provisionedLogin: EmployeeLoginProvisionDto | null }> =>

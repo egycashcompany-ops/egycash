@@ -11,6 +11,7 @@ import {
   createEmployee,
   createEmployeeLogin,
   getEmployee,
+  getMyEmployeeProfile,
   getEmployeeTimeline,
   linkEmployeeUser,
   listEmployees,
@@ -61,6 +62,15 @@ export const buildEmployeesRouter = (): Router => {
     asyncHandler(registerEmployeeDirect),
   );
   // Exited-employee match by national id — powers the Rehire prompt (declared before /:id).
+  /**
+   * The caller's own file (ESS). Declared BEFORE `/:id` so `me` is never parsed as an employee id —
+   * the same ordering every other `/me` route in the platform is declared with.
+   *
+   * `authenticate` only: the id comes from the token, so there is nothing to authorize onto, and
+   * an employee holds no `employee.view`. What the DTO shows is still decided by the caller's own
+   * permissions — see `getMyEmployeeProfile`.
+   */
+  router.get('/me', authenticate, asyncHandler(getMyEmployeeProfile));
   router.get(
     '/rehire-check',
     authenticate,

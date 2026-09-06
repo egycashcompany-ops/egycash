@@ -57,7 +57,7 @@ import { migrateRecruitmentLegacy } from './recruitment/recruitment.migration';
 import { ensureLeaveAttachmentsCategory } from './leave-management/leave-requests';
 import { ensureEmployeeActionAttachmentsCategory } from './employee-management/employee-actions';
 import { ensureAdjustmentAttachmentsCategory } from './payroll/adjustments';
-import { ensureLoanAttachmentsCategory } from './employee-loans';
+import { ensureLoanAttachmentsCategory, grantEssLoanAccess } from './employee-loans';
 import { migrateLeaveModule } from './leave-management/leave.migration';
 import { migrateAttendance } from './attendance/attendance.migration';
 import {
@@ -547,6 +547,8 @@ export const seedHrRecruitment = async (): Promise<void> => {
   await ensureAdjustmentAttachmentsCategory();
   // Employee loans (P-HR-05): the signed request behind a loan, the receipt behind a settlement.
   await ensureLoanAttachmentsCategory();
+  // ...and the key an employee needs to ASK for one. See `grantEssLoanAccess`.
+  await grantEssLoanAccess();
   await migrateLeaveModule();
   // Attendance (frozen attendance design v1.1 §12): the default GENERAL shift.
   await migrateAttendance();

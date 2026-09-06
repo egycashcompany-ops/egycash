@@ -245,6 +245,20 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'file',
         permission: 'employeeLoan.approve',
       },
+      // MY loans, on the ASK key — the employee's own side of the row above.
+      //
+      // My Leave and My Attendance carry no row because a row they already hold lands on them:
+      // `/leave` IS the self-service page, and `/attendance` likewise. Loans has no such landing —
+      // the only route was the decider's worklist above — so an employee who may ask for one had
+      // nowhere to be sent. This is that place, and `employeeLoan.create` is exactly the audience:
+      // whoever may ask.
+      {
+        en: 'My Loans',
+        ar: 'سلفي وقروضي',
+        route: '/payroll/employee-loans/me',
+        icon: 'file',
+        permission: 'employeeLoan.create',
+      },
       // Payroll reports (scope B1) — on `view`, because this row leads to the LIST of saved
       // definitions, which is metadata rather than pay. Running one demands the compensation key
       // as well, and the screen says so rather than the row hiding it.

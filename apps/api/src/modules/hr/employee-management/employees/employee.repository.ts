@@ -34,6 +34,20 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       branchField: 'branchId',
       departmentField: 'departmentId',
       sectionField: 'sectionId',
+      /**
+       * `own` scope means THIS PERSON'S OWN RECORD — the employee whose login is the caller.
+       *
+       * Without it `own` fell back to `createdBy` alone, which for an employee record is the HR
+       * officer who registered them, never the employee. So every self-service path that has to
+       * LOAD the employee — applying for a loan is the one that surfaced it — asked for the
+       * caller's own record and got a 404, because the only record they "owned" was one they had
+       * created for somebody else.
+       *
+       * `userId` is the unique link to the login account (ADR-017), so this can only ever add the
+       * caller's own row and never another person's. It is the same `ownerUserField` mechanism the
+       * leave requests use for the same reason (C1-R).
+       */
+      ownerUserField: 'userId',
       softDelete: true,
     });
   }

@@ -20,6 +20,10 @@ class BranchRepository extends BaseRepository<BranchDoc> {
     if (excludeId !== undefined) filter._id = { $ne: new Types.ObjectId(excludeId) };
     return this.model.findOne(filter).lean<BranchDoc>().exec();
   }
+  /** Every live branch, ordered by code — the columns of the fleet matrix, in one read. */
+  async listAll(): Promise<BranchDoc[]> {
+    return this.model.find({ isDeleted: false }).sort({ code: 1 }).lean<BranchDoc[]>().exec();
+  }
 }
 
 export const branchRepository = new BranchRepository();

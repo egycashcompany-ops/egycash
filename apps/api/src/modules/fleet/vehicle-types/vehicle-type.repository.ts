@@ -13,6 +13,11 @@ class FleetVehicleTypeRepository extends BaseRepository<FleetVehicleTypeDoc> {
       .exec();
   }
 
+  /** Every live type — the dashboard names a matrix row per type and there are a handful. */
+  async listAll(): Promise<FleetVehicleTypeDoc[]> {
+    return this.model.find({ isDeleted: false }).lean<FleetVehicleTypeDoc[]>().exec();
+  }
+
   async findActiveById(id: string): Promise<FleetVehicleTypeDoc | null> {
     const doc = await this.findById(id);
     return doc !== null && doc.isActive ? doc : null;

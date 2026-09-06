@@ -246,8 +246,13 @@ describe('the fixed-crew screen', () => {
   });
 
   it('asks for a driver in an empty slot instead of showing a blank box', () => {
-    expect(render()).toContain(t('fleet.fixedRoster.dropHere'));
-    expect(t('fleet.fixedRoster.dropHere')).toBe('اسحب السائق هنا');
+    // An empty slot that CAN take a driver now offers the pick-and-type control in place of the
+    // drag hint — one gesture more, not one fewer: the cell is still a drop target, and the drag
+    // itself is unchanged. A slot that cannot take one still says why (see «الأول قبل الثاني»).
+    const markup = render();
+    expect(markup, 'the empty slot invites a choice').toContain(t('fleet.roster.pickDriver'));
+    expect(markup, 'and names the cell it belongs to').toContain('data-driver-picker=');
+    expect(markup, 'it is still a drop target').toContain('data-drop-zone=');
   });
 
   it('shows a filled slot as the person, not the id', () => {

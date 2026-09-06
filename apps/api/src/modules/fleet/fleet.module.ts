@@ -7,6 +7,7 @@ import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildFleetVehicleTypesRouter } from './vehicle-types';
 import { buildFleetCatalogRouter } from './catalogs';
 import { buildFleetVehiclesRouter } from './vehicles';
+import { buildFleetDashboardRouter } from './dashboard/dashboard.routes';
 import { vehicleFileAuthorizer } from './vehicles/vehicle-files';
 import { driverProfileFileAuthorizer } from './driver-profiles/driver-files';
 import { buildFleetDriversRouter } from './driver-profiles/driver-profile.routes';
@@ -273,6 +274,7 @@ export const fleetModule: ModuleManifest = {
   permissions: fleetPermissions,
   pages: fleetPages,
   routes: [
+    { prefix: '/fleet/dashboard', router: buildFleetDashboardRouter() },
     { prefix: '/fleet/vehicles', router: buildFleetVehiclesRouter() },
     { prefix: '/fleet/vehicle-types', router: buildFleetVehicleTypesRouter() },
     { prefix: '/fleet/catalog-items', router: buildFleetCatalogRouter() },

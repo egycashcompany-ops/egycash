@@ -4,7 +4,7 @@
 // level, "in workshop", "current driver") is absent from stored DTOs on purpose — FR-12 makes
 // derived facts query-time facts, and a field that does not exist cannot go stale.
 import { z } from 'zod';
-import { LocalizedStringSchema } from '../common/localized.js';
+import { LocalizedStringSchema, type LocalizedString } from '../common/localized.js';
 import {
   MAX_PAGE_SIZE,
   PaginationQuerySchema,
@@ -1621,6 +1621,113 @@ export const FLEET_ACCIDENT_FILE_CATEGORY = 'fleet-accident-attachments';
 export const FLEET_VIOLATION_FILE_CATEGORY = 'fleet-violation-attachments';
 
 // ── Declared settings (owner principle 4 — nothing threshold-like hardcoded) ─
+
+// ── The module's landing surface (FW-2): one read, one screen ───────────────
+//
+// The dashboard asks a dozen questions about the same fleet — how many cars of each type sit in
+// each branch, who drives them, how far they ran, what is due, what happened today — and every
+// one of them is an AGGREGATE over a collection the page cannot hold. Answering them from the
+// list endpoints would mean a request per branch per type and a page cap in front of a fleet of
+// two hundred, so the server answers them, once.
+//
+// Every section is NULLABLE, and that is the permission model rather than an accident: a reader
+// who may see the workshop but not the registry gets the maintenance sections and `null` where
+// the vehicle ones would be. The client renders what it was given and nothing where it was given
+// nothing — it never has to know which permission produced which section.
+
+/** A branch, named once and referred to by id everywhere below. */
+export interface FleetDashboardBranchDto {
+  id: string;
+  name: LocalizedString;
+}
+
+/** One row of «توزيع الأسطول»: a vehicle TYPE, its count per branch, and its total. */
+export interface FleetDashboardTypeRowDto {
+  typeId: string;
+  name: LocalizedString;
+  /** Branch id → how many active vehicles of this type it holds. Absent branch = zero. */
+  counts: Record<string, number>;
+  total: number;
+}
+
+/**
+ * «إحصائيات الفرع» for ONE branch, or for the whole company when `branchId` is null.
+ *
+ * The operation split (نقل أموال / ATM) is the vehicle's `operation` catalog reference, which is
+ * what the registry already stores; the driver split is the profile's own `specialization`. Both
+ * are read, never inferred from a name.
+ */
+export interface FleetDashboardBranchStatsDto {
+  branchId: string | null;
+  vehicles: number;
+  drivers: number;
+  /** Vehicles whose operation names the cash run, and the drivers specialised in it. */
+  cashVehicles: number;
+  cashDrivers: number;
+  atmVehicles: number;
+  atmDrivers: number;
+}
+
+/** Distance recorded per branch, and the cars at either end of it. */
+export interface FleetDashboardVehicleKmDto {
+  vehicleId: string;
+  code: string;
+  km: number;
+}
+
+export interface FleetDashboardBranchKmDto {
+  branchId: string;
+  km: number;
+}
+
+/** A licence coming due, with the branch that has to renew it. */
+export interface FleetDashboardDueLicenseDto {
+  vehicleId: string;
+  code: string;
+  branchId: string | null;
+  licenseExpiresAt: string;
+}
+
+/** A workshop visit that started today, as the strip under the board lists it. */
+export interface FleetDashboardVisitDto {
+  visitId: string;
+  code: string;
+  workshop: LocalizedString | null;
+  workType: LocalizedString | null;
+  spareParts: LocalizedString[];
+  notes: string | null;
+}
+
+/** An accident recorded today. */
+export interface FleetDashboardAccidentDto {
+  accidentId: string;
+  code: string;
+  occurredAt: string;
+  culprit: string | null;
+  status: FleetAccidentStatus;
+}
+
+export interface FleetDashboardDto {
+  /** Every branch that holds a vehicle, in the order the matrix's columns run. */
+  branches: FleetDashboardBranchDto[];
+  /** `null` = the caller may not read the registry. */
+  fleet: {
+    types: FleetDashboardTypeRowDto[];
+    /** The whole company first, then one entry per branch. */
+    stats: FleetDashboardBranchStatsDto[];
+    dueLicenses: FleetDashboardDueLicenseDto[];
+  } | null;
+  /** `null` = the caller may not read the odometer log. */
+  odometer: {
+    byBranch: FleetDashboardBranchKmDto[];
+    top: FleetDashboardVehicleKmDto[];
+    bottom: FleetDashboardVehicleKmDto[];
+  } | null;
+  /** `null` = the caller may not read the workshop. */
+  maintenance: { today: FleetDashboardVisitDto[]; monthCount: number } | null;
+  /** `null` = the caller may not read accidents. */
+  accidents: { today: FleetDashboardAccidentDto[]; monthCount: number } | null;
+}
 
 export const FleetSettingKeys = {
   /** Remaining-km threshold that turns the maintenance alarm yellow. */

@@ -143,7 +143,6 @@ describe('one cache entry, whichever door', () => {
       'MaintenancePage',
       'MaintenanceAlarmsPage',
       'OdometerPage',
-      'FleetDashboardPage',
       'VehicleDetailPage',
     ]) {
       const source = read(`pages/${page}.tsx`);
@@ -161,10 +160,12 @@ describe('one cache entry, whichever door', () => {
 });
 
 describe('showing a panel and answering for it are the same permission', () => {
-  it('the dashboard and the vehicle profile gate on `useCanReadAlarms`, not on one door', () => {
+  it('the vehicle profile gates on `useCanReadAlarms`, not on one door', () => {
     // Gating a panel on `fleetOdometer.view` while the hook answers for maintenance readers too
-    // would hide a fact from somebody the query would happily have served.
-    for (const page of ['FleetDashboardPage', 'VehicleDetailPage']) {
+    // would hide a fact from somebody the query would happily have served. The dashboard no
+    // longer shows an alarm panel at all — its sections arrive already decided by the server,
+    // each `null` for a reader who may not read the collection behind it.
+    for (const page of ['VehicleDetailPage']) {
       const source = read(`pages/${page}.tsx`);
       expect(source, `${page} uses the shared predicate`).toContain('useCanReadAlarms()');
     }

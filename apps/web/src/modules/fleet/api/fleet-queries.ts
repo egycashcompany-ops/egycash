@@ -490,6 +490,18 @@ export const usePlanRoster = () => {
 // must not repaint the other. No date in the key, because the answer does not have one.
 const fixedRosterKey = [MODULE, 'fixed-roster'] as const;
 
+/**
+ * The dashboard's one read. `staleTime` matches the alarm projection's: these are aggregates over
+ * live collections, worth a moment's cache and not worth a request per card.
+ */
+export const useFleetDashboard = (enabled = true) =>
+  useQuery({
+    queryKey: [MODULE, 'dashboard'],
+    queryFn: api.getFleetDashboard,
+    staleTime: 30_000,
+    enabled,
+  });
+
 export const useFixedRoster = () =>
   useQuery({ queryKey: fixedRosterKey, queryFn: api.getFixedRoster });
 

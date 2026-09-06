@@ -159,32 +159,34 @@ const missionCell = (markup: string, code: string): string => {
   return markup.slice(markup.lastIndexOf('<select', at), markup.indexOf('</select>', at) + 9);
 };
 
-// ── 1. the day is a PLAN, so the past is not offered ────────────────────────
+// ── 1. the day is a PLAN forward and a RECORD backward ──────────────────────
 
 describe('the assignment date', () => {
-  it('floors the picker at today — tomorrow and beyond stay open', () => {
-    const markup = render();
-    expect(markup, 'the picker refuses earlier days').toContain(`min="${day(0)}"`);
-    expect(SOURCE, 'the floor is one function, used by picker and guard alike').toContain(
+  it('opens on today and takes any future day', () => {
+    expect(render({ date: day(0), qc: client(BOARD, day(0)) })).toContain(`value="${day(0)}"`);
+    expect(SOURCE, 'the floor is one function, used by the guard and the read-only rule').toContain(
       'earliestPlannableDay()',
     );
-    // Tomorrow and a far future date are ordinary.
     expect(render({ date: day(1) })).toContain(`value="${day(1)}"`);
     expect(render({ date: day(45), qc: client(BOARD, day(45)) })).toContain(`value="${day(45)}"`);
   });
 
-  it('will not show a past day even when the URL asks for one', () => {
-    // `?date=` is user-writable. Without the floor the board would render a day whose every save
-    // the server refuses — an editable-looking screen that cannot save is worse than no screen.
-    const markup = render({ date: day(-30), qc: client(BOARD, day(0)) });
-    expect(markup, 'it lands on the floor instead').toContain(`value="${day(0)}"`);
-    expect(markup).not.toContain(`value="${day(-30)}"`);
+  it('SHOWS a past day the URL asks for, rather than sending the reader to today', () => {
+    // Yesterday's crew is the thing operations asks for most often after tomorrow's. The board
+    // used to clamp `?date=` to today, so it could not be looked at at all — the floor now
+    // governs what may be EDITED, and nothing about what may be read.
+    const past = { ...BOARD, date: `${day(-30)}T00:00:00.000Z` };
+    const markup = render({ date: day(-30), qc: client(past, day(-30)) });
+    expect(markup, 'the day asked for').toContain(`value="${day(-30)}"`);
+    expect(markup, 'and its rows').toContain('>150<');
+    expect(markup, 'with the crew it was planned with').toContain('أحمد محمد');
   });
 
-  it('does not offer the step back off the floor', () => {
+  it('offers the step back — reading yesterday is one button away', () => {
     const markup = render({ date: day(0), qc: client(BOARD, day(0)) });
-    const prev = markup.slice(0, markup.indexOf(t('fleet.roster.date')));
-    expect(prev, 'yesterday is not one button away').toContain('disabled');
+    const at = markup.indexOf(t('fleet.roster.prevDay'));
+    const tag = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
+    expect(tag, 'yesterday is readable').not.toMatch(/ disabled=""| disabled>/);
   });
 
   it('is refused SERVER-side too — the UI is not the guard', () => {
@@ -646,7 +648,7 @@ describe('the assignment badge needs a DRIVER, not a mission', () => {
   it('uses `hasDriver`, and leaves «تشغيل» on `carriesPlan`', () => {
     // Two facts, two names. Folding them would make the badge and the counter agree by accident.
     expect(SOURCE).toContain('hasDriver(row) && <Badge');
-    expect(SOURCE, 'the counter is untouched').toContain('draft.filter(carriesPlan).length');
+    expect(SOURCE, 'the counter is untouched').toContain('shown.filter(carriesPlan).length');
     expect(VIEW_SOURCE, 'and the two predicates stay separate').toContain('export const hasDriver');
   });
 });
@@ -703,11 +705,17 @@ describe('a filter never reaches what is SAVED', () => {
   });
 
   it('filters the DISPLAY only — the draft itself is never rewritten', () => {
+    // `shown` IS the draft on any day that may be planned — `const shown = editable ? draft :
+    // saved` — so this is the same claim it always was, now written where a past day can also be
+    // read from the same expression.
     expect(SOURCE, 'one filtered list, used for the table').toContain(
-      'visibleRows(draft, { term: search, mission, view })',
+      'visibleRows(shown, { term: search, mission, view })',
     );
-    expect(SOURCE, 'the pool still reads the whole draft').toContain(
-      'availableDrivers(board?.availableDrivers ?? [], draft)',
+    expect(SOURCE, 'and the draft is what an editable day shows').toContain(
+      'const shown = editable ? draft : saved',
+    );
+    expect(SOURCE, 'the pool still reads the whole board').toContain(
+      'availableDrivers(board?.availableDrivers ?? [], shown)',
     );
   });
 });
@@ -1065,22 +1073,24 @@ describe('the vehicle cell', () => {
 
 describe('the day’s counters', () => {
   it('count the draft, so an unsaved edit is reflected immediately', () => {
-    expect(SOURCE, 'counted off the draft, not the server’s last answer').toContain(
-      'for (const row of draft)',
+    expect(SOURCE, 'counted off what the day SHOWS, not the server’s last answer').toContain(
+      'for (const row of shown)',
     );
     const block = SOURCE.slice(
       SOURCE.indexOf('const counters = useMemo'),
       SOURCE.indexOf('const pool'),
     );
-    expect(block, 'the total is the draft’s length').toContain('value: draft.length');
-    expect(block, 'the workshop tally reads the draft').toContain(
-      'draft.filter((row) => row.inMaintenance).length',
+    expect(block, 'the total is the shown board’s length').toContain('value: shown.length');
+    expect(block, 'the workshop tally reads what the day shows').toContain(
+      'shown.filter((row) => row.inMaintenance).length',
     );
     // Named `carriesPlan` and shared with the filter, so the chip cannot count one thing and
     // show another.
-    expect(block, 'and so does the operating tally').toContain('draft.filter(carriesPlan).length');
-    expect(block, 'the memo depends on the draft').toContain(
-      '[draft, missionTypes.data, locale, t, mission, view]',
+    expect(block, 'and so does the operating tally').toContain(
+      'shown.filter(carriesPlan).length',
+    );
+    expect(block, 'the memo depends on what the day shows').toContain(
+      '[shown, missionTypes.data, locale, t, mission, view]',
     );
   });
 
@@ -1319,7 +1329,8 @@ describe('each driver list has its own search', () => {
   });
 
   it('indexes BOTH halves, so one term can reach either', () => {
-    const call = SOURCE.slice(SOURCE.indexOf('useEmployeeRecords('), SOURCE.indexOf('searchIndex'));
+    const from = SOURCE.indexOf('useEmployeeRecords(');
+    const call = SOURCE.slice(from, SOURCE.indexOf('const searchIndex', from));
     expect(call).toContain('pool.map');
     expect(call, 'the unavailable half is indexed too').toContain('unavailable.map');
   });

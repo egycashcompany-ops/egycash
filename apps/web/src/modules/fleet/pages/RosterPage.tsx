@@ -179,7 +179,9 @@ const RosterSlotCell = ({
           if (id !== '') onDrop(row, slot, id);
         }}
         className={[
-          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
+          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors',
+          // Dashed IS the affordance. A day that takes no drop does not wear one.
+          mayPlan ? 'border-dashed' : 'border-solid',
           active
             ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
             : row.inMaintenance || needsFirst
@@ -203,12 +205,17 @@ const RosterSlotCell = ({
             />
           ) : (
             <span className="text-xs text-slate-400 dark:text-slate-500">
+              {/* A reader who cannot plan — a past day, or no `fleetRoster.plan` — is told what
+                  the slot IS, not what to do with it. «اسحب هنا» and «غير قابلة للتعيين» are
+                  both about a gesture this screen is not offering them. */}
+              {/* Exhaustive: `droppable` is exactly the negation of these three, so a slot that
+                  reaches this branch is refused for one of them and for no other reason. */}
               {t(
-                row.inMaintenance
-                  ? 'fleet.roster.inWorkshopNoDrop'
-                  : needsFirst
-                    ? 'fleet.fixedRoster.needsFirstDriver'
-                    : 'fleet.fixedRoster.dropHere',
+                !mayPlan
+                  ? 'fleet.fixedRoster.noDriver'
+                  : row.inMaintenance
+                    ? 'fleet.roster.inWorkshopNoDrop'
+                    : 'fleet.fixedRoster.needsFirstDriver',
               )}
             </span>
           )

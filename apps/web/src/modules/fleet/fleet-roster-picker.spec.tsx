@@ -275,6 +275,26 @@ describe('a past day is shown, and edits by nothing', () => {
     expect(markup, 'the mission is text, not a control').not.toContain('aria-label="150 · نوع المهمة"');
   });
 
+  it('does not invite a gesture it will ignore', () => {
+    // The drop handlers early-return on a past day, so an empty seat asking to be dragged into
+    // would be asking for a gesture that lands nowhere — and the dashed border is that same
+    // invitation drawn instead of written. An empty seat on a record simply had no driver.
+    const markup = renderRoster({ date: past, data: withCrew });
+    expect(markup, 'it says what the slot is').toContain(t('fleet.fixedRoster.noDriver'));
+    expect(markup, 'and it does not say what to do to it').not.toContain(
+      t('fleet.roster.inWorkshopNoDrop'),
+    );
+    expect(markup, 'nor draws a drop target').not.toContain('border-dashed');
+  });
+
+  it('still draws the drop targets on a day that can be planned', () => {
+    const markup = renderRoster({ date: day(0), data: board(day(0), [row(V2, '151')]) });
+    expect(markup, 'today takes a drop').toContain('border-dashed');
+    expect(markup, 'and does not call its empty seats a record').not.toContain(
+      t('fleet.fixedRoster.noDriver'),
+    );
+  });
+
   it('is read-only for the same reason the server refuses the write', () => {
     expect(ROSTER_SOURCE, 'one flag, folded into the one every affordance already reads').toContain(
       "const mayPlan = can('fleetRoster.plan') && editable",

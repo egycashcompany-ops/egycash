@@ -390,7 +390,10 @@ const CrewSlotCell = ({
             />
           ) : (
             <span className="text-xs text-slate-400 dark:text-slate-500">
-              {t(needsFirst ? 'fleet.fixedRoster.needsFirstDriver' : 'fleet.fixedRoster.dropHere')}
+              {/* Same rule as the daily board: a reader who cannot plan is told what the slot
+                  is, not asked for a gesture they are not being offered. */}
+              {/* Exhaustive, for the same reason: `droppable` is `mayPlan && !needsFirst`. */}
+              {t(!mayPlan ? 'fleet.fixedRoster.noDriver' : 'fleet.fixedRoster.needsFirstDriver')}
             </span>
           )
         ) : (

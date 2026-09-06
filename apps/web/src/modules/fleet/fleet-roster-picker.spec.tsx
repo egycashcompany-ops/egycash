@@ -14,10 +14,7 @@
 // which drivers it would list (`filterDrivers`, the same call the panel makes), and what the
 // selection does to the board (`assignDriver`, called directly). The click itself is verified in
 // Chromium, where it is a real click on a real popover.
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
@@ -34,12 +31,14 @@ import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { RosterPage } from './pages/RosterPage';
 import { FixedRosterPage } from './pages/FixedRosterPage';
-import { assignDriver, availableDrivers, rowsToSave } from './lib/daily-roster-board';
+import {
+  assignDriver,
+  availableDrivers,
+  rowsToSave,
+  type DutySlot,
+} from './lib/daily-roster-board';
+import { rosterDraftKey } from './lib/draft-storage';
 import { filterDrivers, type DriverSearchRecord } from './lib/driver-search';
-
-const HERE = dirname(fileURLToPath(import.meta.url));
-const ROSTER_SOURCE = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8');
-const FIXED_SOURCE = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
 
 const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
@@ -213,18 +212,42 @@ describe('the picker offers the POOL, and a pick is a drop by another name', () 
     expect(filterDrivers(pool, index, 'لا أحد')).toEqual([]);
   });
 
-  it('produces the SAME board a drag produces, and the same save payload', () => {
+  it('seats into the seat its own trigger names, taking the driver from the pool it is handed', () => {
+    // The inputs are the PRODUCT's, not the test's: the vehicle and slot are parsed off the
+    // trigger the page actually rendered, and the driver is the first of `availableDrivers` —
+    // the same call the drag panel makes. So a trigger keyed to the wrong seat, or a pool that
+    // stopped excluding seated drivers, changes the board this builds.
+    //
+    // What this does NOT claim is the wiring — that clicking an option reaches `onDrop`. The
+    // panel is a popover that renders closed and this suite has no DOM to open it with, so that
+    // link is proven in Chromium instead.
     const saved = [row(V1, '150'), row(V2, '151')];
-    // The page hands the picker `(id) => onDrop(row, slot, id)` — `onDrop` being the very handler
-    // a drop calls. So both gestures end in this one call.
-    const afterPick = assignDriver(saved, V1, 'driver1EmployeeId', E3);
-    const afterDrag = assignDriver(saved, V1, 'driver1EmployeeId', E3);
-    expect(afterPick).toEqual(afterDrag);
-    expect(afterPick[0]?.driver1EmployeeId).toBe(E3);
-    // And what a save would send is that row, not a UI-only flourish.
-    const pending = rowsToSave(saved, afterPick);
-    expect(pending.map((r) => r.vehicleId)).toContain(V1);
-    expect(pending.find((r) => r.vehicleId === V1)?.driver1EmployeeId).toBe(E3);
+    const markup = renderRoster({ date: day(1), data: board(day(1), saved) });
+
+    // The panel is a popover and renders CLOSED, so its options are not in the markup — only the
+    // trigger is, and the trigger's key is the product's own answer to "which car, which seat".
+    const triggers = [...markup.matchAll(/data-driver-picker="([^"]+)"/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    );
+    const trigger = triggers.find((k) => k.startsWith(`${V1}:`));
+    expect(trigger, 'car 150 offers a first seat').toBe(`${V1}:driver1EmployeeId`);
+    const [vehicleId, slot] = `${trigger}`.split(':') as [string, DutySlot];
+
+    // And the driver comes from the pool the control is handed — `availableDrivers`, the same
+    // call the drag panel makes — not from a constant chosen by the test.
+    const pool = availableDrivers(board(day(1), saved).availableDrivers, saved);
+    const picked = pool[0]?.employeeId as string;
+    expect(picked, 'the pool the control would list').toBe(E1);
+
+    // Exactly what the page does with them, through the rule a drop also runs.
+    const seated = assignDriver(saved, vehicleId, slot, picked);
+    expect(seated.find((r) => r.vehicleId === V1)?.driver1EmployeeId).toBe(picked);
+    expect(seated.find((r) => r.vehicleId === V2)?.driver1EmployeeId, 'nobody else moved').toBeNull();
+
+    // And a save carries that row — a seat the picker filled is a seat the server is told about.
+    const pending = rowsToSave(saved, seated);
+    expect(pending.map((r) => r.vehicleId)).toEqual([V1]);
+    expect(pending[0]?.driver1EmployeeId).toBe(picked);
   });
 
   it('cannot seat one driver twice — the second seating releases the first car', () => {
@@ -232,20 +255,6 @@ describe('the picker offers the POOL, and a pick is a drop by another name', () 
     const moved = assignDriver(saved, V2, 'driver1EmployeeId', E3);
     expect(moved.find((r) => r.vehicleId === V1)?.driver1EmployeeId, 'released').toBeNull();
     expect(moved.find((r) => r.vehicleId === V2)?.driver1EmployeeId).toBe(E3);
-  });
-
-  it('routes BOTH gestures through the one function, in both screens', () => {
-    // The rule lives in `assignDriver`; a picker that wrote the row itself would be a second
-    // implementation of «one driver, one car» free to disagree with the first.
-    for (const [name, source] of [
-      ['roster', ROSTER_SOURCE],
-      ['fixed roster', FIXED_SOURCE],
-    ] as const) {
-      expect(source, `${name} hands the picker the drop handler`).toMatch(
-        /onSelect=\{\(id\) => onDrop\(/,
-      );
-      expect(source, `${name} still assigns through the shared rule`).toContain('assignDriver(');
-    }
   });
 });
 
@@ -295,19 +304,55 @@ describe('a past day is shown, and edits by nothing', () => {
     );
   });
 
-  it('is read-only for the same reason the server refuses the write', () => {
-    expect(ROSTER_SOURCE, 'one flag, folded into the one every affordance already reads').toContain(
-      "const mayPlan = can('fleetRoster.plan') && editable",
-    );
-    expect(ROSTER_SOURCE, 'and the floor is the day itself').toContain(
-      'const editable = date >= floor',
-    );
-  });
+  it('shows the SAVED crew on a past day even when a draft for that day is in storage', () => {
+    // The rule under test is `shown = editable ? draft : saved`, and it is worth a real test
+    // because a draft is keyed by DATE and survives a reload: a day edited at 23:55 and reopened
+    // at 00:05 would otherwise present those edits as the record, with nothing on the screen able
+    // to save or discard them.
+    //
+    // `sessionStorage` is stood up the way `draft-storage.spec.ts` already does it — the suite
+    // runs in node, so the storage the draft layer reads has to be provided rather than assumed.
+    const store = new Map<string, string>();
+    vi.stubGlobal('window', {
+      sessionStorage: {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+      },
+    });
+    try {
+      // A draft that puts a DIFFERENT driver on car 151 than the saved board has.
+      const drafted = [
+        row(V1, '150', { driver1EmployeeId: E1, planned: true }),
+        row(V2, '151', { driver1EmployeeId: E3 }),
+      ];
+      store.set(rosterDraftKey(past), JSON.stringify(drafted));
 
-  it('renders the SERVER’s board on a past day, never a draft left in storage', () => {
-    // A draft is keyed by date and outlives a reload, so a day edited before midnight would
-    // otherwise show edits that nothing on the screen can save or discard.
-    expect(ROSTER_SOURCE).toContain('const shown = editable ? draft : saved');
+      // Scoped to the SLOT, because `data-driver-chip` also appears in the available-drivers
+      // panel beside the board — a page-wide match would pass for the wrong reason.
+      const pastMarkup = renderRoster({ date: past, data: withCrew });
+      expect(cell(pastMarkup, `${V1}:driver1EmployeeId`), 'the record’s own crew').toContain(
+        `data-driver-chip="${E1}"`,
+      );
+      expect(cell(pastMarkup, `${V2}:driver1EmployeeId`), 'and not the draft’s').not.toContain(
+        `data-driver-chip="${E3}"`,
+      );
+
+      // The same draft on a day that CAN be planned is shown — which is what makes the line above
+      // a real branch rather than a draft that simply never loaded.
+      const open = day(1);
+      store.set(rosterDraftKey(open), JSON.stringify(drafted));
+      const openMarkup = renderRoster({
+        date: open,
+        data: board(open, [row(V1, '150'), row(V2, '151')]),
+      });
+      expect(
+        cell(openMarkup, `${V2}:driver1EmployeeId`),
+        'a plannable day edits from its draft',
+      ).toContain(`data-driver-chip="${E3}"`);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('leaves TODAY exactly as it was', () => {

@@ -4,6 +4,7 @@
 // is deliberately the *minimum* identity UI — no full account-administration dashboard.
 import { useState } from 'react';
 import {
+  loginProfileNames,
   type CreateEmployeeLogin,
   type CredentialsDeliveryResultDto,
   type EmployeeDto,
@@ -34,7 +35,6 @@ import {
 } from '../api/employee-queries';
 
 type LocalizedValue = { ar: string; en: string };
-const empty: LocalizedValue = { ar: '', en: '' };
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
   <div>
@@ -42,6 +42,32 @@ const Row = ({ label, children }: { label: string; children: React.ReactNode }):
     <dd className="mt-1 text-slate-700 dark:text-slate-200">{children}</dd>
   </div>
 );
+
+/**
+ * The form, opened on what the system ALREADY KNOWS about this person.
+ *
+ * It used to open blank — six empty boxes asking an HR officer to retype the name, in two
+ * languages, of an employee whose record is on the screen behind the dialog. Every one of those
+ * answers is already stored, so the only thing the retyping could add was a spelling that disagrees
+ * with the employee record.
+ *
+ * The names are split by `loginProfileNames`, the same rule the server applies when it provisions
+ * an account automatically at hire — so an account made by hand and one made at hire carry the same
+ * name for the same person. Everything stays editable: this is a starting point, not a lock.
+ */
+export const initialDraft = (employee: EmployeeDto) => {
+  const { firstName, lastName } = loginProfileNames(
+    employee.personal.fullNameAr,
+    employee.personal.fullNameEn,
+  );
+  return {
+    email: employee.personal.contact.email ?? '',
+    username: employee.code,
+    firstName,
+    lastName,
+    phone: employee.personal.contact.primaryPhone,
+  };
+};
 
 const CreateLoginDialog = ({
   employee,
@@ -52,20 +78,25 @@ const CreateLoginDialog = ({
 }): JSX.Element => {
   const t = useT();
   const create = useCreateEmployeeLogin(employee.id);
-  const [email, setEmail] = useState('');
-  const [username, setUsername] = useState(employee.code);
-  const [firstName, setFirstName] = useState<LocalizedValue>(empty);
-  const [lastName, setLastName] = useState<LocalizedValue>(empty);
-  const [phone, setPhone] = useState('');
+  // Read once, at mount: the dialog is created when «إنشاء حساب دخول» is pressed and destroyed when
+  // it closes, so there is no later employee change for it to miss — and seeding on every render
+  // would undo what the operator is typing.
+  const [draft] = useState(() => initialDraft(employee));
+  const [email, setEmail] = useState(draft.email);
+  const [username, setUsername] = useState(draft.username);
+  const [firstName, setFirstName] = useState<LocalizedValue>(draft.firstName);
+  const [lastName, setLastName] = useState<LocalizedValue>(draft.lastName);
+  const [phone, setPhone] = useState(draft.phone);
   const [locale, setLocale] = useState<Locale>('ar');
 
   const submit = async (): Promise<void> => {
-    if (email.trim() === '') return void toast.error(t('employees.account.emailRequired'));
+    // No email check. An account needs a login IDENTIFIER, and on this path the username always
+    // supplies one — it falls back to the Employee Code server-side when the box is left empty.
     if (firstName.ar.trim() === '' || firstName.en.trim() === '' || lastName.ar.trim() === '' || lastName.en.trim() === '') {
       return void toast.error(t('employees.account.nameRequired'));
     }
     const body: CreateEmployeeLogin = {
-      email: email.trim(),
+      ...(email.trim() === '' ? {} : { email: email.trim() }),
       username: username.trim() === '' ? undefined : username.trim(),
       firstName: firstName as LocalizedString,
       lastName: lastName as LocalizedString,
@@ -92,7 +123,7 @@ const CreateLoginDialog = ({
     >
       <Form onSubmit={() => void submit()}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('employees.account.email')} required>
+          <Field label={t('employees.account.email')} hint={t('employees.account.emailHint')}>
             <Input type="email" dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
           </Field>
           <Field label={t('employees.account.username')} hint={t('employees.account.usernameHint')}>

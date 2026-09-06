@@ -37,6 +37,29 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The go-live workforce import no longer refuses a person the company holds no National ID for.**
+  Five real people were being kept out of their own company's registry to preserve a column: four
+  leavers, and the company's own first employee, hired before it kept the paperwork.
+
+  The registry never required it. `registerDirect` already keys every use of the number on
+  `!== undefined` and stores `null` — the same shape the Sprint-4.1 records that predate the
+  requirement carry. Only the importer's planner refused them. It no longer does, and where there
+  is no National ID it joins the two sheets on the **employee code** instead, which is unique, so
+  two rows carrying one are one person's two spells rather than two people. The two key spaces are
+  prefixed apart so they can never merge.
+
+  **The requirement itself is untouched.** `DirectRegisterEmployeeSchema` and
+  `RegisterApplicantSchema` still demand a valid National ID, and every request arriving over HTTP
+  is parsed by them, so the UI and recruitment are exactly as strict as they were. Only the
+  importer, which calls the service directly rather than over HTTP, can carry a person without one.
+
+  What is deliberately **not** done is inventing a placeholder. The service *derives* birth date,
+  gender and place of birth from this number; a made-up one would manufacture three more facts
+  about a real person and file them as if they were true. Absent is recorded as absent.
+
+  The cost, stated plainly: those five import without the one-person-forever duplicate guard, which
+  has nothing to key on. The code's own uniqueness is what stands in its place.
+
 - **The employees list now reads as a placement, not a ledger.** Columns are, in order: status,
   code, name, site, department, section, job title, hire date. Status moved to the front — it is
   the one fact somebody scanning 1,600 people is nearly always looking for. The hiring origin

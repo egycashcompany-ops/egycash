@@ -81,8 +81,14 @@ export interface SourceRow {
 
 /** One person, and every row that speaks about them, in the order they must be applied. */
 export interface PersonPlan {
-  /** The national ID this person was identified by — the same key both sheets are joined on. */
-  nationalId: string;
+  /**
+   * The national ID, when the company holds one — and `null` when it does not.
+   *
+   * NOT the join key any more: see `identityKey`. Four of the go-live leavers and the company's own
+   * first employee predate the paperwork, and refusing them would lose real people to preserve a
+   * column.
+   */
+  nationalId: string | null;
   /** The Employee Code, taken VERBATIM from the sheet. Never recomposed (ADR-017). */
   code: string;
   /** The 4-digit tail — the Global Employee Number this person was issued. */
@@ -123,6 +129,29 @@ const sameDay = (a: Date | null, b: Date | null): boolean =>
   a !== null && b !== null && a.getTime() === b.getTime();
 
 /**
+ * What joins a person's rows across the two sheets.
+ *
+ * The national ID when there is one: it is the identity the company itself deduplicates people by,
+ * and it survives a re-code. The EMPLOYEE CODE otherwise — unique by `ux_code`, so two rows sharing
+ * one are the same person, and it is the only identity a pre-paperwork employee has.
+ *
+ * A row without a national ID used to be refused outright. That was too strict: the employee
+ * service already stores `nationalId: null` and skips the duplicate check for it, so the registry
+ * has always been able to hold such a person — only this planner could not. Five real people were
+ * being kept out of their own company's system to preserve a column, among them its first employee.
+ *
+ * Prefixed so the two key spaces can never collide: a code is 7 digits and a national ID is 14, but
+ * relying on that is a coincidence rather than a rule.
+ *
+ * The one thing this cannot do is rejoin somebody who was REHIRED UNDER A NEW CODE and has no
+ * national ID: with no identity that survives the re-code, their two spells read as two people. No
+ * go-live row is in that position, and the alternative — guessing by name — would merge namesakes.
+ */
+const identityKey = (row: SourceRow): string =>
+  row.nationalId === null ? `code:${row.code as string}` : `nid:${row.nationalId}`;
+
+
+/**
  * Build the import plan.
  *
  * Ordering within a person is by hire date, with the serving row last regardless: somebody's
@@ -138,15 +167,14 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
       rejected.push({ sheet: row.sheet, rowNumber: row.rowNumber, code: row.code, reason });
       continue;
     }
-    // `unusableReason` has already refused a row without one, so this is always present.
-    const key = row.nationalId as string;
+    const key = identityKey(row);
     const list = byIdentity.get(key);
     if (list === undefined) byIdentity.set(key, [row]);
     else list.push(row);
   }
 
   const people: PersonPlan[] = [];
-  for (const [key, group] of byIdentity) {
+  for (const group of byIdentity.values()) {
     const ordered = [...group].sort(orderSpells);
 
     // Contradictory copies of ONE period — not two periods. Reject the whole person rather than
@@ -182,7 +210,7 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
     }
 
     people.push({
-      nationalId: key,
+      nationalId: current.nationalId,
       code,
       employeeNumber: formatEmployeeNumber(Number(parts.number)),
       branchCodeAtHire: parts.branchCode,
@@ -205,10 +233,6 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
 const unusableReason = (row: SourceRow): string | null => {
   if (row.code === null) return 'no employee code';
   if (row.fullNameAr === null) return 'no Arabic name';
-  // The registry requires one — it derives birth date, gender and place of birth from it, and the
-  // duplicate-person guard is built on it. Five go-live rows have none, and they are a cell to fill
-  // in rather than a person to invent an identity for.
-  if (row.nationalId === null) return 'no national ID — the registry requires one';
   if (row.hiredAt === null) return 'no hiring date';
   if (row.branchName === null) return 'no site (الموقع)';
   if (row.departmentName === null) return 'no department (الإدارة)';

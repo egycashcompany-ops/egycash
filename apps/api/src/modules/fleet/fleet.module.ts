@@ -165,6 +165,12 @@ const violationPermissions = declarePermissions(
   ['view', 'edit', 'delete'],
   [
     { action: 'record', name: { en: 'Record violations', ar: 'تسجيل المخالفات' } },
+    // Collecting the money is not correcting the row: a cashier ticks it, a clerk edits it, and
+    // the two are different people — so it is its own grant, as closing an accident is.
+    {
+      action: 'collect',
+      name: { en: 'Mark a violation collected', ar: 'تحصيل مخالفة' },
+    },
     // The grievance rewrites a year's money story — its own decision, its own grant (§7).
     {
       action: 'grievance',

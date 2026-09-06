@@ -24,6 +24,8 @@ import {
   type SaveFleetFixedRoster,
   type RecordFleetDriverViolation,
   type RecordFleetOdometer,
+  type FleetViolationSide,
+  type RecordFleetDriverViolations,
   type RecordFleetVehicleViolation,
   type SetFleetAccidentStatus,
   type SetFleetGrievance,
@@ -31,6 +33,7 @@ import {
   type UpdateFleetCatalogItem,
   type UpdateFleetDriverProfile,
   type UpdateFleetVehicleType,
+  type SetFleetViolationCollected,
   type UpdateFleetViolation,
   type UpdateFleetMaintenance,
   type UpdateFleetUnavailability,
@@ -135,10 +138,22 @@ export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }, ena
     enabled,
   });
 
-export const useFleetCatalog = (kind: string) =>
+/**
+ * One kind's live catalog, cached.
+ *
+ * `violationSide` narrows a violation type to the half of the violations screen that files it —
+ * it is part of the key, so the company form's list and the drivers' bar's list are two cache
+ * entries and cannot be served one for the other.
+ */
+export const useFleetCatalog = (kind: string, violationSide?: FleetViolationSide) =>
   useQuery({
-    queryKey: listKey(MODULE, 'catalogs', { kind }),
-    queryFn: () => api.listCatalogItems({ kind, pageSize: 100 }),
+    queryKey: listKey(MODULE, 'catalogs', { kind, violationSide }),
+    queryFn: () =>
+      api.listCatalogItems({
+        kind,
+        pageSize: 100,
+        ...(violationSide === undefined ? {} : { violationSide }),
+      }),
     staleTime: 60_000,
   });
 
@@ -584,7 +599,8 @@ export const useViolations = (params: FleetListParams) =>
     placeholderData: (prev) => prev,
   });
 
-export const useViolationRollup = (year: number, vehicleId?: string, enabled = true) =>
+/** `year` omitted = every year, one row per (vehicle, year). */
+export const useViolationRollup = (year?: number, vehicleId?: string, enabled = true) =>
   useQuery({
     queryKey: [MODULE, 'violations', 'rollup', { year, vehicleId }],
     queryFn: () => api.violationRollup(year, vehicleId),
@@ -606,6 +622,12 @@ export const useRecordVehicleViolation = () =>
   useViolationMutation((body: RecordFleetVehicleViolation) => api.recordVehicleViolation(body));
 export const useRecordDriverViolation = () =>
   useViolationMutation((body: RecordFleetDriverViolation) => api.recordDriverViolation(body));
+export const useRecordDriverViolations = () =>
+  useViolationMutation((body: RecordFleetDriverViolations) => api.recordDriverViolations(body));
+export const useSetViolationCollected = () =>
+  useViolationMutation(({ id, body }: { id: string; body: SetFleetViolationCollected }) =>
+    api.setViolationCollected(id, body),
+  );
 export const useUpdateViolation = () =>
   useViolationMutation(({ id, body }: { id: string; body: UpdateFleetViolation }) =>
     api.updateViolation(id, body),

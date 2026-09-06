@@ -37,6 +37,7 @@ import {
   type PlanFleetRoster,
   type RecordFleetDriverViolation,
   type RecordFleetOdometer,
+  type RecordFleetDriverViolations,
   type RecordFleetVehicleViolation,
   type SetFleetAccidentStatus,
   type SetFleetGrievance,
@@ -47,6 +48,7 @@ import {
   type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
   type UpdateFleetVehicleType,
+  type SetFleetViolationCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
 import {
@@ -291,7 +293,7 @@ export const deleteAccident = (id: string): Promise<void> => del<void>(`/fleet/a
 export const listViolations = (params: FleetListParams): Promise<Paginated<FleetViolationDto>> =>
   getPage<FleetViolationDto>(`/fleet/violations${buildQuery(params)}`);
 export const violationRollup = (
-  year: number,
+  year: number | undefined,
   vehicleId?: string,
 ): Promise<FleetViolationRollupDto[]> =>
   get<FleetViolationRollupDto[]>(`/fleet/violations/rollup${buildQuery({ year, vehicleId })}`);
@@ -305,6 +307,16 @@ export const updateViolation = (
   id: string,
   body: UpdateFleetViolation,
 ): Promise<FleetViolationDto> => patch<FleetViolationDto>(`/fleet/violations/${id}`, body);
+/** One vehicle's driver fines in one act — all of them or none (see the contract). */
+export const recordDriverViolations = (
+  body: RecordFleetDriverViolations,
+): Promise<FleetViolationDto[]> =>
+  post<FleetViolationDto[]>('/fleet/violations/driver/batch', body);
+export const setViolationCollected = (
+  id: string,
+  body: SetFleetViolationCollected,
+): Promise<FleetViolationDto> =>
+  patch<FleetViolationDto>(`/fleet/violations/${id}/collected`, body);
 export const setGrievance = (body: SetFleetGrievance): Promise<FleetGrievanceDto> =>
   put<FleetGrievanceDto>('/fleet/violations/grievance', body);
 export const deleteViolation = (id: string): Promise<void> => del<void>(`/fleet/violations/${id}`);

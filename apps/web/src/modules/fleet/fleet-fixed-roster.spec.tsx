@@ -642,7 +642,9 @@ describe('the mission type, edited in the cell', () => {
     expect(SOURCE, 'nowhere on this screen').not.toContain("useFleetCatalog('workType')");
     // …and it costs no new request: `CatalogSelect` reads the same cached hook the page does.
     const select = readFileSync(join(HERE, 'components/CatalogSelect.tsx'), 'utf8');
-    expect(select, 'the shared hook').toContain('useFleetCatalog(kind)');
+    // The kind is passed THROUGH rather than hardcoded — that is the claim. The call gained a
+    // `violationSide` argument for the violations screen, which does not change it.
+    expect(select, 'the shared hook').toContain('useFleetCatalog(kind');
     const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
     expect(api, 'no endpoint was added for this').not.toMatch(/mission-type|missionTypes\(/);
   });

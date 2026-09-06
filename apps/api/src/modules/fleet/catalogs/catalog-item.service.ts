@@ -21,6 +21,7 @@ const snapshot = (doc: FleetCatalogItemDoc) => ({
   kind: doc.kind,
   name: doc.name,
   countsForAlarm: doc.countsForAlarm,
+  violationSide: doc.violationSide,
   isActive: doc.isActive,
 });
 
@@ -38,6 +39,7 @@ class FleetCatalogItemService {
         kind: input.kind,
         name: input.name,
         countsForAlarm: input.countsForAlarm,
+        violationSide: input.violationSide ?? null,
         isActive: true,
       },
       { by },
@@ -62,6 +64,7 @@ class FleetCatalogItemService {
         kind: input.kind,
         name: input.name,
         countsForAlarm: input.countsForAlarm,
+        violationSide: input.violationSide ?? null,
         isActive: true,
       },
       { by: null },
@@ -71,6 +74,7 @@ class FleetCatalogItemService {
   async list(query: ListFleetCatalogQuery): Promise<Paginated<FleetCatalogItemDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.kind !== undefined) filter.kind = query.kind;
+    if (query.violationSide !== undefined) filter.violationSide = query.violationSide;
     if (query.isActive !== undefined) filter.isActive = query.isActive;
     return fleetCatalogItemRepository.list({
       filter,
@@ -91,9 +95,15 @@ class FleetCatalogItemService {
     if (input.countsForAlarm === true && before.kind !== 'workType') {
       throw new ConflictError('only a workType can count for the maintenance alarm');
     }
+    // Same shape of rule, same reason: a side on anything but a violation type would be a fact
+    // no screen reads, and the update path must refuse it as firmly as creation does.
+    if (input.violationSide !== undefined && before.kind !== 'violationType') {
+      throw new ConflictError('only a violationType has a side');
+    }
     const set: Partial<FleetCatalogItemDoc> = {};
     if (input.name !== undefined) set.name = input.name;
     if (input.countsForAlarm !== undefined) set.countsForAlarm = input.countsForAlarm;
+    if (input.violationSide !== undefined) set.violationSide = input.violationSide;
     if (input.isActive !== undefined) set.isActive = input.isActive;
     const updated = await fleetCatalogItemRepository.updateById(id, set, {
       by,

@@ -4,8 +4,10 @@ import {
   type FleetViolationRollupQuery,
   type ListFleetViolationsQuery,
   type RecordFleetDriverViolation,
+  type RecordFleetDriverViolations,
   type RecordFleetVehicleViolation,
   type SetFleetGrievance,
+  type SetFleetViolationCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -35,6 +37,18 @@ export const recordDriverViolation = async (req: Request, res: Response): Promis
   const { body } = validated<RecordFleetDriverViolation>(req);
   const doc = await fleetViolationService.recordDriver(body, authContext(req).userId);
   created(res, toViolationDto(doc));
+};
+
+export const recordDriverViolations = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<RecordFleetDriverViolations>(req);
+  const docs = await fleetViolationService.recordDriverBatch(body, authContext(req).userId);
+  created(res, docs.map(toViolationDto));
+};
+
+export const setViolationCollected = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<SetFleetViolationCollected, never, IdParam>(req);
+  const doc = await fleetViolationService.setCollected(params.id, body, authContext(req).userId);
+  ok(res, toViolationDto(doc));
 };
 
 export const updateViolation = async (req: Request, res: Response): Promise<void> => {

@@ -2,7 +2,13 @@
 // mission types, violation types, unavailability reasons. Archive + rename replace the legacy's
 // append-only lists, where an admin typo lived forever.
 import { Schema, model } from 'mongoose';
-import { FLEET_CATALOG_KINDS, type FleetCatalogKind, type LocalizedString } from '@ecms/contracts';
+import {
+  FLEET_CATALOG_KINDS,
+  FLEET_VIOLATION_SIDES,
+  type FleetCatalogKind,
+  type FleetViolationSide,
+  type LocalizedString,
+} from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface FleetCatalogItemDoc extends BaseDocFields {
@@ -10,6 +16,8 @@ export interface FleetCatalogItemDoc extends BaseDocFields {
   name: LocalizedString;
   /** `workType` only: closing a visit of this type resets the maintenance-alarm baseline. */
   countsForAlarm: boolean;
+  /** `violationType` only: which half of the violations screen files it. Null for other kinds. */
+  violationSide: FleetViolationSide | null;
   isActive: boolean;
 }
 
@@ -18,6 +26,7 @@ const catalogItemSchema = new Schema<FleetCatalogItemDoc>(
     kind: { type: String, required: true, enum: FLEET_CATALOG_KINDS },
     name: { ar: { type: String, required: true }, en: { type: String, required: true } },
     countsForAlarm: { type: Boolean, required: true, default: false },
+    violationSide: { type: String, enum: [...FLEET_VIOLATION_SIDES, null], default: null },
     isActive: { type: Boolean, required: true, default: true },
     ...baseFields,
   },
@@ -29,6 +38,11 @@ catalogItemSchema.index(
   { unique: true, name: 'ux_kind_name_ar', partialFilterExpression: { isDeleted: false } },
 );
 catalogItemSchema.index({ kind: 1, isActive: 1 }, { name: 'ix_kind_active' });
+// The violations screen reads one half's types at a time — the side belongs in that lookup.
+catalogItemSchema.index(
+  { kind: 1, violationSide: 1, isActive: 1 },
+  { name: 'ix_kind_side_active' },
+);
 
 export const FleetCatalogItemModel = model<FleetCatalogItemDoc>(
   'FleetCatalogItem',

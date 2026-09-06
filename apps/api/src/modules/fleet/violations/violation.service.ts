@@ -6,18 +6,23 @@
 // `.grievanceApplied` only: edits and deletes are audited facts, not announcements.
 import {
   FleetEvents,
+  type FleetViolationKind,
   type FleetViolationRollupDto,
+  type FleetViolationSide,
   type ListFleetViolationsQuery,
   type Paginated,
   type RecordFleetDriverViolation,
+  type RecordFleetDriverViolations,
   type RecordFleetVehicleViolation,
   type SetFleetGrievance,
+  type SetFleetViolationCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
+import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
@@ -46,6 +51,7 @@ const snapshot = (doc: FleetViolationDoc) => ({
   unitValue: doc.unitValue,
   date: doc.date,
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
+  collected: doc.collected,
 });
 
 const recordedPayload = (doc: FleetViolationDoc) => ({
@@ -57,18 +63,37 @@ const recordedPayload = (doc: FleetViolationDoc) => ({
   amount: doc.amount,
 });
 
+/** A row's kind IS its ledger: a vehicle statement row is the company's, a driver row the driver's. */
+const sideOf = (kind: FleetViolationKind): FleetViolationSide =>
+  kind === 'vehicle' ? 'company' : 'driver';
+
 class FleetViolationService {
-  private async assertViolationType(id: string): Promise<void> {
+  /**
+   * The type exists, is live, and belongs to the ledger doing the filing.
+   *
+   * The side is the whole point of the two halves: «سرعة» is a driver's fine and «رسوم قضائية»
+   * is the company's, and a screen that let either be filed on the other side would put money in
+   * the wrong column of the rollup — where `vehicleAmount` and `driverAmount` are what the branch
+   * is judged on. The forms only OFFER their own side; this is what makes that true of the data
+   * rather than merely of the dropdown.
+   */
+  private async assertViolationType(id: string, side: FleetViolationSide): Promise<void> {
     const item = await fleetCatalogItemRepository.findActiveOfKind(id, 'violationType');
     if (item === null) {
       throw invalid('violationTypeId', 'violation type not found or inactive');
+    }
+    if (item.violationSide !== side) {
+      throw invalid(
+        'violationTypeId',
+        `"${item.name.ar}" is a ${item.violationSide ?? 'unclassified'} violation type and cannot be filed as a ${side} one`,
+      );
     }
   }
 
   /** FR-9 — the statement row: (vehicle, year, type, count, unitValue) in, amount DERIVED. */
   async recordVehicle(input: RecordFleetVehicleViolation, by: string): Promise<FleetViolationDoc> {
     await fleetVehicleRepository.getById(input.vehicleId);
-    await this.assertViolationType(input.violationTypeId);
+    await this.assertViolationType(input.violationTypeId, 'company');
     const doc = await fleetViolationRepository.create(
       {
         kind: 'vehicle',
@@ -95,7 +120,7 @@ class FleetViolationService {
   /** The per-event driver row — needs a driver PROFILE to exist (active or not: history counts). */
   async recordDriver(input: RecordFleetDriverViolation, by: string): Promise<FleetViolationDoc> {
     await fleetVehicleRepository.getById(input.vehicleId);
-    await this.assertViolationType(input.violationTypeId);
+    await this.assertViolationType(input.violationTypeId, 'driver');
     const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(
       input.driverEmployeeId,
     );
@@ -123,6 +148,86 @@ class FleetViolationService {
     });
     await emit(FleetEvents.ViolationRecorded, recordedPayload(doc));
     return doc;
+  }
+
+  /**
+   * One vehicle's driver fines in one act — the drivers' bar counts them, then names them.
+   *
+   * All or nothing, inside a single transaction: the bar is filled in one pass and a partial
+   * write would leave the reader guessing which cards took. Every row is validated BEFORE any is
+   * written, so a bad driver on card six refuses the whole batch instead of storing five.
+   */
+  async recordDriverBatch(
+    input: RecordFleetDriverViolations,
+    by: string,
+  ): Promise<FleetViolationDoc[]> {
+    await fleetVehicleRepository.getById(input.vehicleId);
+    for (const [index, row] of input.rows.entries()) {
+      await this.assertViolationType(row.violationTypeId, 'driver');
+      const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(
+        row.driverEmployeeId,
+      );
+      if (profile === null) {
+        throw invalid(
+          `rows.${index}.driverEmployeeId`,
+          'no driver profile exists for this employee (FR-11)',
+        );
+      }
+    }
+
+    const docs = await unitOfWork(async (session) =>
+      fleetViolationRepository.createMany(
+        input.rows.map((row) => ({
+          kind: 'driver' as const,
+          vehicleId: new Types.ObjectId(input.vehicleId),
+          violationTypeId: new Types.ObjectId(row.violationTypeId),
+          amount: row.amount,
+          year: null,
+          count: null,
+          unitValue: null,
+          date: row.date,
+          driverEmployeeId: new Types.ObjectId(row.driverEmployeeId),
+          collected: false,
+        })),
+        { by, session },
+      ),
+    );
+
+    for (const doc of docs) {
+      await auditService.record({
+        entityRef: entityRef(String(doc._id)),
+        action: 'create',
+        changes: diffChanges({}, snapshot(doc)),
+      });
+      await emit(FleetEvents.ViolationRecorded, recordedPayload(doc));
+    }
+    return docs;
+  }
+
+  /**
+   * Mark the money in, or put it back. Its own write for its own reason (see the contract): the
+   * person who collects is not the person who corrects, and the two acts must not share a form.
+   */
+  async setCollected(
+    id: string,
+    input: SetFleetViolationCollected,
+    by: string,
+  ): Promise<FleetViolationDoc> {
+    const before = await fleetViolationRepository.getById(id);
+    // Clicking a tick that is already ticked is not a change. Returning the row as it stands
+    // keeps the version — and the audit trail — free of entries that say nothing happened.
+    if (before.collected === input.collected) return before;
+    const updated = await fleetViolationRepository.updateById(
+      id,
+      { collected: input.collected },
+      { by, version: input.version },
+    );
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: diffChanges(snapshot(before), snapshot(updated)),
+    });
+    return updated;
   }
 
   async list(query: ListFleetViolationsQuery): Promise<Paginated<FleetViolationDoc>> {
@@ -154,7 +259,7 @@ class FleetViolationService {
     const set: Partial<FleetViolationDoc> = {};
 
     if (input.violationTypeId !== undefined) {
-      await this.assertViolationType(input.violationTypeId);
+      await this.assertViolationType(input.violationTypeId, sideOf(before.kind));
       set.violationTypeId = new Types.ObjectId(input.violationTypeId);
     }
 
@@ -258,7 +363,8 @@ class FleetViolationService {
   }
 
   /** §2.9 — the annual rollup, fully derived at query time: sums + grievances + codes merged. */
-  async rollup(year: number, vehicleId?: string): Promise<FleetViolationRollupDto[]> {
+  /** Omit `year` for the whole history — one row per (vehicle, year). */
+  async rollup(year: number | undefined, vehicleId?: string): Promise<FleetViolationRollupDto[]> {
     const [sums, grievances] = await Promise.all([
       fleetViolationRepository.yearSums(year, vehicleId),
       fleetGrievanceRepository.forYear(year, vehicleId),
@@ -272,10 +378,10 @@ class FleetViolationService {
       if (vehicle !== null) codes.set(id, vehicle.code);
     }
     return assembleRollups(
-      year,
       sums,
       grievances.map((g) => ({
         vehicleId: String(g.vehicleId),
+        year: g.year,
         totalBeforeGrievance: g.totalBeforeGrievance,
       })),
       codes,

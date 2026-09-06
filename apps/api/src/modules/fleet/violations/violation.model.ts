@@ -20,6 +20,8 @@ export interface FleetViolationDoc extends BaseDocFields {
   /** driver shape */
   date: Date | null;
   driverEmployeeId: Types.ObjectId | null;
+  /** The money is in. Set by a person, never derived — see the DTO for why it is its own fact. */
+  collected: boolean;
 }
 
 const violationSchema = new Schema<FleetViolationDoc>(
@@ -33,6 +35,7 @@ const violationSchema = new Schema<FleetViolationDoc>(
     unitValue: { type: Number, default: null },
     date: { type: Date, default: null },
     driverEmployeeId: { type: Schema.Types.ObjectId, default: null },
+    collected: { type: Boolean, required: true, default: false },
     ...baseFields,
   },
   baseSchemaOptions,

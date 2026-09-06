@@ -1,7 +1,7 @@
 // Reusable fleet-catalog select (workshops, work types, mission/violation types…). Options are
 // the live active items of one kind; an inactive current value stays visible so an edit form
 // never silently loses a historical reference.
-import { type FleetCatalogKind, type Locale } from '@ecms/contracts';
+import { type FleetCatalogKind, type FleetViolationSide, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { Select } from '../../../shared/ui/form';
@@ -10,6 +10,7 @@ import { useFleetCatalog } from '../api/fleet-queries';
 
 export const CatalogSelect = ({
   kind,
+  violationSide,
   value,
   onChange,
   allLabel,
@@ -18,6 +19,13 @@ export const CatalogSelect = ({
   disabled = false,
 }: {
   kind: FleetCatalogKind;
+  /**
+   * `violationType` only: offer just the half that files it.
+   *
+   * The company's form must not list «سرعة» and the drivers' bar must not list «رسوم قضائية» —
+   * the server refuses either as a mis-filed row, so offering it would be offering a 422.
+   */
+  violationSide?: FleetViolationSide;
   value: string;
   onChange: (itemId: string) => void;
   /** When set, an empty "all" option with this label is offered (filter mode). */
@@ -36,7 +44,7 @@ export const CatalogSelect = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const { data } = useFleetCatalog(kind);
+  const { data } = useFleetCatalog(kind, violationSide);
   const items = (data?.items ?? []).filter((item) => item.isActive || item.id === value);
 
   return (

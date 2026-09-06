@@ -4,8 +4,10 @@ import {
   FleetViolationRollupQuerySchema,
   ListFleetViolationsQuerySchema,
   RecordFleetDriverViolationSchema,
+  RecordFleetDriverViolationsSchema,
   RecordFleetVehicleViolationSchema,
   SetFleetGrievanceSchema,
+  SetFleetViolationCollectedSchema,
   UpdateFleetViolationSchema,
   objectId,
 } from '@ecms/contracts';
@@ -17,8 +19,10 @@ import {
   getViolationRollup,
   listViolations,
   recordDriverViolation,
+  recordDriverViolations,
   recordVehicleViolation,
   setGrievance,
+  setViolationCollected,
   updateViolation,
 } from './violation.controller';
 
@@ -54,6 +58,22 @@ export const buildFleetViolationsRouter = (): Router => {
     authorize('fleetViolation.record'),
     validate({ body: RecordFleetDriverViolationSchema }),
     asyncHandler(recordDriverViolation),
+  );
+  // The drivers' bar files a vehicle's fines in one act — all of them, or none (see the service).
+  router.post(
+    '/driver/batch',
+    authenticate,
+    authorize('fleetViolation.record'),
+    validate({ body: RecordFleetDriverViolationsSchema }),
+    asyncHandler(recordDriverViolations),
+  );
+  // Collecting is its own grant: the cashier who ticks a row is not the clerk who corrects it.
+  router.patch(
+    '/:id/collected',
+    authenticate,
+    authorize('fleetViolation.collect'),
+    validate({ body: SetFleetViolationCollectedSchema, params: IdParamSchema }),
+    asyncHandler(setViolationCollected),
   );
   // H9's fate — the ONE per-(vehicle, year) figure; PUT because it is a set/replace.
   router.put(

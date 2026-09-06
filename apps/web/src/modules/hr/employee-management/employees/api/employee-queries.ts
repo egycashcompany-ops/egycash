@@ -49,6 +49,19 @@ export const useEmployee = (id: string) =>
     enabled: id !== '',
   });
 
+/**
+ * The caller's own employee file — the self-service profile.
+ *
+ * Keyed on `'me'` rather than on an id the caller does not have: the id lives in the token. That
+ * also keeps it out of the detail cache, so signing in as somebody else cannot serve the previous
+ * person's file from a key that happens to match.
+ */
+export const useMyEmployeeProfile = () =>
+  useQuery({
+    queryKey: detailKey(MODULE, FEATURE, 'me'),
+    queryFn: () => api.getMyEmployeeProfile(),
+  });
+
 /** Accepted-offer lookup for the create flow (reuses the Job Offer list API). */
 export const useAcceptedOfferSearch = (term: string) =>
   useQuery({

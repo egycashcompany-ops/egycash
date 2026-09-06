@@ -9,6 +9,7 @@ import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../../platform/layout/AppShell';
 import { EmployeesListPage } from './employees/pages/EmployeesListPage';
 import { EmployeeProfilePage } from './employees/pages/EmployeeProfilePage';
+import { MyProfilePage } from './employees/pages/MyProfilePage';
 import { EmployeeCreatePage } from './employees/pages/EmployeeCreatePage';
 import { EmployeesReadyPage } from './employees/pages/EmployeesReadyPage';
 import { DirectRegisterPage } from './employees/pages/DirectRegisterPage';
@@ -17,6 +18,16 @@ export default function EmployeeManagementRoutes(): JSX.Element {
   return (
     <Routes>
       <Route element={<AppShell />}>
+        {/*
+          MY OWN FILE — OUTSIDE the `employee.view` guard, deliberately.
+          
+          Everything below this line is the administrator's registry, and `employee.view` is the
+          key that opens it: holding it means seeing OTHER PEOPLE. An employee has no business
+          holding that to read their own file, and the server agrees — `/hr/employees/me` takes the
+          id from the token and authorizes nothing, because there is no id the caller could have
+          chosen. There is no `:id` in this path either, so it cannot be pointed at anyone else.
+        */}
+        <Route path="me" element={<MyProfilePage />} />
         <Route
           element={
             <RequirePermission permission="employee.view">

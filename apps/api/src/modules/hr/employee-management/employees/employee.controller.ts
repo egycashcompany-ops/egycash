@@ -158,6 +158,30 @@ export const listSubordinates = async (req: Request, res: Response): Promise<voi
 };
 
 /** Composed profile timeline: file milestones + personnel actions + audited personal edits. */
+/**
+ * The caller's OWN employee record — the self-service profile (ESS).
+ *
+ * `authenticate` and no `authorize`, like every other `/me` in the platform: the id is not supplied
+ * by the caller, it comes from the token, so there is no record to be authorized ONTO. An employee
+ * holds no `employee.view`, and requiring it would either lock them out of their own file or hand
+ * them the whole registry.
+ *
+ * REDACTION IS THE SAME RULE AS EVERYWHERE ELSE, not a second one. The DTO goes through
+ * `visibility(req)`, which reads `employee.viewCompensation` / `viewInsurance` / `viewOfficer` off
+ * the caller — keys an ordinary employee does not hold — so salary, the insurance file and the
+ * officer profile come back redacted with their `*Visible` flags false. A manager who DOES hold
+ * them sees their own of those, which is correct and needed no exception either.
+ *
+ * 404 when the login is not linked to an employee: a platform account that is not one of us has no
+ * employee file, and saying so is better than an empty one.
+ */
+export const getMyEmployeeProfile = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const doc = await employeeService.getMine(ctx.userId);
+  const placement = await resolvePlacements([doc]);
+  ok(res, toEmployeeDto(doc, visibility(req), placement.for(doc)));
+};
+
 export const getEmployeeTimeline = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);

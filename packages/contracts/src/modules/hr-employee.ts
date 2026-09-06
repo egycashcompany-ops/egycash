@@ -553,6 +553,28 @@ export interface EmployeeStatusEventDto {
   actionId: string | null;
 }
 
+/** One org unit, named — what a list needs to SHOW a placement without a second request. */
+export interface EmployeePlacementUnitDto {
+  id: string;
+  code: string;
+  name: { ar: string; en: string };
+}
+
+/**
+ * The employee's current placement, resolved to names.
+ *
+ * `employment` carries the ids and is the mutable snapshot personnel actions write; this is the
+ * read-side companion, resolved once per page by the server so a 2,600-row registry does not send
+ * the client to four catalogues. A unit is `null` when the id does not resolve — a section that
+ * was hard-deleted, or an employee with no section at all.
+ */
+export interface EmployeePlacementDto {
+  branch: EmployeePlacementUnitDto | null;
+  department: EmployeePlacementUnitDto | null;
+  section: EmployeePlacementUnitDto | null;
+  jobTitle: EmployeePlacementUnitDto | null;
+}
+
 export interface EmployeeDto {
   id: string;
   /** Permanent identity: the Global Employee Number, e.g. `0125` — never changes (ADR-017). */
@@ -584,6 +606,8 @@ export interface EmployeeDto {
   acceptedOfferRevision: number | null;
   // Employment snapshot (mutated ONLY by applied personnel actions).
   employment: EmploymentDetailsDto;
+  /** The placement above, resolved to names — see {@link EmployeePlacementDto}. */
+  placement: EmployeePlacementDto;
   /** false when salary/allowances were redacted for the caller (no `employee.viewCompensation`). */
   compensationVisible: boolean;
   /**

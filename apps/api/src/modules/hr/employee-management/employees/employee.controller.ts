@@ -23,6 +23,7 @@ import { userService } from '../../../../platform/users';
 import { hasPermission, scopeSelector } from '../../../../shared/types';
 import { employeeService } from './employee.service';
 import { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
+import { resolvePlacements } from './employee-placement';
 
 type IdParam = { id: string };
 
@@ -50,9 +51,10 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
     body,
     scopeSelector(ctx, 'employee.create'),
   );
+  const placement = await resolvePlacements([doc]);
   created(
     res,
-    { ...toEmployeeDto(doc, visibility(req)), provisionedLogin },
+    { ...toEmployeeDto(doc, visibility(req), placement.for(doc)), provisionedLogin },
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };
@@ -66,9 +68,10 @@ export const registerEmployeeDirect = async (req: Request, res: Response): Promi
     body,
     scopeSelector(ctx, 'employee.registerDirect'),
   );
+  const placement = await resolvePlacements([doc]);
   created(
     res,
-    { ...toEmployeeDto(doc, visibility(req)), provisionedLogin },
+    { ...toEmployeeDto(doc, visibility(req), placement.for(doc)), provisionedLogin },
     `/api/v1/hr/employees/${String(doc._id)}`,
   );
 };
@@ -77,9 +80,10 @@ export const listEmployees = async (req: Request, res: Response): Promise<void> 
   const ctx = authContext(req);
   const { query } = validated<never, ListEmployeesQuery>(req);
   const visible = visibility(req);
-  okPage(res, await employeeService.list(query, scopeSelector(ctx, 'employee.view')), (d) =>
-    toEmployeeDto(d, visible),
-  );
+  const page = await employeeService.list(query, scopeSelector(ctx, 'employee.view'));
+  // Names for the whole page in one read per catalogue — never one lookup per row.
+  const placement = await resolvePlacements(page.items);
+  okPage(res, page, (d) => toEmployeeDto(d, visible, placement.for(d)));
 };
 
 /** Exited-employee match for a national id — the Rehire prompt / duplicate guard (F2). */
@@ -92,11 +96,14 @@ export const rehireCheck = async (req: Request, res: Response): Promise<void> =>
 export const getEmployee = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { params } = validated<never, never, IdParam>(req);
+  const doc = await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view'));
+  const placement = await resolvePlacements([doc]);
   ok(
     res,
     toEmployeeDto(
-      await employeeService.getById(params.id, scopeSelector(ctx, 'employee.view')),
+      doc,
       visibility(req),
+      placement.for(doc),
     ),
   );
 };
@@ -111,7 +118,7 @@ export const updateEmployeePersonal = async (req: Request, res: Response): Promi
     body,
     scopeSelector(ctx, 'employee.editPersonal'),
   );
-  ok(res, toEmployeeDto(doc, visibility(req)));
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 /** Replace the social-insurance file — an audited update, not a personnel action. */
@@ -124,7 +131,7 @@ export const updateEmployeeInsurance = async (req: Request, res: Response): Prom
     body,
     scopeSelector(ctx, 'employee.manageInsurance'),
   );
-  ok(res, toEmployeeDto(doc, visibility(req)));
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 /** Replace the officer / armed-security profile — an audited update, not a personnel action. */
@@ -137,7 +144,7 @@ export const updateEmployeeOfficer = async (req: Request, res: Response): Promis
     body,
     scopeSelector(ctx, 'employee.manageOfficer'),
   );
-  ok(res, toEmployeeDto(doc, visibility(req)));
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 /** Employed direct reports of this employee (manager tree seed). */
@@ -146,7 +153,8 @@ export const listSubordinates = async (req: Request, res: Response): Promise<voi
   const { params } = validated<never, never, IdParam>(req);
   const visible = visibility(req);
   const reports = await employeeService.subordinates(params.id, scopeSelector(ctx, 'employee.view'));
-  ok(res, reports.map((d) => toEmployeeDto(d, visible)));
+  const placement = await resolvePlacements(reports);
+  ok(res, reports.map((d) => toEmployeeDto(d, visible, placement.for(d))));
 };
 
 /** Composed profile timeline: file milestones + personnel actions + audited personal edits. */
@@ -170,7 +178,7 @@ export const linkEmployeeUser = async (req: Request, res: Response): Promise<voi
     scopeSelector(ctx, 'employee.view'),
     scopeSelector(ctx, 'user.edit'),
   );
-  ok(res, toEmployeeDto(doc, visibility(req)));
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 export const unlinkEmployeeUser = async (req: Request, res: Response): Promise<void> => {
@@ -182,7 +190,7 @@ export const unlinkEmployeeUser = async (req: Request, res: Response): Promise<v
     scopeSelector(ctx, 'employee.view'),
     scopeSelector(ctx, 'user.edit'),
   );
-  ok(res, toEmployeeDto(doc, visibility(req)));
+  ok(res, toEmployeeDto(doc, visibility(req), (await resolvePlacements([doc])).for(doc)));
 };
 
 /** Create the login account for an employee (Employee ← one User, ADR-017). Gated by `user.create`. */

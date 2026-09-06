@@ -34,7 +34,12 @@ export {
   sectionRepository,
   type SectionDoc,
 } from './sections';
-export { jobTitleService, buildJobTitlesRouter, type JobTitleDoc } from './job-titles';
+export {
+  jobTitleService,
+  jobTitleRepository,
+  buildJobTitlesRouter,
+  type JobTitleDoc,
+} from './job-titles';
 export {
   costCenterService,
   buildCostCentersRouter,

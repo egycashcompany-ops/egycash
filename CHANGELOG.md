@@ -9,6 +9,33 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **The employees list now reads as a placement, not a ledger.** Columns are, in order: status,
+  code, name, site, department, section, job title, hire date. Status moved to the front — it is
+  the one fact somebody scanning 1,600 people is nearly always looking for. The hiring origin
+  column is gone: whether somebody came through recruitment or was registered directly is a fact
+  about the hiring process, not about the person, and it earned its width on no reader's screen.
+  The four placement columns are new.
+
+  **Placement names come from the server, resolved once per page.** `EmployeeDto` gains a
+  `placement` block — branch, department, section, job title, each `{ id, code, name }` or `null`
+  — beside the ids that `employment` has always carried. The alternative, four catalogue fetches
+  in the browser, would have been four extra requests a screen and four extra permissions: the
+  sections and job-title catalogues are paginated at 100 and gated by their own `*.view`, so a
+  reader without those keys, or a deployment with 139 sections, would have seen blanks for people
+  placed perfectly well. The server holds the ids, so it resolves them — one `$in` read per
+  catalogue per page, never one per row, and a dangling reference is `null` rather than a 500.
+  Soft-deleted units still resolve: a person filed under a retired section shows that section's
+  name, not a dash.
+
+- **The list's filter bar has a reset and a live row count.** The reset is the shared amber
+  affordance every filter bar already had, now wired here; it appears only when something has
+  been narrowed. The count sits at the end of the row and is the server's total for the exact
+  query on screen — the whole list when nothing is narrowed, the narrowed total otherwise — so it
+  can never disagree with the pagination beneath it. It is withheld on the settlement view, which
+  is another endpoint with a count of its own, rather than shown wrong.
+
 ### Fixed
 
 - **Index drift is now reconciled for the employee collection as a whole, not one index at a

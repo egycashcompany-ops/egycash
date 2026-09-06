@@ -20,12 +20,19 @@ export const FilterBar = ({
   children,
   onClear,
   hasActiveFilters = false,
+  trailing,
   singleRow = false,
   singleRowFrom = 1400,
 }: {
   children: ReactNode;
   onClear?: () => void;
   hasActiveFilters?: boolean;
+  /**
+   * Something that belongs at the END of the row, after the reset — a row count, a summary. It
+   * sits at the end whether or not the reset is showing, so a count does not jump sideways the
+   * moment a filter is cleared.
+   */
+  trailing?: ReactNode;
   /**
    * Keep every filter on ONE row on a wide screen, wrapping only on narrower ones.
    *
@@ -64,16 +71,21 @@ export const FilterBar = ({
       )}
     >
       {children}
-      {onClear !== undefined && hasActiveFilters && (
-        <button
-          type="button"
-          onClick={onClear}
-          aria-label={t('common.filters.clear')}
-          title={t('common.filters.clear')}
-          className="ms-auto inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
-        >
-          <ResetIcon className="h-4 w-4" />
-        </button>
+      {((onClear !== undefined && hasActiveFilters) || trailing !== undefined) && (
+        <div className="ms-auto flex shrink-0 items-center gap-2">
+          {onClear !== undefined && hasActiveFilters && (
+            <button
+              type="button"
+              onClick={onClear}
+              aria-label={t('common.filters.clear')}
+              title={t('common.filters.clear')}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+            >
+              <ResetIcon className="h-4 w-4" />
+            </button>
+          )}
+          {trailing}
+        </div>
       )}
     </div>
   );

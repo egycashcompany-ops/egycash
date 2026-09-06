@@ -8,6 +8,7 @@
 import {
   maskNationalId,
   type EmployeeDto,
+  type EmployeePlacementDto,
   type EmployeeInsuranceDto,
   type EmployeeOfficerDto,
   type EmployeePersonalDto,
@@ -182,9 +183,18 @@ const periodDto = (p: { hiredAt: Date; exitedAt: Date | null; exitType: Employme
   exitType: p.exitType,
 });
 
+/** What a caller that has not resolved names gets: the ids are still on `employment`. */
+export const UNRESOLVED_PLACEMENT: EmployeePlacementDto = {
+  branch: null,
+  department: null,
+  section: null,
+  jobTitle: null,
+};
+
 export const toEmployeeDto = (
   doc: EmployeeDoc,
   opts: { compensationVisible: boolean; insuranceVisible: boolean; officerVisible: boolean },
+  placement: EmployeePlacementDto = UNRESOLVED_PLACEMENT,
 ): EmployeeDto => ({
   id: String(doc._id),
   employeeNumber: doc.employeeNumber,
@@ -208,6 +218,7 @@ export const toEmployeeDto = (
   offerCode: doc.offerCode,
   acceptedOfferRevision: doc.acceptedOfferRevision,
   employment: employmentDto(doc.employment, opts.compensationVisible),
+  placement,
   compensationVisible: opts.compensationVisible,
   hiredAt: doc.hiredAt.toISOString(),
   version: doc.__v,

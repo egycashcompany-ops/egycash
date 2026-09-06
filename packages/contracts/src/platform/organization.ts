@@ -300,6 +300,16 @@ export interface OrgUnitOptionDto {
   id: string;
   code: string;
   name: { ar: string; en: string };
+  /**
+   * The unit this one hangs under — a Department's Branch, a Section's Department — and `null` for
+   * the units that hang under nothing (Branches, and Job Titles, which are a flat catalog).
+   *
+   * It is here so a caller can CASCADE from one fetch. Without it, narrowing Departments to a
+   * chosen Branch means a second, `department.view`-gated request per selection; with it, the three
+   * option lists are fetched once each and filtered in the browser. The id is the same
+   * non-sensitive identifier the rest of this DTO carries.
+   */
+  parentId: string | null;
 }
 
 export interface DepartmentDto extends OrgUnitDto {

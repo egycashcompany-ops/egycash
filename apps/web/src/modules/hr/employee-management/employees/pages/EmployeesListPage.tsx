@@ -19,6 +19,19 @@ import { Select } from '../../../../../shared/ui/form';
 import { PlusIcon } from '../../../../../shared/ui/icons';
 import { useEmployees } from '../api/employee-queries';
 import { employeeColumns } from '../lib/employee-columns';
+import {
+  departmentsIn,
+  hasPlacementFilter,
+  prunePlacement,
+  sectionsIn,
+  type PlacementSelection,
+} from '../lib/placement-filters';
+import {
+  useBranchOptions,
+  useDepartmentReferenceOptions,
+  useJobTitleReferenceOptions,
+  useSectionReferenceOptions,
+} from '../../../../organization/shared/references';
 import { type EmployeeListParams } from '../api/employee-api';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
 
@@ -26,6 +39,10 @@ import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFil
 const REMEMBERED_FILTERS = [
   'q',
   'status',
+  'branch',
+  'dept',
+  'section',
+  'job',
   'size',
   'sort',
   'view',
@@ -60,6 +77,12 @@ export const EmployeesListPage = (): JSX.Element => {
   const canSettle = can('employee.viewCompensation');
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
+  const placement: PlacementSelection = {
+    branchId: sp.get('branch') ?? '',
+    departmentId: sp.get('dept') ?? '',
+    sectionId: sp.get('section') ?? '',
+    jobTitleId: sp.get('job') ?? '',
+  };
   const viewRaw = sp.get('view');
   // A caller without the compensation key falls back to the default view rather than seeing an
   // empty table they cannot be told the reason for — the server would refuse the read anyway.
@@ -103,6 +126,12 @@ export const EmployeesListPage = (): JSX.Element => {
       // The view filter: employed (default) / exited / all — status narrows within the view.
       ...(view === 'employed' ? { employed: true } : view === 'exited' ? { employed: false } : {}),
       ...(status === '' ? {} : { status }),
+      // The registry already filters on all four (`ListEmployeesQuery`), so narrowing is one query,
+      // not a client-side pass over a page — the count under the bar stays the server's own.
+      ...(placement.branchId === '' ? {} : { branchId: placement.branchId }),
+      ...(placement.departmentId === '' ? {} : { departmentId: placement.departmentId }),
+      ...(placement.sectionId === '' ? {} : { sectionId: placement.sectionId }),
+      ...(placement.jobTitleId === '' ? {} : { jobTitleId: placement.jobTitleId }),
     }),
     [paramsKey],
   );
@@ -121,8 +150,45 @@ export const EmployeesListPage = (): JSX.Element => {
 
   // "Active" means anything a reader changed from how the screen opens: the default view is not a
   // filter to them, it is the screen. Clearing puts every remembered parameter back to that.
-  const hasActiveFilters = search !== '' || status !== '' || view !== 'employed';
-  const clearFilters = (): void => patch({ q: null, status: null, view: null });
+  const hasActiveFilters =
+    search !== '' || status !== '' || view !== 'employed' || hasPlacementFilter(placement);
+  const clearFilters = (): void =>
+    patch({ q: null, status: null, view: null, branch: null, dept: null, section: null, job: null });
+
+  // One fetch of each catalog, narrowed in the browser. All four endpoints are authenticated but
+  // NOT gated by the unit's `view` permission, so the filters populate for anybody who may read the
+  // employee list — and they are paged to exhaustion server-side, so a deployment with 142 job
+  // titles offers 142 of them.
+  const { data: branchOptions = [] } = useBranchOptions();
+  const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
+  const { data: sectionOptions = [] } = useSectionReferenceOptions();
+  const { data: jobTitleOptions = [] } = useJobTitleReferenceOptions();
+
+  const departments = useMemo(
+    () => departmentsIn(departmentOptions, placement.branchId),
+    [departmentOptions, placement.branchId],
+  );
+  const sections = useMemo(
+    () => sectionsIn(sectionOptions, departmentOptions, placement.branchId, placement.departmentId),
+    [sectionOptions, departmentOptions, placement.branchId, placement.departmentId],
+  );
+
+  /**
+   * Change one placement filter and drop whatever no longer sits under it.
+   *
+   * Pruning happens HERE and not on render: the catalogs load asynchronously, and pruning against a
+   * list that has not arrived would erase a selection restored from the URL the moment the page
+   * opened.
+   */
+  const setPlacement = (part: Partial<PlacementSelection>): void => {
+    const next = prunePlacement({ ...placement, ...part }, departmentOptions, sectionOptions);
+    patch({
+      branch: next.branchId || null,
+      dept: next.departmentId || null,
+      section: next.sectionId || null,
+      job: next.jobTitleId || null,
+    });
+  };
 
   // The row count the table is standing on: the whole list when nothing is narrowed, the narrowed
   // total otherwise. It is the server's count for this exact query, so it never disagrees with
@@ -185,6 +251,65 @@ export const EmployeesListPage = (): JSX.Element => {
                 </option>
               ))}
             </Select>
+          )}
+          {/*
+            Placement, in the order the columns read: site → department → section, then job title.
+            The first three cascade; the job title is a flat catalog and narrows nothing.
+
+            Withheld in the settlement queue, which is a different endpoint and takes none of them —
+            offering a filter that would be ignored is worse than not offering it.
+          */}
+          {view !== 'toSettle' && (
+            <>
+              <Select
+                aria-label={t('employees.columns.branch')}
+                value={placement.branchId}
+                onChange={(e) => setPlacement({ branchId: e.target.value })}
+              >
+                <option value="">{t('employees.filters.anyBranch')}</option>
+                {branchOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name[locale]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label={t('employees.columns.department')}
+                value={placement.departmentId}
+                onChange={(e) => setPlacement({ departmentId: e.target.value })}
+              >
+                <option value="">{t('employees.filters.anyDepartment')}</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name[locale]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label={t('employees.columns.section')}
+                value={placement.sectionId}
+                onChange={(e) => setPlacement({ sectionId: e.target.value })}
+              >
+                <option value="">{t('employees.filters.anySection')}</option>
+                {sections.map((sec) => (
+                  <option key={sec.id} value={sec.id}>
+                    {sec.name[locale]}
+                  </option>
+                ))}
+              </Select>
+              <Select
+                aria-label={t('employees.columns.jobTitle')}
+                value={placement.jobTitleId}
+                onChange={(e) => setPlacement({ jobTitleId: e.target.value })}
+              >
+                <option value="">{t('employees.filters.anyJobTitle')}</option>
+                {jobTitleOptions.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.name[locale]}
+                  </option>
+                ))}
+              </Select>
+            </>
           )}
         </FilterBar>
         {view === 'toSettle' ? (

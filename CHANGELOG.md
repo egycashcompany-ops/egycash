@@ -11,6 +11,22 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **Every unit dropdown in the app was missing units, and said nothing.** `GET /platform/<unit>/options`
+  asked its repository for one page of 500, but `BaseRepository.list` clamps `pageSize` to
+  `MAX_PAGE_SIZE` (100) — so any catalog past a hundred was served a hundred, with no error and
+  nothing in the response to say the list had been cut. This deployment has 142 job titles, so the
+  job-title picker on notification rules and announcements has been offering 100 of them.
+
+  This is the third instance of one shape: the employee profile hit it at 100 job titles, the list
+  hit it in its own catalog reads, and both were fixed by reading what the server had already
+  resolved. Here the fix is at the source — `collectOptions` pages to exhaustion, bounded by the
+  reader's own `totalPages`, and both callers (the three org units and the flat job-title catalog)
+  share it. A dropdown that omits a unit is worse than a slow one: the reader cannot tell.
+
+  The option DTO also carries `parentId` now — a Department's Branch, a Section's Department, null
+  for the units that hang under nothing. It is what lets a screen cascade one picker off another
+  from a single ungated fetch of each list, instead of a `<unit>.view`-gated request per selection.
+
 - **Four things the employees screens showed a reader that no reader should see.** The list's row
   count read literally as `{count} موظف`; the personal tab showed `applicants.maritalStatus.married`
   where it meant "married", and the same for education and military status; and on the profile
@@ -36,6 +52,16 @@ its entry here in the same PR.
   the row; the coloured badge closes it.
 
 ### Changed
+
+- **The employees list filters by placement — site, department, section and job title.** Four
+  selects join the search and status controls, in the order the columns read. The first three
+  cascade: choosing a site narrows the departments to that site, choosing a department narrows the
+  sections to it, and a selection that no longer belongs under its new parent is dropped rather than
+  left to filter the list silently to nothing. Job title is a flat catalog (ADR-015) and narrows
+  nothing. All four live in the URL, are remembered across visits, and are cleared by the same reset.
+
+  The narrowing is the server's — `ListEmployeesQuery` already accepted all four ids — so the row
+  count under the bar stays the count for the exact query, not for the page on screen.
 
 - **The go-live workforce import no longer refuses a person the company holds no National ID for.**
   Five real people were being kept out of their own company's registry to preserve a column: four

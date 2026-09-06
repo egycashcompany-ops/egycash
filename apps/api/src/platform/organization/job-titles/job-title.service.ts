@@ -13,6 +13,7 @@ import { BusinessRuleError } from '../../../shared/errors';
 import { diffChanges } from '../../../shared/utils/diff';
 import { auditService } from '../../audit';
 import { emit } from '../../kernel/event-bus';
+import { collectOptions } from '../shared/all-options';
 import { resolveShiftLabels } from '../shift-label-seams';
 import { jobTitleRepository } from './job-title.repository';
 import { type JobTitleDoc } from './job-title.model';
@@ -155,17 +156,26 @@ class JobTitleService {
    * without being able to read the catalogue. It carries id, code and name and nothing else — no
    * salary band, no grade, no shift defaults.
    */
+  /**
+   * Every ACTIVE job title as a dropdown option, paged to exhaustion — see `all-options.ts` for why
+   * the single `pageSize: 500` read this replaces was serving 100 of this deployment's 142.
+   *
+   * `parentId` is null: job titles are an organization-level catalog with no hierarchy (ADR-015).
+   */
   async options(): Promise<OrgUnitOptionDto[]> {
-    const page = await jobTitleRepository.list({
-      filter: { status: 'active' } as FilterQuery<JobTitleDoc>,
-      page: 1,
-      pageSize: 500,
-      sortBy: 'code',
-      sortDir: 'asc',
-      sortableFields: ['code'],
-      scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
-    });
-    return page.items.map((doc) => ({ id: String(doc._id), code: doc.code, name: doc.name }));
+    return collectOptions<JobTitleDoc>(
+      (page, pageSize) =>
+        jobTitleRepository.list({
+          filter: { status: 'active' } as FilterQuery<JobTitleDoc>,
+          page,
+          pageSize,
+          sortBy: 'code',
+          sortDir: 'asc',
+          sortableFields: ['code'],
+          scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
+        }),
+      () => null,
+    );
   }
 
   async list(query: ListOrgUnitsQuery, scope: ScopeSelector): Promise<Paginated<JobTitleDoc>> {

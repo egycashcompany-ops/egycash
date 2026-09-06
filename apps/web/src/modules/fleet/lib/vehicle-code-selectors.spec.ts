@@ -92,8 +92,12 @@ const NOT_A_CODE_SELECTOR = [
     why: 'an unfiltered id→code map so a retired car’s file still prints its code; the screen’s actual filter is VehicleCodeFilter',
   },
   {
-    file: 'modules/fleet/pages/ViolationsPage.tsx',
-    why: 'the same id→code map, plus the code→id lookup the rollup axis needs; filtering is VehicleCodeFilter’s',
+    file: 'modules/fleet/components/CompanyViolationsPanel.tsx',
+    why: 'the code→id lookup the rollup axis and the statement form need; filtering is VehicleCodeFilter’s',
+  },
+  {
+    file: 'modules/fleet/components/DriverViolationsPanel.tsx',
+    why: 'an id→code map so a retired car’s fine still prints its code, plus code→id for the batch bar; filtering is VehicleCodeFilter’s',
   },
 ] as const;
 

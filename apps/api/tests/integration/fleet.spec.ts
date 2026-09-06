@@ -20,6 +20,7 @@ import {
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
+  type FleetViolationDto,
   type PageMeta,
   SaveFleetFixedRosterSchema,
 } from '@ecms/contracts';
@@ -6381,5 +6382,212 @@ describe('the registry filters narrow SERVER-side', () => {
   it('treats a filter term as TEXT, not as a pattern', async () => {
     // A regex metacharacter must match literally; escaping it is what stops `.*` listing the fleet.
     expect(await list({ code: '.*' })).toEqual([]);
+  });
+});
+
+// ── the two ledgers, against a real database ───────────────────────────────
+//
+// The split between what the company pays and what a driver pays is now DATA — a side on the
+// violation type — and the server is what enforces it. These prove the enforcement, the atomic
+// batch the drivers' bar files, and that a collected tick is actually stored.
+describe('violations: two sides, one batch, and a collected flag that persists', () => {
+  const typeIdByName = async (name: string): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'violationType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === name);
+    if (item === undefined) throw new Error(`violationType ${name} not found`);
+    return item.id;
+  };
+
+  it('seeds four DRIVER types and five COMPANY ones, each narrowable on its own', async () => {
+    const side = async (violationSide: string): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/fleet/catalog-items')
+        .query({ kind: 'violationType', violationSide, pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data<FleetCatalogItemDto[]>(res).map((i) => i.name.ar);
+    };
+    const drivers = await side('driver');
+    expect(drivers.sort()).toEqual(['تليفون', 'حزام', 'سرعة', 'عكس'].sort());
+    const company = await side('company');
+    expect(company, 'the company vocabulary').toContain('رسوم قضائية');
+    expect(company, 'and never a driver fine').not.toContain('سرعة');
+  });
+
+  it('refuses a DRIVER type filed as a company statement, and the reverse', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const speeding = await typeIdByName('سرعة');
+    const courtFees = await typeIdByName('رسوم قضائية');
+
+    // The dropdown never offers this pair; the server is what makes that true of the DATA.
+    const wrongWay = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2026, violationTypeId: speeding, count: 1, unitValue: 100 });
+    // A ValidationError from the service — 400, the same shape every other business refusal has.
+    expect(wrongWay.status, 'a driver fine is not the company statement').toBe(400);
+
+    const alsoWrong = await request(app)
+      .post('/api/v1/fleet/violations/driver')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        date: '2026-02-01',
+        driverEmployeeId: await someDriver(),
+        violationTypeId: courtFees,
+        amount: 100,
+      });
+    expect(alsoWrong.status, 'nor the company fee a driver’s').toBe(400);
+  });
+
+  it('files a whole batch of driver fines in one request', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await someDriver();
+    await mkDriverProfile(driver).catch(() => undefined);
+    const res = await request(app)
+      .post('/api/v1/fleet/violations/driver/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        rows: [
+          { date: '2026-02-01', driverEmployeeId: driver, violationTypeId: await typeIdByName('سرعة'), amount: 400 },
+          { date: '2026-02-02', driverEmployeeId: driver, violationTypeId: await typeIdByName('حزام'), amount: 300 },
+        ],
+      });
+    expect(res.status).toBe(201);
+    expect(data<FleetViolationDto[]>(res)).toHaveLength(2);
+
+    const listed = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetViolationDto[]>(listed)).toHaveLength(2);
+  });
+
+  it('stores NOTHING when one row of the batch is bad', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await someDriver();
+    const res = await request(app)
+      .post('/api/v1/fleet/violations/driver/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        rows: [
+          { date: '2026-02-01', driverEmployeeId: driver, violationTypeId: await typeIdByName('سرعة'), amount: 400 },
+          // A company type in a driver batch — the whole stack must be refused, not trimmed.
+          { date: '2026-02-02', driverEmployeeId: driver, violationTypeId: await typeIdByName('رسوم خدمة'), amount: 300 },
+        ],
+      });
+    expect(res.status).toBe(400);
+
+    const listed = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      data<FleetViolationDto[]>(listed),
+      'not even the good row got through',
+    ).toHaveLength(0);
+  });
+
+  it('persists a collected tick, and takes it back', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const created = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        year: 2026,
+        violationTypeId: await typeIdByName('رسوم خدمة'),
+        count: 1,
+        unitValue: 500,
+      });
+    const row = data<FleetViolationDto>(created);
+    expect(row.collected, 'a fine starts uncollected').toBe(false);
+
+    const ticked = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}/collected`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ collected: true, version: row.version });
+    expect(ticked.status).toBe(200);
+    expect(data<FleetViolationDto>(ticked).collected).toBe(true);
+
+    // Read it back from the LIST, not from the write's own answer.
+    const listed = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ vehicleId: v.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetViolationDto[]>(listed).find((r) => r.id === row.id)?.collected).toBe(true);
+
+    const back = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}/collected`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ collected: false, version: data<FleetViolationDto>(ticked).version });
+    expect(data<FleetViolationDto>(back).collected).toBe(false);
+  });
+
+  it('rolls a car’s YEARS up separately, and narrows to one when asked', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const type = await typeIdByName('رسوم خدمة');
+    for (const [year, count] of [
+      [2025, 2],
+      [2026, 3],
+    ] as const) {
+      await request(app)
+        .post('/api/v1/fleet/violations/vehicle')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year, violationTypeId: type, count, unitValue: 100 });
+    }
+
+    const all = await request(app)
+      .get('/api/v1/fleet/violations/rollup')
+      .query({ vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(all.status).toBe(200);
+    const years = data<{ year: number; vehicleAmount: number }[]>(all);
+    expect(years.map((r) => r.year), 'newest first, and NOT folded together').toEqual([2026, 2025]);
+    expect(years[0]?.vehicleAmount).toBe(300);
+    expect(years[1]?.vehicleAmount).toBe(200);
+
+    const one = await request(app)
+      .get('/api/v1/fleet/violations/rollup')
+      .query({ vehicleId: v.id, year: 2025 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ year: number }[]>(one).map((r) => r.year)).toEqual([2025]);
+  });
+
+  it('takes its own grant to collect — reading and editing are not enough', async () => {
+    const role = await rbacService.createRole(
+      {
+        name: { en: 'Violations clerk', ar: 'كاتب مخالفات' },
+        permissionKeys: ['fleetViolation.view', 'fleetViolation.edit'],
+      },
+      adminUserId,
+    );
+    const userId = await mkUser('violations-clerk@ecms.local');
+    await rbacService.ensureAssignment(userId, String(role._id), 'organization');
+    const token = await tokenFor(userId);
+
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const created = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        year: 2026,
+        violationTypeId: await typeIdByName('رسوم خدمة'),
+        count: 1,
+        unitValue: 100,
+      });
+    const row = data<FleetViolationDto>(created);
+
+    const refused = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}/collected`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ collected: true, version: row.version });
+    expect(refused.status).toBe(403);
   });
 });

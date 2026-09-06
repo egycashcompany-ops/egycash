@@ -29,7 +29,12 @@ import {
   type EmployeeLoginProvisionDto,
   type JobValueSource,
 } from '@ecms/contracts';
-import { BusinessRuleError, ConflictError, ValidationError } from '../../../../shared/errors';
+import {
+  BusinessRuleError,
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from '../../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { auditService } from '../../../../platform/audit';
@@ -1056,7 +1061,13 @@ class EmployeeService {
       const essRole = await rbacService.ensureSystemRole(
         'employee-self-service',
         { en: 'Employee Self-Service', ar: 'الخدمة الذاتية للموظفين' },
-        ['leave.view', 'leave.request', 'attendance.view', 'attendance.requestRegularization'],
+        [
+          'leave.view',
+          'leave.request',
+          'attendance.view',
+          'attendance.requestRegularization',
+          'employeeLoan.create',
+        ],
       );
       await rbacService.ensureAssignment(String(user._id), String(essRole._id), 'own');
       await auditService.record({
@@ -1115,6 +1126,21 @@ class EmployeeService {
       if (result !== null) provisioned += 1;
     }
     return provisioned;
+  }
+
+  /**
+   * The employee this LOGIN is, for the self-service profile.
+   *
+   * Resolved from the token rather than from an id in the URL, which is what lets it run without
+   * `employee.view`: there is no id for the caller to have chosen, so there is nothing to
+   * authorize onto. `findByUserIdSystem` is the same lookup the other self-service reads use
+   * (`listMine` on loans, and its siblings) — one way to answer "which employee is this account",
+   * not a second one that could disagree.
+   */
+  async getMine(userId: string): Promise<EmployeeDoc> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) throw new NotFoundError('no employee is linked to this login');
+    return employee;
   }
 
   async createLogin(

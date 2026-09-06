@@ -2250,6 +2250,11 @@ const en: Record<string, string> = {
   'employees.columns.code': 'Employee #',
   'employees.columns.applicant': 'Applicant',
   'employees.columns.status': 'Status',
+  'employees.mine.title': 'My profile',
+  'employees.mine.subtitle': 'Your own record — personal details and where you work.',
+  'employees.mine.noEmployee': 'This account is not linked to an employee record',
+  'employees.mine.noEmployeeHint':
+    'Platform accounts that are not employees have no personnel file. Ask HR if you expected one.',
   'employees.columns.offer': 'Offer #',
   'employees.columns.hired': 'Hired',
   'employees.columns.created': 'Created',
@@ -8597,6 +8602,11 @@ const ar: Record<string, string> = {
   'employees.columns.code': 'رقم الموظف',
   'employees.columns.applicant': 'المتقدِّم',
   'employees.columns.status': 'الحالة',
+  'employees.mine.title': 'ملفي',
+  'employees.mine.subtitle': 'سجلك الشخصي — بياناتك ومكان عملك.',
+  'employees.mine.noEmployee': 'هذا الحساب غير مرتبط بسجل موظف',
+  'employees.mine.noEmployeeHint':
+    'الحسابات غير المرتبطة بموظف ليس لها ملف. راجع الموارد البشرية إذا كنت تتوقع وجود ملف.',
   'employees.columns.offer': 'رقم العرض',
   'employees.columns.hired': 'تاريخ التعيين',
   'employees.columns.created': 'تاريخ الإنشاء',

@@ -13,7 +13,7 @@ import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { cn } from '../../shared/lib/cn';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { BrandMark } from '../../shared/ui';
-import { CogIcon, LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
+import { BadgeIcon, CogIcon, LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
@@ -66,6 +66,27 @@ const UserMenu = (): JSX.Element => {
               {me.email}
             </p>
           </div>
+          {/*
+            MY PROFILE — here rather than in the sidebar, because that is where a person looks for
+            themselves, and because the nav catalog gates every row on a permission while this page
+            is open to every employee by virtue of BEING one. Shown only when the account is linked
+            to an employee record: a platform administrator who is not on the payroll has no file,
+            and an entry that leads to "you have no record" is worse than no entry.
+          */}
+          {me.employeeId !== null && me.employeeId !== undefined && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); navigate('/employees/me'); }}
+              className={cn(
+                'flex w-full items-center gap-2 px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50',
+                'dark:text-slate-200 dark:hover:bg-slate-700',
+              )}
+            >
+              <BadgeIcon className="h-4 w-4" />
+              {t('employees.mine.title')}
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

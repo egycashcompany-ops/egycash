@@ -22,6 +22,11 @@ import { Badge, DataTable, EmptyState, Pagination, type Column } from '../../../
 import { Card, CardBody, CardHeader } from '../../../../shared/ui/Card';
 import { formatDate, formatMoney } from '../../../../shared/lib/format';
 import { useMyLoans } from '../api/employee-loans-queries';
+import { useCan } from '../../../../platform/rbac/Can';
+import { Button } from '../../../../shared/ui';
+import { PlusIcon } from '../../../../shared/ui/icons';
+import { useMyEmployeeProfile } from '../../employee-management/employees/api/employee-queries';
+import { RequestLoanDialog } from '../components/RequestLoanDialog';
 
 const PAGE_SIZE = 10;
 
@@ -47,7 +52,18 @@ export const MyLoansPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<EmployeeLoanDetailDto | null>(null);
+  const [asking, setAsking] = useState(false);
   const loans = useMyLoans({ page, pageSize: PAGE_SIZE, sortBy: 'createdAt', sortDir: 'desc' });
+  const can = useCan();
+  // ASKING is what this page was missing. It could show an employee every loan they had and offer
+  // no way to request one — the key that opens the form, `employeeLoan.create`, was held only by
+  // the people who DECIDE requests, so the request had nowhere to come from.
+  //
+  // The employee's own file, for the one thing the form needs from it: the currency they are paid
+  // in. Fetched only when the button is available, and shared with the profile screen's cache.
+  const mayAsk = can('employeeLoan.create');
+  const me = useMyEmployeeProfile();
+  const currency = me.data?.employment.salary?.currency ?? 'EGP';
 
   const money = (value: number, currency: string): JSX.Element => (
     <span dir="ltr" className="tabular-nums">
@@ -100,6 +116,13 @@ export const MyLoansPage = (): JSX.Element => {
         title={t('loans.mine.title')}
         description={t('loans.mine.subtitle')}
         breadcrumbs={[{ label: t('loans.mine.title') }]}
+        actions={
+          mayAsk && me.data !== undefined ? (
+            <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setAsking(true)}>
+              {t('loans.add')}
+            </Button>
+          ) : undefined
+        }
       />
 
       <div className="space-y-4">
@@ -160,6 +183,13 @@ export const MyLoansPage = (): JSX.Element => {
               )}
             </CardBody>
           </Card>
+        )}
+        {asking && me.data !== undefined && (
+          <RequestLoanDialog
+            employeeId={me.data.id}
+            currency={currency}
+            onClose={() => setAsking(false)}
+          />
         )}
       </div>
     </PageContainer>

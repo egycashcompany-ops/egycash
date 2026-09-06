@@ -163,7 +163,13 @@ export const migrateLeaveModule = async (): Promise<void> => {
   const essRole = await rbacService.ensureSystemRole(
     'employee-self-service',
     { en: 'Employee Self-Service', ar: 'الخدمة الذاتية للموظفين' },
-    ['leave.view', 'leave.request', 'attendance.view', 'attendance.requestRegularization'],
+    [
+      'leave.view',
+      'leave.request',
+      'attendance.view',
+      'attendance.requestRegularization',
+      'employeeLoan.create',
+    ],
   );
   const employed = await employeeRepository.listEmployedSystem();
   for (const employee of employed) {

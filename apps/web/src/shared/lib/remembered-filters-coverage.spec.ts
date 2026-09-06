@@ -190,6 +190,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/hr/employee-management/employees/pages/DirectRegisterPage.tsx'],
   ['modules/hr/employee-management/employees/pages/EmployeeCreatePage.tsx'],
   ['modules/hr/employee-management/employees/pages/EmployeeProfilePage.tsx'],
+  ['modules/hr/employee-management/employees/pages/MyProfilePage.tsx'],
   ['modules/hr/leave-management/pages/ApprovalsInboxPage.tsx'],
   ['modules/hr/leave-management/pages/HolidaysPage.tsx'],
   ['modules/hr/leave-management/pages/LeaveRequestDetailPage.tsx'],

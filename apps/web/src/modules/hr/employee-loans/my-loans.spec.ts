@@ -48,29 +48,48 @@ describe('it answers for the caller, and for nobody else', () => {
     expect(before).not.toContain('RequirePermission');
   });
 
-  it('and declares no permission check of its own', () => {
-    expect(PAGE).not.toContain("can('");
-    expect(PAGE).not.toContain('useCan');
-    expect(PAGE).not.toContain('RequirePermission');
+  /**
+   * The route stays open; the ASKING is what carries a key.
+   *
+   * This asserted that the page declared no permission check at all, on the reasoning that a
+   * button here "would suggest a path that does not exist for them" — true while the only loan
+   * keys anyone held were the decider's. An employee may now ask for their own loan
+   * (`employeeLoan.create`, `own`-scoped), so the path exists and the screen may show it.
+   *
+   * What must NOT come back is a gate on the route or the reading: every employee reaches their
+   * own loans, with or without the key to ask for another.
+   */
+  it('gates the ASK on employeeLoan.create, and gates nothing else', () => {
+    expect(PAGE, 'the ask is the only thing behind a key').toContain("can('employeeLoan.create')");
+    expect(PAGE, 'the page itself is not permission-gated').not.toContain('RequirePermission');
+    // One key, checked once. A second `can(` here would be a second rule about the same screen.
+    expect([...PAGE.matchAll(/can\('/g)]).toHaveLength(1);
   });
 });
 
-describe('it reads, and offers nothing to do', () => {
+describe('it reads and it asks — it never decides', () => {
   /**
    * D2 is a two-person rule: `employeeLoan.create` proposes and `employeeLoan.approve` decides.
-   * A button on the employee's own screen — even one that only opened a dialog — would suggest a
-   * path that does not exist for them.
+   * The employee holds the first and never the second, so this screen may offer the request and
+   * must offer nothing beyond it.
+   *
+   * The form itself is not here — it is `RequestLoanDialog`, the same one HR fills in on the
+   * employee's Loans tab, so the two paths cannot ask different questions. What this asserts is
+   * that the page did not grow a second form of its own along the way.
    */
-  it('has no mutation, no dialog and no form', () => {
+  it('has no mutation and no form of its own', () => {
     for (const word of ['useMutation', '.mutate(', '<Dialog', '<Input', '<Textarea', 'onSubmit']) {
       expect(PAGE, word).not.toContain(word);
     }
   });
 
-  it('and calls none of the write endpoints this feature has', () => {
-    for (const word of ['submitLoan', 'decideLoan', 'disburseLoan', 'cancelLoan', 'createLoan']) {
+  it('and calls none of the DECIDING endpoints this feature has', () => {
+    // Everything that moves money or closes a request. `createLoan` is deliberately absent from
+    // this list now — but it is absent from the page too, because the dialog owns the call.
+    for (const word of ['submitLoan', 'decideLoan', 'disburseLoan', 'cancelLoan', 'accelerate']) {
       expect(PAGE, word).not.toContain(word);
     }
+    expect(PAGE, 'the page delegates the write instead of making it').not.toContain('useCreateLoan');
   });
 
   /** No export either — PY-12 is closed, and a personal screen is not the place to reopen it. */

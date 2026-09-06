@@ -285,3 +285,31 @@ describe('toRehireCheckResultDto', () => {
     expect(dto.exit?.eligibleForRehire).toBe(false);
   });
 });
+
+describe('placement on the DTO', () => {
+  const visible = { compensationVisible: true, insuranceVisible: true, officerVisible: true };
+
+  it('carries the resolved names when the caller supplies them', () => {
+    // One document, held: `baseDoc()` mints fresh ids on every call.
+    const doc = baseDoc();
+    const dto = toEmployeeDto(doc, visible, {
+      branch: { id: 'b', code: '010', name: { ar: 'المهندسين', en: 'Mohandessin' } },
+      department: { id: 'd', code: 'DEP-0001', name: { ar: 'العمليات', en: 'Operations' } },
+      section: null,
+      jobTitle: { id: 'j', code: 'JOB-0001', name: { ar: 'سائق', en: 'Driver' } },
+    });
+    expect(dto.placement.branch?.name.ar).toBe('المهندسين');
+    expect(dto.placement.section).toBeNull();
+    // The ids on `employment` are untouched — placement is a read-side companion, not a rewrite.
+    expect(dto.employment.branchId).toBe(String(doc.employment.branchId));
+  });
+
+  /**
+   * A caller that has not resolved names still produces a valid DTO: every unit null, the ids
+   * still on `employment`. Nothing 500s for want of a lookup it did not need.
+   */
+  it('is all-null, never absent, when no names were resolved', () => {
+    const dto = toEmployeeDto(baseDoc(), visible);
+    expect(dto.placement).toEqual({ branch: null, department: null, section: null, jobTitle: null });
+  });
+});

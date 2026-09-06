@@ -154,6 +154,23 @@ export class BaseRepository<T extends BaseDocFields> {
     return this.model.findOne(this.baseFilter(scope, filter)).lean<T>().exec();
   }
 
+  /**
+   * Every document whose id is in `ids`, in ANY state and without scope.
+   *
+   * For resolving references, not for browsing: the caller already holds the ids, so scope was
+   * decided when the referencing row was read. Soft-deleted rows are included on purpose — an
+   * employee filed under a section that has since been retired must still show that section's
+   * name, not a blank. Order is not guaranteed; callers build a map.
+   */
+  async findByIdsSystem(ids: readonly string[]): Promise<T[]> {
+    const distinct = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id));
+    if (distinct.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: distinct.map((id) => new Types.ObjectId(id)) } } as FilterQuery<T>)
+      .lean<T[]>()
+      .exec();
+  }
+
   async exists(filter: FilterQuery<T>): Promise<boolean> {
     const found = await this.model.exists(this.baseFilter(undefined, filter)).exec();
     return found !== null;

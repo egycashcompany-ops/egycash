@@ -4,22 +4,21 @@
 // accepted offer + Direct Registration (D4).
 import { lazy, Suspense, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { EMPLOYEE_STATUSES, type EmployeeDto, type Locale } from '@ecms/contracts';
+import { EMPLOYEE_STATUSES, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../../store';
 import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { LoadingState } from '../../../../../shared/ui/states/LoadingState';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
-import { DataTable, type Column } from '../../../../../shared/ui/DataTable';
+import { DataTable } from '../../../../../shared/ui/DataTable';
 import { Pagination } from '../../../../../shared/ui/Pagination';
 import { Button } from '../../../../../shared/ui/Button';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Select } from '../../../../../shared/ui/form';
 import { PlusIcon } from '../../../../../shared/ui/icons';
-import { formatDate } from '../../../../../shared/lib/format';
-import { EmployeeStatusBadge } from '../components/EmployeeStatusBadge';
 import { useEmployees } from '../api/employee-queries';
+import { employeeColumns } from '../lib/employee-columns';
 import { type EmployeeListParams } from '../api/employee-api';
 import { useRememberedFilters } from '../../../../../shared/lib/useRememberedFilters';
 
@@ -118,26 +117,23 @@ export const EmployeesListPage = (): JSX.Element => {
     [paramsKey],
   );
 
-  const columns: Column<EmployeeDto>[] = [
-    {
-      key: 'code',
-      header: t('employees.columns.code'),
-      sortable: true,
-      render: (e) => <span className="font-mono text-xs" dir="ltr">{e.code}</span>,
-    },
-    {
-      key: 'name',
-      header: t('employees.columns.name'),
-      render: (e) => <span>{e.personal.fullNameAr}</span>,
-    },
-    { key: 'status', header: t('employees.columns.status'), render: (e) => <EmployeeStatusBadge status={e.status} /> },
-    {
-      key: 'origin',
-      header: t('employees.columns.origin'),
-      render: (e) => <span className="text-xs text-slate-500">{t(`employees.origin.${e.origin}`)}</span>,
-    },
-    { key: 'hiredAt', header: t('employees.columns.hired'), sortable: true, render: (e) => formatDate(e.hiredAt, locale) },
-  ];
+  const columns = useMemo(() => employeeColumns(t, locale), [t, locale]);
+
+  // "Active" means anything a reader changed from how the screen opens: the default view is not a
+  // filter to them, it is the screen. Clearing puts every remembered parameter back to that.
+  const hasActiveFilters = search !== '' || status !== '' || view !== 'employed';
+  const clearFilters = (): void => patch({ q: null, status: null, view: null });
+
+  // The row count the table is standing on: the whole list when nothing is narrowed, the narrowed
+  // total otherwise. It is the server's count for this exact query, so it never disagrees with
+  // the pagination beneath it. The settlement queue is another endpoint with its own count, so
+  // the number is withheld there rather than shown wrong.
+  const rowCount =
+    view !== 'toSettle' && data !== undefined ? (
+      <span className="whitespace-nowrap text-xs tabular-nums text-slate-500 dark:text-slate-400">
+        {t('employees.list.count', { count: data.meta.totalItems })}
+      </span>
+    ) : undefined;
 
   return (
     <PageContainer>
@@ -162,7 +158,7 @@ export const EmployeesListPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        <FilterBar>
+        <FilterBar onClear={clearFilters} hasActiveFilters={hasActiveFilters} trailing={rowCount}>
           <SearchInput
             value={search}
             onChange={(v) => patch({ q: v || null })}

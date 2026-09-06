@@ -21,6 +21,7 @@ import {
   MAX_PAGE_SIZE,
   type EmployeeDto,
   type FleetDriverProfileDto,
+  type FleetDriverRowDto,
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -187,13 +188,21 @@ export const DriversListPage = (): JSX.Element => {
   );
 
   const [formOpen, setFormOpen] = useState(false);
-  const [editing, setEditing] = useState<FleetDriverProfileDto | null>(null);
+  const [editing, setEditing] = useState<FleetDriverRowDto | null>(null);
   const [previewing, setPreviewing] = useState<FleetDriverProfileDto | null>(null);
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
-  const columns: Column<FleetDriverProfileDto>[] = [
+  // A cell Fleet has not filled in yet. Not «—» alone: the reader is looking at a driver who is
+  // certainly a driver (their seat says so) and whose licence simply has not been entered.
+  const NotRecorded = (): JSX.Element => (
+    <span className="text-xs text-slate-400" title={t('fleet.drivers.notRecordedHint')}>
+      {t('fleet.drivers.notRecorded')}
+    </span>
+  );
+
+  const columns: Column<FleetDriverRowDto>[] = [
     {
       key: 'driver',
       header: t('fleet.drivers.columns.driver'),
@@ -223,23 +232,27 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'licenseNumber',
       header: t('fleet.drivers.columns.licenseNumber'),
-      render: (d) => (
-        <span className="font-mono text-xs" dir="ltr">
-          {d.licenseNumber}
-        </span>
-      ),
+      render: (d) =>
+        d.profile === null ? (
+          <NotRecorded />
+        ) : (
+          <span className="font-mono text-xs" dir="ltr">
+            {d.profile.licenseNumber}
+          </span>
+        ),
     },
     {
       key: 'licenseExpiresAt',
       header: t('fleet.drivers.columns.licenseExpiresAt'),
       sortable: true,
       render: (d) => {
-        const expired = new Date(d.licenseExpiresAt).getTime() < Date.now();
+        if (d.profile === null) return <NotRecorded />;
+        const expired = new Date(d.profile.licenseExpiresAt).getTime() < Date.now();
         return (
           <span
             className={cn('tabular-nums', expired && 'font-medium text-red-600 dark:text-red-400')}
           >
-            {formatDate(d.licenseExpiresAt, locale)}
+            {formatDate(d.profile.licenseExpiresAt, locale)}
           </span>
         );
       },
@@ -257,7 +270,7 @@ export const DriversListPage = (): JSX.Element => {
         />
       ),
     },
-    { key: 'area', header: t('fleet.drivers.columns.area'), render: (d) => d.area ?? '—' },
+    { key: 'area', header: t('fleet.drivers.columns.area'), render: (d) => d.profile?.area ?? '—' },
     {
       key: 'governorate',
       header: t('fleet.drivers.columns.governorate'),
@@ -295,7 +308,12 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'specialization',
       header: t('fleet.drivers.columns.specialization'),
-      render: (d) => t(`fleet.drivers.specialization.${d.specialization}`),
+      render: (d) =>
+        d.profile === null ? (
+          <NotRecorded />
+        ) : (
+          t(`fleet.drivers.specialization.${d.profile.specialization}`)
+        ),
     },
     {
       key: 'branch',
@@ -310,17 +328,27 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'licenseImage',
       header: t('fleet.drivers.columns.licenseImage'),
-      render: (d) => <DriverLicenseImageCell driver={d} onPreview={setPreviewing} />,
+      render: (d) =>
+        d.profile === null ? (
+          <NotRecorded />
+        ) : (
+          <DriverLicenseImageCell driver={d.profile} onPreview={setPreviewing} />
+        ),
     },
     {
       key: 'isActive',
       header: t('fleet.drivers.columns.status'),
-      render: (d) => (
-        <StatusBadge
-          tone={d.isActive ? 'success' : 'neutral'}
-          label={d.isActive ? t('fleet.drivers.active') : t('fleet.drivers.inactive')}
-        />
-      ),
+      render: (d) =>
+        d.profile === null ? (
+          // Not «inactive» — nothing has been recorded, and calling that inactive would state a
+          // decision nobody made about a driver who is on the road.
+          <StatusBadge tone="warning" label={t('fleet.drivers.notRecorded')} />
+        ) : (
+          <StatusBadge
+            tone={d.profile.isActive ? 'success' : 'neutral'}
+            label={d.profile.isActive ? t('fleet.drivers.active') : t('fleet.drivers.inactive')}
+          />
+        ),
     },
     {
       key: 'actions',
@@ -328,21 +356,24 @@ export const DriversListPage = (): JSX.Element => {
       align: 'end',
       render: (d) => (
         <span className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            className={actionButton}
-            aria-label={t('fleet.drivers.view')}
-            title={t('fleet.drivers.view')}
-            onClick={() => navigate(d.id)}
-          >
-            <EyeIcon className="h-4 w-4" />
-          </button>
+          {/* The detail screen is ABOUT a profile, so it is offered only once one exists. */}
+          {d.profile !== null && (
+            <button
+              type="button"
+              className={actionButton}
+              aria-label={t('fleet.drivers.view')}
+              title={t('fleet.drivers.view')}
+              onClick={() => navigate(d.profile === null ? '' : d.profile.id)}
+            >
+              <EyeIcon className="h-4 w-4" />
+            </button>
+          )}
           {can('fleetDriver.manage') && (
             <button
               type="button"
               className={actionButton}
-              aria-label={t('fleet.drivers.edit')}
-              title={t('fleet.drivers.edit')}
+              aria-label={d.profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
+              title={d.profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
               onClick={() => {
                 setEditing(d);
                 setFormOpen(true);
@@ -510,6 +541,27 @@ export const DriversListPage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
+        {/*
+          THE UNSET FLAG, SAID OUT LOUD.
+
+          The registry is everyone whose job title requires a driving test. If no title carries
+          that flag the roster is empty — and an empty table is indistinguishable from "this
+          company has hired no drivers", which is the failure mode that made the identical problem
+          in Operations go unreported rather than unnoticed (PR #375). So it is named, with the one
+          screen that ends it.
+
+          Only when the job titles actually loaded: without `jobTitle.view` this reader cannot tell
+          the two apart either, and guessing would be worse than saying nothing.
+        */}
+        {jobTitles.length > 0 && !jobTitles.some((j) => j.requiresDrivingTest) && (
+          <p
+            role="status"
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+          >
+            <span className="font-medium">{t('fleet.drivers.noDrivingTitles')}</span>{' '}
+            {t('fleet.drivers.noDrivingTitlesHint')}
+          </p>
+        )}
         {hr.tooMany && (
           <p
             role="status"
@@ -529,7 +581,8 @@ export const DriversListPage = (): JSX.Element => {
         <DataTable
           columns={columns}
           rows={rows}
-          rowKey={(d) => d.id}
+          // The PERSON is the row's identity now — a driver with no profile has no profile id.
+          rowKey={(d) => d.employeeId}
           loading={hr.loading || (isLoading && !emptyMatch && !blocked)}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
@@ -551,7 +604,8 @@ export const DriversListPage = (): JSX.Element => {
           setFormOpen(false);
           setEditing(null);
         }}
-        profile={editing}
+        employeeId={editing?.employeeId ?? ''}
+        profile={editing?.profile ?? null}
       />
       <DriverLicenseImagePreviewDialog
         open={previewing !== null}

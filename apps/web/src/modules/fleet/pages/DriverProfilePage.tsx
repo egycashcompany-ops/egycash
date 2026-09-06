@@ -234,7 +234,12 @@ export const DriverProfilePage = (): JSX.Element => {
         </Can>
       </div>
 
-      <DriverFormDialog open={editOpen} onClose={() => setEditOpen(false)} profile={profile} />
+      <DriverFormDialog
+        open={editOpen}
+        onClose={() => setEditOpen(false)}
+        employeeId={profile.employeeId}
+        profile={profile}
+      />
       <UnavailabilityDialog
         open={recordOpen}
         onClose={() => setRecordOpen(false)}

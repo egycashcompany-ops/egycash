@@ -3583,6 +3583,14 @@ const en: Record<string, string> = {
   'fleet.drivers.inactive': 'Inactive',
   'fleet.drivers.create': 'Add driver',
   'fleet.drivers.edit': 'Edit profile',
+  'fleet.drivers.record': 'Record licence details',
+  'fleet.drivers.recorded': 'Licence details recorded',
+  'fleet.drivers.notRecorded': 'Not recorded',
+  'fleet.drivers.notRecordedHint':
+    'This person drives — their job title requires a driving test — but Fleet has no licence on file for them yet.',
+  'fleet.drivers.noDrivingTitles': 'No job title is marked as requiring a driving test',
+  'fleet.drivers.noDrivingTitlesHint':
+    'The registry lists everyone whose job title requires a driving test. Tick that box on the driving roles in Organization → Job titles and they appear here.',
   'fleet.drivers.view': 'View driver',
   'fleet.drivers.created': 'Driver profile created.',
   'fleet.drivers.updated': 'Driver profile updated.',
@@ -9899,6 +9907,14 @@ const ar: Record<string, string> = {
   'fleet.drivers.inactive': 'غير نشط',
   'fleet.drivers.create': 'إضافة سائق',
   'fleet.drivers.edit': 'تعديل الملف',
+  'fleet.drivers.record': 'تسجيل بيانات الرخصة',
+  'fleet.drivers.recorded': 'تم تسجيل بيانات الرخصة',
+  'fleet.drivers.notRecorded': 'غير مسجَّل',
+  'fleet.drivers.notRecordedHint':
+    'هذا الشخص يقود — مسماه الوظيفي يتطلب اختبار قيادة — لكن لا توجد رخصة مسجَّلة له في الحركة بعد.',
+  'fleet.drivers.noDrivingTitles': 'لا يوجد مسمى وظيفي محدَّد بأنه يتطلب اختبار قيادة',
+  'fleet.drivers.noDrivingTitlesHint':
+    'السجل يعرض كل من يتطلب مسماه الوظيفي اختبار قيادة. فعِّل هذا الخيار على المسميات التي تقود من الهيكل التنظيمي ← المسميات الوظيفية ليظهروا هنا.',
   'fleet.drivers.view': 'عرض السائق',
   'fleet.drivers.created': 'تم إنشاء ملف السائق.',
   'fleet.drivers.updated': 'تم تحديث ملف السائق.',

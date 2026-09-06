@@ -19,6 +19,7 @@ import {
   type FleetDashboardDto,
   type FleetDefaultBranchDto,
   type FleetDriverProfileDto,
+  type FleetDriverRowDto,
   type FleetDriverUnavailabilityDto,
   type FleetExpectedReadingDto,
   type FleetOdometerBracketDto,
@@ -126,8 +127,9 @@ export const deleteVehicleLicenseImage = (id: string): Promise<FleetVehicleDto> 
   del<FleetVehicleDto>(`/fleet/vehicles/${id}/license-image`);
 
 // ── Driver profiles (§2.3 — HR-employee extensions, FR-11) ──────────────────
-export const listDrivers = (params: FleetListParams): Promise<Paginated<FleetDriverProfileDto>> =>
-  getPage<FleetDriverProfileDto>(`/fleet/drivers${buildQuery(params)}`);
+/** A row is a DRIVER — the person — with what Fleet has recorded about them, or null. */
+export const listDrivers = (params: FleetListParams): Promise<Paginated<FleetDriverRowDto>> =>
+  getPage<FleetDriverRowDto>(`/fleet/drivers${buildQuery(params)}`);
 export const getDriver = (id: string): Promise<FleetDriverProfileDto> =>
   get<FleetDriverProfileDto>(`/fleet/drivers/${id}`);
 export const createDriverProfile = (

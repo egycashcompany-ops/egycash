@@ -293,6 +293,28 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * user browsing HR, so the data scope of whoever happens to be logged in must not narrow it.
    * An Operations planner in Giza still needs the whole crew of the department they plan.
    */
+  /**
+   * Everyone EMPLOYED holding one of these job titles — "who sits in these seats".
+   *
+   * The sibling of `listByDepartmentsSystem`, along the other axis. Fleet's drivers registry is
+   * built from it: a driver is whoever holds a seat the company marked as requiring a driving
+   * test, so the roster follows the org chart instead of a list Fleet would have to maintain.
+   *
+   * `System` for the same reason its neighbour gives: the caller is another feature reading
+   * through a seam, not a person browsing HR.
+   */
+  async listByJobTitlesSystem(jobTitleIds: readonly string[]): Promise<EmployeeDoc[]> {
+    if (jobTitleIds.length === 0) return [];
+    return this.model
+      .find({
+        'employment.jobTitleId': { $in: jobTitleIds.map((id) => new Types.ObjectId(id)) },
+        status: { $in: [...EMPLOYED_STATUSES] },
+        isDeleted: false,
+      })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
   async listByDepartmentsSystem(departmentIds: readonly string[]): Promise<EmployeeDoc[]> {
     if (departmentIds.length === 0) return [];
     return this.model

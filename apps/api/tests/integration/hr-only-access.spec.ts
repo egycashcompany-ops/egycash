@@ -422,10 +422,13 @@ describe('the four accounts are resolved and confined', () => {
     const derived = await roleRepository.findByKey(derivedHrRoleKey(String(ess?._id)));
     expect(derived?.isSystem).toBe(false);
     // The whole ESS grant set, copied verbatim — AT-6 added the two attendance self-service keys
-    // to that role, and the confinement's job is to drop the system-ness, never the access.
+    // and self-service added `employeeLoan.create`, and the confinement's job is to drop the
+    // system-ness, never the access. Asserted as the EXACT set rather than a subset: a confined
+    // user silently losing one of these would be the failure, and a subset match would pass.
     expect(derived?.permissionKeys.sort()).toEqual([
       'attendance.requestRegularization',
       'attendance.view',
+      'employeeLoan.create',
       'leave.request',
       'leave.view',
     ]);

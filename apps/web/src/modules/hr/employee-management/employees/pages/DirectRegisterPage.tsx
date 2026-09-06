@@ -216,7 +216,7 @@ export const DirectRegisterPage = (): JSX.Element => {
                   <option value="">—</option>
                   {MARITAL.map((m) => (
                     <option key={m} value={m}>
-                      {t(`applicants.maritalStatus.${m}`)}
+                      {t(`applicants.marital.${m}`)}
                     </option>
                   ))}
                 </Select>

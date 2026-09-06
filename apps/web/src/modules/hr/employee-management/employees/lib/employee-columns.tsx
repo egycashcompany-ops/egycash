@@ -2,11 +2,11 @@
 // is what this screen's readers actually asked for, can be pinned by a test without mounting the
 // page.
 //
-// Status first: the one fact somebody scanning a list of 1,600 people is nearly always looking for.
-// Then the identity (code, name), then where the person is (site → department → section → job),
-// then when they came. Origin is gone: whether somebody was hired through recruitment or registered
-// directly is a fact about the hiring process, not about the person, and it earned its width on
-// no reader's screen.
+// Identity first (code, name), then where the person is (site → department → section → job), then
+// when they came, and status LAST — the reader asked for it at the end, where the coloured badge
+// closes the row rather than opening it. Origin is gone: whether somebody was hired through
+// recruitment or registered directly is a fact about the hiring process, not about the person,
+// and it earned its width on no reader's screen.
 import { type ReactNode } from 'react';
 import { type EmployeeDto, type EmployeePlacementUnitDto, type Locale } from '@ecms/contracts';
 import { type Column } from '../../../../../shared/ui/DataTable';
@@ -20,7 +20,6 @@ const unitName = (unit: EmployeePlacementUnitDto | null, locale: Locale): ReactN
   unit === null ? <span className="text-slate-400">—</span> : unit.name[locale];
 
 export const EMPLOYEE_COLUMN_ORDER = [
-  'status',
   'code',
   'name',
   'branch',
@@ -28,14 +27,10 @@ export const EMPLOYEE_COLUMN_ORDER = [
   'section',
   'jobTitle',
   'hiredAt',
+  'status',
 ] as const;
 
 export const employeeColumns = (t: Translate, locale: Locale): Column<EmployeeDto>[] => [
-  {
-    key: 'status',
-    header: t('employees.columns.status'),
-    render: (e) => <EmployeeStatusBadge status={e.status} />,
-  },
   {
     key: 'code',
     header: t('employees.columns.code'),
@@ -60,5 +55,10 @@ export const employeeColumns = (t: Translate, locale: Locale): Column<EmployeeDt
     header: t('employees.columns.hired'),
     sortable: true,
     render: (e) => formatDate(e.hiredAt, locale),
+  },
+  {
+    key: 'status',
+    header: t('employees.columns.status'),
+    render: (e) => <EmployeeStatusBadge status={e.status} />,
   },
 ];

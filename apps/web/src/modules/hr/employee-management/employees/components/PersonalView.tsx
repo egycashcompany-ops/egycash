@@ -40,7 +40,7 @@ export const PersonalView = ({ personal }: { personal: EmployeePersonalDto }): J
             </Row>
             <Row label={t('applicants.form.nationality')}>{personal.nationality}</Row>
             <Row label={t('applicants.form.maritalStatus')}>
-              {personal.maritalStatus === null ? '—' : t(`applicants.maritalStatus.${personal.maritalStatus}`)}
+              {personal.maritalStatus === null ? '—' : t(`applicants.marital.${personal.maritalStatus}`)}
             </Row>
             <Row label={t('applicants.form.religion')}>{dash(personal.religion)}</Row>
             <Row label={t('applicants.form.nationalIdExpiry')}>{date(personal.nationalIdExpiry)}</Row>
@@ -84,12 +84,12 @@ export const PersonalView = ({ personal }: { personal: EmployeePersonalDto }): J
             <Row label={t('applicants.form.education')}>
               {personal.education === null
                 ? '—'
-                : `${t(`applicants.educationLevel.${personal.education.level}`)}${
+                : `${t(`applicants.education.${personal.education.level}`)}${
                     personal.education.institution === undefined ? '' : ` — ${personal.education.institution}`
                   }`}
             </Row>
             <Row label={t('applicants.form.military')}>
-              {personal.military === null ? '—' : t(`applicants.militaryStatus.${personal.military.status}`)}
+              {personal.military === null ? '—' : t(`applicants.military.${personal.military.status}`)}
             </Row>
             <Row label={t('applicants.form.experience')}>
               {personal.experience.length === 0

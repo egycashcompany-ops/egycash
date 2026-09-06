@@ -107,7 +107,7 @@ export const RecommendationCard = ({
       />
       <CardBody>
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          {current === '' ? t('recommendation.empty') : t('recommendation.current').replace('{current}', current)}
+          {current === '' ? t('recommendation.empty') : t('recommendation.current', { current })}
         </p>
 
         {/* What is shown above is the RESULT of the last move, so the card says which move that

@@ -101,7 +101,11 @@ const OverviewTab = ({ e }: { e: EmployeeDto }): JSX.Element => {
         <Card>
           <CardHeader title={t('employees.detail.employment')} />
           <CardBody>
-            <EmploymentView employment={e.employment} compensationVisible={e.compensationVisible} />
+            <EmploymentView
+              employment={e.employment}
+              placement={e.placement}
+              compensationVisible={e.compensationVisible}
+            />
           </CardBody>
         </Card>
         {e.exit !== null && (

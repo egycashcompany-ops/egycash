@@ -97,7 +97,7 @@ export const EditPersonalDialog = ({
             <option value="">—</option>
             {MARITAL.map((m) => (
               <option key={m} value={m}>
-                {t(`applicants.maritalStatus.${m}`)}
+                {t(`applicants.marital.${m}`)}
               </option>
             ))}
           </Select>

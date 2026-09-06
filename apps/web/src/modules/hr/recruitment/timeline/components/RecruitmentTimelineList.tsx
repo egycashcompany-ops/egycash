@@ -48,7 +48,7 @@ export const RecruitmentTimelineList = ({
                 ) : null}
                 {attempt !== null && attempt > 1 ? (
                   <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                    {t('timeline.attempt').replace('{n}', String(attempt))}
+                    {t('timeline.attempt', { n: attempt })}
                   </span>
                 ) : null}
                 {entry.supersededAt !== null ? (

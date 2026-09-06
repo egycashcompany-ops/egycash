@@ -48,6 +48,7 @@ import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/flee
 import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
+import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
 import { matchesVehicleCode } from '../lib/vehicle-code-match';
@@ -315,6 +316,8 @@ const CrewSlotCell = ({
   over,
   dragging,
   t,
+  pool,
+  searchIndex,
   setOver,
   onDrop,
   onClear,
@@ -326,6 +329,9 @@ const CrewSlotCell = ({
   over: string | null;
   dragging: string | null;
   t: (key: string, params?: Record<string, string | number>) => string;
+  /** The free drivers — the very list the panel drags from, already free of anyone seated. */
+  pool: readonly { employeeId: string }[];
+  searchIndex: ReadonlyMap<string, DriverSearchRecord>;
   setOver: (update: (key: string | null) => string | null) => void;
   onDrop: (vehicleId: string, slot: CrewSlot, employeeId: string) => void;
   onClear: (vehicleId: string, slot: CrewSlot) => void;
@@ -372,9 +378,24 @@ const CrewSlotCell = ({
         ].join(' ')}
       >
         {employeeId === null ? (
-          <span className="text-xs text-slate-400 dark:text-slate-500">
-            {t(needsFirst ? 'fleet.fixedRoster.needsFirstDriver' : 'fleet.fixedRoster.dropHere')}
-          </span>
+          // `droppable` and nothing else — it already carries the permission and «الأول قبل
+          // الثاني», so a slot that refuses a drop offers no picker either.
+          droppable ? (
+            <DriverSlotPicker
+              drivers={pool}
+              index={searchIndex}
+              slotKey={key}
+              label={`${row.code} · ${t(SLOT_LABEL[slot])}`}
+              onSelect={(id) => onDrop(row.vehicleId, slot, id)}
+            />
+          ) : (
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {/* Same rule as the daily board: a reader who cannot plan is told what the slot
+                  is, not asked for a gesture they are not being offered. */}
+              {/* Exhaustive, for the same reason: `droppable` is `mayPlan && !needsFirst`. */}
+              {t(!mayPlan ? 'fleet.fixedRoster.noDriver' : 'fleet.fixedRoster.needsFirstDriver')}
+            </span>
+          )
         ) : (
           <>
             <span
@@ -568,6 +589,8 @@ export const FixedRosterPage = (): JSX.Element => {
     over,
     dragging,
     t,
+    pool,
+    searchIndex,
     setOver,
     onDrop: drop,
     onClear: (vehicleId: string, slot: CrewSlot): void =>

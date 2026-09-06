@@ -69,6 +69,21 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
    * about emptiness for the same three reasons spelled out there. Exact because a ticked checkbox
    * names one car and cannot mean "and everything containing it": that is what `search` is for.
    */
+  /**
+   * The ids of the ACTIVE vehicles a plain filter matches — the dashboard's bridge from a branch
+   * to the collections that reach a branch only through their vehicle (visits, accidents).
+   *
+   * Deliberately narrow: it takes a filter fragment and answers ids, so the caller composes the
+   * scope and this stays the one place that knows a vehicle is `isDeleted: false`.
+   */
+  async idsMatching(filter: Record<string, unknown>): Promise<Types.ObjectId[]> {
+    const rows = await this.model
+      .find({ isDeleted: false, ...filter }, { _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => row._id);
+  }
+
   async idsByCodes(codes: readonly string[]): Promise<string[]> {
     if (codes.length === 0) return [];
     const rows = await this.model

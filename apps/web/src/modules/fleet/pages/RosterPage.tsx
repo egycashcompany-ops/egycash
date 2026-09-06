@@ -47,6 +47,7 @@ import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
+import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import {
   applyEdit,
   assignDriver,
@@ -125,6 +126,8 @@ const RosterSlotCell = ({
   over,
   dragging,
   t,
+  pool,
+  searchIndex,
   setOver,
   onDrop,
   onClear,
@@ -136,6 +139,9 @@ const RosterSlotCell = ({
   over: string | null;
   dragging: string | null;
   t: (key: string, params?: Record<string, string | number>) => string;
+  /** The day's free drivers — the same list the pool panel drags from. */
+  pool: readonly { employeeId: string }[];
+  searchIndex: ReadonlyMap<string, DriverSearchRecord>;
   setOver: (update: (key: string | null) => string | null) => void;
   onDrop: (row: FleetRosterRowDto, slot: DutySlot, employeeId: string) => void;
   onClear: (row: FleetRosterRowDto, slot: DutySlot) => void;
@@ -173,7 +179,9 @@ const RosterSlotCell = ({
           if (id !== '') onDrop(row, slot, id);
         }}
         className={[
-          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border border-dashed px-2 py-1.5 transition-colors',
+          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors',
+          // Dashed IS the affordance. A day that takes no drop does not wear one.
+          mayPlan ? 'border-dashed' : 'border-solid',
           active
             ? 'border-brand-500 bg-brand-50 dark:border-brand-400 dark:bg-brand-950'
             : row.inMaintenance || needsFirst
@@ -184,15 +192,33 @@ const RosterSlotCell = ({
         ].join(' ')}
       >
         {employeeId === null ? (
-          <span className="text-xs text-slate-400 dark:text-slate-500">
-            {t(
-              row.inMaintenance
-                ? 'fleet.roster.inWorkshopNoDrop'
-                : needsFirst
-                  ? 'fleet.fixedRoster.needsFirstDriver'
-                  : 'fleet.fixedRoster.dropHere',
-            )}
-          </span>
+          // DROPPABLE is the whole condition, deliberately: it already carries the permission,
+          // the workshop rule and «الأول قبل الثاني». A slot that refuses a drop offers no
+          // picker, so the two gestures cannot answer differently.
+          droppable ? (
+            <DriverSlotPicker
+              drivers={pool}
+              index={searchIndex}
+              slotKey={key}
+              label={`${row.code} · ${t(slot === 'driver1EmployeeId' ? 'fleet.odometer.fields.driver1' : 'fleet.odometer.fields.driver2')}`}
+              onSelect={(id) => onDrop(row, slot, id)}
+            />
+          ) : (
+            <span className="text-xs text-slate-400 dark:text-slate-500">
+              {/* A reader who cannot plan — a past day, or no `fleetRoster.plan` — is told what
+                  the slot IS, not what to do with it. «اسحب هنا» and «غير قابلة للتعيين» are
+                  both about a gesture this screen is not offering them. */}
+              {/* Exhaustive: `droppable` is exactly the negation of these three, so a slot that
+                  reaches this branch is refused for one of them and for no other reason. */}
+              {t(
+                !mayPlan
+                  ? 'fleet.fixedRoster.noDriver'
+                  : row.inMaintenance
+                    ? 'fleet.roster.inWorkshopNoDrop'
+                    : 'fleet.fixedRoster.needsFirstDriver',
+              )}
+            </span>
+          )
         ) : (
           <>
             <span
@@ -240,12 +266,19 @@ export const RosterPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  // A roster plans ahead; the past is not plannable. The URL is user-writable, so the floor is
-  // applied to what is READ, not only to the picker — `?date=2020-01-01` shows today instead of
-  // offering a board whose every save the server would refuse.
+  /**
+   * A roster PLANS ahead, and the past is not plannable — but it is very much readable.
+   *
+   * The date used to be clamped to today, so «اليوم السابق» was not offered and a `?date=` in the
+   * past silently showed today instead: yesterday's crew, the thing an operations reader asks for
+   * most often after tomorrow's, could not be looked at at all. The floor is still real and still
+   * the server's own (`PAST_DATE`); what changes is what it governs. It no longer decides which
+   * day is SHOWN — only whether the day on screen may be EDITED.
+   */
   const floor = earliestPlannableDay();
-  const requested = sp.get('date') ?? today();
-  const date = requested < floor ? floor : requested;
+  const date = sp.get('date') ?? today();
+  /** Today and after: a plan. Before today: a record, shown whole and changed by nothing. */
+  const editable = date >= floor;
   const search = sp.get('q') ?? '';
   const mission = sp.get('mission') ?? '';
   /**
@@ -267,7 +300,16 @@ export const RosterPage = (): JSX.Element => {
     setSp(next);
   };
 
-  const mayPlan = can('fleetRoster.plan');
+  /**
+   * May this reader change THIS day?
+   *
+   * One flag, and every editing affordance already reads it: the drop zones, the drag handles,
+   * the clear buttons, the mission select, the row actions, «حفظ» and «إلغاء». Folding the day
+   * into it is what makes a past board read-only everywhere at once rather than in the six places
+   * somebody would otherwise have to remember — and it is the same rule the server enforces on
+   * the write (`PAST_DATE`), not a second one invented here.
+   */
+  const mayPlan = can('fleetRoster.plan') && editable;
 
   const boardQuery = useRosterDay(date);
   /**
@@ -329,9 +371,18 @@ export const RosterPage = (): JSX.Element => {
    * DISPLAY ONLY. `draft`, the counters, the pool and the save payload below all read the whole
    * day and never this — see the counters' own note.
    */
+  /**
+   * What the table SHOWS — and on a past day that is the SERVER's board, never a draft.
+   *
+   * A draft outlives a reload by design (it is keyed by date in storage), so a day that was
+   * editable when somebody typed into it does not stop holding their edits when midnight passes.
+   * Rendering them on a read-only board would show a crew that is not what happened and that
+   * nothing on the screen can now save or discard. `saved` is what the day WAS.
+   */
+  const shown = editable ? draft : saved;
   const rows = useMemo(
-    () => visibleRows(draft, { term: search, mission, view }),
-    [draft, search, mission, view],
+    () => visibleRows(shown, { term: search, mission, view }),
+    [shown, search, mission, view],
   );
 
   const filtered = search !== '' || mission !== '' || view !== null;
@@ -354,7 +405,7 @@ export const RosterPage = (): JSX.Element => {
    */
   const counters = useMemo(() => {
     const byMission = new Map<string, number>();
-    for (const row of draft) {
+    for (const row of shown) {
       if (row.missionTypeId === null) continue;
       byMission.set(row.missionTypeId, (byMission.get(row.missionTypeId) ?? 0) + 1);
     }
@@ -362,7 +413,7 @@ export const RosterPage = (): JSX.Element => {
       {
         key: 'total',
         label: t('fleet.roster.counter.total'),
-        value: draft.length,
+        value: shown.length,
         tone: COUNTER_TONES.total,
         // «إجمالي» is the absence of a filter, so applying it CLEARS both keys rather than
         // setting a third value that would then have to mean "no filter".
@@ -372,7 +423,7 @@ export const RosterPage = (): JSX.Element => {
       {
         key: 'workshop',
         label: t('fleet.roster.counter.workshop'),
-        value: draft.filter((row) => row.inMaintenance).length,
+        value: shown.filter((row) => row.inMaintenance).length,
         tone: COUNTER_TONES.workshop,
         apply: { view: 'workshop' },
         active: view === 'workshop',
@@ -380,7 +431,7 @@ export const RosterPage = (): JSX.Element => {
       {
         key: 'assigned',
         label: t('fleet.roster.counter.assigned'),
-        value: draft.filter(carriesPlan).length,
+        value: shown.filter(carriesPlan).length,
         tone: COUNTER_TONES.assigned,
         apply: { view: 'assigned' },
         active: view === 'assigned',
@@ -398,15 +449,15 @@ export const RosterPage = (): JSX.Element => {
           active: mission === item.id,
         })),
     ];
-  }, [draft, missionTypes.data, locale, t, mission, view]);
+  }, [shown, missionTypes.data, locale, t, mission, view]);
 
   // The pool is DERIVED from the draft, never the server's list rendered raw: everyone the draft
   // seats leaves it the instant the drop lands, and comes back the instant a slot is cleared —
   // with no round trip in between. Deriving it is also why a move between vehicles cannot flicker
   // a driver back into the list and why a slot change cannot duplicate a card.
   const pool = useMemo(
-    () => availableDrivers(board?.availableDrivers ?? [], draft),
-    [board, draft],
+    () => availableDrivers(board?.availableDrivers ?? [], shown),
+    [board, shown],
   );
 
   // ── finding a driver, in EACH list ────────────────────────────────────────
@@ -465,7 +516,7 @@ export const RosterPage = (): JSX.Element => {
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
-  const editingRow = draft.find((row) => row.vehicleId === editing) ?? null;
+  const editingRow = shown.find((row) => row.vehicleId === editing) ?? null;
 
   const dropDriver = (row: FleetRosterRowDto, slot: DutySlot, employeeId: string): void => {
     setOver(null);
@@ -515,6 +566,8 @@ export const RosterPage = (): JSX.Element => {
     over,
     dragging,
     t,
+    pool,
+    searchIndex,
     setOver,
     onDrop: dropDriver,
     onClear: (row: FleetRosterRowDto, slot: DutySlot) =>
@@ -698,9 +751,8 @@ export const RosterPage = (): JSX.Element => {
               variant="ghost"
               aria-label={t('fleet.roster.prevDay')}
               title={t('fleet.roster.prevDay')}
-              // The floor is a real boundary, not a hint: stepping back off today would land on a
-              // day the server refuses to plan, so the step is not offered there.
-              disabled={date <= floor}
+              // Stepping back is READING, and reading yesterday is exactly what this arrow is
+              // for. What the past cannot do is change, and that is `editable`'s job.
               onClick={() => patch({ date: shiftDay(date, -1) })}
             >
               <ChevronStartIcon className="h-4 w-4" />
@@ -709,7 +761,6 @@ export const RosterPage = (): JSX.Element => {
               type="date"
               aria-label={t('fleet.roster.date')}
               value={date}
-              min={floor}
               onChange={(e) => patch({ date: e.target.value || null })}
               // `w-auto` alone let the native picker set its own width and sit a pixel or two
               // off the arrows' baseline; a fixed width and no border of its own keep the three
@@ -728,6 +779,19 @@ export const RosterPage = (): JSX.Element => {
           </div>
         }
       />
+
+      {/* A past day states what it is, once and at the top. Without this the board looks like
+          any other — the same table, the same counters — and the absence of «حفظ» reads as a
+          permission problem rather than as the day being over. */}
+      {!editable && (
+        <div
+          data-readonly-day="true"
+          className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300"
+        >
+          <span className="font-medium">{t('fleet.roster.pastDayTitle')}</span>
+          <span>{t('fleet.roster.pastDayBody')}</span>
+        </div>
+      )}
 
       {/* ONE top strip: what narrows the board and what the board adds up to, together.
           The counters used to sit in their own block under the controls, which pushed the table

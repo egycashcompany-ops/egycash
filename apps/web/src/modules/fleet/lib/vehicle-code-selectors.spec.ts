@@ -95,10 +95,6 @@ const NOT_A_CODE_SELECTOR = [
     file: 'modules/fleet/pages/ViolationsPage.tsx',
     why: 'the same id→code map, plus the code→id lookup the rollup axis needs; filtering is VehicleCodeFilter’s',
   },
-  {
-    file: 'modules/fleet/pages/FleetDashboardPage.tsx',
-    why: 'two counts — active vehicles, licences expiring — neither of them a search',
-  },
 ] as const;
 
 /**

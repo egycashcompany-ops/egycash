@@ -300,12 +300,10 @@ describe('each screen says the reason at the size its rows can carry', () => {
 // ── 3. Where the reason may and may not live ────────────────────────────────
 
 describe('the reason is the server’s, and is written in ONE place', () => {
-  const PAGES = [
-    'MaintenanceAlarmsPage',
-    'MaintenancePage',
-    'OdometerPage',
-    'FleetDashboardPage',
-  ] as const;
+  // The three screens that SHOW an alarm. The dashboard is no longer one of them: its landing
+  // layout reads the fleet, the distance and the day, and the alarm board is one click away with
+  // its own screen — so there is no reason text to get right here, and no panel to gate.
+  const PAGES = ['MaintenanceAlarmsPage', 'MaintenancePage', 'OdometerPage'] as const;
 
   it('no page writes the text', () => {
     for (const page of PAGES) {

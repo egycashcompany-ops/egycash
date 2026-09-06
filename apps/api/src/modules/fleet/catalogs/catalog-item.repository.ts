@@ -1,4 +1,5 @@
-import { type FleetCatalogKind } from '@ecms/contracts';
+import { Types } from 'mongoose';
+import { type FleetCatalogKind, type LocalizedString } from '@ecms/contracts';
 import { BaseRepository } from '../../../shared/base/base.repository';
 import { FleetCatalogItemModel, type FleetCatalogItemDoc } from './catalog-item.model';
 
@@ -42,6 +43,25 @@ class FleetCatalogItemRepository extends BaseRepository<FleetCatalogItemDoc> {
   }
 
   /** Active item of the given kind, or null — the reference check services run before writes. */
+  /**
+   * Every live item of one kind. Archived ones included, as `countingWorkTypeIds` includes them
+   * and for the same reason: a record made under a vocabulary keeps its meaning when that
+   * vocabulary is retired.
+   */
+  async listKind(kind: FleetCatalogKind): Promise<FleetCatalogItemDoc[]> {
+    return this.model.find({ kind, isDeleted: false }).lean<FleetCatalogItemDoc[]>().exec();
+  }
+
+  /** Names for the ids a row points at — workshop, work type, spare parts — in one read. */
+  async namesByIds(ids: readonly string[]): Promise<Map<string, LocalizedString>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } }, { name: 1 })
+      .lean<{ _id: Types.ObjectId; name: LocalizedString }[]>()
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.name]));
+  }
+
   async findActiveOfKind(id: string, kind: FleetCatalogKind): Promise<FleetCatalogItemDoc | null> {
     const doc = await this.findById(id);
     return doc !== null && doc.kind === kind && doc.isActive ? doc : null;

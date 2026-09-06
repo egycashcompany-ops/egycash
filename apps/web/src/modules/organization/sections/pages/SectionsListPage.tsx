@@ -19,7 +19,7 @@ import { Select } from '../../../../shared/ui/form';
 import { StatusBadge } from '../../../../shared/ui/Badge';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { toast } from '../../../../shared/ui/toast/toast-store';
-import { formatDate, localized } from '../../../../shared/lib/format';
+import { formatDate, localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { sectionConfig } from '../../shared/unit-config';
 import { useBranchOptions, useDepartmentOptions } from '../../shared/references';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
@@ -106,7 +106,7 @@ export const SectionsListPage = (): JSX.Element => {
   const { data: allDepartments = [] } = useDepartmentOptions(undefined);
   const departmentName = (id: string | undefined): string => {
     const d = allDepartments.find((x) => x.id === id);
-    return d === undefined ? (id ?? '—') : localized(d.name, locale);
+    return d === undefined ? (id ?? '—') : orgUnitLabel(d, locale);
   };
 
   const params = useMemo(
@@ -127,6 +127,16 @@ export const SectionsListPage = (): JSX.Element => {
   const rows = data?.items ?? [];
 
   const columns: Column<SectionDto>[] = [
+    {
+      key: 'code',
+      header: t('organization.field.code'),
+      sortable: true,
+      render: (s) => (
+        <span className="font-mono text-xs" dir="ltr">
+          {s.code}
+        </span>
+      ),
+    },
     {
       key: 'departmentId',
       header: t('organization.field.department'),
@@ -195,7 +205,7 @@ export const SectionsListPage = (): JSX.Element => {
               <option value="">{t('organization.filter.allDepartments')}</option>
               {filterDepartments.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {localized(d.name, locale)}
+                  {orgUnitLabel(d, locale)}
                 </option>
               ))}
             </Select>

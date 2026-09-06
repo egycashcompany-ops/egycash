@@ -17,7 +17,7 @@ import { LoadingState } from '../../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../../shared/ui/states/ErrorState';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../../shared/lib/api-client';
-import { formatDateTime, localized } from '../../../../shared/lib/format';
+import { formatDateTime, localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { UserName } from '../../shared/UserPicker';
 import { useBranchOptions, useDepartmentOptions } from '../../shared/references';
 import { sectionConfig } from '../../shared/unit-config';
@@ -181,7 +181,7 @@ export const SectionDetailPage = (): JSX.Element => {
                   to={`/organization/departments/${section.departmentId}`}
                   className="text-brand-600 hover:underline"
                 >
-                  {department === undefined ? section.departmentId : localized(department.name, locale)}
+                  {department === undefined ? section.departmentId : orgUnitLabel(department, locale)}
                 </Link>
               </Row>
               <Row label={t('organization.field.path')}>

@@ -16,7 +16,7 @@ import { LoadingState } from '../../../shared/ui/states/LoadingState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../shared/lib/api-client';
-import { asciiDigits, localized } from '../../../shared/lib/format';
+import { asciiDigits, localized, orgUnitLabel } from '../../../shared/lib/format';
 import { LocalizedNameFields, StatusSelect, localizedOrNull, type LocalizedValue } from './form-fields';
 import { UserPicker } from './UserPicker';
 import { useBranchOptions, useDepartmentOptions } from './references';
@@ -219,7 +219,7 @@ const UnitFormBody = <TDto extends AnyUnitDto>({
                   <option value="">{t('organization.form.selectDepartment')}</option>
                   {departments.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {localized(d.name, locale)}
+                      {orgUnitLabel(d, locale)}
                     </option>
                   ))}
                 </Select>

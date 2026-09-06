@@ -19,7 +19,7 @@ import { Field, Checkbox, Input, Select, Textarea } from '../../../../../../shar
 import { MoneyInput } from '../../../../../../shared/ui/MoneyInput';
 import { SearchInput } from '../../../../../../shared/ui/SearchInput';
 import { toast } from '../../../../../../shared/ui/toast/toast-store';
-import { localized } from '../../../../../../shared/lib/format';
+import { localized, orgUnitLabel } from '../../../../../../shared/lib/format';
 import {
   useBranchOptions,
   useDepartmentOptions,
@@ -314,7 +314,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
               >
                 <option value="">{t('common.select')}</option>
                 {departments.map((d) => (
-                  <option key={d.id} value={d.id}>{localized(d.name, locale)}</option>
+                  <option key={d.id} value={d.id}>{orgUnitLabel(d, locale)}</option>
                 ))}
               </Select>
             </Field>
@@ -322,7 +322,7 @@ export const RehireDialog = ({ employee, open, onClose }: DialogProps): JSX.Elem
               <Select value={sectionId} onChange={(e) => setSectionId(e.target.value)}>
                 <option value="">{t('employees.actions.transfer.noSection')}</option>
                 {sections.map((sec) => (
-                  <option key={sec.id} value={sec.id}>{localized(sec.name, locale)}</option>
+                  <option key={sec.id} value={sec.id}>{orgUnitLabel(sec, locale)}</option>
                 ))}
               </Select>
             </Field>

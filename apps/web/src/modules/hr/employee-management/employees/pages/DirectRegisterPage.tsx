@@ -24,7 +24,7 @@ import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Field, Input, Select } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
-import { localized } from '../../../../../shared/lib/format';
+import { localized, orgUnitLabel } from '../../../../../shared/lib/format';
 import { ApplicantNationalIdOcr } from '../../../recruitment/applicants/components/ApplicantNationalIdOcr';
 import {
   useBranchOptions,
@@ -275,7 +275,7 @@ export const DirectRegisterPage = (): JSX.Element => {
                   <option value="">{t('common.select')}</option>
                   {departments.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {localized(d.name, locale)}
+                      {orgUnitLabel(d, locale)}
                     </option>
                   ))}
                 </Select>
@@ -285,7 +285,7 @@ export const DirectRegisterPage = (): JSX.Element => {
                   <option value="">{t('employees.actions.transfer.noSection')}</option>
                   {sections.map((sec) => (
                     <option key={sec.id} value={sec.id}>
-                      {localized(sec.name, locale)}
+                      {orgUnitLabel(sec, locale)}
                     </option>
                   ))}
                 </Select>

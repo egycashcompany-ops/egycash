@@ -3,13 +3,7 @@
 // gated by its own `*.view` permission on the server; on denial the query degrades to empty rather
 // than erroring the whole screen.
 import { useQuery } from '@tanstack/react-query';
-import {
-  type DepartmentDto,
-  type OrgUnitOptionDto,
-  type Paginated,
-  type SectionDto,
-  type UserDto,
-} from '@ecms/contracts';
+import { type OrgUnitOptionDto, type Paginated, type UserDto } from '@ecms/contracts';
 import { buildQuery, get, getPage } from '../../../shared/lib/api-client';
 import { ORG_MODULE } from './org-unit-resource';
 
@@ -33,16 +27,6 @@ const listSectionOptions = (): Promise<OrgUnitOptionDto[]> =>
 
 const listJobTitleOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/job-titles/options');
-
-const listDepartments = (branchId?: string): Promise<Paginated<DepartmentDto>> =>
-  getPage<DepartmentDto>(
-    `/platform/departments${buildQuery({ status: 'active', pageSize: 100, branchId })}`,
-  );
-
-const listSections = (departmentId?: string): Promise<Paginated<SectionDto>> =>
-  getPage<SectionDto>(
-    `/platform/sections${buildQuery({ status: 'active', pageSize: 100, departmentId })}`,
-  );
 
 const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
   getPage<UserDto>(`/platform/users${buildQuery({ search: term, status: 'active', pageSize: 8 })}`);
@@ -68,26 +52,40 @@ export const useDepartmentReferenceOptions = (enabled = true) =>
     retry: false,
   });
 
-/** Departments of a branch (or all active departments when no branch is given). */
+/**
+ * Departments of a branch (or all active departments when no branch is given).
+ *
+ * Fed by the OPTIONS endpoint, not the paginated list, for two reasons. The list caps a page at
+ * `MAX_PAGE_SIZE` — 100 — and these hooks asked for exactly one page, so on a company with more
+ * org units than that the rest were dropped SILENTLY: a picker that is simply missing entries, and
+ * a name lookup that falls through to printing a raw ObjectId. `/options` pages to exhaustion
+ * server-side for precisely this reason. And it is the endpoint whose contract promises `parentId`
+ * so a caller can cascade from ONE fetch instead of a `department.view`-gated request per branch.
+ *
+ * The query key is the reference-options key, deliberately: every caller — whatever branch it asks
+ * for — shares a single fetch and narrows it in `select`, which runs per observer.
+ */
 export const useDepartmentOptions = (branchId: string | undefined, enabled = true) =>
   useQuery({
-    queryKey: [ORG_MODULE, 'departments', 'options', branchId ?? 'all'],
-    queryFn: () => listDepartments(branchId),
+    queryKey: [ORG_MODULE, 'departments', 'reference-options'],
+    queryFn: listDepartmentOptions,
     enabled,
     staleTime: 5 * 60_000,
     retry: false,
-    select: (page) => page.items,
+    select: (all) =>
+      branchId === undefined ? all : all.filter((unit) => unit.parentId === branchId),
   });
 
-/** Sections of a department (or all active sections when no department is given). */
+/** Sections of a department (or all active sections when none is given). See above for why. */
 export const useSectionOptions = (departmentId: string | undefined, enabled = true) =>
   useQuery({
-    queryKey: [ORG_MODULE, 'sections', 'options', departmentId ?? 'all'],
-    queryFn: () => listSections(departmentId),
+    queryKey: [ORG_MODULE, 'sections', 'reference-options'],
+    queryFn: listSectionOptions,
     enabled,
     staleTime: 5 * 60_000,
     retry: false,
-    select: (page) => page.items,
+    select: (all) =>
+      departmentId === undefined ? all : all.filter((unit) => unit.parentId === departmentId),
   });
 
 /** Every active section, org-wide, as {id, code, name, parentId} — `parentId` is its department. */

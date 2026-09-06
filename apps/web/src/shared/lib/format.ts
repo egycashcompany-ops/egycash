@@ -44,6 +44,19 @@ const toDate = (value: string | Date | null | undefined): Date | null => {
 
 export const localized = (value: LocalizedString, locale: Locale): string => value[locale];
 
+/**
+ * An org unit where the text is all the reader gets — a `<select>` option, a table cell.
+ *
+ * The NAME alone does not identify one. Two branches each hold a department called «الحركة», and an
+ * `<option>` cannot carry a second column to tell them apart, so seven distinct rows read as one
+ * name repeated seven times. The code disambiguates them. Em-dash separator, which is how this app
+ * already writes «name — identifier» in its picker labels.
+ */
+export const orgUnitLabel = (
+  unit: { code: string; name: LocalizedString },
+  locale: Locale,
+): string => `${unit.name[locale]} — ${unit.code}`;
+
 export const formatDate = (value: string | Date | null | undefined, locale: Locale): string => {
   const d = toDate(value);
   return d === null ? PLACEHOLDER : new Intl.DateTimeFormat(intlLocale(locale), { dateStyle: 'medium' }).format(d);

@@ -1,14 +1,32 @@
 // Read-only diagnosis of the org-unit duplication — «الإدارات والأقسام والوظائف مكررة».
 //
-//   npm run report:org-duplication
-//   npm run report:org-duplication -- --json > report.json
+//   npm run report:org-duplication -- --uri "mongodb://…"
+//   npm run report:org-duplication -- --uri "mongodb://…" --json > org-report.json
 //
-// IT WRITES NOTHING. It connects to Mongo and reads; it does NOT boot the platform, deliberately,
-// because booting runs the seeds and the migrations, and a tool whose whole job is to describe the
-// database as it stands must not change it first. Every operation below is a find or an aggregate.
+// The URI may also come from MONGO_URI in the environment. `--uri` exists because this tool is
+// pointed at a database that is usually NOT the one the developer's `.env` describes, and making
+// somebody edit `.env` to read their own production numbers is friction with a sharp edge: it
+// leaves a live connection string on disk after the one question it answered.
+//
+// IT WRITES NOTHING, and it deliberately depends on almost nothing.
+//
+// It does not boot the platform: `bootPlatform` runs the seeds and the migrations, and a tool whose
+// whole job is to describe the database as it stands must not change it first.
+//
+// It does not import the Mongoose MODELS either, and that is not fastidiousness — importing
+// `department.model` re-opens a real import cycle (model → `shared/org-unit` → `audit.service` →
+// auth → users → the department repository → back into the model while its schema helpers are
+// still initializing) and the entrypoint dies with a TDZ `ReferenceError` before its first line of
+// logic. The application's own entry order happens to avoid that cycle; a CLI entering the graph
+// at a model does not. `org-unit.ts` carries a comment about the same cycle from a previous
+// encounter with it.
+//
+// So the whole runtime dependency is mongoose and the collection names below, which
+// `collections.spec.ts` pins against what the models actually declare. A read-only report that
+// depends on nothing cannot be broken by anything.
 //
 // WHY IT EXISTS. The redesign of departments and sections turns on five facts that cannot be read
-// out of the source. Three of them are gates, not curiosities:
+// out of source, and three of them are gates rather than curiosities:
 //
 //   ② decides whether the new per-branch uniqueness rule can be applied at all. If one branch
 //     already holds two departments whose names fold together, the index cannot be created until
@@ -23,39 +41,37 @@
 //     payslips, loans, adjustments, pay items and leave requests, and the only backfill that ever
 //     ran fills `departmentId` and never touches `branchId`. Any row with a department but no
 //     branch is already invisible to a branch-scoped reader.
-//
-// Grouping uses `orgKey` — the SAME Arabic folding the importer matched with, so this report
-// groups things exactly the way the importer decided they were the same. That matters: a report
-// that folded differently would describe a duplication nobody created.
-import { connectMongo, disconnectMongo } from './infrastructure/database/mongo';
-import { logger } from './infrastructure/logging/logger';
+import mongoose from 'mongoose';
 import {
   collisionsWithinOneBranch,
   groupByFoldedName,
   type NameGroup,
 } from './org-duplication-report/grouping';
-import { BranchModel } from './platform/organization/branches/branch.model';
-import { DepartmentModel } from './platform/organization/departments/department.model';
-import { SectionModel } from './platform/organization/sections/section.model';
-import { JobTitleModel } from './platform/organization/job-titles/job-title.model';
+import { ORG_COLLECTIONS, NULLABLE_BRANCH_COLLECTIONS } from './org-duplication-report/collections';
 
-/** Collections that carry a department but whose branch is nullable — the ⑤ gate. */
-const NULLABLE_BRANCH_COLLECTIONS = [
-  'hr_payslips',
-  'hr_employee_loans',
-  'hr_payroll_adjustments',
-  'hr_employee_pay_items',
-  'hr_leave_requests',
-] as const;
+/** The shape this report reads. Raw driver documents, not hydrated models. */
+interface UnitRow {
+  _id: unknown;
+  code: string;
+  name: { ar: string; en: string };
+  branchId?: unknown;
+  departmentId?: unknown;
+}
 
 const live = { isDeleted: false } as const;
 
+const readUnits = async (collection: string): Promise<UnitRow[]> =>
+  mongoose.connection
+    .collection(collection)
+    .find(live, { projection: { _id: 1, code: 1, name: 1, branchId: 1, departmentId: 1 } })
+    .toArray() as unknown as Promise<UnitRow[]>;
+
 const run = async (): Promise<Record<string, unknown>> => {
   const [branches, departments, sections, jobTitles] = await Promise.all([
-    BranchModel.find(live).select({ _id: 1, code: 1, name: 1 }).lean().exec(),
-    DepartmentModel.find(live).select({ _id: 1, code: 1, name: 1, branchId: 1 }).lean().exec(),
-    SectionModel.find(live).select({ _id: 1, code: 1, name: 1, departmentId: 1, branchId: 1 }).lean().exec(),
-    JobTitleModel.find(live).select({ _id: 1, code: 1, name: 1 }).lean().exec(),
+    readUnits(ORG_COLLECTIONS.branches),
+    readUnits(ORG_COLLECTIONS.departments),
+    readUnits(ORG_COLLECTIONS.sections),
+    readUnits(ORG_COLLECTIONS.jobTitles),
   ]);
   const branchName = new Map(branches.map((b) => [String(b._id), b.name.ar]));
 
@@ -72,23 +88,20 @@ const run = async (): Promise<Record<string, unknown>> => {
   // ③ Are any job titles actually duplicated? The model cannot cause it; a human can.
   const jobTitleDuplicates = groupByFoldedName(jobTitles).filter((g) => g.count > 1);
 
-  // ④ Sections, grouped by (parent department, folded name) — the importer's own key.
-  const sectionsByParentAndName = new Map<string, number>();
-  for (const parentId of new Set(sections.map((row) => String(row.departmentId)))) {
-    const under = sections.filter((row) => String(row.departmentId) === parentId);
-    for (const group of groupByFoldedName(under)) {
-      sectionsByParentAndName.set(`${parentId}|${group.key}`, group.count);
-    }
-  }
+  // ④ Sections, grouped by the importer's own key: (parent department, folded name).
+  const sectionsSharingParentAndName = [...new Set(sections.map((s) => String(s.departmentId)))]
+    .flatMap((parentId) =>
+      groupByFoldedName(sections.filter((s) => String(s.departmentId) === parentId)),
+    )
+    .filter((g) => g.count > 1).length;
   const sectionGroups = groupByFoldedName(sections);
   const sectionDuplicates = sectionGroups.filter((g) => g.count > 1);
 
   // ⑤ Rows carrying a department but no branch — already invisible to a branch-scoped reader,
   //    and the reason a "department AND branch" scope filter would not be the no-op it looks like.
-  const connection = SectionModel.db;
   const orphanedByCollection: Record<string, number> = {};
   for (const name of NULLABLE_BRANCH_COLLECTIONS) {
-    orphanedByCollection[name] = await connection
+    orphanedByCollection[name] = await mongoose.connection
       .collection(name)
       .countDocuments({ departmentId: { $ne: null }, branchId: null });
   }
@@ -106,7 +119,7 @@ const run = async (): Promise<Record<string, unknown>> => {
     collisionsWithinOneBranch: collisions,
     jobTitleDuplicates,
     sectionDuplicates,
-    sectionsSharingParentAndName: [...sectionsByParentAndName.values()].filter((n) => n > 1).length,
+    sectionsSharingParentAndName,
     orphanedByCollection,
   };
 };
@@ -151,10 +164,10 @@ const humanReport = (r: Record<string, unknown>): string => {
   }
 
   lines.push('');
-  lines.push(`─── ④ sections repeated: ${secDup.length} names, ${r.sectionsSharingParentAndName as number} sharing a parent too ───`);
-  for (const g of secDup.slice(0, 25)) {
-    lines.push(`  ${g.count}×  ${g.names.join(' / ')}`);
-  }
+  lines.push(
+    `─── ④ sections repeated: ${secDup.length} names, ${r.sectionsSharingParentAndName as number} sharing a parent too ───`,
+  );
+  for (const g of secDup.slice(0, 25)) lines.push(`  ${g.count}×  ${g.names.join(' / ')}`);
   if (secDup.length > 25) lines.push(`  … and ${secDup.length - 25} more`);
 
   lines.push('');
@@ -170,19 +183,41 @@ const humanReport = (r: Record<string, unknown>): string => {
   return lines.join('\n');
 };
 
+/** `--uri <value>` or `--uri=<value>`, else MONGO_URI. */
+const resolveUri = (argv: readonly string[]): string => {
+  const flag = argv.indexOf('--uri');
+  if (flag !== -1 && argv[flag + 1] !== undefined) return String(argv[flag + 1]);
+  const inline = argv.find((a) => a.startsWith('--uri='));
+  if (inline !== undefined) return inline.slice('--uri='.length);
+  return process.env.MONGO_URI ?? '';
+};
+
 const main = async (): Promise<void> => {
-  const asJson = process.argv.includes('--json');
-  await connectMongo();
+  const argv = process.argv.slice(2);
+  const uri = resolveUri(argv).trim();
+  if (uri === '') {
+    // A named instruction, not a schema dump: this tool needs exactly one thing.
+    process.stderr.write(
+      'No database to read.\n' +
+        '  Pass it:  npm run report:org-duplication -- --uri "mongodb://…"\n' +
+        '  or set MONGO_URI in the environment.\n',
+    );
+    process.exitCode = 1;
+    return;
+  }
+  await mongoose.connect(uri);
   try {
     const report = await run();
-    // stdout, not the logger, so `--json > file` and a piped read both work.
-    process.stdout.write(asJson ? `${JSON.stringify(report, null, 2)}\n` : `${humanReport(report)}\n`);
+    // stdout, so `--json > file` and a pipe both work; diagnostics go to stderr.
+    process.stdout.write(
+      argv.includes('--json') ? `${JSON.stringify(report, null, 2)}\n` : `${humanReport(report)}\n`,
+    );
   } finally {
-    await disconnectMongo();
+    await mongoose.disconnect();
   }
 };
 
 main().catch((error: unknown) => {
-  logger.error({ err: error }, 'org duplication report failed');
+  process.stderr.write(`org duplication report failed: ${String(error)}\n`);
   process.exitCode = 1;
 });

@@ -113,6 +113,11 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   // Platform data migrations (auth design §7) — idempotent, before module seeds.
   const { migrateUserAuthIndexes } = await import('../users/user.migration');
   await migrateUserAuthIndexes();
+  // P-ORG-2 — `autoIndex` is off in production, and `ux_branch_catalog` is the constraint the
+  // org-unit catalog rests on. Partial on a linked `catalogId`, so this is a no-op on a database
+  // that has not run `migrate:org-catalog` yet.
+  const { migrateOrgCatalogIndexes } = await import('../organization/org-catalog-indexes');
+  await migrateOrgCatalogIndexes();
 
   // Module reference-data seeds run last — after permissions, the org singleton, and the
   // scheduler exist, since a module's seed may depend on any of them (Module Structure §2.1).

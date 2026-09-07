@@ -9,7 +9,16 @@
 //     issued from it (ADR-017), and guessing one would mint identities on a mistake. The seven
 //     branches come from the CODES in the sheet, which is the company's own numbering, and a site
 //     whose name has no code is reported rather than created.
-import { branchService, departmentService, jobTitleService, sectionService } from '../platform/organization';
+import {
+  branchService,
+  departmentCatalogRepository,
+  departmentCatalogService,
+  departmentService,
+  jobTitleService,
+  sectionCatalogRepository,
+  sectionCatalogService,
+  sectionService,
+} from '../platform/organization';
 import { orgKey } from './vocabulary';
 
 /** `المهندسين` → `010`, from the prefixes the workbook's own employee codes carry. */
@@ -79,6 +88,19 @@ export class OrgResolver {
   private readonly departments = new Map<string, string>();
   private readonly sections = new Map<string, string>();
   private readonly jobTitles = new Map<string, string>();
+  /**
+   * The company-wide catalogs (P-ORG-2) — folded name to catalog entry id.
+   *
+   * THIS IS WHERE THE DUPLICATION USED TO BE MADE. A department was keyed by `branch|name`, so the
+   * same «العمليات» typed against seven sites became seven unrelated departments and the owner's
+   * dropdown offered the word six times over. Now the NAME resolves to one company-wide entry and
+   * the branch row is a declaration that this site has it — the sheet is read exactly as before,
+   * and the same seven rows are created, but they finally say they are the same department.
+   */
+  private readonly departmentCatalog = new Map<string, string>();
+  private readonly sectionCatalog = new Map<string, string>();
+  /** Branch department ROW id to the catalog entry it carries, or null when it carries none. */
+  private readonly departmentRowCatalog = new Map<string, string | null>();
   readonly created = { branches: 0, departments: 0, sections: 0, jobTitles: 0 };
   /**
    * Codes minted during THIS run, across all three catalogs.
@@ -185,6 +207,43 @@ export class OrgResolver {
     return match.id;
   }
 
+  /**
+   * The company-wide department this name refers to, creating it the first time the name is seen.
+   *
+   * Codes come from the CATALOG's own numbering rather than the branch rows': the two are separate
+   * collections, so `DEP-0001` can be both a catalog entry and a branch row without colliding, and
+   * counting from the catalog is what makes the code the migration assigned (its oldest member's)
+   * continue rather than restart.
+   */
+  private async departmentCatalogEntry(name: string, key: string): Promise<string> {
+    const cached = this.departmentCatalog.get(key);
+    if (cached !== undefined) return cached;
+
+    const entries = await departmentCatalogRepository.allSystem();
+    const hit = entries.find((entry) => orgKey(entry.name.ar) === key);
+    if (hit !== undefined) {
+      this.departmentCatalog.set(key, String(hit._id));
+      return String(hit._id);
+    }
+    if (this.dryRun) {
+      const placeholder = `dry-run:departmentCatalog:${key}`;
+      this.departmentCatalog.set(key, placeholder);
+      return placeholder;
+    }
+    // Created with the SHEET's spelling, like every other unit this importer makes.
+    const made = await departmentCatalogService.create(
+      {
+        code: nextFreeCode('DEP', [...entries.map((e) => e.code), ...this.mintedCodes]),
+        name: { ar: name, en: name },
+      },
+      this.actorId,
+    );
+    this.mintedCodes.push(made.code);
+    const id = String(made._id);
+    this.departmentCatalog.set(key, id);
+    return id;
+  }
+
   private async department(branchId: string, name: string | null): Promise<string | null> {
     const key = orgKey(name);
     if (key === null || name === null) return null;
@@ -192,6 +251,7 @@ export class OrgResolver {
     const cached = this.departments.get(cacheKey);
     if (cached !== undefined) return cached;
 
+    const catalogId = await this.departmentCatalogEntry(name, key);
     const scope = this.scope();
     const page = await departmentService.list({ page: 1, pageSize: 500, sortDir: 'asc' }, scope);
     const hit = page.items.find(
@@ -200,18 +260,23 @@ export class OrgResolver {
     if (hit !== undefined) {
       const id = String(hit._id);
       this.departments.set(cacheKey, id);
+      // An existing row may pre-date the catalog and carry no link. It is left exactly as it is —
+      // linking the rows already there is `migrate:org-catalog`'s job, not an import's side effect.
+      this.departmentRowCatalog.set(id, hit.catalogId == null ? null : String(hit.catalogId));
       return id;
     }
     if (this.dryRun) {
       this.created.departments += 1;
       this.departments.set(cacheKey, `dry-run:department:${cacheKey}`);
+      this.departmentRowCatalog.set(this.departments.get(cacheKey) as string, catalogId);
       return this.departments.get(cacheKey) as string;
     }
     const made = await departmentService.create(
       {
         code: nextFreeCode('DEP', [...page.items.map((d) => d.code), ...this.mintedCodes]),
-        name: { ar: name, en: name },
+        // No `name`: the row takes the catalog entry's spelling, which is the point.
         branchId,
+        catalogId,
       },
       this.actorId,
     );
@@ -219,6 +284,45 @@ export class OrgResolver {
     this.created.departments += 1;
     const id = String(made._id);
     this.departments.set(cacheKey, id);
+    this.departmentRowCatalog.set(id, catalogId);
+    return id;
+  }
+
+  /** The company-wide section under a company-wide department — see `departmentCatalogEntry`. */
+  private async sectionCatalogEntry(
+    departmentCatalogId: string,
+    name: string,
+    key: string,
+  ): Promise<string> {
+    const cacheKey = `${departmentCatalogId}|${key}`;
+    const cached = this.sectionCatalog.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const entries = await sectionCatalogRepository.allSystem();
+    const hit = entries.find(
+      (entry) =>
+        String(entry.departmentCatalogId) === departmentCatalogId && orgKey(entry.name.ar) === key,
+    );
+    if (hit !== undefined) {
+      this.sectionCatalog.set(cacheKey, String(hit._id));
+      return String(hit._id);
+    }
+    if (this.dryRun) {
+      const placeholder = `dry-run:sectionCatalog:${cacheKey}`;
+      this.sectionCatalog.set(cacheKey, placeholder);
+      return placeholder;
+    }
+    const made = await sectionCatalogService.create(
+      {
+        code: nextFreeCode('SEC', [...entries.map((e) => e.code), ...this.mintedCodes]),
+        name: { ar: name, en: name },
+        departmentCatalogId,
+      },
+      this.actorId,
+    );
+    this.mintedCodes.push(made.code);
+    const id = String(made._id);
+    this.sectionCatalog.set(cacheKey, id);
     return id;
   }
 
@@ -240,6 +344,16 @@ export class OrgResolver {
       this.sections.set(cacheKey, id);
       return id;
     }
+    // A section can only declare a company-wide entry when its DEPARTMENT declares one: the entry
+    // hangs off the department's catalog entry, and a row under an unlinked department has no such
+    // parent to name. Those rows are created exactly as before, unlinked, and `migrate:org-catalog`
+    // links them together later.
+    const departmentCatalogId = this.departmentRowCatalog.get(departmentId) ?? null;
+    const catalogId =
+      departmentCatalogId === null
+        ? null
+        : await this.sectionCatalogEntry(departmentCatalogId, name, key);
+
     if (this.dryRun) {
       this.created.sections += 1;
       this.sections.set(cacheKey, `dry-run:section:${cacheKey}`);
@@ -248,8 +362,8 @@ export class OrgResolver {
     const made = await sectionService.create(
       {
         code: nextFreeCode('SEC', [...page.items.map((x) => x.code), ...this.mintedCodes]),
-        name: { ar: name, en: name },
         departmentId,
+        ...(catalogId === null ? { name: { ar: name, en: name } } : { catalogId }),
       },
       this.actorId,
     );

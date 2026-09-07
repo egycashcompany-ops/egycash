@@ -9,6 +9,49 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **A department is defined once for the whole company, and each branch declares that it has it**
+  (P-ORG-2, [ADR-031](docs/03-decisions/ADR-031-org-units-defined-once-declared-per-branch.md)).
+  «العمليات» existed seven times — once per branch — as seven unrelated records that merely shared a
+  word, so the company-wide dropdown offered it six times with nothing to tell the copies apart. Two
+  organization-wide catalogs, `department_catalog` and `section_catalog`, now hold the company's own
+  list; a row in `departments` carries a `catalogId` saying which one it is an instance of, and
+  `{branchId, catalogId}` is unique so a branch cannot declare the same department twice.
+
+  **Nobody moves.** Every row keeps its branch, and `departments._id` stays the department data
+  scope. Collapsing the seven rows into one would have widened every department-scoped reader from
+  their own site to the whole company across twenty-odd collections, silently — the confinement a
+  department scope has today is an accident of `departments.branchId` being required, and nothing
+  else enforces it. The ADR is mostly about that.
+
+  Creating a department against a catalog entry copies the entry's spelling, and renaming the entry
+  carries the new name down to every branch that declared it. A section catalog entry belongs to a
+  company-wide department, never to one branch's copy of one. No new permission keys: the catalogs
+  are gated on `department.*` and `section.*`, the authority that already exists.
+
+  The workforce importer now resolves the catalog before it creates a branch row, so a re-import
+  cannot recreate the duplication it caused. Job titles are untouched — they were always keyed by
+  name alone and are already one company-wide list.
+
+- **`migrate:org-catalog` — the command that gives existing data one list, dry-run first.**
+
+  ```
+  npm run migrate:org-catalog                                    # reads, plans, checks, writes nothing
+  npm run migrate:org-catalog -- --merge DEP-0041=CAI-0 --write  # apply exactly that plan
+  ```
+
+  It groups the rows with the workforce importer's own fold — so it cannot disagree with what the
+  importer created — and gives each group one catalog entry taking its **oldest live member's code
+  and spelling**, inventing nothing. Two rows are merged only where `--merge LOSER=WINNER` names
+  them, and never across branches: moving people between sites is a transfer, not a migration's side
+  effect. A merge repoints every reference, found by walking the schemas rather than from a list, so
+  a collection added later is swept because it declares the field.
+
+  **It refuses rather than half-applies.** Two same-named departments in one branch that nobody has
+  resolved, a unique index the repointing would violate, an announcement or notification rule naming
+  a department being merged — any one of those and nothing at all is written, with the rows named.
+
 ### Fixed
 
 - **Every unit dropdown in the app was missing units, and said nothing.** `GET /platform/<unit>/options`

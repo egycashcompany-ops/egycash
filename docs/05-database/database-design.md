@@ -87,6 +87,26 @@ Indexes: `ux_email`, `ix_companyId_branchId_status`.
   /* branches add: */ "companyId": "…", "address": {…}, "geo": {…} }
 ```
 
+### department_catalog / section_catalog  *(organization-wide, ADR-031)*
+```jsonc
+// The department the COMPANY has, named once. A row in `departments` declares that a branch has it.
+{ "code": "DEP-0001",                      // unique among the living (ux_code)
+  "name": {"ar":"…","en":"…"}, "description": {"ar":"…","en":"…"}|null,
+  "status": "active|inactive" }
+
+// A section entry belongs to a department ENTRY, never to one branch's copy of a department.
+{ "…": "as above", "departmentCatalogId": "…" }
+```
+No `branchId`, no `managerId`, no `path` — a catalog entry is not a place anybody works.
+Indexes: `ux_code` (partial on `isDeleted:false`), `ix_status`, and on sections
+`ix_departmentCatalogId_status`.
+
+`departments` and `sections` each carry a **nullable** `catalogId` naming their entry, with
+`ux_branch_catalog` `{branchId, catalogId}` / `ux_department_catalog` `{departmentId, catalogId}` —
+unique, and partial on `{isDeleted:false, catalogId:{$type:"objectId"}}` so that rows naming no entry
+are outside the constraint. `departments._id` remains the department data scope; nothing moves.
+Existing data is linked by `npm run migrate:org-catalog` (dry run by default), never at boot.
+
 ### settings_values
 ```jsonc
 { "key": "auth.passwordPolicy.minLength", "scope": "system|company|branch|user",

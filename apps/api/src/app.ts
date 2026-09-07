@@ -20,7 +20,9 @@ import {
 } from './platform/rbac';
 import {
   buildBranchesRouter,
+  buildDepartmentCatalogRouter,
   buildDepartmentsRouter,
+  buildSectionCatalogRouter,
   buildCostCentersRouter,
   buildJobTitlesRouter,
   buildOrganizationRouter,
@@ -161,6 +163,11 @@ export const buildApp = (): Express => {
   api.use('/platform/permissions', buildPermissionsRouter());
   api.use('/platform/organization', buildOrganizationRouter());
   api.use('/platform/branches', buildBranchesRouter());
+  // The company-wide catalogs, mounted BEFORE the per-branch units so the more specific path wins
+  // no matter how Express is feeling — `/platform/departments/:id` would otherwise be a candidate
+  // for nothing here, but the ordering costs nothing and removes the question.
+  api.use('/platform/department-catalog', buildDepartmentCatalogRouter());
+  api.use('/platform/section-catalog', buildSectionCatalogRouter());
   api.use('/platform/departments', buildDepartmentsRouter());
   api.use('/platform/departments/:departmentId/applications', buildDepartmentApplicationsRouter());
   api.use('/platform/sections', buildSectionsRouter());

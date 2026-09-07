@@ -1,0 +1,782 @@
+<!doctype html>
+<!--
+  ECMS — platform size snapshot, 2026-09-07 (commit 8ea970e, v0.24.0 + Unreleased).
+
+  A standalone page answering four sizing questions with figures measured from the
+  repository, not from the documentation: dynamic pages, user roles, modules/functions,
+  and lines of code — each paired with a projection for the end of the roadmap.
+
+  READ THE COLOUR: green figures are MEASURED, brass figures are ESTIMATED. The page's
+  own footnote records the exact method behind every number, so a reader can reproduce
+  them. The figures are a snapshot of one commit and go stale with the next merge —
+  re-measure rather than trusting this file's date.
+
+  Note: this page is Arabic, which departs from documentation rule 5 in docs/README.md
+  ("English is the documentation language"). It was written for a non-engineering
+  audience filling in project-sizing forms, and is kept here as the record of what was
+  reported to them.
+
+  Self-contained apart from the Google Fonts stylesheet; opens straight in a browser.
+-->
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="حجم منصة ECMS اليوم مقيسًا من الكود، والمتوقع بنهاية المشروع.">
+<title>منصة ECMS بالأرقام</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ── tokens ────────────────────────────────────────────────────────────────
+   Light is the base. Every token is declared here first, then redefined
+   wholesale for the two dark states. Nothing is styled inside a media block. */
+:root {
+  --ground:      #EDF0EE;
+  --surface:     #F7F9F7;
+  --surface-sunk:#E4E9E6;
+  --ink:         #10201A;
+  --ink-2:       #47584F;
+  --ink-3:       #5C6C64;
+  --rule:        #D3DBD6;
+  --rule-soft:   #E0E6E2;
+  --built:       #00734F;   /* the one data hue — what exists today          */
+  --built-soft:  #00734F26;
+  --built-faint: #00734F14;
+  --target:      #8A5E00;   /* the one accent — reserved for projections     */
+  --target-soft: #8A5E0022;
+  --shadow:      0 1px 2px #10201A0d, 0 8px 24px #10201A08;
+
+  --display: "Amiri", "Times New Roman", serif;
+  --body: "IBM Plex Sans Arabic", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #0D1512;
+    --surface:     #141E19;
+    --surface-sunk:#0A110E;
+    --ink:         #E3EAE5;
+    --ink-2:       #9FB1A8;
+    --ink-3:       #7A8C83;
+    --rule:        #253530;
+    --rule-soft:   #1C2924;
+    --built:       #3FBE8C;
+    --built-soft:  #3FBE8C2e;
+    --built-faint: #3FBE8C1a;
+    --target:      #D6A63F;
+    --target-soft: #D6A63F26;
+    --shadow:      0 1px 2px #0006, 0 8px 24px #0004;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #0D1512;
+  --surface:     #141E19;
+  --surface-sunk:#0A110E;
+  --ink:         #E3EAE5;
+  --ink-2:       #9FB1A8;
+  --ink-3:       #7A8C83;
+  --rule:        #253530;
+  --rule-soft:   #1C2924;
+  --built:       #3FBE8C;
+  --built-soft:  #3FBE8C2e;
+  --built-faint: #3FBE8C1a;
+  --target:      #D6A63F;
+  --target-soft: #D6A63F26;
+  --shadow:      0 1px 2px #0006, 0 8px 24px #0004;
+}
+
+html { direction: rtl; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+img { max-width: 100%; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+.sheet {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 40px 24px 72px;
+  display: flex;
+  flex-direction: column;
+  gap: 52px;
+}
+
+/* ── shared type roles ─────────────────────────────────────────────────── */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0;
+}
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+/* Latin/number runs inside Arabic prose: isolate so ranges and
+   bracketed code read in their own order, not reversed by the RTL flow. */
+.rng, code { direction: ltr; unicode-bidi: isolate; }
+.rng { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* ── masthead ──────────────────────────────────────────────────────────── */
+.masthead { display: flex; flex-direction: column; gap: 18px; }
+.masthead h1 {
+  font-family: var(--display);
+  font-size: clamp(38px, 6.5vw, 58px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -.005em;
+}
+.masthead .lede {
+  font-size: 17px;
+  color: var(--ink-2);
+  max-width: 62ch;
+  margin: 0;
+}
+.masthead-rule { height: 1px; background: var(--rule); }
+
+/* the legend that makes the whole page readable: ink = measured, brass = projected */
+.key { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
+.key-item {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink-2);
+}
+.key-swatch { width: 13px; height: 13px; border-radius: 2px; flex: none; }
+.key-swatch.built  { background: var(--built); }
+.key-swatch.target { background: var(--target-soft); border: 1.5px dashed var(--target); }
+
+/* ── the four headline tiles ───────────────────────────────────────────── */
+.tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.tile {
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 4px;
+  padding: 20px 20px 18px;
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--shadow);
+}
+.tile-q {
+  font-size: 12.5px; font-weight: 500;
+  color: var(--ink-3); display: flex; align-items: baseline; gap: 8px;
+}
+.tile-q b { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--built); font-weight: 600; }
+.tile h2 { font-size: 15px; font-weight: 600; color: var(--ink-2); }
+.tile-figures { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+.fig-now {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 40px; font-weight: 600; line-height: 1; color: var(--ink);
+  letter-spacing: -.02em;
+}
+.fig-arrow { color: var(--ink-3); font-size: 18px; }
+.fig-approx { color: var(--target); font-size: 14px; align-self: center; }
+.fig-target {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  direction: ltr; unicode-bidi: isolate;
+  font-size: 24px; font-weight: 500; line-height: 1; color: var(--target);
+}
+.tile-unit { font-size: 13px; color: var(--ink-3); }
+
+/* ── the completion rail: solid = built, hatched = still to come ───────── */
+.rail { display: flex; flex-direction: column; gap: 7px; }
+.rail-track {
+  position: relative; height: 9px; border-radius: 3px; overflow: hidden;
+  background:
+    repeating-linear-gradient(135deg,
+      var(--built-soft) 0 3px, transparent 3px 7px),
+    var(--built-faint);
+  border: 1px solid var(--rule);
+}
+.rail-fill {
+  height: 100%; background: var(--built); border-radius: 3px;
+  box-shadow: -2px 0 0 var(--surface);
+}
+.rail-note {
+  display: flex; justify-content: space-between; gap: 12px;
+  font-size: 12px; color: var(--ink-3);
+}
+.rail-note .pct { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--built); font-weight: 500; }
+
+/* ── sections ──────────────────────────────────────────────────────────── */
+section { display: flex; flex-direction: column; gap: 22px; }
+.sec-head { display: flex; flex-direction: column; gap: 10px; }
+.sec-head .marker {
+  font-size: 12.5px; font-weight: 600; color: var(--ink-3);
+}
+.sec-head h2 {
+  font-family: var(--display); font-size: clamp(26px, 3.6vw, 34px);
+  font-weight: 700; line-height: 1.25;
+}
+.sec-head p { margin: 0; color: var(--ink-2); max-width: 66ch; font-size: 15px; }
+.sec-head .hr { height: 2px; background: var(--ink); width: 44px; border-radius: 1px; }
+
+h3.sub {
+  font-size: 13.5px; font-weight: 600; color: var(--ink-3);
+}
+
+/* ── tables ────────────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 460px; }
+caption {
+  caption-side: top; text-align: start; padding: 13px 16px 11px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-3);
+  border-bottom: 1px solid var(--rule);
+}
+th, td { padding: 11px 16px; text-align: start; border-bottom: 1px solid var(--rule-soft); }
+thead th {
+  font-size: 12.5px; font-weight: 600;
+  color: var(--ink-3); background: var(--surface-sunk);
+  border-bottom: 1px solid var(--rule);
+}
+tbody tr:last-child td { border-bottom: 0; }
+td.n {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
+  direction: ltr; unicode-bidi: isolate; text-align: left; white-space: nowrap;
+}
+td.n.total { color: var(--target); }
+tr.sum td { background: var(--built-faint); font-weight: 600; border-top: 1px solid var(--rule); }
+td .hint { display: block; font-size: 12.5px; color: var(--ink-3); line-height: 1.45; }
+
+/* ── bar chart: 90 registry pages by module ────────────────────────────── */
+.bars { display: flex; flex-direction: column; gap: 2px; }
+.bar-row {
+  display: grid; grid-template-columns: 108px 1fr auto;
+  align-items: center; gap: 12px; padding: 5px 8px; border-radius: 3px;
+  transition: background .12s ease; cursor: default; position: relative;
+}
+.bar-row:hover, .bar-row:focus-visible { background: var(--built-faint); outline: none; }
+.bar-name { font-size: 14px; color: var(--ink-2); }
+.bar-track { display: block; height: 14px; background: var(--rule-soft); border-radius: 3px; }
+.bar-fill { display: block; height: 100%; background: var(--built); border-radius: 3px; }
+.bar-val {
+  font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 13.5px;
+  direction: ltr; text-align: left; min-width: 40px; color: var(--ink);
+}
+.bar-tip {
+  position: absolute; inset-inline-start: 158px; top: -34px; z-index: 5;
+  background: var(--ink); color: var(--ground);
+  font-size: 12.5px; white-space: nowrap;
+  padding: 6px 10px; border-radius: 3px; opacity: 0; pointer-events: none;
+  transition: opacity .12s ease;
+}
+.bar-row:hover .bar-tip, .bar-row:focus-visible .bar-tip { opacity: 1; }
+
+/* ── stacked composition bar (lines of code) ───────────────────────────── */
+.stack { display: flex; height: 26px; border-radius: 3px; overflow: hidden; gap: 2px; background: var(--rule-soft); }
+.stack span { height: 100%; }
+.s-code    { background: var(--built); }
+.s-comment { background: var(--built); opacity: .48; }
+.s-blank   { background: var(--rule); }
+.stack-legend { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.leg { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); }
+.leg i { width: 12px; height: 12px; border-radius: 2px; flex: none; display: block; }
+.leg .num { color: var(--ink); font-size: 12.5px; }
+
+/* ── status matrix ─────────────────────────────────────────────────────── */
+.matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 8px; }
+.cell {
+  border: 1px solid var(--rule); border-radius: 4px; padding: 11px 13px;
+  background: var(--surface); display: flex; flex-direction: column; gap: 3px;
+}
+.cell.done { border-inline-start: 3px solid var(--built); }
+.cell.todo { border-inline-start: 3px dashed var(--target); background: transparent; }
+.cell-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cell-name { font-size: 14px; font-weight: 600; }
+.cell-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
+.state {
+  font-size: 11.5px; font-weight: 600;
+  padding: 2px 8px; border-radius: 2px; white-space: nowrap; flex: none;
+}
+.state.done { background: var(--built-soft); color: var(--built); }
+.state.todo { background: var(--target-soft); color: var(--target); }
+
+/* ── role cards ────────────────────────────────────────────────────────── */
+.roles { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); overflow: hidden; }
+.role { display: grid; grid-template-columns: 1fr auto; gap: 6px 16px; padding: 14px 16px; border-bottom: 1px solid var(--rule-soft); }
+.role:last-child { border-bottom: 0; }
+.role-key { font-family: var(--mono); font-size: 12.5px; color: var(--built); }
+.role-name { font-size: 15px; font-weight: 600; }
+.role-note { grid-column: 1 / -1; font-size: 13px; color: var(--ink-3); line-height: 1.55; }
+.role-tag {
+  font-size: 11.5px; color: var(--ink-3);
+  border: 1px solid var(--rule); border-radius: 2px;
+  padding: 2px 8px; height: fit-content; white-space: nowrap;
+}
+
+/* ── inline fact strip ─────────────────────────────────────────────────── */
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+.fact { background: var(--surface); padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.fact b { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 23px; font-weight: 600; line-height: 1.1; }
+.fact span { font-size: 12.5px; color: var(--ink-3); }
+
+/* ── callout ───────────────────────────────────────────────────────────── */
+.callout {
+  border-inline-start: 3px solid var(--target);
+  background: var(--target-soft);
+  padding: 13px 16px; border-radius: 3px;
+  font-size: 14.5px; color: var(--ink-2);
+}
+.callout b { color: var(--target); font-weight: 600; }
+
+/* ── footer ────────────────────────────────────────────────────────────── */
+footer { border-top: 1px solid var(--rule); padding-top: 22px; display: flex; flex-direction: column; gap: 14px; }
+footer h3 { font-size: 13.5px; font-weight: 600; color: var(--ink-3); }
+footer ol { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; color: var(--ink-2); }
+footer code { font-family: var(--mono); font-size: 12.5px; background: var(--surface-sunk); padding: 1px 5px; border-radius: 2px; color: var(--ink); }
+.stamp { font-size: 12.5px; color: var(--ink-3); display: flex; flex-wrap: wrap; gap: 6px 18px; }
+
+@media (max-width: 620px) {
+  .tiles { grid-template-columns: 1fr; }
+  .bar-row { grid-template-columns: 88px 1fr 38px; }
+  .bar-tip { inset-inline-start: 0; }
+  .sheet { padding: 28px 16px 56px; gap: 42px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="sheet">
+
+  <!-- ═══════════════ masthead ═══════════════ -->
+  <header class="masthead">
+    <p class="eyebrow">EGYCASH · Enterprise Cash Management System</p>
+    <h1>منصة ECMS بالأرقام</h1>
+    <p class="lede">
+      حجم المنصة اليوم، مقيسًا من الكود نفسه، وحجمها المتوقّع عند اكتمال خارطة الطريق.
+      كل رقم أسود مقيس فعليًا من المستودع؛ كل رقم <b style="color:var(--target);font-weight:600">نُحاسي</b> تقدير مبنيّ على
+      متوسط ما سُلِّم فعلًا مضروبًا في المتبقّي من الخطة.
+    </p>
+    <div class="masthead-rule"></div>
+    <div class="key">
+      <span class="key-item"><span class="key-swatch built"></span> مُنفَّذ ومقيس اليوم</span>
+      <span class="key-item"><span class="key-swatch target"></span> متبقٍّ حتى نهاية المشروع (تقدير)</span>
+    </div>
+  </header>
+
+  <!-- ═══════════════ the four answers ═══════════════ -->
+  <div class="tiles">
+
+    <article class="tile">
+      <p class="tile-q"><b>01</b> الصفحات الديناميكية</p>
+      <h2>المسارات الفعلية في الواجهة</h2>
+      <div class="tile-figures">
+        <span class="fig-now">225</span>
+        <span class="fig-arrow">←</span>
+        <span class="fig-approx">نحو</span>
+        <span class="fig-target">400</span>
+        <span class="tile-unit">صفحة</span>
+      </div>
+      <div class="rail">
+        <div class="rail-track" role="img" aria-label="225 صفحة من أصل 400 متوقعة، أي 56 بالمئة">
+          <div class="rail-fill" style="width:56%"></div>
+        </div>
+        <div class="rail-note"><span class="pct">56%</span><span>من الهدف</span></div>
+      </div>
+    </article>
+
+    <article class="tile">
+      <p class="tile-q"><b>02</b> أدوار المستخدمين</p>
+      <h2>الأدوار المعرَّفة في النظام</h2>
+      <div class="tile-figures">
+        <span class="fig-now">14</span>
+        <span class="fig-arrow">←</span>
+        <span class="fig-approx">نحو</span>
+        <span class="fig-target">38</span>
+        <span class="tile-unit">6 مبنية + 8 قوالب</span>
+      </div>
+      <div class="rail">
+        <div class="rail-track" role="img" aria-label="14 دورًا معرَّفًا من أصل 38 متوقعة، أي 37 بالمئة">
+          <div class="rail-fill" style="width:37%"></div>
+        </div>
+        <div class="rail-note"><span class="pct">37%</span><span>من الهدف</span></div>
+      </div>
+    </article>
+
+    <article class="tile">
+      <p class="tile-q"><b>03</b> الموديولات</p>
+      <h2>الموديولات التشغيلية المسلَّمة</h2>
+      <div class="tile-figures">
+        <span class="fig-now">7</span>
+        <span class="fig-arrow">←</span>
+        <span class="fig-target">11</span>
+        <span class="tile-unit">موديول</span>
+      </div>
+      <div class="rail">
+        <div class="rail-track" role="img" aria-label="7 موديولات من أصل 11 مخططة، أي 64 بالمئة">
+          <div class="rail-fill" style="width:64%"></div>
+        </div>
+        <div class="rail-note"><span class="pct">64%</span><span>نواة المنصة: 13 من 17</span></div>
+      </div>
+    </article>
+
+    <article class="tile">
+      <p class="tile-q"><b>04</b> أسطر الكود</p>
+      <h2>إجمالي الأسطر في المستودع</h2>
+      <div class="tile-figures">
+        <span class="fig-now">462K</span>
+        <span class="fig-arrow">←</span>
+        <span class="fig-approx">نحو</span>
+        <span class="fig-target">750K</span>
+        <span class="tile-unit">سطر</span>
+      </div>
+      <div class="rail">
+        <div class="rail-track" role="img" aria-label="462 ألف سطر من أصل 750 ألفًا متوقعة، أي 62 بالمئة">
+          <div class="rail-fill" style="width:62%"></div>
+        </div>
+        <div class="rail-note"><span class="pct">62%</span><span>من الهدف</span></div>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- ═══════════════ 01 ═══════════════ -->
+  <section>
+    <div class="sec-head">
+      <span class="marker">السؤال الأول</span>
+      <h2>متوسط عدد الصفحات الديناميكية</h2>
+      <div class="hr"></div>
+      <p>
+        «الصفحة» في ECMS لها أربعة قياسات مختلفة، وكلٌّ منها صحيح في سياقه.
+        الرقم الأنسب لأي استمارة هو <b>المسارات الفعلية</b>: ما يستطيع المستخدم فتحه بالفعل.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <caption>قياسات الصفحات — الآن مقابل المتوقع</caption>
+        <thead>
+          <tr><th>القياس</th><th style="text-align:end">اليوم</th><th style="text-align:end">نهاية المشروع</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>المسارات الفعلية في الواجهة
+              <span class="hint">leaf routes — بعد استبعاد 22 نقطة تركيب و22 صفحة «غير موجود»</span></td>
+            <td class="n">225</td><td class="n total">380 – 420</td>
+          </tr>
+          <tr>
+            <td>مكوّنات صفحات React
+              <span class="hint">ملفات <code style="font-family:var(--mono);font-size:12px">*Page.tsx</code></span></td>
+            <td class="n">193</td><td class="n total">330 – 370</td>
+          </tr>
+          <tr>
+            <td>عناصر القائمة الجانبية
+              <span class="hint">تطبيقات مُصنَّفة في 8 تصنيفات، كلٌّ منها خلف صلاحيته</span></td>
+            <td class="n">116</td><td class="n total">190 – 210</td>
+          </tr>
+          <tr>
+            <td>صفحات مسجَّلة في Page Registry
+              <span class="hint">السطح المعرَّف رسميًا في الكود والمرتبط بمصفوفة الصلاحيات</span></td>
+            <td class="n">90</td><td class="n total">150 – 170</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">توزيع الـ 90 صفحة المسجَّلة على الموديولات</h3>
+    <div class="bars" id="pagebars"></div>
+
+    <p class="callout">
+      لأي استمارة تطلب رقمًا واحدًا: <b>نحو <span class="rng">225</span> صفحة ديناميكية اليوم، ومتوقّع نحو <span class="rng">400</span> بنهاية المشروع.</b>
+    </p>
+  </section>
+
+  <!-- ═══════════════ 02 ═══════════════ -->
+  <section>
+    <div class="sec-head">
+      <span class="marker">السؤال الثاني</span>
+      <h2>عدد أدوار المستخدمين</h2>
+      <div class="hr"></div>
+      <p>
+        الأدوار في ECMS <b>بيانات لا كود</b> — يُنشئها مدير النظام بحرّية من سجلّ الصلاحيات.
+        ما يلي هو ما يُنشئه النظام لنفسه عند التشغيل الأول.
+      </p>
+    </div>
+
+    <h3 class="sub">أدوار جاهزة داخل النظام</h3>
+    <div class="roles">
+      <div class="role">
+        <div><div class="role-name">مدير النظام الأعلى</div><div class="role-key">super-admin</div></div>
+        <span class="role-tag">نظامي · محمي</span>
+        <div class="role-note">يملك سجلّ الصلاحيات كاملًا. لا يمكن حذف آخر حساب يحمله على أيٍّ من مسارات الإيقاف الثلاثة.</div>
+      </div>
+      <div class="role">
+        <div><div class="role-name">مدير المنصة</div><div class="role-key">platform-admin</div></div>
+        <span class="role-tag">نظامي · محمي</span>
+        <div class="role-note">كل موارد المنصة — مستخدمون، أدوار، هيكل تنظيمي، إعدادات — دون أي بيانات موديول تشغيلي.</div>
+      </div>
+      <div class="role">
+        <div><div class="role-name">الخدمة الذاتية للموظفين</div><div class="role-key">employee-self-service</div></div>
+        <span class="role-tag">نظامي · تلقائي</span>
+        <div class="role-note">يُمنَح تلقائيًا لكل موظف يُفتح له حساب: إجازاته، حضوره، مسيّره، بياناته.</div>
+      </div>
+      <div class="role">
+        <div><div class="role-name">المسؤول الطبي</div><div class="role-key">hr-medical-officer</div></div>
+        <span class="role-tag">مُدار</span>
+        <div class="role-note">السجلات الطبية والتأمين — معزولة عن بقية الموارد البشرية عمدًا.</div>
+      </div>
+      <div class="role">
+        <div><div class="role-name">عميل بوابة الذهب</div><div class="role-key">gold-portal-customer</div></div>
+        <span class="role-tag">هوية خارجية</span>
+        <div class="role-note">صلاحية واحدة فقط، وكل قراءة محصورة في شركة العميل نفسه مهما كان النطاق.</div>
+      </div>
+      <div class="role">
+        <div><div class="role-name">بوابة المتقدمين</div><div class="role-key">applicant-portal</div></div>
+        <span class="role-tag">هوية خارجية</span>
+        <div class="role-note">حساب مؤقّت للمتقدّم على وظيفة حتى نهاية دورة التوظيف.</div>
+      </div>
+      <div class="role">
+        <div><div class="role-name">أدوار «HR فقط» المشتقّة</div><div class="role-key">hr-only · derived</div></div>
+        <span class="role-tag">مولَّد تلقائيًا</span>
+        <div class="role-note">يولّدها النظام لكل دور يحتاج عزل بيانات الموارد البشرية — عددها يتبع عدد الأدوار المخصّصة.</div>
+      </div>
+    </div>
+
+    <div class="facts">
+      <div class="fact"><b>357</b><span>مفتاح صلاحية</span></div>
+      <div class="fact"><b>5</b><span>نطاقات بيانات</span></div>
+      <div class="fact"><b>8</b><span>قوالب موثّقة</span></div>
+      <div class="fact"><b>∞</b><span>أدوار مخصّصة</span></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <caption>قوالب الأدوار الموثّقة في مصفوفة الصلاحيات</caption>
+        <thead><tr><th>القالب</th><th>نطاق البيانات الافتراضي</th></tr></thead>
+        <tbody>
+          <tr><td>Super Admin</td><td>المنظمة كاملة</td></tr>
+          <tr><td>Platform Admin</td><td>المنظمة كاملة</td></tr>
+          <tr><td>Company Admin</td><td>الشركة</td></tr>
+          <tr><td>HR Manager</td><td>الشركة</td></tr>
+          <tr><td>HR Specialist</td><td>الفرع</td></tr>
+          <tr><td>Recruiter</td><td>الفرع</td></tr>
+          <tr><td>Interviewer</td><td>ما يخصّه هو</td></tr>
+          <tr><td>Auditor</td><td>الشركة — قراءة فقط</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="callout">
+      نطاقات البيانات الخمسة — <code style="font-family:var(--mono);font-size:12.5px">own · section · department · branch · organization</code> —
+      تضرب في 357 صلاحية، فعدد التركيبات الممكنة غير محدود عمليًا.
+      <b>المتوقع في التشغيل الفعلي: <span class="rng">30 – 45</span> دورًا</b>، دور لكل وظيفة (مدير فرع، مشرف سائقين، كابتن نقل، أمين خزينة، فني صرّاف آلي، الدعم الفني، محاسب، ضابط أمن…).
+    </p>
+  </section>
+
+  <!-- ═══════════════ 03 ═══════════════ -->
+  <section>
+    <div class="sec-head">
+      <span class="marker">السؤال الثالث</span>
+      <h2>الموديولات والوظائف داخل التطبيق</h2>
+      <div class="hr"></div>
+      <p>
+        ECMS منصّة لا تطبيق واحد: نواة قابلة لإعادة الاستخدام (الهوية، الصلاحيات، الهيكل التنظيمي،
+        الملفات، التدقيق، الإشعارات) تُركَّب فوقها موديولات تشغيلية معزولة.
+      </p>
+    </div>
+
+    <div class="facts">
+      <div class="fact"><b>815</b><span>واجهة REST</span></div>
+      <div class="fact"><b>145</b><span>نموذج بيانات</span></div>
+      <div class="fact"><b>158</b><span>خدمة</span></div>
+      <div class="fact"><b>546</b><span>مكوّن React</span></div>
+      <div class="fact"><b>357</b><span>صلاحية</span></div>
+      <div class="fact"><b>2</b><span>لغة · RTL كامل</span></div>
+    </div>
+
+    <h3 class="sub">الطبقة الأولى — نواة المنصة · 13 من 17 خدمة</h3>
+    <div class="matrix">
+      <div class="cell done"><div class="cell-top"><span class="cell-name">المصادقة</span><span class="state done">مُسلَّم</span></div><span class="cell-note">JWT + رفرش دوّار + TOTP · دورة حياة الحساب</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">المستخدمون</span><span class="state done">مُسلَّم</span></div><span class="cell-note">الحسابات والملفات الشخصية</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الأدوار والصلاحيات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">سجلّ · إسنادات مؤقّتة · نطاقات</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الهيكل التنظيمي</span><span class="state done">مُسلَّم</span></div><span class="cell-note">شركة · فرع · إدارة · قسم · مسميات · مراكز تكلفة</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الملفات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">Local · S3 · MinIO · Azure · إصدارات</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">التدقيق والنشاط</span><span class="state done">مُسلَّم</span></div><span class="cell-note">القيم قبل/بعد · خط زمني · احتفاظ</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الإشعارات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">داخل التطبيق · بريد · Socket.IO · قوالب</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الإعدادات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">هرمية: نظام ← شركة ← فرع ← مستخدم</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الترقيم التسلسلي</span><span class="state done">مُسلَّم</span></div><span class="cell-note">أرقام مستندات ذرّية بلا فجوات</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">التعريب</span><span class="state done">مُسلَّم</span></div><span class="cell-note">عربي/إنجليزي · RTL · تواريخ وأرقام</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">المجدول والمهام</span><span class="state done">مُسلَّم</span></div><span class="cell-note">BullMQ · Redis · عامل مستقل</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الأتمتة</span><span class="state done">مُسلَّم</span></div><span class="cell-note">قوالب n8n · صندوق صادر معاملاتي</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الذكاء الاصطناعي / OCR</span><span class="state done">مُسلَّم</span></div><span class="cell-note">قراءة بطاقة الرقم القومي · واجهة قابلة للتوسعة</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">محرك البحث</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">بحث موحّد عبر الموديولات مفلتَر بالصلاحيات</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">محرك الاعتمادات</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">سلاسل موافقة · تفويض · تصعيد</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">لوحات المعلومات</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">سجل ودجات · لوحة لكل دور</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">محرك التقارير</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">تعريفات · معاملات · تصدير · جدولة</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">التكاملات</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">Webhooks · موصّلات · مفاتيح API</span></div>
+    </div>
+
+    <h3 class="sub">الطبقة الثانية — الموديولات التشغيلية · 7 من 11</h3>
+    <div class="table-wrap">
+      <table>
+        <caption>الموديولات ومحتوياتها</caption>
+        <thead><tr><th>الموديول</th><th>الوظائف</th><th style="text-align:end">صفحات</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><b>الموارد البشرية</b><span class="hint">HR — مُسلَّم بالكامل</span></td>
+            <td>التوظيف (7 مراحل بمحرك سير عمل) · إدارة الموظفين · الإجازات · الحضور والانصراف · المرتبات · سلف الموظفين · التدريب · تقييم الأداء · الطبي والتأمين · العقود (قوالب + PDF + تحقق عام) · التسويات · الإعلانات · قواعد الإشعارات</td>
+            <td class="n">37</td>
+          </tr>
+          <tr>
+            <td><b>إدارة الأسطول</b><span class="hint">Fleet — مُسلَّم</span></td>
+            <td>المركبات · السائقون · الحضور · الجداول والورديات · العدادات · الصيانة وإنذاراتها · الحوادث · المخالفات · الكتالوجات</td>
+            <td class="n">10</td>
+          </tr>
+          <tr>
+            <td><b>خزينة الذهب</b><span class="hint">Gold Vault — مُسلَّم</span></td>
+            <td>الخزائن · السبائك · الاستلام · التسليم · التحويلات · المفاتيح · الشركات · المندوبون · التقارير · <b>بوابة العملاء الخارجية</b></td>
+            <td class="n">10</td>
+          </tr>
+          <tr>
+            <td><b>تقنية المعلومات</b><span class="hint">IT — مُسلَّم</span></td>
+            <td>الأصول والعهدة · مكتب المساعدة · الصيانة وخططها · قطع الغيار · البرمجيات · التراخيص · الموردون · الكتالوجات</td>
+            <td class="n">9</td>
+          </tr>
+          <tr>
+            <td><b>العمليات ونقل الأموال</b><span class="hint">Operations — مُسلَّم</span></td>
+            <td>الشحنات · لوحة الأطقم والأطقم الثابتة · الخزينة (استلام/صرف) · يومي · تقارير الخزينة والكباتن والبنوك</td>
+            <td class="n">5</td>
+          </tr>
+          <tr>
+            <td><b>الصرّافات الآلية</b><span class="hint">ATM — مُسلَّم</span></td>
+            <td>التغذية · الصيانة · تذاكر البريد وسجلّها · الماكينات · التقرير اليومي</td>
+            <td class="n">4</td>
+          </tr>
+          <tr>
+            <td><b>إدارة النظام</b><span class="hint">System Admin — مُسلَّم</span></td>
+            <td>المستخدمون · الأدوار · سجلّ الصلاحيات · التدقيق · النشاط · الإعدادات · قوالب الإشعارات · التطبيقات والتصنيفات</td>
+            <td class="n">15</td>
+          </tr>
+          <tr class="sum"><td colspan="2">إجمالي الصفحات المسجَّلة اليوم</td><td class="n">90</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">المتبقّي من الطبقة الثانية</h3>
+    <div class="matrix">
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">المحاسبة</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">الأكبر بين المتبقّي — يُتوقع أن يتجاوز متوسط الموديول</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">الخزينة النقدية</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">موديول مستقل — جزء منه قائم داخل العمليات</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">الأمن</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">الحراسات والتصاريح والتفتيش</span></div>
+      <div class="cell todo"><div class="cell-top"><span class="cell-name">الشؤون الإدارية</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">المشتريات والمخازن والخدمات</span></div>
+    </div>
+  </section>
+
+  <!-- ═══════════════ 04 ═══════════════ -->
+  <section>
+    <div class="sec-head">
+      <span class="marker">السؤال الرابع</span>
+      <h2>عدد أسطر الكود</h2>
+      <div class="hr"></div>
+      <p>
+        كل الأرقام محسوبة من الملفات المتتبَّعة في Git، بعد استبعاد
+        <code style="font-family:var(--mono);font-size:12.5px">package-lock.json</code> ومجلدات الاعتماديات.
+      </p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <caption>تفصيل الأسطر — 2,535 ملف TypeScript إجمالًا</caption>
+        <thead><tr><th>البند</th><th style="text-align:end">الأسطر</th></tr></thead>
+        <tbody>
+          <tr><td><b>الإجمالي المتتبَّع</b><span class="hint">كل الملفات، بلا ملف الاعتماديات</span></td><td class="n"><b>462,417</b></td></tr>
+          <tr><td>TypeScript + TSX<span class="hint">2,535 ملف</span></td><td class="n">411,860</td></tr>
+          <tr><td>— منها كود فعلي<span class="hint">بلا تعليقات ولا أسطر فارغة</span></td><td class="n">323,150</td></tr>
+          <tr><td>— منها تعليقات وتوثيق داخلي</td><td class="n">57,938</td></tr>
+          <tr><td>— منها أسطر فارغة</td><td class="n">30,772</td></tr>
+          <tr><td>اختبارات آلية<span class="hint">516 ملف · وحدة وتكامل</span></td><td class="n">124,452</td></tr>
+          <tr><td>كود المصدر بلا اختبارات</td><td class="n">287,408</td></tr>
+          <tr><td>توثيق Markdown<span class="hint">157 ملف · معمارية وقرارات ومحاضر</span></td><td class="n">32,495</td></tr>
+          <tr><td>Python<span class="hint">سبايك قراءة الرقم القومي</span></td><td class="n">9,326</td></tr>
+          <tr class="sum"><td>المتوقع بنهاية المشروع</td><td class="n total">700,000 – 800,000</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">تركيب الـ 411,860 سطر TypeScript</h3>
+    <div class="stack" role="img" aria-label="كود فعلي 323,150 سطرًا، تعليقات 57,938، أسطر فارغة 30,772">
+      <span class="s-code"    style="width:78.5%"></span>
+      <span class="s-comment" style="width:14.1%"></span>
+      <span class="s-blank"   style="width:7.4%"></span>
+    </div>
+    <div class="stack-legend">
+      <span class="leg"><i class="s-code"></i> كود فعلي · <span class="num">323,150</span> (78%)</span>
+      <span class="leg"><i class="s-comment"></i> تعليقات وتوثيق · <span class="num">57,938</span> (14%)</span>
+      <span class="leg"><i class="s-blank" style="background:var(--rule)"></i> أسطر فارغة · <span class="num">30,772</span> (8%)</span>
+    </div>
+
+    <h3 class="sub">توزيع كود المصدر على مساحات العمل</h3>
+    <div class="bars" id="wsbars"></div>
+  </section>
+
+  <!-- ═══════════════ methodology ═══════════════ -->
+  <footer>
+    <h3>كيف قِيست هذه الأرقام</h3>
+    <ol>
+      <li><b>الصفحات المسجَّلة:</b> استُخرجت مصفوفات <code>PageDef[]</code> من بيانات كل موديول ومن حزمة العقود — 90 صفحة.</li>
+      <li><b>المسارات:</b> عُدَّت كل عناصر <code>&lt;Route&gt;</code> في الواجهة (269)، ثم استُبعدت 22 نقطة تركيب و22 مسار «غير موجود».</li>
+      <li><b>الصلاحيات:</b> حُلِّلت نداءات <code>declarePermissions()</code> في كل موديول — 357 مفتاحًا فريدًا.</li>
+      <li><b>الأدوار:</b> رُصدت نداءات <code>ensureSystemRole()</code> و<code>ensureManagedRole()</code>، وقوالب مصفوفة الصلاحيات الموثّقة.</li>
+      <li><b>الأسطر:</b> <code>git ls-files</code> مع استبعاد <code>package-lock.json</code>؛ التصنيف إلى كود/تعليق/فراغ بتحليل بداية كل سطر.</li>
+      <li><b>التقديرات النُحاسية:</b> متوسط الموديول المُسلَّم فعلًا (نحو <span class="rng">10</span> صفحات مسجَّلة ونحو <span class="rng">30</span> صلاحية) مضروبًا في المتبقّي من خارطة الطريق في <code>ECMS-BOOK.md</code>. الأرقام تتغيّر بتغيّر نطاق الموديولات المتبقّية، وخصوصًا المحاسبة التي يُرجَّح أن تتجاوز المتوسط.</li>
+    </ol>
+    <div class="stamp">
+      <span>المستودع: egycashcompany-ops/egycash</span>
+      <span>الفرع: claude/ecms-project-requirements-0ohs45</span>
+      <span>الكوميت: 8ea970e</span>
+      <span>الإصدار: v0.24.0 + Unreleased</span>
+      <span>تاريخ القياس: 2026-09-07</span>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+/* Registry pages per module — one series, every value direct-labelled.
+   The hover layer carries what the bar cannot: that module's permission count. */
+const pageData = [
+  { name: 'الموارد البشرية', pages: 37, perms: 149 },
+  { name: 'إدارة النظام',   pages: 15, perms: 64  },
+  { name: 'الأسطول',        pages: 10, perms: 32  },
+  { name: 'خزينة الذهب',    pages: 10, perms: 38  },
+  { name: 'تقنية المعلومات', pages: 9,  perms: 26  },
+  { name: 'العمليات',       pages: 5,  perms: 14  },
+  { name: 'الصرّافات',       pages: 4,  perms: 15  },
+];
+
+const wsData = [
+  { name: 'apps/api',  pages: 211665, perms: null, note: 'الخادم · 1,515 ملف' },
+  { name: 'apps/web',  pages: 167968, perms: null, note: 'الواجهة · 910 ملف'  },
+  { name: 'contracts', pages: 32405,  perms: null, note: 'العقود المشتركة · 111 ملف' },
+  { name: 'spikes',    pages: 9326,   perms: null, note: 'سبايك OCR · 41 ملف' },
+];
+
+const fmt = (n) => n.toLocaleString('en-US');
+
+function drawBars(mountId, rows, tipFor) {
+  const mount = document.getElementById(mountId);
+  const max = Math.max(...rows.map((r) => r.pages));
+  mount.innerHTML = rows.map((r) => `
+    <div class="bar-row" tabindex="0">
+      <span class="bar-name">${r.name}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${(r.pages / max) * 100}%"></span></span>
+      <span class="bar-val">${fmt(r.pages)}</span>
+      <span class="bar-tip">${tipFor(r)}</span>
+    </div>`).join('');
+}
+
+drawBars('pagebars', pageData, (r) => `${r.name} — ${r.pages} صفحة · ${r.perms} صلاحية`);
+drawBars('wsbars', wsData, (r) => `${r.name} — ${fmt(r.pages)} سطر · ${r.note}`);
+</script>
+
+</body>
+</html>

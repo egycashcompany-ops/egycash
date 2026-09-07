@@ -1,7 +1,8 @@
-// The api ships nine runtime entrypoints — server, worker, seed, seed:demo, atm:import,
-// fleet:fix-crew-mission, import:workforce, reset:workforce, report:org-duplication — and all of
-// them load a module graph. That graph must be importable OUTSIDE a vitest run:
-// one test-only import reachable from it (vitest, a spec helper, a mock) takes every entrypoint
+// The api ships ten runtime entrypoints — server, worker, seed, seed:demo, atm:import,
+// fleet:fix-crew-mission, import:workforce, reset:workforce, report:org-duplication,
+// migrate:org-catalog — and all of them load a module graph. That graph must be importable
+// OUTSIDE a vitest run: one test-only import reachable from it (vitest, a spec helper, a mock)
+// takes every entrypoint
 // down at import time. That is exactly what happened when the automation barrel re-exported
 // `runProviderConformance`, whose `vitest` import throws when loaded outside a vitest worker —
 // `npm run seed`, `seed:demo` and `npm run dev` all died before their first line of logic.
@@ -58,26 +59,36 @@ const RUNTIME_ROOTS = [
   // prints its usage line and sets a non-zero exit code WITHOUT connecting to anything. The
   // subprocess below only asserts that importing it does not THROW, which is exactly the question.
   './src/org-duplication-report.cli.ts',
+  // migrate:org-catalog. Registered as the LOGIC module rather than the CLI, the way `reset` and
+  // `import:workforce` are: this entrypoint boots the platform, so importing the CLI itself would
+  // run `main()` and try to connect. What is worth proving here is that the migration's own graph
+  // loads — it reaches the org models through the barrel, and reaching them any other way is the
+  // TDZ crash the entry above met in production.
+  './src/org-catalog-migration/apply.ts',
 ];
 
 describe('runtime import safety', () => {
-  it.each(RUNTIME_ROOTS)('%s loads on its own, outside a vitest run', (root) => {
-    // The question is whether IMPORTING throws — not what exit code a module chose. The report CLI
-    // runs `main()` at import and, with no database configured, prints its usage and sets a
-    // non-zero code; that is correct behaviour and must not read as an import failure here.
-    const script = `await import(${JSON.stringify(root)});\nprocess.exitCode = 0;`;
-    try {
-      // `--import tsx` resolves TypeScript exactly like the package scripts' tsx CLI does.
-      execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
-        stdio: 'pipe',
-        timeout: 120_000,
-      });
-    } catch (error) {
-      const stderr =
-        error instanceof Error && 'stderr' in error
-          ? String((error as { stderr: unknown }).stderr)
-          : '';
-      throw new Error(`${root} failed to load outside vitest:\n${stderr}`);
-    }
-  }, 150_000);
+  it.each(RUNTIME_ROOTS)(
+    '%s loads on its own, outside a vitest run',
+    (root) => {
+      // The question is whether IMPORTING throws — not what exit code a module chose. The report CLI
+      // runs `main()` at import and, with no database configured, prints its usage and sets a
+      // non-zero code; that is correct behaviour and must not read as an import failure here.
+      const script = `await import(${JSON.stringify(root)});\nprocess.exitCode = 0;`;
+      try {
+        // `--import tsx` resolves TypeScript exactly like the package scripts' tsx CLI does.
+        execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
+          stdio: 'pipe',
+          timeout: 120_000,
+        });
+      } catch (error) {
+        const stderr =
+          error instanceof Error && 'stderr' in error
+            ? String((error as { stderr: unknown }).stderr)
+            : '';
+        throw new Error(`${root} failed to load outside vitest:\n${stderr}`);
+      }
+    },
+    150_000,
+  );
 });

@@ -74,7 +74,16 @@ export type UnitEntityType = 'branch' | 'department' | 'section';
 
 interface CreateUnitInput {
   code: string;
-  name: LocalizedString;
+  /**
+   * OPTIONAL, because a unit may take its name from a company-wide catalog entry instead (P-ORG-2).
+   *
+   * When it is absent, `buildCreateExtras` must return one — the extras are spread AFTER these
+   * fields below, so a Department or Section created against a `catalogId` gets the catalog's
+   * spelling. The two services that accept a `catalogId` refuse a create that supplies neither, so
+   * a nameless unit cannot reach the model; a unit that hangs under nothing (a Branch) always
+   * carries its own name and this stays required in practice.
+   */
+  name?: LocalizedString | undefined;
   managerId?: string | null | undefined;
   actingManager?: ActingManager | null | undefined;
 }
@@ -161,7 +170,7 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
 
   async create(input: CreateUnitInput & Record<string, unknown>, by: string): Promise<TDoc> {
     await this.assertManagers(input);
-    if (this.hooks.assertNameAvailable !== undefined) {
+    if (input.name !== undefined && this.hooks.assertNameAvailable !== undefined) {
       await this.hooks.assertNameAvailable(input.name);
     }
     const id = new Types.ObjectId();

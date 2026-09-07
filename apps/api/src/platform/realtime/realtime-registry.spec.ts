@@ -26,6 +26,11 @@ const DYNAMIC_ENTITY_KEYS = [
   'hr.employeeActionAttachment', // contracts hr-employee-actions EMPLOYEE_ACTION_ATTACHMENT_ENTITY_TYPE
   'hr.payrollAdjustmentAttachment', // payroll-adjustment.files.ts ADJUSTMENT_ATTACHMENT_ENTITY_TYPE
   'platform.section', // org-unit.ts `this.entityType` — branch/department literals exist elsewhere
+  // org-catalog.service.ts `this.entityType` — the two company-wide catalogs (P-ORG-2). One call
+  // site, two entity types: the generic catalog service is shared by both features, so neither name
+  // appears as a literal anywhere in the source.
+  'platform.departmentCatalog',
+  'platform.sectionCatalog',
   'hr.applicantDocuments', // applicant-document.files.ts APPLICANT_DOCUMENT_ENTITY_TYPE
   'hr.trainingRecord', // training-record.files.ts TRAINING_RECORD_ENTITY_TYPE
   'hr.medicalEvent', // medical-event.files.ts MEDICAL_EVENT_ENTITY_TYPE
@@ -38,7 +43,9 @@ const DYNAMIC_ENTITY_KEYS = [
 // the service reaches for the shared constant rather than retyping the entity type beside it.
 // P-HR-MED M3 adds ONE site: a medical certificate is filed against the EVENT it documents, and
 // the service reaches for the shared constant rather than retyping the entity type beside it.
-const EXPECTED_DYNAMIC_SITES = 9; // the seven above + workflow-consumers relaying hr event refs
+// P-ORG-2 adds ONE site for TWO entity types: `org-catalog.service.ts` builds the audit ref from
+// `this.entityType`, and one generic service serves both the department and the section catalog.
+const EXPECTED_DYNAMIC_SITES = 10; // the eight above + workflow-consumers relaying hr event refs
 
 const collectSources = (dir: string, files: string[] = []): string[] => {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {

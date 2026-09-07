@@ -62,22 +62,42 @@ export const CreateBranchSchema = z
   .strict();
 export type CreateBranch = z.infer<typeof CreateBranchSchema>;
 
+/**
+ * `catalogId` names the company-wide department this branch is declaring it has (P-ORG-2).
+ *
+ * `name` becomes OPTIONAL when a catalog entry is given, because the catalog carries it: the point
+ * of the redesign is that «العمليات» is spelled once for the company, so re-typing it per branch is
+ * exactly the drift being removed. One of the two must be present, which is what the refine says.
+ */
 export const CreateDepartmentSchema = z
   .object({
     ...orgUnitBase,
+    name: LocalizedStringSchema.optional(),
+    catalogId: objectId().optional(),
     branchId: objectId(),
     description: LocalizedStringSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.name !== undefined || v.catalogId !== undefined, {
+    message: 'give a catalogId to take the name from the catalog, or a name of its own',
+    path: ['catalogId'],
+  });
 export type CreateDepartment = z.infer<typeof CreateDepartmentSchema>;
 
+/** `catalogId` names the company-wide section; see `CreateDepartmentSchema` for why `name` moves. */
 export const CreateSectionSchema = z
   .object({
     ...orgUnitBase,
+    name: LocalizedStringSchema.optional(),
+    catalogId: objectId().optional(),
     departmentId: objectId(),
     description: LocalizedStringSchema.nullable().optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.name !== undefined || v.catalogId !== undefined, {
+    message: 'give a catalogId to take the name from the catalog, or a name of its own',
+    path: ['catalogId'],
+  });
 export type CreateSection = z.infer<typeof CreateSectionSchema>;
 
 // Job Titles are an organization-wide catalog (ADR-015): they carry the *definition* of a role —
@@ -175,7 +195,7 @@ export const UpdateJobTitleSchema = z
     salaryMax: z.number().min(0).max(100_000_000).nullable().optional(),
     requiredQualifications: LocalizedStringSchema.nullable().optional(),
     requiredExperienceYears: z.number().int().min(0).max(60).nullable().optional(),
-  requiresDrivingTest: z.boolean().optional(),
+    requiresDrivingTest: z.boolean().optional(),
     fixedSalary: JobFixedSalarySchema.nullable().optional(),
     defaultShiftIds: z.array(objectId()).max(50).optional(),
     version: z.number().int().min(0),
@@ -185,6 +205,78 @@ export const UpdateJobTitleSchema = z
   // bound is re-checked against the stored value in the service (merged-state validation).
   .refine(salaryBandOk, salaryBandError);
 export type UpdateJobTitle = z.infer<typeof UpdateJobTitleSchema>;
+
+// ── Org-unit catalogs (P-ORG-2) ─────────────────────────────────────────────
+//
+// WHAT THIS SOLVES. A Department is created UNDER a Branch, so «العمليات» in Mohandiseen and
+// «العمليات» in Tanta are two unrelated records that merely share a name. Seven branches later the
+// company-wide dropdown offers «العمليات» six times and the owner cannot tell the copies apart —
+// which is the complaint this exists to answer: an Operations department is ONE thing the company
+// has, present in several of its branches.
+//
+// THE SHAPE. The catalog entry is the department the COMPANY has; the row in `departments` becomes
+// a declaration that a particular branch HAS it. Both survive, and that is deliberate:
+// `departments._id` is the department data scope (ADR-004/ADR-017) and is referenced by twenty-odd
+// collections and every employee file. Collapsing the seven rows into one would silently widen
+// every department-scoped reader from their own branch to the whole company — the confinement a
+// department scope has today is an accident of `departments.branchId` being required, and nothing
+// else enforces it.
+//
+// So nothing moves. A row gains a `catalogId` naming which company-wide department it is an
+// instance of, and the catalog is what a screen lists when it wants the company's own vocabulary.
+//
+// A SECTION CATALOG ENTRY BELONGS TO A DEPARTMENT CATALOG ENTRY. «العد والفرز» is a section OF
+// Operations, company-wide, and a branch that has Operations may declare it. The parent is the
+// catalog entry, never a branch's row — a company-level fact cannot hang off one branch's copy.
+
+const orgCatalogBase = {
+  code: orgUnitBase.code,
+  name: LocalizedStringSchema,
+  description: LocalizedStringSchema.nullable().optional(),
+};
+
+const updatableCatalogFields = {
+  name: LocalizedStringSchema.optional(),
+  description: LocalizedStringSchema.nullable().optional(),
+  status: z.enum(['active', 'inactive']).optional(),
+  version: z.number().int().min(0),
+};
+
+export const CreateDepartmentCatalogSchema = z.object({ ...orgCatalogBase }).strict();
+export type CreateDepartmentCatalog = z.infer<typeof CreateDepartmentCatalogSchema>;
+
+export const UpdateDepartmentCatalogSchema = z.object({ ...updatableCatalogFields }).strict();
+export type UpdateDepartmentCatalog = z.infer<typeof UpdateDepartmentCatalogSchema>;
+
+export const CreateSectionCatalogSchema = z
+  .object({ ...orgCatalogBase, departmentCatalogId: objectId() })
+  .strict();
+export type CreateSectionCatalog = z.infer<typeof CreateSectionCatalogSchema>;
+
+/**
+ * A section catalog entry never changes which department it belongs to.
+ *
+ * Moving one would re-parent every branch row that already declares it, in every branch at once —
+ * a re-organization, not an edit. Retire the entry and declare the section under the department it
+ * actually belongs to; the branch rows that cited the old one keep pointing at what was true.
+ */
+export const UpdateSectionCatalogSchema = z.object({ ...updatableCatalogFields }).strict();
+export type UpdateSectionCatalog = z.infer<typeof UpdateSectionCatalogSchema>;
+
+export interface DepartmentCatalogDto {
+  id: string;
+  code: string;
+  name: { ar: string; en: string };
+  description: { ar: string; en: string } | null;
+  status: 'active' | 'inactive';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SectionCatalogDto extends DepartmentCatalogDto {
+  departmentCatalogId: string;
+}
 
 // ── Cost centres (P-HR-23) ──────────────────────────────────────────────────
 //
@@ -314,12 +406,23 @@ export interface OrgUnitOptionDto {
 
 export interface DepartmentDto extends OrgUnitDto {
   branchId: string;
+  /**
+   * The company-wide department this row is an instance of (P-ORG-2), or `null` for a row created
+   * before the catalog existed and never linked to one.
+   *
+   * Nullable forever, not just during the migration: a deployment may run the branch rows without
+   * ever defining a catalog, and a row that names no catalog entry is not broken — it is a
+   * department only that branch has.
+   */
+  catalogId: string | null;
   description: { ar: string; en: string } | null;
 }
 
 export interface SectionDto extends OrgUnitDto {
   branchId: string;
   departmentId: string;
+  /** The company-wide section this row is an instance of (P-ORG-2), or `null`. */
+  catalogId: string | null;
   description: { ar: string; en: string } | null;
 }
 

@@ -169,6 +169,10 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'platform.organization': { permission: 'organization.view' },
   'platform.branch': { permission: 'organization.view' },
   'platform.department': { permission: 'organization.view' },
+  // The catalogs are gated by the same key the units they define already use — no catalog-only
+  // permission exists, deliberately (see `shared/org-catalog.http.ts`).
+  'platform.departmentCatalog': { permission: 'organization.view' },
+  'platform.sectionCatalog': { permission: 'organization.view' },
   'platform.section': { permission: 'organization.view' },
   'platform.costCenter': { permission: 'costCenter.view' },
   'platform.jobTitle': { permission: 'jobTitle.view' },

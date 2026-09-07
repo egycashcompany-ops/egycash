@@ -3,10 +3,13 @@
 //   npm run report:org-duplication -- --uri "mongodb://…"
 //   npm run report:org-duplication -- --uri "mongodb://…" --json > org-report.json
 //
-// The URI may also come from MONGO_URI in the environment. `--uri` exists because this tool is
-// pointed at a database that is usually NOT the one the developer's `.env` describes, and making
-// somebody edit `.env` to read their own production numbers is friction with a sharp edge: it
-// leaves a live connection string on disk after the one question it answered.
+// The URI may also come from MONGO_URI in the environment, or as a bare `mongodb://…` argument.
+// `--uri` exists because this tool is pointed at a database that is usually NOT the one the
+// developer's `.env` describes, and making somebody edit `.env` to read their own production
+// numbers is friction with a sharp edge: it leaves a live connection string on disk after the one
+// question it answered. For the same reason the package script loads `.env` with
+// `--env-file-if-exists`: a fresh clone has no `.env`, and this is the one tool meant to be run
+// from a fresh clone.
 //
 // IT WRITES NOTHING, and it deliberately depends on almost nothing.
 //
@@ -48,6 +51,7 @@ import {
   type NameGroup,
 } from './org-duplication-report/grouping';
 import { ORG_COLLECTIONS, NULLABLE_BRANCH_COLLECTIONS } from './org-duplication-report/collections';
+import { resolveUri } from './org-duplication-report/args';
 
 /** The shape this report reads. Raw driver documents, not hydrated models. */
 interface UnitRow {
@@ -183,18 +187,10 @@ const humanReport = (r: Record<string, unknown>): string => {
   return lines.join('\n');
 };
 
-/** `--uri <value>` or `--uri=<value>`, else MONGO_URI. */
-const resolveUri = (argv: readonly string[]): string => {
-  const flag = argv.indexOf('--uri');
-  if (flag !== -1 && argv[flag + 1] !== undefined) return String(argv[flag + 1]);
-  const inline = argv.find((a) => a.startsWith('--uri='));
-  if (inline !== undefined) return inline.slice('--uri='.length);
-  return process.env.MONGO_URI ?? '';
-};
 
 const main = async (): Promise<void> => {
   const argv = process.argv.slice(2);
-  const uri = resolveUri(argv).trim();
+  const uri = resolveUri(argv, process.env);
   if (uri === '') {
     // A named instruction, not a schema dump: this tool needs exactly one thing.
     process.stderr.write(

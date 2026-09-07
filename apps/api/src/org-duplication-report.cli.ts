@@ -51,7 +51,7 @@ import {
   type NameGroup,
 } from './org-duplication-report/grouping';
 import { ORG_COLLECTIONS, NULLABLE_BRANCH_COLLECTIONS } from './org-duplication-report/collections';
-import { resolveUri } from './org-duplication-report/args';
+import { diagnoseUri, resolveUri } from './org-duplication-report/args';
 
 /** The shape this report reads. Raw driver documents, not hydrated models. */
 interface UnitRow {
@@ -192,11 +192,13 @@ const main = async (): Promise<void> => {
   const argv = process.argv.slice(2);
   const uri = resolveUri(argv, process.env);
   if (uri === '') {
-    // A named instruction, not a schema dump: this tool needs exactly one thing.
+    // A named instruction, not a schema dump: this tool needs exactly one thing. And when an
+    // argument clearly tried to be that thing, say what is wrong with it rather than "nothing".
+    const why = diagnoseUri(argv);
     process.stderr.write(
-      'No database to read.\n' +
-        '  Pass it:  npm run report:org-duplication -- --uri "mongodb://…"\n' +
-        '  or set MONGO_URI in the environment.\n',
+      (why === null ? 'No database to read.\n' : `${why}\n`) +
+        '  Pass it:  npm run report:org-duplication -- --uri "mongodb+srv://…"\n' +
+        '  or set MONGO_URI in the environment (keeps it off the command line).\n',
     );
     process.exitCode = 1;
     return;

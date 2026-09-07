@@ -17,6 +17,29 @@ const MONGO_SCHEMES = ['mongodb://', 'mongodb+srv://'] as const;
 export const looksLikeMongoUri = (value: string): boolean =>
   MONGO_SCHEMES.some((scheme) => value.startsWith(scheme));
 
+/**
+ * When nothing resolved but an argument clearly TRIED to be a connection string, say what is wrong
+ * with it — precisely, and without echoing it.
+ *
+ * The case this was written for: an operator pasted an Atlas string into a template that already
+ * began with `mongodb:`, and the process received `mongodb:mongodb+srv://…`. "No database to read"
+ * is true and useless; "the scheme is doubled" is what they needed. Only the part up to and
+ * including the first `://` is ever shown — everything after it is the credential.
+ */
+export const diagnoseUri = (argv: readonly string[]): string | null => {
+  const tried = argv.find((a) => /mongodb/i.test(a) && !looksLikeMongoUri(a));
+  if (tried === undefined) return null;
+  const schemeEnd = tried.indexOf('://');
+  const shown = schemeEnd === -1 ? tried.slice(0, 16) : tried.slice(0, schemeEnd + 3);
+  const doubled = /^mongodb:mongodb(\+srv)?:\/\//i.test(tried);
+  return doubled
+    ? `The connection string starts with "${shown}" — the scheme is doubled. ` +
+        'It must start with "mongodb+srv://" (or "mongodb://") with nothing in front of it: copy the ' +
+        'string exactly as Atlas gives it.'
+    : `An argument starting with "${shown}" mentions mongodb but is not a connection string. ` +
+        'It must start with "mongodb+srv://" or "mongodb://".';
+};
+
 export const resolveUri = (
   argv: readonly string[],
   env: Readonly<Record<string, string | undefined>>,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { looksLikeMongoUri, resolveUri } from './args';
+import { diagnoseUri, looksLikeMongoUri, resolveUri } from './args';
 
 const none = {};
 
@@ -45,5 +45,34 @@ describe('resolveUri', () => {
     expect(looksLikeMongoUri('--json')).toBe(false);
     expect(looksLikeMongoUri('org-report.json')).toBe(false);
     expect(looksLikeMongoUri('mongodb:mongodb+srv://x')).toBe(false);
+  });
+});
+
+describe('diagnoseUri', () => {
+  it('names a doubled scheme — the shape an operator actually produced, twice', () => {
+    // Pasting an Atlas string into a template that already began with `mongodb:` yields this.
+    const why = diagnoseUri(['mongodb:mongodb+srv://user:s3cret@cluster.example.net/ecms']);
+    expect(why).toContain('doubled');
+    expect(why).toContain('mongodb:mongodb+srv://');
+  });
+
+  it('never echoes anything past the scheme — what follows is the credential', () => {
+    const why = diagnoseUri(['mongodb:mongodb+srv://user:s3cret@cluster.example.net/ecms']);
+    expect(why).not.toContain('s3cret');
+    expect(why).not.toContain('user');
+    expect(why).not.toContain('cluster.example.net');
+  });
+
+  it('says nothing when no argument tried to be a connection string', () => {
+    expect(diagnoseUri(['--json'])).toBeNull();
+    expect(diagnoseUri([])).toBeNull();
+  });
+
+  it('says nothing when the URI is valid — that case is handled by resolveUri', () => {
+    expect(diagnoseUri(['mongodb+srv://u:p@h/db'])).toBeNull();
+  });
+
+  it('still refuses to resolve the doubled form, so the diagnosis is what the operator sees', () => {
+    expect(resolveUri(['mongodb:mongodb+srv://u:p@h/db'], {})).toBe('');
   });
 });

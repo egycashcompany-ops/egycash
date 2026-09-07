@@ -53,11 +53,25 @@ const code = (prefix: string): string => {
   return `${prefix}${String(seq).padStart(4, '0')}`;
 };
 
-const makeBranch = async (name: string) =>
-  branchService.create({ code: code('BR'), name: { ar: name, en: name } }, ACTOR);
+/**
+ * A branch whose NAME is unique, not just its code.
+ *
+ * `branchService` is the one org unit that refuses a duplicate name (`assertNameAvailable`), and the
+ * cleanup below deliberately leaves branches alone — every case here cares about a branch's id, not
+ * its label. Reusing a readable name across cases therefore failed the second case that used it.
+ */
+const makeBranch = async (name: string) => {
+  const unique = code('BR');
+  return branchService.create(
+    { code: unique, name: { ar: `${name} ${unique}`, en: `${name} ${unique}` } },
+    ACTOR,
+  );
+};
 
 beforeEach(async () => {
   // Every case builds its own org chart; leftovers from the last one would join its folded groups.
+  // Branches are NOT cleared — `makeBranch` gives each a unique name instead, which keeps a case
+  // that reads a branch id independent of one that does not.
   await Promise.all([
     DepartmentModel.deleteMany({}),
     SectionModel.deleteMany({}),
@@ -92,7 +106,15 @@ describe('declaring a company-wide department in a branch', () => {
     expect(new Set(rows.map((row) => String(row.branchId))).size).toBe(2);
   });
 
-  /** The invariant the whole redesign rests on, proved by the index rather than by a check. */
+  /**
+   * The invariant the whole redesign rests on, proved by the index rather than by a check.
+   *
+   * The assertion is on the MESSAGE, not on a raw `code: 11000`: `BaseRepository.create` catches
+   * the driver's duplicate-key error and re-throws a `ConflictError` naming the fields of the index
+   * that was violated. That translation is what makes this worth asserting at all — naming
+   * `branchId + catalogId` proves it was `ux_branch_catalog` that refused the second declaration
+   * and not `ux_code` or some other constraint the fixture tripped by accident.
+   */
   it('refuses the same entry twice in one branch', async () => {
     const entry = await departmentCatalogService.create(
       { code: code('DC'), name: { ar: 'الخزينة', en: 'Treasury' } },
@@ -106,7 +128,7 @@ describe('declaring a company-wide department in a branch', () => {
       );
 
     await declare();
-    await expect(declare()).rejects.toMatchObject({ code: 11000 });
+    await expect(declare()).rejects.toThrow(/branchId \+ catalogId/);
   });
 
   /**

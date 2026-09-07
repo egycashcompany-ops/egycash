@@ -122,6 +122,16 @@ export const DepartmentsListPage = (): JSX.Element => {
 
   const columns: Column<DepartmentDto>[] = [
     {
+      key: 'code',
+      header: t('organization.field.code'),
+      sortable: true,
+      render: (d) => (
+        <span className="font-mono text-xs" dir="ltr">
+          {d.code}
+        </span>
+      ),
+    },
+    {
       key: 'branchId',
       header: t('organization.field.branch'),
       render: (d) => <span>{branchName(d.branchId)}</span>,

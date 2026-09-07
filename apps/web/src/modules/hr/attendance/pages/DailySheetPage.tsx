@@ -13,7 +13,7 @@ import { Can, useCan } from '../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../store';
 import { Button, EmptyState, Pagination } from '../../../../shared/ui';
 import { Field, Input, Select } from '../../../../shared/ui/form';
-import { localized } from '../../../../shared/lib/format';
+import { localized, orgUnitLabel } from '../../../../shared/lib/format';
 import { useBranchOptions, useSectionOptions } from '../../../organization/shared/references';
 import { DaysTable } from '../components/DaysTable';
 import { OvertimeApprovalDialog } from '../components/OvertimeApprovalDialog';
@@ -143,7 +143,7 @@ export const DailySheetPage = (): JSX.Element => {
             <option value="">{t('attendance.daily.allSections')}</option>
             {(sections.data ?? []).map((s) => (
               <option key={s.id} value={s.id}>
-                {localized(s.name, locale)}
+                {orgUnitLabel(s, locale)}
               </option>
             ))}
           </Select>

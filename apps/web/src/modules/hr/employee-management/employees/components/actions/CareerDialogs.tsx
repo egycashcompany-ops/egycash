@@ -11,7 +11,7 @@ import { Field, Input, Select } from '../../../../../../shared/ui/form';
 import { MoneyInput } from '../../../../../../shared/ui/MoneyInput';
 import { SearchInput } from '../../../../../../shared/ui/SearchInput';
 import { toast } from '../../../../../../shared/ui/toast/toast-store';
-import { localized } from '../../../../../../shared/lib/format';
+import { localized, orgUnitLabel } from '../../../../../../shared/lib/format';
 import {
   useBranchOptions,
   useDepartmentOptions,
@@ -175,7 +175,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
           <option value="">{t('common.select')}</option>
           {departments.map((d) => (
             <option key={d.id} value={d.id}>
-              {localized(d.name, locale)}
+              {orgUnitLabel(d, locale)}
             </option>
           ))}
         </Select>
@@ -185,7 +185,7 @@ export const TransferDialog = ({ employee, open, onClose }: DialogProps): JSX.El
           <option value="">{t('employees.actions.transfer.noSection')}</option>
           {sections.map((sec) => (
             <option key={sec.id} value={sec.id}>
-              {localized(sec.name, locale)}
+              {orgUnitLabel(sec, locale)}
             </option>
           ))}
         </Select>

@@ -288,6 +288,7 @@ td .hint { display: block; font-size: 12.5px; color: var(--ink-3); line-height: 
 }
 .cell.done { border-inline-start: 3px solid var(--built); }
 .cell.todo { border-inline-start: 3px dashed var(--target); background: transparent; }
+.cell.partial { border-inline-start: 3px dashed var(--built); }
 .cell-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cell-name { font-size: 14px; font-weight: 600; }
 .cell-note { font-size: 12.5px; color: var(--ink-3); line-height: 1.5; }
@@ -297,6 +298,7 @@ td .hint { display: block; font-size: 12.5px; color: var(--ink-3); line-height: 
 }
 .state.done { background: var(--built-soft); color: var(--built); }
 .state.todo { background: var(--target-soft); color: var(--target); }
+.state.partial { background: var(--built-faint); color: var(--built); box-shadow: inset 0 0 0 1px var(--built-soft); }
 
 /* ── role cards ────────────────────────────────────────────────────────── */
 .roles { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); overflow: hidden; }
@@ -416,7 +418,7 @@ footer code { font-family: var(--mono); font-size: 12.5px; background: var(--sur
         <div class="rail-track" role="img" aria-label="7 موديولات من أصل 11 مخططة، أي 64 بالمئة">
           <div class="rail-fill" style="width:64%"></div>
         </div>
-        <div class="rail-note"><span class="pct">64%</span><span>نواة المنصة: 13 من 17</span></div>
+        <div class="rail-note"><span class="pct">64%</span><span>نواة المنصة: 9 من 17</span></div>
       </div>
     </article>
 
@@ -594,29 +596,38 @@ footer code { font-family: var(--mono); font-size: 12.5px; background: var(--sur
       <div class="fact"><b>2</b><span>لغة · RTL كامل</span></div>
     </div>
 
-    <h3 class="sub">الطبقة الأولى — نواة المنصة · 13 من 17 خدمة</h3>
+    <h3 class="sub">الطبقة الأولى — نواة المنصة · 9 من 17 خدمة مشتركة</h3>
+    <p style="margin:0;font-size:14px;color:var(--ink-2);max-width:66ch">
+      خمس خدمات أخرى من السبعة عشر <b>تعمل فعلًا</b> لكن كتنفيذ داخل الموديولات لا كخدمة مشتركة
+      (محرك سير عمل داخل التوظيف، ترقيم تسلسلي لكل موديول، لوحات وتقارير جاهزة لكل موديول).
+      وبُنيت خدمات خارج الخطة الأصلية: المجدول والمهام · الأتمتة · الزمن الحقيقي · توليد PDF ·
+      الأسرار والتشفير · دليل الموظفين · كتالوج التطبيقات والقائمة الجانبية.
+    </p>
     <div class="matrix">
-      <div class="cell done"><div class="cell-top"><span class="cell-name">المصادقة</span><span class="state done">مُسلَّم</span></div><span class="cell-note">JWT + رفرش دوّار + TOTP · دورة حياة الحساب</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">المستخدمون</span><span class="state done">مُسلَّم</span></div><span class="cell-note">الحسابات والملفات الشخصية</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الأدوار والصلاحيات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">سجلّ · إسنادات مؤقّتة · نطاقات</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الهيكل التنظيمي</span><span class="state done">مُسلَّم</span></div><span class="cell-note">شركة · فرع · إدارة · قسم · مسميات · مراكز تكلفة</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الملفات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">Local · S3 · MinIO · Azure · إصدارات</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">التدقيق والنشاط</span><span class="state done">مُسلَّم</span></div><span class="cell-note">القيم قبل/بعد · خط زمني · احتفاظ</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الإشعارات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">داخل التطبيق · بريد · Socket.IO · قوالب</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الإعدادات</span><span class="state done">مُسلَّم</span></div><span class="cell-note">هرمية: نظام ← شركة ← فرع ← مستخدم</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الترقيم التسلسلي</span><span class="state done">مُسلَّم</span></div><span class="cell-note">أرقام مستندات ذرّية بلا فجوات</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">التعريب</span><span class="state done">مُسلَّم</span></div><span class="cell-note">عربي/إنجليزي · RTL · تواريخ وأرقام</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">المجدول والمهام</span><span class="state done">مُسلَّم</span></div><span class="cell-note">BullMQ · Redis · عامل مستقل</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الأتمتة</span><span class="state done">مُسلَّم</span></div><span class="cell-note">قوالب n8n · صندوق صادر معاملاتي</span></div>
-      <div class="cell done"><div class="cell-top"><span class="cell-name">الذكاء الاصطناعي / OCR</span><span class="state done">مُسلَّم</span></div><span class="cell-note">قراءة بطاقة الرقم القومي · واجهة قابلة للتوسعة</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">المصادقة</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">JWT + رفرش دوّار + TOTP · دورة حياة الحساب</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">المستخدمون</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">الحسابات والملفات الشخصية</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الأدوار والصلاحيات</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">سجلّ · إسنادات مؤقّتة · نطاقات</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الهيكل التنظيمي</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">شركة · فرع · إدارة · قسم · مسميات · مراكز تكلفة</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الملفات</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">Local · S3 · MinIO · Azure · إصدارات</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">التدقيق والنشاط</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">القيم قبل/بعد · خط زمني · احتفاظ</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الإشعارات</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">داخل التطبيق · بريد · Socket.IO · قوالب</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">الإعدادات</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">هرمية: نظام ← شركة ← فرع ← مستخدم</span></div>
+      <div class="cell done"><div class="cell-top"><span class="cell-name">التعريب</span><span class="state done">خدمة مشتركة</span></div><span class="cell-note">عربي/إنجليزي · RTL · تواريخ وأرقام</span></div>
+      <div class="cell partial"><div class="cell-top"><span class="cell-name">محرك سير العمل</span><span class="state partial">داخل الموديولات</span></div><span class="cell-note">يعمل بالكامل، لكنه داخل التوظيف والأتمتة لا كخدمة مشتركة</span></div>
+      <div class="cell partial"><div class="cell-top"><span class="cell-name">الترقيم التسلسلي</span><span class="state partial">داخل الموديولات</span></div><span class="cell-note">تسعة مولّدات منفصلة لكل موديول، لا مولّد واحد</span></div>
+      <div class="cell partial"><div class="cell-top"><span class="cell-name">لوحات المعلومات</span><span class="state partial">داخل الموديولات</span></div><span class="cell-note">لوحة لكل من الذهب والأسطول، بلا سجلّ ودجات مشترك</span></div>
+      <div class="cell partial"><div class="cell-top"><span class="cell-name">التقارير</span><span class="state partial">داخل الموديولات</span></div><span class="cell-note">تقارير جاهزة لكل موديول، بلا محرك تعريفات وجدولة</span></div>
+      <div class="cell partial"><div class="cell-top"><span class="cell-name">الذكاء الاصطناعي / OCR</span><span class="state partial">داخل الموديولات</span></div><span class="cell-note">قراءة بطاقة الرقم القومي، بلا واجهة AI عامة</span></div>
       <div class="cell todo"><div class="cell-top"><span class="cell-name">محرك البحث</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">بحث موحّد عبر الموديولات مفلتَر بالصلاحيات</span></div>
       <div class="cell todo"><div class="cell-top"><span class="cell-name">محرك الاعتمادات</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">سلاسل موافقة · تفويض · تصعيد</span></div>
-      <div class="cell todo"><div class="cell-top"><span class="cell-name">لوحات المعلومات</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">سجل ودجات · لوحة لكل دور</span></div>
-      <div class="cell todo"><div class="cell-top"><span class="cell-name">محرك التقارير</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">تعريفات · معاملات · تصدير · جدولة</span></div>
       <div class="cell todo"><div class="cell-top"><span class="cell-name">التكاملات</span><span class="state todo">متبقٍّ</span></div><span class="cell-note">Webhooks · موصّلات · مفاتيح API</span></div>
     </div>
 
     <h3 class="sub">الطبقة الثانية — الموديولات التشغيلية · 7 من 11</h3>
+    <p style="margin:0;font-size:14px;color:var(--ink-2);max-width:66ch">
+      ستة موديولات قائمة بذاتها، والسابع — العقود — مُسلَّم داخل الموارد البشرية.
+      «إدارة النظام» في الجدول ليست واحدًا من الأحد عشر: هي واجهة المنصة لإدارة نفسها.
+    </p>
     <div class="table-wrap">
       <table>
         <caption>الموديولات ومحتوياتها</caption>
@@ -657,7 +668,7 @@ footer code { font-family: var(--mono); font-size: 12.5px; background: var(--sur
             <td>المستخدمون · الأدوار · سجلّ الصلاحيات · التدقيق · النشاط · الإعدادات · قوالب الإشعارات · التطبيقات والتصنيفات</td>
             <td class="n">15</td>
           </tr>
-          <tr class="sum"><td colspan="2">إجمالي الصفحات المسجَّلة اليوم</td><td class="n">90</td></tr>
+          <tr class="sum"><td colspan="2">إجمالي الصفحات المسجَّلة اليوم (بما فيها 15 صفحة منصة)</td><td class="n">90</td></tr>
         </tbody>
       </table>
     </div>

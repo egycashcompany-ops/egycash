@@ -22,23 +22,20 @@
 // Fleet writes none of it. The profile itself is never re-pointed at another person (the contract
 // has no employeeId on update — a profile is an extension of ONE person, forever). Version-aware.
 import { useEffect, useState } from 'react';
-import {
-  type FleetDriverProfileDto,
-  type FleetDriverSpecialization,
-  type Locale,
-} from '@ecms/contracts';
+import { type FleetDriverProfileDto, type Locale } from '@ecms/contracts';
 import { Link } from 'react-router-dom';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
+import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ExternalLinkIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { useCreateDriverProfile, useUpdateDriverProfile } from '../api/fleet-queries';
 import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import { CatalogSelect } from './CatalogSelect';
 import { EmployeeName, useEmployeeRecord } from './EmployeeName';
 import {
   HR_DELEGATION,
@@ -48,12 +45,13 @@ import {
 } from './hr-delegation';
 import { DriverLicenseImageField } from './DriverLicenseImage';
 
-const SPECIALIZATIONS: FleetDriverSpecialization[] = ['cashTransport', 'atm', 'both'];
-
 interface FormState {
   licenseNumber: string;
   licenseExpiresAt: string;
-  specialization: FleetDriverSpecialization;
+  /** The three catalog ids. `''` = «not chosen», which is a state a profile is allowed to be in. */
+  jobId: string;
+  specializationId: string;
+  licenseTypeId: string;
   area: string;
   isActive: boolean;
 }
@@ -61,7 +59,9 @@ interface FormState {
 const fromProfile = (profile: FleetDriverProfileDto | null): FormState => ({
   licenseNumber: profile?.licenseNumber ?? '',
   licenseExpiresAt: profile === null ? '' : profile.licenseExpiresAt.slice(0, 10),
-  specialization: profile?.specialization ?? 'cashTransport',
+  jobId: profile?.jobId ?? '',
+  specializationId: profile?.specializationId ?? '',
+  licenseTypeId: profile?.licenseTypeId ?? '',
   area: profile?.area ?? '',
   isActive: profile?.isActive ?? true,
 });
@@ -151,6 +151,9 @@ export const DriverFormDialog = ({
 
   const submit = async (): Promise<void> => {
     const area = form.area.trim() === '' ? null : form.area.trim();
+    // `''` in the form means «nobody has chosen one», and it must reach the server as `null` —
+    // both to CLEAR a grade that was set by mistake and because an empty string is not an id.
+    const ref = (value: string): string | null => (value === '' ? null : value);
     // FIRST TIME: the person is on the registry because of their seat, and this is the licence
     // being written down. `isActive` is not offered here — a profile is created active, and
     // deactivating one is a decision about a driver who already exists.
@@ -160,7 +163,9 @@ export const DriverFormDialog = ({
         employeeId: subjectId,
         licenseNumber: form.licenseNumber.trim(),
         licenseExpiresAt: new Date(form.licenseExpiresAt),
-        specialization: form.specialization,
+        jobId: ref(form.jobId),
+        specializationId: ref(form.specializationId),
+        licenseTypeId: ref(form.licenseTypeId),
         area,
       });
       toast.success(t('fleet.drivers.recorded'));
@@ -172,7 +177,9 @@ export const DriverFormDialog = ({
       body: {
         licenseNumber: form.licenseNumber.trim(),
         licenseExpiresAt: new Date(form.licenseExpiresAt),
-        specialization: form.specialization,
+        jobId: ref(form.jobId),
+        specializationId: ref(form.specializationId),
+        licenseTypeId: ref(form.licenseTypeId),
         area,
         isActive: form.isActive,
         version: profile.version,
@@ -219,22 +226,36 @@ export const DriverFormDialog = ({
               onChange={(e) => setForm((prev) => ({ ...prev, licenseExpiresAt: e.target.value }))}
             />
           </Field>
-          <Field label={t('fleet.drivers.fields.specialization')} required>
-            <Select
-              value={form.specialization}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  specialization: e.target.value as FleetDriverSpecialization,
-                }))
-              }
-            >
-              {SPECIALIZATIONS.map((value) => (
-                <option key={value} value={value}>
-                  {t(`fleet.drivers.specialization.${value}`)}
-                </option>
-              ))}
-            </Select>
+          {/* The three fleet catalogs. Exactly the lists /fleet/drivers FILTERS by and the table
+              DISPLAYS — one `useFleetCatalog` cache entry per kind, read by all three — so a value
+              an admin adds is offered here the moment it exists, and the form can never offer a
+              vocabulary the filter bar does not have. */}
+          <Field label={t('fleet.drivers.fields.job')}>
+            <CatalogSelect
+              kind="driverJob"
+              value={form.jobId}
+              onChange={(id) => setForm((prev) => ({ ...prev, jobId: id }))}
+              allLabel={t('fleet.drivers.noJob')}
+              ariaLabel={t('fleet.drivers.fields.job')}
+            />
+          </Field>
+          <Field label={t('fleet.drivers.fields.specialization')}>
+            <CatalogSelect
+              kind="driverSpecialization"
+              value={form.specializationId}
+              onChange={(id) => setForm((prev) => ({ ...prev, specializationId: id }))}
+              allLabel={t('fleet.drivers.noSpecialization')}
+              ariaLabel={t('fleet.drivers.fields.specialization')}
+            />
+          </Field>
+          <Field label={t('fleet.drivers.fields.licenseType')}>
+            <CatalogSelect
+              kind="driverLicenseType"
+              value={form.licenseTypeId}
+              onChange={(id) => setForm((prev) => ({ ...prev, licenseTypeId: id }))}
+              allLabel={t('fleet.drivers.noLicenseType')}
+              ariaLabel={t('fleet.drivers.fields.licenseType')}
+            />
           </Field>
           <Field label={t('fleet.drivers.fields.area')}>
             <Input

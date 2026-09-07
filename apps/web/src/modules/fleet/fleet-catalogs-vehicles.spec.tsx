@@ -200,6 +200,44 @@ describe('the three new catalogs are first-class kinds', () => {
   });
 });
 
+describe('the drivers registry’s three catalogs are managed here too', () => {
+  const DRIVER_KINDS = ['driverJob', 'driverSpecialization', 'driverLicenseType'] as const;
+
+  it('are first-class kinds, so the admin screen picks them up with no code of their own', () => {
+    // The whole reason «الوظيفة / التخصص / الرخصة» are catalogs: adding a value is data. Being
+    // members of the enum is what gets them a tab, a create form, an edit action and an archive
+    // switch without a line of screen code naming them.
+    for (const kind of DRIVER_KINDS) expect(FLEET_CATALOG_KINDS).toContain(kind);
+  });
+
+  it('each gets its own tab, in both locales', () => {
+    for (const locale of ['ar', 'en'] as Locale[]) {
+      const markup = render(<CatalogsPage />, { route: '/fleet/catalogs', locale });
+      for (const kind of DRIVER_KINDS) {
+        const label = translate(locale, `fleet.catalogs.kind.${kind}`);
+        expect(label, `${kind} in ${locale}`).not.toBe(`fleet.catalogs.kind.${kind}`);
+        expect(markup, `${kind} tab in ${locale}`).toContain(label);
+      }
+    }
+  });
+
+  it('opening one selects THAT tab and offers the add action for it', () => {
+    const markup = render(<CatalogsPage />, { route: '/fleet/catalogs?kind=driverJob' });
+    // The selected tab is the one asked for, and only it — the tab bar reads the URL.
+    const selected = markup.split('aria-selected="true"')[1] ?? '';
+    expect(selected, 'the driverJob tab is the selected one').toContain(
+      t('fleet.catalogs.kind.driverJob'),
+    );
+    expect(
+      markup.split('aria-selected="true"').length - 1,
+      'exactly one tab is selected',
+    ).toBe(1);
+    expect(markup, 'and the add action names the kind').toContain(
+      translate('ar', 'fleet.catalogs.addItem', { kind: t('fleet.catalogs.kind.driverJob') }),
+    );
+  });
+});
+
 // ── 2. The vehicle form ─────────────────────────────────────────────────────
 
 /**

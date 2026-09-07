@@ -10,10 +10,14 @@ import { cn } from '../lib/cn';
 import { useT } from '../../platform/localization/useT';
 import { ResetIcon } from './icons';
 
-const singleRowBreakpoint: Record<1400 | 1440 | 1536, string> = {
+const singleRowBreakpoint: Record<1400 | 1440 | 1536 | 1600, string> = {
   1400: 'min-[1400px]:flex-nowrap',
   1440: 'min-[1440px]:flex-nowrap',
   1536: 'min-[1536px]:flex-nowrap',
+  // A wider entry for a bar with more than a handful of controls: the drivers registry asks
+  // ELEVEN questions in one row, which measures 1294px, and the shell spends 304px of the
+  // viewport before the bar begins — so it fits from 1598px and not a pixel earlier.
+  1600: 'min-[1600px]:flex-nowrap',
 };
 
 export const FilterBar = ({
@@ -60,7 +64,7 @@ export const FilterBar = ({
    * Spelled out rather than interpolated because Tailwind scans source text for class names and
    * never sees a built string.
    */
-  singleRowFrom?: 1400 | 1440 | 1536;
+  singleRowFrom?: 1400 | 1440 | 1536 | 1600;
 }): JSX.Element => {
   const t = useT();
   return (

@@ -14,6 +14,7 @@ import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { FleetCatalogItemModel } from './catalogs/catalog-item.model';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
+import { FleetDriverProfileModel } from './driver-profiles/driver-profile.model';
 import {
   FIXED_CREW_VEHICLE_INDEX_KEY,
   FIXED_CREW_VEHICLE_INDEX_OPTIONS,
@@ -152,6 +153,68 @@ export const migrateViolationTypeSides = async (): Promise<{
 };
 
 /**
+ * Point existing driver profiles at the new «التخصص» catalog, from the enum they already carry.
+ *
+ * The three-value enum became a `driverSpecialization` catalog because three values could not
+ * express the four the house actually runs. Two of them have an exact successor and are converted;
+ * the third does not, and that is stated rather than guessed:
+ *
+ *   cashTransport → «نقل اموال»
+ *   atm           → «ATM»
+ *   both          → NOTHING. The new vocabulary has no "both", and picking one of the two — or
+ *                   inventing a fifth item — would put a classification in a person's file that
+ *                   nobody made. Those profiles keep their enum, read as unclassified by the new
+ *                   filters, and are counted in the log so an admin knows exactly how many to set.
+ *
+ * Non-destructive and idempotent like its neighbours: the legacy column is never cleared, only a
+ * profile with no reference yet is touched, and the catalog is READ rather than seeded — if the
+ * boot seed has not created «نقل اموال» there is nothing to point at, and nothing is invented.
+ */
+const SPECIALIZATION_SUCCESSOR: Record<string, string> = {
+  cashTransport: 'نقل اموال',
+  atm: 'ATM',
+};
+
+export const migrateDriverSpecializations = async (): Promise<{
+  converted: number;
+  unmapped: number;
+}> => {
+  const pending = await FleetDriverProfileModel.find(
+    { isDeleted: false, specializationId: null, specialization: { $nin: [null, ''] } },
+    { _id: 1, specialization: 1 },
+  )
+    .lean<{ _id: unknown; specialization: string | null }[]>()
+    .exec();
+  if (pending.length === 0) return { converted: 0, unmapped: 0 };
+
+  const items = await FleetCatalogItemModel.find(
+    { kind: 'driverSpecialization', isDeleted: false },
+    { _id: 1, name: 1 },
+  )
+    .lean<{ _id: unknown; name: { ar: string } }[]>()
+    .exec();
+  const byName = new Map(items.map((item) => [item.name.ar, item._id]));
+
+  let converted = 0;
+  let unmapped = 0;
+  for (const row of pending) {
+    const successor = SPECIALIZATION_SUCCESSOR[row.specialization ?? ''];
+    const id = successor === undefined ? undefined : byName.get(successor);
+    if (id === undefined) {
+      unmapped += 1;
+      continue;
+    }
+    await FleetDriverProfileModel.updateOne({ _id: row._id }, { $set: { specializationId: id } });
+    converted += 1;
+  }
+  logger.info(
+    { converted, unmapped },
+    'fleet: driver specializations backfilled from the legacy enum — unmapped profiles keep it and read as unclassified until an admin chooses',
+  );
+  return { converted, unmapped };
+};
+
+/**
  * Build `ux_fixed_vehicle`, the index that makes "one vehicle, one fixed crew" a database fact.
  *
  * The schema declares it, but `autoIndex` is off outside development
@@ -216,6 +279,8 @@ export const migrateFixedCrewIndex = async (): Promise<{
 export const runFleetMigrations = async (): Promise<void> => {
   await migrateVehicleLicenseClasses();
   await migrateViolationTypeSides();
+  // After the seed above has created «نقل اموال» and «ATM» — it reads the catalog, never writes it.
+  await migrateDriverSpecializations();
   await reportBranchlessVehicles();
   await migrateFixedCrewIndex();
   // Every OTHER index the Fleet schemas declare — the deploy step ADR-005 promises and the

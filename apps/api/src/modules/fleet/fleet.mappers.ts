@@ -92,7 +92,13 @@ export const toDriverProfileDto = (doc: FleetDriverProfileDoc): FleetDriverProfi
   employeeId: String(doc.employeeId),
   licenseNumber: doc.licenseNumber,
   licenseExpiresAt: iso(doc.licenseExpiresAt),
-  specialization: doc.specialization,
+  // `== null` for the three catalog references and the legacy enum alike: every one of them was
+  // added after profiles already existed, so a stored row simply has no such key and it arrives
+  // as `undefined` rather than as the `null` the schema default writes.
+  jobId: doc.jobId == null ? null : String(doc.jobId),
+  specializationId: doc.specializationId == null ? null : String(doc.specializationId),
+  licenseTypeId: doc.licenseTypeId == null ? null : String(doc.licenseTypeId),
+  specialization: doc.specialization ?? null,
   area: doc.area,
   isActive: doc.isActive,
   // `== null`, not `=== null`: reads go through `.lean()`, and a profile written before the

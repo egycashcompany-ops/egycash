@@ -5,6 +5,7 @@
 import {
   FleetEvents,
   type CreateFleetDriverProfile,
+  type FleetCatalogKind,
   type ListFleetDriversQuery,
   type Paginated,
   type UpdateFleetDriverProfile,
@@ -21,9 +22,10 @@ import { jobTitleRepository } from '../../../platform/organization';
 import { emit } from '../../../platform/kernel/event-bus';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { diffChanges } from '../../../shared/utils/diff';
+import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { resolveDriverDocsCategoryId } from './driver-files';
 import { fleetDriverProfileRepository } from './driver-profile.repository';
-import { matchesFleetFilters, sortDriverRows } from './driver-roster';
+import { matchesFleetFilters, matchesRosterBranch, sortDriverRows } from './driver-roster';
 import { DRIVER_PROFILE_KIND, type FleetDriverProfileDoc } from './driver-profile.model';
 
 const entityRef = (id: string) => ({
@@ -32,10 +34,16 @@ const entityRef = (id: string) => ({
   entityId: id,
 });
 
+const ref = (id: Types.ObjectId | null | undefined): string | null =>
+  id == null ? null : String(id);
+
 const snapshot = (doc: FleetDriverProfileDoc) => ({
   employeeId: String(doc.employeeId),
   licenseNumber: doc.licenseNumber,
   licenseExpiresAt: doc.licenseExpiresAt,
+  jobId: ref(doc.jobId),
+  specializationId: ref(doc.specializationId),
+  licenseTypeId: ref(doc.licenseTypeId),
   specialization: doc.specialization,
   area: doc.area,
   isActive: doc.isActive,
@@ -45,6 +53,32 @@ const snapshot = (doc: FleetDriverProfileDoc) => ({
 
 /** Case-insensitive substring match with the user's input treated as text, not as a pattern. */
 const rx = (term: string): RegExp => new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+
+/**
+ * The three «الوظيفة / التخصص / الرخصة» references, checked before they are stored.
+ *
+ * The dropdowns already offer one kind's active rows each, so this can only fire on a request the
+ * screen did not compose — but that is exactly the request worth refusing. Storing a `sparePart`
+ * id in `jobId` would leave a profile whose grade column renders a dash forever, with nothing
+ * anywhere saying why, and the FIX would be a data repair rather than an edit.
+ *
+ * `null` clears the reference and is always allowed: «not classified yet» is the state every
+ * profile starts in, and un-saying a wrong grade must not need a right one.
+ */
+const assertCatalogRef = async (
+  field: string,
+  kind: FleetCatalogKind,
+  id: string | null | undefined,
+): Promise<Types.ObjectId | null> => {
+  if (id === undefined || id === null) return null;
+  const item = await fleetCatalogItemRepository.findActiveOfKind(id, kind);
+  if (item === null) {
+    throw new ValidationError([
+      { field: `body.${field}`, code: 'UNKNOWN', message: `no active ${kind} with this id` },
+    ]);
+  }
+  return item._id as Types.ObjectId;
+};
 
 class FleetDriverProfileService {
   async create(input: CreateFleetDriverProfile, by: string): Promise<FleetDriverProfileDoc> {
@@ -68,7 +102,18 @@ class FleetDriverProfileService {
         kind: DRIVER_PROFILE_KIND,
         licenseNumber: input.licenseNumber,
         licenseExpiresAt: input.licenseExpiresAt,
-        specialization: input.specialization,
+        jobId: await assertCatalogRef('jobId', 'driverJob', input.jobId),
+        specializationId: await assertCatalogRef(
+          'specializationId',
+          'driverSpecialization',
+          input.specializationId,
+        ),
+        licenseTypeId: await assertCatalogRef(
+          'licenseTypeId',
+          'driverLicenseType',
+          input.licenseTypeId,
+        ),
+        specialization: null,
         area: input.area ?? null,
         isActive: true,
         licenseImage: null,
@@ -104,7 +149,9 @@ class FleetDriverProfileService {
    */
   async listRoster(
     query: ListFleetDriversQuery,
-  ): Promise<Paginated<{ employeeId: string; profile: FleetDriverProfileDoc | null }>> {
+  ): Promise<
+    Paginated<{ employeeId: string; branchId: string | null; profile: FleetDriverProfileDoc | null }>
+  > {
     const jobTitleIds = await jobTitleRepository.idsRequiringDrivingTestSystem();
     const roster = await listDirectoryEmployeesByJobTitles(jobTitleIds);
     const profiles = await fleetDriverProfileRepository.findForEmployeesSystem(
@@ -112,11 +159,16 @@ class FleetDriverProfileService {
     );
     const byEmployee = new Map(profiles.map((doc) => [String(doc.employeeId), doc]));
 
+    // The branch comes along on the roster row, from the same seam that named the driver: it is
+    // the fact «الفرع» filters on, and having it here is what lets that filter be answered without
+    // an HR page — see `ListFleetDriversQuerySchema.branchId` for what asking HR cost.
     let rows = roster.map((employee) => ({
       employeeId: employee.employeeId,
+      branchId: employee.branchId,
       profile: byEmployee.get(employee.employeeId) ?? null,
     }));
 
+    rows = rows.filter((row) => matchesRosterBranch(row.branchId, query.branchId));
     // The HR half of the filter bar, already resolved to ids by the browser (FR-11): Fleet narrows
     // its own roster by them and asks HR nothing more.
     if (query.employeeIds !== undefined) {
@@ -196,7 +248,24 @@ class FleetDriverProfileService {
     const set: Partial<FleetDriverProfileDoc> = {};
     if (input.licenseNumber !== undefined) set.licenseNumber = input.licenseNumber;
     if (input.licenseExpiresAt !== undefined) set.licenseExpiresAt = input.licenseExpiresAt;
-    if (input.specialization !== undefined) set.specialization = input.specialization;
+    // Each reference is written only when the caller SAID something about it, and `null` is one of
+    // the things it can say — so an omitted key leaves the stored grade alone while an explicit
+    // null clears it.
+    if (input.jobId !== undefined) set.jobId = await assertCatalogRef('jobId', 'driverJob', input.jobId);
+    if (input.specializationId !== undefined) {
+      set.specializationId = await assertCatalogRef(
+        'specializationId',
+        'driverSpecialization',
+        input.specializationId,
+      );
+    }
+    if (input.licenseTypeId !== undefined) {
+      set.licenseTypeId = await assertCatalogRef(
+        'licenseTypeId',
+        'driverLicenseType',
+        input.licenseTypeId,
+      );
+    }
     if (input.area !== undefined) set.area = input.area ?? null;
     if (input.isActive !== undefined) set.isActive = input.isActive;
 

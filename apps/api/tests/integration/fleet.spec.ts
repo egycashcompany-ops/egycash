@@ -134,7 +134,15 @@ const nextPhone = (): string => `010${String(phoneCounter++).padStart(8, '0')}`;
 
 /** HR employee via the real direct-registration endpoint — Fleet never fabricates one. */
 const mkEmployee = async (
-  over: { fullNameAr?: string; phone?: string; governorate?: string; jobTitleId?: string } = {},
+  over: {
+    fullNameAr?: string;
+    phone?: string;
+    governorate?: string;
+    jobTitleId?: string;
+    /** Where they are PLACED — the fact «الفرع» filters the drivers registry on. */
+    branchId?: string;
+    departmentId?: string;
+  } = {},
 ): Promise<string> => {
   const res = await request(app)
     .post('/api/v1/hr/employees/direct')
@@ -163,8 +171,8 @@ const mkEmployee = async (
       },
       employment: {
         jobTitleId: over.jobTitleId ?? jobTitleAId,
-        departmentId: departmentAId,
-        branchId: branchAId,
+        departmentId: over.departmentId ?? departmentAId,
+        branchId: over.branchId ?? branchAId,
         employmentType: 'fullTime',
         probationMonths: 0,
         startDate: '2026-07-01T00:00:00.000Z',
@@ -192,7 +200,10 @@ const someDriver = async (): Promise<string> => {
 const withoutUndefined = (body: Record<string, unknown>): Record<string, unknown> =>
   Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined));
 
-const mkDriverProfile = async (employeeId: string): Promise<FleetDriverProfileDto> => {
+const mkDriverProfile = async (
+  employeeId: string,
+  refs: { jobId?: string; specializationId?: string; licenseTypeId?: string } = {},
+): Promise<FleetDriverProfileDto> => {
   const res = await request(app)
     .post('/api/v1/fleet/drivers')
     .set('Authorization', `Bearer ${adminToken}`)
@@ -200,10 +211,20 @@ const mkDriverProfile = async (employeeId: string): Promise<FleetDriverProfileDt
       employeeId,
       licenseNumber: `LIC-${nidCounter}`,
       licenseExpiresAt: '2028-01-01T00:00:00.000Z',
-      specialization: 'cashTransport',
+      ...refs,
     });
   expect(res.status).toBe(201);
   return data<FleetDriverProfileDto>(res);
+};
+
+/** One catalog item of a kind, created through the real admin endpoint. */
+const mkDriverCatalogItem = async (kind: string, ar: string): Promise<FleetCatalogItemDto> => {
+  const res = await request(app)
+    .post('/api/v1/fleet/catalog-items')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ kind, name: { ar, en: ar } });
+  expect(res.status).toBe(201);
+  return data<FleetCatalogItemDto>(res);
 };
 
 const createVehicle = async (
@@ -629,7 +650,6 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
         employeeId: '64b1f0dddddddddddddddd01',
         licenseNumber: 'X-1',
         licenseExpiresAt: '2028-01-01T00:00:00.000Z',
-        specialization: 'atm',
       });
     expect(res.status).toBe(400);
   });
@@ -647,7 +667,6 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
         employeeId,
         licenseNumber: 'X-2',
         licenseExpiresAt: '2028-01-01T00:00:00.000Z',
-        specialization: 'atm',
       });
     expect(dup.status).toBe(409);
   });
@@ -660,7 +679,6 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
         employeeId: '64b1f0dddddddddddddddd02',
         licenseNumber: 'X-3',
         licenseExpiresAt: '2028-01-01T00:00:00.000Z',
-        specialization: 'both',
       });
     expect(res.status).toBe(403);
   });
@@ -682,6 +700,179 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
     };
     await waitFor(async () => (await readProfile()).isActive === false);
     expect((await readProfile()).isActive).toBe(false);
+  });
+});
+
+describe('the drivers registry’s three catalogs (الوظيفة / التخصص / الرخصة)', () => {
+  it('seeds the default values the brief names, as ordinary catalog rows', async () => {
+    const listKind = async (kind: string): Promise<string[]> => {
+      const res = await request(app)
+        .get(`/api/v1/fleet/catalog-items?kind=${kind}&pageSize=100`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data<FleetCatalogItemDto[]>(res).map((item) => item.name.ar);
+    };
+    expect(await listKind('driverJob')).toEqual(
+      expect.arrayContaining(['سائق أ', 'سائق ب', 'سائق ج', 'سائق صراف الى']),
+    );
+    expect(await listKind('driverSpecialization')).toEqual(
+      expect.arrayContaining(['نقل اموال', 'ملاكى', 'ATM', 'سزوكى']),
+    );
+    expect(await listKind('driverLicenseType')).toEqual(
+      expect.arrayContaining(['اولى', 'تانيه']),
+    );
+  });
+
+  it('lets the admin ADD a value, and the new one is immediately filterable', async () => {
+    // The whole reason these are catalogs: extending the vocabulary is data, not a release.
+    const added = await mkDriverCatalogItem('driverJob', 'سائق مدرّب');
+    const employeeId = await mkEmployee({ fullNameAr: 'سائق الوظيفة الجديدة' });
+    await mkDriverProfile(employeeId, { jobId: added.id });
+
+    const res = await request(app)
+      .get(`/api/v1/fleet/drivers?jobId=${added.id}&pageSize=100`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetDriverRowDto[]>(res);
+    expect(rows.map((r) => r.employeeId)).toEqual([employeeId]);
+  });
+
+  it('archiving a value keeps the profiles that point at it readable', async () => {
+    const item = await mkDriverCatalogItem('driverSpecialization', 'تخصص مؤقت');
+    const employeeId = await mkEmployee();
+    const profile = await mkDriverProfile(employeeId, { specializationId: item.id });
+    const archived = await request(app)
+      .patch(`/api/v1/fleet/catalog-items/${item.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: item.version });
+    expect(archived.status).toBe(200);
+
+    const read = await request(app)
+      .get(`/api/v1/fleet/drivers/${profile.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(read.status).toBe(200);
+    expect(data<FleetDriverProfileDto>(read).specializationId).toBe(item.id);
+  });
+
+  it('stores the three references and hands them back on the row', async () => {
+    const job = await mkDriverCatalogItem('driverJob', 'وظيفة الاختبار');
+    const spec = await mkDriverCatalogItem('driverSpecialization', 'تخصص الاختبار');
+    const licence = await mkDriverCatalogItem('driverLicenseType', 'رخصة الاختبار');
+    const employeeId = await mkEmployee();
+    const profile = await mkDriverProfile(employeeId, {
+      jobId: job.id,
+      specializationId: spec.id,
+      licenseTypeId: licence.id,
+    });
+    expect(profile.jobId).toBe(job.id);
+    expect(profile.specializationId).toBe(spec.id);
+    expect(profile.licenseTypeId).toBe(licence.id);
+  });
+
+  it('REFUSES a reference of the wrong kind — the dropdown is not the only guard', async () => {
+    // The failure this prevents is silent: a `sparePart` id in `jobId` leaves a profile whose
+    // grade column is a dash forever, with nothing anywhere saying why.
+    const sparePart = await mkDriverCatalogItem('sparePart', 'فلتر زيت');
+    const employeeId = await mkEmployee();
+    const res = await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        employeeId,
+        licenseNumber: 'WRONG-KIND',
+        licenseExpiresAt: '2028-01-01T00:00:00.000Z',
+        jobId: sparePart.id,
+      });
+    expect(res.status).toBe(400);
+  });
+
+  it('lets an edit CLEAR a grade that was set by mistake', async () => {
+    const job = await mkDriverCatalogItem('driverJob', 'وظيفة تُمحى');
+    const employeeId = await mkEmployee();
+    const profile = await mkDriverProfile(employeeId, { jobId: job.id });
+    const res = await request(app)
+      .patch(`/api/v1/fleet/drivers/${profile.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ jobId: null, version: profile.version });
+    expect(res.status).toBe(200);
+    expect(data<FleetDriverProfileDto>(res).jobId).toBeNull();
+  });
+
+  it('records a profile with NO grade at all — the licence comes first', async () => {
+    const employeeId = await mkEmployee();
+    const profile = await mkDriverProfile(employeeId);
+    expect(profile.jobId).toBeNull();
+    expect(profile.specializationId).toBeNull();
+    expect(profile.licenseTypeId).toBeNull();
+  });
+});
+
+describe('the drivers registry filters on the BRANCH itself', () => {
+  it('returns only the branch asked for, and switching branches switches the answer', async () => {
+    // THE BUG THIS FIXES: «الفرع» used to go through the HR pre-query, which may carry one page
+    // of employees. A branch's employees are its whole payroll, so any real branch overflowed it
+    // and the screen refused to filter at all. Fleet's own roster carries the branch, so this is
+    // one request with no page to overflow.
+    const deptB = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `FL-OPS-B-${vehicleCounter++}`,
+        name: { ar: 'إدارة الحركة ب', en: 'Fleet Operations B' },
+        branchId: branchBId,
+      });
+    expect(deptB.status).toBe(201);
+    const departmentBId = (deptB.body as { data: { id: string } }).data.id;
+
+    const inA = await mkEmployee({ fullNameAr: 'سائق الفرع أ' });
+    const inB = await mkEmployee({
+      fullNameAr: 'سائق الفرع ب',
+      branchId: branchBId,
+      departmentId: departmentBId,
+    });
+    await mkDriverProfile(inA);
+    await mkDriverProfile(inB);
+
+    const ids = async (query: string): Promise<string[]> => {
+      const res = await request(app)
+        .get(`/api/v1/fleet/drivers?pageSize=${MAX_PAGE_SIZE}${query}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data<FleetDriverRowDto[]>(res).map((r) => r.employeeId);
+    };
+
+    const branchA = await ids(`&branchId=${branchAId}`);
+    expect(branchA, 'branch A holds its own driver').toContain(inA);
+    expect(branchA, 'and not the other branch’s').not.toContain(inB);
+
+    const branchB = await ids(`&branchId=${branchBId}`);
+    expect(branchB).toContain(inB);
+    expect(branchB).not.toContain(inA);
+
+    // CLEARED: both are back, so the filter narrowed rather than hid.
+    const unfiltered = await ids('');
+    expect(unfiltered).toEqual(expect.arrayContaining([inA, inB]));
+
+    // Two branches at once, ORed.
+    const both = await ids(`&branchId=${branchAId},${branchBId}`);
+    expect(both).toEqual(expect.arrayContaining([inA, inB]));
+  });
+
+  it('counts what it filtered — the meta agrees with the rows', async () => {
+    const res = await request(app)
+      .get(`/api/v1/fleet/drivers?branchId=${branchBId}&pageSize=${MAX_PAGE_SIZE}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = data<FleetDriverRowDto[]>(res);
+    const meta = (res.body as { meta: PageMeta }).meta;
+    expect(meta.totalItems).toBe(rows.length);
+  });
+
+  it('refuses a branch that is not an id, rather than answering unfiltered', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/drivers?branchId=not-an-id')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
   });
 });
 
@@ -1594,7 +1785,6 @@ describe('maintenance visits + derived alarm + idempotent sweeps (FL-4)', () => 
         employeeId,
         licenseNumber: `EXP-${vehicleCounter}`,
         licenseExpiresAt: '2026-01-01T00:00:00.000Z',
-        specialization: 'cashTransport',
       });
 
     const countFor = (name: string, subjectId: string) =>
@@ -6064,7 +6254,7 @@ describe('the driver license image', () => {
     );
     expect(after.licenseNumber).toBe(d.licenseNumber);
     expect(after.licenseExpiresAt).toBe(d.licenseExpiresAt);
-    expect(after.specialization).toBe(d.specialization);
+    expect(after.specializationId).toBe(d.specializationId);
   });
 
   it('managing the scan needs fleetDriver.manage — the vehicle grants do not carry over', async () => {

@@ -19,7 +19,12 @@ export interface DriverRosterRow<TProfile> {
 export interface DriverProfileFacts {
   licenseNumber: string;
   licenseExpiresAt: Date;
-  specialization: string;
+  /** The three catalog references, as ids. `null` = nobody has classified this driver yet. */
+  jobId?: unknown;
+  specializationId?: unknown;
+  licenseTypeId?: unknown;
+  /** LEGACY «التخصص» enum — still matched by the legacy parameter, written by nothing. */
+  specialization?: string | null;
   area: string | null;
   isActive: boolean;
   licenseImage: unknown | null;
@@ -28,6 +33,26 @@ export interface DriverProfileFacts {
 
 const contains = (haystack: string | null, needle: string): boolean =>
   haystack !== null && haystack.toLowerCase().includes(needle.toLowerCase());
+
+/** An ObjectId, a string, or nothing — compared the one way that works for all three. */
+const sameRef = (stored: unknown, wanted: string): boolean =>
+  stored != null && String(stored) === wanted;
+
+/**
+ * Is this driver in one of the branches asked for?
+ *
+ * NO BRANCHES ASKED means every driver, including one the directory could not place — «show me
+ * everyone» is not a filter. Asked for and unplaced is a MISS, for the same reason the profile
+ * filters miss a driver with no profile: a driver with no branch on file is not in Maadi, and
+ * putting them in Maadi's list would be a false positive on a page somebody counts from.
+ */
+export const matchesRosterBranch = (
+  branchId: string | null,
+  wanted: readonly string[] | undefined,
+): boolean => {
+  if (wanted === undefined || wanted.length === 0) return true;
+  return branchId !== null && wanted.includes(branchId);
+};
 
 /**
  * Does this row survive the FLEET half of the filter bar?
@@ -42,10 +67,21 @@ export const matchesFleetFilters = (
   profile: DriverProfileFacts | null,
   query: Pick<
     ListFleetDriversQuery,
-    'specialization' | 'isActive' | 'licenseExpiresBefore' | 'search' | 'area' | 'hasLicenseImage'
+    | 'jobId'
+    | 'specializationId'
+    | 'licenseTypeId'
+    | 'specialization'
+    | 'isActive'
+    | 'licenseExpiresBefore'
+    | 'search'
+    | 'area'
+    | 'hasLicenseImage'
   >,
 ): boolean => {
   const asked =
+    query.jobId !== undefined ||
+    query.specializationId !== undefined ||
+    query.licenseTypeId !== undefined ||
     query.specialization !== undefined ||
     query.isActive !== undefined ||
     query.licenseExpiresBefore !== undefined ||
@@ -55,6 +91,20 @@ export const matchesFleetFilters = (
   if (!asked) return true;
   if (profile === null) return false;
 
+  // The three catalog references. An UNCLASSIFIED driver misses each of them for the reason the
+  // whole block above misses a driver with no profile: «الوظيفة = سائق أ» is not a question about
+  // somebody whose grade nobody has chosen, and answering it with them would put an unclassified
+  // driver into a count of grade-A ones.
+  if (query.jobId !== undefined && !sameRef(profile.jobId, query.jobId)) return false;
+  if (
+    query.specializationId !== undefined &&
+    !sameRef(profile.specializationId, query.specializationId)
+  ) {
+    return false;
+  }
+  if (query.licenseTypeId !== undefined && !sameRef(profile.licenseTypeId, query.licenseTypeId)) {
+    return false;
+  }
   if (query.specialization !== undefined && profile.specialization !== query.specialization) {
     return false;
   }
@@ -82,11 +132,17 @@ export const matchesFleetFilters = (
  * driver whose licence was never recorded is not the most urgent — they are a different problem,
  * and putting them at the top would bury the real one.
  */
-export const sortDriverRows = <T extends DriverProfileFacts>(
-  rows: readonly DriverRosterRow<T>[],
+export const sortDriverRows = <
+  TProfile extends DriverProfileFacts,
+  // The ROW, not `DriverRosterRow<TProfile>`: a caller's row carries more than the two fields
+  // sorted on — the branch the registry filters by — and narrowing to the interface here would
+  // hand that back stripped.
+  TRow extends DriverRosterRow<TProfile>,
+>(
+  rows: readonly TRow[],
   sortBy: string | undefined,
   sortDir: 'asc' | 'desc' | undefined,
-): DriverRosterRow<T>[] => {
+): TRow[] => {
   const dir = sortDir === 'asc' ? 1 : -1;
   const key = sortBy === 'licenseExpiresAt' ? 'licenseExpiresAt' : 'createdAt';
   return [...rows].sort((a, b) => {

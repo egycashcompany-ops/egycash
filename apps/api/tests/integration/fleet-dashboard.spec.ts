@@ -24,6 +24,7 @@ import {
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
+import { FleetDriverProfileModel } from '../../src/modules/fleet/driver-profiles/driver-profile.model';
 import { buildApp } from '../../src/app';
 import { moduleManifests } from '../../src/modules';
 import { fleetPermissions } from '../../src/modules/fleet/fleet.module';
@@ -127,7 +128,13 @@ const mkEmployee = async (branchId: string): Promise<string> => {
   return (res.body as { data: { id: string } }).data.id;
 };
 
-const mkDriver = async (branchId: string, specialization: string): Promise<string> => {
+/**
+ * One driver, classified by the `driverSpecialization` CATALOG — which is what «التخصص» is now.
+ *
+ * `specializationId: null` records a driver nobody has classified: they count in the total and in
+ * neither split, which is the honest answer rather than a guess.
+ */
+const mkDriver = async (branchId: string, specializationId: string | null): Promise<string> => {
   const employeeId = await mkEmployee(branchId);
   const res = await request(app)
     .post('/api/v1/fleet/drivers')
@@ -136,10 +143,37 @@ const mkDriver = async (branchId: string, specialization: string): Promise<strin
       employeeId,
       licenseNumber: `DSH-LIC-${nidCounter}`,
       licenseExpiresAt: iso(400),
-      specialization,
+      specializationId,
     });
   expect(res.status).toBe(201);
   return employeeId;
+};
+
+/**
+ * A driver carrying ONLY the retired enum — the state of every profile recorded before «التخصص»
+ * became a catalog, and the one the compatibility shim exists for.
+ *
+ * Written straight to the collection because no endpoint accepts the enum any more, which is
+ * exactly the point: this is a row the database already holds, not a shape the API still admits.
+ */
+const mkLegacyDriver = async (branchId: string, specialization: string): Promise<string> => {
+  const employeeId = await mkDriver(branchId, null);
+  await FleetDriverProfileModel.updateOne(
+    { employeeId: new Types.ObjectId(employeeId) },
+    { $set: { specialization } },
+  );
+  return employeeId;
+};
+
+/** The seeded specialization items, by their Arabic name — the seed is what the house starts with. */
+const specializationId = async (ar: string): Promise<string> => {
+  const res = await request(app)
+    .get('/api/v1/fleet/catalog-items?kind=driverSpecialization&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(res.status).toBe(200);
+  const item = (res.body as { data: FleetCatalogItemDto[] }).data.find((i) => i.name.ar === ar);
+  expect(item, `the seed carries «${ar}»`).toBeDefined();
+  return (item as FleetCatalogItemDto).id;
 };
 
 let vehicleCounter = 700;
@@ -291,12 +325,15 @@ beforeAll(async () => {
   await record(armoredAtmTwo.id, 100, -8);
   await record(armoredAtmTwo.id, 1500, -2);
 
-  // Drivers: two cash and one «both» in branch one, one ATM in branch two. «both» counts in each
-  // split and once in the total.
-  await mkDriver(branchOneId, 'cashTransport');
-  await mkDriver(branchOneId, 'cashTransport');
-  await mkDriver(branchOneId, 'both');
-  await mkDriver(branchTwoId, 'atm');
+  // Drivers: two «نقل اموال» and one LEGACY «both» in branch one, one «ATM» in branch two. The
+  // legacy row counts in each split and once in the total — the shim keeps the counters covering
+  // the whole registry, not only the profiles that have been through the new form.
+  const cashSpecialization = await specializationId('نقل اموال');
+  const atmSpecialization = await specializationId('ATM');
+  await mkDriver(branchOneId, cashSpecialization);
+  await mkDriver(branchOneId, cashSpecialization);
+  await mkLegacyDriver(branchOneId, 'both');
+  await mkDriver(branchTwoId, atmSpecialization);
 }, 240_000);
 
 afterAll(async () => {
@@ -351,7 +388,7 @@ describe('GET /fleet/dashboard — the fleet section', () => {
     expect(company?.cashVehicles).toBe(2);
     expect(company?.atmVehicles).toBe(2);
     expect(company?.drivers).toBe(4);
-    // «both» is counted in BOTH splits: 2 cash + 1 both = 3, 1 atm + 1 both = 2.
+    // The legacy «both» is counted in BOTH splits: 2 cash + 1 both = 3, 1 atm + 1 both = 2.
     expect(company?.cashDrivers).toBe(3);
     expect(company?.atmDrivers).toBe(2);
 

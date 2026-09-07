@@ -423,6 +423,13 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
    * displayed governorate is not the one asked for.
    */
   governorate: z.string().trim().min(1).max(100).optional(),
+  /**
+   * The street address, matched the same way `governorate` is: against the address that is READ —
+   * the official one when there is one, the current one otherwise — and across the two parts every
+   * screen renders together, `line1` and `city`. Someone searching «المعادي» is looking at the
+   * address as it is printed, and has no way to know which of the two fields carries it.
+   */
+  address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
 }).strict();

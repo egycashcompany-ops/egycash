@@ -181,6 +181,9 @@ export const MultiSelect = ({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={label}
+        // The same question the screen reader gets, for a pointer — a trigger sized by its bar
+        // can be narrower than the words on it, and then this is the only way to read them.
+        title={label}
         onClick={() => {
           setOpen((o) => !o);
           setQuery('');
@@ -189,6 +192,10 @@ export const MultiSelect = ({
         }}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm',
+          // Never wider than the box it was given. A no-op for every bar that sizes this control
+          // to its content, and the thing that keeps a trigger inside its lane when a caller
+          // sizes it instead — a filter bar holding eleven controls on one row does.
+          'max-w-full',
           'focus:border-brand-400 focus:outline-none',
           selected > 0
             ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-200'
@@ -200,7 +207,10 @@ export const MultiSelect = ({
             `aria-label` already tells a screen reader which filter this is. */}
         {summary === null ? (
           <span
-            className={cn('whitespace-nowrap', placeholder !== undefined && 'text-slate-400')}
+            // `truncate`, like the chosen-values branch below: the question can be longer than a
+            // narrow trigger, and an ellipsis is the honest end of it. It also carries
+            // `overflow: hidden`, which is what lets this shrink inside the flex button at all.
+            className={cn('truncate', placeholder !== undefined && 'text-slate-400')}
           >
             {placeholder ?? label}
           </span>

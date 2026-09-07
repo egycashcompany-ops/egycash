@@ -10,14 +10,15 @@ import { cn } from '../lib/cn';
 import { useT } from '../../platform/localization/useT';
 import { ResetIcon } from './icons';
 
-const singleRowBreakpoint: Record<1400 | 1440 | 1536 | 1600, string> = {
+const singleRowBreakpoint: Record<1280 | 1400 | 1440 | 1536, string> = {
+  // The narrowest desktop the product targets. Only for a bar whose children SHARE the width
+  // (`flex-1 min-w-0`) rather than each demanding its own: those shrink to fit, so the row cannot
+  // be pushed off the page however many controls it holds. A bar of fixed-width children must
+  // still measure and pick a threshold past the width it actually needs.
+  1280: 'min-[1280px]:flex-nowrap',
   1400: 'min-[1400px]:flex-nowrap',
   1440: 'min-[1440px]:flex-nowrap',
   1536: 'min-[1536px]:flex-nowrap',
-  // A wider entry for a bar with more than a handful of controls: the drivers registry asks
-  // ELEVEN questions in one row, which measures 1294px, and the shell spends 304px of the
-  // viewport before the bar begins — so it fits from 1598px and not a pixel earlier.
-  1600: 'min-[1600px]:flex-nowrap',
 };
 
 export const FilterBar = ({
@@ -41,9 +42,14 @@ export const FilterBar = ({
    * Keep every filter on ONE row on a wide screen, wrapping only on narrower ones.
    *
    * Off by default, because wrapping is the right answer for a bar whose controls are wide or
-   * whose count varies. Turn it on where the filters are few and deliberately sized, and give each
-   * child a width and `shrink-0` — with no wrapping to fall back on, a child left to flex would be
-   * squeezed by its neighbours instead of moving to the next line.
+   * whose count varies. Turn it on in one of TWO shapes, and the choice decides the threshold:
+   *
+   *   • FIXED children — each carries its own width and `shrink-0`. The row cannot shorten, so
+   *     the threshold must be measured past the width the row actually needs, or `flex-nowrap`
+   *     pushes it off the page instead of wrapping it.
+   *   • SHARED children — each carries `flex-1 min-w-0` and a `basis`. They divide whatever the
+   *     bar has, so the row always fits and the threshold is simply the narrowest screen on
+   *     which the controls are still worth reading. The drivers registry holds eleven this way.
    *
    * The threshold is 1400px of VIEWPORT rather than a named breakpoint, and it is measured, not
    * chosen: `flex-nowrap` does not shorten a row that will not fit, it pushes it off the page, so
@@ -64,7 +70,7 @@ export const FilterBar = ({
    * Spelled out rather than interpolated because Tailwind scans source text for class names and
    * never sees a built string.
    */
-  singleRowFrom?: 1400 | 1440 | 1536 | 1600;
+  singleRowFrom?: 1280 | 1400 | 1440 | 1536;
 }): JSX.Element => {
   const t = useT();
   return (

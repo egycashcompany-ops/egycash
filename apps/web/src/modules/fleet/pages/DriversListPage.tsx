@@ -82,6 +82,40 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+/**
+ * How every filter behaves in the bar: its natural size while there is room, shrinking when there
+ * is not — and never wrapping or pushing the page sideways.
+ *
+ * `shrink` without `flex-1` is the whole trick. A filter takes the width its own content asks for
+ * (a `<select>` is as wide as its longest option), so on a wide screen every label reads in full;
+ * when the row is wider than the bar, the eleven give back width IN PROPORTION to what they
+ * asked for, so the long controls yield the most and the short ones stay readable longest.
+ * Sharing the row equally instead (`flex-1`) squeezed «صورة الرخصة» and «العنوان» to the same
+ * width and clipped both, at every size — measured, and visibly wrong at 1600.
+ *
+ * `min-w-0` is what makes shrinking legal at all: without it a flex item refuses to go below its
+ * content width, and one long branch name would push the row off the page.
+ */
+const FLEX = 'min-w-0 shrink';
+
+/**
+ * The controls that give width up FIRST, at twice the rate of the rest.
+ *
+ * A `<select>`'s width IS its vocabulary — «سائق صراف الى» has to fit, and a select squeezed
+ * below its longest option shows «الـ» and answers nothing. A text box has no vocabulary: it
+ * holds what the reader types, and a narrower one is merely a narrower one. The picker is the
+ * same — it names its own chips inside a panel, not on the trigger. So when the row has to
+ * shorten, these four boxes and the picker yield and the six selects keep their words.
+ */
+const YIELDS = `${FLEX} shrink-[2]`;
+
+/**
+ * A text box's own width. Unlike a `<select>`, an `<input>` has no content to be as wide as — its
+ * intrinsic width is a browser default of about twenty characters, far more than any of these
+ * four need — so the one width that has to be stated is theirs.
+ */
+const TEXT = `${YIELDS} basis-[6.5rem]`;
+
 /** A comma-separated id list on the URL, as the picker holds it. */
 const idList = (raw: string | null): string[] =>
   (raw ?? '')
@@ -465,15 +499,28 @@ export const DriversListPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        {/* ELEVEN filters, ONE row on a desktop, wrapping below it. `singleRow` does not shorten a
-            row that will not fit — it pushes it off the page — so the threshold is measured, and
-            every child carries its own width and `shrink-0`: with no wrapping to fall back on, a
-            child left to flex would be squeezed by its neighbours instead of moving down.
-            The width lives on the WRAPPER, never on the control: `cn` does not merge Tailwind
-            classes, so `Input`'s own `w-full` would win over any width passed to it. */}
+        {/*
+          ELEVEN filters, ONE row, from 1280px up.
+
+          They SHARE the bar's width rather than each demanding its own. Every child is
+          `flex-1 min-w-0` over a `basis` that says how much of the row it deserves, so the eleven
+          divide whatever there is: they grow on a 1920 screen and shrink on a 1280 one, and the
+          row cannot be pushed off the page at any width in between. Fixed widths could not do
+          this — the controls measure 1478px at their natural size and the bar holds 974px at
+          1280, so a row of `shrink-0` children would have had to wrap (which the brief refuses)
+          or overflow (which it refuses too).
+
+          `min-w-0` is what makes shrinking legal: without it a flex child refuses to go below its
+          content width, and `<select>` content is its longest option — one long branch name would
+          push the row out on its own.
+
+          The width lives on the WRAPPER and the control inside is `w-full`: `cn` does not merge
+          Tailwind classes, so a width passed to `Input` would fight its own `w-full` rather than
+          replace it.
+        */}
         <FilterBar
           singleRow
-          singleRowFrom={1600}
+          singleRowFrom={1280}
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
             patch({
@@ -493,45 +540,55 @@ export const DriversListPage = (): JSX.Element => {
         >
           {/* 1 — the drivers themselves, picked by name or code, as many as the reader means.
               Offered ONLY to someone who can use it: the options are a search against HR's own
-              endpoint, so without `employee.view` it can only answer "no directory access". */}
+              endpoint, so without `employee.view` it can only answer "no directory access".
+              The widest basis of the eleven: it is the only control whose trigger carries a
+              chosen driver's NAME rather than a word from a fixed vocabulary. */}
           {mayFilterByHr && (
             <DriverPickerFilter
               value={pickedDrivers}
               onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
-              className="w-40 shrink-0"
+              // Its own basis rather than the text boxes' yield rate: the trigger carries a
+              // CHOSEN DRIVER'S NAME once one is picked, so it must not be squeezed to nothing —
+              // and `max-w` is the other half of that, because a long name would otherwise let
+              // this one control claim a third of the row.
+              className={`${FLEX} basis-[6.5rem] max-w-32`}
             />
           )}
           {/* 2 — «الوظيفة», from the `driverJob` catalog. No value of it is named on this screen. */}
-          <div className="shrink-0">
+          <div className={FLEX}>
             <CatalogSelect
               kind="driverJob"
               value={job}
               onChange={(id) => patch({ job: id || null })}
               allLabel={t('fleet.drivers.allJobs')}
               ariaLabel={t('fleet.drivers.columns.jobTitle')}
+              className="w-full"
             />
           </div>
           {/* 3 — «الفرع». A FLEET parameter: see the header note on why asking HR could not work. */}
           {can('branch.view') && (
-            <Select
-              aria-label={t('fleet.drivers.columns.branch')}
-              value={branch}
-              onChange={(e) => patch({ branch: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.drivers.allBranches')}</option>
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {localized(b.name, locale)}
-                </option>
-              ))}
-            </Select>
+            <div className={FLEX}>
+              <Select
+                aria-label={t('fleet.drivers.columns.branch')}
+                title={t('fleet.drivers.columns.branch')}
+                value={branch}
+                onChange={(e) => patch({ branch: e.target.value || null })}
+              >
+                <option value="">{t('fleet.drivers.allBranches')}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {localized(b.name, locale)}
+                  </option>
+                ))}
+              </Select>
+            </div>
           )}
           {/* 4 — «ابحث بالعنوان», HR-owned, matched over the address as it is displayed. */}
           {mayFilterByHr && (
-            <div className="w-28 shrink-0">
+            <div className={TEXT}>
               <Input
                 aria-label={t('fleet.drivers.columns.address')}
+                title={t('fleet.drivers.columns.address')}
                 placeholder={t('fleet.drivers.columns.address')}
                 value={hrFilter.address}
                 onChange={(e) => patch({ addr: e.target.value || null })}
@@ -539,9 +596,10 @@ export const DriversListPage = (): JSX.Element => {
             </div>
           )}
           {/* 5 — «ابحث بالمنطقة», fleet-owned, straight to /fleet/drivers. */}
-          <div className="w-24 shrink-0">
+          <div className={TEXT}>
             <Input
               aria-label={t('fleet.drivers.columns.area')}
+              title={t('fleet.drivers.columns.area')}
               placeholder={t('fleet.drivers.areaPlaceholder')}
               value={area}
               onChange={(e) => patch({ area: e.target.value || null })}
@@ -549,10 +607,14 @@ export const DriversListPage = (): JSX.Element => {
           </div>
           {/* 6 — «ابحث برقم الهاتف», HR-owned. */}
           {mayFilterByHr && (
-            <div className="w-28 shrink-0">
+            <div className={TEXT}>
               <Input
                 aria-label={t('fleet.drivers.columns.phone')}
-                placeholder={t('fleet.drivers.columns.phone')}
+                title={t('fleet.drivers.columns.phone')}
+                // The box is narrower than «رقم الموبايل» on a 1600 screen, and a placeholder
+                // clipped mid-word names nothing. The column header, the tooltip and the
+                // `aria-label` all still say it in full.
+                placeholder={t('fleet.drivers.phonePlaceholder')}
                 value={hrFilter.phone}
                 onChange={(e) => patch({ phone: e.target.value || null })}
                 dir="ltr"
@@ -561,9 +623,10 @@ export const DriversListPage = (): JSX.Element => {
           )}
           {/* 7 — «المحافظة», HR-owned. */}
           {mayFilterByHr && (
-            <div className="w-24 shrink-0">
+            <div className={TEXT}>
               <Input
                 aria-label={t('fleet.drivers.columns.governorate')}
+                title={t('fleet.drivers.columns.governorate')}
                 placeholder={t('fleet.drivers.columns.governorate')}
                 value={hrFilter.governorate}
                 onChange={(e) => patch({ gov: e.target.value || null })}
@@ -571,46 +634,52 @@ export const DriversListPage = (): JSX.Element => {
             </div>
           )}
           {/* 8 — «التخصص», from the `driverSpecialization` catalog. */}
-          <div className="shrink-0">
+          <div className={FLEX}>
             <CatalogSelect
               kind="driverSpecialization"
               value={specialization}
               onChange={(id) => patch({ spec: id || null })}
               allLabel={t('fleet.drivers.allSpecializations')}
               ariaLabel={t('fleet.drivers.columns.specialization')}
+              className="w-full"
             />
           </div>
-          {/* 9 — «الرخصة», from the `driverLicenseType` catalog. */}
-          <div className="shrink-0">
+          {/* 9 — «الرخصة», from the `driverLicenseType` catalog. The licence CLASS, not its number. */}
+          <div className={FLEX}>
             <CatalogSelect
               kind="driverLicenseType"
               value={licenseType}
               onChange={(id) => patch({ lic: id || null })}
               allLabel={t('fleet.drivers.allLicenseTypes')}
               ariaLabel={t('fleet.drivers.columns.licenseType')}
+              className="w-full"
             />
           </div>
           {/* 10 and 11 — the scan and the status, exactly as they were. */}
-          <Select
-            aria-label={t('fleet.drivers.columns.licenseImage')}
-            value={image}
-            onChange={(e) => patch({ img: e.target.value || null })}
-            className="w-auto shrink-0"
-          >
-            <option value="">{t('fleet.drivers.allLicenseImages')}</option>
-            <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
-            <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
-          </Select>
-          <Select
-            aria-label={t('fleet.drivers.columns.status')}
-            value={active}
-            onChange={(e) => patch({ active: e.target.value || null })}
-            className="w-auto shrink-0"
-          >
-            <option value="">{t('fleet.drivers.allStatuses')}</option>
-            <option value="true">{t('fleet.drivers.active')}</option>
-            <option value="false">{t('fleet.drivers.inactive')}</option>
-          </Select>
+          <div className={FLEX}>
+            <Select
+              aria-label={t('fleet.drivers.columns.licenseImage')}
+              title={t('fleet.drivers.columns.licenseImage')}
+              value={image}
+              onChange={(e) => patch({ img: e.target.value || null })}
+            >
+              <option value="">{t('fleet.drivers.allLicenseImages')}</option>
+              <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
+              <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
+            </Select>
+          </div>
+          <div className={FLEX}>
+            <Select
+              aria-label={t('fleet.drivers.columns.status')}
+              title={t('fleet.drivers.columns.status')}
+              value={active}
+              onChange={(e) => patch({ active: e.target.value || null })}
+            >
+              <option value="">{t('fleet.drivers.allStatuses')}</option>
+              <option value="true">{t('fleet.drivers.active')}</option>
+              <option value="false">{t('fleet.drivers.inactive')}</option>
+            </Select>
+          </div>
         </FilterBar>
 
         {/*

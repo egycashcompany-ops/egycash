@@ -16,6 +16,7 @@ export const CatalogSelect = ({
   allLabel,
   id,
   ariaLabel,
+  className = 'w-auto',
   disabled = false,
 }: {
   kind: FleetCatalogKind;
@@ -32,6 +33,13 @@ export const CatalogSelect = ({
   allLabel?: string;
   id?: string;
   ariaLabel?: string;
+  /**
+   * How wide the control is. `w-auto` — the default, and what every existing caller gets — sizes
+   * the `<select>` to its longest option, which is right for a form field with room around it.
+   * A filter bar that must hold eleven controls on one row sizes them itself and passes
+   * `w-full`, so the select fills the width its own flex item was given instead of demanding one.
+   */
+  className?: string;
   /**
    * Show the current value but refuse to change it.
    *
@@ -51,10 +59,13 @@ export const CatalogSelect = ({
     <Select
       id={id}
       aria-label={ariaLabel}
+      // The filter bars that size this control can make it narrower than its own label; the
+      // tooltip is what the reader falls back on when the text is truncated.
+      {...(ariaLabel === undefined ? {} : { title: ariaLabel })}
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className="w-auto"
+      className={className}
     >
       <option value="">{allLabel ?? t('common.select')}</option>
       {items.map((item) => (

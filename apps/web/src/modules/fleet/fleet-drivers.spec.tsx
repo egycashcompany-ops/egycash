@@ -598,16 +598,30 @@ describe('the filter bar', () => {
     }
   });
 
-  it('keeps all eleven on ONE row on a desktop, wrapping below it', () => {
+  it('keeps all eleven on ONE row from the narrowest desktop up', () => {
     const html = bar(render(<DriversListPage />));
-    // `flex-wrap` is the base — a narrow screen still stacks — and `flex-nowrap` takes over from
-    // the measured width up. A bar that were nowrap at every size would push itself off the page.
+    // `flex-wrap` is the base — a phone still stacks — and `flex-nowrap` takes over from 1280px,
+    // the narrowest desktop the product targets.
     expect(html, 'wraps by default').toContain('flex flex-wrap');
-    expect(html, 'and stops wrapping on a desktop').toContain('min-[1600px]:flex-nowrap');
-    // With no wrapping to fall back on, a control left to flex is SQUEEZED by its neighbours
-    // rather than moved down — so every one of them refuses to shrink.
-    const controls = html.split('shrink-0').length - 1;
-    expect(controls, 'every control holds its width').toBeGreaterThanOrEqual(FILTER_ORDER.length);
+    expect(html, 'and stops wrapping from 1280px').toContain('min-[1280px]:flex-nowrap');
+    // What makes that safe at 1280, where the eleven want more room than the bar has: every one
+    // of them may SHRINK. `min-w-0` is the part that is easy to leave out and impossible to see
+    // — without it a flex child refuses to go below its content width, and a `<select>` is as
+    // wide as its longest option, so one long branch name would push the row off the page.
+    const shrinkable = html.split('min-w-0').length - 1;
+    expect(shrinkable, 'every control can give width back').toBeGreaterThanOrEqual(
+      FILTER_ORDER.length,
+    );
+  });
+
+  it('names every filter for a screen reader AND in a tooltip, for when it truncates', () => {
+    // The row shortens proportionally on a narrower desktop, so a label can be cut off. Both
+    // fallbacks have to be there: `aria-label` for a screen reader, `title` for a pointer.
+    const html = bar(render(<DriversListPage />));
+    for (const key of FILTER_ORDER) {
+      expect(html, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
+      expect(html, `${key} title`).toContain(`title="${t(key)}"`);
+    }
   });
 
   it('reads its state from the URL, so a filtered view is a shareable link', () => {
@@ -737,6 +751,55 @@ describe('the filter bar', () => {
   });
 });
 
+// ── 3a. «الرخصة» is the licence CLASS, not its number ──────────────────────
+
+describe('«الرخصة» means the licence class', () => {
+  const LICENCE_NUMBER = 'DL-4471';
+
+  it('the column shows the CATALOG value, and the licence number appears nowhere', () => {
+    // The two are different facts about the same licence, and the brief asks for the class:
+    // «اولى» / «تانيه», and whatever the admin adds. A screen that showed `DL-4471` here would
+    // be answering a question nobody asked and leaving the filter beside it unmatched.
+    const html = render(<DriversListPage />);
+    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
+    expect(body, 'the licence CLASS').toContain(CATALOG.licenseType.ar);
+    expect(html, 'and the number is not on this screen at all').not.toContain(LICENCE_NUMBER);
+  });
+
+  it('the FILTER offers the same catalog, and sends an id — never a typed number', () => {
+    const html = render(<DriversListPage />);
+    const barHtml = html.slice(html.indexOf('flex flex-wrap'), html.indexOf('<table'));
+    expect(barHtml, 'the class is picked, not typed').toContain(
+      `<option value="${CATALOG.licenseType.id}">${CATALOG.licenseType.ar}`,
+    );
+    // And the fleet list has no parameter for a typed licence class — only the id.
+    expect(
+      ListFleetDriversQuerySchema.parse({ licenseTypeId: '64b1f0dddddddddddddddd01' })
+        .licenseTypeId,
+    ).toBe('64b1f0dddddddddddddddd01');
+    expect(() => ListFleetDriversQuerySchema.parse({ licenseType: 'اولى' })).toThrow();
+  });
+
+  it('the licence NUMBER is still recorded — it left the list, not the model', () => {
+    // It is a fleet-owned fact and nothing has destroyed it: the profile still carries it, the
+    // edit dialog still writes it, and the update contract still accepts it.
+    expect(driver().licenseNumber).toBe(LICENCE_NUMBER);
+    expect(
+      UpdateFleetDriverProfileSchema.parse({ licenseNumber: 'DL-9', version: 0 }).licenseNumber,
+    ).toBe('DL-9');
+  });
+
+  it('the two licence columns are DIFFERENT columns, in the brief’s order', () => {
+    const head = thead(render(<DriversListPage />));
+    const type = head.indexOf(t('fleet.drivers.columns.licenseType'));
+    const date = head.indexOf(t('fleet.drivers.columns.licenseExpiresAt'));
+    const image = head.indexOf(t('fleet.drivers.columns.licenseImage'));
+    expect(type, 'الرخصة is present').toBeGreaterThan(-1);
+    expect(date, 'تاريخ الرخصة after it').toBeGreaterThan(type);
+    expect(image, 'صورة الرخصة after that').toBeGreaterThan(date);
+  });
+});
+
 // ── 3b. «الفرع» — the filter that could not work, and now can ───────────────
 
 describe('the branch filter', () => {
@@ -838,14 +901,13 @@ describe('editing a driver', () => {
     }
   });
 
-  it('takes the three vocabularies from the CATALOGS, never from a list of its own', () => {
-    // The rule the brief states as «Catalog values = form values = filter values»: the form asks
-    // the same `CatalogSelect` the filter bar does, of the same three kinds, so there is no third
-    // place a value could be added to or forgotten in.
-    for (const kind of ['driverJob', 'driverSpecialization', 'driverLicenseType']) {
-      expect(source, `${kind} select`).toContain(`kind="${kind}"`);
-    }
-    // And no literal vocabulary survives anywhere in the dialog.
+  it('has NO vocabulary of its own compiled in — the catalogs are the only source', () => {
+    // An ABSENCE, which is the one thing behaviour cannot show: a screen that has quietly grown a
+    // second list of specializations looks exactly like one that has not until somebody adds a
+    // value to the catalog and it fails to appear. What the form actually OFFERS is proven by
+    // rendering — `fleet-catalogs-vehicles.spec.tsx` mounts the same `CatalogSelect` of each of
+    // the three kinds against a live catalog cache — because the dialog itself renders through
+    // `createPortal(..., document.body)` and this suite carries no jsdom to reach it.
     for (const gone of ["'cashTransport'", "'atm'", "'both'", 'SPECIALIZATIONS']) {
       expect(source, `${gone} is not compiled in`).not.toContain(gone);
     }

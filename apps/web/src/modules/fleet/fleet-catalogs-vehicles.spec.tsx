@@ -221,6 +221,101 @@ describe('the drivers registry’s three catalogs are managed here too', () => {
     }
   });
 
+  it('the DRIVER FORM’s three controls offer the catalog’s own rows', () => {
+    // The dialog itself renders through `createPortal(..., document.body)` and this suite carries
+    // no jsdom, so the claim is made against the exact component the form mounts — the same
+    // `CatalogSelect`, of the same kind, reading the same cache the filter bar reads. That is
+    // what «Catalog = form = filter» means in practice: one list, three places, no third copy.
+    const rows = {
+      driverJob: [
+        { id: 'j1', ar: 'سائق أ' },
+        { id: 'j2', ar: 'سائق صراف الى' },
+      ],
+      driverSpecialization: [
+        { id: 's1', ar: 'نقل اموال' },
+        { id: 's2', ar: 'سزوكى' },
+      ],
+      driverLicenseType: [
+        { id: 'l1', ar: 'اولى' },
+        { id: 'l2', ar: 'تانيه' },
+      ],
+    } as const;
+    for (const [kind, items] of Object.entries(rows)) {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      qc.setQueryData(
+        listKey('fleet', 'catalogs', { kind, violationSide: undefined }),
+        page(items.map((i) => catalogItem(kind, i.id, { ar: i.ar, en: i.ar }))),
+      );
+      const markup = render(
+        <CatalogSelect
+          kind={kind as never}
+          value=""
+          onChange={() => undefined}
+          ariaLabel={kind}
+        />,
+        { client: qc },
+      );
+      for (const item of items) {
+        expect(markup, `${kind} offers ${item.ar}`).toContain(
+          `<option value="${item.id}">${item.ar}</option>`,
+        );
+      }
+      // Nothing else: the control has no vocabulary of its own to add to the catalog's.
+      expect(markup.match(/<option/g), `${kind} offers only the catalog + the empty row`).toHaveLength(
+        items.length + 1,
+      );
+    }
+  });
+
+  it('a value the admin ADDS is offered by that same control, with no release', () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      listKey('fleet', 'catalogs', { kind: 'driverJob', violationSide: undefined }),
+      page([
+        catalogItem('driverJob', 'j1', { ar: 'سائق أ', en: 'Driver A' }),
+        catalogItem('driverJob', 'j9', { ar: 'سائق مدرّب', en: 'Trainer' }),
+      ]),
+    );
+    const markup = render(
+      <CatalogSelect kind="driverJob" value="" onChange={() => undefined} ariaLabel="الوظيفة" />,
+      { client: qc },
+    );
+    expect(markup).toContain('<option value="j9">سائق مدرّب</option>');
+  });
+
+  it('an ARCHIVED value stays visible while a profile still points at it', () => {
+    // Archiving is how a catalog value retires here — the rows that reference it must keep
+    // naming it, or a driver's grade would silently become a dash.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      listKey('fleet', 'catalogs', { kind: 'driverSpecialization', violationSide: undefined }),
+      page([
+        { ...catalogItem('driverSpecialization', 's1', { ar: 'نقل اموال', en: 'Cash' }) },
+        { ...catalogItem('driverSpecialization', 's9', { ar: 'تخصص متقاعد', en: 'Retired' }), isActive: false },
+      ]),
+    );
+    const chosen = render(
+      <CatalogSelect
+        kind="driverSpecialization"
+        value="s9"
+        onChange={() => undefined}
+        ariaLabel="التخصص"
+      />,
+      { client: qc },
+    );
+    expect(chosen, 'the archived value a profile points at').toContain('تخصص متقاعد');
+    const fresh = render(
+      <CatalogSelect
+        kind="driverSpecialization"
+        value=""
+        onChange={() => undefined}
+        ariaLabel="التخصص"
+      />,
+      { client: qc },
+    );
+    expect(fresh, 'but it is not on offer to a new record').not.toContain('تخصص متقاعد');
+  });
+
   it('opening one selects THAT tab and offers the add action for it', () => {
     const markup = render(<CatalogsPage />, { route: '/fleet/catalogs?kind=driverJob' });
     // The selected tab is the one asked for, and only it — the tab bar reads the URL.

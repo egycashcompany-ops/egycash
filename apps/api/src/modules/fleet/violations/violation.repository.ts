@@ -1,4 +1,4 @@
-import { Types, type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import {
@@ -11,6 +11,8 @@ import {
 /** Per-vehicle sums for one year — the aggregate half of the FR-9 rollup. */
 export interface ViolationYearSums {
   vehicleId: string;
+  /** The year the row belongs to: a statement row's own, a driver row's from its date. */
+  year: number;
   vehicleCount: number;
   vehicleAmount: number;
   driverCount: number;
@@ -20,6 +22,26 @@ export interface ViolationYearSums {
 class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
   constructor() {
     super(FleetViolationModel, {});
+  }
+
+  /**
+   * Several rows in ONE insert, inside the caller's transaction.
+   *
+   * `create` one at a time would be several round trips and — worse — several separate writes:
+   * the drivers' bar files a vehicle's fines as one act, so they land together or not at all.
+   * Stamps `createdBy`/`updatedBy` exactly as `create` does; the model's own defaults fill the
+   * rest, so a row written here is indistinguishable from one written singly.
+   */
+  async createMany(
+    rows: readonly Partial<FleetViolationDoc>[],
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<FleetViolationDoc[]> {
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    const docs = await FleetViolationModel.create(
+      rows.map((row) => ({ ...row, createdBy: by, updatedBy: by })),
+      { session: meta.session ?? null, ordered: true },
+    );
+    return docs.map((doc) => doc.toObject() as FleetViolationDoc);
   }
 
   async listViolations(
@@ -76,14 +98,14 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
    * `vehicleCount` sums the statement rows' `count` (a row saying 5 × 100 IS five violations);
    * `driverCount` counts events. Derived at query time — nothing here is ever stored.
    */
-  async yearSums(year: number, vehicleId?: string): Promise<ViolationYearSums[]> {
+  async yearSums(year: number | undefined, vehicleId?: string): Promise<ViolationYearSums[]> {
     const match: FilterQuery<FleetViolationDoc> = {
       isDeleted: false,
-      ...FleetViolationRepository.yearClause(year),
+      ...(year === undefined ? {} : FleetViolationRepository.yearClause(year)),
     };
     if (vehicleId !== undefined) match['vehicleId'] = new Types.ObjectId(vehicleId);
     const rows = await this.model.aggregate<{
-      _id: Types.ObjectId;
+      _id: { vehicleId: Types.ObjectId; year: number };
       vehicleCount: number;
       vehicleAmount: number;
       driverCount: number;
@@ -92,7 +114,13 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       { $match: match },
       {
         $group: {
-          _id: '$vehicleId',
+          // The two shapes carry their year differently — a statement row stores it, a driver row
+          // implies it through the event date — so the grouping key derives one from the other.
+          // UTC, the same boundary `yearClause` filters on, so narrowing and grouping agree.
+          _id: {
+            vehicleId: '$vehicleId',
+            year: { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
+          },
           vehicleCount: {
             $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, { $ifNull: ['$count', 0] }, 0] },
           },
@@ -103,7 +131,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       },
     ]);
     return rows.map((row) => ({
-      vehicleId: String(row._id),
+      vehicleId: String(row._id.vehicleId),
+      year: row._id.year,
       vehicleCount: row.vehicleCount,
       vehicleAmount: row.vehicleAmount,
       driverCount: row.driverCount,
@@ -124,8 +153,11 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
       .exec();
   }
 
-  async forYear(year: number, vehicleId?: string): Promise<FleetGrievanceDoc[]> {
-    const filter: FilterQuery<FleetGrievanceDoc> = { year, isDeleted: false };
+  async forYear(year: number | undefined, vehicleId?: string): Promise<FleetGrievanceDoc[]> {
+    const filter: FilterQuery<FleetGrievanceDoc> = {
+      isDeleted: false,
+      ...(year === undefined ? {} : { year }),
+    };
     if (vehicleId !== undefined) filter.vehicleId = new Types.ObjectId(vehicleId);
     return this.model.find(filter).lean<FleetGrievanceDoc[]>().exec();
   }

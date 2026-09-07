@@ -135,6 +135,7 @@ export const VehicleViolationDialog = ({
           <Field label={t('fleet.violations.fields.type')} required>
             <CatalogSelect
               kind="violationType"
+              violationSide="company"
               value={violationTypeId}
               onChange={setViolationTypeId}
               ariaLabel={t('fleet.violations.fields.type')}
@@ -255,6 +256,7 @@ export const DriverViolationDialog = ({
           <Field label={t('fleet.violations.fields.type')} required>
             <CatalogSelect
               kind="violationType"
+              violationSide="driver"
               value={violationTypeId}
               onChange={setViolationTypeId}
               ariaLabel={t('fleet.violations.fields.type')}

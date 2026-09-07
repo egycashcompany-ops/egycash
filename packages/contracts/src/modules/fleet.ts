@@ -67,12 +67,29 @@ export const FLEET_CATALOG_KINDS = [
 export const FleetCatalogKindSchema = z.enum(FLEET_CATALOG_KINDS);
 export type FleetCatalogKind = z.infer<typeof FleetCatalogKindSchema>;
 
+/**
+ * Which half of the violations screen a violation TYPE belongs to.
+ *
+ * The two halves are two ledgers, not one filtered twice: «الانتظار في الممنوع» is something the
+ * company pays and «سرعة» is something a driver pays, and neither belongs in the other's form.
+ * That split used to live only as a comment beside the seed, so both entry forms offered all
+ * seven types and nothing stopped a company fine being filed against a driver.
+ *
+ * It is a property of the TYPE, held in the admin's own catalog, because the house decides what
+ * it fines drivers for — a list compiled into the client would need a release to change.
+ */
+export const FLEET_VIOLATION_SIDES = ['company', 'driver'] as const;
+export const FleetViolationSideSchema = z.enum(FLEET_VIOLATION_SIDES);
+export type FleetViolationSide = z.infer<typeof FleetViolationSideSchema>;
+
 export interface FleetCatalogItemDto {
   id: string;
   kind: FleetCatalogKind;
   name: { ar: string; en: string };
   /** `workType` only: closing a visit of this type resets the maintenance-alarm baseline. */
   countsForAlarm: boolean;
+  /** `violationType` only: which half of the violations screen offers it. Null elsewhere. */
+  violationSide: FleetViolationSide | null;
   isActive: boolean;
   version: number;
   createdAt: string;
@@ -84,6 +101,7 @@ export const CreateFleetCatalogItemSchema = z
     kind: FleetCatalogKindSchema,
     name: LocalizedStringSchema,
     countsForAlarm: z.boolean().default(false),
+    violationSide: FleetViolationSideSchema.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -94,6 +112,23 @@ export const CreateFleetCatalogItemSchema = z
         message: 'only a workType can count for the maintenance alarm',
       });
     }
+    // A violation type with no side would be offered by neither form — invisible rather than
+    // merely unclassified — so it is required exactly where it means something, and refused
+    // everywhere else for the same reason `countsForAlarm` is.
+    if (value.kind === 'violationType' && value.violationSide === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['violationSide'],
+        message: 'a violationType must say which half of the screen files it',
+      });
+    }
+    if (value.kind !== 'violationType' && value.violationSide !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['violationSide'],
+        message: 'only a violationType has a side',
+      });
+    }
   });
 export type CreateFleetCatalogItem = z.infer<typeof CreateFleetCatalogItemSchema>;
 
@@ -101,6 +136,7 @@ export const UpdateFleetCatalogItemSchema = z
   .object({
     name: LocalizedStringSchema.optional(),
     countsForAlarm: z.boolean().optional(),
+    violationSide: FleetViolationSideSchema.optional(),
     isActive: z.boolean().optional(),
     version: z.number().int().min(0),
   })
@@ -109,6 +145,8 @@ export type UpdateFleetCatalogItem = z.infer<typeof UpdateFleetCatalogItemSchema
 
 export const ListFleetCatalogQuerySchema = PaginationQuerySchema.extend({
   kind: FleetCatalogKindSchema.optional(),
+  /** Narrows `violationType` to one half's own list — the company form, or the drivers' bar. */
+  violationSide: FleetViolationSideSchema.optional(),
   isActive: booleanQuery().optional(),
 }).strict();
 export type ListFleetCatalogQuery = z.infer<typeof ListFleetCatalogQuerySchema>;
@@ -1377,6 +1415,15 @@ export interface FleetViolationDto {
   /** driver shape */
   date: string | null;
   driverEmployeeId: string | null;
+  /**
+   * Has this fine's money actually been taken in?
+   *
+   * A recorded violation and a collected one are different facts, and the screen colours the row
+   * on the second. Recording says the authority fined us; collecting says the amount left the
+   * driver's dues or reached the authority. Nothing derives it — a person marks it, and the
+   * board shows that state to whoever opens it next.
+   */
+  collected: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -1419,6 +1466,45 @@ export const UpdateFleetViolationSchema = z
   .strict();
 export type UpdateFleetViolation = z.infer<typeof UpdateFleetViolationSchema>;
 
+/**
+ * Mark one violation collected, or put it back. Its own write, not part of the edit dialog:
+ * collecting is a different act from correcting, done by different people at different times,
+ * and folding it into `UpdateFleetViolation` would let a mis-click on a row's amount silently
+ * change whether the money is in.
+ */
+export const SetFleetViolationCollectedSchema = z
+  .object({ collected: z.boolean(), version: z.number().int().min(0) })
+  .strict();
+export type SetFleetViolationCollected = z.infer<typeof SetFleetViolationCollectedSchema>;
+
+/**
+ * One vehicle's driver fines, filed together.
+ *
+ * The drivers' bar is a counting exercise — how many speeding, how many seatbelt — and it opens
+ * one card per fine to name the driver, the date and the amount. Those cards are ONE act of
+ * data entry, so they are one request: a per-row POST that fails on card six leaves the reader
+ * with five stored fines and no way to tell which five without re-reading the board.
+ */
+export const RecordFleetDriverViolationsSchema = z
+  .object({
+    vehicleId: objectId(),
+    rows: z
+      .array(
+        z
+          .object({
+            date: z.coerce.date(),
+            driverEmployeeId: objectId(),
+            violationTypeId: objectId(),
+            amount: egp(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(MAX_PAGE_SIZE),
+  })
+  .strict();
+export type RecordFleetDriverViolations = z.infer<typeof RecordFleetDriverViolationsSchema>;
+
 /** One figure per (vehicle, year) — H9's fate: stored once, not stamped on every row. */
 export const SetFleetGrievanceSchema = z
   .object({
@@ -1457,7 +1543,14 @@ export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySc
 /** FL-6 additive: the rollup's axis is the YEAR; one vehicle optionally narrows it. */
 export const FleetViolationRollupQuerySchema = z
   .object({
-    year: z.coerce.number().int().min(2000).max(2100),
+    /**
+     * Omit for EVERY year, one row per (vehicle, year).
+     *
+     * The board is read as a history — a vehicle's 2025 beside its 2026 — and a rollup that could
+     * only answer about a single year forced the screen either to hide the past or to ask once
+     * per year and stitch the answers together.
+     */
+    year: z.coerce.number().int().min(2000).max(2100).optional(),
     vehicleId: objectId().optional(),
   })
   .strict();

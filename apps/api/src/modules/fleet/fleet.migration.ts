@@ -12,6 +12,7 @@
 //      touched, and the catalog write is create-if-missing, so a second boot is a no-op.
 import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
+import { FleetCatalogItemModel } from './catalogs/catalog-item.model';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
 import {
   FIXED_CREW_VEHICLE_INDEX_KEY,
@@ -96,6 +97,61 @@ export const reportBranchlessVehicles = async (): Promise<number> => {
 };
 
 /**
+ * Backfill the side of violation types that predate the column.
+ *
+ * The split between "the company pays this" and "the driver pays this" always existed — it was
+ * written as a comment beside the seed and enforced nowhere, so both entry forms offered every
+ * type. Giving it a column leaves the rows already in the database with no side, and a type with
+ * no side is offered by NEITHER form: invisible, not merely unclassified.
+ *
+ * Classification is BY NAME, and only here. That is not the rule the running code uses — the
+ * screens read the stored side — it is the one-time reading of what the seed's own comment said
+ * these rows were. The four driver types are the ones the legacy wrote as `ح`/`ت` shorthand plus
+ * the two the drivers' bar has always counted; everything else a house has added since is the
+ * company's, which is the safer default: a company type shown to the company is a wrong list, a
+ * driver fine filed against the company is a wrong ledger.
+ *
+ * Idempotent: only rows with no side are touched, so a second boot is a no-op.
+ */
+const DRIVER_TYPE_NAMES = ['سرعة', 'عكس', 'تليفون', 'حزام'];
+
+export const migrateViolationTypeSides = async (): Promise<{
+  driver: number;
+  company: number;
+}> => {
+  const pending = await FleetCatalogItemModel.find(
+    { kind: 'violationType', violationSide: null },
+    { _id: 1, name: 1 },
+  )
+    .lean<{ _id: unknown; name: { ar: string } }[]>()
+    .exec();
+  if (pending.length === 0) return { driver: 0, company: 0 };
+
+  const driverIds = pending.filter((i) => DRIVER_TYPE_NAMES.includes(i.name.ar)).map((i) => i._id);
+  const companyIds = pending
+    .filter((i) => !DRIVER_TYPE_NAMES.includes(i.name.ar))
+    .map((i) => i._id);
+
+  if (driverIds.length > 0) {
+    await FleetCatalogItemModel.updateMany(
+      { _id: { $in: driverIds } },
+      { $set: { violationSide: 'driver' } },
+    );
+  }
+  if (companyIds.length > 0) {
+    await FleetCatalogItemModel.updateMany(
+      { _id: { $in: companyIds } },
+      { $set: { violationSide: 'company' } },
+    );
+  }
+  logger.info(
+    { driver: driverIds.length, company: companyIds.length },
+    'fleet: violation type sides backfilled',
+  );
+  return { driver: driverIds.length, company: companyIds.length };
+};
+
+/**
  * Build `ux_fixed_vehicle`, the index that makes "one vehicle, one fixed crew" a database fact.
  *
  * The schema declares it, but `autoIndex` is off outside development
@@ -159,6 +215,7 @@ export const migrateFixedCrewIndex = async (): Promise<{
 
 export const runFleetMigrations = async (): Promise<void> => {
   await migrateVehicleLicenseClasses();
+  await migrateViolationTypeSides();
   await reportBranchlessVehicles();
   await migrateFixedCrewIndex();
   // Every OTHER index the Fleet schemas declare — the deploy step ADR-005 promises and the

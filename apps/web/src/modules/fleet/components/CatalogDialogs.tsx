@@ -7,13 +7,14 @@
 import { useEffect, useState } from 'react';
 import {
   type FleetCatalogItemDto,
+  type FleetViolationSide,
   type FleetCatalogKind,
   type FleetVehicleTypeDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Checkbox, Field, Input } from '../../../shared/ui/form';
+import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useCreateCatalogItem,
@@ -38,12 +39,16 @@ export const CatalogItemDialog = ({
   const [nameAr, setNameAr] = useState('');
   const [nameEn, setNameEn] = useState('');
   const [countsForAlarm, setCountsForAlarm] = useState(false);
+  // A violation type belongs to one half of the violations screen; «company» is the default
+  // because a fine the house pays is the commoner entry and the safer one to guess wrong.
+  const [violationSide, setViolationSide] = useState<FleetViolationSide>('company');
   const [isActive, setIsActive] = useState(true);
   useEffect(() => {
     if (!open) return;
     setNameAr(item?.name.ar ?? '');
     setNameEn(item?.name.en ?? '');
     setCountsForAlarm(item?.countsForAlarm ?? false);
+    setViolationSide(item?.violationSide ?? 'company');
     setIsActive(item?.isActive ?? true);
   }, [open, item]);
 
@@ -59,6 +64,9 @@ export const CatalogItemDialog = ({
         kind,
         name,
         countsForAlarm: kind === 'workType' ? countsForAlarm : false,
+        // Required for a violation type and refused for every other kind — the server says so,
+        // and sending it anywhere else would be a 422 the reader could do nothing about.
+        ...(kind === 'violationType' ? { violationSide } : {}),
       });
     } else {
       await update.mutateAsync({
@@ -68,6 +76,9 @@ export const CatalogItemDialog = ({
           ...(name.ar !== item.name.ar || name.en !== item.name.en ? { name } : {}),
           ...(kind === 'workType' && countsForAlarm !== item.countsForAlarm
             ? { countsForAlarm }
+            : {}),
+          ...(kind === 'violationType' && violationSide !== item.violationSide
+            ? { violationSide }
             : {}),
           ...(isActive !== item.isActive ? { isActive } : {}),
         },
@@ -111,6 +122,21 @@ export const CatalogItemDialog = ({
             checked={countsForAlarm}
             onChange={(e) => setCountsForAlarm(e.target.checked)}
           />
+        )}
+        {/* Which half of the violations screen offers this type. Not a preference — a type with
+            the wrong side is filed into the wrong ledger, and the rollup's company/driver split
+            is what a branch is judged on. */}
+        {kind === 'violationType' && (
+          <Field label={t('fleet.catalogs.fields.violationSide')} required>
+            <Select
+              value={violationSide}
+              data-violation-side="true"
+              onChange={(e) => setViolationSide(e.target.value as FleetViolationSide)}
+            >
+              <option value="company">{t('fleet.violations.side.company')}</option>
+              <option value="driver">{t('fleet.violations.side.driver')}</option>
+            </Select>
+          </Field>
         )}
         {item !== null && (
           <Checkbox

@@ -7,22 +7,27 @@ import { type ViolationYearSums } from './violation.repository';
 
 export interface GrievanceFigure {
   vehicleId: string;
+  year: number;
   totalBeforeGrievance: number;
 }
 
 /**
- * One row per vehicle that has ANYTHING in the year — violations, a grievance, or both. A
+ * One row per (VEHICLE, YEAR) that has anything in it — violations, a grievance, or both. A
  * grievance-only vehicle still appears (its statement was wiped by the appeal, the figure is
  * the history); a vehicle without a grievance shows 0, not null, matching the legacy page.
+ *
+ * The pair is the key, not the vehicle: a car's 2025 and its 2026 are two rows on the board and
+ * summing them into one would report a fleet's whole history as this year's bill.
  */
+const keyOf = (vehicleId: string, year: number): string => `${vehicleId}:${year}`;
+
 export const assembleRollups = (
-  year: number,
   sums: readonly ViolationYearSums[],
   grievances: readonly GrievanceFigure[],
   codes: ReadonlyMap<string, string>,
 ): FleetViolationRollupDto[] => {
   const byVehicle = new Map<string, FleetViolationRollupDto>();
-  const blank = (vehicleId: string): FleetViolationRollupDto => ({
+  const blank = (vehicleId: string, year: number): FleetViolationRollupDto => ({
     vehicleId,
     code: codes.get(vehicleId) ?? vehicleId,
     year,
@@ -36,8 +41,8 @@ export const assembleRollups = (
   });
 
   for (const sum of sums) {
-    byVehicle.set(sum.vehicleId, {
-      ...blank(sum.vehicleId),
+    byVehicle.set(keyOf(sum.vehicleId, sum.year), {
+      ...blank(sum.vehicleId, sum.year),
       vehicleCount: sum.vehicleCount,
       vehicleAmount: sum.vehicleAmount,
       driverCount: sum.driverCount,
@@ -47,10 +52,15 @@ export const assembleRollups = (
     });
   }
   for (const grievance of grievances) {
-    const row = byVehicle.get(grievance.vehicleId) ?? blank(grievance.vehicleId);
+    const key = keyOf(grievance.vehicleId, grievance.year);
+    const row = byVehicle.get(key) ?? blank(grievance.vehicleId, grievance.year);
     row.totalBeforeGrievance = grievance.totalBeforeGrievance;
-    byVehicle.set(grievance.vehicleId, row);
+    byVehicle.set(key, row);
   }
 
-  return [...byVehicle.values()].sort((a, b) => a.code.localeCompare(b.code));
+  // Newest year first, then by code — the board is read as "what is outstanding now", and a
+  // vehicle's current year is the row a reader is looking for.
+  return [...byVehicle.values()].sort(
+    (a, b) => b.year - a.year || a.code.localeCompare(b.code),
+  );
 };

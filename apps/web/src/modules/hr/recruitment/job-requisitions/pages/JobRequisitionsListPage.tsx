@@ -85,7 +85,6 @@ export const JobRequisitionsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('hr.requisitions.title')}
-        description={t('hr.requisitions.subtitle')}
         actions={
           <Can permission="jobRequisition.create">
             <Button onClick={() => setDraft(emptyDraft())}>{t('hr.requisitions.new')}</Button>

@@ -250,7 +250,12 @@ describe('the preferences page shows what is stored', () => {
     expect(markup, 'an untranslated key reached the page').not.toContain('account.preferences.');
   });
 
+  /**
+   * Samples the language hint rather than a hard-coded string, and reads it from the dictionary the
+   * way the two tests above do. It used to sample the page's SUBTITLE, which no header carries any
+   * more — the assertion was about Arabic reaching the page, not about that sentence in particular.
+   */
   it('renders Arabic copy in Arabic', () => {
-    expect(page({}, 'ar')).toContain('اللغة والمظهر والتنقّل الخاصة بحسابك');
+    expect(page({}, 'ar')).toContain(translate('ar', 'account.preferences.languageHint'));
   });
 });

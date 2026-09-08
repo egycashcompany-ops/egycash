@@ -549,7 +549,6 @@ export const MaintenancePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.maintenance')}
-        description={t('fleet.maintenance.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.maintenance') },

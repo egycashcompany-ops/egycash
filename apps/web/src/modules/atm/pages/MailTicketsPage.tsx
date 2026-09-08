@@ -80,7 +80,7 @@ export const MailTicketsPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('atm.mail.title')} description={t('atm.mail.subtitle')} />
+      <PageHeader title={t('atm.mail.title')} />
 
       <BulkActionBar count={selection.count} onClear={selection.clear}>
         {can('atmMailTicket.decide') && (

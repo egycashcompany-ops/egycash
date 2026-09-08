@@ -179,7 +179,6 @@ export const PayrollRunsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('payroll.runs.title')}
-        description={t('payroll.runs.subtitle')}
         breadcrumbs={[{ label: t('payroll.module.title') }, { label: t('payroll.runs.title') }]}
         actions={
           <Can permission="payrollRun.manage">

@@ -342,7 +342,6 @@ export const TemplateDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={template.key}
-        description={t('systemAdmin.templates.versionLabel', { version: template.version })}
         actions={
           <div className="flex flex-wrap gap-2">
             {can('notificationTemplate.edit') && (

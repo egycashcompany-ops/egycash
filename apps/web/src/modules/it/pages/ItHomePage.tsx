@@ -96,7 +96,7 @@ export const ItHomePage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('it.module.title')} description={t('it.overview.subtitle')} />
+      <PageHeader title={t('it.module.title')} />
 
       {!anything ? (
         <EmptyState

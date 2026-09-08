@@ -81,7 +81,6 @@ export const MaintenanceOrderDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={order.orderCode}
-        description={t(`it.maintenance.kind.${order.kind}`)}
         breadcrumbs={[
           { label: t('it.module.title'), to: '/it' },
           { label: t('it.nav.maintenance'), to: '/it/maintenance' },

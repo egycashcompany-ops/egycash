@@ -357,7 +357,6 @@ export const GoldVaultsBoardPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('gold.nav.vaults')}
-        description={t('gold.vaults.subtitle')}
         breadcrumbs={[
           { label: t('gold.module.title'), to: '/gold' },
           { label: t('gold.nav.vaults') },

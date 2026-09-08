@@ -77,7 +77,7 @@ export const MailLogPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('atm.mail.logTitle')} description={t('atm.mail.logSubtitle')} />
+      <PageHeader title={t('atm.mail.logTitle')} />
       <DoneRangeBar from={from} to={to} onChange={setRange} />
       <DataTable
         columns={columns}

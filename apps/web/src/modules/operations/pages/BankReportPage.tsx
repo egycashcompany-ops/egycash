@@ -42,7 +42,6 @@ export const BankReportPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.reports.banks.title')}
-        description={t('operations.reports.banks.subtitle')}
       />
       <ReportRangePicker range={range} onChange={setRange} />
       <ReportView

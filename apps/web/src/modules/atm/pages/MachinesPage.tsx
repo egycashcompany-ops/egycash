@@ -75,7 +75,6 @@ export const MachinesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('atm.machines.title')}
-        description={t('atm.machines.subtitle')}
         actions={
           <Button variant="secondary" onClick={exportCsv} disabled={rows.length === 0}>
             <DownloadIcon className="h-4 w-4" />

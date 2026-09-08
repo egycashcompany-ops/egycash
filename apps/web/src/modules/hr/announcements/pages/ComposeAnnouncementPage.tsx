@@ -131,7 +131,6 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('hr.announcements.compose.title')}
-        description={t('hr.announcements.compose.subtitle')}
       />
       <div className="space-y-6">
         <Card>

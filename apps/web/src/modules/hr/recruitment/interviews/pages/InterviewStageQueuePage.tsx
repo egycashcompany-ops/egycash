@@ -242,7 +242,6 @@ export const InterviewStageQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={stage === undefined ? t('recruitment.nav.interviews') : localized(stage.name, locale)}
-        description={t('interviews.stagePage.subtitle')}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.interviews'), to: '/interviews' },

@@ -151,7 +151,6 @@ export const AttendancePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.attendance')}
-        description={t('fleet.attendance.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.attendance') },

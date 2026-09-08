@@ -307,7 +307,6 @@ export const EmployeeProfilePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={e.personal.fullNameAr}
-        description={e.code}
         breadcrumbs={[
           { label: t('employees.module.title'), to: '/employees' },
           { label: e.code },

@@ -145,7 +145,6 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.maintenanceAlarms')}
-        description={t('fleet.alarms.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.maintenanceAlarms') },

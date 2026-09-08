@@ -302,7 +302,6 @@ export const ContractDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={c.code}
-        description={`${c.employeeName} · v${c.contractVersion}`}
         breadcrumbs={[{ label: t('contracts.module.title'), to: '/contracts' }, { label: c.code }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">

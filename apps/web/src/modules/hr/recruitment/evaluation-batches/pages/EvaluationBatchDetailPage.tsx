@@ -216,7 +216,6 @@ export const EvaluationBatchDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={batch.code}
-        description={localized(batch.phaseName, locale)}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           {

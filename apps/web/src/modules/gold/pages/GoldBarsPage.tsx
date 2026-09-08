@@ -295,7 +295,6 @@ export const GoldBarsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('gold.nav.bars')}
-        description={t('gold.bars.subtitle')}
         breadcrumbs={[
           { label: t('gold.module.title'), to: '/gold' },
           { label: t('gold.nav.bars') },

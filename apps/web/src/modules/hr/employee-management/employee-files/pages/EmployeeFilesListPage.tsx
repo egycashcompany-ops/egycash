@@ -98,7 +98,6 @@ export const EmployeeFilesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitment.nav.employeeFiles')}
-        description={t('employeeFiles.list.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.employeeFiles') }]}
         actions={
           <Can permission="employeeFile.create">

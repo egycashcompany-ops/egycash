@@ -156,7 +156,6 @@ export const DirectRegisterPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('employees.register.title')}
-        description={t('employees.register.subtitle')}
         breadcrumbs={[
           { label: t('employees.module.title'), to: '/employees' },
           { label: t('employees.register.title') },

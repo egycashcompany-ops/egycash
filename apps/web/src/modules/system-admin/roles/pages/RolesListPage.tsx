@@ -139,7 +139,6 @@ export const RolesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.roles.title')}
-        description={t('systemAdmin.roles.subtitle')}
         breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.roles.title') }]}
         actions={
           <Can permission="role.create">

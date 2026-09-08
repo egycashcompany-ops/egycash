@@ -119,7 +119,6 @@ export const ShiftsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('attendance.shifts.title')}
-        description={t('attendance.shifts.subtitle')}
         actions={
           <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setAdding(true)}>
             {t('attendance.shifts.add')}

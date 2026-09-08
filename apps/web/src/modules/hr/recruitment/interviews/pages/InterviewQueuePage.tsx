@@ -172,7 +172,6 @@ export const InterviewQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitment.nav.interviews')}
-        description={t('interviews.queue.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.interviews') }]}
         actions={
           <div className="flex items-center gap-2">

@@ -67,7 +67,6 @@ export const CrewAttendancePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.attendance.title')}
-        description={t('operations.attendance.subtitle')}
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">

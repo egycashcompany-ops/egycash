@@ -81,7 +81,7 @@ export const MyPayslipsPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('payroll.payslips.mine')} description={t('payroll.payslips.mineHint')} />
+      <PageHeader title={t('payroll.payslips.mine')} />
       <DataTable
         columns={columns}
         rows={slips.data?.items ?? []}

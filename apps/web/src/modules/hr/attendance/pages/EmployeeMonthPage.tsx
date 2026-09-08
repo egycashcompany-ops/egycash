@@ -30,7 +30,6 @@ export const EmployeeMonthPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={name ?? t('attendance.month.title')}
-        description={t('attendance.month.subtitle')}
         breadcrumbs={[
           { label: t('attendance.module.title') },
           { label: t('attendance.daily.title'), to: '/attendance/daily' },

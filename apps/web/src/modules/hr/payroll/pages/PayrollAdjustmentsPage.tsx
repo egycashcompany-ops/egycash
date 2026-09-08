@@ -207,7 +207,6 @@ export const PayrollAdjustmentsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('payroll.adjustments.queueTitle')}
-        description={t('payroll.adjustments.queueSubtitle')}
         breadcrumbs={[
           { label: t('payroll.module.title') },
           { label: t('payroll.adjustments.queueTitle') },

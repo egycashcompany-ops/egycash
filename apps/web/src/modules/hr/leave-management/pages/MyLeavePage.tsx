@@ -35,7 +35,6 @@ export const MyLeavePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('leave.my.title')}
-        description={t('leave.my.subtitle')}
         breadcrumbs={[{ label: t('leave.module.title') }, { label: t('leave.my.title') }]}
         actions={
           employeeId !== null ? (

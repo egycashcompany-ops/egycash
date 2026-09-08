@@ -9,6 +9,26 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **A page header shows a title and nothing under it.** Every screen used to explain itself in a
+  sentence beneath its own title — «الموظفون المعيّنون من عروض العمل المقبولة» under «الموظفون» —
+  and the owner asked for all of them gone: on the 148 screens that had one, and on every screen
+  built from here on.
+
+  `PageHeader` no longer declares a `description` prop at all, so the compiler refuses one at every
+  call site rather than a future page quietly rendering a sentence nobody wants. Two pages passed
+  theirs through a conditional spread (`{...(x === null ? {} : { description: x })}`) which JSX does
+  not excess-property check, so the compiler never saw them — a guard spec catches that form too.
+
+  One page builds its own header rather than using the shared one (payroll reports); its hint line
+  went too. Left alone deliberately: the sign-in, activation and portal-login screens, where the
+  line under the heading is an instruction the reader needs, and the applicant/gold/captain shells,
+  where it carries the record's own data rather than a description of the page.
+
+  The translation strings are left in place: several are still used elsewhere, and a few more are
+  reachable through dynamically built keys, so removing them safely is its own change.
+
 ### Added
 
 - **A department is defined once for the whole company, and each branch declares that it has it**

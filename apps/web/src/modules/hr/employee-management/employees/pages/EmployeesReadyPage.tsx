@@ -150,7 +150,6 @@ export const EmployeesReadyPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('employees.ready.title')}
-        description={t('employees.ready.subtitle')}
         breadcrumbs={[{ label: t('employees.title'), to: '/employees' }, { label: t('employees.ready.title') }]}
       />
 

@@ -391,7 +391,6 @@ export const DriversListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.drivers')}
-        description={t('fleet.drivers.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.drivers') },

@@ -95,7 +95,6 @@ export const EvaluationDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={localized(ev.phaseName, locale)}
-        description={ev.applicantName}
         aside={<ApplicantStepBar applicantId={ev.applicantId} viewing="evaluation" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },

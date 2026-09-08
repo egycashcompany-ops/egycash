@@ -156,7 +156,6 @@ export const ApplicationsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.nav.applications')}
-        description={t('organization.application.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applications') }]}
         actions={
           <div className="flex gap-2">

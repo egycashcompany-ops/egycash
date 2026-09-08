@@ -305,7 +305,6 @@ export const TrainingSessionsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('training.session.title')}
-        description={t('training.session.subtitle')}
         breadcrumbs={[{ label: t('training.title') }, { label: t('training.session.title') }]}
         actions={
           <Can permission="trainingSession.create">

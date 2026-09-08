@@ -135,7 +135,6 @@ export const ApplicationCategoriesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.nav.applicationCategories')}
-        description={t('organization.applicationCategory.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.applicationCategories') }]}
         actions={
           <Can permission="applicationCategory.create">

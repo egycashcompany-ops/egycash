@@ -80,7 +80,6 @@ export const RegularizationQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('attendance.queue.title')}
-        description={t('attendance.queue.subtitle')}
         breadcrumbs={[
           { label: t('attendance.module.title') },
           { label: t('attendance.queue.title') },

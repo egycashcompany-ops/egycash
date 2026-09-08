@@ -158,7 +158,6 @@ export const JobRequisitionDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={dto.code}
-        description={dto.reason}
         aside={<RequisitionStatusBadge status={dto.status} />}
         actions={
           <div className="flex flex-wrap gap-2">

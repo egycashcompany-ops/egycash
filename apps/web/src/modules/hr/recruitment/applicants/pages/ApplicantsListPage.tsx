@@ -192,7 +192,6 @@ export const ApplicantsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitment.nav.applicants')}
-        description={t('applicants.list.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.applicants') }]}
         actions={
           <>

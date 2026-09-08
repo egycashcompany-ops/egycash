@@ -72,15 +72,10 @@ export const UserDetailPage = (): JSX.Element => {
     setSp(params, { replace: true });
   };
 
-  // The subtitle is the sign-in identifier when there is one. `exactOptionalPropertyTypes`: an
-  // absent subtitle is an absent PROP, never an `undefined` value.
-  const identifier = user.username ?? user.email;
-
   return (
     <PageContainer>
       <PageHeader
         title={fullName(user, locale)}
-        {...(identifier === null ? {} : { description: identifier })}
         breadcrumbs={[
           { label: t('systemAdmin.module.title') },
           { label: t('systemAdmin.users.title'), to: '/system/users' },

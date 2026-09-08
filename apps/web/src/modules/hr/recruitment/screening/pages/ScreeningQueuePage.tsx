@@ -149,7 +149,6 @@ export const ScreeningQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitment.nav.screening')}
-        description={t('screening.queue.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.screening') }]}
       />
 

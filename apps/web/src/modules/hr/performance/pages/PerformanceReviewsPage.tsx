@@ -284,7 +284,6 @@ export const PerformanceReviewsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('performance.review.title')}
-        description={t('performance.review.subtitle')}
         breadcrumbs={[{ label: t('performance.title') }, { label: t('performance.review.title') }]}
       />
 

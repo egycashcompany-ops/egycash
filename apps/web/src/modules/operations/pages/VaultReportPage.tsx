@@ -38,7 +38,6 @@ export const VaultReportPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.vaultReport.title')}
-        description={t('operations.vaultReport.subtitle')}
       />
       <ReportView
         keyHeader={t('operations.reports.bank')}

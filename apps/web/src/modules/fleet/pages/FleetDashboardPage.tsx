@@ -139,7 +139,7 @@ export const FleetDashboardPage = (): JSX.Element => {
   if (view === 'loading') {
     return (
       <PageContainer>
-        <PageHeader title={t('fleet.overview.title')} description={t('fleet.overview.subtitle')} />
+        <PageHeader title={t('fleet.overview.title')} />
         <div className="grid gap-4 lg:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <Card key={i}>
@@ -154,7 +154,7 @@ export const FleetDashboardPage = (): JSX.Element => {
   if (view === 'error' || data === undefined) {
     return (
       <PageContainer>
-        <PageHeader title={t('fleet.overview.title')} description={t('fleet.overview.subtitle')} />
+        <PageHeader title={t('fleet.overview.title')} />
         <Card>
           <ErrorState error={query.error} onRetry={() => void query.refetch()} />
         </Card>
@@ -170,7 +170,7 @@ export const FleetDashboardPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('fleet.overview.title')} description={t('fleet.overview.subtitle')} />
+      <PageHeader title={t('fleet.overview.title')} />
 
       {nothing ? (
         <Card>

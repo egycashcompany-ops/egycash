@@ -58,7 +58,6 @@ export const AllRequestsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('leave.all.title')}
-        description={t('leave.all.subtitle')}
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.all.title') }]}
       />
       {unreconciled !== undefined && unreconciled.length > 0 && (

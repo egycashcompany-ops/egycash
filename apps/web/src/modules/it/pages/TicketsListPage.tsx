@@ -212,7 +212,6 @@ export const TicketsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.tickets')}
-        description={t('it.tickets.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.tickets') }]}
         actions={
           <div className="flex items-center gap-2">

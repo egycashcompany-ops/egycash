@@ -106,7 +106,6 @@ export const RecruitmentFormPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitmentForm.title')}
-        description={t('recruitmentForm.subtitle')}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitmentForm.title') },

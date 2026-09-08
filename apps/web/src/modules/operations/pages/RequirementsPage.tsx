@@ -108,7 +108,6 @@ export const RequirementsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.crew.requirements.title')}
-        description={t('operations.crew.requirements.subtitle')}
       />
 
       {/* Who the crew IS, above what the crew CARRIES — the roster below is a consequence of it,

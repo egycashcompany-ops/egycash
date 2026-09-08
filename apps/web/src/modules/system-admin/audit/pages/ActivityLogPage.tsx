@@ -77,7 +77,6 @@ export const ActivityLogPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.activity.title')}
-        description={t('systemAdmin.activity.subtitle')}
       />
 
       {/* Exactly the two the endpoint accepts. Offering more would be a control that produces a

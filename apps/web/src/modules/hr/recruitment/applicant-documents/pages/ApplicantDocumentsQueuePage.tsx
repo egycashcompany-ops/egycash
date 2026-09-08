@@ -71,7 +71,6 @@ export const ApplicantDocumentsQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('hr.applicantDocuments.title')}
-        description={t('hr.applicantDocuments.description')}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('hr.applicantDocuments.title') },

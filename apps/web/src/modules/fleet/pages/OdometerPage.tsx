@@ -293,7 +293,6 @@ export const OdometerPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.odometer')}
-        description={t('fleet.odometer.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.odometer') },

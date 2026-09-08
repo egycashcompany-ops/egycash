@@ -283,7 +283,6 @@ export const VehicleDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={vehicle.code}
-        description={`${type === undefined ? '' : `${localized(type.name, locale)} · `}${vehicle.plateNumber}`}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.vehicles'), to: '/fleet/vehicles' },

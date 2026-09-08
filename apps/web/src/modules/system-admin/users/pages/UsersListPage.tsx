@@ -176,7 +176,6 @@ export const UsersListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.users.title')}
-        description={t('systemAdmin.users.subtitle')}
         breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.users.title') }]}
         actions={
           <Can permission="user.create">

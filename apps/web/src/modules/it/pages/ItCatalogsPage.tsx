@@ -143,7 +143,6 @@ export const ItCatalogsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.catalogs')}
-        description={t('it.catalogs.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.catalogs') }]}
         actions={
           <Can permission="itCatalog.manage">

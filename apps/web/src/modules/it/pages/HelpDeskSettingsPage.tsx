@@ -148,7 +148,6 @@ export const HelpDeskSettingsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.helpDeskSettings')}
-        description={t('it.priorities.subtitle')}
         breadcrumbs={[
           { label: t('it.module.title'), to: '/it' },
           { label: t('it.nav.tickets'), to: '/it/tickets' },

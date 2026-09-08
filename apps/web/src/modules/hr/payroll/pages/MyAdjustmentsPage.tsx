@@ -83,7 +83,6 @@ export const MyAdjustmentsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('payroll.adjustments.mine.title')}
-        description={t('payroll.adjustments.mine.subtitle')}
         breadcrumbs={[{ label: t('payroll.adjustments.mine.title') }]}
       />
 

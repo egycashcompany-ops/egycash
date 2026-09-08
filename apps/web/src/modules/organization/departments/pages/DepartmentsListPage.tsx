@@ -158,7 +158,6 @@ export const DepartmentsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.nav.departments')}
-        description={t('organization.department.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.departments') }]}
         actions={
           <Can permission="department.create">

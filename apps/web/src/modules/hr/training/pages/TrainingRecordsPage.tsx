@@ -187,7 +187,6 @@ export const TrainingRecordsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('training.record.title')}
-        description={t('training.record.subtitle')}
         breadcrumbs={[{ label: t('training.title') }, { label: t('training.record.title') }]}
       />
 

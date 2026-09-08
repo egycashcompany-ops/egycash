@@ -35,6 +35,7 @@ export const DriverPickerFilter = ({
   onChange,
   jobTitleIds = [],
   density,
+  placeholder,
   className,
 }: {
   /** The employee ids currently filtering, in the order they were picked. */
@@ -54,6 +55,12 @@ export const DriverPickerFilter = ({
   jobTitleIds?: readonly string[];
   /** Passed straight through, so this control matches the bar it is dropped into. */
   density?: ControlDensity;
+  /**
+   * What the EMPTY trigger says. A bar that writes each filter's name above its control wants the
+   * short «الكل» here, because repeating «اسم/كود» inside would say the same thing twice and
+   * spend the width that a chosen driver's NAME needs.
+   */
+  placeholder?: string;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -118,7 +125,7 @@ export const DriverPickerFilter = ({
       // and every test read it. Spelled out rather than truncated: a control whose own label is
       // cut off mid-word is a control nobody can identify, and in RTL the overflow runs off the
       // left edge of the page rather than tidily under an ellipsis.
-      placeholder={t('fleet.drivers.filters.employeeShort')}
+      placeholder={placeholder ?? t('fleet.drivers.filters.employeeShort')}
       options={options}
       value={value}
       onChange={onChange}

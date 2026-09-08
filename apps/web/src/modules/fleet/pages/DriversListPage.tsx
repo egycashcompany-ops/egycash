@@ -43,6 +43,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { FilterField } from '../../../shared/ui/FilterField';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
@@ -86,21 +87,6 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
-/**
- * How every filter behaves in the bar: its natural size while there is room, shrinking when there
- * is not — and never wrapping or pushing the page sideways.
- *
- * `shrink` without `flex-1` is the whole trick. A filter takes the width its own content asks for
- * (a `<select>` is as wide as its longest option), so on a wide screen every label reads in full;
- * when the row is wider than the bar, the eleven give back width IN PROPORTION to what they
- * asked for, so the long controls yield the most and the short ones stay readable longest.
- * Sharing the row equally instead (`flex-1`) squeezed «صورة الرخصة» and «العنوان» to the same
- * width and clipped both, at every size — measured, and visibly wrong at 1600.
- *
- * `min-w-0` is what makes shrinking legal at all: without it a flex item refuses to go below its
- * content width, and one long branch name would push the row off the page.
- */
-const FLEX = 'min-w-0 shrink grow';
 
 /**
  * Every filter is `density="tight"`: 8px off a text box, 24px off a select, and — since the
@@ -120,32 +106,20 @@ const FLEX = 'min-w-0 shrink grow';
 const TIGHT = 'tight' as const;
 
 /**
- * The controls that give width up FIRST, at twice the rate of the rest.
+ * One filter's share of the row, and every filter gets the SAME one.
  *
- * A `<select>`'s width IS its vocabulary — «سائق صراف الى» has to fit, and a select squeezed
- * below its longest option shows «الـ» and answers nothing. A text box has no vocabulary: it
- * holds what the reader types, and a narrower one is merely a narrower one. The picker is the
- * same — it names its own chips inside a panel, not on the trigger. So when the row has to
- * shorten, these four boxes and the picker yield and the six selects keep their words.
+ * `flex-1 basis-0` is the whole point: a control's width no longer depends on how long its own
+ * words happen to be, which is what made the previous bar eleven boxes of eleven arbitrary sizes
+ * with no rhythm to them. They divide the row equally and grow together as the screen does.
+ *
+ * That only became possible once the names moved ABOVE the controls (`FilterField`): a `<select>`
+ * whose widest option is «صورة الرخصة» demands that much width, while one whose widest option is
+ * «الكل» demands almost none. `min-w` is the floor at which a field's NAME is still readable.
  */
-const YIELDS = `${FLEX} shrink-[2]`;
+const CELL = 'flex-1 basis-0 min-w-[4.5rem]';
 
-/**
- * The name/code picker, which is the one control on this bar worth spending width on.
- *
- * The other ten show a FIXED word — «الفرع», «التخصص» — so anything past that word is wasted on
- * them. This one shows a PERSON: «محمد عبد الله محمد عبد المحسن» where the others show six
- * letters, and a reader who has picked three drivers needs to see WHICH three without opening the
- * panel. At `max-w-[10rem]` it could not, and the trigger read «اسم/...».
- *
- * So it grows SIX times as fast as its neighbours and is allowed to get five times as wide. What it
- * spends is the row's SPARE width, never anyone else's, and `basis` is what guarantees that: it
- * stays at the width its own placeholder needs and not a pixel more. At 1280 there is no spare at
- * all — measured, twelve extra pixels of basis there were enough to push «العنوان» and «التخصص»
- * into clipping — so the picker is unchanged at the narrowest desktop and takes the room only where
- * the room exists: 83px at 1280, 139px at 1440, 319px at 1920.
- */
-const NAME_PICKER = 'min-w-0 shrink grow-[6] basis-[5.25rem] max-w-[20rem]';
+
+
 
 /**
  * A text box's own width. Unlike a `<select>`, an `<input>` has no content to be as wide as — its
@@ -610,160 +584,183 @@ export const DriversListPage = (): JSX.Element => {
             })
           }
         >
-          {/* 1 — the drivers themselves, picked by name or code, as many as the reader means.
-              Offered ONLY to someone who can use it: the options are a search against HR's own
-              endpoint, so without `employee.view` it can only answer "no directory access".
-              It offers only DRIVERS — the seats below — because a name it offers that this table
-              cannot show is a filter that answers with an empty list. */}
+          {/* Eleven fields, EQUAL width, each with its own name above it — see `FilterField`.
+              `flex-1 basis-0` is what makes them equal: the share of the row a control gets no
+              longer depends on how long its own words happen to be, which is what made the old bar
+              read as eleven arbitrary boxes. `min-w` keeps a field from collapsing past the point
+              where its name can be read at all. */}
           {mayFilterByHr && (
-            <DriverPickerFilter
-              value={pickedDrivers}
-              onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
-              // The same seats the roster is built from, so every name it offers is a name this
-              // table can actually show.
-              jobTitleIds={drivingTitleIds}
-              density={TIGHT}
-              // Wider than everything else, and the first to take any spare width — see
-              // `NAME_PICKER` for why this is the one control that earns it.
-              className={NAME_PICKER}
-            />
+            <FilterField
+              label={t('fleet.drivers.filters.employeeShort')}
+              active={pickedDrivers.length > 0}
+              className={CELL}
+            >
+              <DriverPickerFilter
+                value={pickedDrivers}
+                onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
+                // The same seats the roster is built from, so every name it offers is a name this
+                // table can actually show.
+                jobTitleIds={drivingTitleIds}
+                density={TIGHT}
+                // The question is written above now, so the trigger says only the ANSWER.
+                placeholder={t('common.filters.all')}
+                className="w-full"
+              />
+            </FilterField>
           )}
-          {/* 2 — «الوظيفة», from the `driverJob` catalog. No value of it is named on this screen. */}
-          <div className={`${FLEX} basis-[5.25rem] max-w-[9rem]`}>
+          <FilterField
+            label={t('fleet.drivers.columns.jobTitle')}
+            active={job !== ''}
+            className={CELL}
+          >
             <CatalogSelect
               kind="driverJob"
               value={job}
               onChange={(id) => patch({ job: id || null })}
-              allLabel={t('fleet.drivers.allJobs')}
+              allLabel={t('common.filters.all')}
               ariaLabel={t('fleet.drivers.columns.jobTitle')}
               className="w-full"
               density={TIGHT}
             />
-          </div>
-          {/* 3 — «الفرع». A FLEET parameter: see the header note on why asking HR could not work. */}
+          </FilterField>
           {can('branch.view') && (
-            <div className={`${FLEX} basis-[4.25rem] max-w-[9rem]`}>
+            <FilterField
+              label={t('fleet.drivers.columns.branch')}
+              active={branch !== ''}
+              className={CELL}
+            >
               <Select
                 aria-label={t('fleet.drivers.columns.branch')}
-                title={t('fleet.drivers.columns.branch')}
                 value={branch}
                 onChange={(e) => patch({ branch: e.target.value || null })}
                 density={TIGHT}
               >
-                <option value="">{t('fleet.drivers.allBranches')}</option>
+                <option value="">{t('common.filters.all')}</option>
                 {branches.map((b) => (
                   <option key={b.id} value={b.id}>
                     {localized(b.name, locale)}
                   </option>
                 ))}
               </Select>
-            </div>
+            </FilterField>
           )}
-          {/* 4 — «ابحث بالعنوان», HR-owned, matched over the address as it is displayed. */}
           {mayFilterByHr && (
-            <div className={`${YIELDS} basis-[3.75rem] max-w-[8rem]`}>
+            <FilterField
+              label={t('fleet.drivers.columns.address')}
+              active={hrFilter.address !== ''}
+              className={CELL}
+            >
               <DebouncedInput
                 aria-label={t('fleet.drivers.columns.address')}
-                title={t('fleet.drivers.columns.address')}
                 density={TIGHT}
-                placeholder={t('fleet.drivers.columns.address')}
                 value={hrFilter.address}
                 onValueChange={(next) => patch({ addr: next || null })}
               />
-            </div>
+            </FilterField>
           )}
-          {/* 5 — «ابحث بالمنطقة», fleet-owned, straight to /fleet/drivers. */}
-          <div className={`${YIELDS} basis-[4.25rem] max-w-[8rem]`}>
+          <FilterField
+            label={t('fleet.drivers.columns.area')}
+            active={area !== ''}
+            className={CELL}
+          >
             <DebouncedInput
               aria-label={t('fleet.drivers.columns.area')}
-              title={t('fleet.drivers.columns.area')}
               density={TIGHT}
-              placeholder={t('fleet.drivers.areaPlaceholder')}
               value={area}
               onValueChange={(next) => patch({ area: next || null })}
             />
-          </div>
-          {/* 6 — «ابحث برقم الهاتف», HR-owned. */}
+          </FilterField>
           {mayFilterByHr && (
-            <div className={`${YIELDS} basis-[4.25rem] max-w-[8rem]`}>
+            <FilterField
+              label={t('fleet.drivers.columns.phone')}
+              active={hrFilter.phone !== ''}
+              className={CELL}
+            >
               <DebouncedInput
                 aria-label={t('fleet.drivers.columns.phone')}
-                title={t('fleet.drivers.columns.phone')}
-                // The box is narrower than «رقم الموبايل» on a 1600 screen, and a placeholder
-                // clipped mid-word names nothing. The column header, the tooltip and the
-                // `aria-label` all still say it in full.
                 density={TIGHT}
-                placeholder={t('fleet.drivers.phonePlaceholder')}
                 value={hrFilter.phone}
                 onValueChange={(next) => patch({ phone: next || null })}
                 dir="ltr"
               />
-            </div>
+            </FilterField>
           )}
-          {/* 7 — «المحافظة», HR-owned. */}
           {mayFilterByHr && (
-            <div className={`${YIELDS} basis-[4.75rem] max-w-[8rem]`}>
+            <FilterField
+              label={t('fleet.drivers.columns.governorate')}
+              active={hrFilter.governorate !== ''}
+              className={CELL}
+            >
               <DebouncedInput
                 aria-label={t('fleet.drivers.columns.governorate')}
-                title={t('fleet.drivers.columns.governorate')}
                 density={TIGHT}
-                placeholder={t('fleet.drivers.columns.governorate')}
                 value={hrFilter.governorate}
                 onValueChange={(next) => patch({ gov: next || null })}
               />
-            </div>
+            </FilterField>
           )}
-          {/* 8 — «التخصص», from the `driverSpecialization` catalog. */}
-          <div className={`${FLEX} basis-[5.375rem] max-w-[9rem]`}>
+          <FilterField
+            label={t('fleet.drivers.columns.specialization')}
+            active={specialization !== ''}
+            className={CELL}
+          >
             <CatalogSelect
               kind="driverSpecialization"
               value={specialization}
               onChange={(id) => patch({ spec: id || null })}
-              allLabel={t('fleet.drivers.allSpecializations')}
+              allLabel={t('common.filters.all')}
               ariaLabel={t('fleet.drivers.columns.specialization')}
               className="w-full"
               density={TIGHT}
             />
-          </div>
-          {/* 9 — «الرخصة», from the `driverLicenseType` catalog. The licence CLASS, not its number. */}
-          <div className={`${FLEX} basis-[5rem] max-w-[9rem]`}>
+          </FilterField>
+          <FilterField
+            label={t('fleet.drivers.columns.licenseType')}
+            active={licenseType !== ''}
+            className={CELL}
+          >
             <CatalogSelect
               kind="driverLicenseType"
               value={licenseType}
               onChange={(id) => patch({ lic: id || null })}
-              allLabel={t('fleet.drivers.allLicenseTypes')}
+              allLabel={t('common.filters.all')}
               ariaLabel={t('fleet.drivers.columns.licenseType')}
               className="w-full"
               density={TIGHT}
             />
-          </div>
-          {/* 10 and 11 — the scan and the status, exactly as they were. */}
-          <div className={`${FLEX} basis-[5rem] max-w-[9rem]`}>
+          </FilterField>
+          <FilterField
+            label={t('fleet.drivers.columns.licenseImage')}
+            active={image !== ''}
+            className={CELL}
+          >
             <Select
               aria-label={t('fleet.drivers.columns.licenseImage')}
-              title={t('fleet.drivers.columns.licenseImage')}
               value={image}
               onChange={(e) => patch({ img: e.target.value || null })}
               density={TIGHT}
             >
-              <option value="">{t('fleet.drivers.allLicenseImages')}</option>
+              <option value="">{t('common.filters.all')}</option>
               <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
               <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
             </Select>
-          </div>
-          <div className={`${FLEX} basis-[4.5rem] max-w-[8rem]`}>
+          </FilterField>
+          <FilterField
+            label={t('fleet.drivers.columns.status')}
+            active={active !== ''}
+            className={CELL}
+          >
             <Select
               aria-label={t('fleet.drivers.columns.status')}
-              title={t('fleet.drivers.columns.status')}
               value={active}
               onChange={(e) => patch({ active: e.target.value || null })}
               density={TIGHT}
             >
-              <option value="">{t('fleet.drivers.allStatuses')}</option>
+              <option value="">{t('common.filters.all')}</option>
               <option value="true">{t('fleet.drivers.active')}</option>
               <option value="false">{t('fleet.drivers.inactive')}</option>
             </Select>
-          </div>
+          </FilterField>
         </FilterBar>
 
         {/*

@@ -644,13 +644,26 @@ describe('the filter bar', () => {
     );
   });
 
-  it('names every filter for a screen reader AND in a tooltip, for when it truncates', () => {
-    // The row shortens proportionally on a narrower desktop, so a label can be cut off. Both
-    // fallbacks have to be there: `aria-label` for a screen reader, `title` for a pointer.
+  it('names every filter VISIBLY, and keeps that name recoverable when it truncates', () => {
+    // The name used to be written inside the control, where it competed with the value for room
+    // and was the first thing to be clipped. It is a label ABOVE the control now, so the test is
+    // that the name is actually rendered — plus the two fallbacks that still matter: `aria-label`
+    // on the control for a screen reader, and `title` on the label for a pointer, because a
+    // narrow column truncates the label rather than the value.
     const html = bar(render(<DriversListPage />));
     for (const key of FILTER_ORDER) {
+      expect(html, `${key} is named on screen`).toContain(`title="${t(key)}"`);
       expect(html, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
-      expect(html, `${key} title`).toContain(`title="${t(key)}"`);
+      // The name is TEXT the reader can see, not only an attribute. The picker is the one
+      // deliberate exception: its full question — «اسم السائق أو كود الموظف» — is longer than any
+      // column on this bar, so the label says the short form and the full one stays on
+      // `aria-label`, where a screen reader still reads it.
+      const shown = key === 'fleet.drivers.filters.employee'
+        ? t('fleet.drivers.filters.employeeShort')
+        : t(key);
+      expect(html, `${key} is visible text`).toMatch(
+        new RegExp(`>\\s*${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*<`),
+      );
     }
   });
 

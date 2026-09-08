@@ -96,6 +96,23 @@ export const useJobTitles = (enabled: boolean) =>
     select: (page) => page.items,
   });
 
+/**
+ * The seats that require a driving test — the drivers registry's own definition of who it is about.
+ *
+ * A separate query rather than a filter over `useJobTitles`, because the difference is the QUESTION
+ * asked of the server and not the answer's shape: that one reads a page of the catalogue, and a
+ * catalogue longer than its page hides exactly the rows this needs.
+ */
+export const useDrivingJobTitles = (enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, 'jobTitles', 'active', 'requiresDrivingTest'],
+    queryFn: () => api.listJobTitles(true),
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+    select: (page) => page.items,
+  });
+
 export const useUserSearch = (term: string, enabled: boolean) =>
   useQuery({
     queryKey: [MODULE, 'users', 'search', term],

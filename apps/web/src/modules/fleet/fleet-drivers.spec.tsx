@@ -39,6 +39,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
+import { formatNumber } from '../../shared/lib/format';
 import { detailKey, listKey } from '../../shared/lib/query-keys';
 import { buildQuery } from '../../shared/lib/api-client';
 import { DriversListPage } from './pages/DriversListPage';
@@ -225,8 +226,11 @@ const seededClient = (
   );
   // `requiresDrivingTest` is what makes this a DRIVING seat — the flag the registry's membership
   // is derived from, and the one the HR filter step narrows itself to.
+  // Under the DRIVING-SEATS key: the page asks the server for the titles carrying the flag rather
+  // than reading a page of the catalogue and filtering it here. A catalogue longer than one page
+  // used to hide exactly these rows, and with them the narrowing the HR step depends on.
   qc.setQueryData(
-    ['hr', 'jobTitles', 'active'],
+    ['hr', 'jobTitles', 'active', 'requiresDrivingTest'],
     page([
       {
         id: 'jt1',
@@ -321,14 +325,19 @@ const thead = (markup: string): string => {
 };
 
 /**
- * The sixteen columns the brief names, IN THE ORDER IT NAMES THEM:
+ * The fifteen columns the table carries, IN ORDER:
  *
- *   م → اسم السائق → كود الموظف → الوظيفة → الفرع → العنوان → المنطقة → المحافظة →
+ *   اسم السائق → كود الموظف → الوظيفة → الفرع → العنوان → المنطقة → المحافظة →
  *   رقم الموبايل → تاريخ التعيين → التخصص → الرخصة → تاريخ الرخصة → صورة الرخصة →
  *   الحالة → إجراءات
+ *
+ * «م» USED TO BE FIRST AND IS DELIBERATELY GONE (owner request). A row number that is not the
+ * driver's own identifier told the reader nothing the row did not already say, and it cost a
+ * column on a table that has fourteen real ones. What replaced it is the COUNT beside the
+ * filters, which answers the question the serial was being read for — "how many are there?" —
+ * without spending a column per row to do it.
  */
 const REQUIRED_COLUMNS = [
-  'serial',
   'driver',
   'employeeCode',
   'jobTitle',
@@ -347,7 +356,7 @@ const REQUIRED_COLUMNS = [
 
 // ── 1. The table ────────────────────────────────────────────────────────────
 
-describe('the drivers table shows the sixteen required columns', () => {
+describe('the drivers table shows the fifteen required columns', () => {
   it('renders every one of them in the table head', () => {
     const head = thead(render(<DriversListPage />));
     for (const column of REQUIRED_COLUMNS) {
@@ -449,19 +458,29 @@ describe('the columns are filled from the three real sources', () => {
     expect(html, 'branch').toContain(HR.branch);
   });
 
-  it('numbers the rows from the start of the LIST, not of the page', () => {
+  it('counts the WHOLE list beside the filters, not the page of it', () => {
     const qc = seededClient();
     qc.setQueryData(listKey('fleet', 'drivers', driverParams({ page: 3 })), {
       items: [row(driver()), row(driver({ id: 'd2' }), 'e2')],
       meta: { page: 3, pageSize: 25, totalItems: 60, totalPages: 3 },
     });
-    const body = tbody(
-      render(<DriversListPage />, { client: qc, route: '/fleet/drivers?page=3' }),
+    const html = render(<DriversListPage />, { client: qc, route: '/fleet/drivers?page=3' });
+    // Sixty drivers matched; two of them are on this page. The count answers the first number,
+    // because "how many drivers are there" is not a question about pagination.
+    expect(html, 'the count names the whole match').toContain(
+      translate('ar', 'fleet.drivers.count', { count: formatNumber(60, 'ar') }),
     );
-    // Page three of twenty-five: the first row is the fifty-first driver, not the first.
-    expect(body, 'first row of page 3').toContain('>51<');
-    expect(body, 'second row of page 3').toContain('>52<');
-    expect(body, 'and never restarts at 1').not.toContain('>1<');
+    // And it is in the FILTER BAR rather than the table: the table no longer carries «م».
+    expect(html.slice(0, html.indexOf('<table')), 'above the table').toContain(
+      translate('ar', 'fleet.drivers.count', { count: formatNumber(60, 'ar') }),
+    );
+  });
+
+  it('has no «م» column — the serial the count replaced', () => {
+    const head = thead(render(<DriversListPage />));
+    // The header cell itself is gone, and no row prints a bare ordinal in its place.
+    expect(head, 'no serial header').not.toContain('>م<');
+    expect(tbody(markup()), 'and no serial cell').not.toContain('>1<');
   });
 
   it('degrades to a dash without `employee.view` rather than leaking an id', () => {
@@ -1381,6 +1400,49 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     });
     expect(tbodyOf(html), 'the narrowed HR question is the one that answered').toContain('الدقي');
     expect(html, 'and nothing was refused').not.toContain('فلتر الموارد البشرية طابق');
+  });
+
+  it('finds the driving seats even when the job-title CATALOGUE is longer than a page', () => {
+    // The regression this closes, reproduced on a real stack: a company with 122 active job titles
+    // got a 100-row page of them, the driving seat was not in it, so the page narrowed by NOTHING
+    // and «الجيزة» went straight back to overflowing HR's cap — filter set, banner shown, nothing
+    // filtered. The seats are asked for by their flag now, so a long catalogue cannot hide them.
+    const client = seededClient([driver()]);
+    // A page of the catalogue that does NOT contain the driving seat — exactly what the old code
+    // read, and exactly what it was fooled by.
+    client.setQueryData(
+      ['hr', 'jobTitles', 'active'],
+      page(
+        Array.from({ length: 100 }, (_, i) => ({
+          id: `pad${i}`,
+          name: { ar: `وظيفة ${i}`, en: `Pad ${i}` },
+          status: 'active',
+          requiresDrivingTest: false,
+        })),
+      ),
+    );
+    // The narrowed HR answer is the only one seeded, so it is the only one that can render.
+    client.setQueryData(
+      ['hr', 'employees', 'fleet-driver-filter', {
+        search: '',
+        address: '',
+        governorate: 'الجيزة',
+        phone: '',
+      }, 'jt1'],
+      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+    );
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ employeeIds: [EMPLOYEE_ID] })),
+      page([row(driver({ id: 'd9', area: 'المنيل' }))]),
+    );
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
+      client,
+    });
+    expect(tbodyOf(html), 'still narrowed by the seat the page never saw in the catalogue').toContain(
+      'المنيل',
+    );
+    expect(html, 'and still nothing refused').not.toContain('فلتر الموارد البشرية طابق');
   });
 
   it('HR\u2019s list query really accepts several seats at once', () => {

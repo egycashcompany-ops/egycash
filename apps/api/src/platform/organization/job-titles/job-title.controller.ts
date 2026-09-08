@@ -1,5 +1,6 @@
 import { type Request, type Response } from 'express';
-import { type CreateJobTitle, type ListOrgUnitsQuery, type UpdateJobTitle } from '@ecms/contracts';
+import { type CreateJobTitle, type UpdateJobTitle } from '@ecms/contracts';
+import { type ListJobTitlesQuery } from './job-title.validation';
 import { created, noContent, ok } from '../../../infrastructure/http/respond';
 import { validated } from '../../../infrastructure/http/validate';
 import { scopeSelector } from '../../../shared/types';
@@ -10,7 +11,7 @@ type IdParam = { id: string };
 
 export const listJobTitles = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
-  const { query } = validated<never, ListOrgUnitsQuery>(req);
+  const { query } = validated<never, ListJobTitlesQuery>(req);
   const page = await jobTitleService.list(query, scopeSelector(ctx, 'jobTitle.view'));
   // `okPage` takes a SYNC mapper and naming the shifts is a query, so the page is mapped here and
   // handed to `ok` with its own meta — one seam call for the page, not one per row.

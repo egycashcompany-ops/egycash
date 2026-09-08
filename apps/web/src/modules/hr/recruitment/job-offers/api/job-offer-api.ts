@@ -64,8 +64,25 @@ export const listBranches = (): Promise<Paginated<BranchDto>> =>
 export const listDepartments = (): Promise<Paginated<DepartmentDto>> =>
   getPage<DepartmentDto>(`/platform/departments${buildQuery({ status: 'active', pageSize: 100 })}`);
 
-export const listJobTitles = (): Promise<Paginated<JobTitleDto>> =>
-  getPage<JobTitleDto>(`/platform/job-titles${buildQuery({ status: 'active', pageSize: 100 })}`);
+export const listJobTitles = (
+  /**
+   * Ask only for the seats that require a driving test.
+   *
+   * One page of job titles is all any caller reads, so a company with more than a page of them
+   * loses whatever falls off the end. That is harmless for a dropdown and NOT harmless for the
+   * drivers registry, whose membership IS this flag: the seats it could not see were seats it
+   * stopped narrowing by, and the drivers filters silently went back to matching nobody. Asking
+   * the server for the flag makes the answer bounded by the number of driving titles.
+   */
+  requiresDrivingTest?: boolean,
+): Promise<Paginated<JobTitleDto>> =>
+  getPage<JobTitleDto>(
+    `/platform/job-titles${buildQuery({
+      status: 'active',
+      pageSize: 100,
+      ...(requiresDrivingTest === undefined ? {} : { requiresDrivingTest }),
+    })}`,
+  );
 
 export const searchUsers = (term: string): Promise<Paginated<UserDto>> =>
   getPage<UserDto>(`/platform/users${buildQuery({ search: term, status: 'active', pageSize: 8 })}`);

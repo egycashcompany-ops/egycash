@@ -2,7 +2,6 @@ import {
   PlatformEvents,
   type CreateJobTitle,
   type JobTitleDto,
-  type ListOrgUnitsQuery,
   type OrgUnitOptionDto,
   type Paginated,
   type UpdateJobTitle,
@@ -16,6 +15,7 @@ import { emit } from '../../kernel/event-bus';
 import { collectOptions } from '../shared/all-options';
 import { resolveShiftLabels } from '../shift-label-seams';
 import { jobTitleRepository } from './job-title.repository';
+import { type ListJobTitlesQuery } from './job-title.validation';
 import { type JobTitleDoc } from './job-title.model';
 
 const entityRef = (id: string) => ({ moduleId: 'platform', entityType: 'jobTitle', entityId: id });
@@ -178,9 +178,15 @@ class JobTitleService {
     );
   }
 
-  async list(query: ListOrgUnitsQuery, scope: ScopeSelector): Promise<Paginated<JobTitleDoc>> {
+  async list(query: ListJobTitlesQuery, scope: ScopeSelector): Promise<Paginated<JobTitleDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.status !== undefined) filter.status = query.status;
+    // The flag that makes a seat a DRIVING seat. Asked for by the fleet drivers registry, whose
+    // membership IS this flag — so it reads the handful of titles that carry it instead of a page
+    // of the whole catalogue and a filter in the browser.
+    if (query.requiresDrivingTest !== undefined) {
+      filter.requiresDrivingTest = query.requiresDrivingTest;
+    }
     if (query.search !== undefined) {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [{ code: pattern }, { 'name.ar': pattern }, { 'name.en': pattern }];

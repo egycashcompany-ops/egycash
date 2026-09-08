@@ -12,12 +12,7 @@
 // is filed whole or not at all — five stored fines out of six is the outcome this shape exists to
 // make impossible.
 import { useMemo, useState } from 'react';
-import {
-  MAX_PAGE_SIZE,
-  type FleetViolationDto,
-  type Locale,
-  type PageMeta,
-} from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type FleetViolationDto, type Locale, type PageMeta } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -26,7 +21,14 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { CheckIcon, EditIcon, TrashIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
+import {
+  CheckIcon,
+  EditIcon,
+  TrashIcon,
+  PrinterIcon,
+  ResetIcon,
+  DownloadIcon,
+} from '../../../shared/ui/icons';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { saveBlob } from '../../../shared/lib/api-client';
@@ -37,7 +39,11 @@ import {
   useVehicles,
   useViolations,
 } from '../api/fleet-queries';
+import { SideLayer } from '../../../shared/ui/SideLayer';
 import { CatalogSelect } from './CatalogSelect';
+import { DriverPickerFilter } from './DriverPickerFilter';
+import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
+import { violationTypeColour } from '../lib/violation-type-colour';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { EmployeeName } from './EmployeeName';
 import { OptionalEmployeeField } from './OptionalEmployeeField';
@@ -56,26 +62,35 @@ import { printViolations } from '../lib/violations-print';
 
 export const DriverViolationsPanel = ({
   vehicleCodes,
-  driverEmployeeId,
+  driverEmployeeIds,
   typeId,
+  amount,
   page,
   pageSize,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
+  onAmountChange,
+  onClear,
   onPageChange,
   onPageSizeChange,
   onEdit,
   onDelete,
 }: {
   vehicleCodes: string[];
-  driverEmployeeId: string;
+  /** Several drivers at once — a supervisor asks about a crew, not about one person. */
+  driverEmployeeIds: string[];
   typeId: string;
+  /** «قيمة المخالفة» — an exact amount, as it is filed. '' = every amount. */
+  amount: string;
   page: number;
   pageSize: number;
   onVehicleCodesChange: (next: string[]) => void;
-  onDriverChange: (next: string) => void;
-  onTypeChange: (next: string) => void;
+  onDriverChange: (next: string | null) => void;
+  onTypeChange: (next: string | null) => void;
+  onAmountChange: (next: string | null) => void;
+  /** Clear this half in ONE write — see the company panel for why it is not four setter calls. */
+  onClear: () => void;
   onPageChange: (next: number) => void;
   onPageSizeChange: (next: number) => void;
   onEdit: (row: FleetViolationDto) => void;
@@ -163,10 +178,14 @@ export const DriverViolationsPanel = ({
       sortBy: 'date',
       sortDir: 'desc' as const,
       ...(vehicleCodes.length === 0 ? {} : { vehicleCodes: vehicleCodes.join(',') }),
-      ...(driverEmployeeId === '' ? {} : { driverEmployeeIds: driverEmployeeId }),
+      // `driverEmployeeId`, singular, is the parameter's NAME — it takes a comma-separated list.
+      // It used to be sent as `driverEmployeeIds`, which the strict query schema rejected, so every
+      // use of this filter answered 400 and emptied the board.
+      ...(driverEmployeeIds.length === 0 ? {} : { driverEmployeeId: driverEmployeeIds.join(',') }),
+      ...(amount.trim() === '' ? {} : { amount: amount.trim() }),
       ...(typeId === '' ? {} : { violationTypeId: typeId }),
     }),
-    [page, pageSize, vehicleCodes, driverEmployeeId, typeId],
+    [page, pageSize, vehicleCodes, driverEmployeeIds, typeId, amount],
   );
   const list = useViolations(params);
   const rows = list.data?.items ?? [];
@@ -194,7 +213,10 @@ export const DriverViolationsPanel = ({
       header: t('fleet.violations.columns.seq'),
       align: 'center',
       render: (_row, index) =>
-        formatNumber((meta === undefined ? 0 : (meta.page - 1) * meta.pageSize) + index + 1, locale),
+        formatNumber(
+          (meta === undefined ? 0 : (meta.page - 1) * meta.pageSize) + index + 1,
+          locale,
+        ),
     },
     {
       key: 'date',
@@ -220,7 +242,16 @@ export const DriverViolationsPanel = ({
     {
       key: 'type',
       header: t('fleet.violations.fields.type'),
-      render: (row) => typeName.get(row.violationTypeId) ?? '—',
+      // A CHIP, not text: four kinds of fine in one grey column mean reading every row to see the
+      // shape of a day. The name is still written on it — the colour is a hint, never the identity.
+      render: (row) => (
+        <span
+          data-violation-type-chip={row.violationTypeId}
+          className={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${violationTypeColour(row.violationTypeId)}`}
+        >
+          {typeName.get(row.violationTypeId) ?? '—'}
+        </span>
+      ),
     },
     {
       key: 'amount',
@@ -319,11 +350,15 @@ export const DriverViolationsPanel = ({
     try {
       printViolations({
         title: t('fleet.violations.driverTitle'),
-        subtitle: vehicleCodes.length === 0 ? t('fleet.violations.allVehicles') : vehicleCodes.join(', '),
+        subtitle:
+          vehicleCodes.length === 0 ? t('fleet.violations.allVehicles') : vehicleCodes.join(', '),
         header: exportHeader,
         rows: exportRows(),
         totals: [
-          { label: t('fleet.violations.lines.drivers'), value: formatMoney(pageTotal, 'EGP', locale) },
+          {
+            label: t('fleet.violations.lines.drivers'),
+            value: formatMoney(pageTotal, 'EGP', locale),
+          },
         ],
         rtl: locale === 'ar',
       });
@@ -335,14 +370,15 @@ export const DriverViolationsPanel = ({
   return (
     <section
       data-violations-panel="driver"
-      className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      className="flex min-h-0 min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
     >
       <h2 className="mb-4 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
         {t('fleet.violations.driverTitle')}
       </h2>
 
       <div className="mb-3 flex items-start gap-3">
-        <div className="flex shrink-0 flex-col gap-1">
+        {/* Listed LAST so an RTL row draws it on the LEFT — see the company panel for the note. */}
+        <div className="order-last flex shrink-0 flex-col gap-1">
           <button
             type="button"
             data-print="driver"
@@ -368,7 +404,7 @@ export const DriverViolationsPanel = ({
         {/* ── count the stack ─────────────────────────────────────────────── */}
         <div
           data-driver-bar="true"
-          className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
+          className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
         >
           <Field label={t('fleet.odometer.columns.vehicle')}>
             <Input
@@ -388,139 +424,213 @@ export const DriverViolationsPanel = ({
                 aria-label={type.name}
                 value={String(counts[type.id] ?? 0)}
                 onChange={(e) => setCount(type.id, e.target.value)}
-                className="w-20"
+                // Its own colour, the same one its rows and its cards carry, so counting «عكس»
+                // here and reading «عكس» on the board below are visibly the same subject.
+                className={`w-20 border ${violationTypeColour(type.id)}`}
                 dir="ltr"
                 inputMode="numeric"
               />
             </Field>
           ))}
-          <Button
-            data-driver-save="true"
-            disabled={!canSave}
-            loading={record.isPending}
-            onClick={() => void save()}
-            className="mb-0.5"
-          >
-            {t('common.save')}
-          </Button>
+          {/* NO Save here any more. Counting opens the layer, and the layer is where each fine is
+              named and filed — a Save on this bar could only ever be the disabled twin of the one
+              beside the cards it depends on, which is precisely the button that told a reader
+              nothing about why it would not work. */}
         </div>
       </div>
 
       {/* ── name what was counted ─────────────────────────────────────────── */}
-      <div
-        data-entered-panel="true"
-        className="mb-3 rounded-lg bg-slate-900 p-3 dark:bg-slate-950"
-      >
-        <h3 className="mb-2 text-center text-sm font-semibold text-slate-100">
-          {t('fleet.violations.enteredTitle')}
-        </h3>
-        {cards.length === 0 ? (
-          <p data-entered-empty className="py-4 text-center text-xs text-slate-400">
-            {t('fleet.violations.enteredEmpty')}
-          </p>
-        ) : (
+      <SideLayer
+        open={cards.length > 0}
+        onClose={() => {
+          setCounts({});
+          setCards([]);
+        }}
+        side="right"
+        title={t('fleet.violations.enteredTitle')}
+        description={t('fleet.violations.enteredHint')}
+        footer={
           <>
-            <ul className="max-h-72 space-y-2 overflow-y-auto">
-              {cards.map((card) => (
-                <li
-                  key={card.key}
-                  data-entry-card={card.key}
-                  data-entry-incomplete={missing.includes(card.key) ? 'true' : undefined}
-                  className={[
-                    'rounded-lg border p-2',
-                    missing.includes(card.key)
-                      ? 'border-amber-500/60 bg-slate-800'
-                      : 'border-slate-700 bg-slate-800',
-                  ].join(' ')}
-                >
-                  <div className="mb-1.5 text-xs font-semibold text-slate-200">
-                    {cardLabel(card)}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      type="date"
-                      data-entry-date={card.key}
-                      aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
-                      value={card.date}
-                      onChange={(e) => patchCard(card.key, { date: e.target.value })}
-                      className="w-40"
-                      dir="ltr"
-                    />
-                    <div className="min-w-[10rem] flex-1 bg-white dark:bg-slate-900">
-                      <OptionalEmployeeField
-                        value={card.driverEmployeeId}
-                        onChange={(id) => patchCard(card.key, { driverEmployeeId: id })}
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setCounts({});
+                setCards([]);
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button
+              data-driver-save="true"
+              disabled={!canSave}
+              loading={record.isPending}
+              onClick={() => void save()}
+            >
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <div data-entered-panel="true">
+          {cards.length === 0 ? (
+            <p data-entered-empty className="py-4 text-center text-xs text-slate-400">
+              {t('fleet.violations.enteredEmpty')}
+            </p>
+          ) : (
+            <>
+              <ul className="max-h-72 space-y-2 overflow-y-auto">
+                {cards.map((card) => (
+                  <li
+                    key={card.key}
+                    data-entry-card={card.key}
+                    data-entry-incomplete={missing.includes(card.key) ? 'true' : undefined}
+                    className={[
+                      'rounded-lg border p-2',
+                      missing.includes(card.key)
+                        ? 'border-amber-500/60 bg-slate-800'
+                        : 'border-slate-700 bg-slate-800',
+                    ].join(' ')}
+                  >
+                    <div className="mb-1.5 text-xs font-semibold text-slate-200">
+                      {cardLabel(card)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        type="date"
+                        data-entry-date={card.key}
+                        aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
+                        value={card.date}
+                        onChange={(e) => patchCard(card.key, { date: e.target.value })}
+                        className="w-40"
+                        dir="ltr"
+                      />
+                      <div className="min-w-[10rem] flex-1 bg-white dark:bg-slate-900">
+                        <OptionalEmployeeField
+                          value={card.driverEmployeeId}
+                          onChange={(id) => patchCard(card.key, { driverEmployeeId: id })}
+                        />
+                      </div>
+                      <Input
+                        data-entry-amount={card.key}
+                        aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`}
+                        placeholder={t('fleet.violations.fields.amount')}
+                        value={card.amount}
+                        onChange={(e) => patchCard(card.key, { amount: e.target.value })}
+                        className="w-24"
+                        dir="ltr"
+                        inputMode="decimal"
                       />
                     </div>
-                    <Input
-                      data-entry-amount={card.key}
-                      aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`}
-                      placeholder={t('fleet.violations.fields.amount')}
-                      value={card.amount}
-                      onChange={(e) => patchCard(card.key, { amount: e.target.value })}
-                      className="w-24"
-                      dir="ltr"
-                      inputMode="decimal"
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
-              <span data-entered-count>
-                {t('fleet.violations.enteredCount', { count: String(cards.length) })}
-              </span>
-              <span data-entered-total className="tabular-nums">
-                {formatMoney(entryTotal(cards), 'EGP', locale)}
-              </span>
-            </div>
-          </>
-        )}
-      </div>
+                  </li>
+                ))}
+              </ul>
+              {/* WHY SAVE IS OFF, in words. The button used to sit dead beside an amber border and
+                nothing else: a reader who had typed a date and an amount had no way to learn that
+                the driver — a field that only fills by PICKING a name from its search — was still
+                empty. Naming the incomplete cards is the whole difference between a form that
+                refuses and a form that explains. */}
+              {missing.length > 0 && (
+                <p
+                  data-entry-blocked
+                  role="status"
+                  className="mt-2 rounded-md border border-amber-500/60 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+                >
+                  {t('fleet.violations.entryIncomplete', { count: String(missing.length) })}
+                </p>
+              )}
+              <div className="mt-2 flex items-center justify-between text-xs text-slate-300">
+                <span data-entered-count>
+                  {t('fleet.violations.enteredCount', { count: String(cards.length) })}
+                </span>
+                <span data-entered-total className="tabular-nums">
+                  {formatMoney(entryTotal(cards), 'EGP', locale)}
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      </SideLayer>
 
       {/* ── what the board is showing ───────────────────────────────────── */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <VehicleCodeFilter className="min-w-0" value={vehicleCodes} onChange={onVehicleCodesChange} />
-        <div className="min-w-[12rem] flex-1">
-          <OptionalEmployeeField value={driverEmployeeId} onChange={onDriverChange} />
-        </div>
+        <VehicleCodeFilter
+          className="min-w-0"
+          value={vehicleCodes}
+          onChange={onVehicleCodesChange}
+        />
+        {/* SEVERAL drivers, picked by name or code — the same control the drivers registry uses, so
+            an operator who knows one knows this one. It replaced a single-value search box that
+            was both narrower than the question and, sending the wrong parameter name, broken. */}
+        <DriverPickerFilter
+          value={driverEmployeeIds}
+          onChange={(next) => onDriverChange(next.length === 0 ? null : next.join(','))}
+          className="min-w-0 max-w-[11rem] flex-1"
+        />
         <CatalogSelect
           kind="violationType"
           violationSide="driver"
           value={typeId}
-          onChange={onTypeChange}
+          onChange={(next) => onTypeChange(next || null)}
           ariaLabel={t('fleet.violations.pickType')}
           allLabel={t('fleet.violations.allTypes')}
         />
-        <button
-          type="button"
-          data-driver-refresh="true"
-          aria-label={t('common.refresh')}
-          title={t('common.refresh')}
-          onClick={() => void list.refetch()}
-          className="rounded-md bg-rose-800 p-2 text-white hover:bg-rose-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
+        {/* The width lives on the WRAPPER: `cn` does not merge Tailwind classes, so a `w-24` passed
+            to `Input` would be fighting its own `w-full` and losing — which is exactly what put
+            this box on a line of its own. */}
+        <div className="w-24">
+          <DebouncedInput
+            aria-label={t('fleet.violations.fields.amount')}
+            title={t('fleet.violations.fields.amount')}
+            placeholder={t('fleet.violations.fields.amount')}
+            value={amount}
+            onValueChange={(next) => onAmountChange(next || null)}
+            dir="ltr"
+            inputMode="decimal"
+          />
+        </div>
+        {/* CLEARS this half's filters — it called `refetch()` before, which changed nothing a
+            reader could see. See the company panel for the full note. */}
+        {(vehicleCodes.length > 0 ||
+          driverEmployeeIds.length > 0 ||
+          typeId !== '' ||
+          amount !== '') && (
+          <button
+            type="button"
+            data-driver-clear="true"
+            aria-label={t('common.filters.clear')}
+            title={t('common.filters.clear')}
+            onClick={onClear}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+          >
+            <ResetIcon className="h-4 w-4" />
+          </button>
+        )}
+        <span
+          data-driver-count-badge
+          className="text-lg font-bold text-brand-700 dark:text-brand-300"
         >
-          <ResetIcon className="h-4 w-4" />
-        </button>
-        <span data-driver-count-badge className="text-lg font-bold text-brand-700 dark:text-brand-300">
           {formatNumber(meta?.totalItems ?? 0, locale)}
         </span>
       </div>
 
-      <DataTable
-        columns={columns}
-        rows={rows}
-        rowKey={(row) => row.id}
-        loading={list.isLoading}
-        error={list.isError ? list.error : undefined}
-        onRetry={() => void list.refetch()}
-        dense
-        // Collected is a STATE OF THE ROW, so the row carries it — the tick is where you change
-        // it, the tint is how the board reads at a glance.
-        rowClassName={(row) =>
-          row.collected ? 'bg-emerald-50 dark:bg-emerald-950/40' : undefined
-        }
-      />
+      {/* The BOARD scrolls, not the page — the filters above it and the totals below it stay put,
+          which is what makes this half readable beside the other one. */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          loading={list.isLoading}
+          error={list.isError ? list.error : undefined}
+          onRetry={() => void list.refetch()}
+          dense
+          // Collected is a STATE OF THE ROW, so the row carries it — the tick is where you change
+          // it, the tint is how the board reads at a glance.
+          rowClassName={(row) =>
+            row.collected ? 'bg-emerald-50 dark:bg-emerald-950/40' : undefined
+          }
+        />
+      </div>
       {meta !== undefined && meta.totalItems > 0 && (
         <>
           <table className="mt-2 w-full border-collapse text-sm">

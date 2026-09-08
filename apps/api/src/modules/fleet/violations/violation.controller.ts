@@ -8,6 +8,7 @@ import {
   type RecordFleetVehicleViolation,
   type SetFleetGrievance,
   type SetFleetViolationCollected,
+  type SetRollupCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -43,6 +44,13 @@ export const recordDriverViolations = async (req: Request, res: Response): Promi
   const { body } = validated<RecordFleetDriverViolations>(req);
   const docs = await fleetViolationService.recordDriverBatch(body, authContext(req).userId);
   created(res, docs.map(toViolationDto));
+};
+
+export const setRollupCollected = async (req: Request, res: Response): Promise<void> => {
+  const ctx = authContext(req);
+  const { body } = validated<SetRollupCollected>(req);
+  const changed = await fleetViolationService.setCollectedForYear(body, ctx.userId);
+  ok(res, { changed });
 };
 
 export const setViolationCollected = async (req: Request, res: Response): Promise<void> => {

@@ -99,6 +99,10 @@ const NOT_A_CODE_SELECTOR = [
     file: 'modules/fleet/components/DriverViolationsPanel.tsx',
     why: 'an id→code map so a retired car’s fine still prints its code, plus code→id for the batch bar; filtering is VehicleCodeFilter’s',
   },
+  {
+    file: 'modules/fleet/components/ViolationDialogs.tsx',
+    why: 'an id→code lookup so an existing fine SHOWS the car it is on — the car is not editable on a filed row, so there is nothing to select and no term to route',
+  },
 ] as const;
 
 /**

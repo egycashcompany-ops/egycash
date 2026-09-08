@@ -19,15 +19,13 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { type Locale } from '@ecms/contracts';
 import { useDeleteViolation } from '../api/fleet-queries';
 import { CompanyViolationsPanel } from '../components/CompanyViolationsPanel';
 import { DriverViolationsPanel } from '../components/DriverViolationsPanel';
-import { CompanyViolationsDetailDialog } from '../components/CompanyViolationsDetailDialog';
+import { CompanyViolationsDetailLayer } from '../components/CompanyViolationsDetailLayer';
 import {
   DriverViolationDialog,
   GrievanceDialog,
@@ -42,7 +40,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
  * One shared filter would mean narrowing the left half every time somebody looked up a car on the
  * right, and the two halves are read side by side precisely so they can disagree.
  */
-const REMEMBERED_FILTERS = ['year', 'codes', 'dcodes', 'driver', 'dtype', 'size'] as const;
+const REMEMBERED_FILTERS = ['year', 'codes', 'dcodes', 'driver', 'dtype', 'damt', 'size'] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -55,7 +53,8 @@ export const ViolationsPage = (): JSX.Element => {
   const year = sp.get('year') ?? '';
   const codes = splitVehicleCodeList(sp.get('codes') ?? '');
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
-  const driver = sp.get('driver') ?? '';
+  const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
+  const driverAmount = sp.get('damt') ?? '';
   const dtype = sp.get('dtype') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -89,7 +88,7 @@ export const ViolationsPage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.violations')}
         breadcrumbs={[
@@ -103,18 +102,29 @@ export const ViolationsPage = (): JSX.Element => {
         which is where the business reads its own ledger. On a narrow screen the grid collapses to
         one column and the same order becomes top-to-bottom, so the reading order survives.
       */}
-      <div data-violations-split="true" className="grid min-w-0 gap-4 2xl:grid-cols-2">
+      {/* The two ledgers fill whatever the shell left, and the PAGE never scrolls: each panel
+          scrolls its own board instead. Comparing the company's total to the drivers' is the whole
+          reason these sit side by side, and a page-level scrollbar takes one of them off screen at
+          exactly the moment a reader is looking from one to the other. */}
+      <div
+        data-violations-split="true"
+        className="grid min-h-0 min-w-0 flex-1 gap-4 2xl:grid-cols-2"
+      >
         <CompanyViolationsPanel
           year={year}
           vehicleCodes={codes}
           onYearChange={(next) => patch({ year: next })}
-          onVehicleCodesChange={(next) => patch({ codes: next.length === 0 ? null : next.join(',') })}
+          onVehicleCodesChange={(next) =>
+            patch({ codes: next.length === 0 ? null : next.join(',') })
+          }
+          onClear={() => patch({ year: null, codes: null })}
           onInspect={setInspecting}
         />
         <DriverViolationsPanel
           vehicleCodes={driverCodes}
-          driverEmployeeId={driver}
+          driverEmployeeIds={driverEmployeeIds}
           typeId={dtype}
+          amount={driverAmount}
           page={page}
           pageSize={pageSize}
           onVehicleCodesChange={(next) =>
@@ -122,6 +132,8 @@ export const ViolationsPage = (): JSX.Element => {
           }
           onDriverChange={(next) => patch({ driver: next })}
           onTypeChange={(next) => patch({ dtype: next })}
+          onAmountChange={(next) => patch({ damt: next })}
+          onClear={() => patch({ dcodes: null, driver: null, dtype: null, damt: null })}
           onPageChange={(next) => patch({ page: String(next) }, false)}
           onPageSizeChange={(next) => patch({ size: String(next), page: null }, false)}
           onEdit={setEditing}
@@ -129,7 +141,7 @@ export const ViolationsPage = (): JSX.Element => {
         />
       </div>
 
-      <CompanyViolationsDetailDialog
+      <CompanyViolationsDetailLayer
         row={inspecting}
         onClose={() => setInspecting(null)}
         onEdit={setEditing}
@@ -159,25 +171,26 @@ export const ViolationsPage = (): JSX.Element => {
         />
       )}
 
-      <Dialog
-        open={deleting !== null}
+      {/* DELETING SHOWS THE FINE, not a sentence about it. The same form the edit path uses,
+          read-only, over a delete button: a reader confirming the removal of one of nine fines on
+          one car needs to see WHICH one — its year, its kind, its value, its count and what those
+          come to. The old dialog asked «are you sure?» about a row it never showed. */}
+      <VehicleViolationDialog
+        open={deleting?.kind === 'vehicle'}
         onClose={() => setDeleting(null)}
-        title={t('fleet.violations.deleteTitle')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setDeleting(null)}>
-              {t('common.cancel')}
-            </Button>
-            <Button variant="danger" loading={remove.isPending} onClick={() => void confirmDelete()}>
-              {t('fleet.violations.delete')}
-            </Button>
-          </>
-        }
-      >
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          {t('fleet.violations.deleteBody')}
-        </p>
-      </Dialog>
+        violation={deleting?.kind === 'vehicle' ? deleting : null}
+        mode="delete"
+        deleting={remove.isPending}
+        onConfirmDelete={() => void confirmDelete()}
+      />
+      <DriverViolationDialog
+        open={deleting?.kind === 'driver'}
+        onClose={() => setDeleting(null)}
+        violation={deleting?.kind === 'driver' ? deleting : null}
+        mode="delete"
+        deleting={remove.isPending}
+        onConfirmDelete={() => void confirmDelete()}
+      />
     </PageContainer>
   );
 };

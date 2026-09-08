@@ -318,7 +318,9 @@ const CODE_SEPARATORS = /\s*[,;\n\r]\s*|\s+-\s+|\s+/;
  * codes nobody has.
  */
 export const splitVehicleCodeList = (raw: string | readonly string[]): string[] => {
-  const parts = Array.isArray(raw) ? (raw as readonly string[]) : String(raw).split(CODE_SEPARATORS);
+  const parts = Array.isArray(raw)
+    ? (raw as readonly string[])
+    : String(raw).split(CODE_SEPARATORS);
   const out: string[] = [];
   const seen = new Set<string>();
   for (const part of parts) {
@@ -1598,7 +1600,22 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
   vehicleCodes: vehicleCodesQuery(),
   /** @deprecated Superseded by `vehicleCodes`; still honoured for saved links. */
   vehicleId: objectId().optional(),
-  driverEmployeeId: objectId().optional(),
+  /**
+   * The drivers asked about, ORed. A LIST because a supervisor asks about a crew, not one person —
+   * and because the screen was already sending several and getting a 400 for it: the bar offered a
+   * driver filter whose every use broke the list.
+   *
+   * A single id still parses, as a one-item list, so every saved link keeps working.
+   */
+  driverEmployeeId: listQuery(objectId()),
+  /**
+   * «قيمة المخالفة» — the EXACT amount as filed, not a range.
+   *
+   * Exact because that is how these are looked up: a clerk reconciling a batch has the figure off
+   * the notice in front of them and wants the rows carrying it. A range would be a different
+   * question, and one nobody on this screen has asked for.
+   */
+  amount: z.coerce.number().min(0).optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;
@@ -1631,7 +1648,26 @@ export interface FleetViolationRollupDto {
   totalCount: number;
   totalAmount: number;
   totalBeforeGrievance: number;
+  /**
+   * How many of this (vehicle, year)'s rows exist, and how many have been collected.
+   *
+   * The board's tick is a GROUP's state, and a group is only «collected» when every row in it is.
+   * Two numbers rather than a boolean because the third state — some collected, some not — is the
+   * one a reader most needs to see, and a boolean cannot carry it.
+   */
+  rowCount: number;
+  collectedCount: number;
 }
+
+/** Tick or untick every row of one (vehicle, year) at once — what the board's own tick does. */
+export const SetRollupCollectedSchema = z
+  .object({
+    vehicleId: objectId(),
+    year: z.coerce.number().int().min(2000).max(2100),
+    collected: z.boolean(),
+  })
+  .strict();
+export type SetRollupCollected = z.infer<typeof SetRollupCollectedSchema>;
 
 // ── Events (ADR-008 `<module>.<entity>.<event>`) ────────────────────────────
 

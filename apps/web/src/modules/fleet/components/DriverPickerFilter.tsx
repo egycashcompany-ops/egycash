@@ -21,10 +21,7 @@ import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { listEmployees } from '../../hr/employee-management/employees/api/employee-api';
-import {
-  driverPickerOptions,
-  type DriverPickOption,
-} from '../lib/driver-filter-selection';
+import { driverPickerOptions, type DriverPickOption } from '../lib/driver-filter-selection';
 import { useEmployeeRecords } from './EmployeeName';
 
 /** How many people one search offers. Enough to pick from, small enough to stay one request. */

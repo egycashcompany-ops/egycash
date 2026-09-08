@@ -12,10 +12,37 @@
 // for the next author, and one that rendered something would put the sentences back a page at a
 // time. `page-header-has-no-subtitle.spec.ts` is what keeps that true.
 import { type ReactNode } from 'react';
+import { cn } from '../../shared/lib/cn';
 import { Breadcrumbs, type Crumb } from './Breadcrumbs';
 
-export const PageContainer = ({ children }: { children: ReactNode }): JSX.Element => (
-  <div className="mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">{children}</div>
+export const PageContainer = ({
+  children,
+  fullHeight = false,
+}: {
+  children: ReactNode;
+  /**
+   * Fill the shell's viewport exactly, and let the page's own regions scroll instead of the page.
+   *
+   * Off by default, because a page that grows down the screen is the right shape for almost every
+   * screen here. Turn it on for a board a reader works ACROSS rather than reads down — two ledgers
+   * side by side, where scrolling the page would take the second one's totals off screen while you
+   * are comparing them to the first one's. A caller that opts in owes its own `min-h-0 flex-1` on
+   * whichever region is meant to scroll; without that the content simply overflows, because the
+   * container caps the height and nothing below it has been told where the give is.
+   */
+  fullHeight?: boolean;
+}): JSX.Element => (
+  <div
+    className={cn(
+      'mx-auto w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8',
+      // `shrink-0` is what keeps every OTHER page exactly as it was: `main` is a flex column now,
+      // and without it a page taller than the viewport would be squashed to fit instead of
+      // scrolling. Only a page that asks takes the give.
+      fullHeight ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0',
+    )}
+  >
+    {children}
+  </div>
 );
 
 export const PageHeader = ({
@@ -36,7 +63,11 @@ export const PageHeader = ({
   <div className="mb-6 border-b border-slate-200/80 pb-5 dark:border-slate-800">
     {(breadcrumbs !== undefined && breadcrumbs.length > 0) || aside !== undefined ? (
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
-        {breadcrumbs !== undefined && breadcrumbs.length > 0 ? <Breadcrumbs items={breadcrumbs} /> : <span />}
+        {breadcrumbs !== undefined && breadcrumbs.length > 0 ? (
+          <Breadcrumbs items={breadcrumbs} />
+        ) : (
+          <span />
+        )}
         {aside !== undefined && <div className="min-w-0">{aside}</div>}
       </div>
     ) : null}

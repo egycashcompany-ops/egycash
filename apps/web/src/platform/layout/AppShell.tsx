@@ -20,7 +20,10 @@ const RecentTracker = (): null => {
     let bestId: string | null = null;
     let bestLen = -1;
     for (const a of apps) {
-      if ((pathname === a.route || pathname.startsWith(`${a.route}/`)) && a.route.length > bestLen) {
+      if (
+        (pathname === a.route || pathname.startsWith(`${a.route}/`)) &&
+        a.route.length > bestLen
+      ) {
         bestLen = a.route.length;
         bestId = a.id;
       }
@@ -51,9 +54,16 @@ const Shell = (): JSX.Element => {
       <Topbar onOpenSearch={() => setPaletteOpen(true)} />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="min-w-0 flex-1 overflow-y-auto">
+        {/* A FLEX COLUMN, so a page can ask to be exactly this tall.
+            `main` gets its height from being stretched as a flex item, which gives it a used
+            height but leaves its computed `height` at `auto` — and a percentage height on a child
+            resolves against the COMPUTED value, so `h-full` inside here silently did nothing and
+            the page grew instead. A flex column hands the give to the child that asks for it,
+            which is what `PageContainer fullHeight` does. Every other page's container is
+            `shrink-0`, so nothing that used to grow past this box stops doing so. */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-y-auto">
           {/* Keyed on the path so each navigation settles in with a subtle fade instead of a hard cut. */}
-          <div key={pathname} className="animate-fade-in">
+          <div key={pathname} className="flex min-h-0 flex-1 flex-col animate-fade-in">
             <Outlet />
           </div>
         </main>

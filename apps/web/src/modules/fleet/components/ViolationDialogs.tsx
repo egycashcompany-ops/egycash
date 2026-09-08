@@ -7,8 +7,10 @@
 // grievance is the ONE per-(vehicle, year) figure — a PUT set/replace, prefilled from the
 // rollup row it was opened on.
 import { useEffect, useState } from 'react';
-import { type FleetViolationDto } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type FleetViolationDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
+import { formatMoney } from '../../../shared/lib/format';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
@@ -19,6 +21,7 @@ import {
   useRecordVehicleViolation,
   useSetGrievance,
   useUpdateViolation,
+  useVehicles,
 } from '../api/fleet-queries';
 import { VehicleSelect } from './VehicleSelect';
 import { CatalogSelect } from './CatalogSelect';
@@ -35,14 +38,29 @@ export const VehicleViolationDialog = ({
   onClose,
   violation,
   initialVehicleId = '',
+  mode = 'edit',
+  onConfirmDelete,
+  deleting = false,
 }: {
   open: boolean;
   onClose: () => void;
   /** null = record; a `vehicle`-shape row = version-aware edit. */
   violation: FleetViolationDto | null;
   initialVehicleId?: string;
+  /**
+   * `delete` shows the SAME form, read-only, over a delete button.
+   *
+   * A bare «are you sure?» asks a reader to confirm something they cannot see. Removing a fine is
+   * irreversible and the row it names is one of several on one car in one year, so the thing to
+   * confirm is the FINE — its year, its car, its kind, its value, its count and what those come to
+   * — not the sentence "this cannot be undone".
+   */
+  mode?: 'edit' | 'delete';
+  onConfirmDelete?: () => void;
+  deleting?: boolean;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [vehicleId, setVehicleId] = useState('');
   const [year, setYear] = useState(String(currentYear()));
   const [violationTypeId, setViolationTypeId] = useState('');
@@ -62,6 +80,18 @@ export const VehicleViolationDialog = ({
   const record = useRecordVehicleViolation();
   const update = useUpdateViolation();
   const pending = record.isPending || update.isPending;
+  const readOnly = mode === 'delete';
+
+  // The car's CODE, which is what a reader recognises — the row carries only its id.
+  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
+  const code = (vehicles.data?.items ?? []).find((v) => v.id === vehicleId)?.code ?? '—';
+
+  // What the row comes to. The server owns this arithmetic (count × unitValue) and this mirrors it
+  // so the reader sees the consequence of an edit BEFORE committing it — and, on the delete path,
+  // exactly how much is about to leave the year's total.
+  const money = Number(unitValue);
+  const times = Number(count);
+  const total = isMoney(unitValue) && Number.isInteger(times) && times >= 1 ? money * times : null;
 
   const complete =
     vehicleId !== '' &&
@@ -100,23 +130,44 @@ export const VehicleViolationDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
-      title={violation === null ? t('fleet.violations.recordVehicle') : t('fleet.violations.edit')}
-      description={t('fleet.violations.vehicleHint')}
+      title={
+        readOnly
+          ? t('fleet.violations.deleteTitle')
+          : violation === null
+            ? t('fleet.violations.recordVehicle')
+            : t('fleet.violations.edit')
+      }
+      description={readOnly ? t('fleet.violations.deleteBody') : t('fleet.violations.vehicleHint')}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
-            {t('common.save')}
-          </Button>
+          {readOnly ? (
+            <Button variant="danger" loading={deleting} onClick={() => onConfirmDelete?.()}>
+              {t('fleet.violations.delete')}
+            </Button>
+          ) : (
+            <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+              {t('common.save')}
+            </Button>
+          )}
         </>
       }
     >
-      <div className="space-y-4">
+      <fieldset disabled={readOnly} className="space-y-4">
         {violation === null && (
           <Field label={t('fleet.odometer.columns.vehicle')} required>
             <VehicleSelect value={vehicleId} onChange={setVehicleId} anyStatus />
+          </Field>
+        )}
+        {violation !== null && (
+          <Field label={t('fleet.odometer.columns.vehicle')}>
+            {/* The car is not editable on an existing row — moving a fine to another car is a
+                different act from correcting one — so it is SHOWN rather than offered. */}
+            <p data-violation-code className="font-mono text-sm" dir="ltr">
+              {code}
+            </p>
           </Field>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -161,7 +212,15 @@ export const VehicleViolationDialog = ({
             <MoneyInput value={unitValue} onChange={(next) => setUnitValue(next)} />
           </Field>
         </div>
-      </div>
+        <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-800">
+          <span className="text-sm text-slate-600 dark:text-slate-300">
+            {t('fleet.violations.fields.amount')}
+          </span>
+          <span data-violation-total className="text-base font-semibold tabular-nums">
+            {total === null ? '—' : formatMoney(total, 'EGP', locale)}
+          </span>
+        </div>
+      </fieldset>
     </Dialog>
   );
 };
@@ -172,14 +231,22 @@ export const DriverViolationDialog = ({
   onClose,
   violation,
   initialVehicleId = '',
+  mode = 'edit',
+  onConfirmDelete,
+  deleting = false,
 }: {
   open: boolean;
   onClose: () => void;
   /** null = record; a `driver`-shape row = version-aware edit. */
   violation: FleetViolationDto | null;
   initialVehicleId?: string;
+  /** `delete` shows this same form read-only over a delete button — see the vehicle dialog. */
+  mode?: 'edit' | 'delete';
+  onConfirmDelete?: () => void;
+  deleting?: boolean;
 }): JSX.Element => {
   const t = useT();
+  const readOnly = mode === 'delete';
   const [vehicleId, setVehicleId] = useState('');
   const [date, setDate] = useState('');
   const [driver, setDriver] = useState('');
@@ -230,20 +297,32 @@ export const DriverViolationDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
-      title={violation === null ? t('fleet.violations.recordDriver') : t('fleet.violations.edit')}
-      description={t('fleet.violations.driverHint')}
+      title={
+        readOnly
+          ? t('fleet.violations.deleteTitle')
+          : violation === null
+            ? t('fleet.violations.recordDriver')
+            : t('fleet.violations.edit')
+      }
+      {...(readOnly ? { description: t('fleet.violations.deleteBody') } : {})}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
-            {t('common.save')}
-          </Button>
+          {readOnly ? (
+            <Button variant="danger" loading={deleting} onClick={() => onConfirmDelete?.()}>
+              {t('fleet.violations.delete')}
+            </Button>
+          ) : (
+            <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+              {t('common.save')}
+            </Button>
+          )}
         </>
       }
     >
-      <div className="space-y-4">
+      <fieldset disabled={readOnly} className="space-y-4">
         {violation === null && (
           <Field label={t('fleet.odometer.columns.vehicle')} required>
             <VehicleSelect value={vehicleId} onChange={setVehicleId} anyStatus />
@@ -269,7 +348,7 @@ export const DriverViolationDialog = ({
         <Field label={t('fleet.violations.fields.amount')} required>
           <MoneyInput value={amount} onChange={(next) => setAmount(next)} />
         </Field>
-      </div>
+      </fieldset>
     </Dialog>
   );
 };

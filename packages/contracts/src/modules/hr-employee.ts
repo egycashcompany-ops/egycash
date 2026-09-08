@@ -412,7 +412,14 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   branchId: listQuery(objectId()),
   departmentId: objectId().optional(),
   sectionId: objectId().optional(),
-  jobTitleId: objectId().optional(),
+  /**
+   * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
+   * eventually needs: a caller whose question is «people holding ANY of these titles» would
+   * otherwise have to ask once per title and merge the pages, and merging capped pages is how a
+   * filter starts lying. One value still parses (`listQuery` splits on commas), so every existing
+   * caller sends exactly what it always sent.
+   */
+  jobTitleId: listQuery(objectId()),
   managerId: objectId().optional(),
   employmentType: EmploymentTypeSchema.optional(),
   /** Free-text over the employee number (`code`), applicant code and full name (partial). */

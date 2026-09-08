@@ -17,6 +17,7 @@ export const CatalogSelect = ({
   id,
   ariaLabel,
   className = 'w-auto',
+  density,
   disabled = false,
 }: {
   kind: FleetCatalogKind;
@@ -40,6 +41,8 @@ export const CatalogSelect = ({
    * `w-full`, so the select fills the width its own flex item was given instead of demanding one.
    */
   className?: string;
+  /** Passed straight to `Select` — a filter bar holding eleven controls asks for `tight`. */
+  density?: 'default' | 'tight';
   /**
    * Show the current value but refuse to change it.
    *
@@ -66,6 +69,7 @@ export const CatalogSelect = ({
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
       className={className}
+      {...(density === undefined ? {} : { density })}
     >
       <option value="">{allLabel ?? t('common.select')}</option>
       {items.map((item) => (

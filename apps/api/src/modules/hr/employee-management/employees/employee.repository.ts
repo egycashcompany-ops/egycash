@@ -18,7 +18,7 @@ export interface EmployeeListFilter {
   branchId?: readonly string[] | undefined;
   departmentId?: string | undefined;
   sectionId?: string | undefined;
-  jobTitleId?: string | undefined;
+  jobTitleId?: readonly string[] | undefined;
   managerId?: string | undefined;
   employmentType?: string | undefined;
   search?: string | undefined;
@@ -390,7 +390,9 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     if (f.departmentId !== undefined) clauses.push({ departmentId: new Types.ObjectId(f.departmentId) });
     if (f.sectionId !== undefined) clauses.push({ sectionId: new Types.ObjectId(f.sectionId) });
     if (f.jobTitleId !== undefined)
-      clauses.push({ 'employment.jobTitleId': new Types.ObjectId(f.jobTitleId) });
+      clauses.push({
+        'employment.jobTitleId': { $in: f.jobTitleId.map((id) => new Types.ObjectId(id)) },
+      });
     if (f.managerId !== undefined)
       clauses.push({ 'employment.managerId': new Types.ObjectId(f.managerId) });
     if (f.employmentType !== undefined) clauses.push({ 'employment.employmentType': f.employmentType });

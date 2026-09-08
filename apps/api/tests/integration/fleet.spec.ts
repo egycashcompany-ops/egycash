@@ -876,6 +876,82 @@ describe('the drivers registry filters on the BRANCH itself', () => {
   });
 });
 
+describe('HR’s list answers about SEVERAL seats at once', () => {
+  it('narrows to the driving titles, so a wide term stays a question about drivers', async () => {
+    /**
+     * THE DEFECT, in the shape that produced it. The drivers registry resolves «العنوان»،
+     * «المحافظة» and «رقم الهاتف» through HR first and may carry ONE page of the answer. Asked
+     * about everybody, an ordinary governorate matches the payroll — measured on a real database,
+     * «الجيزة» matched 117 employees of whom 3 were drivers — so the step blew its cap and the
+     * screen refused to filter at all.
+     *
+     * The registry is only people whose job title requires a driving test. Asking HR about THOSE
+     * SEATS is the same question the screen is asking, and its answer is bounded by the driver
+     * count. This proves the endpoint can be asked that way: several titles at once, ORed.
+     */
+    const nonDriving = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `NON-DRV-${vehicleCounter++}`,
+        name: { ar: 'موظف مكتب', en: 'Office staff' },
+        jobGrade: 'G1',
+        requiresDrivingTest: false,
+      });
+    expect(nonDriving.status).toBe(201);
+    const officeTitleId = (nonDriving.body as { data: { id: string } }).data.id;
+
+    const governorate = 'محافظة السقف';
+    const driverOne = await mkEmployee({ fullNameAr: 'سائق السقف الاول', governorate });
+    const driverTwo = await mkEmployee({ fullNameAr: 'سائق السقف الثاني', governorate });
+    // Office staff in the SAME governorate: the people who used to flood the answer.
+    const office: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      office.push(
+        await mkEmployee({
+          fullNameAr: 'موظف مكتب بالسقف',
+          governorate,
+          jobTitleId: officeTitleId,
+        }),
+      );
+    }
+
+    const ask = async (query: string): Promise<string[]> => {
+      const res = await request(app)
+        .get(`/api/v1/hr/employees?pageSize=${MAX_PAGE_SIZE}&employed=true${query}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return (res.body as { data: { id: string }[] }).data.map((e) => e.id);
+    };
+
+    const wide = await ask(`&governorate=${encodeURIComponent(governorate)}`);
+    expect(wide, 'asked about everybody, the office staff are in the answer').toEqual(
+      expect.arrayContaining([driverOne, driverTwo, ...office]),
+    );
+
+    const narrowed = await ask(
+      `&governorate=${encodeURIComponent(governorate)}&jobTitleId=${jobTitleAId}`,
+    );
+    expect(narrowed, 'asked about the driving seat, only the drivers are').toEqual(
+      expect.arrayContaining([driverOne, driverTwo]),
+    );
+    for (const id of office) expect(narrowed).not.toContain(id);
+    expect(narrowed.length).toBeLessThan(wide.length);
+
+    // Several seats at once, ORed — one title still parses, which is what keeps every existing
+    // caller sending exactly what it always sent.
+    const both = await ask(
+      `&governorate=${encodeURIComponent(governorate)}&jobTitleId=${jobTitleAId},${officeTitleId}`,
+    );
+    expect(both).toEqual(expect.arrayContaining([driverOne, driverTwo, ...office]));
+    const single = await ask(`&jobTitleId=${officeTitleId}`);
+    expect(single, 'a single title is still a single title').toEqual(
+      expect.arrayContaining(office),
+    );
+    expect(single).not.toContain(driverOne);
+  });
+});
+
 describe('driver unavailability — التمامات (FL-3)', () => {
   it('requires a driver profile, records with an event, and answers coversDate', async () => {
     const employeeId = await mkEmployee();

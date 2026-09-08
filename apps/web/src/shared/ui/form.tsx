@@ -15,7 +15,7 @@ import { cn } from '../lib/cn';
 import { ChevronIcon } from './icons';
 
 const controlBase =
-  'w-full rounded-lg border bg-white px-3 py-2 text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
+  'w-full rounded-lg border bg-white py-2 text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
 
 /**
  * How big a control's own text is. `compact` is the default and what every control has always
@@ -31,6 +31,23 @@ const controlBase =
 export type ControlTextScale = 'compact' | 'comfortable';
 const controlText = (scale: ControlTextScale): string =>
   scale === 'comfortable' ? 'text-base' : 'text-sm';
+
+/**
+ * How much room a control spends on ITSELF rather than on what it says.
+ *
+ * `default` is what every control has always been and stays the default everywhere. `tight`
+ * trims the side gutters — and, on a `<select>`, the reserve for the chevron — for a bar that
+ * has to hold many controls on one row. It buys 8px on an input and 20px on a select, which is
+ * the difference between a filter whose name reads and one clipped to «الـ».
+ *
+ * A PROP for the same reason `textScale` is one, spelled out directly above: `cn` is a plain
+ * joiner with no tailwind-merge, so a caller passing `px-2` would land BOTH paddings on the
+ * element and the winner would be whichever Tailwind emitted last. Choosing here means exactly
+ * one gutter ever reaches the element.
+ */
+export type ControlDensity = 'default' | 'tight';
+const controlGutter = (density: ControlDensity): string =>
+  density === 'tight' ? 'px-2' : 'px-3';
 const ring = (error: boolean): string =>
   error
     ? 'border-red-400 focus:border-red-500'
@@ -82,12 +99,19 @@ export const Field = ({
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: boolean;
   textScale?: ControlTextScale;
+  density?: ControlDensity;
 }
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ error = false, textScale = 'compact', className, ...rest }, ref) => (
+  ({ error = false, textScale = 'compact', density = 'default', className, ...rest }, ref) => (
     <input
       ref={ref}
-      className={cn(controlBase, controlText(textScale), ring(error), className)}
+      className={cn(
+        controlBase,
+        controlGutter(density),
+        controlText(textScale),
+        ring(error),
+        className,
+      )}
       {...rest}
     />
   ),
@@ -103,7 +127,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     <textarea
       ref={ref}
       rows={rows}
-      className={cn(controlBase, controlText(textScale), ring(error), className)}
+      className={cn(controlBase, controlGutter('default'), controlText(textScale), ring(error), className)}
       {...rest}
     />
   ),
@@ -113,24 +137,33 @@ Textarea.displayName = 'Textarea';
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   error?: boolean;
   textScale?: ControlTextScale;
+  density?: ControlDensity;
 }
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ error = false, textScale = 'compact', className, children, ...rest }, ref) => (
+  ({ error = false, textScale = 'compact', density = 'default', className, children, ...rest }, ref) => (
     <div className="relative">
       <select
         ref={ref}
         className={cn(
           controlBase,
+          controlGutter(density),
           controlText(textScale),
           ring(error),
-          'appearance-none pe-9',
+          // The reserve the chevron sits in, and the pair moves together — a `pe` without the
+          // matching `end` would either overlap the text or leave a gap where the arrow is not.
+          density === 'tight' ? 'appearance-none pe-7' : 'appearance-none pe-9',
           className,
         )}
         {...rest}
       >
         {children}
       </select>
-      <ChevronIcon className="pointer-events-none absolute inset-y-0 end-3 my-auto h-4 w-4 text-slate-400" />
+      <ChevronIcon
+        className={cn(
+          'pointer-events-none absolute inset-y-0 my-auto h-4 w-4 text-slate-400',
+          density === 'tight' ? 'end-2' : 'end-3',
+        )}
+      />
     </div>
   ),
 );

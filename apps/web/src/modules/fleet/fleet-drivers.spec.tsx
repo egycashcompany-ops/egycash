@@ -25,6 +25,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  CreateFleetDriverProfileSchema,
   ListEmployeesQuerySchema,
   ListFleetDriversQuerySchema,
   MAX_PAGE_SIZE,
@@ -222,9 +223,18 @@ const seededClient = (
     ['hr', 'branches', 'active'],
     page([{ id: 'b1', code: '01', name: { ar: HR.branch, en: 'Mohandessin' }, status: 'active' }]),
   );
+  // `requiresDrivingTest` is what makes this a DRIVING seat — the flag the registry's membership
+  // is derived from, and the one the HR filter step narrows itself to.
   qc.setQueryData(
     ['hr', 'jobTitles', 'active'],
-    page([{ id: 'jt1', name: { ar: HR.jobTitle, en: 'Cash transport driver' }, status: 'active' }]),
+    page([
+      {
+        id: 'jt1',
+        name: { ar: HR.jobTitle, en: 'Cash transport driver' },
+        status: 'active',
+        requiresDrivingTest: true,
+      },
+    ]),
   );
   return qc;
 };
@@ -263,7 +273,8 @@ const hrFilteredClient = (
       page([row(driver())]),
     );
   }
-  qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full], {
+  // `jt1` is the seeded driving job title — the seats the registry narrows step ① to.
+  qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full, 'jt1'], {
     items: ids.map((id) => ({ ...employee(), id })),
     meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: matched, totalPages: 1 },
   });
@@ -645,7 +656,7 @@ describe('the filter bar', () => {
         address: 'جامعة',
         governorate: 'الجيزة',
         phone: '0100',
-      }],
+      }, 'jt1'],
       { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
     );
     const html = render(<DriversListPage />, { route, client });
@@ -911,6 +922,35 @@ describe('editing a driver', () => {
     for (const gone of ["'cashTransport'", "'atm'", "'both'", 'SPECIALIZATIONS']) {
       expect(source, `${gone} is not compiled in`).not.toContain(gone);
     }
+  });
+
+  it('the retired «التخصص» enum can no longer be WRITTEN — «both» included', () => {
+    // The investigation's verdict, pinned at the contract: `both` is legacy DATA, not an option.
+    // It has no successor in the catalog vocabulary, so nothing invents one for it; what it must
+    // not do is come back as something a new record can be given.
+    for (const legacy of ['cashTransport', 'atm', 'both']) {
+      expect(() =>
+        CreateFleetDriverProfileSchema.parse({
+          employeeId: '64b1f0dddddddddddddddd01',
+          licenseNumber: 'X-1',
+          licenseExpiresAt: '2030-01-01',
+          specialization: legacy,
+        }),
+        `create with ${legacy}`,
+      ).toThrow();
+      expect(() =>
+        UpdateFleetDriverProfileSchema.parse({ specialization: legacy, version: 0 }),
+        `update with ${legacy}`,
+      ).toThrow();
+    }
+    // And a record made today carries no enum at all — only the catalog reference.
+    expect(
+      CreateFleetDriverProfileSchema.parse({
+        employeeId: '64b1f0dddddddddddddddd01',
+        licenseNumber: 'X-1',
+        licenseExpiresAt: '2030-01-01',
+      }),
+    ).not.toHaveProperty('specialization');
   });
 
   it('the update contract really accepts the three references, and refuses a non-id', () => {
@@ -1269,9 +1309,11 @@ describe('the HR filters are owned by HR and applied server-side', () => {
   it('HR already filtered on name, code, job title and branch — nothing was reinvented', () => {
     expect(ListEmployeesQuerySchema.parse({ search: 'محمود' }).search).toBe('محمود');
     const objectIdish = '64b1f0dddddddddddddddd01';
-    expect(ListEmployeesQuerySchema.parse({ jobTitleId: objectIdish }).jobTitleId).toBe(
+    // A LIST since the registry began narrowing step ① to its own seats; a single value still
+    // parses, so every caller that always sent one keeps sending exactly that.
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: objectIdish }).jobTitleId).toEqual([
       objectIdish,
-    );
+    ]);
     expect(ListEmployeesQuerySchema.parse({ branchId: objectIdish }).branchId).toEqual([
       objectIdish,
     ]);
@@ -1310,6 +1352,44 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     ]) {
       expect(html, `${key} filter`).toContain(`aria-label="${t(key)}"`);
     }
+  });
+
+  it('asks HR about the DRIVING SEATS, not about everybody', () => {
+    // The defect this closes, measured on real data: «الجيزة» matched 117 employees of whom 3
+    // were drivers, so step ① blew its one-page cap and the screen refused to filter at all.
+    // The registry is only people whose job title requires a driving test, so that is the
+    // question — and the answer is bounded by the driver count instead of the headcount.
+    const client = seededClient([driver()]);
+    client.setQueryData(
+      ['hr', 'employees', 'fleet-driver-filter', {
+        search: '',
+        address: '',
+        governorate: 'الجيزة',
+        phone: '',
+      }, 'jt1'],
+      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+    );
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ employeeIds: [EMPLOYEE_ID] })),
+      page([row(driver({ id: 'd5', area: 'الدقي' }))]),
+    );
+    // `jt1` is seeded with `requiresDrivingTest`, so the page hands it to the HR step; the ONLY
+    // cache entry that answers is the narrowed one, and the table shows what it returned.
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
+      client,
+    });
+    expect(tbodyOf(html), 'the narrowed HR question is the one that answered').toContain('الدقي');
+    expect(html, 'and nothing was refused').not.toContain('فلتر الموارد البشرية طابق');
+  });
+
+  it('HR\u2019s list query really accepts several seats at once', () => {
+    // What makes the narrowing expressible: one title still parses, and a list of them does too,
+    // so a caller never has to ask once per title and merge capped pages.
+    const a = '64b1f0dddddddddddddddd01';
+    const b = '64b1f0dddddddddddddddd02';
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: a }).jobTitleId).toEqual([a]);
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: `${a},${b}` }).jobTitleId).toEqual([a, b]);
   });
 
   it('HR\u2019s own list query filters on the ADDRESS too — the box this bar added', () => {

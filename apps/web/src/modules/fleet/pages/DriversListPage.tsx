@@ -96,7 +96,17 @@ const DEFAULT_PAGE_SIZE = 25;
  * `min-w-0` is what makes shrinking legal at all: without it a flex item refuses to go below its
  * content width, and one long branch name would push the row off the page.
  */
-const FLEX = 'min-w-0 shrink';
+const FLEX = 'min-w-0 shrink grow';
+
+/**
+ * Every filter is `density="tight"`, which trims 8px from a text box and 20px from a select.
+ *
+ * That is not cosmetics, it is the arithmetic of the row. Eleven controls at the default gutters
+ * spend 430px on their own chrome before a single letter is drawn, and the shell leaves this bar
+ * 974px at 1280 — so the names had nowhere to go and clipped to «الـ». Tight gutters give 152px
+ * back, which is what lets all eleven NAMES read at the narrowest desktop.
+ */
+const TIGHT = 'tight' as const;
 
 /**
  * The controls that give width up FIRST, at twice the rate of the rest.
@@ -114,7 +124,12 @@ const YIELDS = `${FLEX} shrink-[2]`;
  * intrinsic width is a browser default of about twenty characters, far more than any of these
  * four need — so the one width that has to be stated is theirs.
  */
-const TEXT = `${YIELDS} basis-[6.5rem]`;
+// Each control's `basis` is measured from the WORDS ON IT, not from the longest thing it could
+// ever hold. A `<select>` is otherwise as wide as its longest option — «سائق صراف الى», a branch
+// name, a catalog value an admin adds tomorrow — and eleven of them demanded 1478px of a bar that
+// holds 974 at 1280, so the names had nowhere to go. Sized to their own labels the row asks for
+// 984px, every filter NAME reads at the narrowest desktop, and what gives way instead is a long
+// chosen VALUE — the right thing to lose, because the table below is already showing it.
 
 /** A comma-separated id list on the URL, as the picker holds it. */
 const idList = (raw: string | null): string[] =>
@@ -202,7 +217,20 @@ export const DriversListPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
-  const hr = useDriverHrFilter(hrFilter);
+  // The two HR reference lists this screen reads. Declared before the HR filter step because it
+  // needs one of them: without the matching `*.view` grant each stays empty, and the column that
+  // depends on it degrades to a dash rather than showing a raw id.
+  const { data: branches = [] } = useBranches(can('branch.view'));
+  const { data: jobTitles = [] } = useJobTitles(can('jobTitle.view'));
+  // WHO THIS REGISTRY IS: everyone whose job title requires a driving test. Handing those titles
+  // to step ① is what keeps «الجيزة» a question about DRIVERS rather than about the payroll — see
+  // `useDriverHrFilter`. Without `jobTitle.view` the list is empty and the hook does not narrow,
+  // which is the same degradation this screen already makes everywhere else HR is involved.
+  const drivingTitleIds = useMemo(
+    () => jobTitles.filter((title) => title.requiresDrivingTest).map((title) => title.id),
+    [jobTitles],
+  );
+  const hr = useDriverHrFilter(hrFilter, drivingTitleIds);
   // Reading HR is HR's own permission, and it gates the three text boxes as well as the columns. A
   // URL still carrying one of them is honoured differently: the hook reports `failed` and the
   // banner says why, rather than the page quietly returning an unfiltered list.
@@ -255,10 +283,6 @@ export const DriversListPage = (): JSX.Element => {
   // twenty-sixth driver, and restarting at 1 on page two would name two rows the same.
   const serialOffset = data === undefined ? 0 : (data.meta.page - 1) * data.meta.pageSize;
 
-  // Reference names for the HR branch column. Without `branch.view` the list stays empty and the
-  // column degrades to a dash rather than showing a raw id.
-  const { data: branches = [] } = useBranches(can('branch.view'));
-  const { data: jobTitles = [] } = useJobTitles(can('jobTitle.view'));
   const branchName = useMemo(
     () => new Map(branches.map((b) => [b.id, localized(b.name, locale)])),
     [branches, locale],
@@ -551,11 +575,11 @@ export const DriversListPage = (): JSX.Element => {
               // CHOSEN DRIVER'S NAME once one is picked, so it must not be squeezed to nothing —
               // and `max-w` is the other half of that, because a long name would otherwise let
               // this one control claim a third of the row.
-              className={`${FLEX} basis-[6.5rem] max-w-32`}
+              className={`${FLEX} basis-[6.75rem] max-w-[10rem]`}
             />
           )}
           {/* 2 — «الوظيفة», from the `driverJob` catalog. No value of it is named on this screen. */}
-          <div className={FLEX}>
+          <div className={`${FLEX} basis-[5.25rem] max-w-[9rem]`}>
             <CatalogSelect
               kind="driverJob"
               value={job}
@@ -563,16 +587,18 @@ export const DriversListPage = (): JSX.Element => {
               allLabel={t('fleet.drivers.allJobs')}
               ariaLabel={t('fleet.drivers.columns.jobTitle')}
               className="w-full"
+              density={TIGHT}
             />
           </div>
           {/* 3 — «الفرع». A FLEET parameter: see the header note on why asking HR could not work. */}
           {can('branch.view') && (
-            <div className={FLEX}>
+            <div className={`${FLEX} basis-[4.5rem] max-w-[9rem]`}>
               <Select
                 aria-label={t('fleet.drivers.columns.branch')}
                 title={t('fleet.drivers.columns.branch')}
                 value={branch}
                 onChange={(e) => patch({ branch: e.target.value || null })}
+                density={TIGHT}
               >
                 <option value="">{t('fleet.drivers.allBranches')}</option>
                 {branches.map((b) => (
@@ -585,10 +611,11 @@ export const DriversListPage = (): JSX.Element => {
           )}
           {/* 4 — «ابحث بالعنوان», HR-owned, matched over the address as it is displayed. */}
           {mayFilterByHr && (
-            <div className={TEXT}>
+            <div className={`${YIELDS} basis-[4.5rem] max-w-[8rem]`}>
               <Input
                 aria-label={t('fleet.drivers.columns.address')}
                 title={t('fleet.drivers.columns.address')}
+                density={TIGHT}
                 placeholder={t('fleet.drivers.columns.address')}
                 value={hrFilter.address}
                 onChange={(e) => patch({ addr: e.target.value || null })}
@@ -596,10 +623,11 @@ export const DriversListPage = (): JSX.Element => {
             </div>
           )}
           {/* 5 — «ابحث بالمنطقة», fleet-owned, straight to /fleet/drivers. */}
-          <div className={TEXT}>
+          <div className={`${YIELDS} basis-[4.5rem] max-w-[8rem]`}>
             <Input
               aria-label={t('fleet.drivers.columns.area')}
               title={t('fleet.drivers.columns.area')}
+              density={TIGHT}
               placeholder={t('fleet.drivers.areaPlaceholder')}
               value={area}
               onChange={(e) => patch({ area: e.target.value || null })}
@@ -607,13 +635,14 @@ export const DriversListPage = (): JSX.Element => {
           </div>
           {/* 6 — «ابحث برقم الهاتف», HR-owned. */}
           {mayFilterByHr && (
-            <div className={TEXT}>
+            <div className={`${YIELDS} basis-[4.75rem] max-w-[8rem]`}>
               <Input
                 aria-label={t('fleet.drivers.columns.phone')}
                 title={t('fleet.drivers.columns.phone')}
                 // The box is narrower than «رقم الموبايل» on a 1600 screen, and a placeholder
                 // clipped mid-word names nothing. The column header, the tooltip and the
                 // `aria-label` all still say it in full.
+                density={TIGHT}
                 placeholder={t('fleet.drivers.phonePlaceholder')}
                 value={hrFilter.phone}
                 onChange={(e) => patch({ phone: e.target.value || null })}
@@ -623,10 +652,11 @@ export const DriversListPage = (): JSX.Element => {
           )}
           {/* 7 — «المحافظة», HR-owned. */}
           {mayFilterByHr && (
-            <div className={TEXT}>
+            <div className={`${YIELDS} basis-[5rem] max-w-[8rem]`}>
               <Input
                 aria-label={t('fleet.drivers.columns.governorate')}
                 title={t('fleet.drivers.columns.governorate')}
+                density={TIGHT}
                 placeholder={t('fleet.drivers.columns.governorate')}
                 value={hrFilter.governorate}
                 onChange={(e) => patch({ gov: e.target.value || null })}
@@ -634,7 +664,7 @@ export const DriversListPage = (): JSX.Element => {
             </div>
           )}
           {/* 8 — «التخصص», from the `driverSpecialization` catalog. */}
-          <div className={FLEX}>
+          <div className={`${FLEX} basis-[5.25rem] max-w-[9rem]`}>
             <CatalogSelect
               kind="driverSpecialization"
               value={specialization}
@@ -642,10 +672,11 @@ export const DriversListPage = (): JSX.Element => {
               allLabel={t('fleet.drivers.allSpecializations')}
               ariaLabel={t('fleet.drivers.columns.specialization')}
               className="w-full"
+              density={TIGHT}
             />
           </div>
           {/* 9 — «الرخصة», from the `driverLicenseType` catalog. The licence CLASS, not its number. */}
-          <div className={FLEX}>
+          <div className={`${FLEX} basis-[5rem] max-w-[9rem]`}>
             <CatalogSelect
               kind="driverLicenseType"
               value={licenseType}
@@ -653,27 +684,30 @@ export const DriversListPage = (): JSX.Element => {
               allLabel={t('fleet.drivers.allLicenseTypes')}
               ariaLabel={t('fleet.drivers.columns.licenseType')}
               className="w-full"
+              density={TIGHT}
             />
           </div>
           {/* 10 and 11 — the scan and the status, exactly as they were. */}
-          <div className={FLEX}>
+          <div className={`${FLEX} basis-[7.75rem] max-w-[11rem]`}>
             <Select
               aria-label={t('fleet.drivers.columns.licenseImage')}
               title={t('fleet.drivers.columns.licenseImage')}
               value={image}
               onChange={(e) => patch({ img: e.target.value || null })}
+              density={TIGHT}
             >
               <option value="">{t('fleet.drivers.allLicenseImages')}</option>
               <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
               <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
             </Select>
           </div>
-          <div className={FLEX}>
+          <div className={`${FLEX} basis-[4.75rem] max-w-[8rem]`}>
             <Select
               aria-label={t('fleet.drivers.columns.status')}
               title={t('fleet.drivers.columns.status')}
               value={active}
               onChange={(e) => patch({ active: e.target.value || null })}
+              density={TIGHT}
             >
               <option value="">{t('fleet.drivers.allStatuses')}</option>
               <option value="true">{t('fleet.drivers.active')}</option>

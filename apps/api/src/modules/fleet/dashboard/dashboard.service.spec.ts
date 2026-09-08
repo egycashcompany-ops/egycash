@@ -232,6 +232,35 @@ describe('branch statistics', () => {
     });
   });
 
+  it('«both» is LEGACY DATA, and the change did not move it — it still counts in each', () => {
+    /**
+     * The verdict of the investigation, pinned so nobody has to repeat it.
+     *
+     * `both` is not a catalog value and never was: the seed does not create one, the new
+     * vocabulary («نقل اموال», «ملاكى», «ATM», «سزوكى») has no equivalent, and the migration
+     * deliberately leaves it unmapped rather than picking one of the two on somebody's behalf.
+     * Nothing can WRITE it any more — the create path stores `specialization: null` and both
+     * contracts refuse the key — so what remains is rows that were already there.
+     *
+     * For those rows the reading is exactly what it was before «التخصص» became a catalog: a
+     * `both` driver counts in the cash split AND the ATM split, and once in the total. That is
+     * the assertion this test exists to hold; changing it needs a business decision, not a
+     * refactor.
+     */
+    repo.activeDriverProfiles.mockResolvedValue([
+      { employeeId: E1, specializationId: null, specialization: 'both' },
+    ]);
+    directory.getDirectoryEmployees.mockResolvedValue(
+      new Map([[E1, { employeeId: E1, branchId: B1 }]]),
+    );
+    return fleetDashboardService.build(ALL, NOW).then((dto) => {
+      const all = dto.fleet?.stats.find((s) => s.branchId === null);
+      expect(all?.drivers, 'counted once in the total').toBe(1);
+      expect(all?.cashDrivers, 'and in the cash split').toBe(1);
+      expect(all?.atmDrivers, 'and in the ATM split').toBe(1);
+    });
+  });
+
   it('still counts a driver nobody has re-classified, from the legacy enum', () => {
     // The registry did not stop working the day «التخصص» became a catalog: a profile that still
     // carries only the old enum is read as a second chance, so these counters keep covering the

@@ -44,14 +44,18 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
-import { Input, Select } from '../../../shared/ui/form';
+import { Select } from '../../../shared/ui/form';
+import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { EditIcon, EyeIcon } from '../../../shared/ui/icons';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
 import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
-import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
+import {
+  useBranches,
+  useDrivingJobTitles,
+} from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
@@ -99,12 +103,19 @@ const DEFAULT_PAGE_SIZE = 25;
 const FLEX = 'min-w-0 shrink grow';
 
 /**
- * Every filter is `density="tight"`, which trims 8px from a text box and 20px from a select.
+ * Every filter is `density="tight"`: 8px off a text box, 24px off a select, and — since the
+ * picker takes it too — the whole row is one size of control rather than ten of one and one of
+ * another.
  *
  * That is not cosmetics, it is the arithmetic of the row. Eleven controls at the default gutters
  * spend 430px on their own chrome before a single letter is drawn, and the shell leaves this bar
- * 974px at 1280 — so the names had nowhere to go and clipped to «الـ». Tight gutters give 152px
- * back, which is what lets all eleven NAMES read at the narrowest desktop.
+ * 952px of content at 1280 — so the names had nowhere to go and clipped to «الـ». Tight gutters
+ * give that back, which is what lets all eleven NAMES read at the narrowest desktop.
+ *
+ * MEASURED, not chosen: each wrapper's `basis` below is the width its own label actually needs
+ * (text + gutters + chevron), so the eleven ask for 846px of the 864 available once the count
+ * chip and the gaps are paid for. Every one of them was clipped mid-word before that arithmetic
+ * was done — «الرخص», «التخصـ», «المحافظ», «الفرـ».
  */
 const TIGHT = 'tight' as const;
 
@@ -221,15 +232,21 @@ export const DriversListPage = (): JSX.Element => {
   // needs one of them: without the matching `*.view` grant each stays empty, and the column that
   // depends on it degrades to a dash rather than showing a raw id.
   const { data: branches = [] } = useBranches(can('branch.view'));
-  const { data: jobTitles = [] } = useJobTitles(can('jobTitle.view'));
   // WHO THIS REGISTRY IS: everyone whose job title requires a driving test. Handing those titles
   // to step ① is what keeps «الجيزة» a question about DRIVERS rather than about the payroll — see
   // `useDriverHrFilter`. Without `jobTitle.view` the list is empty and the hook does not narrow,
   // which is the same degradation this screen already makes everywhere else HR is involved.
-  const drivingTitleIds = useMemo(
-    () => jobTitles.filter((title) => title.requiresDrivingTest).map((title) => title.id),
-    [jobTitles],
+  //
+  // ASKED FOR BY THE FLAG, not filtered out of a page of the catalogue. Reading one page and
+  // keeping the driving ones worked only while the whole catalogue fitted in that page: a company
+  // with more than a hundred job titles lost the seats that fell off the end, the narrowing below
+  // silently became "ask HR about everybody", and every text filter on this bar went back to
+  // overflowing HR's cap and matching nobody. Measured at 122 titles: zero seats seen, «الجيزة»
+  // answered «narrow your filter» and filtered nothing.
+  const { data: drivingTitles = [], isSuccess: drivingTitlesRead } = useDrivingJobTitles(
+    can('jobTitle.view'),
   );
+  const drivingTitleIds = useMemo(() => drivingTitles.map((title) => title.id), [drivingTitles]);
   const hr = useDriverHrFilter(hrFilter, drivingTitleIds);
   // Reading HR is HR's own permission, and it gates the three text boxes as well as the columns. A
   // URL still carrying one of them is honoured differently: the hook reports `failed` and the
@@ -279,9 +296,20 @@ export const DriversListPage = (): JSX.Element => {
   // dropped — so the query key collapses back onto the UNFILTERED one, whose cached rows would
   // render underneath a "narrow your filter" banner and read as the filtered answer.
   const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
-  // The serial column counts from the start of the LIST, not of the page — «م ٢٦» is the
-  // twenty-sixth driver, and restarting at 1 on page two would name two rows the same.
-  const serialOffset = data === undefined ? 0 : (data.meta.page - 1) * data.meta.pageSize;
+  /**
+   * How many drivers the CURRENT filter matches — the whole answer, not this page of it.
+   *
+   * `null` while there is no answer to give: still loading, or held back because the HR step
+   * blocked. A count is the one thing on this bar a reader will quote at somebody, so it says
+   * nothing rather than a stale number from the previous filter.
+   */
+  const matchedDrivers = blocked
+    ? null
+    : emptyMatch
+      ? 0
+      : isLoading || data === undefined
+        ? null
+        : data.meta.totalItems;
 
   const branchName = useMemo(
     () => new Map(branches.map((b) => [b.id, localized(b.name, locale)])),
@@ -324,15 +352,6 @@ export const DriversListPage = (): JSX.Element => {
   };
 
   const columns: Column<FleetDriverRowDto>[] = [
-    {
-      key: 'serial',
-      header: t('fleet.drivers.columns.serial'),
-      render: (_d, index) => (
-        <span className="tabular-nums text-slate-500 dark:text-slate-400">
-          {serialOffset + index + 1}
-        </span>
-      ),
-    },
     {
       key: 'driver',
       header: t('fleet.drivers.columns.driver'),
@@ -545,6 +564,19 @@ export const DriversListPage = (): JSX.Element => {
           singleRow
           singleRowFrom={1280}
           hasActiveFilters={hasActiveFilters}
+          // The count belongs BESIDE the filters, not in the table: it is the answer to what the
+          // bar was just asked, and a reader comparing two filters compares two counts.
+          trailing={
+            matchedDrivers === null ? undefined : (
+              <span
+                role="status"
+                className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                title={t('fleet.drivers.countLabel')}
+              >
+                {t('fleet.drivers.count', { count: formatNumber(matchedDrivers, locale) })}
+              </span>
+            )
+          }
           onClear={() =>
             patch({
               drv: null,
@@ -564,17 +596,21 @@ export const DriversListPage = (): JSX.Element => {
           {/* 1 — the drivers themselves, picked by name or code, as many as the reader means.
               Offered ONLY to someone who can use it: the options are a search against HR's own
               endpoint, so without `employee.view` it can only answer "no directory access".
-              The widest basis of the eleven: it is the only control whose trigger carries a
-              chosen driver's NAME rather than a word from a fixed vocabulary. */}
+              It offers only DRIVERS — the seats below — because a name it offers that this table
+              cannot show is a filter that answers with an empty list. */}
           {mayFilterByHr && (
             <DriverPickerFilter
               value={pickedDrivers}
               onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
+              // The same seats the roster is built from, so every name it offers is a name this
+              // table can actually show.
+              jobTitleIds={drivingTitleIds}
+              density={TIGHT}
               // Its own basis rather than the text boxes' yield rate: the trigger carries a
               // CHOSEN DRIVER'S NAME once one is picked, so it must not be squeezed to nothing —
               // and `max-w` is the other half of that, because a long name would otherwise let
               // this one control claim a third of the row.
-              className={`${FLEX} basis-[6.75rem] max-w-[10rem]`}
+              className={`${FLEX} basis-[5.25rem] max-w-[10rem]`}
             />
           )}
           {/* 2 — «الوظيفة», from the `driverJob` catalog. No value of it is named on this screen. */}
@@ -591,7 +627,7 @@ export const DriversListPage = (): JSX.Element => {
           </div>
           {/* 3 — «الفرع». A FLEET parameter: see the header note on why asking HR could not work. */}
           {can('branch.view') && (
-            <div className={`${FLEX} basis-[4.5rem] max-w-[9rem]`}>
+            <div className={`${FLEX} basis-[4.25rem] max-w-[9rem]`}>
               <Select
                 aria-label={t('fleet.drivers.columns.branch')}
                 title={t('fleet.drivers.columns.branch')}
@@ -610,32 +646,32 @@ export const DriversListPage = (): JSX.Element => {
           )}
           {/* 4 — «ابحث بالعنوان», HR-owned, matched over the address as it is displayed. */}
           {mayFilterByHr && (
-            <div className={`${YIELDS} basis-[4.5rem] max-w-[8rem]`}>
-              <Input
+            <div className={`${YIELDS} basis-[3.75rem] max-w-[8rem]`}>
+              <DebouncedInput
                 aria-label={t('fleet.drivers.columns.address')}
                 title={t('fleet.drivers.columns.address')}
                 density={TIGHT}
                 placeholder={t('fleet.drivers.columns.address')}
                 value={hrFilter.address}
-                onChange={(e) => patch({ addr: e.target.value || null })}
+                onValueChange={(next) => patch({ addr: next || null })}
               />
             </div>
           )}
           {/* 5 — «ابحث بالمنطقة», fleet-owned, straight to /fleet/drivers. */}
-          <div className={`${YIELDS} basis-[4.5rem] max-w-[8rem]`}>
-            <Input
+          <div className={`${YIELDS} basis-[4.25rem] max-w-[8rem]`}>
+            <DebouncedInput
               aria-label={t('fleet.drivers.columns.area')}
               title={t('fleet.drivers.columns.area')}
               density={TIGHT}
               placeholder={t('fleet.drivers.areaPlaceholder')}
               value={area}
-              onChange={(e) => patch({ area: e.target.value || null })}
+              onValueChange={(next) => patch({ area: next || null })}
             />
           </div>
           {/* 6 — «ابحث برقم الهاتف», HR-owned. */}
           {mayFilterByHr && (
-            <div className={`${YIELDS} basis-[4.75rem] max-w-[8rem]`}>
-              <Input
+            <div className={`${YIELDS} basis-[4.25rem] max-w-[8rem]`}>
+              <DebouncedInput
                 aria-label={t('fleet.drivers.columns.phone')}
                 title={t('fleet.drivers.columns.phone')}
                 // The box is narrower than «رقم الموبايل» on a 1600 screen, and a placeholder
@@ -644,26 +680,26 @@ export const DriversListPage = (): JSX.Element => {
                 density={TIGHT}
                 placeholder={t('fleet.drivers.phonePlaceholder')}
                 value={hrFilter.phone}
-                onChange={(e) => patch({ phone: e.target.value || null })}
+                onValueChange={(next) => patch({ phone: next || null })}
                 dir="ltr"
               />
             </div>
           )}
           {/* 7 — «المحافظة», HR-owned. */}
           {mayFilterByHr && (
-            <div className={`${YIELDS} basis-[5rem] max-w-[8rem]`}>
-              <Input
+            <div className={`${YIELDS} basis-[4.75rem] max-w-[8rem]`}>
+              <DebouncedInput
                 aria-label={t('fleet.drivers.columns.governorate')}
                 title={t('fleet.drivers.columns.governorate')}
                 density={TIGHT}
                 placeholder={t('fleet.drivers.columns.governorate')}
                 value={hrFilter.governorate}
-                onChange={(e) => patch({ gov: e.target.value || null })}
+                onValueChange={(next) => patch({ gov: next || null })}
               />
             </div>
           )}
           {/* 8 — «التخصص», from the `driverSpecialization` catalog. */}
-          <div className={`${FLEX} basis-[5.25rem] max-w-[9rem]`}>
+          <div className={`${FLEX} basis-[5.375rem] max-w-[9rem]`}>
             <CatalogSelect
               kind="driverSpecialization"
               value={specialization}
@@ -687,7 +723,7 @@ export const DriversListPage = (): JSX.Element => {
             />
           </div>
           {/* 10 and 11 — the scan and the status, exactly as they were. */}
-          <div className={`${FLEX} basis-[7.75rem] max-w-[11rem]`}>
+          <div className={`${FLEX} basis-[5rem] max-w-[9rem]`}>
             <Select
               aria-label={t('fleet.drivers.columns.licenseImage')}
               title={t('fleet.drivers.columns.licenseImage')}
@@ -700,7 +736,7 @@ export const DriversListPage = (): JSX.Element => {
               <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
             </Select>
           </div>
-          <div className={`${FLEX} basis-[4.75rem] max-w-[8rem]`}>
+          <div className={`${FLEX} basis-[4.5rem] max-w-[8rem]`}>
             <Select
               aria-label={t('fleet.drivers.columns.status')}
               title={t('fleet.drivers.columns.status')}
@@ -727,7 +763,7 @@ export const DriversListPage = (): JSX.Element => {
           Only when the job titles actually loaded: without `jobTitle.view` this reader cannot tell
           the two apart either, and guessing would be worse than saying nothing.
         */}
-        {jobTitles.length > 0 && !jobTitles.some((j) => j.requiresDrivingTest) && (
+        {drivingTitlesRead && drivingTitles.length === 0 && (
           <p
             role="status"
             className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"

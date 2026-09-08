@@ -6961,3 +6961,74 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     expect(refused.status).toBe(403);
   });
 });
+
+describe('the driving seats are ASKED for, not filtered out of a page', () => {
+  // The regression this closes, reproduced on a real stack: the drivers screen derived "who is a
+  // driver" from one page of `/platform/job-titles`. A company with more job titles than that page
+  // holds simply never saw the driving seat, so the screen narrowed its HR filters by NOTHING and
+  // every text filter on the bar went back to overflowing HR's own cap — the filter looked set and
+  // matched nobody. The flag is a query parameter now, so the answer is bounded by the number of
+  // driving titles rather than by the size of the catalogue.
+
+  it('returns only the seats that require a driving test', async () => {
+    const res = await request(app)
+      .get('/api/v1/platform/job-titles?status=active&pageSize=100&requiresDrivingTest=true')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const rows = (res.body as { data: { id: string; requiresDrivingTest: boolean }[] }).data;
+    expect(rows.length, 'this file created exactly one driving seat').toBeGreaterThan(0);
+    expect(
+      rows.every((row) => row.requiresDrivingTest),
+      'every returned seat carries the flag',
+    ).toBe(true);
+    expect(rows.some((row) => row.id === jobTitleAId), 'including the one the drivers here hold').toBe(
+      true,
+    );
+  });
+
+  it('finds that seat even when the catalogue is longer than one page', async () => {
+    // A hundred and ten more titles, none of them driving ones — enough that a single page of the
+    // catalogue cannot contain the driving seat any more.
+    for (let i = 0; i < 110; i += 1) {
+      const pad = await request(app)
+        .post('/api/v1/platform/job-titles')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ code: `PAGE-${String(i).padStart(3, '0')}`, name: { ar: `حشو ${i}`, en: `Pad ${i}` }, jobGrade: 'G1' });
+      expect(pad.status).toBe(201);
+    }
+    const unfiltered = await request(app)
+      .get('/api/v1/platform/job-titles?status=active&pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const page = (unfiltered.body as { data: { id: string }[] }).data;
+    expect(page.length, 'one page is full').toBe(100);
+    expect(
+      page.some((row) => row.id === jobTitleAId),
+      'and the driving seat has fallen off the end of it — the old derivation saw nothing',
+    ).toBe(false);
+
+    const asked = await request(app)
+      .get('/api/v1/platform/job-titles?status=active&pageSize=100&requiresDrivingTest=true')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(asked.status).toBe(200);
+    expect(
+      (asked.body as { data: { id: string }[] }).data.some((row) => row.id === jobTitleAId),
+      'asking for the flag still finds it',
+    ).toBe(true);
+  });
+
+  it('rejects a value that is not a boolean rather than guessing', async () => {
+    const res = await request(app)
+      .get('/api/v1/platform/job-titles?requiresDrivingTest=perhaps')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('still needs `jobTitle.view` — the filter opens no new door', async () => {
+    // `branchAToken` holds fleet permissions only. The parameter is new; the gate on the route is
+    // not, and a filter must never be a way around one.
+    const res = await request(app)
+      .get('/api/v1/platform/job-titles?requiresDrivingTest=true')
+      .set('Authorization', `Bearer ${branchAToken}`);
+    expect(res.status).toBe(403);
+  });
+});

@@ -17,6 +17,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { listEmployees } from '../../hr/employee-management/employees/api/employee-api';
@@ -32,11 +33,27 @@ const SEARCH_SIZE = 25;
 export const DriverPickerFilter = ({
   value,
   onChange,
+  jobTitleIds = [],
+  density,
   className,
 }: {
   /** The employee ids currently filtering, in the order they were picked. */
   value: string[];
   onChange: (next: string[]) => void;
+  /**
+   * The seats this registry is about — the job titles that require a driving test.
+   *
+   * Offered people must be people the table can SHOW. Searching the whole payroll let a reader
+   * tick three colleagues who are not drivers and get an empty table back, with the filter bar
+   * insisting three people were selected: the picker had answered a question the list below could
+   * not. Narrowing by the same seats the roster is built from makes every offer a real row.
+   *
+   * Empty means «do not narrow», which is what a caller without `jobTitle.view` gets — the same
+   * degradation the rest of this screen makes wherever HR is involved.
+   */
+  jobTitleIds?: readonly string[];
+  /** Passed straight through, so this control matches the bar it is dropped into. */
+  density?: ControlDensity;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -47,11 +64,21 @@ export const DriverPickerFilter = ({
   // HR's `search` covers the name AND the employee code in one parameter, which is exactly the
   // question this control asks — so it is one query, not two whose capped pages could intersect
   // to a wrong answer.
+  const seats = jobTitleIds.join(',');
   const results = useQuery({
-    queryKey: ['hr', 'employees', 'fleet-driver-picker', search],
+    queryKey: ['hr', 'employees', 'fleet-driver-picker', search, seats],
     queryFn: () =>
-      listEmployees({ search: search.trim(), employed: true, pageSize: SEARCH_SIZE }),
-    enabled: allowed && search.trim() !== '',
+      listEmployees({
+        ...(search.trim() === '' ? {} : { search: search.trim() }),
+        employed: true,
+        pageSize: SEARCH_SIZE,
+        ...(seats === '' ? {} : { jobTitleId: seats }),
+      }),
+    // Runs with an EMPTY search too, so opening the control already lists drivers. It used to wait
+    // for typing, which meant a reader who had picked three people opened the panel onto «no
+    // results» with three chips above it — nothing to compare them against, and no way to discover
+    // who else could be picked.
+    enabled: allowed,
     staleTime: 30_000,
     retry: false,
   });
@@ -103,6 +130,7 @@ export const DriverPickerFilter = ({
       searchValue={search}
       onSearch={setSearch}
       searching={results.isFetching}
+      {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />
   );

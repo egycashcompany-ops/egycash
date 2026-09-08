@@ -151,7 +151,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
           ring(error),
           // The reserve the chevron sits in, and the pair moves together — a `pe` without the
           // matching `end` would either overlap the text or leave a gap where the arrow is not.
-          density === 'tight' ? 'appearance-none pe-7' : 'appearance-none pe-9',
+          density === 'tight' ? 'appearance-none pe-6' : 'appearance-none pe-9',
           className,
         )}
         {...rest}
@@ -161,7 +161,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
       <ChevronIcon
         className={cn(
           'pointer-events-none absolute inset-y-0 my-auto h-4 w-4 text-slate-400',
-          density === 'tight' ? 'end-2' : 'end-3',
+          density === 'tight' ? 'end-1.5' : 'end-3',
         )}
       />
     </div>

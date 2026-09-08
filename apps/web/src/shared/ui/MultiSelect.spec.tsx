@@ -9,7 +9,7 @@ import { Provider } from 'react-redux';
 import { configureStore } from '@reduxjs/toolkit';
 import { type Locale } from '@ecms/contracts';
 import { localeSlice } from '../../store/localeSlice';
-import { MultiSelect, selectionSummary } from './MultiSelect';
+import { MultiSelect, optionLabel, selectionSummary } from './MultiSelect';
 import { FilterBar } from './FilterBar';
 
 const render = (node: JSX.Element, locale: Locale = 'en'): string => {
@@ -51,6 +51,35 @@ const CARS = [
   { value: 'ZZ0106', label: 'ZZ0106 — س ص 106', shortLabel: 'ZZ0106' },
   { value: 'ZZ0107', label: 'ZZ0107 — س ص 107', shortLabel: 'ZZ0107' },
 ];
+
+/** People, where the VALUE is an opaque id rather than the thing the reader recognises. */
+const DRIVERS = [
+  { value: '6a9c87ff7ae99d20407ded49', label: 'محمد حاتم البنداري — 0100022', shortLabel: 'محمد حاتم البنداري' },
+  { value: '6a9d579fe017f8c85ade413b', label: 'جمال أحمد محمد — 0100031', shortLabel: 'جمال أحمد محمد' },
+];
+
+describe('optionLabel — what one chosen value is CALLED', () => {
+  it('names a car by its code, which is also its value', () => {
+    expect(optionLabel(CARS, 'ZZ0104')).toBe('ZZ0104');
+  });
+
+  it('names a person by their NAME, never by the id that identifies them', () => {
+    // The defect: chips printed the value, so a filter naming «محمد حاتم البنداري» in its list
+    // showed «6a9c87ff7ae99d20407ded49» on the chip that removes him.
+    expect(optionLabel(DRIVERS, '6a9c87ff7ae99d20407ded49')).toBe('محمد حاتم البنداري');
+    expect(optionLabel(DRIVERS, '6a9c87ff7ae99d20407ded49')).not.toContain('6a9c87ff');
+  });
+
+  it('falls back to the value when the options no longer carry it', () => {
+    // A server-backed list has moved on; the only honest name left is the value itself.
+    expect(optionLabel(DRIVERS, 'gone')).toBe('gone');
+  });
+
+  it('is the SAME answer the trigger gives, so chip and trigger cannot disagree', () => {
+    const ids = DRIVERS.map((d) => d.value);
+    expect(selectionSummary(DRIVERS, ids, 3)).toBe(ids.map((id) => optionLabel(DRIVERS, id)).join(', '));
+  });
+});
 
 describe('selectionSummary', () => {
   it('names one choice by itself', () => {

@@ -12,6 +12,7 @@
 //    scrolling to find one entry is slower than typing three letters of it.
 import { useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
+import { type ControlDensity } from './form';
 import { foldIncludes } from '../lib/fold';
 import { useOnClickOutside } from '../lib/useOnClickOutside';
 import { useT } from '../../platform/localization/useT';
@@ -44,17 +45,28 @@ export interface MultiSelectOption {
  * a server-backed list reorders under the reader, and a summary that reshuffles itself while they
  * read it is worse than one that is merely long.
  */
+/**
+ * What ONE chosen value is called.
+ *
+ * The trigger's summary and the panel's chips both answer this, and they must answer it the same
+ * way: the chips used to print the value itself, which is right only where the value IS its own
+ * label. A vehicle code is; an employee id is not, so a bar naming «محمد حاتم» in the list showed
+ * «6a9c87ff7ae99d20407ded49» on the chip beside it. One function, so the two cannot drift again.
+ *
+ * A chosen value the current options do not carry — a server-backed list has moved on — is still
+ * named by the only thing known about it, which is the value.
+ */
+export const optionLabel = (options: readonly MultiSelectOption[], value: string): string => {
+  const option = options.find((o) => o.value === value);
+  return option?.shortLabel ?? option?.label ?? value;
+};
+
 export const selectionSummary = (
   options: readonly MultiSelectOption[],
   value: readonly string[],
   max: number,
 ): string => {
-  const shown = (v: string): string => {
-    const option = options.find((o) => o.value === v);
-    // A chosen value the current options do not carry — a server-backed list has moved on — is
-    // still named by the only thing known about it.
-    return option?.shortLabel ?? option?.label ?? v;
-  };
+  const shown = (v: string): string => optionLabel(options, v);
   // An ASCII comma rather than an Arabic one: the trigger is not branched by locale, and it
   // carries Latin identifiers as often as Arabic words. The codebase uses both — `، ` for prose
   // lists, `, ` for lists of values — and this is the second kind.
@@ -80,6 +92,7 @@ export const MultiSelect = ({
   searching = false,
   showSelectedValues = false,
   chips = false,
+  density = 'default',
   placeholder,
   className,
 }: {
@@ -117,6 +130,15 @@ export const MultiSelect = ({
   searchValue?: string;
   /** Fetching the remote answer — only meaningful alongside `onSearch`. */
   searching?: boolean;
+  /**
+   * How much room the TRIGGER spends on itself — the same opt-in `Input` and `Select` take.
+   *
+   * A filter bar that puts this control next to ten selects needs all eleven to read as one row of
+   * one kind of thing. At the default the trigger is a size larger than its neighbours (`text-sm`
+   * against their `text-xs`, and wider gutters), which on a crowded bar showed as one odd control
+   * whose own name was the only one clipped.
+   */
+  density?: ControlDensity;
   /**
    * Name the chosen values in the trigger instead of counting them.
    *
@@ -191,7 +213,8 @@ export const MultiSelect = ({
           onSearch?.('');
         }}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm',
+          'inline-flex items-center rounded-lg border py-2',
+          density === 'tight' ? 'gap-1 px-2 text-xs' : 'gap-1.5 px-3 text-sm',
           // Never wider than the box it was given. A no-op for every bar that sizes this control
           // to its content, and the thing that keeps a trigger inside its lane when a caller
           // sizes it instead — a filter bar holding eleven controls on one row does.
@@ -268,22 +291,32 @@ export const MultiSelect = ({
 
           {chips && selected > 0 && (
             <div className="flex flex-wrap gap-1 border-b border-slate-100 p-2 dark:border-slate-700">
-              {value.map((code) => (
-                <span
-                  key={code}
-                  className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800 dark:bg-brand-950 dark:text-brand-200"
-                >
-                  <span dir="ltr">{code}</span>
-                  <button
-                    type="button"
-                    aria-label={`${t('common.filters.clearOne')} ${code}`}
-                    onClick={() => toggle(code)}
-                    className="text-brand-500 hover:text-brand-800 dark:hover:text-brand-100"
+              {value.map((selectedValue) => {
+                // A chip says what the OPTION says, not what the value is — `optionLabel`, the
+                // same function the trigger's summary uses, so the two always agree.
+                const shown = optionLabel(options, selectedValue);
+                return (
+                  <span
+                    key={selectedValue}
+                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-800 dark:bg-brand-950 dark:text-brand-200"
                   >
-                    ×
-                  </button>
-                </span>
-              ))}
+                    {/* `auto` rather than `ltr`: these chips carry Latin codes on some screens and
+                        Arabic names on others, and a name forced left-to-right puts its comma on
+                        the wrong end. The first strong character decides, which is right for both. */}
+                    <span dir="auto" className="truncate">
+                      {shown}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`${t('common.filters.clearOne')} ${shown}`}
+                      onClick={() => toggle(selectedValue)}
+                      className="shrink-0 text-brand-500 hover:text-brand-800 dark:hover:text-brand-100"
+                    >
+                      ×
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
 

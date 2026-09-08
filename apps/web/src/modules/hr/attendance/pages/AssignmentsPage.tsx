@@ -116,7 +116,6 @@ export const AssignmentsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('attendance.assignments.title')}
-        description={t('attendance.assignments.subtitle')}
         actions={
           <Button size="sm" leftIcon={<PlusIcon className="h-4 w-4" />} onClick={() => setAdding(true)}>
             {t('attendance.assignments.add')}

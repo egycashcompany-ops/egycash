@@ -76,7 +76,6 @@ export const VaultInventoryPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.vault.title')}
-        description={t('operations.vault.subtitle')}
       />
       <DataTable
         columns={columns}

@@ -98,7 +98,6 @@ export const PermissionCatalogPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.permissions.title')}
-        description={t('systemAdmin.permissions.subtitle')}
         breadcrumbs={[
           { label: t('systemAdmin.module.title') },
           { label: t('systemAdmin.permissions.title') },

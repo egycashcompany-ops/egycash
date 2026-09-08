@@ -188,7 +188,6 @@ export const TemplateEditorPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={isNew ? t('contracts.templates.new') : localized({ ar: nameAr, en: nameEn }, locale) || t('contracts.templates.edit')}
-        description={existing === undefined ? '' : `v${existing.templateVersion}`}
         breadcrumbs={[
           { label: t('contracts.module.title'), to: '/contracts' },
           { label: t('contracts.templates.title'), to: '/contracts/templates' },

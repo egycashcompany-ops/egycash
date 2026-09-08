@@ -1,9 +1,16 @@
 // Standard page frame every screen reuses: a padded, full-width container plus a unified page header
-// (breadcrumbs + title + subtitle + actions slot). Refining these two primitives standardizes the
-// header and spacing across every page at once — the single source of truth for page layout.
+// (breadcrumbs + title + actions slot). Refining these two primitives standardizes the header and
+// spacing across every page at once — the single source of truth for page layout.
 //
 // Owner decision: every screen spans the full available width, the way the interviews board always
 // did. There is no max-width cap and therefore no per-page opt-out — padding is unchanged.
+//
+// A PAGE HEADER CARRIES NO SUBTITLE, and that is an owner decision rather than an omission. Every
+// screen used to explain itself in a sentence under its own title, and the owner asked for all of
+// them gone — on the screens that had them and on every screen built from here on. There is
+// deliberately NO prop to pass one through: a `description` that rendered nothing would be a trap
+// for the next author, and one that rendered something would put the sentences back a page at a
+// time. `page-header-has-no-subtitle.spec.ts` is what keeps that true.
 import { type ReactNode } from 'react';
 import { Breadcrumbs, type Crumb } from './Breadcrumbs';
 
@@ -13,13 +20,11 @@ export const PageContainer = ({ children }: { children: ReactNode }): JSX.Elemen
 
 export const PageHeader = ({
   title,
-  description,
   breadcrumbs,
   actions,
   aside,
 }: {
   title: string;
-  description?: string;
   breadcrumbs?: Crumb[];
   actions?: ReactNode;
   /**
@@ -40,9 +45,6 @@ export const PageHeader = ({
         <h1 className="truncate text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
           {title}
         </h1>
-        {description !== undefined && (
-          <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
-        )}
       </div>
       {actions !== undefined && (
         <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>

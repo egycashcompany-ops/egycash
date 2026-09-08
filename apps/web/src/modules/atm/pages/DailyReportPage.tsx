@@ -95,7 +95,7 @@ export const DailyReportPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('atm.reports.title')} description={t('atm.reports.subtitle')} />
+      <PageHeader title={t('atm.reports.title')} />
       <div className="mb-4 max-w-xs">
         <Field label={t('atm.reports.day')}>
           <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />

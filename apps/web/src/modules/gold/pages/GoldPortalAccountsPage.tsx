@@ -191,7 +191,6 @@ export const GoldPortalAccountsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('gold.portalAccounts.title')}
-        description={t('gold.portalAccounts.subtitle')}
         actions={
           <Can permission="goldPortalAccount.create">
             <Button

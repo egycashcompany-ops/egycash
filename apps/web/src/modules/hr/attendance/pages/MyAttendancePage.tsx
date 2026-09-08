@@ -35,7 +35,7 @@ export const MyAttendancePage = (): JSX.Element => {
   if (employeeId === null) {
     return (
       <PageContainer>
-        <PageHeader title={t('attendance.my.title')} description={t('attendance.my.subtitle')} />
+        <PageHeader title={t('attendance.my.title')} />
         <EmptyState
           title={t('attendance.my.noEmployee')}
           description={t('attendance.my.noEmployeeHint')}
@@ -48,7 +48,6 @@ export const MyAttendancePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('attendance.my.title')}
-        description={t('attendance.my.subtitle')}
         breadcrumbs={[{ label: t('attendance.module.title') }, { label: t('attendance.my.title') }]}
         actions={
           can('attendance.requestRegularization') ? (

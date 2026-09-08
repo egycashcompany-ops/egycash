@@ -147,7 +147,6 @@ export const GoldRepresentativesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('gold.nav.representatives')}
-        description={t('gold.representatives.subtitle')}
         breadcrumbs={[
           { label: t('gold.module.title'), to: '/gold' },
           { label: t('gold.nav.representatives') },

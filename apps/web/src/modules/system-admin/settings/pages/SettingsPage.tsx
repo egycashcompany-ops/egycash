@@ -89,7 +89,6 @@ export const SettingsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.settings.title')}
-        description={t('systemAdmin.settings.subtitle')}
       />
 
       {definitions.isError ? (

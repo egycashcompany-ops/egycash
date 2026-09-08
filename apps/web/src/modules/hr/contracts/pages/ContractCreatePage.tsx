@@ -211,7 +211,6 @@ export const ContractCreatePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('contracts.create.title')}
-        description={t('contracts.create.subtitle')}
         breadcrumbs={[{ label: t('contracts.module.title'), to: '/contracts' }, { label: t('contracts.create.title') }]}
       />
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">

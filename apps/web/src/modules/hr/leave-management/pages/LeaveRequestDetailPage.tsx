@@ -87,7 +87,6 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={`${typeLabel(t, request.typeCode)} — ${request.employeeName}`}
-        description={`${request.employeeCode}`}
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.detail.title') }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">

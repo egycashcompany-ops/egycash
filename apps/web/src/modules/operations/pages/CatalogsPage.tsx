@@ -294,7 +294,6 @@ export const CatalogsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.catalogs.title')}
-        description={t('operations.catalogs.subtitle')}
         actions={
           <Button onClick={() => setCreating(true)}>
             <PlusIcon className="h-4 w-4" />

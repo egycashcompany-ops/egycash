@@ -117,7 +117,6 @@ export const SecuredBacklogPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.secured.backlog.title')}
-        description={t('operations.secured.backlog.subtitle')}
         actions={
           can('operationsShipment.create') ? (
             <Button onClick={() => setCreating(true)}>

@@ -112,7 +112,6 @@ export const EvaluationQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitment.nav.evaluations')}
-        description={t('evaluations.list.subtitle')}
         breadcrumbs={[{ label: t('recruitment.title'), to: '/' }, { label: t('recruitment.nav.evaluations') }]}
         actions={
           <div className="flex items-center gap-2">

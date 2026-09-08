@@ -184,7 +184,6 @@ export const EvaluationPhaseQueuePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={phase === undefined ? t('recruitment.nav.evaluations') : localized(phase.name, locale)}
-        description={t('evaluations.phasePage.subtitle')}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: t('recruitment.nav.evaluations'), to: '/evaluations' },

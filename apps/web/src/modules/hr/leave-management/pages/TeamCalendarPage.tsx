@@ -64,7 +64,6 @@ export const TeamCalendarPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('leave.calendar.title')}
-        description={t('leave.calendar.subtitle')}
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.calendar.title') }]}
         actions={
           <div className="flex items-center gap-2">

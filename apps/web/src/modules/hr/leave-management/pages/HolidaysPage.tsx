@@ -61,7 +61,6 @@ export const HolidaysPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('leave.holidays.title')}
-        description={t('leave.holidays.subtitle')}
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.holidays.title') }]}
         actions={
           <div className="flex items-center gap-2">

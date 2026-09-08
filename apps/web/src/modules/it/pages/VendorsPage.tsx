@@ -145,7 +145,6 @@ export const VendorsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.vendors')}
-        description={t('it.vendors.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.vendors') }]}
         actions={
           <Can permission="itVendor.manage">

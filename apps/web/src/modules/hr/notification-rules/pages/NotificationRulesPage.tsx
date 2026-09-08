@@ -111,7 +111,6 @@ export const NotificationRulesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('hr.rules.title')}
-        description={t('hr.rules.subtitle')}
         actions={
           <Button onClick={() => setEditing({ rule: null, draft: emptyDraft() })}>
             {t('hr.rules.new')}

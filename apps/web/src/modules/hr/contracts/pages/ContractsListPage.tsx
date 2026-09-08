@@ -173,7 +173,6 @@ export const ContractsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('contracts.module.title')}
-        description={t('contracts.list.subtitle')}
         actions={
           <div className="flex items-center gap-2">
             {can('contractTemplate.manage') && (

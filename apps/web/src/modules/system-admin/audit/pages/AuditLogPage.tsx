@@ -101,7 +101,6 @@ export const AuditLogPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.audit.title')}
-        description={t('systemAdmin.audit.subtitle')}
         actions={
           can('auditLog.export') ? (
             <Button

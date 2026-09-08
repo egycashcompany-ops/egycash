@@ -115,7 +115,7 @@ export const AtmOverviewPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('atm.overview.title')} description={t('atm.overview.subtitle')} />
+      <PageHeader title={t('atm.overview.title')} />
       <ModuleHome
         shortcuts={shortcuts}
         kpis={[]}

@@ -157,7 +157,6 @@ export const LicensesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.licenses')}
-        description={t('it.licenses.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.licenses') }]}
         actions={
           <Can permission="itLicense.manage">

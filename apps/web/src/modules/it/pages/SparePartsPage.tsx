@@ -224,7 +224,6 @@ export const SparePartsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.spareParts')}
-        description={t('it.parts.subtitle')}
         breadcrumbs={[
           { label: t('it.module.title'), to: '/it' },
           { label: t('it.nav.spareParts') },

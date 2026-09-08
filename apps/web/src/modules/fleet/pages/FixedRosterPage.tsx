@@ -780,7 +780,6 @@ export const FixedRosterPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.fixedRoster')}
-        description={t('fleet.fixedRoster.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.fixedRoster') },

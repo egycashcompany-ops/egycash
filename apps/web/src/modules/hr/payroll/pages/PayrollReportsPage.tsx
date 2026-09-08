@@ -120,9 +120,10 @@ export const PayrollReportsPage = (): JSX.Element => {
 
   return (
     <div className="space-y-4 p-4">
-      <header className="space-y-0.5">
+      {/* The only page that builds its own header instead of using `PageHeader`. It carries no
+          subtitle either — see `page-header-has-no-subtitle.spec.ts`. */}
+      <header>
         <h1 className="text-lg font-medium">{t('payroll.reports.title')}</h1>
-        <p className="text-xs text-slate-500">{t('payroll.reports.hint')}</p>
       </header>
 
       {/* ── Saved definitions ─────────────────────────────────────────── */}

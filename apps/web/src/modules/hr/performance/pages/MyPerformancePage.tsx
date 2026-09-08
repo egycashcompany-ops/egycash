@@ -92,7 +92,6 @@ export const MyPerformancePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('performance.mine.title')}
-        description={t('performance.mine.subtitle')}
       />
 
       {isLoading && (

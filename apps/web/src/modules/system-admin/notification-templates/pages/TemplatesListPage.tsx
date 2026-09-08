@@ -138,7 +138,6 @@ export const TemplatesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('systemAdmin.templates.title')}
-        description={t('systemAdmin.templates.subtitle')}
         actions={
           can('notificationTemplate.create') ? (
             <Button

@@ -137,7 +137,6 @@ export const BranchesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.nav.branches')}
-        description={t('organization.branch.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.branches') }]}
         actions={
           <Can permission="branch.create">

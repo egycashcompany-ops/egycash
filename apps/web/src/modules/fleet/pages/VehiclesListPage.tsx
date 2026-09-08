@@ -457,7 +457,6 @@ export const VehiclesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('fleet.nav.vehicles')}
-        description={t('fleet.vehicles.subtitle')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.vehicles') },

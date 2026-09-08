@@ -250,7 +250,6 @@ export const PerformanceCyclesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('performance.cycle.title')}
-        description={t('performance.cycle.subtitle')}
         breadcrumbs={[{ label: t('performance.title') }, { label: t('performance.cycle.title') }]}
       />
 

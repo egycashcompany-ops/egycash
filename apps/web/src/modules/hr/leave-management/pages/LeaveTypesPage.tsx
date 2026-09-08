@@ -92,7 +92,6 @@ export const LeaveTypesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('leave.types.title')}
-        description={t('leave.types.subtitle')}
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.types.title') }]}
       />
       <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">

@@ -114,7 +114,6 @@ export const MyLoansPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('loans.mine.title')}
-        description={t('loans.mine.subtitle')}
         breadcrumbs={[{ label: t('loans.mine.title') }]}
         actions={
           mayAsk && me.data !== undefined ? (

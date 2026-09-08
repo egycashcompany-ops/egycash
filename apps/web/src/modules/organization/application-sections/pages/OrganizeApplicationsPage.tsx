@@ -231,7 +231,6 @@ export const OrganizeApplicationsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.sections.title')}
-        description={t('organization.sections.subtitle')}
         breadcrumbs={[
           { label: t('organization.module.title'), to: '/organization' },
           { label: t('organization.sections.title') },

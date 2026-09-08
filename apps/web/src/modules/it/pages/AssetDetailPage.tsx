@@ -131,7 +131,6 @@ export const AssetDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={asset.name}
-        description={asset.assetCode}
         breadcrumbs={[
           { label: t('it.module.title'), to: '/it' },
           { label: t('it.nav.assets'), to: '/it/assets' },

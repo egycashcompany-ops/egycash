@@ -224,7 +224,6 @@ export const GoldKeysPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('gold.nav.keys')}
-        description={t('gold.keys.subtitle')}
         breadcrumbs={[
           { label: t('gold.module.title'), to: '/gold' },
           { label: t('gold.nav.keys') },

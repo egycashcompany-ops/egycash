@@ -151,7 +151,6 @@ export const OperationsOverviewPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.overview.title')}
-        description={t('operations.overview.subtitle')}
       />
       <ModuleHome
         shortcuts={shortcuts}

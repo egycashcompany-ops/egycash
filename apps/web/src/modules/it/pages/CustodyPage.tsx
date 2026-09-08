@@ -216,7 +216,6 @@ export const CustodyPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.custody')}
-        description={t('it.custody.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
       />
 

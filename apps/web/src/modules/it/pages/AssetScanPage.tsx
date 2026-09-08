@@ -58,7 +58,6 @@ export const AssetScanPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.scan')}
-        description={t('it.scan.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.scan') }]}
       />
       <div className="mx-auto max-w-lg">

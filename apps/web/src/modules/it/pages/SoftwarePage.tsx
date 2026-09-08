@@ -205,7 +205,6 @@ export const SoftwarePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.software')}
-        description={t('it.software.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.software') }]}
         actions={
           <div className="flex items-center gap-2">

@@ -43,7 +43,6 @@ export const CaptainReportPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.reports.captains.title')}
-        description={t('operations.reports.captains.subtitle')}
       />
       <ReportRangePicker range={range} onChange={setRange} />
       <ReportView

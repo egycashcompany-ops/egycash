@@ -214,7 +214,6 @@ export const CrewBoardPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.crew.title')}
-        description={t('operations.crew.subtitle')}
         actions={
           canPlan ? (
             <Button onClick={() => void save()} disabled={!dirty || plan.isPending}>

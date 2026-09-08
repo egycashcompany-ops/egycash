@@ -223,7 +223,6 @@ export const AssetsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('it.nav.assets')}
-        description={t('it.assets.subtitle')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.assets') }]}
         actions={
           <Can permission="itAsset.create">

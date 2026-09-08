@@ -218,7 +218,6 @@ export const DataEditPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('atm.dataEdit.title')}
-        description={t('atm.dataEdit.subtitle')}
         breadcrumbs={[
           { label: t('atm.overview.title'), to: '/atm' },
           { label: t('atm.dataEdit.title') },

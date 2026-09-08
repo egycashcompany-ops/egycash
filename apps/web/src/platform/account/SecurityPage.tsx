@@ -252,7 +252,7 @@ export const SecurityPage = (): JSX.Element => {
   const t = useT();
   return (
     <PageContainer>
-      <PageHeader title={t('account.security.title')} description={t('account.security.subtitle')} />
+      <PageHeader title={t('account.security.title')} />
       <div className="space-y-6">
         <ChangePasswordCard />
         <TotpCard />

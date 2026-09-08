@@ -269,7 +269,6 @@ export const DailyOperationsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.dailyOps.title')}
-        description={t('operations.dailyOps.subtitle')}
         actions={
           can('operationsShipment.create') ? (
             <Button onClick={() => setCreating(true)}>

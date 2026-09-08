@@ -109,7 +109,6 @@ export const MedicalProfilesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('medical.profile.title')}
-        description={t('medical.profile.subtitle')}
         breadcrumbs={[{ label: t('medical.title') }, { label: t('medical.profile.title') }]}
       />
 

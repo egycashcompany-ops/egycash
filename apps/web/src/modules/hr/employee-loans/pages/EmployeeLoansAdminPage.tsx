@@ -242,7 +242,6 @@ export const EmployeeLoansAdminPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('loans.admin.title')}
-        description={t('loans.admin.subtitle')}
         breadcrumbs={[{ label: t('payroll.module.title') }, { label: t('loans.admin.title') }]}
       />
 

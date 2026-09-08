@@ -108,7 +108,6 @@ export const PreferencesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('account.preferences.title')}
-        description={t('account.preferences.subtitle')}
       />
       <div className="space-y-6">
         <Card>

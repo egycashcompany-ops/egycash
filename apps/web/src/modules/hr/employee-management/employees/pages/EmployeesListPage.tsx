@@ -205,7 +205,6 @@ export const EmployeesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('employees.module.title')}
-        description={t('employees.list.subtitle')}
         breadcrumbs={[{ label: t('employees.module.title') }]}
         actions={
           <div className="flex items-center gap-2">

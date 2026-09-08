@@ -132,7 +132,6 @@ export const InsuranceCardsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('medical.insurance.title')}
-        description={t('medical.insurance.subtitle')}
         breadcrumbs={[{ label: t('medical.title') }, { label: t('medical.insurance.title') }]}
         actions={
           <Can permission="medicalInsurance.manage">

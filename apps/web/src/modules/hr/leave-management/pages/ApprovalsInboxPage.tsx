@@ -14,7 +14,6 @@ export const ApprovalsInboxPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('leave.approvals.title')}
-        description={t('leave.approvals.subtitle')}
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.approvals.title') }]}
       />
       <RequestsTable

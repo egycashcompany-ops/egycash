@@ -91,7 +91,6 @@ export const DailySheetPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('attendance.daily.title')}
-        description={t('attendance.daily.subtitle')}
         breadcrumbs={[{ label: t('attendance.module.title') }, { label: t('attendance.daily.title') }]}
         actions={
           <Can permission="attendance.export">

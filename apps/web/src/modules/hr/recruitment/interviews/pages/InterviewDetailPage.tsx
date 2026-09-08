@@ -98,7 +98,6 @@ export const InterviewDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('interviews.detail.title', { name: iv.applicantName })}
-        description={localized(iv.stageName, locale)}
         aside={<ApplicantStepBar applicantId={iv.applicantId} viewing="interview" />}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },

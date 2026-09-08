@@ -93,7 +93,6 @@ export const CompanyPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.company.title')}
-        description={t('organization.company.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.company.title') }]}
         actions={
           !editing ? (

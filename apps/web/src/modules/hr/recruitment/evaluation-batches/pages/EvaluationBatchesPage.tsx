@@ -146,7 +146,6 @@ export const EvaluationBatchesPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={phase === undefined ? t('batches.title') : localized(phase.name, locale)}
-        description={t('batches.subtitle')}
         breadcrumbs={[
           { label: t('recruitment.title'), to: '/' },
           { label: phase === undefined ? t('batches.title') : localized(phase.name, locale) },

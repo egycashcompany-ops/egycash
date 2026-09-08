@@ -45,7 +45,6 @@ export const MyProfilePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('employees.mine.title')}
-        description={t('employees.mine.subtitle')}
         breadcrumbs={[{ label: t('employees.mine.title') }]}
       />
       <div className="mb-4 flex flex-wrap gap-2">

@@ -183,7 +183,6 @@ export const SecuredDispatchPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.secured.dispatch.title')}
-        description={t('operations.secured.dispatch.subtitle')}
         actions={
           canDispatch ? (
             <Button

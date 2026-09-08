@@ -42,7 +42,7 @@ export const MyMedicalPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('medical.mine.title')} description={t('medical.mine.subtitle')} />
+      <PageHeader title={t('medical.mine.title')} />
 
       {isLoading && (
         <div className="grid place-items-center py-12">

@@ -185,7 +185,6 @@ export const StandingCrewPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.standingCrew.title')}
-        description={t('operations.standingCrew.subtitle')}
         actions={
           canPlan ? (
             <Button onClick={() => void submit()} disabled={!dirty || save.isPending}>

@@ -164,7 +164,6 @@ export const SectionsListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('organization.nav.sections')}
-        description={t('organization.section.subtitle')}
         breadcrumbs={[{ label: t('organization.title'), to: '/organization' }, { label: t('organization.nav.sections') }]}
         actions={
           <Can permission="section.create">

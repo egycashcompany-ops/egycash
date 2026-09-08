@@ -256,7 +256,6 @@ export const TemplatesListPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('contracts.templates.title')}
-        description={t('contracts.templates.subtitle')}
         breadcrumbs={[{ label: t('contracts.module.title'), to: '/contracts' }, { label: t('contracts.templates.title') }]}
         actions={
           <Button onClick={() => navigate('/contracts/templates/new')}>{t('contracts.templates.new')}</Button>

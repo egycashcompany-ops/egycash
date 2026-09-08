@@ -90,7 +90,6 @@ export const VaultReceivePage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('operations.secured.receive.title')}
-        description={t('operations.secured.receive.subtitle')}
       />
       <DataTable
         columns={columns}

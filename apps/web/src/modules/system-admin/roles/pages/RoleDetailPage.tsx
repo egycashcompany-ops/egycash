@@ -197,7 +197,6 @@ export const RoleDetailPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={role.name[locale]}
-        {...(role.description === null ? {} : { description: role.description })}
         breadcrumbs={[
           { label: t('systemAdmin.module.title') },
           { label: t('systemAdmin.roles.title'), to: '/system/roles' },

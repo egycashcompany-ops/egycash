@@ -285,7 +285,7 @@ export const GoldDashboardPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader title={t('gold.nav.dashboard')} description={t('gold.dashboard.subtitle')} />
+      <PageHeader title={t('gold.nav.dashboard')} />
 
       <div className="space-y-6">
         <StatStrip

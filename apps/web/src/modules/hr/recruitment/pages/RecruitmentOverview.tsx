@@ -2,10 +2,8 @@
 // KPI row and recent-activity panel show the dashboard's shape; the quick-access grid links out to
 // each stage. Cards the user cannot access are hidden.
 import { type ComponentType, type SVGProps } from 'react';
-import { useAppSelector } from '../../../../store';
 import { useT } from '../../../../platform/localization/useT';
 import { useCan } from '../../../../platform/rbac/Can';
-import { fullName } from '../../../../shared/lib/format';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import { ModuleHome } from '../../../../shared/ui/ModuleHome';
 import {
@@ -40,9 +38,6 @@ const KPIS: { labelKey: string; icon: Icon; permission: string }[] = [
 export const RecruitmentOverview = (): JSX.Element => {
   const t = useT();
   const can = useCan();
-  const me = useAppSelector((state) => state.auth.me);
-  const locale = useAppSelector((state) => state.locale.locale);
-  const name = me === null ? '' : fullName(me.name, locale);
 
   const shortcuts = SHORTCUTS.filter((c) => can(c.permission)).map((c) => ({
     to: c.to,
@@ -56,7 +51,6 @@ export const RecruitmentOverview = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('recruitment.overview.title')}
-        description={name === '' ? t('recruitment.overview.subtitle') : t('recruitment.overview.welcome', { name })}
       />
       <ModuleHome
         shortcuts={shortcuts}

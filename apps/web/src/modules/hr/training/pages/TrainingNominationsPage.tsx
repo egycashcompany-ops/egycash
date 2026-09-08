@@ -201,7 +201,6 @@ export const TrainingNominationsPage = (): JSX.Element => {
     <PageContainer>
       <PageHeader
         title={t('training.nomination.title')}
-        description={t('training.nomination.subtitle')}
         breadcrumbs={[{ label: t('training.title') }, { label: t('training.nomination.title') }]}
         actions={
           <Can permission="trainingNomination.create">

@@ -18,11 +18,12 @@ export interface EmployeeListFilter {
   branchId?: readonly string[] | undefined;
   departmentId?: string | undefined;
   sectionId?: string | undefined;
-  jobTitleId?: string | undefined;
+  jobTitleId?: readonly string[] | undefined;
   managerId?: string | undefined;
   employmentType?: string | undefined;
   search?: string | undefined;
   governorate?: string | undefined;
+  address?: string | undefined;
   phone?: string | undefined;
 }
 
@@ -389,7 +390,9 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     if (f.departmentId !== undefined) clauses.push({ departmentId: new Types.ObjectId(f.departmentId) });
     if (f.sectionId !== undefined) clauses.push({ sectionId: new Types.ObjectId(f.sectionId) });
     if (f.jobTitleId !== undefined)
-      clauses.push({ 'employment.jobTitleId': new Types.ObjectId(f.jobTitleId) });
+      clauses.push({
+        'employment.jobTitleId': { $in: f.jobTitleId.map((id) => new Types.ObjectId(id)) },
+      });
     if (f.managerId !== undefined)
       clauses.push({ 'employment.managerId': new Types.ObjectId(f.managerId) });
     if (f.employmentType !== undefined) clauses.push({ 'employment.employmentType': f.employmentType });
@@ -407,6 +410,26 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
             $and: [
               { 'personal.officialAddress': null },
               { 'personal.currentAddress.governorate': re },
+            ],
+          },
+        ],
+      } as FilterQuery<EmployeeDoc>);
+    }
+    if (f.address !== undefined && f.address.trim() !== '') {
+      const re = new RegExp(escapeRegExp(f.address.trim()), 'i');
+      // Same "match what is READ" rule as `governorate` directly above — official address when
+      // there is one, current otherwise — and over BOTH parts the screens print together, because
+      // somebody typing «المعادي» is reading one address, not two fields.
+      const anyPart = (prefix: string): FilterQuery<EmployeeDoc> => ({
+        $or: [{ [`${prefix}.line1`]: re }, { [`${prefix}.city`]: re }],
+      });
+      clauses.push({
+        $or: [
+          anyPart('personal.officialAddress'),
+          {
+            $and: [
+              { 'personal.officialAddress': null },
+              anyPart('personal.currentAddress'),
             ],
           },
         ],

@@ -1,17 +1,29 @@
 // Drivers registry (FW-5, legacy /drivers): the fleet-owned profiles over HR employees (FR-11).
 //
-// The table shows thirteen columns, and they come from TWO places on purpose. Five are Fleet's own
-// (licence number, licence date, area, specialization, licence image) and are filtered server-side
-// and edited here. Eight are HR's (name, employee code, job title, address, governorate, mobile,
-// hire date, branch): the browser reads them from HR's endpoint with HR's own `employee.view`,
-// displays them, and never writes them. That is FR-11 in practice — Fleet does not own people.
+// The table shows sixteen columns, and they come from THREE places on purpose:
 //
-// The filter bar spans both, and stays server-side on both. The fleet filters go straight to
-// `/fleet/drivers`; the HR filters go to `/hr/employees` FIRST and arrive here as `employeeIds`
-// (see `useDriverHrFilter`). Two queries, each answered by the module that owns its data, joined
-// by id in the browser — the same join the name column already performs. Nothing is ever filtered
-// out of an already-fetched page, and when HR matches more employees than one `employeeIds` page
-// can carry, the table says so instead of showing a truncated result that looks complete.
+//   • HR's — name, employee code, address, governorate, mobile, hire date, branch. The browser
+//     reads them from HR's endpoint with HR's own `employee.view`, displays them, and never
+//     writes them. That is FR-11 in practice: Fleet does not own people.
+//   • Fleet's CATALOGS — the grade («الوظيفة»), the specialization («التخصص») and the licence
+//     class («الرخصة»). Each is a `/fleet/catalogs` reference, so «سائق صراف الى» or «سزوكى» is
+//     added by an admin rather than by a release. Nothing on this screen names a value of them.
+//   • Fleet's own profile — the work area, the licence expiry, the scan, the active switch.
+//
+// The filter bar mirrors that split and stays server-side across all of it. The fleet filters —
+// the picked drivers, the branch, the three catalogs, the area, the scan, the status — go straight
+// to `/fleet/drivers`. The three HR text boxes (address, governorate, phone) go to `/hr/employees`
+// FIRST and arrive here as `employeeIds` (see `useDriverHrFilter`), where they are intersected
+// with whoever the reader picked by name. Two queries, each answered by the module that owns its
+// data, joined by id in the browser — the same join the name column already performs. Nothing is
+// ever filtered out of an already-fetched page, and when HR matches more employees than one
+// `employeeIds` page can carry, the table says so instead of showing a truncated result that
+// looks complete.
+//
+// THE BRANCH USED TO BE ONE OF THE HR THREE, AND COULD NOT WORK THERE. A branch's employees are
+// its whole payroll, so the HR step always matched more than its one-page cap and the screen
+// answered «narrow your filter» and filtered nothing. It is a fleet parameter now: the roster
+// arrives from the directory seam with each driver's branch already on it.
 //
 // There is no "add driver" action: enrolment left the UI. The create endpoint still exists for the
 // API's own consumers; nothing on this screen reaches it.
@@ -20,6 +32,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
   type EmployeeDto,
+  type FleetCatalogKind,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
   type Locale,
@@ -36,28 +49,32 @@ import { StatusBadge } from '../../../shared/ui/Badge';
 import { EditIcon, EyeIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useDrivers } from '../api/fleet-queries';
+import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
 import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
 import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
+import { CatalogSelect } from '../components/CatalogSelect';
+import { DriverPickerFilter } from '../components/DriverPickerFilter';
 import { DriverFormDialog } from '../components/DriverFormDialog';
 import {
   DriverLicenseImageCell,
   DriverLicenseImagePreviewDialog,
 } from '../components/DriverLicenseImage';
+import { driverIdFilter } from '../lib/driver-filter-selection';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'active',
+  'addr',
   'area',
   'branch',
-  'emp',
+  'drv',
   'gov',
   'img',
   'job',
+  'lic',
   'phone',
-  'q',
   'spec',
   'size',
   'sort',
@@ -66,10 +83,75 @@ const REMEMBERED_FILTERS = [
 const DEFAULT_PAGE_SIZE = 25;
 
 /**
+ * How every filter behaves in the bar: its natural size while there is room, shrinking when there
+ * is not — and never wrapping or pushing the page sideways.
+ *
+ * `shrink` without `flex-1` is the whole trick. A filter takes the width its own content asks for
+ * (a `<select>` is as wide as its longest option), so on a wide screen every label reads in full;
+ * when the row is wider than the bar, the eleven give back width IN PROPORTION to what they
+ * asked for, so the long controls yield the most and the short ones stay readable longest.
+ * Sharing the row equally instead (`flex-1`) squeezed «صورة الرخصة» and «العنوان» to the same
+ * width and clipped both, at every size — measured, and visibly wrong at 1600.
+ *
+ * `min-w-0` is what makes shrinking legal at all: without it a flex item refuses to go below its
+ * content width, and one long branch name would push the row off the page.
+ */
+const FLEX = 'min-w-0 shrink grow';
+
+/**
+ * Every filter is `density="tight"`, which trims 8px from a text box and 20px from a select.
+ *
+ * That is not cosmetics, it is the arithmetic of the row. Eleven controls at the default gutters
+ * spend 430px on their own chrome before a single letter is drawn, and the shell leaves this bar
+ * 974px at 1280 — so the names had nowhere to go and clipped to «الـ». Tight gutters give 152px
+ * back, which is what lets all eleven NAMES read at the narrowest desktop.
+ */
+const TIGHT = 'tight' as const;
+
+/**
+ * The controls that give width up FIRST, at twice the rate of the rest.
+ *
+ * A `<select>`'s width IS its vocabulary — «سائق صراف الى» has to fit, and a select squeezed
+ * below its longest option shows «الـ» and answers nothing. A text box has no vocabulary: it
+ * holds what the reader types, and a narrower one is merely a narrower one. The picker is the
+ * same — it names its own chips inside a panel, not on the trigger. So when the row has to
+ * shorten, these four boxes and the picker yield and the six selects keep their words.
+ */
+const YIELDS = `${FLEX} shrink-[2]`;
+
+/**
+ * A text box's own width. Unlike a `<select>`, an `<input>` has no content to be as wide as — its
+ * intrinsic width is a browser default of about twenty characters, far more than any of these
+ * four need — so the one width that has to be stated is theirs.
+ */
+// Each control's `basis` is measured from the WORDS ON IT, not from the longest thing it could
+// ever hold. A `<select>` is otherwise as wide as its longest option — «سائق صراف الى», a branch
+// name, a catalog value an admin adds tomorrow — and eleven of them demanded 1478px of a bar that
+// holds 974 at 1280, so the names had nowhere to go. Sized to their own labels the row asks for
+// 984px, every filter NAME reads at the narrowest desktop, and what gives way instead is a long
+// chosen VALUE — the right thing to lose, because the table below is already showing it.
+
+/** A comma-separated id list on the URL, as the picker holds it. */
+const idList = (raw: string | null): string[] =>
+  (raw ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id !== '');
+
+/** id → display name for one fleet catalog, in the reader's locale. */
+const useCatalogNames = (kind: FleetCatalogKind, locale: Locale): ReadonlyMap<string, string> => {
+  const { data } = useFleetCatalog(kind);
+  return useMemo(
+    () => new Map((data?.items ?? []).map((item) => [item.id, localized(item.name, locale)])),
+    [data, locale],
+  );
+};
+
+/**
  * One HR-owned cell.
  *
  * Every instance shares ONE cached query per employee (same key as the HR profile page), so a row
- * with eight HR columns still costs a single request. Absent value, absent record and absent
+ * with seven HR columns still costs a single request. Absent value, absent record and absent
  * `employee.view` all render the same dash — the cell never leaks an id in place of a name.
  */
 const EmployeeFact = ({
@@ -95,16 +177,21 @@ export const DriversListPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const search = sp.get('q') ?? '';
+  // Fleet's own half of the bar — every one of these travels to `/fleet/drivers`.
+  const pickedDrivers = idList(sp.get('drv'));
+  const job = sp.get('job') ?? '';
+  const branch = sp.get('branch') ?? '';
   const area = sp.get('area') ?? '';
   const specialization = sp.get('spec') ?? '';
+  const licenseType = sp.get('lic') ?? '';
   const image = sp.get('img') ?? '';
   const active = sp.get('active') ?? '';
   // The HR half — every one of these travels to HR's endpoint, never to Fleet's.
   const hrFilter: DriverHrFilter = {
-    search: sp.get('emp') ?? '',
-    jobTitleId: sp.get('job') ?? '',
-    branchId: sp.get('branch') ?? '',
+    // Never set here: this bar names people with the multi-select, which hands over ids rather
+    // than a term HR has to resolve — see `DriverPickerFilter`.
+    search: '',
+    address: sp.get('addr') ?? '',
     governorate: sp.get('gov') ?? '',
     phone: sp.get('phone') ?? '',
   };
@@ -130,34 +217,53 @@ export const DriversListPage = (): JSX.Element => {
     const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
     patch({ sort: `${by}:${dir}` }, false);
   };
-  const hr = useDriverHrFilter(hrFilter);
-  // Reading HR is HR's own permission, and it gates the CONTROLS as well as the columns. A URL
-  // still carrying an HR filter is honoured differently: the hook reports `failed` and the banner
-  // says why, rather than the page quietly returning an unfiltered list.
+  // The two HR reference lists this screen reads. Declared before the HR filter step because it
+  // needs one of them: without the matching `*.view` grant each stays empty, and the column that
+  // depends on it degrades to a dash rather than showing a raw id.
+  const { data: branches = [] } = useBranches(can('branch.view'));
+  const { data: jobTitles = [] } = useJobTitles(can('jobTitle.view'));
+  // WHO THIS REGISTRY IS: everyone whose job title requires a driving test. Handing those titles
+  // to step ① is what keeps «الجيزة» a question about DRIVERS rather than about the payroll — see
+  // `useDriverHrFilter`. Without `jobTitle.view` the list is empty and the hook does not narrow,
+  // which is the same degradation this screen already makes everywhere else HR is involved.
+  const drivingTitleIds = useMemo(
+    () => jobTitles.filter((title) => title.requiresDrivingTest).map((title) => title.id),
+    [jobTitles],
+  );
+  const hr = useDriverHrFilter(hrFilter, drivingTitleIds);
+  // Reading HR is HR's own permission, and it gates the three text boxes as well as the columns. A
+  // URL still carrying one of them is honoured differently: the hook reports `failed` and the
+  // banner says why, rather than the page quietly returning an unfiltered list.
   const mayFilterByHr = can('employee.view');
   const hasActiveFilters =
-    search !== '' ||
+    pickedDrivers.length > 0 ||
+    job !== '' ||
+    branch !== '' ||
     area !== '' ||
     specialization !== '' ||
+    licenseType !== '' ||
     image !== '' ||
     active !== '' ||
     Object.values(hrFilter).some((value) => value !== '');
 
-  const employeeIds = hr.employeeIds;
+  // The two ways this bar names people, resolved to the ONE list the fleet query is asked for.
+  const employeeIds = driverIdFilter(pickedDrivers, hr.employeeIds);
   const params = useMemo(
     () => ({
       page,
       pageSize,
       sortBy: sort.by,
       sortDir: sort.dir,
-      search: search || undefined,
+      jobId: job || undefined,
+      branchId: branch || undefined,
       area: area || undefined,
-      specialization: specialization || undefined,
+      specializationId: specialization || undefined,
+      licenseTypeId: licenseType || undefined,
       hasLicenseImage: image === '' ? undefined : image === 'with',
       isActive: active === '' ? undefined : active === 'true',
-      // `undefined` when no HR filter is set. When one IS set the array is always sent, including
-      // when it is empty: an empty `$in` is "HR matched nobody", and dropping the parameter there
-      // would answer a filtered question with an unfiltered list.
+      // `undefined` when nobody has been named. When somebody HAS the array is always sent,
+      // including when it is empty: an empty `$in` is "these two questions agree on nobody", and
+      // dropping the parameter there would answer a filtered question with an unfiltered list.
       employeeIds: employeeIds ?? undefined,
     }),
     [paramsKey, employeeIds],
@@ -165,7 +271,7 @@ export const DriversListPage = (): JSX.Element => {
   // Three states hold the fleet query back, and each would otherwise produce a WRONG page rather
   // than a slow one: step ① still running, HR matched more than one page, HR refused or failed.
   const blocked = hr.loading || hr.tooMany || hr.failed;
-  // An empty HR match needs no round-trip: the answer is already known to be nothing.
+  // An empty match needs no round-trip: the answer is already known to be nothing.
   const emptyMatch = employeeIds !== null && employeeIds.length === 0;
   const { data, isLoading, isError, error, refetch } = useDrivers(params, !blocked && !emptyMatch);
   // Held back means SHOW NOTHING, not "show what was there before". `useDrivers` keeps the
@@ -173,19 +279,21 @@ export const DriversListPage = (): JSX.Element => {
   // dropped — so the query key collapses back onto the UNFILTERED one, whose cached rows would
   // render underneath a "narrow your filter" banner and read as the filtered answer.
   const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
+  // The serial column counts from the start of the LIST, not of the page — «م ٢٦» is the
+  // twenty-sixth driver, and restarting at 1 on page two would name two rows the same.
+  const serialOffset = data === undefined ? 0 : (data.meta.page - 1) * data.meta.pageSize;
 
-  // Reference names for the two HR id columns. Without the matching `*.view` grant each list stays
-  // empty and the column degrades to a dash rather than showing a raw id.
-  const { data: branches = [] } = useBranches(can('branch.view'));
-  const { data: jobTitles = [] } = useJobTitles(can('jobTitle.view'));
   const branchName = useMemo(
     () => new Map(branches.map((b) => [b.id, localized(b.name, locale)])),
     [branches, locale],
   );
-  const jobTitleName = useMemo(
-    () => new Map(jobTitles.map((j) => [j.id, localized(j.name, locale)])),
-    [jobTitles, locale],
-  );
+
+  // The three fleet catalogs. The COLUMN and the FILTER read the same list — `useFleetCatalog` is
+  // one cache entry per kind and `CatalogSelect` subscribes to it too — so a value an admin adds
+  // to /fleet/catalogs shows up in both at once and the two cannot drift apart.
+  const jobName = useCatalogNames('driverJob', locale);
+  const specializationName = useCatalogNames('driverSpecialization', locale);
+  const licenseTypeName = useCatalogNames('driverLicenseType', locale);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<FleetDriverRowDto | null>(null);
@@ -202,7 +310,29 @@ export const DriversListPage = (): JSX.Element => {
     </span>
   );
 
+  /** One catalog-backed cell: the item's own name, a dash when nobody has chosen one. */
+  const CatalogFact = ({
+    id,
+    names,
+  }: {
+    id: string | null | undefined;
+    names: ReadonlyMap<string, string>;
+  }): JSX.Element => {
+    const name = id == null ? undefined : names.get(id);
+    if (name === undefined) return <span className="text-slate-400">—</span>;
+    return <span>{name}</span>;
+  };
+
   const columns: Column<FleetDriverRowDto>[] = [
+    {
+      key: 'serial',
+      header: t('fleet.drivers.columns.serial'),
+      render: (_d, index) => (
+        <span className="tabular-nums text-slate-500 dark:text-slate-400">
+          {serialOffset + index + 1}
+        </span>
+      ),
+    },
     {
       key: 'driver',
       header: t('fleet.drivers.columns.driver'),
@@ -222,40 +352,18 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'jobTitle',
       header: t('fleet.drivers.columns.jobTitle'),
+      render: (d) =>
+        d.profile === null ? <NotRecorded /> : <CatalogFact id={d.profile.jobId} names={jobName} />,
+    },
+    {
+      key: 'branch',
+      header: t('fleet.drivers.columns.branch'),
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}
-          pick={(e) => jobTitleName.get(e.employment.jobTitleId) ?? null}
+          pick={(e) => branchName.get(e.employment.branchId) ?? null}
         />
       ),
-    },
-    {
-      key: 'licenseNumber',
-      header: t('fleet.drivers.columns.licenseNumber'),
-      render: (d) =>
-        d.profile === null ? (
-          <NotRecorded />
-        ) : (
-          <span className="font-mono text-xs" dir="ltr">
-            {d.profile.licenseNumber}
-          </span>
-        ),
-    },
-    {
-      key: 'licenseExpiresAt',
-      header: t('fleet.drivers.columns.licenseExpiresAt'),
-      sortable: true,
-      render: (d) => {
-        if (d.profile === null) return <NotRecorded />;
-        const expired = new Date(d.profile.licenseExpiresAt).getTime() < Date.now();
-        return (
-          <span
-            className={cn('tabular-nums', expired && 'font-medium text-red-600 dark:text-red-400')}
-          >
-            {formatDate(d.profile.licenseExpiresAt, locale)}
-          </span>
-        );
-      },
     },
     {
       key: 'address',
@@ -312,18 +420,34 @@ export const DriversListPage = (): JSX.Element => {
         d.profile === null ? (
           <NotRecorded />
         ) : (
-          t(`fleet.drivers.specialization.${d.profile.specialization}`)
+          <CatalogFact id={d.profile.specializationId} names={specializationName} />
         ),
     },
     {
-      key: 'branch',
-      header: t('fleet.drivers.columns.branch'),
-      render: (d) => (
-        <EmployeeFact
-          employeeId={d.employeeId}
-          pick={(e) => branchName.get(e.employment.branchId) ?? null}
-        />
-      ),
+      key: 'licenseType',
+      header: t('fleet.drivers.columns.licenseType'),
+      render: (d) =>
+        d.profile === null ? (
+          <NotRecorded />
+        ) : (
+          <CatalogFact id={d.profile.licenseTypeId} names={licenseTypeName} />
+        ),
+    },
+    {
+      key: 'licenseExpiresAt',
+      header: t('fleet.drivers.columns.licenseExpiresAt'),
+      sortable: true,
+      render: (d) => {
+        if (d.profile === null) return <NotRecorded />;
+        const expired = new Date(d.profile.licenseExpiresAt).getTime() < Date.now();
+        return (
+          <span
+            className={cn('tabular-nums', expired && 'font-medium text-red-600 dark:text-red-400')}
+          >
+            {formatDate(d.profile.licenseExpiresAt, locale)}
+          </span>
+        );
+      },
     },
     {
       key: 'licenseImage',
@@ -399,146 +523,197 @@ export const DriversListPage = (): JSX.Element => {
       />
 
       <div className="space-y-4">
-        {/* One wrapping row on desktop, stacked on a narrow screen. The width lives on the WRAPPER,
-            never on the control: `cn` does not merge Tailwind classes, so `Input`'s own `w-full`
-            would win over any width passed to it. */}
+        {/*
+          ELEVEN filters, ONE row, from 1280px up.
+
+          They SHARE the bar's width rather than each demanding its own. Every child is
+          `flex-1 min-w-0` over a `basis` that says how much of the row it deserves, so the eleven
+          divide whatever there is: they grow on a 1920 screen and shrink on a 1280 one, and the
+          row cannot be pushed off the page at any width in between. Fixed widths could not do
+          this — the controls measure 1478px at their natural size and the bar holds 974px at
+          1280, so a row of `shrink-0` children would have had to wrap (which the brief refuses)
+          or overflow (which it refuses too).
+
+          `min-w-0` is what makes shrinking legal: without it a flex child refuses to go below its
+          content width, and `<select>` content is its longest option — one long branch name would
+          push the row out on its own.
+
+          The width lives on the WRAPPER and the control inside is `w-full`: `cn` does not merge
+          Tailwind classes, so a width passed to `Input` would fight its own `w-full` rather than
+          replace it.
+        */}
         <FilterBar
+          singleRow
+          singleRowFrom={1280}
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
             patch({
-              q: null,
-              area: null,
-              spec: null,
-              img: null,
-              active: null,
-              emp: null,
+              drv: null,
               job: null,
               branch: null,
-              gov: null,
+              addr: null,
+              area: null,
               phone: null,
+              gov: null,
+              spec: null,
+              lic: null,
+              img: null,
+              active: null,
             })
           }
         >
-          {/* HR-owned, and offered ONLY to someone who can use them. Step ① of these filters is a
-              query against HR's own endpoint, so without `employee.view` every one of them can
-              only answer "no directory access" — the same reason the HR columns show dashes for
-              that caller. Offering a control that cannot work is the filter-bar version of
-              offering a link that lands on a permission wall.
-
-              One box for name AND employee code because HR's `search` is one parameter covering
-              both — two boxes would need two HR queries whose capped pages could intersect to a
-              WRONG answer, which is the false filtering this design exists to avoid. */}
+          {/* 1 — the drivers themselves, picked by name or code, as many as the reader means.
+              Offered ONLY to someone who can use it: the options are a search against HR's own
+              endpoint, so without `employee.view` it can only answer "no directory access".
+              The widest basis of the eleven: it is the only control whose trigger carries a
+              chosen driver's NAME rather than a word from a fixed vocabulary. */}
           {mayFilterByHr && (
-            <>
-              <div className="w-48">
-                <Input
-                  aria-label={t('fleet.drivers.filters.employee')}
-                  placeholder={t('fleet.drivers.filters.employee')}
-                  value={hrFilter.search}
-                  onChange={(e) => patch({ emp: e.target.value || null })}
-                />
-              </div>
-              {/* Each reference select needs its own catalogue grant too: without it the list comes
-              back empty and the control would be a dropdown with nothing to pick. */}
-              {can('jobTitle.view') && (
-                <Select
-                  aria-label={t('fleet.drivers.columns.jobTitle')}
-                  value={hrFilter.jobTitleId}
-                  onChange={(e) => patch({ job: e.target.value || null })}
-                  className="w-auto"
-                >
-                  <option value="">{t('fleet.drivers.allJobTitles')}</option>
-                  {jobTitles.map((jobTitle) => (
-                    <option key={jobTitle.id} value={jobTitle.id}>
-                      {localized(jobTitle.name, locale)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-              {can('branch.view') && (
-                <Select
-                  aria-label={t('fleet.drivers.columns.branch')}
-                  value={hrFilter.branchId}
-                  onChange={(e) => patch({ branch: e.target.value || null })}
-                  className="w-auto"
-                >
-                  <option value="">{t('fleet.drivers.allBranches')}</option>
-                  {branches.map((branch) => (
-                    <option key={branch.id} value={branch.id}>
-                      {localized(branch.name, locale)}
-                    </option>
-                  ))}
-                </Select>
-              )}
-              <div className="w-32">
-                <Input
-                  aria-label={t('fleet.drivers.columns.governorate')}
-                  placeholder={t('fleet.drivers.columns.governorate')}
-                  value={hrFilter.governorate}
-                  onChange={(e) => patch({ gov: e.target.value || null })}
-                />
-              </div>
-              <div className="w-36">
-                <Input
-                  aria-label={t('fleet.drivers.columns.phone')}
-                  placeholder={t('fleet.drivers.columns.phone')}
-                  value={hrFilter.phone}
-                  onChange={(e) => patch({ phone: e.target.value || null })}
-                  dir="ltr"
-                />
-              </div>
-            </>
+            <DriverPickerFilter
+              value={pickedDrivers}
+              onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
+              // Its own basis rather than the text boxes' yield rate: the trigger carries a
+              // CHOSEN DRIVER'S NAME once one is picked, so it must not be squeezed to nothing —
+              // and `max-w` is the other half of that, because a long name would otherwise let
+              // this one control claim a third of the row.
+              className={`${FLEX} basis-[6.75rem] max-w-[10rem]`}
+            />
           )}
-          {/* Fleet-owned, straight to /fleet/drivers. */}
-          <div className="w-40">
-            <Input
-              aria-label={t('fleet.drivers.columns.licenseNumber')}
-              placeholder={t('fleet.drivers.searchPlaceholder')}
-              value={search}
-              onChange={(e) => patch({ q: e.target.value || null })}
+          {/* 2 — «الوظيفة», from the `driverJob` catalog. No value of it is named on this screen. */}
+          <div className={`${FLEX} basis-[5.25rem] max-w-[9rem]`}>
+            <CatalogSelect
+              kind="driverJob"
+              value={job}
+              onChange={(id) => patch({ job: id || null })}
+              allLabel={t('fleet.drivers.allJobs')}
+              ariaLabel={t('fleet.drivers.columns.jobTitle')}
+              className="w-full"
+              density={TIGHT}
             />
           </div>
-          <div className="w-36">
+          {/* 3 — «الفرع». A FLEET parameter: see the header note on why asking HR could not work. */}
+          {can('branch.view') && (
+            <div className={`${FLEX} basis-[4.5rem] max-w-[9rem]`}>
+              <Select
+                aria-label={t('fleet.drivers.columns.branch')}
+                title={t('fleet.drivers.columns.branch')}
+                value={branch}
+                onChange={(e) => patch({ branch: e.target.value || null })}
+                density={TIGHT}
+              >
+                <option value="">{t('fleet.drivers.allBranches')}</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {localized(b.name, locale)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
+          {/* 4 — «ابحث بالعنوان», HR-owned, matched over the address as it is displayed. */}
+          {mayFilterByHr && (
+            <div className={`${YIELDS} basis-[4.5rem] max-w-[8rem]`}>
+              <Input
+                aria-label={t('fleet.drivers.columns.address')}
+                title={t('fleet.drivers.columns.address')}
+                density={TIGHT}
+                placeholder={t('fleet.drivers.columns.address')}
+                value={hrFilter.address}
+                onChange={(e) => patch({ addr: e.target.value || null })}
+              />
+            </div>
+          )}
+          {/* 5 — «ابحث بالمنطقة», fleet-owned, straight to /fleet/drivers. */}
+          <div className={`${YIELDS} basis-[4.5rem] max-w-[8rem]`}>
             <Input
               aria-label={t('fleet.drivers.columns.area')}
+              title={t('fleet.drivers.columns.area')}
+              density={TIGHT}
               placeholder={t('fleet.drivers.areaPlaceholder')}
               value={area}
               onChange={(e) => patch({ area: e.target.value || null })}
             />
           </div>
-          <Select
-            aria-label={t('fleet.drivers.columns.specialization')}
-            value={specialization}
-            onChange={(e) => patch({ spec: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.drivers.allSpecializations')}</option>
-            {(['cashTransport', 'atm', 'both'] as const).map((value) => (
-              <option key={value} value={value}>
-                {t(`fleet.drivers.specialization.${value}`)}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label={t('fleet.drivers.columns.licenseImage')}
-            value={image}
-            onChange={(e) => patch({ img: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.drivers.allLicenseImages')}</option>
-            <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
-            <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
-          </Select>
-          <Select
-            aria-label={t('fleet.drivers.columns.status')}
-            value={active}
-            onChange={(e) => patch({ active: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.drivers.allStatuses')}</option>
-            <option value="true">{t('fleet.drivers.active')}</option>
-            <option value="false">{t('fleet.drivers.inactive')}</option>
-          </Select>
+          {/* 6 — «ابحث برقم الهاتف», HR-owned. */}
+          {mayFilterByHr && (
+            <div className={`${YIELDS} basis-[4.75rem] max-w-[8rem]`}>
+              <Input
+                aria-label={t('fleet.drivers.columns.phone')}
+                title={t('fleet.drivers.columns.phone')}
+                // The box is narrower than «رقم الموبايل» on a 1600 screen, and a placeholder
+                // clipped mid-word names nothing. The column header, the tooltip and the
+                // `aria-label` all still say it in full.
+                density={TIGHT}
+                placeholder={t('fleet.drivers.phonePlaceholder')}
+                value={hrFilter.phone}
+                onChange={(e) => patch({ phone: e.target.value || null })}
+                dir="ltr"
+              />
+            </div>
+          )}
+          {/* 7 — «المحافظة», HR-owned. */}
+          {mayFilterByHr && (
+            <div className={`${YIELDS} basis-[5rem] max-w-[8rem]`}>
+              <Input
+                aria-label={t('fleet.drivers.columns.governorate')}
+                title={t('fleet.drivers.columns.governorate')}
+                density={TIGHT}
+                placeholder={t('fleet.drivers.columns.governorate')}
+                value={hrFilter.governorate}
+                onChange={(e) => patch({ gov: e.target.value || null })}
+              />
+            </div>
+          )}
+          {/* 8 — «التخصص», from the `driverSpecialization` catalog. */}
+          <div className={`${FLEX} basis-[5.25rem] max-w-[9rem]`}>
+            <CatalogSelect
+              kind="driverSpecialization"
+              value={specialization}
+              onChange={(id) => patch({ spec: id || null })}
+              allLabel={t('fleet.drivers.allSpecializations')}
+              ariaLabel={t('fleet.drivers.columns.specialization')}
+              className="w-full"
+              density={TIGHT}
+            />
+          </div>
+          {/* 9 — «الرخصة», from the `driverLicenseType` catalog. The licence CLASS, not its number. */}
+          <div className={`${FLEX} basis-[5rem] max-w-[9rem]`}>
+            <CatalogSelect
+              kind="driverLicenseType"
+              value={licenseType}
+              onChange={(id) => patch({ lic: id || null })}
+              allLabel={t('fleet.drivers.allLicenseTypes')}
+              ariaLabel={t('fleet.drivers.columns.licenseType')}
+              className="w-full"
+              density={TIGHT}
+            />
+          </div>
+          {/* 10 and 11 — the scan and the status, exactly as they were. */}
+          <div className={`${FLEX} basis-[7.75rem] max-w-[11rem]`}>
+            <Select
+              aria-label={t('fleet.drivers.columns.licenseImage')}
+              title={t('fleet.drivers.columns.licenseImage')}
+              value={image}
+              onChange={(e) => patch({ img: e.target.value || null })}
+              density={TIGHT}
+            >
+              <option value="">{t('fleet.drivers.allLicenseImages')}</option>
+              <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
+              <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
+            </Select>
+          </div>
+          <div className={`${FLEX} basis-[4.75rem] max-w-[8rem]`}>
+            <Select
+              aria-label={t('fleet.drivers.columns.status')}
+              title={t('fleet.drivers.columns.status')}
+              value={active}
+              onChange={(e) => patch({ active: e.target.value || null })}
+              density={TIGHT}
+            >
+              <option value="">{t('fleet.drivers.allStatuses')}</option>
+              <option value="true">{t('fleet.drivers.active')}</option>
+              <option value="false">{t('fleet.drivers.inactive')}</option>
+            </Select>
+          </div>
         </FilterBar>
 
         {/*

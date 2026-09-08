@@ -81,17 +81,33 @@ class FleetDashboardRepository {
     }));
   }
 
-  /** Live driver profiles, by specialization — the employee they belong to is resolved above. */
-  async activeDriverProfiles(): Promise<{ employeeId: string; specialization: string }[]> {
+  /**
+   * Live driver profiles, by specialization — the employee they belong to is resolved above.
+   *
+   * BOTH classifications come back. «التخصص» is a catalog reference now, and the legacy enum is
+   * what a profile nobody has re-classified still carries; the caller prefers the first and falls
+   * back to the second, so this split keeps answering for the whole registry rather than for the
+   * part that has been through the new form.
+   */
+  async activeDriverProfiles(): Promise<
+    { employeeId: string; specializationId: string | null; specialization: string | null }[]
+  > {
     const rows = await FleetDriverProfileModel.find(
       { isDeleted: false, isActive: true },
-      { employeeId: 1, specialization: 1 },
+      { employeeId: 1, specializationId: 1, specialization: 1 },
     )
-      .lean<{ employeeId: Types.ObjectId; specialization: string }[]>()
+      .lean<
+        {
+          employeeId: Types.ObjectId;
+          specializationId?: Types.ObjectId | null;
+          specialization?: string | null;
+        }[]
+      >()
       .exec();
     return rows.map((row) => ({
       employeeId: String(row.employeeId),
-      specialization: row.specialization,
+      specializationId: row.specializationId == null ? null : String(row.specializationId),
+      specialization: row.specialization ?? null,
     }));
   }
 

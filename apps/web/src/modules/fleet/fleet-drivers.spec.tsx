@@ -1,8 +1,8 @@
 // The drivers registry, proven against what the screen actually produces.
 //
 // Four claims, each one a rule from the brief that a typecheck cannot see:
-//   • the table renders the thirteen required columns, in the required order, filled from the two
-//     real sources — Fleet's own profile and HR's employee record;
+//   • the table renders the sixteen required columns, in the required order, filled from the three
+//     real sources — Fleet's own profile, Fleet's catalogs, and HR's employee record;
 //   • the licence-image cell offers upload when there is no scan and view + delete when there is,
 //     and every one of those actions is gated on `fleetDriver.manage`;
 //   • the filter bar exposes the fleet-owned filters, syncs them with the URL, and lays them out
@@ -25,6 +25,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  CreateFleetDriverProfileSchema,
   ListEmployeesQuerySchema,
   ListFleetDriversQuerySchema,
   MAX_PAGE_SIZE,
@@ -63,6 +64,27 @@ const page = <T,>(items: T[]) => ({
 const EMPLOYEE_ID = 'e1';
 
 /**
+ * The exact parameter object the page hands `useDrivers`, so a seeded cache entry is the one it
+ * looks up. Written once because every key here is a FILTER: a test that seeded a different shape
+ * would render the skeleton and prove nothing, silently.
+ */
+const driverParams = (overrides: Record<string, unknown> = {}) => ({
+  page: 1,
+  pageSize: 25,
+  sortBy: 'createdAt',
+  sortDir: 'desc',
+  jobId: undefined,
+  branchId: undefined,
+  area: undefined,
+  specializationId: undefined,
+  licenseTypeId: undefined,
+  hasLicenseImage: undefined,
+  isActive: undefined,
+  employeeIds: undefined,
+  ...overrides,
+});
+
+/**
  * A registry ROW: the person, and what Fleet has recorded about them.
  *
  * The list stopped returning bare profiles when the roster became the org chart — a driver is on
@@ -74,12 +96,22 @@ const row = (profile: FleetDriverProfileDto | null, employeeId = EMPLOYEE_ID) =>
   profile,
 });
 
+/** The three catalog items this registry's three catalog-backed columns point at. */
+const CATALOG = {
+  job: { id: 'cj1', ar: 'سائق صراف الى', en: 'ATM teller driver' },
+  specialization: { id: 'cs1', ar: 'سزوكى', en: 'Suzuki' },
+  licenseType: { id: 'cl1', ar: 'تانيه', en: 'Second class' },
+};
+
 const driver = (overrides: Partial<FleetDriverProfileDto> = {}): FleetDriverProfileDto => ({
   id: 'd1',
   employeeId: EMPLOYEE_ID,
   licenseNumber: 'DL-4471',
   licenseExpiresAt: '2027-05-01T00:00:00.000Z',
-  specialization: 'cashTransport',
+  jobId: CATALOG.job.id,
+  specializationId: CATALOG.specialization.id,
+  licenseTypeId: CATALOG.licenseType.id,
+  specialization: null,
   area: 'وسط البلد',
   isActive: true,
   licenseImage: null,
@@ -155,22 +187,32 @@ const seededClient = (
   { hr = true }: { hr?: boolean } = {},
 ): QueryClient => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(
-    listKey('fleet', 'drivers', {
-      page: 1,
-      pageSize: 25,
-      sortBy: 'createdAt',
-      sortDir: 'desc',
-      search: undefined,
-      area: undefined,
-      specialization: undefined,
-      hasLicenseImage: undefined,
-      isActive: undefined,
-      employeeIds: undefined,
-      ...params,
-    }),
-    page(rows.map((profile) => row(profile))),
-  );
+  qc.setQueryData(listKey('fleet', 'drivers', driverParams(params)), page(rows.map((p) => row(p))));
+  // The three fleet catalogs, under the key `useFleetCatalog` and `CatalogSelect` SHARE — which is
+  // the point of seeding them once here: the column, the filter and the edit form all read this
+  // one entry, so a test cannot accidentally prove them against different vocabularies.
+  for (const [kind, item] of [
+    ['driverJob', CATALOG.job],
+    ['driverSpecialization', CATALOG.specialization],
+    ['driverLicenseType', CATALOG.licenseType],
+  ] as const) {
+    qc.setQueryData(
+      listKey('fleet', 'catalogs', { kind, violationSide: undefined }),
+      page([
+        {
+          id: item.id,
+          kind,
+          name: { ar: item.ar, en: item.en },
+          countsForAlarm: false,
+          violationSide: null,
+          isActive: true,
+          version: 0,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ]),
+    );
+  }
   // The HR record every read-only column reads, under HR's OWN detail key — the same one the HR
   // profile page uses, which is what makes a row cost one request rather than eight. `hr: false`
   // is what a caller without `employee.view` really sees: the query is disabled, so nothing ever
@@ -181,9 +223,18 @@ const seededClient = (
     ['hr', 'branches', 'active'],
     page([{ id: 'b1', code: '01', name: { ar: HR.branch, en: 'Mohandessin' }, status: 'active' }]),
   );
+  // `requiresDrivingTest` is what makes this a DRIVING seat — the flag the registry's membership
+  // is derived from, and the one the HR filter step narrows itself to.
   qc.setQueryData(
     ['hr', 'jobTitles', 'active'],
-    page([{ id: 'jt1', name: { ar: HR.jobTitle, en: 'Cash transport driver' }, status: 'active' }]),
+    page([
+      {
+        id: 'jt1',
+        name: { ar: HR.jobTitle, en: 'Cash transport driver' },
+        status: 'active',
+        requiresDrivingTest: true,
+      },
+    ]),
   );
   return qc;
 };
@@ -200,8 +251,7 @@ const hrFilteredClient = (
 ): QueryClient => {
   const full: DriverHrFilter = {
     search: '',
-    jobTitleId: '',
-    branchId: '',
+    address: '',
     governorate: '',
     phone: '',
     ...filter,
@@ -219,22 +269,12 @@ const hrFilteredClient = (
   // with a row is what makes the guard's absence visible: without it the page renders this.
   if (matched === 0) {
     qc.setQueryData(
-      listKey('fleet', 'drivers', {
-        page: 1,
-        pageSize: 25,
-        sortBy: 'createdAt',
-        sortDir: 'desc',
-        search: undefined,
-        area: undefined,
-        specialization: undefined,
-        hasLicenseImage: undefined,
-        isActive: undefined,
-        employeeIds: [],
-      }),
+      listKey('fleet', 'drivers', driverParams({ employeeIds: [] })),
       page([row(driver())]),
     );
   }
-  qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full], {
+  // `jt1` is the seeded driving job title — the seats the registry narrows step ① to.
+  qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full, 'jt1'], {
     items: ids.map((id) => ({ ...employee(), id })),
     meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: matched, totalPages: 1 },
   });
@@ -268,6 +308,10 @@ const render = (
 
 const t = (key: string, locale: Locale = 'ar'): string => translate(locale, key);
 
+/** The table BODY alone — a branch named in a `<select>` must not satisfy a claim about a ROW. */
+const tbodyOf = (markup: string): string =>
+  markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
+
 /** The table head alone — a label also used by a filter must not be able to satisfy a column claim. */
 const thead = (markup: string): string => {
   const start = markup.indexOf('<thead');
@@ -276,26 +320,34 @@ const thead = (markup: string): string => {
   return markup.slice(start, end);
 };
 
-/** The thirteen columns the brief names, in the order it names them. */
+/**
+ * The sixteen columns the brief names, IN THE ORDER IT NAMES THEM:
+ *
+ *   م → اسم السائق → كود الموظف → الوظيفة → الفرع → العنوان → المنطقة → المحافظة →
+ *   رقم الموبايل → تاريخ التعيين → التخصص → الرخصة → تاريخ الرخصة → صورة الرخصة →
+ *   الحالة → إجراءات
+ */
 const REQUIRED_COLUMNS = [
+  'serial',
   'driver',
   'employeeCode',
   'jobTitle',
-  'licenseNumber',
-  'licenseExpiresAt',
+  'branch',
   'address',
   'area',
   'governorate',
   'phone',
   'hiredAt',
   'specialization',
-  'branch',
+  'licenseType',
+  'licenseExpiresAt',
   'licenseImage',
+  'status',
 ] as const;
 
 // ── 1. The table ────────────────────────────────────────────────────────────
 
-describe('the drivers table shows the thirteen required columns', () => {
+describe('the drivers table shows the sixteen required columns', () => {
   it('renders every one of them in the table head', () => {
     const head = thead(render(<DriversListPage />));
     for (const column of REQUIRED_COLUMNS) {
@@ -326,25 +378,90 @@ describe('the drivers table shows the thirteen required columns', () => {
   });
 });
 
-describe('the columns are filled from the two real sources', () => {
+describe('the columns are filled from the three real sources', () => {
   const markup = (): string => render(<DriversListPage />);
+  const tbody = (html: string): string =>
+    html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
 
   it('shows the fleet-owned facts from the driver profile', () => {
     const html = markup();
-    expect(html, 'license number').toContain('DL-4471');
     expect(html, 'area').toContain('وسط البلد');
-    expect(html, 'specialization').toContain(t('fleet.drivers.specialization.cashTransport'));
+    expect(html, 'licence date').toContain('٢٠٢٧');
+  });
+
+  it('names the three catalog references from the CATALOG, never from the profile', () => {
+    const body = tbody(markup());
+    expect(body, 'الوظيفة').toContain(CATALOG.job.ar);
+    expect(body, 'التخصص').toContain(CATALOG.specialization.ar);
+    expect(body, 'الرخصة').toContain(CATALOG.licenseType.ar);
+    // The ids themselves never reach the page: a cell that printed one would look like data.
+    expect(body, 'and never the raw ids').not.toContain(CATALOG.job.id);
+    expect(body).not.toContain(CATALOG.specialization.id);
+    expect(body).not.toContain(CATALOG.licenseType.id);
+  });
+
+  it('renames a catalog value everywhere at once — the column follows the catalog', () => {
+    // What an admin actually does on /fleet/catalogs: rename «سزوكى». The column has no vocabulary
+    // of its own to disagree with, so the new name is what the row says.
+    const qc = seededClient();
+    qc.setQueryData(
+      listKey('fleet', 'catalogs', { kind: 'driverSpecialization', violationSide: undefined }),
+      page([
+        {
+          id: CATALOG.specialization.id,
+          kind: 'driverSpecialization',
+          name: { ar: 'سوزوكي (معدّل)', en: 'Suzuki (renamed)' },
+          countsForAlarm: false,
+          violationSide: null,
+          isActive: true,
+          version: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-03-01T00:00:00.000Z',
+        },
+      ]),
+    );
+    const body = tbody(render(<DriversListPage />, { client: qc }));
+    expect(body).toContain('سوزوكي (معدّل)');
+    expect(body).not.toContain(CATALOG.specialization.ar);
+  });
+
+  it('says «—» for a driver nobody has classified, rather than inventing a grade', () => {
+    const body = tbody(
+      render(<DriversListPage />, {
+        client: seededClient([
+          driver({ jobId: null, specializationId: null, licenseTypeId: null }),
+        ]),
+      }),
+    );
+    expect(body).not.toContain(CATALOG.job.ar);
+    expect(body).not.toContain(CATALOG.specialization.ar);
+    expect(body).not.toContain(CATALOG.licenseType.ar);
+    expect(body, 'the unclassified cells say so').toContain('—');
   });
 
   it('shows the HR-owned facts from the employee record, resolved not echoed', () => {
     const html = markup();
     expect(html, 'driver name').toContain(HR.name);
     expect(html, 'employee code').toContain(HR.code);
-    expect(html, 'job title').toContain(HR.jobTitle);
     expect(html, 'address').toContain(HR.line1);
     expect(html, 'governorate').toContain(HR.governorate);
     expect(html, 'mobile number').toContain(HR.phone);
     expect(html, 'branch').toContain(HR.branch);
+  });
+
+  it('numbers the rows from the start of the LIST, not of the page', () => {
+    const qc = seededClient();
+    qc.setQueryData(listKey('fleet', 'drivers', driverParams({ page: 3 })), {
+      items: [row(driver()), row(driver({ id: 'd2' }), 'e2')],
+      meta: { page: 3, pageSize: 25, totalItems: 60, totalPages: 3 },
+    });
+    const body = tbody(
+      render(<DriversListPage />, { client: qc, route: '/fleet/drivers?page=3' }),
+    );
+    // Page three of twenty-five: the first row is the fifty-first driver, not the first.
+    expect(body, 'first row of page 3').toContain('>51<');
+    expect(body, 'second row of page 3').toContain('>52<');
+    expect(body, 'and never restarts at 1').not.toContain('>1<');
   });
 
   it('degrades to a dash without `employee.view` rather than leaking an id', () => {
@@ -352,13 +469,13 @@ describe('the columns are filled from the two real sources', () => {
       permissions: ['fleetDriver.view', 'fleetDriver.manage'],
       client: seededClient([driver()], {}, { hr: false }),
     });
-    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
+    const body = tbody(html);
     expect(body).not.toContain(HR.name);
     expect(body).not.toContain(HR.phone);
     expect(body, 'and never the raw employee id in its place').not.toContain(EMPLOYEE_ID);
     expect(body, 'the empty HR cells say so').toContain('—');
     // The fleet-owned columns are unaffected: HR access is not fleet access.
-    expect(body).toContain('DL-4471');
+    expect(body).toContain('وسط البلد');
   });
 });
 
@@ -448,83 +565,331 @@ describe('the licence-image cell', () => {
 // ── 3. The filters ──────────────────────────────────────────────────────────
 
 describe('the filter bar', () => {
-  const FILTER_LABELS = [
-    'fleet.drivers.columns.licenseNumber',
+  /**
+   * The ELEVEN filters the brief names, in the order it names them.
+   *
+   * Every one is proven by the label the control carries, and each label is a column header — the
+   * bar asks the same questions the table answers.
+   */
+  const FILTER_ORDER = [
+    'fleet.drivers.filters.employee',
+    'fleet.drivers.columns.jobTitle',
+    'fleet.drivers.columns.branch',
+    'fleet.drivers.columns.address',
     'fleet.drivers.columns.area',
+    'fleet.drivers.columns.phone',
+    'fleet.drivers.columns.governorate',
     'fleet.drivers.columns.specialization',
+    'fleet.drivers.columns.licenseType',
     'fleet.drivers.columns.licenseImage',
     'fleet.drivers.columns.status',
   ];
 
-  it('exposes a labelled control for every fleet-owned filter', () => {
-    const html = render(<DriversListPage />);
-    for (const key of FILTER_LABELS) {
+  /** The bar alone: a column header must not be able to satisfy a filter claim, or the reverse. */
+  const bar = (html: string): string =>
+    html.slice(html.indexOf('flex flex-wrap'), html.indexOf('<table'));
+
+  it('exposes a labelled control for every one of the eleven filters', () => {
+    const html = bar(render(<DriversListPage />));
+    for (const key of FILTER_ORDER) {
       expect(html, `${key} filter`).toContain(`aria-label="${t(key)}"`);
     }
   });
 
-  it('reads its state from the URL, so a filtered view is a shareable link', () => {
-    const route = '/fleet/drivers?q=DL-44&area=%D9%88%D8%B3%D8%B7&spec=atm&img=with&active=false';
-    const html = render(<DriversListPage />, {
-      route,
-      client: seededClient([driver()], {
-        search: 'DL-44',
-        area: 'وسط',
-        specialization: 'atm',
-        hasLicenseImage: true,
-        isActive: false,
-      }),
-    });
-    expect(html).toContain('value="DL-44"');
-    expect(html).toContain('value="وسط"');
-    // A `<select>` renders its choice as the selected option, not as a value attribute.
-    expect(html).toContain(`<option value="atm" selected=""`);
-    expect(html).toContain(`<option value="with" selected=""`);
-    expect(html).toContain(`<option value="false" selected=""`);
+  it('renders them in the order the brief names', () => {
+    const html = bar(render(<DriversListPage />));
+    const at = FILTER_ORDER.map((key) => ({
+      key,
+      at: html.indexOf(`aria-label="${t(key)}"`),
+    }));
+    for (let i = 1; i < at.length; i += 1) {
+      const previous = at[i - 1] as { key: string; at: number };
+      const current = at[i] as { key: string; at: number };
+      expect(current.at, `${current.key} after ${previous.key}`).toBeGreaterThan(previous.at);
+    }
   });
 
-  it('lays the controls out as ONE wrapping row — side by side, stacking when narrow', () => {
-    const html = render(<DriversListPage />);
-    const bar = html.slice(html.indexOf('flex flex-wrap'));
-    expect(bar.startsWith('flex flex-wrap'), 'the bar wraps rather than stacking').toBe(true);
-    // Each control is a DIRECT child of the bar. A control wrapped in its own block-level row is
-    // what put the vehicle filters on separate lines; the widths live on the wrappers instead.
-    const source = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
-    const filterBar = source.slice(source.indexOf('<FilterBar'), source.indexOf('</FilterBar>'));
-    expect(filterBar).not.toContain('grid');
-    expect(filterBar).toContain('className="w-40"');
-    expect(filterBar).toContain('className="w-36"');
+  it('keeps all eleven on ONE row from the narrowest desktop up', () => {
+    const html = bar(render(<DriversListPage />));
+    // `flex-wrap` is the base — a phone still stacks — and `flex-nowrap` takes over from 1280px,
+    // the narrowest desktop the product targets.
+    expect(html, 'wraps by default').toContain('flex flex-wrap');
+    expect(html, 'and stops wrapping from 1280px').toContain('min-[1280px]:flex-nowrap');
+    // What makes that safe at 1280, where the eleven want more room than the bar has: every one
+    // of them may SHRINK. `min-w-0` is the part that is easy to leave out and impossible to see
+    // — without it a flex child refuses to go below its content width, and a `<select>` is as
+    // wide as its longest option, so one long branch name would push the row off the page.
+    const shrinkable = html.split('min-w-0').length - 1;
+    expect(shrinkable, 'every control can give width back').toBeGreaterThanOrEqual(
+      FILTER_ORDER.length,
+    );
+  });
+
+  it('names every filter for a screen reader AND in a tooltip, for when it truncates', () => {
+    // The row shortens proportionally on a narrower desktop, so a label can be cut off. Both
+    // fallbacks have to be there: `aria-label` for a screen reader, `title` for a pointer.
+    const html = bar(render(<DriversListPage />));
+    for (const key of FILTER_ORDER) {
+      expect(html, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
+      expect(html, `${key} title`).toContain(`title="${t(key)}"`);
+    }
+  });
+
+  it('reads its state from the URL, so a filtered view is a shareable link', () => {
+    const route =
+      '/fleet/drivers?drv=e1&job=cj1&branch=b1&addr=%D8%AC%D8%A7%D9%85%D8%B9%D8%A9' +
+      '&area=%D9%88%D8%B3%D8%B7&phone=0100&gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9' +
+      '&spec=cs1&lic=cl1&img=with&active=false';
+    const client = seededClient([driver()], {
+      jobId: 'cj1',
+      branchId: 'b1',
+      area: 'وسط',
+      specializationId: 'cs1',
+      licenseTypeId: 'cl1',
+      hasLicenseImage: true,
+      isActive: false,
+      employeeIds: [EMPLOYEE_ID],
+    });
+    client.setQueryData(
+      ['hr', 'employees', 'fleet-driver-filter', {
+        search: '',
+        address: 'جامعة',
+        governorate: 'الجيزة',
+        phone: '0100',
+      }, 'jt1'],
+      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+    );
+    const html = render(<DriversListPage />, { route, client });
+    expect(html, 'address box').toContain('value="جامعة"');
+    expect(html, 'area box').toContain('value="وسط"');
+    expect(html, 'phone box').toContain('value="0100"');
+    expect(html, 'governorate box').toContain('value="الجيزة"');
+    // A `<select>` renders its choice as the selected option, not as a value attribute.
+    expect(html, 'الوظيفة').toContain('<option value="cj1" selected=""');
+    expect(html, 'الفرع').toContain('<option value="b1" selected=""');
+    expect(html, 'التخصص').toContain('<option value="cs1" selected=""');
+    expect(html, 'الرخصة').toContain('<option value="cl1" selected=""');
+    expect(html, 'صورة الرخصة').toContain('<option value="with" selected=""');
+    expect(html, 'الحالة').toContain('<option value="false" selected=""');
+    // And the picked driver is NAMED on its trigger, not counted — a chip nobody can read is a
+    // filter you have to open to understand.
+    expect(html, 'the picked driver').toContain(HR.name);
+  });
+
+  it('offers the three catalog filters the CATALOG\u2019s values, never a list of its own', () => {
+    const html = bar(render(<DriversListPage />));
+    for (const item of [CATALOG.job, CATALOG.specialization, CATALOG.licenseType]) {
+      expect(html, `${item.ar} is offered`).toContain(`<option value="${item.id}">${item.ar}`);
+    }
+  });
+
+  it('offers a value an admin ADDS to a catalog, with no release in between', () => {
+    // Exactly what /fleet/catalogs does: one more row of the same kind. Nothing on this screen
+    // enumerates the vocabulary, so the new value is simply on offer.
+    const qc = seededClient();
+    qc.setQueryData(
+      listKey('fleet', 'catalogs', { kind: 'driverJob', violationSide: undefined }),
+      page([
+        {
+          id: CATALOG.job.id,
+          kind: 'driverJob',
+          name: { ar: CATALOG.job.ar, en: CATALOG.job.en },
+          countsForAlarm: false,
+          violationSide: null,
+          isActive: true,
+          version: 0,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+        {
+          id: 'cj-new',
+          kind: 'driverJob',
+          name: { ar: 'سائق مدرّب', en: 'Trainer driver' },
+          countsForAlarm: false,
+          violationSide: null,
+          isActive: true,
+          version: 0,
+          createdAt: '2026-04-01T00:00:00.000Z',
+          updatedAt: '2026-04-01T00:00:00.000Z',
+        },
+      ]),
+    );
+    const html = bar(render(<DriversListPage />, { client: qc }));
+    expect(html).toContain('<option value="cj-new">سائق مدرّب');
   });
 
   it('sends every filter to the SERVER — none is applied to the fetched page', () => {
-    const source = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
-    const params = source.slice(
-      source.indexOf('const params = useMemo'),
-      source.indexOf('useDrivers(params)'),
+    // Proven by CONSEQUENCE rather than by reading the source: a page that filtered its own rows
+    // would render the same list whatever the URL said. Here the narrowed URL asks for a key that
+    // holds a DIFFERENT driver, and that is the one the table shows.
+    const client = seededClient([driver()]);
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ specializationId: 'cs1' })),
+      page([row(driver({ id: 'd9', area: 'الزمالك' }))]),
     );
-    for (const key of ['search:', 'area:', 'specialization:', 'hasLicenseImage:', 'isActive:']) {
-      expect(params, `${key} reaches the query`).toContain(key);
-    }
-    // No `.filter(` over the rows: a client-side filter would silently trim one page of many.
-    expect(source).not.toContain('rows.filter(');
+    const unfiltered = render(<DriversListPage />, { client });
+    const filtered = render(<DriversListPage />, { route: '/fleet/drivers?spec=cs1', client });
+    expect(unfiltered).toContain('وسط البلد');
+    expect(filtered, 'the narrowed request is the one that answered').toContain('الزمالك');
+    expect(filtered).not.toContain('وسط البلد');
   });
 
-  it('the backend accepts the two filters this page added', () => {
-    // The regression: before this slice `ListFleetDriversQuerySchema` was `.strict()` with neither
-    // key, so both of these threw — the filters could not have worked server-side at all.
-    expect(ListFleetDriversQuerySchema.parse({ area: 'وسط البلد' }).area).toBe('وسط البلد');
-    expect(ListFleetDriversQuerySchema.parse({ hasLicenseImage: 'true' }).hasLicenseImage).toBe(
-      true,
-    );
-    expect(ListFleetDriversQuerySchema.parse({ hasLicenseImage: 'false' }).hasLicenseImage).toBe(
-      false,
-    );
+  it('the backend accepts every parameter this page sends', () => {
+    const parsed = ListFleetDriversQuerySchema.parse({
+      branchId: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+      jobId: 'bbbbbbbbbbbbbbbbbbbbbbbb',
+      specializationId: 'cccccccccccccccccccccccc',
+      licenseTypeId: 'dddddddddddddddddddddddd',
+      area: 'وسط البلد',
+      hasLicenseImage: 'true',
+      isActive: 'false',
+      employeeIds: 'eeeeeeeeeeeeeeeeeeeeeeee',
+    });
+    expect(parsed.branchId).toEqual(['aaaaaaaaaaaaaaaaaaaaaaaa']);
+    expect(parsed.jobId).toBe('bbbbbbbbbbbbbbbbbbbbbbbb');
+    expect(parsed.specializationId).toBe('cccccccccccccccccccccccc');
+    expect(parsed.licenseTypeId).toBe('dddddddddddddddddddddddd');
+    expect(parsed.area).toBe('وسط البلد');
+    expect(parsed.hasLicenseImage).toBe(true);
+    expect(parsed.isActive).toBe(false);
+    expect(parsed.employeeIds).toEqual(['eeeeeeeeeeeeeeeeeeeeeeee']);
   });
 
   it('still refuses a filter the backend does not implement, rather than ignoring it', () => {
     // `governorate` is an HR fact: the fleet list cannot filter on it, and the schema says so
     // loudly instead of accepting the parameter and returning an unfiltered page.
     expect(() => ListFleetDriversQuerySchema.parse({ governorate: 'الجيزة' })).toThrow();
+  });
+});
+
+// ── 3a. «الرخصة» is the licence CLASS, not its number ──────────────────────
+
+describe('«الرخصة» means the licence class', () => {
+  const LICENCE_NUMBER = 'DL-4471';
+
+  it('the column shows the CATALOG value, and the licence number appears nowhere', () => {
+    // The two are different facts about the same licence, and the brief asks for the class:
+    // «اولى» / «تانيه», and whatever the admin adds. A screen that showed `DL-4471` here would
+    // be answering a question nobody asked and leaving the filter beside it unmatched.
+    const html = render(<DriversListPage />);
+    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
+    expect(body, 'the licence CLASS').toContain(CATALOG.licenseType.ar);
+    expect(html, 'and the number is not on this screen at all').not.toContain(LICENCE_NUMBER);
+  });
+
+  it('the FILTER offers the same catalog, and sends an id — never a typed number', () => {
+    const html = render(<DriversListPage />);
+    const barHtml = html.slice(html.indexOf('flex flex-wrap'), html.indexOf('<table'));
+    expect(barHtml, 'the class is picked, not typed').toContain(
+      `<option value="${CATALOG.licenseType.id}">${CATALOG.licenseType.ar}`,
+    );
+    // And the fleet list has no parameter for a typed licence class — only the id.
+    expect(
+      ListFleetDriversQuerySchema.parse({ licenseTypeId: '64b1f0dddddddddddddddd01' })
+        .licenseTypeId,
+    ).toBe('64b1f0dddddddddddddddd01');
+    expect(() => ListFleetDriversQuerySchema.parse({ licenseType: 'اولى' })).toThrow();
+  });
+
+  it('the licence NUMBER is still recorded — it left the list, not the model', () => {
+    // It is a fleet-owned fact and nothing has destroyed it: the profile still carries it, the
+    // edit dialog still writes it, and the update contract still accepts it.
+    expect(driver().licenseNumber).toBe(LICENCE_NUMBER);
+    expect(
+      UpdateFleetDriverProfileSchema.parse({ licenseNumber: 'DL-9', version: 0 }).licenseNumber,
+    ).toBe('DL-9');
+  });
+
+  it('the two licence columns are DIFFERENT columns, in the brief’s order', () => {
+    const head = thead(render(<DriversListPage />));
+    const type = head.indexOf(t('fleet.drivers.columns.licenseType'));
+    const date = head.indexOf(t('fleet.drivers.columns.licenseExpiresAt'));
+    const image = head.indexOf(t('fleet.drivers.columns.licenseImage'));
+    expect(type, 'الرخصة is present').toBeGreaterThan(-1);
+    expect(date, 'تاريخ الرخصة after it').toBeGreaterThan(type);
+    expect(image, 'صورة الرخصة after that').toBeGreaterThan(date);
+  });
+});
+
+// ── 3b. «الفرع» — the filter that could not work, and now can ───────────────
+
+describe('the branch filter', () => {
+  /**
+   * Each branch's drivers, told apart by the AREA on their row — «الدقي» for b1 and «المعادي» for
+   * b2. Not by the branch name: that is printed in the filter's own `<option>` list, so a page
+   * showing the wrong branch's drivers would still «contain» the right branch's name.
+   */
+  const twoBranches = (): QueryClient => {
+    const client = seededClient([driver()]);
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ branchId: 'b1' })),
+      page([row(driver({ id: 'd7', area: 'الدقي' }))]),
+    );
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ branchId: 'b2' })),
+      page([row(driver({ id: 'd8', area: 'المعادي' }))]),
+    );
+    return client;
+  };
+
+  it('travels to FLEET, not to HR — the branch is on the roster Fleet already holds', () => {
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?branch=b1',
+      client: twoBranches(),
+    });
+    // The narrowed FLEET key answered. Nothing was seeded for an HR pre-query on the branch, so
+    // had the page still asked HR first it would be blocked and render no rows at all.
+    expect(tbodyOf(html)).toContain('الدقي');
+    expect(html, 'and no «narrow your filter» refusal').not.toContain(
+      'فلتر الموارد البشرية طابق',
+    );
+  });
+
+  it('CHANGING the branch changes the results', () => {
+    const client = twoBranches();
+    const first = tbodyOf(
+      render(<DriversListPage />, { route: '/fleet/drivers?branch=b1', client }),
+    );
+    const second = tbodyOf(
+      render(<DriversListPage />, { route: '/fleet/drivers?branch=b2', client }),
+    );
+    expect(first).toContain('الدقي');
+    expect(first).not.toContain('المعادي');
+    expect(second).toContain('المعادي');
+    expect(second).not.toContain('الدقي');
+  });
+
+  it('CLEARING it goes back to the unfiltered list', () => {
+    const cleared = tbodyOf(
+      render(<DriversListPage />, { route: '/fleet/drivers', client: twoBranches() }),
+    );
+    expect(cleared).toContain('وسط البلد');
+    expect(cleared).not.toContain('الدقي');
+    expect(cleared).not.toContain('المعادي');
+  });
+
+  it('is not capped by an HR page — the bug it used to have', () => {
+    // THE REGRESSION, stated as the shape that produced it. When «الفرع» went through the HR
+    // pre-query, a branch matched its whole payroll: over `MAX_PAGE_SIZE`, the hook refused to
+    // filter at all and the screen showed a banner instead of a branch. A fleet parameter has no
+    // page to overflow, so even an enormous branch simply answers.
+    const client = seededClient([driver()]);
+    client.setQueryData(listKey('fleet', 'drivers', driverParams({ branchId: 'b1' })), {
+      items: [row(driver({ id: 'd7', area: 'الدقي' }))],
+      meta: { page: 1, pageSize: 25, totalItems: 4_000, totalPages: 160 },
+    });
+    const html = render(<DriversListPage />, { route: '/fleet/drivers?branch=b1', client });
+    expect(tbodyOf(html), 'a four-thousand-employee branch still filters').toContain('الدقي');
+    expect(html, 'and is never refused for being too wide').not.toContain(
+      'فلتر الموارد البشرية طابق',
+    );
+  });
+
+  it('the HR pre-query no longer even has a branch to ask about', () => {
+    // The type is the proof: `branchId` is gone from the HR half, so no future edit can quietly
+    // route the branch back through the capped step.
+    const hrFilter: DriverHrFilter = { search: '', address: '', governorate: '', phone: '' };
+    expect(Object.keys(hrFilter).sort()).toEqual(['address', 'governorate', 'phone', 'search']);
   });
 });
 
@@ -537,12 +902,73 @@ describe('editing a driver', () => {
     for (const key of [
       'fleet.drivers.fields.licenseNumber',
       'fleet.drivers.fields.licenseExpiresAt',
+      'fleet.drivers.fields.job',
       'fleet.drivers.fields.specialization',
+      'fleet.drivers.fields.licenseType',
       'fleet.drivers.fields.area',
       'fleet.drivers.fields.isActive',
     ]) {
       expect(source, `${key} field`).toContain(key);
     }
+  });
+
+  it('has NO vocabulary of its own compiled in — the catalogs are the only source', () => {
+    // An ABSENCE, which is the one thing behaviour cannot show: a screen that has quietly grown a
+    // second list of specializations looks exactly like one that has not until somebody adds a
+    // value to the catalog and it fails to appear. What the form actually OFFERS is proven by
+    // rendering — `fleet-catalogs-vehicles.spec.tsx` mounts the same `CatalogSelect` of each of
+    // the three kinds against a live catalog cache — because the dialog itself renders through
+    // `createPortal(..., document.body)` and this suite carries no jsdom to reach it.
+    for (const gone of ["'cashTransport'", "'atm'", "'both'", 'SPECIALIZATIONS']) {
+      expect(source, `${gone} is not compiled in`).not.toContain(gone);
+    }
+  });
+
+  it('the retired «التخصص» enum can no longer be WRITTEN — «both» included', () => {
+    // The investigation's verdict, pinned at the contract: `both` is legacy DATA, not an option.
+    // It has no successor in the catalog vocabulary, so nothing invents one for it; what it must
+    // not do is come back as something a new record can be given.
+    for (const legacy of ['cashTransport', 'atm', 'both']) {
+      expect(() =>
+        CreateFleetDriverProfileSchema.parse({
+          employeeId: '64b1f0dddddddddddddddd01',
+          licenseNumber: 'X-1',
+          licenseExpiresAt: '2030-01-01',
+          specialization: legacy,
+        }),
+        `create with ${legacy}`,
+      ).toThrow();
+      expect(() =>
+        UpdateFleetDriverProfileSchema.parse({ specialization: legacy, version: 0 }),
+        `update with ${legacy}`,
+      ).toThrow();
+    }
+    // And a record made today carries no enum at all — only the catalog reference.
+    expect(
+      CreateFleetDriverProfileSchema.parse({
+        employeeId: '64b1f0dddddddddddddddd01',
+        licenseNumber: 'X-1',
+        licenseExpiresAt: '2030-01-01',
+      }),
+    ).not.toHaveProperty('specialization');
+  });
+
+  it('the update contract really accepts the three references, and refuses a non-id', () => {
+    const id = '64b1f0dddddddddddddddd01';
+    const parsed = UpdateFleetDriverProfileSchema.parse({
+      jobId: id,
+      specializationId: id,
+      licenseTypeId: id,
+      version: 0,
+    });
+    expect(parsed.jobId).toBe(id);
+    expect(parsed.specializationId).toBe(id);
+    expect(parsed.licenseTypeId).toBe(id);
+    // `null` CLEARS a grade — un-saying a wrong one must not need a right one.
+    expect(UpdateFleetDriverProfileSchema.parse({ jobId: null, version: 0 }).jobId).toBeNull();
+    expect(() =>
+      UpdateFleetDriverProfileSchema.parse({ jobId: 'سائق أ', version: 0 }),
+    ).toThrow();
   });
 
   it('carries the licence image, with its own view / replace / delete actions', () => {
@@ -883,9 +1309,11 @@ describe('the HR filters are owned by HR and applied server-side', () => {
   it('HR already filtered on name, code, job title and branch — nothing was reinvented', () => {
     expect(ListEmployeesQuerySchema.parse({ search: 'محمود' }).search).toBe('محمود');
     const objectIdish = '64b1f0dddddddddddddddd01';
-    expect(ListEmployeesQuerySchema.parse({ jobTitleId: objectIdish }).jobTitleId).toBe(
+    // A LIST since the registry began narrowing step ① to its own seats; a single value still
+    // parses, so every caller that always sent one keeps sending exactly that.
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: objectIdish }).jobTitleId).toEqual([
       objectIdish,
-    );
+    ]);
     expect(ListEmployeesQuerySchema.parse({ branchId: objectIdish }).branchId).toEqual([
       objectIdish,
     ]);
@@ -918,13 +1346,56 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     const html = render(<DriversListPage />);
     for (const key of [
       'fleet.drivers.filters.employee',
-      'fleet.drivers.columns.jobTitle',
-      'fleet.drivers.columns.branch',
+      'fleet.drivers.columns.address',
       'fleet.drivers.columns.governorate',
       'fleet.drivers.columns.phone',
     ]) {
       expect(html, `${key} filter`).toContain(`aria-label="${t(key)}"`);
     }
+  });
+
+  it('asks HR about the DRIVING SEATS, not about everybody', () => {
+    // The defect this closes, measured on real data: «الجيزة» matched 117 employees of whom 3
+    // were drivers, so step ① blew its one-page cap and the screen refused to filter at all.
+    // The registry is only people whose job title requires a driving test, so that is the
+    // question — and the answer is bounded by the driver count instead of the headcount.
+    const client = seededClient([driver()]);
+    client.setQueryData(
+      ['hr', 'employees', 'fleet-driver-filter', {
+        search: '',
+        address: '',
+        governorate: 'الجيزة',
+        phone: '',
+      }, 'jt1'],
+      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+    );
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ employeeIds: [EMPLOYEE_ID] })),
+      page([row(driver({ id: 'd5', area: 'الدقي' }))]),
+    );
+    // `jt1` is seeded with `requiresDrivingTest`, so the page hands it to the HR step; the ONLY
+    // cache entry that answers is the narrowed one, and the table shows what it returned.
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
+      client,
+    });
+    expect(tbodyOf(html), 'the narrowed HR question is the one that answered').toContain('الدقي');
+    expect(html, 'and nothing was refused').not.toContain('فلتر الموارد البشرية طابق');
+  });
+
+  it('HR\u2019s list query really accepts several seats at once', () => {
+    // What makes the narrowing expressible: one title still parses, and a list of them does too,
+    // so a caller never has to ask once per title and merge capped pages.
+    const a = '64b1f0dddddddddddddddd01';
+    const b = '64b1f0dddddddddddddddd02';
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: a }).jobTitleId).toEqual([a]);
+    expect(ListEmployeesQuerySchema.parse({ jobTitleId: `${a},${b}` }).jobTitleId).toEqual([a, b]);
+  });
+
+  it('HR\u2019s own list query filters on the ADDRESS too — the box this bar added', () => {
+    // The regression shape: `ListEmployeesQuerySchema` is `.strict()`, so before this the
+    // parameter threw and the filter could not have existed anywhere.
+    expect(ListEmployeesQuerySchema.parse({ address: 'جامعة الدول' }).address).toBe('جامعة الدول');
   });
 
   it('offers an HR filter ONLY to someone who can use it', () => {
@@ -934,13 +1405,15 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     // a link that lands on a permission wall.
     const hrControls = [
       'fleet.drivers.filters.employee',
+      'fleet.drivers.columns.address',
       'fleet.drivers.columns.governorate',
       'fleet.drivers.columns.phone',
     ];
     const fleetControls = [
-      'fleet.drivers.columns.licenseNumber',
+      'fleet.drivers.columns.jobTitle',
       'fleet.drivers.columns.area',
       'fleet.drivers.columns.specialization',
+      'fleet.drivers.columns.licenseType',
       'fleet.drivers.columns.licenseImage',
       'fleet.drivers.columns.status',
     ];
@@ -963,19 +1436,21 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     }
   });
 
-  it('offers each reference select only with its OWN catalogue grant', () => {
-    // Without `jobTitle.view` / `branch.view` the option list comes back empty, and the control
-    // would be a dropdown with nothing to pick.
-    const noCatalogues = render(<DriversListPage />, {
+  it('offers the BRANCH select only with `branch.view` — its options are HR\u2019s directory', () => {
+    // Without the grant the branch list comes back empty, and the control would be a dropdown
+    // with nothing to pick. The three FLEET catalogs are not gated that way: they are Fleet's own
+    // rows, read with the fleet grant this screen already required.
+    const noBranches = render(<DriversListPage />, {
       permissions: ['fleetDriver.view', 'employee.view'],
     });
-    expect(noCatalogues).not.toContain(`aria-label="${t('fleet.drivers.columns.jobTitle')}"`);
-    expect(noCatalogues).not.toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
-    const withCatalogues = render(<DriversListPage />, {
-      permissions: ['fleetDriver.view', 'employee.view', 'jobTitle.view', 'branch.view'],
+    expect(noBranches).not.toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
+    expect(noBranches, 'الوظيفة is still offered').toContain(
+      `aria-label="${t('fleet.drivers.columns.jobTitle')}"`,
+    );
+    const withBranches = render(<DriversListPage />, {
+      permissions: ['fleetDriver.view', 'employee.view', 'branch.view'],
     });
-    expect(withCatalogues).toContain(`aria-label="${t('fleet.drivers.columns.jobTitle')}"`);
-    expect(withCatalogues).toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
+    expect(withBranches).toContain(`aria-label="${t('fleet.drivers.columns.branch')}"`);
   });
 
   it('keeps name and employee code on ONE control, because HR’s search is one parameter', () => {
@@ -988,20 +1463,16 @@ describe('the HR filters are owned by HR and applied server-side', () => {
   it('syncs the HR half with the URL, exactly like the fleet half', () => {
     const html = render(<DriversListPage />, {
       route:
-        '/fleet/drivers?emp=%D9%85%D8%AD%D9%85%D9%88%D8%AF&gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&phone=0100&job=jt1&branch=b1',
+        '/fleet/drivers?addr=%D8%AC%D8%A7%D9%85%D8%B9%D8%A9&gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&phone=0100',
       client: hrFilteredClient(1, {
-        search: 'محمود',
+        address: 'جامعة',
         governorate: 'الجيزة',
         phone: '0100',
-        jobTitleId: 'jt1',
-        branchId: 'b1',
       }),
     });
-    expect(html).toContain('value="محمود"');
+    expect(html).toContain('value="جامعة"');
     expect(html).toContain('value="الجيزة"');
     expect(html).toContain('value="0100"');
-    expect(html).toContain('<option value="jt1" selected=""');
-    expect(html).toContain('<option value="b1" selected=""');
   });
 
   it('narrows the fleet list by the ids HR returned', () => {
@@ -1009,7 +1480,7 @@ describe('the HR filters are owned by HR and applied server-side', () => {
       route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
       client: hrFilteredClient(1),
     });
-    expect(html, 'the matched driver is listed').toContain('DL-4471');
+    expect(tbodyOf(html), 'the matched driver is listed').toContain('وسط البلد');
     expect(html, 'and no "narrow your filter" banner').not.toContain('{{matched}}');
     expect(html).not.toContain(
       translate('ar', 'fleet.drivers.hrFilterTooMany', {
@@ -1033,8 +1504,8 @@ describe('the HR filters are owned by HR and applied server-side', () => {
         max: MAX_PAGE_SIZE,
       }),
     );
-    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
-    expect(body, 'and NOTHING is shown as if it were filtered').not.toContain('DL-4471');
+    const body = tbodyOf(html);
+    expect(body, 'and NOTHING is shown as if it were filtered').not.toContain('وسط البلد');
   });
 
   it('shows an empty table, not every driver, when HR matched nobody', () => {
@@ -1042,8 +1513,8 @@ describe('the HR filters are owned by HR and applied server-side', () => {
       route: '/fleet/drivers?gov=%D9%85%D9%81%D9%8A%D8%B4',
       client: hrFilteredClient(0, { governorate: 'مفيش' }),
     });
-    const body = html.slice(html.indexOf('<tbody'), html.indexOf('</tbody>'));
-    expect(body).not.toContain('DL-4471');
+    const body = tbodyOf(html);
+    expect(body).not.toContain('وسط البلد');
   });
 
   it('an empty id list can never reach the wire — it would read as NO filter', () => {
@@ -1058,19 +1529,32 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     expect(source).toContain('blocked || emptyMatch ? [] :');
   });
 
-  it('applies no filter on the fetched page — every filter is a query parameter', () => {
-    const source = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
-    expect(source).not.toContain('rows.filter(');
-    expect(source).not.toContain('items.filter(');
-    // The HR half never reaches the fleet endpoint as anything but resolved ids.
-    const params = source.slice(
-      source.indexOf('const params = useMemo'),
-      source.indexOf('useDrivers(params'),
-    );
-    expect(params).toContain('employeeIds:');
-    for (const hrKey of ['governorate:', 'phone:', 'jobTitleId:', 'branchId:']) {
-      expect(params, `${hrKey} is HR's, not Fleet's`).not.toContain(hrKey);
+  it('sends HR\u2019s facts to the fleet endpoint as ids and NOTHING else', () => {
+    // `.strict()` is the proof, and it is a real one: if the page ever put `governorate` or
+    // `address` into the fleet params, the request would be REFUSED rather than silently answered
+    // unfiltered. The contract is what makes the two-step the only expressible design.
+    for (const hrOnly of [{ governorate: 'الجيزة' }, { address: 'جامعة' }, { phone: '0100' }]) {
+      expect(() => ListFleetDriversQuerySchema.parse(hrOnly)).toThrow();
     }
+    expect(
+      ListFleetDriversQuerySchema.parse({ employeeIds: '64b1f0dddddddddddddddd01' }).employeeIds,
+    ).toEqual(['64b1f0dddddddddddddddd01']);
+  });
+
+  it('INTERSECTS the picked drivers with the HR match — «أحمد, in Maadi» asks both', () => {
+    // Two ways of naming people, one list. A union would widen a filter the reader narrowed, and
+    // letting the last one win would drop the other question entirely.
+    const client = hrFilteredClient(3, { governorate: 'الجيزة' });
+    // Of HR's three matches, the reader has picked two — one of which HR did not match.
+    client.setQueryData(
+      listKey('fleet', 'drivers', driverParams({ employeeIds: ['e2'] })),
+      page([row(driver({ id: 'd4', area: 'الزمالك' }), 'e2')]),
+    );
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&drv=e2,e99',
+      client,
+    });
+    expect(tbodyOf(html), 'only the id BOTH questions agree on').toContain('الزمالك');
   });
 });
 

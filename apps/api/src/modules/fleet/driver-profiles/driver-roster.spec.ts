@@ -8,7 +8,13 @@
 // What that leaves is a set of decisions about what each filter MEANS for a driver nobody has
 // recorded anything about. Each one is easy to answer wrongly in a way nothing would report.
 import { describe, expect, it } from 'vitest';
-import { matchesFleetFilters, sortDriverRows, type DriverProfileFacts } from './driver-roster';
+import { Types } from 'mongoose';
+import {
+  matchesFleetFilters,
+  matchesRosterBranch,
+  sortDriverRows,
+  type DriverProfileFacts,
+} from './driver-roster';
 
 const profile = (over: Partial<DriverProfileFacts> = {}): DriverProfileFacts => ({
   licenseNumber: 'DL-100',
@@ -134,5 +140,103 @@ describe('the registry’s order', () => {
     const rows = [row('b', null), row('a', profile())];
     sortDriverRows(rows, 'createdAt', 'asc');
     expect(rows.map((r) => r.employeeId)).toEqual(['b', 'a']);
+  });
+});
+
+// ── The three catalog references ────────────────────────────────────────────
+
+const JOB = new Types.ObjectId();
+const SPEC = new Types.ObjectId();
+const LICENCE = new Types.ObjectId();
+
+describe('«الوظيفة / التخصص / الرخصة» — the catalog references', () => {
+  const classified = profile({
+    jobId: JOB,
+    specializationId: SPEC,
+    licenseTypeId: LICENCE,
+  });
+
+  it('matches the driver whose profile points at the item asked for', () => {
+    expect(matchesFleetFilters(classified, { jobId: String(JOB) })).toBe(true);
+    expect(matchesFleetFilters(classified, { specializationId: String(SPEC) })).toBe(true);
+    expect(matchesFleetFilters(classified, { licenseTypeId: String(LICENCE) })).toBe(true);
+  });
+
+  it('compares an ObjectId to the string the query carries — the shapes really differ', () => {
+    // The stored value is a BSON ObjectId and the query parameter is a 24-character string, so a
+    // `===` here would match nothing at all while looking perfectly reasonable.
+    expect(String(JOB)).not.toBe(JOB);
+    expect(matchesFleetFilters(classified, { jobId: String(JOB) })).toBe(true);
+  });
+
+  it('misses a driver pointed at a DIFFERENT item', () => {
+    expect(matchesFleetFilters(classified, { jobId: String(new Types.ObjectId()) })).toBe(false);
+  });
+
+  it('misses a driver nobody has classified — «grade A» is not a question about them', () => {
+    // The same rule the whole file is about, one level down: an unclassified driver is not a
+    // grade-A driver, and counting them as one would inflate every grade the house filters by.
+    const unclassified = profile({ jobId: null, specializationId: null, licenseTypeId: null });
+    expect(matchesFleetFilters(unclassified, { jobId: String(JOB) })).toBe(false);
+    expect(matchesFleetFilters(unclassified, { specializationId: String(SPEC) })).toBe(false);
+    expect(matchesFleetFilters(unclassified, { licenseTypeId: String(LICENCE) })).toBe(false);
+  });
+
+  it('misses a profile written before the field existed, where the key is simply ABSENT', () => {
+    const legacy = profile();
+    expect(legacy.jobId).toBeUndefined();
+    expect(matchesFleetFilters(legacy, { jobId: String(JOB) })).toBe(false);
+  });
+
+  it('shows an unclassified driver on an unfiltered registry, as before', () => {
+    expect(matchesFleetFilters(profile({ jobId: null }), {})).toBe(true);
+  });
+
+  it('ANDs with the other filters rather than replacing them', () => {
+    expect(matchesFleetFilters(classified, { jobId: String(JOB), isActive: false })).toBe(false);
+    expect(matchesFleetFilters(classified, { jobId: String(JOB), area: 'المعادي' })).toBe(true);
+  });
+});
+
+// ── «الفرع» ────────────────────────────────────────────────────────────────
+
+describe('the branch filter, on the roster row rather than through HR', () => {
+  it('asking for NO branch shows everyone, including a driver the directory could not place', () => {
+    expect(matchesRosterBranch('b1', undefined)).toBe(true);
+    expect(matchesRosterBranch(null, undefined)).toBe(true);
+    // An empty list is «nobody asked», not «match nothing» — `listQuery` never produces one, and
+    // reading it as a filter would empty the registry for a URL that says nothing.
+    expect(matchesRosterBranch('b1', [])).toBe(true);
+  });
+
+  it('matches a driver placed in the branch asked for', () => {
+    expect(matchesRosterBranch('b1', ['b1'])).toBe(true);
+  });
+
+  it('misses a driver placed somewhere else', () => {
+    expect(matchesRosterBranch('b2', ['b1'])).toBe(false);
+  });
+
+  it('accepts several branches at once, ORed', () => {
+    expect(matchesRosterBranch('b2', ['b1', 'b2'])).toBe(true);
+    expect(matchesRosterBranch('b3', ['b1', 'b2'])).toBe(false);
+  });
+
+  it('misses an UNPLACED driver once a branch is asked for', () => {
+    // Same shape as the profile rules above: a driver with no branch on file is not in Maadi, and
+    // putting them in Maadi's list would be a false positive on a page somebody counts from.
+    expect(matchesRosterBranch(null, ['b1'])).toBe(false);
+  });
+});
+
+describe('sorting keeps the whole row, not just the two fields it orders by', () => {
+  it('hands back the branch the caller put on the row', () => {
+    // The registry filters by branch AFTER the join and sorts afterwards; a sort that narrowed the
+    // row to its interface would drop the branch on the floor and the filter would silently stop.
+    const rows = [
+      { employeeId: 'a', branchId: 'b1', profile: profile() },
+      { employeeId: 'b', branchId: 'b2', profile: profile() },
+    ];
+    expect(sortDriverRows(rows, 'createdAt', 'asc').map((r) => r.branchId)).toEqual(['b1', 'b2']);
   });
 });

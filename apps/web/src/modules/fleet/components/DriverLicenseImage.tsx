@@ -275,8 +275,15 @@ export const DriverLicenseImageCell = ({
 
   if (driver.licenseImage === null) {
     if (!mayManage) return <span className="text-slate-400">—</span>;
+    // `relative` on the label is load-bearing, not decoration. `sr-only` is `position: absolute`,
+    // so without a positioned ancestor its containing block is the INITIAL one — the viewport —
+    // and the visually-hidden text lands at a page coordinate of its own rather than inside this
+    // cell. On a table wide enough to scroll, that coordinate is off the left edge of the page in
+    // RTL, and it gives the whole document a horizontal scrollbar nothing on screen explains:
+    // measured, exactly 72px of it at 1280. Positioning the label puts the hidden text back
+    // inside the cell, where the table's own `overflow-x-auto` contains it.
     return (
-      <label className={`${actionButton} inline-flex cursor-pointer`}>
+      <label className={`${actionButton} relative inline-flex cursor-pointer`}>
         <UploadIcon className="h-4 w-4" />
         <span className="sr-only">{t('fleet.drivers.licenseImage.upload')}</span>
         <input

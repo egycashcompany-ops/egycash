@@ -63,6 +63,14 @@ export const FLEET_CATALOG_KINDS = [
   'licenseClass',
   'operation',
   'insuranceCompany',
+  // Three kinds for the DRIVERS registry, and they are catalogs for the reason the nine above
+  // are: «سائق أ» and «صراف الى» are grades a house invents and renames, «سزوكى» is a vehicle
+  // class somebody adds the week the first one arrives, and «اولى»/«تانيه» are the licence
+  // classes the authority issues. Each of the three used to be — or was about to become — a
+  // literal array inside the drivers screen, where adding a value needs a release.
+  'driverJob',
+  'driverSpecialization',
+  'driverLicenseType',
 ] as const;
 export const FleetCatalogKindSchema = z.enum(FLEET_CATALOG_KINDS);
 export type FleetCatalogKind = z.infer<typeof FleetCatalogKindSchema>;
@@ -405,6 +413,14 @@ export type ListFleetVehiclesQuery = z.infer<typeof ListFleetVehiclesQuerySchema
 
 // ── Driver profiles (FR-11 — fleet-owned facts about an HR employee) ────────
 
+/**
+ * The LEGACY specialization enum, kept for the rows that carry it and for nothing else.
+ *
+ * «التخصص» is a `driverSpecialization` CATALOG now — «نقل اموال», «ملاكى», «ATM», «سزوكى», and
+ * whatever else the house adds — because three values compiled into the client could not express
+ * the fourth. The enum stays readable so no stored profile loses a fact and the dashboard's
+ * cash/ATM split keeps answering for a profile nobody has re-classified yet; nothing writes it.
+ */
 export const FLEET_DRIVER_SPECIALIZATIONS = ['cashTransport', 'atm', 'both'] as const;
 export const FleetDriverSpecializationSchema = z.enum(FLEET_DRIVER_SPECIALIZATIONS);
 export type FleetDriverSpecialization = z.infer<typeof FleetDriverSpecializationSchema>;
@@ -414,7 +430,20 @@ export interface FleetDriverProfileDto {
   employeeId: string;
   licenseNumber: string;
   licenseExpiresAt: string;
-  specialization: FleetDriverSpecialization;
+  /**
+   * «الوظيفة» — a `driverJob` catalog reference (سائق أ / سائق ب / سائق ج / سائق صراف الى).
+   *
+   * FLEET'S OWN FACT, and not the HR job title: HR's seat says «سائق» and decides who is on this
+   * registry at all (`requiresDrivingTest`); this says which driving grade the house runs them
+   * as, which is a Fleet decision the house renames without an HR personnel action.
+   */
+  jobId: string | null;
+  /** «التخصص» — a `driverSpecialization` catalog reference. Null until somebody classifies them. */
+  specializationId: string | null;
+  /** «الرخصة» — a `driverLicenseType` catalog reference (اولى / تانيه / …). */
+  licenseTypeId: string | null;
+  /** LEGACY. Read-only, never written; see `FLEET_DRIVER_SPECIALIZATIONS`. */
+  specialization: FleetDriverSpecialization | null;
   area: string | null;
   isActive: boolean;
   /**
@@ -431,12 +460,18 @@ export interface FleetDriverProfileDto {
   updatedAt: string;
 }
 
+// The three catalog references are NULLISH rather than required, and deliberately so: a driver is
+// on the registry because of their seat, and their licence gets written down long before anybody
+// decides which grade they drive at. Refusing the record until all three are chosen would put the
+// screen back where it started — a registry that stays empty because enrolment is too heavy.
 export const CreateFleetDriverProfileSchema = z
   .object({
     employeeId: objectId(),
     licenseNumber: z.string().trim().min(1).max(60),
     licenseExpiresAt: z.coerce.date(),
-    specialization: FleetDriverSpecializationSchema,
+    jobId: objectId().nullish(),
+    specializationId: objectId().nullish(),
+    licenseTypeId: objectId().nullish(),
     area: z.string().trim().min(1).max(120).nullish(),
   })
   .strict();
@@ -446,7 +481,9 @@ export const UpdateFleetDriverProfileSchema = z
   .object({
     licenseNumber: z.string().trim().min(1).max(60).optional(),
     licenseExpiresAt: z.coerce.date().optional(),
-    specialization: FleetDriverSpecializationSchema.optional(),
+    jobId: objectId().nullish().optional(),
+    specializationId: objectId().nullish().optional(),
+    licenseTypeId: objectId().nullish().optional(),
     area: z.string().trim().min(1).max(120).nullish().optional(),
     isActive: z.boolean().optional(),
     version: z.number().int().min(0),
@@ -454,10 +491,11 @@ export const UpdateFleetDriverProfileSchema = z
   .strict();
 export type UpdateFleetDriverProfile = z.infer<typeof UpdateFleetDriverProfileSchema>;
 
-// Only FLEET-owned columns are filterable here, and that is a boundary rather than an omission:
-// name, employee code, job title, governorate, phone and branch are HR's facts, read by the
-// browser from HR's own API with HR's own permission. Filtering a fleet-paginated list on them
-// would mean Fleet querying HR's collection — the one thing the module hierarchy forbids.
+// What is filterable here is what FLEET holds — its own profile fields, plus the two facts the
+// directory seam already hands it about each driver (who they are, and their branch). Name,
+// employee code, address, governorate and phone are HR's, read by the browser from HR's own API
+// with HR's own permission and arriving here as `employeeIds`. Filtering a fleet-paginated list
+// on them would mean Fleet querying HR's collection — the one thing the module hierarchy forbids.
 /**
  * A row on the drivers registry: a DRIVER, and what Fleet knows about them so far.
  *
@@ -483,6 +521,27 @@ export interface FleetDriverRowDto {
 }
 
 export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
+  /**
+   * «الفرع» — filtered HERE, on the roster Fleet already holds.
+   *
+   * It used to be part of the HR two-step, and there it could not work. That step asks HR for the
+   * matching employees and may carry ONE page of them (`MAX_PAGE_SIZE`) — but a branch's employees
+   * are its whole payroll, drivers and everybody else, so any real branch matched more than a page
+   * and the screen answered «narrow your filter» and filtered nothing. There was no narrowing that
+   * would have helped: the filter's own subject was what overflowed.
+   *
+   * Fleet does not have to ask. The roster arrives from the directory seam with each driver's
+   * branch already on it — the same seam, the same fact, and only drivers — so the branch is
+   * matched against the rows in hand. No page limit is involved, because no page is fetched.
+   */
+  branchId: listQuery(objectId()),
+  /** «الوظيفة» — a `driverJob` catalog id. */
+  jobId: objectId().optional(),
+  /** «التخصص» — a `driverSpecialization` catalog id. */
+  specializationId: objectId().optional(),
+  /** «الرخصة» — a `driverLicenseType` catalog id. */
+  licenseTypeId: objectId().optional(),
+  /** LEGACY, for the rows still classified by the enum. No screen sends it. */
   specialization: FleetDriverSpecializationSchema.optional(),
   isActive: booleanQuery().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
@@ -495,10 +554,14 @@ export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
   /**
    * The HR half of the filter bar, already resolved to ids.
    *
-   * Name, employee code, job title, governorate, phone and branch are HR's facts, and HR's own
-   * list endpoint filters on them. The browser asks HR first and hands the answer here — two
-   * server-side queries joined by id, which is how the drivers table already reads HR names. The
-   * alternative, Fleet querying HR's collection, is the one thing the module hierarchy forbids.
+   * Address, governorate and phone are HR's facts, and HR's own list endpoint filters on them.
+   * The browser asks HR first and hands the answer here — two server-side queries joined by id,
+   * which is how the drivers table already reads HR names. The alternative, Fleet querying HR's
+   * collection, is the one thing the module hierarchy forbids.
+   *
+   * It also carries the drivers a reader PICKED BY NAME from the filter bar's multi-select. That
+   * needs no HR page at all: the selection is already a list of ids, and it is intersected with
+   * the HR match rather than replacing it, so «سائق أحمد, in Maadi» asks both questions.
    *
    * The cap is 100 because that is `MAX_PAGE_SIZE`: this parameter carries exactly ONE page of HR
    * results and no more. A wider HR match cannot be expressed here, and the caller must say so

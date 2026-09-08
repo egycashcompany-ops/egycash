@@ -106,11 +106,12 @@ class FleetDashboardService {
   ): Promise<NonNullable<FleetDashboardDto['fleet']>> {
     const scope = grants.vehicles as ScopeSelector;
     const match = branchMatch(scope);
-    const [counts, byOperation, types, operations] = await Promise.all([
+    const [counts, byOperation, types, operations, specializations] = await Promise.all([
       fleetDashboardRepository.vehiclesByTypeAndBranch(match),
       fleetDashboardRepository.vehiclesByOperationAndBranch(match),
       fleetVehicleTypeRepository.listAll(),
       fleetCatalogItemRepository.listKind('operation'),
+      fleetCatalogItemRepository.listKind('driverSpecialization'),
     ]);
 
     const typeName = new Map(types.map((t) => [String(t._id), t.name as LocalizedString]));
@@ -135,6 +136,34 @@ class FleetDashboardService {
       const en = (item.name.en ?? '').toLowerCase();
       if (ar.includes('نقل') || en.includes('cash')) return 'cash';
       if (ar.toUpperCase().includes('ATM') || en.includes('atm')) return 'atm';
+      return null;
+    };
+
+    /**
+     * The same question on the DRIVER side, and now the same kind of answer.
+     *
+     * «التخصص» became a `driverSpecialization` catalog, so the split reads the catalog's own name
+     * exactly as the operation split above does — «نقل اموال» counts as cash, «ATM» as ATM, and a
+     * house's own additions («ملاكى», «سزوكى») count as neither, which is the truth rather than a
+     * guess. A profile nobody has re-classified still carries the legacy enum, and that is read as
+     * a second chance rather than as nothing: the counters keep covering the whole registry.
+     */
+    const specializationKind = (
+      id: string | null | undefined,
+      legacy: string | null | undefined,
+    ): 'cash' | 'atm' | null => {
+      // `== null`, not `=== null`: a profile written before the field existed has no key at all
+      // and arrives as `undefined`, which would otherwise be looked up and silently match nothing.
+      const item = id == null ? undefined : specializations.find((s) => String(s._id) === id);
+      if (item !== undefined) {
+        const ar = item.name.ar ?? '';
+        const en = (item.name.en ?? '').toLowerCase();
+        if (ar.includes('نقل') || en.includes('cash')) return 'cash';
+        if (ar.toUpperCase().includes('ATM') || en.includes('atm')) return 'atm';
+        return null;
+      }
+      if (legacy === 'cashTransport') return 'cash';
+      if (legacy === 'atm') return 'atm';
       return null;
     };
 
@@ -171,14 +200,14 @@ class FleetDashboardService {
     for (const profile of profiles) {
       const employee = employees.get(profile.employeeId);
       const branchId = employee?.branchId ?? null;
+      // `both` has no successor in the new vocabulary, so it stays a legacy-only reading and keeps
+      // counting on BOTH sides exactly as it always did.
+      const kind = specializationKind(profile.specializationId, profile.specialization);
+      const legacyBoth = profile.specializationId == null && profile.specialization === 'both';
       bump(branchId, (s) => {
         s.drivers += 1;
-        if (profile.specialization === 'cashTransport' || profile.specialization === 'both') {
-          s.cashDrivers += 1;
-        }
-        if (profile.specialization === 'atm' || profile.specialization === 'both') {
-          s.atmDrivers += 1;
-        }
+        if (kind === 'cash' || legacyBoth) s.cashDrivers += 1;
+        if (kind === 'atm' || legacyBoth) s.atmDrivers += 1;
       });
     }
 

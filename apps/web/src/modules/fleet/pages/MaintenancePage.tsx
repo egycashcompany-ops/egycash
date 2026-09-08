@@ -147,8 +147,7 @@ export const MaintenancePage = (): JSX.Element => {
   const mayFilterByDriver = can('employee.view');
   const hr = useDriverHrFilter({
     search: mayFilterByDriver ? driver : '',
-    jobTitleId: '',
-    branchId: '',
+    address: '',
     governorate: '',
     phone: '',
   });

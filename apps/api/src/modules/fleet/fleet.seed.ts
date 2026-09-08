@@ -2,7 +2,7 @@
 // design names explicitly: the alarm-counting work type (the legacy alarm counted from
 // works="صيانة"), the roster's default mission type, and the violation types the legacy had
 // hardcoded in its views (§10-H7). Everything else is admin-entered.
-import { type FleetViolationSide } from '@ecms/contracts';
+import { type FleetCatalogKind, type FleetViolationSide } from '@ecms/contracts';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { ensureVehicleDocsCategory } from './vehicles/vehicle-files';
 import { ensureDriverDocsCategory } from './driver-profiles/driver-files';
@@ -45,6 +45,27 @@ export const seedFleet = async (): Promise<void> => {
       countsForAlarm: false,
       violationSide: side,
     });
+  }
+
+  // The DRIVERS registry's three vocabularies (الوظيفة / التخصص / الرخصة). Seeded, unlike the
+  // vehicle registry's three below, because these are not a house's own invention to name from
+  // scratch: they are the lists the drivers screen was already asked for, and an empty dropdown
+  // on day one is what makes an admin type the values into a code file instead. Every one of them
+  // is ordinary catalog data — renamable, archivable, and extendable from /fleet/catalogs.
+  const driverCatalogs: { kind: FleetCatalogKind; ar: string; en: string }[] = [
+    { kind: 'driverJob', ar: 'سائق أ', en: 'Driver A' },
+    { kind: 'driverJob', ar: 'سائق ب', en: 'Driver B' },
+    { kind: 'driverJob', ar: 'سائق ج', en: 'Driver C' },
+    { kind: 'driverJob', ar: 'سائق صراف الى', en: 'ATM teller driver' },
+    { kind: 'driverSpecialization', ar: 'نقل اموال', en: 'Cash transport' },
+    { kind: 'driverSpecialization', ar: 'ملاكى', en: 'Private car' },
+    { kind: 'driverSpecialization', ar: 'ATM', en: 'ATM' },
+    { kind: 'driverSpecialization', ar: 'سزوكى', en: 'Suzuki' },
+    { kind: 'driverLicenseType', ar: 'اولى', en: 'First class' },
+    { kind: 'driverLicenseType', ar: 'تانيه', en: 'Second class' },
+  ];
+  for (const { kind, ...name } of driverCatalogs) {
+    await fleetCatalogItemService.ensure({ kind, name, countsForAlarm: false });
   }
 
   // The three catalogs added for the vehicle registry (licenseClass, operation, insuranceCompany)

@@ -52,6 +52,7 @@ const V1 = '650000000000000000000001';
 const V2 = '650000000000000000000002';
 const E1 = '650000000000000000000011';
 const E2 = '650000000000000000000012';
+const E3 = '650000000000000000000013';
 
 const ALL = {
   vehicles: { scope: 'organization' as const, userId: 'u1', branchId: null },
@@ -187,6 +188,98 @@ describe('branch statistics', () => {
     expect(one?.cashVehicles).toBe(10);
     expect(one?.atmVehicles).toBe(6);
     expect(one?.drivers, 'the driver in the other branch is not counted here').toBe(1);
+  });
+
+  it('splits drivers by the SPECIALIZATION CATALOG, matched on its own name', () => {
+    // «التخصص» is a catalog now, so the driver split reads the catalog's name exactly as the
+    // vehicle split above reads the operation's — and a house's own additions («ملاكى», «سزوكى»)
+    // count as neither, which is the truth rather than a guess.
+    const CASH = 'aaaaaaaaaaaaaaaaaaaaaa01';
+    const ATM = 'aaaaaaaaaaaaaaaaaaaaaa02';
+    const OWN = 'aaaaaaaaaaaaaaaaaaaaaa03';
+    catalog.listKind.mockImplementation((kind: string) =>
+      Promise.resolve(
+        kind === 'driverSpecialization'
+          ? [
+              { _id: CASH, name: { ar: 'نقل اموال', en: 'Cash transport' } },
+              { _id: ATM, name: { ar: 'ATM', en: 'ATM' } },
+              { _id: OWN, name: { ar: 'سزوكى', en: 'Suzuki' } },
+            ]
+          : [
+              { _id: OP_CASH, name: { ar: 'نقل أموال', en: 'Cash transport' } },
+              { _id: OP_ATM, name: { ar: 'ATM', en: 'ATM' } },
+            ],
+      ),
+    );
+    repo.activeDriverProfiles.mockResolvedValue([
+      { employeeId: E1, specializationId: CASH, specialization: null },
+      { employeeId: E2, specializationId: ATM, specialization: null },
+      { employeeId: E3, specializationId: OWN, specialization: null },
+    ]);
+    directory.getDirectoryEmployees.mockResolvedValue(
+      new Map([
+        [E1, { employeeId: E1, branchId: B1 }],
+        [E2, { employeeId: E2, branchId: B1 }],
+        [E3, { employeeId: E3, branchId: B1 }],
+      ]),
+    );
+
+    return fleetDashboardService.build(ALL, NOW).then((dto) => {
+      const all = dto.fleet?.stats.find((s) => s.branchId === null);
+      expect(all?.drivers, 'every active driver, classified or not').toBe(3);
+      expect(all?.cashDrivers).toBe(1);
+      expect(all?.atmDrivers).toBe(1);
+    });
+  });
+
+  it('«both» is LEGACY DATA, and the change did not move it — it still counts in each', () => {
+    /**
+     * The verdict of the investigation, pinned so nobody has to repeat it.
+     *
+     * `both` is not a catalog value and never was: the seed does not create one, the new
+     * vocabulary («نقل اموال», «ملاكى», «ATM», «سزوكى») has no equivalent, and the migration
+     * deliberately leaves it unmapped rather than picking one of the two on somebody's behalf.
+     * Nothing can WRITE it any more — the create path stores `specialization: null` and both
+     * contracts refuse the key — so what remains is rows that were already there.
+     *
+     * For those rows the reading is exactly what it was before «التخصص» became a catalog: a
+     * `both` driver counts in the cash split AND the ATM split, and once in the total. That is
+     * the assertion this test exists to hold; changing it needs a business decision, not a
+     * refactor.
+     */
+    repo.activeDriverProfiles.mockResolvedValue([
+      { employeeId: E1, specializationId: null, specialization: 'both' },
+    ]);
+    directory.getDirectoryEmployees.mockResolvedValue(
+      new Map([[E1, { employeeId: E1, branchId: B1 }]]),
+    );
+    return fleetDashboardService.build(ALL, NOW).then((dto) => {
+      const all = dto.fleet?.stats.find((s) => s.branchId === null);
+      expect(all?.drivers, 'counted once in the total').toBe(1);
+      expect(all?.cashDrivers, 'and in the cash split').toBe(1);
+      expect(all?.atmDrivers, 'and in the ATM split').toBe(1);
+    });
+  });
+
+  it('still counts a driver nobody has re-classified, from the legacy enum', () => {
+    // The registry did not stop working the day «التخصص» became a catalog: a profile that still
+    // carries only the old enum is read as a second chance, so these counters keep covering the
+    // whole registry rather than the part that has been through the new form.
+    repo.activeDriverProfiles.mockResolvedValue([
+      { employeeId: E1, specializationId: null, specialization: 'cashTransport' },
+      { employeeId: E2, specializationId: null, specialization: 'atm' },
+    ]);
+    directory.getDirectoryEmployees.mockResolvedValue(
+      new Map([
+        [E1, { employeeId: E1, branchId: B1 }],
+        [E2, { employeeId: E2, branchId: B1 }],
+      ]),
+    );
+    return fleetDashboardService.build(ALL, NOW).then((dto) => {
+      const all = dto.fleet?.stats.find((s) => s.branchId === null);
+      expect(all?.cashDrivers).toBe(1);
+      expect(all?.atmDrivers).toBe(1);
+    });
   });
 
   it('leaves the driver figures at zero for a reader without the driver grant', async () => {

@@ -863,6 +863,7 @@ class EmployeeService {
       employmentType: query.employmentType,
       search: query.search,
       governorate: query.governorate,
+      address: query.address,
       phone: query.phone,
     };
   }

@@ -412,7 +412,14 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   branchId: listQuery(objectId()),
   departmentId: objectId().optional(),
   sectionId: objectId().optional(),
-  jobTitleId: objectId().optional(),
+  /**
+   * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
+   * eventually needs: a caller whose question is «people holding ANY of these titles» would
+   * otherwise have to ask once per title and merge the pages, and merging capped pages is how a
+   * filter starts lying. One value still parses (`listQuery` splits on commas), so every existing
+   * caller sends exactly what it always sent.
+   */
+  jobTitleId: listQuery(objectId()),
   managerId: objectId().optional(),
   employmentType: EmploymentTypeSchema.optional(),
   /** Free-text over the employee number (`code`), applicant code and full name (partial). */
@@ -423,6 +430,13 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
    * displayed governorate is not the one asked for.
    */
   governorate: z.string().trim().min(1).max(100).optional(),
+  /**
+   * The street address, matched the same way `governorate` is: against the address that is READ —
+   * the official one when there is one, the current one otherwise — and across the two parts every
+   * screen renders together, `line1` and `city`. Someone searching «المعادي» is looking at the
+   * address as it is printed, and has no way to know which of the two fields carries it.
+   */
+  address: z.string().trim().min(1).max(200).optional(),
   /** Partial match on the PRIMARY phone — the number every screen displays. */
   phone: z.string().trim().min(1).max(30).optional(),
 }).strict();

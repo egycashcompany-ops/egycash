@@ -27,7 +27,18 @@ export interface FleetDriverProfileDoc extends BaseDocFields {
   kind: string;
   licenseNumber: string;
   licenseExpiresAt: Date;
-  specialization: FleetDriverSpecialization;
+  /** `driverJob` catalog reference — «الوظيفة», Fleet's own grade and not HR's job title. */
+  jobId: Types.ObjectId | null;
+  /** `driverSpecialization` catalog reference — «التخصص». */
+  specializationId: Types.ObjectId | null;
+  /** `driverLicenseType` catalog reference — «الرخصة». */
+  licenseTypeId: Types.ObjectId | null;
+  /**
+   * LEGACY. The three-value enum «التخصص» used to be, before it became a catalog nobody needs a
+   * release to extend. Kept so no stored classification is destroyed and so the dashboard's
+   * cash/ATM split still answers for a profile nobody has re-classified; nothing writes it.
+   */
+  specialization: FleetDriverSpecialization | null;
   area: string | null;
   isActive: boolean;
   licenseImage: FleetDriverLicenseImage | null;
@@ -50,7 +61,13 @@ const driverProfileSchema = new Schema<FleetDriverProfileDoc>(
     kind: { type: String, required: true, default: DRIVER_PROFILE_KIND },
     licenseNumber: { type: String, required: true, trim: true },
     licenseExpiresAt: { type: Date, required: true },
-    specialization: { type: String, required: true, enum: FLEET_DRIVER_SPECIALIZATIONS },
+    jobId: { type: Schema.Types.ObjectId, default: null },
+    specializationId: { type: Schema.Types.ObjectId, default: null },
+    licenseTypeId: { type: Schema.Types.ObjectId, default: null },
+    // No longer required: the catalog reference above carries «التخصص» now, and a profile
+    // recorded today has nothing to put here. `null` is added to the enum so an explicitly
+    // unclassified profile is storable rather than merely absent.
+    specialization: { type: String, enum: [...FLEET_DRIVER_SPECIALIZATIONS, null], default: null },
     area: { type: String, default: null },
     isActive: { type: Boolean, required: true, default: true },
     // `default: null` applies on WRITE only, so a profile stored before this field existed has no

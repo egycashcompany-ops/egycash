@@ -4,7 +4,11 @@
 // driver is already known. All writes version-aware, every action behind its §7 permission.
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { type FleetDriverUnavailabilityDto, type Locale } from '@ecms/contracts';
+import {
+  type FleetCatalogKind,
+  type FleetDriverUnavailabilityDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
@@ -19,12 +23,32 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
-import { formatDate, formatDateTime } from '../../../shared/lib/format';
+import { formatDate, formatDateTime, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useCancelUnavailability, useDriver, useUnavailability } from '../api/fleet-queries';
+import {
+  useCancelUnavailability,
+  useDriver,
+  useFleetCatalog,
+  useUnavailability,
+} from '../api/fleet-queries';
 import { EmployeeName, useEmployeeName } from '../components/EmployeeName';
 import { DriverFormDialog } from '../components/DriverFormDialog';
 import { UnavailabilityDialog } from '../components/UnavailabilityDialog';
+
+/**
+ * One catalog reference, named by the catalog.
+ *
+ * A dash when nobody has chosen one — «غير محدد» is a real state for a driver whose licence was
+ * written down before anybody decided their grade — and a dash again when the item has been
+ * deleted outright, which says «this points at nothing» rather than printing an id.
+ */
+const CatalogName = ({ kind, id }: { kind: FleetCatalogKind; id: string | null }): JSX.Element => {
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const { data } = useFleetCatalog(kind);
+  const item = id === null ? undefined : data?.items.find((row) => row.id === id);
+  if (item === undefined) return <span className="text-slate-400">—</span>;
+  return <span>{localized(item.name, locale)}</span>;
+};
 
 const Row = ({ label, children }: { label: string; children: React.ReactNode }): JSX.Element => (
   <div>
@@ -142,8 +166,16 @@ export const DriverProfilePage = (): JSX.Element => {
                   {licenseExpired && ` — ${t('fleet.dashboard.licenseExpired')}`}
                 </span>
               </Row>
+              {/* The three catalog references, named from the catalogs themselves — the same lists
+                  the registry's filters and the edit form read, never a vocabulary held here. */}
+              <Row label={t('fleet.drivers.columns.jobTitle')}>
+                <CatalogName kind="driverJob" id={profile.jobId} />
+              </Row>
               <Row label={t('fleet.drivers.columns.specialization')}>
-                {t(`fleet.drivers.specialization.${profile.specialization}`)}
+                <CatalogName kind="driverSpecialization" id={profile.specializationId} />
+              </Row>
+              <Row label={t('fleet.drivers.columns.licenseType')}>
+                <CatalogName kind="driverLicenseType" id={profile.licenseTypeId} />
               </Row>
               <Row label={t('fleet.drivers.columns.area')}>{profile.area ?? '—'}</Row>
               <Row label={t('fleet.vehicle.createdAt')}>

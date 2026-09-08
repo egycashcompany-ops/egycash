@@ -475,15 +475,9 @@ describe('the filter bar', () => {
   it('resolves the DRIVER through HR first, then narrows the visits by the ids it returned', () => {
     // Two steps, both server-side: HR answers "which employees are these words", Fleet answers
     // "which visits belong to a car they had that day". Nothing is filtered out of a fetched page.
-    const hrFilter = {
-      search: 'سائق',
-      jobTitleId: '',
-      branchId: '',
-      governorate: '',
-      phone: '',
-    };
+    const hrFilter = { search: 'سائق', address: '', governorate: '', phone: '' };
     const qc = client([visit()], { driverEmployeeIds: ['d1', 'd2'] });
-    qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', hrFilter], {
+    qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', hrFilter, ''], {
       items: [{ id: 'd1' }, { id: 'd2' }],
       meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
     });
@@ -492,11 +486,11 @@ describe('the filter bar', () => {
   });
 
   it('shows an EMPTY table when HR matched nobody — never an unfiltered one', () => {
-    const hrFilter = { search: 'لا أحد', jobTitleId: '', branchId: '', governorate: '', phone: '' };
+    const hrFilter = { search: 'لا أحد', address: '', governorate: '', phone: '' };
     // The unnarrowed page is seeded and must NOT be what the reader sees: an empty HR match is a
     // real answer, and answering it with every visit is the one wrong result available.
     const qc = client([visit()]);
-    qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', hrFilter], {
+    qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', hrFilter, ''], {
       items: [],
       meta: { page: 1, pageSize: 100, totalItems: 0, totalPages: 1 },
     });

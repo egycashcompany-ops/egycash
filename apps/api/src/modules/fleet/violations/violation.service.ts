@@ -16,6 +16,7 @@ import {
   type RecordFleetVehicleViolation,
   type SetFleetGrievance,
   type SetFleetViolationCollected,
+  type SetRollupCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
 import { Types } from 'mongoose';
@@ -208,6 +209,36 @@ class FleetViolationService {
    * Mark the money in, or put it back. Its own write for its own reason (see the contract): the
    * person who collects is not the person who corrects, and the two acts must not share a form.
    */
+  /**
+   * Tick or untick a WHOLE (vehicle, year), which is what the board's own tick means.
+   *
+   * No optimistic version here, and that is deliberate rather than an omission: the caller is not
+   * correcting one row it has read, it is asserting one fact about a group — «this car's 2026 is
+   * settled». A version check would make the act fail because some other row in the group moved,
+   * which is not a conflict with anything this caller said.
+   */
+  async setCollectedForYear(input: SetRollupCollected, _by: string): Promise<number> {
+    const changed = await fleetViolationRepository.setCollectedForYear(
+      input.vehicleId,
+      input.year,
+      input.collected,
+    );
+    if (changed > 0) {
+      await auditService.record({
+        entityRef: entityRef(`${input.vehicleId}:${input.year}`),
+        action: 'update',
+        changes: [
+          {
+            field: 'collected',
+            old: !input.collected,
+            new: input.collected,
+          },
+        ],
+      });
+    }
+    return changed;
+  }
+
   async setCollected(
     id: string,
     input: SetFleetViolationCollected,

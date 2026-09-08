@@ -1,9 +1,12 @@
 // One (vehicle, year)'s own company violations — what the rollup group is made of.
 //
-// The board shows a car's year as four totals; this is the ledger behind them, and the only place
-// a single company row can be corrected, removed, or ticked as collected. The grievance figure
-// sits at the foot because it belongs to the same (vehicle, year) and is what «قبل التظلم» on the
-// board reports.
+// The board shows a car's year as four totals; this is the ledger behind them, and where a single
+// company row is corrected or removed. The grievance figure sits at the foot because it belongs to
+// the same (vehicle, year) and is what «قبل التظلم» on the board reports.
+//
+// A LAYER against the left edge rather than a centred dialog, because this list is worked THROUGH
+// and not answered: a clerk correcting the third of nine fines needs the board's totals — the very
+// figures these rows add up to — still on screen beside them. A modal covers exactly that.
 import {
   MAX_PAGE_SIZE,
   type FleetViolationDto,
@@ -13,7 +16,7 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
-import { Dialog } from '../../../shared/ui/Dialog';
+import { SideLayer } from '../../../shared/ui/SideLayer';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -22,7 +25,7 @@ import { formatMoney, formatNumber, localized } from '../../../shared/lib/format
 import { errorMessage } from '../../../shared/lib/errors';
 import { useFleetCatalog, useSetViolationCollected, useViolations } from '../api/fleet-queries';
 
-export const CompanyViolationsDetailDialog = ({
+export const CompanyViolationsDetailLayer = ({
   row,
   onClose,
   onEdit,
@@ -105,7 +108,9 @@ export const CompanyViolationsDetailDialog = ({
               type="button"
               data-detail-collect={v.id}
               aria-pressed={v.collected}
-              aria-label={t(v.collected ? 'fleet.violations.uncollect' : 'fleet.violations.collect')}
+              aria-label={t(
+                v.collected ? 'fleet.violations.uncollect' : 'fleet.violations.collect',
+              )}
               title={t(v.collected ? 'fleet.violations.uncollect' : 'fleet.violations.collect')}
               onClick={() => void toggle(v)}
               className={[
@@ -148,9 +153,11 @@ export const CompanyViolationsDetailDialog = ({
   ];
 
   return (
-    <Dialog
+    <SideLayer
       open={open}
       onClose={onClose}
+      side="left"
+      width="lg"
       title={
         row === null
           ? ''
@@ -196,6 +203,6 @@ export const CompanyViolationsDetailDialog = ({
           </div>
         )}
       </div>
-    </Dialog>
+    </SideLayer>
   );
 };

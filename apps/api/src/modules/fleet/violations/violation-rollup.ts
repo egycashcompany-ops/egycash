@@ -38,6 +38,8 @@ export const assembleRollups = (
     totalCount: 0,
     totalAmount: 0,
     totalBeforeGrievance: 0,
+    rowCount: 0,
+    collectedCount: 0,
   });
 
   for (const sum of sums) {
@@ -49,6 +51,8 @@ export const assembleRollups = (
       driverAmount: sum.driverAmount,
       totalCount: sum.vehicleCount + sum.driverCount,
       totalAmount: sum.vehicleAmount + sum.driverAmount,
+      rowCount: sum.rowCount,
+      collectedCount: sum.collectedCount,
     });
   }
   for (const grievance of grievances) {
@@ -60,7 +64,5 @@ export const assembleRollups = (
 
   // Newest year first, then by code — the board is read as "what is outstanding now", and a
   // vehicle's current year is the row a reader is looking for.
-  return [...byVehicle.values()].sort(
-    (a, b) => b.year - a.year || a.code.localeCompare(b.code),
-  );
+  return [...byVehicle.values()].sort((a, b) => b.year - a.year || a.code.localeCompare(b.code));
 };

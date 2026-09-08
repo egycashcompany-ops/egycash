@@ -5449,6 +5449,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         totalCount: 4,
         totalAmount: 450,
         totalBeforeGrievance: 600,
+        // TWO documents in this group — one statement row of «×3» and one driver event — and
+        // neither has been collected. The tick on the board reads these: a group is settled only
+        // when every row in it is, and `rowCount` counts DOCUMENTS, not the `count` on them.
+        rowCount: 2,
+        collectedCount: 0,
       },
     ]);
   });
@@ -7030,5 +7035,165 @@ describe('the driving seats are ASKED for, not filtered out of a page', () => {
       .get('/api/v1/platform/job-titles?requiresDrivingTest=true')
       .set('Authorization', `Bearer ${branchAToken}`);
     expect(res.status).toBe(403);
+  });
+});
+
+describe('the violations board, as the screen actually asks it', () => {
+  // Three server behaviours the screen depends on and could not have before: a driver filter that
+  // takes MORE THAN ONE driver, an exact-amount filter, and a tick that settles a whole year.
+
+  /** Its own copy rather than widening another block's scope — the same two lines, read here. */
+  const typeIdByName = async (name: string): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind: 'violationType', pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const item = data<FleetCatalogItemDto[]>(res).find((i) => i.name.ar === name);
+    if (item === undefined) throw new Error(`violationType ${name} not found`);
+    return item.id;
+  };
+
+  it('filters by SEVERAL drivers at once — the shape the bar was already sending', async () => {
+    // The defect this closes: the bar sent a list and the strict query schema had only a single
+    // id, so every use of its driver filter answered 400 and emptied the board.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driverType = await typeIdByName('تليفون');
+    const a = await mkEmployee();
+    const b = await mkEmployee();
+    const c = await mkEmployee();
+    for (const employeeId of [a, b, c]) {
+      await mkDriverProfile(employeeId);
+      const res = await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2027-05-02',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount: 250,
+        });
+      expect(res.status).toBe(201);
+    }
+
+    const two = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, driverEmployeeId: `${a},${b}`, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(two.status, 'a list of drivers is a valid question now').toBe(200);
+    const ids = data<{ driverEmployeeId: string }[]>(two).map((row) => row.driverEmployeeId);
+    expect(ids.sort()).toEqual([a, b].sort());
+
+    // And ONE id still parses, so every saved link keeps working.
+    const one = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, driverEmployeeId: c, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(one.status).toBe(200);
+    expect(data<{ driverEmployeeId: string }[]>(one).map((r) => r.driverEmployeeId)).toEqual([c]);
+  });
+
+  it('filters by the EXACT amount a fine was filed for', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driverType = await typeIdByName('تليفون');
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    for (const amount of [125, 375]) {
+      await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2027-06-03',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount,
+        });
+    }
+    const res = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, amount: 375, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(data<{ amount: number }[]>(res).map((r) => r.amount)).toEqual([375]);
+  });
+
+  it('settles a WHOLE (vehicle, year) with one tick, and the rollup reports how much is settled',
+    async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const vehicleType = await typeIdByName('رسوم خدمة');
+      const driverType = await typeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      await request(app)
+        .post('/api/v1/fleet/violations/vehicle')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year: 2028, violationTypeId: vehicleType, count: 2, unitValue: 50 });
+      await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2028-03-09',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount: 90,
+        });
+
+      const before = await request(app)
+        .get('/api/v1/fleet/violations/rollup')
+        .query({ year: 2028, vehicleId: v.id })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(data<{ rowCount: number; collectedCount: number }[]>(before)[0]).toMatchObject({
+        rowCount: 2,
+        collectedCount: 0,
+      });
+
+      const tick = await request(app)
+        .patch('/api/v1/fleet/violations/collected')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year: 2028, collected: true });
+      expect(tick.status).toBe(200);
+      expect(data<{ changed: number }>(tick).changed, 'BOTH shapes, in one act').toBe(2);
+
+      const after = await request(app)
+        .get('/api/v1/fleet/violations/rollup')
+        .query({ year: 2028, vehicleId: v.id })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(data<{ rowCount: number; collectedCount: number }[]>(after)[0]).toMatchObject({
+        rowCount: 2,
+        collectedCount: 2,
+      });
+
+      // And untick puts it all back — the tick is a toggle over the group, not a one-way door.
+      await request(app)
+        .patch('/api/v1/fleet/violations/collected')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year: 2028, collected: false });
+      const back = await request(app)
+        .get('/api/v1/fleet/violations/rollup')
+        .query({ year: 2028, vehicleId: v.id })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(data<{ collectedCount: number }[]>(back)[0]?.collectedCount).toBe(0);
+    });
+
+  it('the group tick needs `fleetViolation.collect`, like the row tick', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .patch('/api/v1/fleet/violations/collected')
+      .set('Authorization', `Bearer ${branchAToken}`)
+      .send({ vehicleId: v.id, year: 2028, collected: true });
+    expect(res.status).toBe(403);
+  });
+
+  it('«collected» is read as the group route, never as a violation id', async () => {
+    // The route is declared before `/:id/collected`; without that order this body would be
+    // rejected as a malformed ObjectId instead of doing what it says.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const res = await request(app)
+      .patch('/api/v1/fleet/violations/collected')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2028, collected: true });
+    expect(res.status, 'not a 400 about an id').toBe(200);
   });
 });

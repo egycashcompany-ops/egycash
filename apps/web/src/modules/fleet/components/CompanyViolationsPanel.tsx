@@ -13,11 +13,7 @@
 // one spanning car cell, and `DataTable` renders exactly one `<tr>` per row with no rowSpan seam.
 // The precedent is `FleetDashboardPage`, whose classes these copy so the two boards match.
 import { useMemo, useState } from 'react';
-import {
-  MAX_PAGE_SIZE,
-  type FleetViolationRollupDto,
-  type Locale,
-} from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type FleetViolationRollupDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -27,11 +23,22 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, PrinterIcon, ResetIcon, DownloadIcon } from '../../../shared/ui/icons';
+import {
+  CheckIcon,
+  EditIcon,
+  PrinterIcon,
+  ResetIcon,
+  DownloadIcon,
+} from '../../../shared/ui/icons';
 import { formatMoney, formatNumber } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { saveBlob } from '../../../shared/lib/api-client';
-import { useRecordVehicleViolation, useVehicles, useViolationRollup } from '../api/fleet-queries';
+import {
+  useRecordVehicleViolation,
+  useSetRollupCollected,
+  useVehicles,
+  useViolationRollup,
+} from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { toCsv, exportFilename } from '../lib/violations-export';
@@ -39,10 +46,30 @@ import { printViolations } from '../lib/violations-print';
 
 /** The four lines every group shows, in the order the business reads them. */
 const TOTAL_ROWS = [
-  { key: 'company', label: 'fleet.violations.lines.company', count: 'vehicleCount', amount: 'vehicleAmount' },
-  { key: 'drivers', label: 'fleet.violations.lines.drivers', count: 'driverCount', amount: 'driverAmount' },
-  { key: 'beforeGrievance', label: 'fleet.violations.lines.beforeGrievance', count: null, amount: 'totalBeforeGrievance' },
-  { key: 'total', label: 'fleet.violations.lines.total', count: 'totalCount', amount: 'totalAmount' },
+  {
+    key: 'company',
+    label: 'fleet.violations.lines.company',
+    count: 'vehicleCount',
+    amount: 'vehicleAmount',
+  },
+  {
+    key: 'drivers',
+    label: 'fleet.violations.lines.drivers',
+    count: 'driverCount',
+    amount: 'driverAmount',
+  },
+  {
+    key: 'beforeGrievance',
+    label: 'fleet.violations.lines.beforeGrievance',
+    count: null,
+    amount: 'totalBeforeGrievance',
+  },
+  {
+    key: 'total',
+    label: 'fleet.violations.lines.total',
+    count: 'totalCount',
+    amount: 'totalAmount',
+  },
 ] as const;
 
 const YEAR_SPAN = 20;
@@ -52,6 +79,7 @@ export const CompanyViolationsPanel = ({
   vehicleCodes,
   onYearChange,
   onVehicleCodesChange,
+  onClear,
   onInspect,
 }: {
   /** '' = every year. The board is read as a history, so no year is a real answer. */
@@ -59,6 +87,14 @@ export const CompanyViolationsPanel = ({
   vehicleCodes: string[];
   onYearChange: (next: string | null) => void;
   onVehicleCodesChange: (next: string[]) => void;
+  /**
+   * Clear this half in ONE write.
+   *
+   * Not two calls to the setters above: each builds the next URL from the params it was rendered
+   * with, so firing both in one tick makes the second overwrite the first and one filter survives
+   * the clear — measured, «السنة» came back every time.
+   */
+  onClear: () => void;
   /** Open one (vehicle, year)'s own violations — where a single row can be ticked or edited. */
   onInspect: (row: FleetViolationRollupDto) => void;
 }): JSX.Element => {
@@ -170,14 +206,34 @@ export const CompanyViolationsPanel = ({
         header: exportHeader,
         rows: exportRows(),
         totals: [
-          { label: t('fleet.violations.lines.company'), value: formatMoney(totals.company, 'EGP', locale) },
-          { label: t('fleet.violations.lines.drivers'), value: formatMoney(totals.drivers, 'EGP', locale) },
+          {
+            label: t('fleet.violations.lines.company'),
+            value: formatMoney(totals.company, 'EGP', locale),
+          },
+          {
+            label: t('fleet.violations.lines.drivers'),
+            value: formatMoney(totals.drivers, 'EGP', locale),
+          },
           { label: t('fleet.violations.totalAll'), value: formatMoney(totals.all, 'EGP', locale) },
         ],
         rtl: locale === 'ar',
       });
     } catch {
       toast.error(t('fleet.violations.popupBlocked'));
+    }
+  };
+
+  const collectGroup = useSetRollupCollected();
+  /** A group is settled only when EVERY row in it is, so the tick asks for the state it is not in. */
+  const toggleYear = async (row: FleetViolationRollupDto): Promise<void> => {
+    try {
+      await collectGroup.mutateAsync({
+        vehicleId: row.vehicleId,
+        year: row.year,
+        collected: row.collectedCount !== row.rowCount,
+      });
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
     }
   };
 
@@ -188,15 +244,17 @@ export const CompanyViolationsPanel = ({
   return (
     <section
       data-violations-panel="company"
-      className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      className="flex min-h-0 min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
     >
       <h2 className="mb-4 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
         {t('fleet.violations.companyTitle')}
       </h2>
 
       <div className="mb-3 flex items-start gap-3">
-        {/* The two document actions, stacked beside the bar exactly as the design has them. */}
-        <div className="flex shrink-0 flex-col gap-1">
+        {/* ORDER IS THE POINT: this row is RTL, so a child listed LAST is drawn on the LEFT. The
+            entry bar is written first and the two document actions after it, which puts the export
+            and the printer on the left edge of the panel where the owner asked for them. */}
+        <div className="order-last flex shrink-0 flex-col gap-1">
           <button
             type="button"
             data-print="company"
@@ -220,7 +278,11 @@ export const CompanyViolationsPanel = ({
         </div>
 
         {/* ── file one statement row ─────────────────────────────────────── */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50">
+        {/* ONE ROW, and it ends with the arithmetic. `overflow-x-auto` rather than `flex-wrap` is
+            the deliberate part: a statement line is read left to right as one sentence — this car,
+            this year, this fine, this much, this many, THIS TOTAL — and wrapping it put the total
+            under the fields it is the result of, where it read as a separate thing. */}
+        <div className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50">
           <Field label={t('fleet.violations.fields.year')}>
             <Select
               aria-label={t('fleet.violations.fields.year')}
@@ -282,12 +344,31 @@ export const CompanyViolationsPanel = ({
               inputMode="numeric"
             />
           </Field>
+          {/* What this line will cost, before it is filed. The server owns the real arithmetic
+              (count × unitValue) and this only mirrors it, so it shows a figure ONLY when both
+              halves are valid — a total computed from a half-typed number is a wrong number, and a
+              wrong number beside a Save button is worse than none. */}
+          <Field label={t('fleet.violations.fields.amount')}>
+            <output
+              data-company-form-total
+              className={[
+                'block min-w-[5.5rem] rounded-md border px-2 py-1.5 text-center text-sm font-semibold tabular-nums',
+                isMoney && isCount
+                  ? 'border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-200'
+                  : 'border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900',
+              ].join(' ')}
+            >
+              {isMoney && isCount
+                ? formatMoney(Number(formValue) * Number(formCount), 'EGP', locale)
+                : '—'}
+            </output>
+          </Field>
           <Button
             data-company-save="true"
             disabled={!canSave}
             loading={record.isPending}
             onClick={() => void save()}
-            className="mb-0.5"
+            className="mb-0.5 shrink-0"
           >
             {t('common.save')}
           </Button>
@@ -310,33 +391,46 @@ export const CompanyViolationsPanel = ({
             </option>
           ))}
         </Select>
-        <VehicleCodeFilter className="min-w-0 flex-1" value={vehicleCodes} onChange={onVehicleCodesChange} />
-        <button
-          type="button"
-          data-company-refresh="true"
-          aria-label={t('common.refresh')}
-          title={t('common.refresh')}
-          onClick={() => void rollup.refetch()}
-          className="rounded-md bg-rose-800 p-2 text-white hover:bg-rose-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/40"
-        >
-          <ResetIcon className="h-4 w-4" />
-        </button>
+        <VehicleCodeFilter
+          className="min-w-0 flex-1"
+          value={vehicleCodes}
+          onChange={onVehicleCodesChange}
+        />
+        {/* CLEARS this half's filters, which is what its icon and its position have always
+            promised. It called `refetch()` before — a button that re-asked a question whose answer
+            had not changed, so pressing it did nothing a reader could see, on a control that looks
+            exactly like «مسح الفلاتر» everywhere else in the app. Shown only when there is
+            something to clear, as `FilterBar` does. */}
+        {(year !== '' || vehicleCodes.length > 0) && (
+          <button
+            type="button"
+            data-company-clear="true"
+            aria-label={t('common.filters.clear')}
+            title={t('common.filters.clear')}
+            onClick={onClear}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+          >
+            <ResetIcon className="h-4 w-4" />
+          </button>
+        )}
         <span data-company-count className="text-lg font-bold text-brand-700 dark:text-brand-300">
           {formatNumber(rows.length, locale)}
         </span>
       </div>
 
       {rollup.isPending ? (
-        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-64 w-full shrink-0" />
       ) : rollup.isError ? (
         <ErrorState error={rollup.error} onRetry={() => void rollup.refetch()} />
       ) : rows.length === 0 ? (
         <EmptyState title={t('fleet.violations.empty')} />
       ) : (
-        <>
-          <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* The BOARD is what scrolls, not the page — and its head stays put while it does, so a
+              reader working down forty groups can still see which column is which. */}
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table data-company-table className="w-full min-w-[38rem] border-collapse">
-              <thead className="bg-slate-50 dark:bg-slate-800/60">
+              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800/60">
                 <tr>
                   <th className={head}>{t('fleet.violations.columns.seq')}</th>
                   <th className={head}>{t('fleet.violations.fields.year')}</th>
@@ -356,7 +450,10 @@ export const CompanyViolationsPanel = ({
                   className="border-t border-slate-200 dark:border-slate-800"
                 >
                   {TOTAL_ROWS.map((total, line) => (
-                    <tr key={total.key} className={line % 2 === 0 ? 'bg-slate-50/60 dark:bg-slate-800/30' : ''}>
+                    <tr
+                      key={total.key}
+                      className={line % 2 === 0 ? 'bg-slate-50/60 dark:bg-slate-800/30' : ''}
+                    >
                       {line === 0 && (
                         <>
                           <td rowSpan={4} className={`${cell} text-center tabular-nums`}>
@@ -371,7 +468,10 @@ export const CompanyViolationsPanel = ({
                         </>
                       )}
                       <td className={cell}>{t(total.label)}</td>
-                      <td className={`${cell} text-center tabular-nums`} data-line-count={total.key}>
+                      <td
+                        className={`${cell} text-center tabular-nums`}
+                        data-line-count={total.key}
+                      >
                         {/* «قبل التظلم» counts nothing — it is a figure, not a tally, and a 0
                             there would read as "no violations" rather than "not applicable". */}
                         {total.count === null
@@ -382,17 +482,61 @@ export const CompanyViolationsPanel = ({
                         {formatMoney(row[total.amount] as number, 'EGP', locale)}
                       </td>
                       {line === 0 && (
-                        <td rowSpan={4} className={`${cell} text-center`}>
-                          <button
-                            type="button"
-                            data-inspect={`${row.code}:${row.year}`}
-                            aria-label={t('fleet.violations.inspect', { code: row.code })}
-                            title={t('fleet.violations.inspect', { code: row.code })}
-                            onClick={() => onInspect(row)}
-                            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-                          >
-                            <EditIcon className="h-4 w-4" />
-                          </button>
+                        <td rowSpan={4} className={`${cell}`}>
+                          <span className="flex items-center justify-center gap-1">
+                            {/* THE TICK IS OUT HERE, beside the edit, because settling a year is a
+                                decision about the GROUP the reader is looking at — it used to be
+                                reachable only after opening the group, which put the commonest act
+                                on this board two clicks behind the rarest one.
+
+                                Three states, not two: every row ticked, none, or SOME. The middle
+                                one is what a reader most needs to see, and it is why the rollup
+                                carries two numbers instead of a boolean. */}
+                            {can('fleetViolation.collect') && row.rowCount > 0 && (
+                              <button
+                                type="button"
+                                data-rollup-collect={`${row.code}:${row.year}`}
+                                data-collected-state={
+                                  row.collectedCount === 0
+                                    ? 'none'
+                                    : row.collectedCount === row.rowCount
+                                      ? 'all'
+                                      : 'some'
+                                }
+                                aria-pressed={row.collectedCount === row.rowCount}
+                                disabled={collectGroup.isPending}
+                                aria-label={t('fleet.violations.collectYear', {
+                                  code: row.code,
+                                  year: String(row.year),
+                                })}
+                                title={t('fleet.violations.collectedOf', {
+                                  collected: formatNumber(row.collectedCount, locale),
+                                  total: formatNumber(row.rowCount, locale),
+                                })}
+                                onClick={() => void toggleYear(row)}
+                                className={[
+                                  'rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40',
+                                  row.collectedCount === row.rowCount
+                                    ? 'text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400'
+                                    : row.collectedCount > 0
+                                      ? 'text-amber-500 hover:bg-amber-100 dark:text-amber-400'
+                                      : 'text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800',
+                                ].join(' ')}
+                              >
+                                <CheckIcon className="h-4 w-4" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              data-inspect={`${row.code}:${row.year}`}
+                              aria-label={t('fleet.violations.inspect', { code: row.code })}
+                              title={t('fleet.violations.inspect', { code: row.code })}
+                              onClick={() => onInspect(row)}
+                              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
+                            >
+                              <EditIcon className="h-4 w-4" />
+                            </button>
+                          </span>
                         </td>
                       )}
                     </tr>
@@ -402,7 +546,7 @@ export const CompanyViolationsPanel = ({
             </table>
           </div>
 
-          <table className="mt-2 w-full border-collapse text-sm">
+          <table className="mt-2 w-full shrink-0 border-collapse text-sm">
             <tbody>
               {[
                 ['company', 'fleet.violations.lines.company', totals.company],
@@ -421,7 +565,7 @@ export const CompanyViolationsPanel = ({
               ))}
             </tbody>
           </table>
-        </>
+        </div>
       )}
     </section>
   );

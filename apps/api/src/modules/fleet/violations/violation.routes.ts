@@ -8,6 +8,7 @@ import {
   RecordFleetVehicleViolationSchema,
   SetFleetGrievanceSchema,
   SetFleetViolationCollectedSchema,
+  SetRollupCollectedSchema,
   UpdateFleetViolationSchema,
   objectId,
 } from '@ecms/contracts';
@@ -22,6 +23,7 @@ import {
   recordDriverViolations,
   recordVehicleViolation,
   setGrievance,
+  setRollupCollected,
   setViolationCollected,
   updateViolation,
 } from './violation.controller';
@@ -66,6 +68,15 @@ export const buildFleetViolationsRouter = (): Router => {
     authorize('fleetViolation.record'),
     validate({ body: RecordFleetDriverViolationsSchema }),
     asyncHandler(recordDriverViolations),
+  );
+  // The GROUP tick: one (vehicle, year) settled in one act. Declared BEFORE `/:id/collected`, or
+  // «collected» would be read as an id and rejected as a malformed ObjectId.
+  router.patch(
+    '/collected',
+    authenticate,
+    authorize('fleetViolation.collect'),
+    validate({ body: SetRollupCollectedSchema }),
+    asyncHandler(setRollupCollected),
   );
   // Collecting is its own grant: the cashier who ticks a row is not the clerk who corrects it.
   router.patch(

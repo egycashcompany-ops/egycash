@@ -50,6 +50,7 @@ import {
   type UpdateFleetVehicle,
   type UpdateFleetVehicleType,
   type SetFleetViolationCollected,
+  type SetRollupCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
 import {
@@ -319,6 +320,9 @@ export const setViolationCollected = (
   body: SetFleetViolationCollected,
 ): Promise<FleetViolationDto> =>
   patch<FleetViolationDto>(`/fleet/violations/${id}/collected`, body);
+/** Tick or untick a WHOLE (vehicle, year) — the board's own tick, one request rather than N. */
+export const setRollupCollected = (body: SetRollupCollected): Promise<{ changed: number }> =>
+  patch<{ changed: number }>('/fleet/violations/collected', body);
 export const setGrievance = (body: SetFleetGrievance): Promise<FleetGrievanceDto> =>
   put<FleetGrievanceDto>('/fleet/violations/grievance', body);
 export const deleteViolation = (id: string): Promise<void> => del<void>(`/fleet/violations/${id}`);

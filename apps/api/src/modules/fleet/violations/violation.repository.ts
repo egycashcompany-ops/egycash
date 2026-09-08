@@ -17,6 +17,9 @@ export interface ViolationYearSums {
   vehicleAmount: number;
   driverCount: number;
   driverAmount: number;
+  /** Documents in the group, and how many of them are ticked — the board's group tick reads these. */
+  rowCount: number;
+  collectedCount: number;
 }
 
 class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
@@ -59,7 +62,10 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
      * NOTHING; it is never dropped, or an impossible search would return every violation.
      */
     vehicleIds?: readonly string[] | undefined;
-    driverEmployeeId?: string | undefined;
+    /** Several drivers, ORed. `[]` narrows to nothing, exactly as `vehicleIds` does. */
+    driverEmployeeId?: readonly string[] | undefined;
+    /** The EXACT filed amount. `0` is a real answer, so this is checked against `undefined`. */
+    amount?: number | undefined;
     year?: number | undefined;
   }): FilterQuery<FleetViolationDoc> {
     const clauses: FilterQuery<FleetViolationDoc>[] = [];
@@ -71,8 +77,11 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
     }
     if (query.driverEmployeeId !== undefined) {
-      clauses.push({ driverEmployeeId: new Types.ObjectId(query.driverEmployeeId) });
+      clauses.push({
+        driverEmployeeId: { $in: query.driverEmployeeId.map((id) => new Types.ObjectId(id)) },
+      });
     }
+    if (query.amount !== undefined) clauses.push({ amount: query.amount });
     if (query.year !== undefined) {
       // The year filter means the same thing for BOTH shapes: vehicle rows carry it stored,
       // driver rows carry it as the year of their event date (§2.9 — no synthesized dates).
@@ -98,6 +107,25 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
    * `vehicleCount` sums the statement rows' `count` (a row saying 5 × 100 IS five violations);
    * `driverCount` counts events. Derived at query time — nothing here is ever stored.
    */
+  /**
+   * Tick or untick EVERY row of one (vehicle, year).
+   *
+   * One statement rather than a loop of per-row writes: the board's tick is a single decision about
+   * a single group, and a partial failure halfway through a loop would leave a group in exactly the
+   * mixed state the tick exists to resolve.
+   */
+  async setCollectedForYear(vehicleId: string, year: number, collected: boolean): Promise<number> {
+    const result = await this.model.updateMany(
+      {
+        isDeleted: false,
+        vehicleId: new Types.ObjectId(vehicleId),
+        ...FleetViolationRepository.yearClause(year),
+      },
+      { $set: { collected } },
+    );
+    return result.modifiedCount;
+  }
+
   async yearSums(year: number | undefined, vehicleId?: string): Promise<ViolationYearSums[]> {
     const match: FilterQuery<FleetViolationDoc> = {
       isDeleted: false,
@@ -110,6 +138,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       vehicleAmount: number;
       driverCount: number;
       driverAmount: number;
+      rowCount: number;
+      collectedCount: number;
     }>([
       { $match: match },
       {
@@ -127,6 +157,10 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
           vehicleAmount: { $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, '$amount', 0] } },
           driverCount: { $sum: { $cond: [{ $eq: ['$kind', 'driver'] }, 1, 0] } },
           driverAmount: { $sum: { $cond: [{ $eq: ['$kind', 'driver'] }, '$amount', 0] } },
+          // ROWS, not fines: a statement row of «×5» is one row that is collected or not, so the
+          // group's tick counts documents rather than the `count` on them.
+          rowCount: { $sum: 1 },
+          collectedCount: { $sum: { $cond: ['$collected', 1, 0] } },
         },
       },
     ]);
@@ -137,6 +171,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       vehicleAmount: row.vehicleAmount,
       driverCount: row.driverCount,
       driverAmount: row.driverAmount,
+      rowCount: row.rowCount,
+      collectedCount: row.collectedCount,
     }));
   }
 }

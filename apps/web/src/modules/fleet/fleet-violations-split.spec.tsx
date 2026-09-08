@@ -88,6 +88,8 @@ const rollupRow = (over: Partial<FleetViolationRollupDto> = {}): FleetViolationR
   driverAmount: 0,
   totalCount: 4,
   totalAmount: 2040.15,
+  rowCount: 4,
+  collectedCount: 0,
   totalBeforeGrievance: 0,
   ...over,
 });
@@ -110,14 +112,16 @@ const driverRow = (over: Partial<FleetViolationDto> = {}): FleetViolationDto => 
   ...over,
 });
 
-const store = (permissions = [
-  'fleetViolation.view',
-  'fleetViolation.record',
-  'fleetViolation.edit',
-  'fleetViolation.delete',
-  'fleetViolation.collect',
-  'fleetViolation.grievance',
-]) =>
+const store = (
+  permissions = [
+    'fleetViolation.view',
+    'fleetViolation.record',
+    'fleetViolation.edit',
+    'fleetViolation.delete',
+    'fleetViolation.collect',
+    'fleetViolation.grievance',
+  ],
+) =>
   configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
     preloadedState: {
@@ -132,29 +136,30 @@ const store = (permissions = [
     },
   });
 
-const page = (
-  {
-    rollup = [rollupRow()],
-    drivers = [driverRow()],
-    permissions,
-    seedCatalogs = true,
-    year,
-  }: {
-    /** `null` = seed nothing, so the query is genuinely pending. `undefined` would fall
-     *  through to the default and quietly seed a row. */
-    rollup?: FleetViolationRollupDto[] | null;
-    drivers?: FleetViolationDto[] | null;
-    permissions?: string[];
-    seedCatalogs?: boolean;
-    year?: string;
-  } = {},
-): string => {
+const page = ({
+  rollup = [rollupRow()],
+  drivers = [driverRow()],
+  permissions,
+  seedCatalogs = true,
+  year,
+}: {
+  /** `null` = seed nothing, so the query is genuinely pending. `undefined` would fall
+   *  through to the default and quietly seed a row. */
+  rollup?: FleetViolationRollupDto[] | null;
+  drivers?: FleetViolationDto[] | null;
+  permissions?: string[];
+  seedCatalogs?: boolean;
+  year?: string;
+} = {}): string => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  qc.setQueryData(listKey('fleet', 'vehicles', {
-    pageSize: 200,
-    sortBy: 'code',
-    sortDir: 'asc',
-  }), undefined);
+  qc.setQueryData(
+    listKey('fleet', 'vehicles', {
+      pageSize: 200,
+      sortBy: 'code',
+      sortDir: 'asc',
+    }),
+    undefined,
+  );
   if (seedCatalogs) {
     qc.setQueryData(
       listKey('fleet', 'catalogs', { kind: 'violationType', violationSide: 'company' }),
@@ -166,7 +171,15 @@ const page = (
     );
   }
   if (rollup !== null) {
-    qc.setQueryData(['fleet', 'violations', 'rollup', { year: year === undefined ? undefined : Number(year), vehicleId: undefined }], rollup);
+    qc.setQueryData(
+      [
+        'fleet',
+        'violations',
+        'rollup',
+        { year: year === undefined ? undefined : Number(year), vehicleId: undefined },
+      ],
+      rollup,
+    );
   }
   if (drivers !== null) {
     qc.setQueryData(
@@ -186,7 +199,9 @@ const page = (
   return renderToStaticMarkup(
     <Provider store={store(permissions)}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[`/fleet/violations${year === undefined ? '' : `?year=${year}`}`]}>
+        <MemoryRouter
+          initialEntries={[`/fleet/violations${year === undefined ? '' : `?year=${year}`}`]}
+        >
           <ViolationsPage />
         </MemoryRouter>
       </QueryClientProvider>
@@ -256,7 +271,12 @@ describe('the drivers bar: counts in, one card per fine out', () => {
 
   it('carries over what is already typed when a count grows', () => {
     const first = entryCards(TYPES, { [DT_SPEED]: 1 });
-    const typed = first.map((c) => ({ ...c, driverEmployeeId: E1, amount: '400', date: '2026-02-01' }));
+    const typed = first.map((c) => ({
+      ...c,
+      driverEmployeeId: E1,
+      amount: '400',
+      date: '2026-02-01',
+    }));
     const grown = entryCards(TYPES, { [DT_SPEED]: 2 }, typed);
     expect(grown, 'two cards now').toHaveLength(2);
     expect(grown[0]?.driverEmployeeId, 'the first keeps its driver').toBe(E1);
@@ -264,7 +284,10 @@ describe('the drivers bar: counts in, one card per fine out', () => {
   });
 
   it('drops the highest ordinal when a count shrinks, not the one being filled', () => {
-    const two = entryCards(TYPES, { [DT_SPEED]: 2 }).map((c, i) => ({ ...c, amount: String(i + 1) }));
+    const two = entryCards(TYPES, { [DT_SPEED]: 2 }).map((c, i) => ({
+      ...c,
+      amount: String(i + 1),
+    }));
     const one = entryCards(TYPES, { [DT_SPEED]: 1 }, two);
     expect(one).toHaveLength(1);
     expect(one[0]?.amount, 'the first survives').toBe('1');
@@ -284,8 +307,17 @@ describe('the drivers bar: counts in, one card per fine out', () => {
       cards[1] as DriverEntryCard,
     ];
     expect(entryComplete(half), 'one card still empty').toBe(false);
-    expect(incompleteCards(half), 'and the panel can point at it').toEqual([`${DT_BELT}:1`.replace(DT_BELT, DT_SPEED) === half[1]?.key ? (half[1]?.key as string) : (half[1]?.key as string)]);
-    const whole = half.map((c) => ({ ...c, date: '2026-02-01', driverEmployeeId: E1, amount: '400' }));
+    expect(incompleteCards(half), 'and the panel can point at it').toEqual([
+      `${DT_BELT}:1`.replace(DT_BELT, DT_SPEED) === half[1]?.key
+        ? (half[1]?.key as string)
+        : (half[1]?.key as string),
+    ]);
+    const whole = half.map((c) => ({
+      ...c,
+      date: '2026-02-01',
+      driverEmployeeId: E1,
+      amount: '400',
+    }));
     expect(entryComplete(whole)).toBe(true);
     expect(incompleteCards(whole)).toEqual([]);
   });
@@ -332,11 +364,17 @@ describe('the drivers bar: counts in, one card per fine out', () => {
     expect(() => toBatchPayload('', [])).toThrow();
   });
 
-  it('shows the entered panel empty until something is counted', () => {
+  it('keeps the entry layer CLOSED until something is counted', () => {
+    // It used to be a permanently visible dark box that said «nothing here yet» — a third of the
+    // panel's height spent telling a reader that they had not started. It is a layer now: counting
+    // opens it, and until then the board below has that room.
     const markup = page();
-    expect(markup).toContain('data-entered-panel="true"');
-    expect(markup, 'and says so rather than showing an empty box').toContain('data-entered-empty');
-    expect(markup).toContain(t('fleet.violations.enteredEmpty'));
+    expect(markup, 'no entry layer before anything is counted').not.toContain(
+      'data-entered-panel="true"',
+    );
+    expect(markup, 'and no empty-state placeholder either').not.toContain('data-entered-empty');
+    // The counting bar itself is what IS on screen — the way in is still visible.
+    expect(markup, 'the counting bar is still there').toContain('data-driver-bar="true"');
   });
 });
 
@@ -389,7 +427,17 @@ describe('collected: stored, shown, and never painted ahead of the write', () =>
 describe('the company board groups by (vehicle, year)', () => {
   const MIXED = [
     rollupRow({ code: '168', year: 2026 }),
-    rollupRow({ vehicleId: V2, code: '170', year: 2025, vehicleAmount: 1304.98, driverAmount: 1400, totalAmount: 2704.98, totalCount: 5, driverCount: 2, vehicleCount: 3 }),
+    rollupRow({
+      vehicleId: V2,
+      code: '170',
+      year: 2025,
+      vehicleAmount: 1304.98,
+      driverAmount: 1400,
+      totalAmount: 2704.98,
+      totalCount: 5,
+      driverCount: 2,
+      vehicleCount: 3,
+    }),
   ];
 
   it('draws one group per pair, not one per vehicle', () => {
@@ -465,7 +513,13 @@ describe('print and CSV carry exactly what is on screen', () => {
   });
 
   it('quotes a field that would otherwise split a column', () => {
-    const csv = toCsv(['a', 'b'], [['plain', 'has,comma'], ['has"quote', 'has\nnewline']]);
+    const csv = toCsv(
+      ['a', 'b'],
+      [
+        ['plain', 'has,comma'],
+        ['has"quote', 'has\nnewline'],
+      ],
+    );
     const lines = csv.split('\n');
     expect(lines[0], 'BOM so Excel reads Arabic').toBe('﻿a,b');
     expect(lines[1]).toBe('plain,"has,comma"');
@@ -495,7 +549,12 @@ describe('print and CSV carry exactly what is on screen', () => {
 
   it('prints an empty board as a result rather than a blank sheet', () => {
     const html = buildViolationsPrintHtml({
-      title: 'T', subtitle: 'S', header: ['h'], rows: [], totals: [], rtl: false,
+      title: 'T',
+      subtitle: 'S',
+      header: ['h'],
+      rows: [],
+      totals: [],
+      rtl: false,
     });
     expect(html).toContain('class="empty"');
     expect(html, 'no table headers over nothing').not.toContain('<tbody></tbody>');

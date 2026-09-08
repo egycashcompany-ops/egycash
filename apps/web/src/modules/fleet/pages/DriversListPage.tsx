@@ -131,6 +131,23 @@ const TIGHT = 'tight' as const;
 const YIELDS = `${FLEX} shrink-[2]`;
 
 /**
+ * The name/code picker, which is the one control on this bar worth spending width on.
+ *
+ * The other ten show a FIXED word — «الفرع», «التخصص» — so anything past that word is wasted on
+ * them. This one shows a PERSON: «محمد عبد الله محمد عبد المحسن» where the others show six
+ * letters, and a reader who has picked three drivers needs to see WHICH three without opening the
+ * panel. At `max-w-[10rem]` it could not, and the trigger read «اسم/...».
+ *
+ * So it grows SIX times as fast as its neighbours and is allowed to get five times as wide. What it
+ * spends is the row's SPARE width, never anyone else's, and `basis` is what guarantees that: it
+ * stays at the width its own placeholder needs and not a pixel more. At 1280 there is no spare at
+ * all — measured, twelve extra pixels of basis there were enough to push «العنوان» and «التخصص»
+ * into clipping — so the picker is unchanged at the narrowest desktop and takes the room only where
+ * the room exists: 83px at 1280, 139px at 1440, 319px at 1920.
+ */
+const NAME_PICKER = 'min-w-0 shrink grow-[6] basis-[5.25rem] max-w-[20rem]';
+
+/**
  * A text box's own width. Unlike a `<select>`, an `<input>` has no content to be as wide as — its
  * intrinsic width is a browser default of about twenty characters, far more than any of these
  * four need — so the one width that has to be stated is theirs.
@@ -606,11 +623,9 @@ export const DriversListPage = (): JSX.Element => {
               // table can actually show.
               jobTitleIds={drivingTitleIds}
               density={TIGHT}
-              // Its own basis rather than the text boxes' yield rate: the trigger carries a
-              // CHOSEN DRIVER'S NAME once one is picked, so it must not be squeezed to nothing —
-              // and `max-w` is the other half of that, because a long name would otherwise let
-              // this one control claim a third of the row.
-              className={`${FLEX} basis-[5.25rem] max-w-[10rem]`}
+              // Wider than everything else, and the first to take any spare width — see
+              // `NAME_PICKER` for why this is the one control that earns it.
+              className={NAME_PICKER}
             />
           )}
           {/* 2 — «الوظيفة», from the `driverJob` catalog. No value of it is named on this screen. */}

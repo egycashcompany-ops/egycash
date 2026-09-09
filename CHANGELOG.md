@@ -107,6 +107,24 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The API and the worker crash-looped on startup, and the platform was down.** Adding the roster
+  importer put ExcelJS into the HR router's import graph, and ExcelJS is CommonJS that calls
+  `require('crypto')` as it loads. Bundled into an ESM output there is no `require`, so esbuild's
+  shim threw `Dynamic require of "crypto" is not supported` — during the IMPORT phase, before a line
+  of our code ran. Both processes died on boot.
+
+  Three changes, because one would not have been enough. ExcelJS is now `external` in the bundle, so
+  Node loads it as the CommonJS package it is; it moved from `devDependencies` to `dependencies`,
+  because the runtime image installs with `--omit=dev` and external means it has to be there; and
+  `read-workbook.ts` loads it with `await import` at the point of use rather than at module scope,
+  so a spreadsheet reader is no longer able to stop the platform from starting at all — nothing
+  touches it until somebody uploads a workbook.
+
+  **Every check was green when this shipped** — lint, typecheck, 5,500 tests, and `npm run build`
+  itself, because the shim compiles perfectly and only fails when executed. Nothing ever ran the
+  built bundle. `scripts/check-bundle-require.mjs` now fails the build if any output file contains
+  that shim, and names the bundled CommonJS package that pulled it in.
+
 - **Every unit dropdown in the app was missing units, and said nothing.** `GET /platform/<unit>/options`
   asked its repository for one page of 500, but `BaseRepository.list` clamps `pageSize` to
   `MAX_PAGE_SIZE` (100) — so any catalog past a hundred was served a hundred, with no error and

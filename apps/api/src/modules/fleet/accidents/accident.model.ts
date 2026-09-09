@@ -9,6 +9,7 @@ export interface FleetAccidentDoc extends BaseDocFields {
   vehicleId: Types.ObjectId;
   occurredAt: Date;
   culprit: string;
+  culpritEmployeeId: Types.ObjectId | null;
   statement: string;
   companyCost: number;
   amountCollected: number;
@@ -22,6 +23,7 @@ const accidentSchema = new Schema<FleetAccidentDoc>(
     vehicleId: { type: Schema.Types.ObjectId, required: true },
     occurredAt: { type: Date, required: true },
     culprit: { type: String, required: true },
+    culpritEmployeeId: { type: Schema.Types.ObjectId, default: null },
     statement: { type: String, required: true },
     companyCost: { type: Number, required: true, min: 0 },
     amountCollected: { type: Number, required: true, min: 0 },
@@ -35,6 +37,10 @@ const accidentSchema = new Schema<FleetAccidentDoc>(
 
 accidentSchema.index({ vehicleId: 1, occurredAt: -1 }, { name: 'ix_vehicle_occurred' });
 accidentSchema.index({ status: 1 }, { name: 'ix_status' });
+// «every accident this driver caused» — the exact question the culprit picker asks, and the one
+// the name substring could only guess at. Declared here rather than as `index: true` on the path,
+// because every index in this module is NAMED: an unnamed one cannot be checked for presence.
+accidentSchema.index({ culpritEmployeeId: 1, occurredAt: -1 }, { name: 'ix_culprit_occurred' });
 
 export const FleetAccidentModel = model<FleetAccidentDoc>(
   'FleetAccident',

@@ -47,7 +47,6 @@ import { FilterField } from '../../../shared/ui/FilterField';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
-import { StatusBadge } from '../../../shared/ui/Badge';
 import { EditIcon, EyeIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
@@ -70,9 +69,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
-  'active',
   'addr',
-  'area',
   'branch',
   'drv',
   'gov',
@@ -183,11 +180,9 @@ export const DriversListPage = (): JSX.Element => {
   const pickedDrivers = idList(sp.get('drv'));
   const job = sp.get('job') ?? '';
   const branch = sp.get('branch') ?? '';
-  const area = sp.get('area') ?? '';
   const specialization = sp.get('spec') ?? '';
   const licenseType = sp.get('lic') ?? '';
   const image = sp.get('img') ?? '';
-  const active = sp.get('active') ?? '';
   // The HR half — every one of these travels to HR's endpoint, never to Fleet's.
   const hrFilter: DriverHrFilter = {
     // Never set here: this bar names people with the multi-select, which hands over ids rather
@@ -247,11 +242,9 @@ export const DriversListPage = (): JSX.Element => {
     pickedDrivers.length > 0 ||
     job !== '' ||
     branch !== '' ||
-    area !== '' ||
     specialization !== '' ||
     licenseType !== '' ||
     image !== '' ||
-    active !== '' ||
     Object.values(hrFilter).some((value) => value !== '');
 
   // The two ways this bar names people, resolved to the ONE list the fleet query is asked for.
@@ -264,11 +257,9 @@ export const DriversListPage = (): JSX.Element => {
       sortDir: sort.dir,
       jobId: job || undefined,
       branchId: branch || undefined,
-      area: area || undefined,
       specializationId: specialization || undefined,
       licenseTypeId: licenseType || undefined,
       hasLicenseImage: image === '' ? undefined : image === 'with',
-      isActive: active === '' ? undefined : active === 'true',
       // `undefined` when nobody has been named. When somebody HAS the array is always sent,
       // including when it is empty: an empty `$in` is "these two questions agree on nobody", and
       // dropping the parameter there would answer a filtered question with an unfiltered list.
@@ -351,13 +342,9 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'employeeCode',
       header: t('fleet.drivers.columns.employeeCode'),
-      render: (d) => (
-        <EmployeeFact
-          employeeId={d.employeeId}
-          pick={(e) => e.code}
-          className="font-mono text-xs"
-        />
-      ),
+      // Plain, like the job title beside it. `font-mono text-xs` made the one column a reader
+      // matches against a paper list the smallest and least legible thing on the row.
+      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.code} />,
     },
     {
       key: 'jobTitle',
@@ -388,7 +375,6 @@ export const DriversListPage = (): JSX.Element => {
         />
       ),
     },
-    { key: 'area', header: t('fleet.drivers.columns.area'), render: (d) => d.profile?.area ?? '—' },
     {
       key: 'governorate',
       header: t('fleet.drivers.columns.governorate'),
@@ -467,21 +453,6 @@ export const DriversListPage = (): JSX.Element => {
           <NotRecorded />
         ) : (
           <DriverLicenseImageCell driver={d.profile} onPreview={setPreviewing} />
-        ),
-    },
-    {
-      key: 'isActive',
-      header: t('fleet.drivers.columns.status'),
-      render: (d) =>
-        d.profile === null ? (
-          // Not «inactive» — nothing has been recorded, and calling that inactive would state a
-          // decision nobody made about a driver who is on the road.
-          <StatusBadge tone="warning" label={t('fleet.drivers.notRecorded')} />
-        ) : (
-          <StatusBadge
-            tone={d.profile.isActive ? 'success' : 'neutral'}
-            label={d.profile.isActive ? t('fleet.drivers.active') : t('fleet.drivers.inactive')}
-          />
         ),
     },
     {
@@ -574,13 +545,11 @@ export const DriversListPage = (): JSX.Element => {
               job: null,
               branch: null,
               addr: null,
-              area: null,
               phone: null,
               gov: null,
               spec: null,
               lic: null,
               img: null,
-              active: null,
             })
           }
         >
@@ -658,18 +627,6 @@ export const DriversListPage = (): JSX.Element => {
               />
             </FilterField>
           )}
-          <FilterField
-            label={t('fleet.drivers.columns.area')}
-            active={area !== ''}
-            className={CELL}
-          >
-            <DebouncedInput
-              aria-label={t('fleet.drivers.columns.area')}
-              density={TIGHT}
-              value={area}
-              onValueChange={(next) => patch({ area: next || null })}
-            />
-          </FilterField>
           {mayFilterByHr && (
             <FilterField
               label={t('fleet.drivers.columns.phone')}
@@ -743,22 +700,6 @@ export const DriversListPage = (): JSX.Element => {
               <option value="">{t('common.filters.all')}</option>
               <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
               <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
-            </Select>
-          </FilterField>
-          <FilterField
-            label={t('fleet.drivers.columns.status')}
-            active={active !== ''}
-            className={CELL}
-          >
-            <Select
-              aria-label={t('fleet.drivers.columns.status')}
-              value={active}
-              onChange={(e) => patch({ active: e.target.value || null })}
-              density={TIGHT}
-            >
-              <option value="">{t('common.filters.all')}</option>
-              <option value="true">{t('fleet.drivers.active')}</option>
-              <option value="false">{t('fleet.drivers.inactive')}</option>
             </Select>
           </FilterField>
         </FilterBar>

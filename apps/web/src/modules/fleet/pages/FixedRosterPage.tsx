@@ -860,10 +860,10 @@ export const FixedRosterPage = (): JSX.Element => {
               land on the element and the winner is stylesheet order — which put white on top and
               left the tint silently doing nothing. Every other tinted surface in this app is built
               exactly like this one, from the same three tokens. */}
-          <div className="rounded-lg border border-green-200 bg-green-50 shadow-card dark:border-green-900 dark:bg-green-950/30">
+          <div className="sticky top-4 flex max-h-[calc(100vh-2rem)] flex-col rounded-lg border border-green-200 bg-green-50 shadow-card dark:border-green-900 dark:bg-green-950/30">
             {/* Compact header: the count belongs beside the title, and the search directly under
                 it, so the panel spends its height on drivers rather than on chrome. */}
-            <div className="space-y-2 px-3 pb-2 pt-3">
+            <div className="shrink-0 space-y-2 px-3 pb-2 pt-3">
               <h2 className="text-center text-sm font-semibold text-green-900 dark:text-green-200">
                 {t('fleet.fixedRoster.driversTitle')}
                 <span className="ms-1 font-normal text-green-700 dark:text-green-400">
@@ -877,6 +877,14 @@ export const FixedRosterPage = (): JSX.Element => {
                 className="w-full"
               />
             </div>
+            {/* THE POOL RUNS TO THE BOTTOM OF THE SCREEN. It was a fixed `max-h-[26rem]` box —
+                416px of list with a scrollbar inside it, and on a 950px screen that left a
+                quarter of the page blank underneath while the reader paged through a fleet of
+                three hundred. The height is now whatever is left: the panel is bounded by the
+                VIEWPORT (`sticky` + `max-h-[calc(100vh-2rem)]`) and the list takes the room the
+                title and the search box do not, so it fits any screen without a number picked
+                for one of them. `sticky` also keeps it in view while the board beside it
+                scrolls, which is the point of a pool you drag FROM. */}
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : shownDrivers.length === 0 ? (
@@ -886,7 +894,7 @@ export const FixedRosterPage = (): JSX.Element => {
                 {t('fleet.fixedRoster.driverSearchEmpty')}
               </p>
             ) : (
-              <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
+              <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
                 {shownDrivers.map((driver) => {
                   // Everyone here is unseated ON THIS BOARD — that is what the pool now means.
                   // But the board carries only the vehicles this reader may see, so a driver

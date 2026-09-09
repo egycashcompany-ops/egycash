@@ -42,6 +42,7 @@ export const VehicleCodeFilter = ({
   className,
   placeholder,
   density,
+  fullWidth = false,
 }: {
   /** The codes currently filtering, in the order they were chosen. */
   value: string[];
@@ -61,6 +62,8 @@ export const VehicleCodeFilter = ({
   placeholder?: string;
   /** Passed straight through — a bar sizing its controls to one rhythm asks for `tight`. */
   density?: ControlDensity;
+  /** Fill the width this control was given — see `MultiSelect`. */
+  fullWidth?: boolean;
 }): JSX.Element => {
   const t = useT();
   // What is still being TYPED — the trailing fragment, after the completed codes have been taken
@@ -132,6 +135,7 @@ export const VehicleCodeFilter = ({
         setSearch('');
       }}
       {...(placeholder === undefined ? {} : { placeholder })}
+      fullWidth={fullWidth}
       {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />

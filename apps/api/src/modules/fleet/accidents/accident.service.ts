@@ -28,6 +28,7 @@ const snapshot = (doc: FleetAccidentDoc) => ({
   vehicleId: String(doc.vehicleId),
   occurredAt: doc.occurredAt,
   culprit: doc.culprit,
+  culpritEmployeeId: doc.culpritEmployeeId === null ? null : String(doc.culpritEmployeeId),
   statement: doc.statement,
   companyCost: doc.companyCost,
   amountCollected: doc.amountCollected,
@@ -53,6 +54,8 @@ class FleetAccidentService {
         vehicleId: new Types.ObjectId(input.vehicleId),
         occurredAt: input.occurredAt,
         culprit: input.culprit,
+        culpritEmployeeId:
+          input.culpritEmployeeId == null ? null : new Types.ObjectId(input.culpritEmployeeId),
         statement: input.statement,
         companyCost: input.companyCost,
         amountCollected: input.amountCollected,
@@ -82,6 +85,7 @@ class FleetAccidentService {
       vehicleId: query.vehicleId,
       vehicleIds: await this.vehicleScope(query),
       culprit: query.culprit,
+      culpritEmployeeId: query.culpritEmployeeId,
       status: query.status,
       from: query.from,
       to: query.to,
@@ -152,6 +156,12 @@ class FleetAccidentService {
     }
     if (input.occurredAt !== undefined) set.occurredAt = input.occurredAt;
     if (input.culprit !== undefined) set.culprit = input.culprit;
+    // `null` CLEARS the reference — «it turned out to be a third party» is an edit somebody has
+    // to be able to make, so undefined (untouched) and null (cleared) are kept apart.
+    if (input.culpritEmployeeId !== undefined) {
+      set.culpritEmployeeId =
+        input.culpritEmployeeId === null ? null : new Types.ObjectId(input.culpritEmployeeId);
+    }
     if (input.statement !== undefined) set.statement = input.statement;
     if (input.companyCost !== undefined) set.companyCost = input.companyCost;
     if (input.amountCollected !== undefined) set.amountCollected = input.amountCollected;

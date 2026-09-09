@@ -44,25 +44,22 @@ import {
   type HrDelegationGroup,
 } from './hr-delegation';
 import { DriverLicenseImageField } from './DriverLicenseImage';
+import { useUpdateEmployeePersonal } from '../../hr/employee-management/employees/api/employee-queries';
 
 interface FormState {
   licenseNumber: string;
   licenseExpiresAt: string;
-  /** The three catalog ids. `''` = «not chosen», which is a state a profile is allowed to be in. */
-  jobId: string;
+  /** The two catalog ids. `''` = «not chosen», which is a state a profile is allowed to be in. */
   specializationId: string;
   licenseTypeId: string;
-  area: string;
   isActive: boolean;
 }
 
 const fromProfile = (profile: FleetDriverProfileDto | null): FormState => ({
   licenseNumber: profile?.licenseNumber ?? '',
   licenseExpiresAt: profile === null ? '' : profile.licenseExpiresAt.slice(0, 10),
-  jobId: profile?.jobId ?? '',
   specializationId: profile?.specializationId ?? '',
   licenseTypeId: profile?.licenseTypeId ?? '',
-  area: profile?.area ?? '',
   isActive: profile?.isActive ?? true,
 });
 
@@ -131,6 +128,10 @@ export const DriverFormDialog = ({
 
   const update = useUpdateDriverProfile();
   const create = useCreateDriverProfile();
+  // HR's own mutation, called with HR's own permission — see the note beside the field.
+  const mayEditPhone = can('employee.editPersonal');
+  const [phone, setPhone] = useState('');
+  const savePhone = useUpdateEmployeePersonal(subjectId);
 
   // The HR half of the form — the same cached employee record the table row already fetched.
   const employeeId = profile?.employeeId ?? subjectId;
@@ -147,10 +148,35 @@ export const DriverFormDialog = ({
     return found === undefined ? null : localized(found.name, locale);
   };
 
+  // The phone box follows the record: it fills when the dialog opens and refills if the record
+  // arrives after it, which is the ordinary case on a row whose employee is still being fetched.
+  const storedPhone = employee?.personal.contact.primaryPhone ?? '';
+  useEffect(() => {
+    if (open) setPhone(storedPhone);
+  }, [open, storedPhone]);
+
   const complete = form.licenseNumber.trim() !== '' && form.licenseExpiresAt !== '';
 
+  /**
+   * Send the phone to HR, and only if it CHANGED.
+   *
+   * Version-checked like every HR write, and skipped entirely when untouched — an unchanged value
+   * re-sent is an audit entry saying somebody edited a number they did not.
+   */
+  const persistPhone = async (): Promise<void> => {
+    if (!mayEditPhone || employee === undefined) return;
+    const next = phone.trim();
+    if (next === storedPhone) return;
+    // ONLY the field that changed. `contact` is a partial on the HR schema, so echoing the whole
+    // object back would put this form's idea of an email and a preferred channel into a write it
+    // has no business making — and would overwrite them with whatever it happened to have read.
+    await savePhone.mutateAsync({
+      contact: { primaryPhone: next },
+      version: employee.version,
+    });
+  };
+
   const submit = async (): Promise<void> => {
-    const area = form.area.trim() === '' ? null : form.area.trim();
     // `''` in the form means «nobody has chosen one», and it must reach the server as `null` —
     // both to CLEAR a grade that was set by mistake and because an empty string is not an id.
     const ref = (value: string): string | null => (value === '' ? null : value);
@@ -163,11 +189,10 @@ export const DriverFormDialog = ({
         employeeId: subjectId,
         licenseNumber: form.licenseNumber.trim(),
         licenseExpiresAt: new Date(form.licenseExpiresAt),
-        jobId: ref(form.jobId),
         specializationId: ref(form.specializationId),
         licenseTypeId: ref(form.licenseTypeId),
-        area,
       });
+      await persistPhone();
       toast.success(t('fleet.drivers.recorded'));
       onClose();
       return;
@@ -177,14 +202,16 @@ export const DriverFormDialog = ({
       body: {
         licenseNumber: form.licenseNumber.trim(),
         licenseExpiresAt: new Date(form.licenseExpiresAt),
-        jobId: ref(form.jobId),
+        // `jobId` and `area` are NOT sent. This form no longer shows them, and a field a form
+        // does not show must not be written by it — sending `null` would silently clear whatever
+        // somebody set through the screen that still owns them.
         specializationId: ref(form.specializationId),
         licenseTypeId: ref(form.licenseTypeId),
-        area,
         isActive: form.isActive,
         version: profile.version,
       },
     });
+    await persistPhone();
     toast.success(t('fleet.drivers.updated'));
     onClose();
   };
@@ -230,15 +257,6 @@ export const DriverFormDialog = ({
               DISPLAYS — one `useFleetCatalog` cache entry per kind, read by all three — so a value
               an admin adds is offered here the moment it exists, and the form can never offer a
               vocabulary the filter bar does not have. */}
-          <Field label={t('fleet.drivers.fields.job')}>
-            <CatalogSelect
-              kind="driverJob"
-              value={form.jobId}
-              onChange={(id) => setForm((prev) => ({ ...prev, jobId: id }))}
-              allLabel={t('fleet.drivers.noJob')}
-              ariaLabel={t('fleet.drivers.fields.job')}
-            />
-          </Field>
           <Field label={t('fleet.drivers.fields.specialization')}>
             <CatalogSelect
               kind="driverSpecialization"
@@ -255,12 +273,6 @@ export const DriverFormDialog = ({
               onChange={(id) => setForm((prev) => ({ ...prev, licenseTypeId: id }))}
               allLabel={t('fleet.drivers.noLicenseType')}
               ariaLabel={t('fleet.drivers.fields.licenseType')}
-            />
-          </Field>
-          <Field label={t('fleet.drivers.fields.area')}>
-            <Input
-              value={form.area}
-              onChange={(e) => setForm((prev) => ({ ...prev, area: e.target.value }))}
             />
           </Field>
         </div>
@@ -313,10 +325,31 @@ export const DriverFormDialog = ({
                 label={t('fleet.drivers.columns.driver')}
                 value={employee?.personal.fullNameAr ?? null}
               />
-              <ReadOnlyFact
-                label={t('fleet.drivers.columns.phone')}
-                value={employee?.personal.contact.primaryPhone ?? null}
-              />
+              {/* THE ONE HR FACT THIS FORM WRITES. It is still HR's field — the write goes to
+                  HR's own `PATCH /hr/employees/:id/personal` behind `employee.editPersonal`, so
+                  the value, its validation and its audit entry all stay where they belong. Fleet
+                  is only the screen the change is made ON, which is the whole ask: a driver's
+                  number is corrected by whoever is looking at the driver.
+
+                  Without the grant it stays exactly as it was — a read-only fact with the link
+                  out to the screen that can change it. */}
+              {mayEditPhone ? (
+                <Field label={t('fleet.drivers.columns.phone')}>
+                  <Input
+                    data-driver-phone
+                    aria-label={t('fleet.drivers.columns.phone')}
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    dir="ltr"
+                    inputMode="tel"
+                  />
+                </Field>
+              ) : (
+                <ReadOnlyFact
+                  label={t('fleet.drivers.columns.phone')}
+                  value={employee?.personal.contact.primaryPhone ?? null}
+                />
+              )}
               <ReadOnlyFact
                 label={t('fleet.drivers.columns.address')}
                 value={address === null ? null : [address.line1, address.city].join('، ')}

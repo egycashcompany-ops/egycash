@@ -51,12 +51,14 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'culprit',
+  'culpritBy',
   'from',
   'status',
   'to',
@@ -76,6 +78,9 @@ export const AccidentsPage = (): JSX.Element => {
 
   const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
   const culprit = sp.get('culprit') ?? '';
+  // WHICH drivers, exactly — where the name box above is a guess that matches anyone sharing a
+  // first name, and is the only way to find a third party.
+  const culpritBy = splitVehicleCodeList(sp.get('culpritBy') ?? '');
   const status = sp.get('status') ?? '';
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
@@ -117,6 +122,7 @@ export const AccidentsPage = (): JSX.Element => {
     () => ({
       vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
       culprit: culprit || undefined,
+      culpritEmployeeId: culpritBy.length === 0 ? undefined : culpritBy.join(','),
       status: status || undefined,
       from: from || undefined,
       to: to || undefined,
@@ -138,9 +144,14 @@ export const AccidentsPage = (): JSX.Element => {
   const clearFilters = (): void =>
     // ONE update, all six keys. The code search and the vehicle pick go together — leaving either
     // behind would hand back a "cleared" bar that is still filtering.
-    patch({ vehicleCodes: null, culprit: null, status: null, from: null, to: null });
+    patch({ vehicleCodes: null, culprit: null, culpritBy: null, status: null, from: null, to: null });
   const hasFilters =
-    vehicleCodes.length > 0 || culprit !== '' || status !== '' || from !== '' || to !== '';
+    vehicleCodes.length > 0 ||
+    culprit !== '' ||
+    culpritBy.length > 0 ||
+    status !== '' ||
+    from !== '' ||
+    to !== '';
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
@@ -421,6 +432,18 @@ export const AccidentsPage = (): JSX.Element => {
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
+          {/* WHICH DRIVERS, by name or code, from the registry — several at once. The box beside it
+              still searches the written name, and has to: a third party is not on any roster, and
+              «سائق الطرف الآخر» is the commonest thing this column says. */}
+          <div className="min-w-[11rem] flex-1">
+            <RegistryDriverPicker
+              value={culpritBy}
+              onChange={(next) => patch({ culpritBy: next.length === 0 ? null : next.join(',') })}
+              multiple
+              fullWidth
+              className="w-full"
+            />
+          </div>
           <div className="min-w-[11rem] flex-1">
             <SearchInput
               value={culprit}

@@ -1334,6 +1334,8 @@ export interface FleetAccidentDto {
   vehicleId: string;
   occurredAt: string;
   culprit: string;
+  /** The DRIVER at fault, when it was one of ours. `null` for a third party. */
+  culpritEmployeeId: string | null;
   statement: string;
   companyCost: number;
   amountCollected: number;
@@ -1348,7 +1350,24 @@ export interface FleetAccidentDto {
 const accidentCore = {
   vehicleId: objectId(),
   occurredAt: z.coerce.date(),
+  /**
+   * WHO was at fault, written down.
+   *
+   * Still a name, and still required: an accident is not always one of ours — a third party, an
+   * unknown car, «سائق الطرف الآخر» — and a record that could only name an employee could not be
+   * filed for the commonest kind of accident there is.
+   */
   culprit: z.string().trim().min(1).max(200),
+  /**
+   * …and WHICH DRIVER, when it was one of ours.
+   *
+   * Beside the name rather than instead of it. The name is what the board, the export and the
+   * print-out have always shown and is the historical fact — a driver renamed next year did not
+   * change who caused this accident. The id is what makes «show me everything سائق X caused» a
+   * question the server can answer exactly, instead of a substring search that matches two people
+   * who share a first name.
+   */
+  culpritEmployeeId: objectId().nullish(),
   statement: z.string().trim().min(1).max(2000),
   companyCost: egp(),
   amountCollected: egp(),
@@ -1400,8 +1419,10 @@ const accidentFilters = {
    * @deprecated Superseded by `vehicleCodes`, which is exact. Still honoured for saved links.
    */
   code: z.string().trim().min(1).max(50).optional(),
-  /** Part of the at-fault name, matched case-insensitively. */
+  /** Part of the at-fault name, matched case-insensitively — the only way to find a third party. */
   culprit: z.string().trim().min(1).max(200).optional(),
+  /** The drivers asked about, ORed — exact, where the name search is a guess. */
+  culpritEmployeeId: listQuery(objectId()),
   status: FleetAccidentStatusSchema.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
@@ -1617,14 +1638,15 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    */
   amount: z.coerce.number().min(0).optional(),
   /**
-   * One KIND of violation — «سرعة», «حزام», «رسوم قضائية» — by its catalog id.
+   * WHICH KINDS of violation — «سرعة», «حزام», «رسوم قضائية» — by catalog id, ORed.
    *
-   * The screen has offered this filter since the board was split in two, and every use of it
-   * answered 400: the query schema is `.strict()` and never carried the key, so the bar's own
-   * dropdown emptied the board it was meant to narrow. Same shape and same reason as
-   * `driverEmployeeId` above.
+   * A LIST, like `driverEmployeeId` above and for the same reason: a clerk reconciling a stack
+   * asks «speeding and seatbelt», not one kind at a time, and a single-value filter made them
+   * look twice and add the answers up by hand.
+   *
+   * A single id still parses, as a one-item list, so every saved link keeps working.
    */
-  violationTypeId: objectId().optional(),
+  violationTypeId: listQuery(objectId()),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;

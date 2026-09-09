@@ -222,6 +222,9 @@ describe('a dry run', () => {
     expect(gold?.documentsNamingAnEmployee).toBe(1);
     expect(report.untouched.map((u) => u.collection)).toEqual([
       'atm_maintenances',
+      // An accident is a record about the VEHICLE and the money, with the driver named on it —
+      // so it is kept, and the report has to say it holds a person's id.
+      'fleet_accidents',
       'fleet_maintenance_visits',
       'fleet_odometer_logs',
       'fleet_violations',
@@ -347,7 +350,7 @@ describe('the recruitment pipeline', () => {
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
     // The other seven are still off limits.
-    expect(report.untouched).toHaveLength(7);
+    expect(report.untouched).toHaveLength(8);
   }, 240_000);
 });
 

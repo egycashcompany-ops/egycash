@@ -73,6 +73,22 @@ const COMPANY_TYPES = [
   catalogItem(CT_COURT, 'رسوم قضائية', 'company'),
   catalogItem(CT_PARK, 'الانتظار في الممنوع', 'company'),
 ];
+/**
+ * The palette's own order, as `violation-type-colour` declares it. Written out here so a test can
+ * say WHICH colour each position gets — the rule is «the Nth type gets the Nth hue», and only a
+ * test that names them can tell that apart from «they happened not to collide».
+ */
+const PALETTE_ORDER = [
+  'sky',
+  'amber',
+  'emerald',
+  'violet',
+  'rose',
+  'cyan',
+  'orange',
+  'indigo',
+] as const;
+
 const DRIVER_TYPES = [
   catalogItem(DT_SPEED, 'سرعة', 'driver'),
   catalogItem(DT_BELT, 'حزام', 'driver'),
@@ -494,6 +510,86 @@ describe('the eight reported defects, as rules the markup carries', () => {
         `data-filter-field="${label}"`,
       );
     }
+  });
+
+  it('every violation type wears a DIFFERENT colour, on the counter and on the card', () => {
+    // «كل مخالفة بباك جراوند مختلف». Two things had to be true and neither was: the counters were
+    // handed their colour as a `className`, where the control's own `bg-white` beat it, so they
+    // rendered plain; and the colour came from a HASH, which gave two of the four seeded types the
+    // same slot out of eight.
+    const markup = page();
+    // `class` is emitted BEFORE the data attribute, so the counter is found by its hook and its
+    // class list read backwards from there.
+    const counters = [...markup.matchAll(/class="([^"]*)"[^>]*data-driver-count="/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(counters.length, 'a counter per type').toBeGreaterThanOrEqual(2);
+    const hues = counters.map((c) => c.match(/bg-(\w+)-100/)?.[1] ?? '');
+    expect(new Set(hues).size, `distinct hues: ${hues.join(',')}`).toBe(counters.length);
+    // The colour follows the type's POSITION in the catalog, which is what makes «all different»
+    // a promise rather than luck. Distinctness alone does not prove it: two types out of eight
+    // slots rarely collide under a hash either, and the real board's four DID.
+    expect(hues, 'the palette, in catalog order').toEqual(PALETTE_ORDER.slice(0, hues.length));
+    // And the tone is the ONLY background on the control: handed in as a `className` it landed
+    // beside the input's own `bg-white` and lost, which is why every counter rendered plain.
+    for (const c of counters) {
+      expect(c, 'no white underneath the tone').not.toContain('bg-white');
+    }
+  });
+
+  it('the type filter takes SEVERAL kinds, not one', () => {
+    // A clerk reconciling a stack asks «speeding and seatbelt». A `<select>` cannot be asked that,
+    // which is why this is a listbox trigger and why the URL key carries a list.
+    const markup = page();
+    const at = markup.indexOf(`data-filter-field="${translate('ar', 'fleet.violations.fields.type')}"`);
+    expect(at, 'the type filter is named').toBeGreaterThan(-1);
+    const field = markup.slice(at, at + 700);
+    expect(field, 'a multi-select, not a dropdown').toContain('aria-haspopup="listbox"');
+    expect(field, 'and not a single-value select').not.toContain('<select');
+  });
+
+  it('no filter is NAMED with an instruction', () => {
+    // «اختر نوع المخالفة» is what to DO, not what the column asks about. A bar's labels are nouns;
+    // the imperative belongs inside the control, as its empty row.
+    const markup = page();
+    const labels = [...markup.matchAll(/data-filter-field="([^"]+)"/g)].map((m) => m[1]);
+    expect(labels.length, 'both bars rendered their fields').toBeGreaterThanOrEqual(6);
+    for (const label of labels) {
+      expect(label, `${label} names a thing, not an action`).not.toMatch(/^اختر/);
+    }
+  });
+
+  it('the company entry row WRAPS rather than scrolling sideways', () => {
+    // At half the screen the row needs 825px and has 556. `overflow-x-auto` put «العدد» and the
+    // total behind a scrollbar inside a form, where nothing said they were there.
+    const markup = page();
+    const at = markup.indexOf('data-company-form="year"');
+    const container = markup.slice(Math.max(0, at - 900), at);
+    expect(container, 'the entry row wraps').toContain('flex-wrap');
+    expect(container, 'and does not scroll').not.toContain('overflow-x-auto');
+  });
+
+  it('the driver entry PICKS its car, exactly as the company entry does', () => {
+    const markup = page();
+    expect(markup, 'no typed code box').not.toContain('data-driver-form="code"');
+    expect(markup).toContain('data-vehicle-select="driver-entry"');
+  });
+
+  it('a fully settled (vehicle, year) group is marked as such', () => {
+    // The tick changed colour on its own, which told a reader nothing until they had found it.
+    // Settled is a state of the GROUP, and the drivers' board beside this one has tinted its
+    // settled rows green since it was built.
+    const settled = page({ rollup: [rollupRow({ rowCount: 3, collectedCount: 3 })] });
+    const at = settled.indexOf('data-rollup-settled="true"');
+    expect(at, 'the group says it is settled').toBeGreaterThan(-1);
+    // The tint must be on THAT tag. `bg-emerald-50` is also how the drivers' board marks its own
+    // settled rows, and both halves render into this one string — so an unscoped `toContain`
+    // passes on the neighbour's green and proves nothing about this group.
+    const tag = settled.slice(settled.lastIndexOf('<', at), settled.indexOf('>', at));
+    expect(tag, 'and reads as settled').toContain('bg-emerald-50');
+
+    const partial = page({ rollup: [rollupRow({ rowCount: 3, collectedCount: 1 })] });
+    expect(partial, 'some is not all').not.toContain('data-rollup-settled="true"');
   });
 
   it('every filter field takes an EQUAL share of its row', () => {

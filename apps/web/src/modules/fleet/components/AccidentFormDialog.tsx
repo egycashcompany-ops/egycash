@@ -14,6 +14,8 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useCreateAccident, useUpdateAccident } from '../api/fleet-queries';
 import { VehicleSelect } from './VehicleSelect';
+import { RegistryDriverPicker } from './RegistryDriverPicker';
+import { useEmployeeRecords } from './EmployeeName';
 
 export const AccidentFormDialog = ({
   open,
@@ -32,6 +34,10 @@ export const AccidentFormDialog = ({
   const [vehicleId, setVehicleId] = useState('');
   const [occurredAt, setOccurredAt] = useState('');
   const [culprit, setCulprit] = useState('');
+  // WHICH driver, when it was one of ours. Kept beside the NAME rather than replacing it: an
+  // accident is often a third party's, and a form that could only name an employee could not
+  // record the commonest kind there is.
+  const [culpritEmployeeId, setCulpritEmployeeId] = useState('');
   const [statement, setStatement] = useState('');
   const [companyCost, setCompanyCost] = useState('');
   const [amountCollected, setAmountCollected] = useState('');
@@ -42,12 +48,19 @@ export const AccidentFormDialog = ({
     setVehicleId(accident?.vehicleId ?? initialVehicleId);
     setOccurredAt(accident === null ? '' : accident.occurredAt.slice(0, 10));
     setCulprit(accident?.culprit ?? '');
+    setCulpritEmployeeId(accident?.culpritEmployeeId ?? '');
     setStatement(accident?.statement ?? '');
     setCompanyCost(accident === null ? '' : String(accident.companyCost));
     setAmountCollected(accident === null ? '' : String(accident.amountCollected));
     setPaidAmount(accident === null ? '' : String(accident.paidAmount));
     setNotes(accident?.notes ?? '');
   }, [open, accident, initialVehicleId]);
+
+  // The picked driver's NAME, from the same cached records every other fleet screen reads.
+  const records = useEmployeeRecords(culpritEmployeeId === '' ? [] : [culpritEmployeeId]);
+  const drivers = new Map(
+    [...records.entries()].map(([id, employee]) => [id, employee.personal.fullNameAr]),
+  );
 
   const create = useCreateAccident();
   const update = useUpdateAccident();
@@ -73,6 +86,7 @@ export const AccidentFormDialog = ({
         vehicleId,
         occurredAt: new Date(occurredAt),
         culprit: culprit.trim(),
+        culpritEmployeeId: culpritEmployeeId === '' ? null : culpritEmployeeId,
         statement: statement.trim(),
         ...amounts,
         notes: notes.trim() === '' ? null : notes.trim(),
@@ -84,6 +98,10 @@ export const AccidentFormDialog = ({
       if (vehicleId !== accident.vehicleId) body.vehicleId = vehicleId;
       if (occurredAt !== accident.occurredAt.slice(0, 10)) body.occurredAt = new Date(occurredAt);
       if (culprit.trim() !== accident.culprit) body.culprit = culprit.trim();
+      // `null` when it was cleared or typed over — «it turned out to be a third party» has to be
+      // an edit somebody can make, so untouched and cleared are kept apart.
+      const nextCulpritId = culpritEmployeeId === '' ? null : culpritEmployeeId;
+      if (nextCulpritId !== accident.culpritEmployeeId) body.culpritEmployeeId = nextCulpritId;
       if (statement.trim() !== accident.statement) body.statement = statement.trim();
       if (amounts.companyCost !== accident.companyCost) body.companyCost = amounts.companyCost;
       if (amounts.amountCollected !== accident.amountCollected)
@@ -123,9 +141,39 @@ export const AccidentFormDialog = ({
             <Input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
           </Field>
         </div>
-        <Field label={t('fleet.accidents.fields.culprit')} required>
-          <Input value={culprit} onChange={(e) => setCulprit(e.target.value)} />
-        </Field>
+        {/* PICK the driver, or NAME a third party. Picking one writes their name into the field
+            below as well, because the name is what the board, the export and the print-out have
+            always shown and is the historical fact — a driver renamed next year did not change
+            who caused this accident. The id is what makes «every accident سائق X caused» an exact
+            question instead of a substring search that matches two people sharing a first name. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={t('fleet.accidents.fields.culpritDriver')}>
+            <RegistryDriverPicker
+              value={culpritEmployeeId === '' ? [] : [culpritEmployeeId]}
+              onChange={(next) => {
+                const picked = next[0] ?? '';
+                setCulpritEmployeeId(picked);
+                if (picked === '') return;
+                const chosen = drivers.get(picked);
+                if (chosen !== undefined) setCulprit(chosen);
+              }}
+              fullWidth
+              className="w-full"
+            />
+          </Field>
+          <Field label={t('fleet.accidents.fields.culprit')} required>
+            <Input
+              data-accident-culprit
+              value={culprit}
+              onChange={(e) => {
+                setCulprit(e.target.value);
+                // Typed over by hand — this is no longer the driver that was picked, and saying
+                // it still is would file an accident against somebody the name does not name.
+                setCulpritEmployeeId('');
+              }}
+            />
+          </Field>
+        </div>
         <Field label={t('fleet.accidents.fields.statement')} required>
           <Textarea rows={3} value={statement} onChange={(e) => setStatement(e.target.value)} />
         </Field>

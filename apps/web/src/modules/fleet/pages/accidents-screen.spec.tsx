@@ -35,6 +35,7 @@ const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
   id: 'a-1',
   vehicleId: 'v-1',
   occurredAt: '2026-03-09T00:00:00.000Z',
+  culpritEmployeeId: null,
   culprit: 'محمود محمد فهمى محمود',
   statement: 'فنوس شمال امامى',
   companyCost: 0,

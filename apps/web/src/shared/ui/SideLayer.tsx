@@ -22,6 +22,7 @@ export const SideLayer = ({
   description,
   side = 'left',
   width = 'md',
+  modal = true,
   dismissOnOutsideClick = true,
   footer,
   children,
@@ -32,7 +33,25 @@ export const SideLayer = ({
   description?: string;
   /** Which screen edge it hugs. Fixed, not locale-derived — see the note above. */
   side?: 'left' | 'right';
-  width?: 'md' | 'lg';
+  /**
+   * `half` is the width of the OTHER half of a two-panel screen — the violations board is two
+   * ledgers side by side, and a layer opened from one of them is meant to sit over the other, not
+   * to be a narrow strip laid across both.
+   */
+  width?: 'md' | 'lg' | 'half';
+  /**
+   * Whether the page behind is BLOCKED while this is open.
+   *
+   * True — the default — is a dialog: a scrim over everything, body scroll locked, nothing behind
+   * reachable. Right for a layer that IS the task.
+   *
+   * False makes it a side panel. The page behind stays live and scrollable, and this is not a
+   * nicety: the drivers' entry layer opens the moment the first counter is typed into, and while
+   * it was modal it covered the very counters a reader needs to add «five عكس AND two حزام» — the
+   * bar's whole point. Non-modal, the counters stay where they are and keep taking numbers while
+   * the cards for the ones already counted fill in beside them.
+   */
+  modal?: boolean;
   /**
    * Whether clicking the page behind closes this.
    *
@@ -54,30 +73,46 @@ export const SideLayer = ({
       if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
+    // Only a MODAL layer freezes the page. A side panel that locked the scroll would leave the
+    // board behind it visible, clickable and impossible to scroll — the worst of both.
     const previous = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    if (modal) document.body.style.overflow = 'hidden';
     return () => {
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previous;
+      if (modal) document.body.style.overflow = previous;
     };
-  }, [open, onClose]);
+  }, [open, onClose, modal]);
 
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-50 flex" role="presentation">
+    <div
+      className={cn('fixed inset-0 z-50 flex', !modal && 'pointer-events-none')}
+      role="presentation"
+    >
       {/* Lighter than a modal's scrim on purpose: the board behind this is meant to stay readable,
-          which is the reason to use a layer rather than a dialog at all. */}
-      <div className="absolute inset-0 bg-slate-900/30" aria-hidden />
+          which is the reason to use a layer rather than a dialog at all. A NON-modal layer draws
+          no scrim at all — a scrim that does not catch clicks only dims a board the reader is
+          being invited to keep using. */}
+      {modal && <div className="absolute inset-0 bg-slate-900/30" aria-hidden />}
       <div
         ref={panelRef}
         role="dialog"
-        aria-modal="true"
+        aria-modal={modal}
         aria-label={title}
         data-side-layer={side}
         className={cn(
           'relative flex h-full flex-col bg-white shadow-2xl dark:bg-slate-900',
-          width === 'lg' ? 'w-full max-w-2xl' : 'w-full max-w-lg',
+          // The panel itself is always live, even when its container is not.
+          !modal && 'pointer-events-auto',
+          width === 'half'
+            ? // Half the VIEWPORT from the breakpoint the board itself splits at (`2xl`), so the
+              // layer covers the sibling panel rather than lying across both. Below that the two
+              // ledgers are stacked full-width and there is no «other half» to match.
+              'w-full max-w-xl 2xl:w-1/2 2xl:max-w-none'
+            : width === 'lg'
+              ? 'w-full max-w-2xl'
+              : 'w-full max-w-lg',
           // PHYSICAL, not logical. `me-auto`/`ms-auto` are margin-inline, which flip with the
           // writing direction — in this RTL app they put `side="left"` on the RIGHT and vice
           // versa, which is exactly what shipped. `side` names a screen edge, so it has to be

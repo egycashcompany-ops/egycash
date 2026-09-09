@@ -18,6 +18,18 @@ const controlBase =
   'w-full rounded-lg border bg-white py-2 text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
 
 /**
+ * The same shape MINUS its own colours, for a control that is TINTED by its subject.
+ *
+ * A caller cannot tint one by passing `bg-sky-100`: `cn` is a plain joiner, so the base `bg-white`
+ * lands too and Tailwind's emission order decides — which is why the drivers' counters carried a
+ * colour per violation type in the source and rendered plain white on screen. A control that
+ * takes a `tone` drops its own background, text and border colour so exactly ONE of each reaches
+ * the element, the same reason `textScale` and `density` are props rather than classes.
+ */
+const controlBaseUntinted =
+  'w-full rounded-lg border py-2 placeholder:text-slate-400 disabled:cursor-not-allowed';
+
+/**
  * How big a control's own text is. `compact` is the default and what every control has always
  * been; `comfortable` is one step up, for a screen that is read for an hour rather than glanced
  * at, and it exists as a PROP rather than a class a caller passes in.
@@ -97,19 +109,32 @@ export const Field = ({
 );
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  /**
+   * Colour this control by its SUBJECT — a full `bg-… text-… border-…` set.
+   *
+   * Given one, the control drops its own colours so the caller's are the only ones on the
+   * element. See `controlBaseUntinted` for why passing them as `className` cannot work.
+   */
+  tone?: string;
   error?: boolean;
   textScale?: ControlTextScale;
   density?: ControlDensity;
 }
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ error = false, textScale = 'compact', density = 'default', className, ...rest }, ref) => (
+  (
+    { error = false, textScale = 'compact', density = 'default', tone, className, ...rest },
+    ref,
+  ) => (
     <input
       ref={ref}
       className={cn(
-        controlBase,
+        tone === undefined ? controlBase : controlBaseUntinted,
         controlGutter(density),
         controlText(textScale),
-        ring(error),
+        // A tinted control brings its own border colour with the rest of the tone; only an ERROR
+        // overrides it, because a field that will not save has to say so louder than its subject.
+        tone === undefined || error ? ring(error) : '',
+        tone,
         className,
       )}
       {...rest}

@@ -7377,6 +7377,45 @@ describe('the violations board, as the screen actually asks it', () => {
     expect(data<{ violationTypeId: string }[]>(all)).toHaveLength(3);
   });
 
+  it('filters by SEVERAL violation types at once, and one still parses', async () => {
+    // A clerk reconciling a stack asks «speeding AND seatbelt», not one kind at a time. The filter
+    // took a single id, so that question had to be asked twice and the two answers added by hand.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const phone = await typeIdByName('تليفون');
+    const speed = await typeIdByName('سرعة');
+    const belt = await typeIdByName('حزام');
+    const employeeId = await mkEmployee();
+    for (const violationTypeId of [phone, speed, belt]) {
+      const res = await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2027-08-05',
+          driverEmployeeId: employeeId,
+          violationTypeId,
+          amount: 300,
+        });
+      expect(res.status).toBe(201);
+    }
+
+    const two = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, violationTypeId: `${speed},${belt}`, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(two.status, 'a list of types is a valid question now').toBe(200);
+    const kinds = data<{ violationTypeId: string }[]>(two).map((r) => r.violationTypeId);
+    expect(kinds.slice().sort()).toEqual([speed, belt].sort());
+
+    // ONE id still parses, as a one-item list, so every saved link keeps working.
+    const one = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, violationTypeId: phone, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(one.status).toBe(200);
+    expect(data<{ violationTypeId: string }[]>(one).map((r) => r.violationTypeId)).toEqual([phone]);
+  });
+
   it('settles a WHOLE (vehicle, year) with one tick, and the rollup reports how much is settled',
     async () => {
       const v = data<FleetVehicleDto>(await createVehicle(adminToken));

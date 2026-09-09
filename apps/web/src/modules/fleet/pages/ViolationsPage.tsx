@@ -55,7 +55,8 @@ export const ViolationsPage = (): JSX.Element => {
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
   const driverAmount = sp.get('damt') ?? '';
-  const dtype = sp.get('dtype') ?? '';
+  // A LIST, like `driver` above: «speeding AND seatbelt» is one question, not two.
+  const typeIds = splitVehicleCodeList(sp.get('dtype') ?? '');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
 
@@ -123,7 +124,7 @@ export const ViolationsPage = (): JSX.Element => {
         <DriverViolationsPanel
           vehicleCodes={driverCodes}
           driverEmployeeIds={driverEmployeeIds}
-          typeId={dtype}
+          typeIds={typeIds}
           amount={driverAmount}
           page={page}
           pageSize={pageSize}
@@ -131,7 +132,7 @@ export const ViolationsPage = (): JSX.Element => {
             patch({ dcodes: next.length === 0 ? null : next.join(',') })
           }
           onDriverChange={(next) => patch({ driver: next })}
-          onTypeChange={(next) => patch({ dtype: next })}
+          onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
           onAmountChange={(next) => patch({ damt: next })}
           onClear={() => patch({ dcodes: null, driver: null, dtype: null, damt: null })}
           onPageChange={(next) => patch({ page: String(next) }, false)}

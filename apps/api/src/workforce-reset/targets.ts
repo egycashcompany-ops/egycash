@@ -174,6 +174,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   // pointing at a deleted employee, which is the truthful state.
   hr_job_offers: { action: 'keep', why: 'recruitment history — an offer that was really made' },
   fleet_violations: { action: 'keep', why: 'a traffic violation is a legal record' },
+  fleet_accidents: {
+    action: 'keep',
+    why: 'an accident is a record about the VEHICLE and the money — the driver is named on it',
+  },
   fleet_odometer_logs: { action: 'keep', why: 'a reading taken from a vehicle at a moment' },
   fleet_maintenance_visits: { action: 'keep', why: 'a workshop visit is a record about the vehicle' },
   atm_maintenances: { action: 'keep', why: 'a maintenance visit is a record about the machine' },

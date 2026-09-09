@@ -327,11 +327,15 @@ export const CompanyViolationsPanel = ({
                 onChange={setFormVehicleId}
                 anyStatus
                 fullWidth
+                testId="company-entry"
                 ariaLabel={t('fleet.odometer.columns.vehicle')}
               />
             </div>
           </Field>
-          <Field label={t('fleet.violations.pickType')} required>
+          {/* The NOUN above, the imperative inside. `Field` already renders its label and a
+              required marker, so labelling it «اختر نوع المخالفة» printed the same sentence twice,
+              stacked — once as the field's name and once as the empty row of its own select. */}
+          <Field label={t('fleet.violations.fields.type')} required>
             {/* company side ONLY — the server refuses a driver type here, so offering one would
                 be offering a 422 the reader can do nothing about.
 
@@ -437,7 +441,7 @@ export const CompanyViolationsPanel = ({
             <span
               data-company-count
               role="status"
-              title={t('fleet.violations.matchedCount')}
+              title={t('fleet.violations.matchedGroups')}
               className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
               {formatNumber(rows.length, locale)}

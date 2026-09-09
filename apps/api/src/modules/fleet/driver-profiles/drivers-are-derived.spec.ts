@@ -75,13 +75,28 @@ describe('who the drivers registry is made of', () => {
         'listDrivers(',
       );
     }
-    // And the seam both boards ask about a DAY asks the seat first, so a driver with nothing
+    // And the seam both boards ask about a DAY asks the seat FIRST, so a driver with nothing
     // recorded is available rather than «noProfile».
     const seam = code('src/modules/fleet/availability/driver-availability.ts');
-    expect(seam).toContain('drivingSeatEmployeeIds');
+    // The GUARD, not the import: `toContain('drivingSeatEmployeeIds')` alone was satisfied by the
+    // import line, so making the check conditional would have left this green.
+    expect(seam, 'a non-driver is refused by the seat').toContain(
+      "if (!seats.has(employeeId)) return { available: false, reason: 'notADriver' };",
+    );
     expect(seam, 'an absent profile is silence, not a verdict').toContain(
       'profile !== null && !profile.isActive',
     );
+    // Every surface that asks «is this person a driver» asks it the one way. A second definition
+    // is a second place for the answer to drift.
+    for (const surface of [
+      'src/modules/fleet/availability/unavailability.service.ts',
+      'src/modules/fleet/violations/violation.service.ts',
+    ]) {
+      expect(code(surface), `${surface} asks the seat`).toContain('drivingSeatEmployeeIds()');
+      expect(code(surface), `${surface} does not ask the profiles collection instead`).not.toContain(
+        'findDriverByEmployeeId',
+      );
+    }
   });
 
   it('crosses the FR-11 line through the seam, never by importing HR', () => {

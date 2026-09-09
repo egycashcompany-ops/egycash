@@ -75,3 +75,65 @@ export const driverAvailabilityOn = async (
 
   return { available: true, reason: null };
 };
+
+/**
+ * The same four checks, asked ONCE for a whole board.
+ *
+ * `driverAvailabilityOn` above is the seam for a HANDFUL of drivers — a save validating the rows
+ * it was handed. A board asks about every driver in the fleet, and asking one at a time cost four
+ * round trips per driver (profile, directory, overlay, setting) issued serially inside a `for`
+ * loop: three hundred drivers meant twelve hundred sequential queries, and the setting was
+ * re-resolved for every one of them.
+ *
+ * Widening the pool from «enrolled drivers» to «the whole registry» made that cost grow with the
+ * fix, which is why this exists. Same verdicts, same precedence, four queries plus one leave read
+ * per driver only where the flag is on and the driver is otherwise free.
+ */
+export const driverAvailabilityForRoster = async (
+  roster: readonly { employeeId: string; status: string }[],
+  date: Date,
+): Promise<Map<string, DriverAvailability>> => {
+  const out = new Map<string, DriverAvailability>();
+  if (roster.length === 0) return out;
+  const ids = roster.map((employee) => employee.employeeId);
+
+  const [profiles, covered, useHrLeave] = await Promise.all([
+    fleetDriverProfileRepository.findForEmployeesSystem(ids),
+    fleetUnavailabilityRepository.coveredOn(ids, date),
+    settingsService.resolve<boolean>(FleetSettingKeys.UseHrLeave, { userId: null, branchId: null }),
+  ]);
+  const byEmployee = new Map(profiles.map((doc) => [String(doc.employeeId), doc]));
+
+  // Everyone still standing after the cheap checks — only these cost an HR leave read, and only
+  // when the setting is on.
+  const stillFree: string[] = [];
+  for (const employee of roster) {
+    const profile = byEmployee.get(employee.employeeId) ?? null;
+    if (profile !== null && !profile.isActive) {
+      out.set(employee.employeeId, { available: false, reason: 'profileInactive' });
+    } else if (!WORKING_STATUSES.has(employee.status)) {
+      out.set(employee.employeeId, { available: false, reason: 'notEmployed' });
+    } else if (covered.has(employee.employeeId)) {
+      out.set(employee.employeeId, { available: false, reason: 'fleetUnavailability' });
+    } else {
+      stillFree.push(employee.employeeId);
+    }
+  }
+
+  if (!useHrLeave) {
+    for (const employeeId of stillFree) out.set(employeeId, { available: true, reason: null });
+    return out;
+  }
+  // `isOnApprovedLeave` is one employee at a time on the platform seam; asked concurrently rather
+  // than in series, and only for the drivers a leave could still change the answer for.
+  const onLeave = await Promise.all(stillFree.map((id) => isOnApprovedLeave(id, date)));
+  stillFree.forEach((employeeId, index) => {
+    out.set(
+      employeeId,
+      onLeave[index] === true
+        ? { available: false, reason: 'hrLeave' }
+        : { available: true, reason: null },
+    );
+  });
+  return out;
+};

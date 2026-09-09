@@ -13,16 +13,27 @@
 // end. The daily board narrows this by the availability seam (التمامات + HR leave) and the
 // standing board does not, and that is the only difference between the two pools.
 import { jobTitleRepository } from '../../../platform/organization/job-titles/job-title.repository';
-import { listDirectoryEmployeesByJobTitles } from '../../../platform/directory';
+import {
+  listDirectoryEmployeesByJobTitles,
+  type DirectoryEmployee,
+} from '../../../platform/directory';
 
 /**
- * Every employee in a driving seat, by employee id, in the directory's own order.
+ * Everyone in a driving seat, as the DIRECTORY answered — id, code, name, status, placement.
+ *
+ * The whole record, not just the id: `DirectoryEmployee` already carries the employment status
+ * the availability seam needs, so a caller that has this list has no reason to ask the directory
+ * again one driver at a time. That per-driver re-read is exactly what made the board's cost grow
+ * with the pool when the pool grew.
  *
  * Empty when no job title carries the flag — the honest answer, and the one the registry screen
  * names out loud rather than showing as an empty fleet.
  */
-export const drivingSeatEmployeeIds = async (): Promise<string[]> => {
+export const drivingSeatRoster = async (): Promise<DirectoryEmployee[]> => {
   const jobTitleIds = await jobTitleRepository.idsRequiringDrivingTestSystem();
-  const roster = await listDirectoryEmployeesByJobTitles(jobTitleIds);
-  return roster.map((employee) => employee.employeeId);
+  return listDirectoryEmployeesByJobTitles(jobTitleIds);
 };
+
+/** Just the ids, for a caller that only asks «is this person a driver». */
+export const drivingSeatEmployeeIds = async (): Promise<string[]> =>
+  (await drivingSeatRoster()).map((employee) => employee.employeeId);

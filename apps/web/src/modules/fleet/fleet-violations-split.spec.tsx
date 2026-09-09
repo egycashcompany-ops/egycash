@@ -442,6 +442,79 @@ const countBadgeText = (markup: string, attribute: string): string => {
     .trim();
 };
 
+describe('the eight reported defects, as rules the markup carries', () => {
+  // These were verified by hand in Chromium, which is the only place a click, a computed width or
+  // a drawer's real screen edge can be checked. What is checkable HERE is the decision each fix
+  // encodes — and none of it was, so every one of these could be reverted with the whole suite
+  // green. Each assertion below fails against the code as it stood before its fix.
+
+  it('the car is CHOSEN from the registry, never typed', () => {
+    // A typed code is a code the statement may not carry; the screen already holds the list.
+    const markup = page();
+    expect(markup, 'no free-text code box').not.toContain('data-company-form="code"');
+    // By its own hook, not by `aria-label`: «كود السيارة» is the Arabic for both
+    // `fleet.vehicles.fields.code` and `fleet.odometer.columns.vehicle`, so the filter bar's car
+    // picker answers to the same name and an assertion on it proves nothing about this control.
+    const at = markup.indexOf('data-vehicle-select="company-entry"');
+    expect(at, 'the entry row picks the car from the registry').toBeGreaterThan(-1);
+    expect(markup.slice(markup.lastIndexOf('<', at), at), 'and it is a select').toMatch(
+      /^<select\b/,
+    );
+  });
+
+  it('«اختر نوع المخالفة» cannot be chosen back to nothing', () => {
+    // A statement row has no «no type» value — the server refuses it — so the empty option exists
+    // to name the control, not to be an answer.
+    const markup = page();
+    const at = markup.indexOf('اختر نوع المخالفة');
+    expect(at, 'the type control is rendered').toBeGreaterThan(-1);
+    const select = markup.slice(at, markup.indexOf('</select>', at));
+    expect(select, 'the empty option is disabled').toMatch(/<option value=""[^>]*disabled/);
+  });
+
+  it('the year is sized by a WRAPPER, because `cn` cannot merge widths', () => {
+    // `cn` is a plain joiner: a `w-28` handed to `Select` sits beside its own `w-full` and loses,
+    // which is why the year measured 86px however large a class it was given.
+    const markup = page();
+    const at = markup.indexOf('data-company-form="year"');
+    expect(at).toBeGreaterThan(-1);
+    // The wrapper is the element immediately before the select in the markup.
+    const before = markup.slice(Math.max(0, at - 400), at);
+    expect(before, 'a sized wrapper, not a class on the control').toMatch(/class="w-\d+"/);
+  });
+
+  it('both filter bars write each filter NAME above its control', () => {
+    const markup = page();
+    for (const label of [
+      translate('ar', 'fleet.vehicles.fields.code'),
+      translate('ar', 'fleet.violations.fields.driver'),
+      translate('ar', 'fleet.violations.fields.amount'),
+    ]) {
+      expect(markup, `${label} is named above its control`).toContain(
+        `data-filter-field="${label}"`,
+      );
+    }
+  });
+
+  it('every filter field takes an EQUAL share of its row', () => {
+    // `flex-1 basis-0` is the whole of «الفلاتر مش مظبوطة»: without it the share of the row a
+    // control gets depends on how long its own words happen to be.
+    const markup = page();
+    const fields = markup.split('data-filter-field=').slice(1);
+    expect(fields.length, 'both bars rendered their fields').toBeGreaterThanOrEqual(6);
+    for (const field of fields) {
+      expect(field.slice(0, 200)).toContain('flex-1 basis-0');
+    }
+  });
+
+  // NOT asserted here: that the entry cards list is not a scroll box of its own (an `overflow`
+  // ancestor clips the absolutely-positioned driver dropdown inside each card). The cards only
+  // exist after a counter is pressed, and this suite has no DOM to press one with — a static
+  // render contains no `<ul>` at all, so any assertion about it would pass whatever the class
+  // list said. It is checked in Chromium instead, against COMPUTED styles and the panel's real
+  // painted height, which is stronger than a string match would have been either way.
+});
+
 describe('the company board groups by (vehicle, year)', () => {
   const MIXED = [
     rollupRow({ code: '168', year: 2026 }),

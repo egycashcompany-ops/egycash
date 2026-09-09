@@ -490,7 +490,13 @@ export const DriverViolationsPanel = ({
             </p>
           ) : (
             <>
-              <ul className="max-h-72 space-y-2 overflow-y-auto">
+              {/* NO scroll box of its own. This was `max-h-72 overflow-y-auto`, a 288px window
+                  nested inside the drawer's own scroller — and an `overflow` ancestor CLIPS the
+                  absolutely-positioned dropdown of the driver picker inside each card, so the
+                  list of names opened into a sliver and the control was unusable for the one
+                  thing it is there for. The drawer already scrolls; one scrollbar is also the
+                  better read. */}
+              <ul className="space-y-2">
                 {cards.map((card) => (
                   <li
                     key={card.key}

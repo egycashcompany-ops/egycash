@@ -25,8 +25,14 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
-import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
-import { driverAvailabilityOn } from '../availability/driver-availability';
+import {
+  drivingSeatEmployeeIds,
+  drivingSeatRoster,
+} from '../driver-profiles/driving-seat-roster';
+import {
+  driverAvailabilityForRoster,
+  driverAvailabilityOn,
+} from '../availability/driver-availability';
 import { fleetFixedCrewRepository } from '../fixed-roster/fixed-crew.repository';
 import { fleetDutyAssignmentRepository } from './duty-assignment.repository';
 import { type FleetDutyAssignmentDoc } from './duty-assignment.model';
@@ -124,17 +130,24 @@ class FleetRosterService {
     const availableOrder: string[] = [];
     const unavailableDrivers: FleetRosterDayDto['unavailableDrivers'] = [];
     // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
-    // has recorded a profile for. See `drivingSeatEmployeeIds`. The set is read ONCE and handed to
-    // the seam, which would otherwise re-read the org chart for every driver in it.
-    const drivingSeats = await drivingSeatEmployeeIds();
-    const seatSet = new Set(drivingSeats);
-    for (const employeeId of drivingSeats) {
-      const availability = await driverAvailabilityOn(employeeId, day, seatSet);
-      if (availability.available) {
-        freeToday.add(employeeId);
-        availableOrder.push(employeeId);
+    // has recorded a profile for. See `drivingSeatRoster`.
+    //
+    // ONE batched pass, not one seam call per driver: the roster already carries each driver's
+    // employment status, and the profiles, the التمامات overlay and the leave setting are each a
+    // single query for the whole board. Asked one driver at a time this was four serial round
+    // trips per driver — a cost that grew with the pool the moment the pool became the registry.
+    const seatRoster = await drivingSeatRoster();
+    const verdicts = await driverAvailabilityForRoster(seatRoster, day);
+    for (const employee of seatRoster) {
+      const availability = verdicts.get(employee.employeeId);
+      if (availability?.available === true) {
+        freeToday.add(employee.employeeId);
+        availableOrder.push(employee.employeeId);
       } else {
-        unavailableDrivers.push({ employeeId, reason: availability.reason ?? 'unavailable' });
+        unavailableDrivers.push({
+          employeeId: employee.employeeId,
+          reason: availability?.reason ?? 'unavailable',
+        });
       }
     }
 

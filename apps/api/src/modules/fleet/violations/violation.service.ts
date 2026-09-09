@@ -27,7 +27,7 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
-import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
+import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetGrievanceRepository, fleetViolationRepository } from './violation.repository';
 import { assembleRollups } from './violation-rollup';
 import { type FleetGrievanceDoc, type FleetViolationDoc } from './violation.model';
@@ -118,16 +118,42 @@ class FleetViolationService {
     return doc;
   }
 
-  /** The per-event driver row — needs a driver PROFILE to exist (active or not: history counts). */
+  /**
+   * Every one of these employees holds a driving seat — one read for however many are asked about.
+   *
+   * `fieldOf` names the request field for whichever id failed, so a batch can point at the row.
+   */
+  private async assertDrivers(
+    employeeIds: readonly string[],
+    fieldOf: (employeeId: string) => string,
+  ): Promise<void> {
+    const wanted = [...new Set(employeeIds)];
+    if (wanted.length === 0) return;
+    const seats = new Set(await drivingSeatEmployeeIds());
+    for (const employeeId of wanted) {
+      if (!seats.has(employeeId)) {
+        throw invalid(fieldOf(employeeId), 'this employee does not hold a driving seat (FR-11)');
+      }
+    }
+  }
+
+  /**
+   * The per-event driver row — the subject must BE a driver.
+   *
+   * Being a driver is holding a DRIVING SEAT, which is what the registry, both roster boards and
+   * التمامات each mean by it. This used to demand a `fleet_driver_profile` instead, and that made
+   * violations the one surface in Fleet with its own definition: a driver the roster could put on
+   * a car all week could not be fined for anything they did in it, and the picker had to be
+   * narrowed to the enrolled subset to stop offering people the server would refuse — which is
+   * how that control inherited a 100-row cap. One definition ends both.
+   *
+   * A fine is HISTORY, so nothing here asks whether a profile is switched on: an old fine against
+   * a driver since deactivated is still a fine that happened.
+   */
   async recordDriver(input: RecordFleetDriverViolation, by: string): Promise<FleetViolationDoc> {
     await fleetVehicleRepository.getById(input.vehicleId);
     await this.assertViolationType(input.violationTypeId, 'driver');
-    const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(
-      input.driverEmployeeId,
-    );
-    if (profile === null) {
-      throw invalid('driverEmployeeId', 'no driver profile exists for this employee (FR-11)');
-    }
+    await this.assertDrivers([input.driverEmployeeId], () => 'driverEmployeeId');
     const doc = await fleetViolationRepository.create(
       {
         kind: 'driver',
@@ -163,18 +189,14 @@ class FleetViolationService {
     by: string,
   ): Promise<FleetViolationDoc[]> {
     await fleetVehicleRepository.getById(input.vehicleId);
-    for (const [index, row] of input.rows.entries()) {
-      await this.assertViolationType(row.violationTypeId, 'driver');
-      const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(
-        row.driverEmployeeId,
-      );
-      if (profile === null) {
-        throw invalid(
-          `rows.${index}.driverEmployeeId`,
-          'no driver profile exists for this employee (FR-11)',
-        );
-      }
-    }
+    for (const row of input.rows) await this.assertViolationType(row.violationTypeId, 'driver');
+    // One seat read for the whole batch, and the field path names the ROW that failed so the form
+    // can point at the card the reader has to fix.
+    await this.assertDrivers(
+      input.rows.map((row) => row.driverEmployeeId),
+      (employeeId) =>
+        `rows.${input.rows.findIndex((row) => row.driverEmployeeId === employeeId)}.driverEmployeeId`,
+    );
 
     const docs = await unitOfWork(async (session) =>
       fleetViolationRepository.createMany(
@@ -315,12 +337,7 @@ class FleetViolationService {
       if (input.date !== undefined) set.date = input.date;
       if (input.amount !== undefined) set.amount = input.amount;
       if (input.driverEmployeeId !== undefined) {
-        const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(
-          input.driverEmployeeId,
-        );
-        if (profile === null) {
-          throw invalid('driverEmployeeId', 'no driver profile exists for this employee (FR-11)');
-        }
+        await this.assertDrivers([input.driverEmployeeId], () => 'driverEmployeeId');
         set.driverEmployeeId = new Types.ObjectId(input.driverEmployeeId);
       }
     }

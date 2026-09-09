@@ -184,6 +184,27 @@ const mkEmployee = async (
 };
 
 /**
+ * An employee in a NON-driving seat — the control case for every «must be a driver» rule.
+ *
+ * Fleet's definition of a driver is the org chart's: a job title carrying `requiresDrivingTest`.
+ * `mkEmployee()` above puts people in exactly such a seat, so a test that wants somebody who is
+ * NOT a driver has to make the seat too.
+ */
+const mkOfficeEmployee = async (fullNameAr = 'موظف مكتب'): Promise<string> => {
+  const title = await request(app)
+    .post('/api/v1/platform/job-titles')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      code: `NON-DRV-${vehicleCounter++}`,
+      name: { ar: 'موظف مكتب', en: 'Office staff' },
+      jobGrade: 'G1',
+      requiresDrivingTest: false,
+    });
+  expect(title.status).toBe(201);
+  return mkEmployee({ fullNameAr, jobTitleId: (title.body as { data: { id: string } }).data.id });
+};
+
+/**
  * One driver employee, made on first use and reused.
  *
  * Check-in and check-out both REQUIRE a driver now, so every maintenance call needs one. The
@@ -953,16 +974,20 @@ describe('HR’s list answers about SEVERAL seats at once', () => {
 });
 
 describe('driver unavailability — التمامات (FL-3)', () => {
-  it('requires a driver profile, records with an event, and answers coversDate', async () => {
-    const employeeId = await mkEmployee();
-
-    const noProfile = await request(app)
+  it('requires a driving SEAT, records with an event, and answers coversDate', async () => {
+    // An office seat is not a driver, and التمامات is about the driver pool.
+    const clerk = await mkOfficeEmployee();
+    const notADriver = await request(app)
       .post('/api/v1/fleet/availability')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ employeeId, from: '2026-09-01', to: '2026-09-03', reason: 'مأمورية' });
-    expect(noProfile.status).toBe(400);
+      .send({ employeeId: clerk, from: '2026-09-01', to: '2026-09-03', reason: 'مأمورية' });
+    expect(notADriver.status).toBe(400);
 
-    await mkDriverProfile(employeeId);
+    // But a driver with NO fleet profile IS recordable — and has to be. The roster pools the whole
+    // registry now, so if this still demanded a profile there would be no way to mark the newly
+    // pooled drivers unavailable: they would read as available every day, for ever, and the
+    // overlay the daily board is built on would be dead for most of the fleet.
+    const employeeId = await mkEmployee();
     const created = await request(app)
       .post('/api/v1/fleet/availability')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -1001,18 +1026,7 @@ describe('driver unavailability — التمامات (FL-3)', () => {
   it('the availability seam layers the SEAT, the overlay, and HR leave (owner Q1)', async () => {
     // The first layer is the ORG CHART, not the fleet profile. Somebody in an office seat is not
     // a driver however the rest of the day looks…
-    const office = await request(app)
-      .post('/api/v1/platform/job-titles')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        code: `NON-DRV-SEAM-${vehicleCounter++}`,
-        name: { ar: 'موظف مكتب', en: 'Office staff' },
-        jobGrade: 'G1',
-        requiresDrivingTest: false,
-      });
-    expect(office.status).toBe(201);
-    const officeTitleId = (office.body as { data: { id: string } }).data.id;
-    const clerk = await mkEmployee({ jobTitleId: officeTitleId });
+    const clerk = await mkOfficeEmployee();
     expect(await driverAvailabilityOn(clerk, new Date('2026-09-02'))).toEqual({
       available: false,
       reason: 'notADriver',
@@ -3176,29 +3190,100 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     expect(dayRow(data<BoardDto>(await getBoard(date)), v.id)?.driver1EmployeeId).toBe(unenrolled);
   });
 
-  it('leaves a non-driving seat out of the pool entirely', async () => {
-    // The pool widened to the registry, not to the payroll: an office clerk is not a driver, and
-    // is not in either column — not «available», and not «unavailable with a reason» either.
-    const office = await request(app)
-      .post('/api/v1/platform/job-titles')
+  it('the board’s batched verdicts agree with the seam, driver for driver', async () => {
+    // The board asks about every driver in the fleet, so it resolves availability in ONE batched
+    // pass instead of calling the seam once per driver — four serial round trips each, which is a
+    // cost that grew the moment the pool became the whole registry.
+    //
+    // A second implementation of a rule is a second place for it to be wrong, so this pins the two
+    // together: same drivers, same day, same verdict and same reason, whichever way it is asked.
+    const date = '2026-11-25';
+    const day = new Date(`${date}T00:00:00.000Z`);
+
+    const free = await mkEmployee({ fullNameAr: 'سائق متاح' });
+    const unenrolled = await mkEmployee({ fullNameAr: 'سائق غير مسجل' });
+    const onTamam = await mkEmployee({ fullNameAr: 'سائق فى تمام' });
+    const switchedOff = await mkEmployee({ fullNameAr: 'سائق موقوف' });
+    await mkDriverProfile(free);
+    const off = await mkDriverProfile(switchedOff);
+    await request(app)
+      .patch(`/api/v1/fleet/drivers/${off.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        code: `NON-DRV-POOL-${vehicleCounter++}`,
-        name: { ar: 'موظف مكتب', en: 'Office staff' },
-        jobGrade: 'G1',
-        requiresDrivingTest: false,
+      .send({ isActive: false, version: off.version });
+    await request(app)
+      .post('/api/v1/fleet/availability')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: onTamam, from: date, to: date, reason: 'مأمورية' });
+
+    const board = data<
+      BoardDto & {
+        availableDrivers: { employeeId: string }[];
+        unavailableDrivers: { employeeId: string; reason: string }[];
+      }
+    >(await getBoard(date));
+    const fromBoard = new Map<string, { available: boolean; reason: string | null }>();
+    for (const d of board.availableDrivers) {
+      fromBoard.set(d.employeeId, { available: true, reason: null });
+    }
+    for (const d of board.unavailableDrivers) {
+      fromBoard.set(d.employeeId, { available: false, reason: d.reason });
+    }
+
+    for (const employeeId of [free, unenrolled, onTamam, switchedOff]) {
+      const seam = await driverAvailabilityOn(employeeId, day);
+      expect(fromBoard.get(employeeId), `the board placed ${employeeId}`).toEqual({
+        available: seam.available,
+        reason: seam.reason,
       });
-    const clerk = await mkEmployee({
-      jobTitleId: (office.body as { data: { id: string } }).data.id,
+    }
+
+    // And the verdicts are the ones the rules actually call for — an equivalence test alone would
+    // pass if BOTH sides were wrong in the same way.
+    expect(fromBoard.get(free)).toEqual({ available: true, reason: null });
+    expect(fromBoard.get(unenrolled), 'nothing recorded is not a verdict').toEqual({
+      available: true,
+      reason: null,
     });
+    expect(fromBoard.get(onTamam)).toEqual({ available: false, reason: 'fleetUnavailability' });
+    expect(fromBoard.get(switchedOff)).toEqual({ available: false, reason: 'profileInactive' });
+  });
+
+  it('pools by the SEAT — the clerk beside the driver is left out, the driver is not', async () => {
+    // The pool widened to the registry, NOT to the payroll. Two people made the same way, in the
+    // same branch, the same minute — one in a driving seat and one in an office seat — and the
+    // board must contain exactly one of them.
+    //
+    // Both halves are load-bearing. `not.toContain(clerk)` alone would pass against the old
+    // profile-based pool too (the clerk has no profile either, so the old code excluded them for
+    // an unrelated reason) AND against a pool that had broken entirely and returned nothing;
+    // pairing it with the driver is what makes the assertion about the SEAT.
+    const clerk = await mkOfficeEmployee('موظف مكتب بجوار سائق');
+    const driver = await mkEmployee({ fullNameAr: 'سائق بجوار موظف مكتب' });
     const board = data<
       BoardDto & {
         availableDrivers: { employeeId: string }[];
         unavailableDrivers: { employeeId: string }[];
       }
     >(await getBoard('2026-11-22'));
-    expect(board.availableDrivers.map((d) => d.employeeId)).not.toContain(clerk);
-    expect(board.unavailableDrivers.map((d) => d.employeeId)).not.toContain(clerk);
+    const pooled = [
+      ...board.availableDrivers.map((d) => d.employeeId),
+      ...board.unavailableDrivers.map((d) => d.employeeId),
+    ];
+    expect(pooled, 'the driving seat is pooled').toContain(driver);
+    expect(pooled, 'the office seat is not — in neither column').not.toContain(clerk);
+  });
+
+  it('refuses to PLAN somebody who holds no driving seat', async () => {
+    // The save's own seat check, which the board's batched pass does not exercise: `plan()` asks
+    // the single-driver seam with the seat set it read for the payload. Without this, making that
+    // check conditional would leave the whole suite green while the roster accepted a clerk.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const clerk = await mkOfficeEmployee('موظف مكتب لا يُخطط');
+    const refused = await savePlan('2026-11-23', [
+      { vehicleId: v.id, driver1EmployeeId: clerk, driver2EmployeeId: null },
+    ]);
+    expect(refused.status, 'an office seat cannot be put on a car').toBe(409);
+    expect(JSON.stringify(refused.body)).toContain('notADriver');
   });
 
   it('plans a day (upsert per vehicle+date), publishes both events, and a re-save is a no-op', async () => {
@@ -3608,18 +3693,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
   });
 
   it('the standing board still refuses somebody who holds no driving seat', async () => {
-    const office = await request(app)
-      .post('/api/v1/platform/job-titles')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({
-        code: `NON-DRV-FIXED-${vehicleCounter++}`,
-        name: { ar: 'موظف مكتب', en: 'Office staff' },
-        jobGrade: 'G1',
-        requiresDrivingTest: false,
-      });
-    const clerk = await mkEmployee({
-      jobTitleId: (office.body as { data: { id: string } }).data.id,
-    });
+    const clerk = await mkOfficeEmployee();
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const refused = await saveFixedCrew([
       { vehicleId: v.id, driver1EmployeeId: clerk, driver2EmployeeId: null },
@@ -4602,14 +4676,28 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
       'seatable while the profile is live',
     ).toBe(200);
 
-    await request(app)
+    const patched = await request(app)
       .patch(`/api/v1/fleet/drivers/${profile.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ isActive: false, version: profile.version });
+    expect(patched.status, 'the profile really was switched off').toBe(200);
+
+    const second = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: employeeId }]);
+    expect(second.status, 'and refused once it is switched off').toBe(400);
+    // For the RIGHT reason. This save re-seats the SAME driver on the SAME vehicle, so a 400
+    // could just as easily be a version conflict or the exclusivity rule — and a refusal test
+    // that only reads the status code passes just as well when the refusal has nothing to do
+    // with what the test claims to be about.
+    expect(JSON.stringify(second.body)).toContain('fleet profile is inactive');
+
+    // AND the board stops OFFERING them. The pool and the gate are one question: a driver the
+    // save refuses must not be in the list the board hands the dispatcher, or this is the
+    // offers-what-it-refuses defect again, one screen over.
+    const pool = data<{ drivers: { employeeId: string }[] }>(await getCrews());
     expect(
-      (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: employeeId }])).status,
-      'and refused once it is switched off',
-    ).toBe(400);
+      pool.drivers.map((d) => d.employeeId),
+      'a switched-off driver is not offered',
+    ).not.toContain(employeeId);
   });
 
   // ── DESTRUCTIVE-BEHAVIOUR AUDIT: what a save actually mutates ─────────────
@@ -5469,24 +5557,29 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
     expect(wrongShape.status).toBe(400);
   });
 
-  it('a driver violation needs a driver profile, records as entered, and edits stay in shape', async () => {
+  it('a driver violation needs a driving SEAT, records as entered, and edits stay in shape', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const typeId6 = await violationTypeIdByName('حزام');
-    const employeeId = await mkEmployee();
 
-    const noProfile = await request(app)
+    // Not a driver: no seat, no fine.
+    const clerk = await mkOfficeEmployee();
+    const notADriver = await request(app)
       .post('/api/v1/fleet/violations/driver')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         vehicleId: v.id,
         date: '2026-05-10',
-        driverEmployeeId: employeeId,
+        driverEmployeeId: clerk,
         violationTypeId: typeId6,
         amount: 250,
       });
-    expect(noProfile.status).toBe(400);
+    expect(notADriver.status).toBe(400);
 
-    await mkDriverProfile(employeeId);
+    // A driver the roster can put on a car all week can be fined for what they do in it, enrolled
+    // or not. This used to demand a fleet profile, which made violations the one surface in the
+    // module with its own idea of who a driver is — and forced its picker to offer a capped,
+    // enrolled-only subset to avoid offering people the server would refuse.
+    const employeeId = await mkEmployee();
     const res = await request(app)
       .post('/api/v1/fleet/violations/driver')
       .set('Authorization', `Bearer ${adminToken}`)

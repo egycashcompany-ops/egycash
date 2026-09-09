@@ -723,8 +723,16 @@ describe('a filter never reaches what is SAVED', () => {
 // ── 4. the two driver lists ─────────────────────────────────────────────────
 
 describe('the driver lists', () => {
-  it('stands them side by side, not one under the other', () => {
-    expect(SOURCE, 'two columns').toContain('grid min-w-0 grid-cols-2');
+  it('stands them side by side, not one under the other — and both reach the screen’s end', () => {
+    expect(SOURCE, 'two columns').toContain('grid-cols-2');
+    // Each column is a flex COLUMN whose list takes the height the title and search box do not,
+    // inside a panel bounded by the viewport. It was a fixed `max-h-[26rem]` — 416px of list with
+    // its own scrollbar, leaving a quarter of the page blank underneath on a real fleet.
+    expect(SOURCE, 'bounded by the screen, not by a chosen number').toContain(
+      'max-h-[calc(100vh-2rem)]',
+    );
+    expect(SOURCE, 'the list takes what is left').toContain('min-h-0 flex-1 space-y-1');
+    expect(SOURCE, 'and no fixed box remains').not.toContain('max-h-[26rem]');
     const markup = render();
     expect(markup).toContain(t('fleet.roster.availableTitle'));
     expect(markup).toContain(t('fleet.roster.unavailableTitle'));

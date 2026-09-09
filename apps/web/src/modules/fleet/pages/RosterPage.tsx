@@ -930,12 +930,12 @@ export const RosterPage = (): JSX.Element => {
         {/* The two lists SIDE BY SIDE, each its own column. Stacked, the unavailable list pushed
             the available one off the fold on a real fleet, and the board lost the height to a
             section nobody drags from. */}
-        <div className="grid min-w-0 grid-cols-2 gap-3">
-          <div className="min-w-0 rounded-lg border border-emerald-200 bg-emerald-50 shadow-card dark:border-emerald-900 dark:bg-emerald-950/30">
+        <div className="sticky top-4 grid max-h-[calc(100vh-2rem)] min-w-0 grid-cols-2 gap-3">
+          <div className="flex min-h-0 min-w-0 flex-col rounded-lg border border-emerald-200 bg-emerald-50 shadow-card dark:border-emerald-900 dark:bg-emerald-950/30">
             {/* Compact header: the count beside the title and the search directly under it, so
                 the panel spends its height on drivers rather than on chrome — the same block the
                 Fixed Roster's driver panel uses. */}
-            <div className="space-y-2 px-3 pb-2 pt-3">
+            <div className="shrink-0 space-y-2 px-3 pb-2 pt-3">
               <h2 className="text-center text-sm font-semibold text-emerald-900 dark:text-emerald-200">
                 {t('fleet.roster.availableTitle')}
                 <span className="ms-1 font-normal text-emerald-700 dark:text-emerald-400">
@@ -949,6 +949,14 @@ export const RosterPage = (): JSX.Element => {
                 className="w-full"
               />
             </div>
+            {/* THE POOL RUNS TO THE BOTTOM OF THE SCREEN. It was a fixed `max-h-[26rem]` box —
+                416px of list with a scrollbar inside it, and on a 950px screen that left a
+                quarter of the page blank underneath while the reader paged through a fleet of
+                three hundred. The height is now whatever is left: the panel is bounded by the
+                VIEWPORT (`sticky` + `max-h-[calc(100vh-2rem)]`) and the list takes the room the
+                title and the search box do not, so it fits any screen without a number picked
+                for one of them. `sticky` also keeps it in view while the board beside it
+                scrolls, which is the point of a pool you drag FROM. */}
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : shownAvailable.length === 0 ? (
@@ -958,7 +966,7 @@ export const RosterPage = (): JSX.Element => {
                 {t('fleet.fixedRoster.driverSearchEmpty')}
               </p>
             ) : (
-              <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
+              <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
                 {shownAvailable.map((driver) => (
                   <li key={driver.employeeId}>
                     <div
@@ -987,8 +995,8 @@ export const RosterPage = (): JSX.Element => {
           {/* Visible for transparency, and NOT draggable: `draggable` is never set here, so the
               browser will not start a drag from one of these rows at all. The server refuses the
               assignment too (FR-6) — this is what stops the reader attempting it. */}
-          <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 shadow-card dark:border-slate-800 dark:bg-slate-900/60">
-            <div className="space-y-2 px-3 pb-2 pt-3">
+          <div className="flex min-h-0 min-w-0 flex-col rounded-lg border border-slate-200 bg-slate-50 shadow-card dark:border-slate-800 dark:bg-slate-900/60">
+            <div className="shrink-0 space-y-2 px-3 pb-2 pt-3">
               <h2 className="text-center text-sm font-semibold text-slate-700 dark:text-slate-200">
                 {t('fleet.roster.unavailableTitle')}
                 <span className="ms-1 font-normal text-slate-500 dark:text-slate-400">
@@ -1009,7 +1017,7 @@ export const RosterPage = (): JSX.Element => {
                 {t('fleet.fixedRoster.driverSearchEmpty')}
               </p>
             ) : (
-              <ul className="max-h-[26rem] space-y-1 overflow-y-auto px-2 pb-2">
+              <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-2">
                 {shownUnavailable.map((driver) => (
                   <li
                     key={driver.employeeId}

@@ -4,7 +4,13 @@
 // to and, where the header repeats, which occurrence: `جهة الحصول` and `تاريخ المؤهل` each appear
 // twice, and the first of each pair is the primary qualification (see `columns.ts` for what goes
 // wrong when that is read by header alone).
-import ExcelJS from 'exceljs';
+// NO STATIC IMPORT OF ExcelJS — it is loaded with `await import` at the point of use below.
+//
+// ExcelJS is CommonJS and touches `require('crypto')` as it loads. Importing it at module scope put
+// it in the API's and the worker's boot path — this file is reached from the HR router — and both
+// crash-looped on startup the first time that shipped. A spreadsheet reader has no business being
+// able to stop the platform from starting: nothing loads it until somebody actually uploads a
+// workbook, and if it ever fails to load, one endpoint fails instead of the whole API.
 import { at, bindColumns, fingerprint, type ColumnRef } from './columns';
 import { date, flag, nationalId, num, phone, text, year } from './cell';
 import {
@@ -104,6 +110,7 @@ export type WorkbookSource = { path: string } | { buffer: Buffer };
 export const readWorkbook = async (
   source: string | WorkbookSource,
 ): Promise<WorkbookRead | { errors: SheetReadError[] }> => {
+  const { default: ExcelJS } = await import('exceljs');
   const wb = new ExcelJS.Workbook();
   const from: WorkbookSource = typeof source === 'string' ? { path: source } : source;
   if ('path' in from) await wb.xlsx.readFile(from.path);

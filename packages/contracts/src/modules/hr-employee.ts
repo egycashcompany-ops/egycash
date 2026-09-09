@@ -904,3 +904,69 @@ export interface EmployeeSettlementDto {
   /** The amounts that need a policy decision before they can exist. Never zero — absent. */
   unresolved: SettlementUnresolvedItem[];
 }
+
+// ── Workforce roster import (the upload button on the employees list) ────────
+
+/** One field an uploaded roster would change, in the reader's terms rather than the schema's. */
+export interface RosterFieldChangeDto {
+  /** The dotted document path, e.g. `personal.contact.primaryPhone`. Labelled by the UI. */
+  path: string;
+  /** What the record reads as now, and what the file would make it. Never a whole address. */
+  from: string;
+  to: string;
+}
+
+export interface RosterPersonUpdateDto {
+  code: string;
+  name: string;
+  changes: RosterFieldChangeDto[];
+}
+
+/** A change the file asks for that the importer refuses, with the reason a reader can act on. */
+export interface RosterRefusedChangeDto {
+  code: string;
+  path: string;
+  from: string;
+  to: string;
+  reason: string;
+}
+
+export interface RosterRejectedRowDto {
+  sheet: string;
+  rowNumber: number;
+  code: string | null;
+  reason: string;
+}
+
+/**
+ * What an upload did, or — in preview — what it would do.
+ *
+ * `mode` is the load-bearing field: a `preview` report has touched nothing, and the screen must not
+ * report success from one. The counts are always the whole truth; `updates` and `additions` are a
+ * bounded sample of the detail, because 2,600 rows of it is not a preview anybody reads.
+ */
+export interface RosterImportReportDto {
+  mode: 'preview' | 'applied';
+  counts: {
+    rowsRead: number;
+    people: number;
+    /** People newly added to the registry. */
+    imported: number;
+    /** Already present and identical to the file — read, compared, left alone. */
+    unchanged: number;
+    /** Already present and differing — the file's values were written. */
+    updated: number;
+    failed: number;
+    branchesCreated: number;
+    departmentsCreated: number;
+    sectionsCreated: number;
+    jobTitlesCreated: number;
+  };
+  /** Whether `updates`/`additions` were cut short — the counts above still hold. */
+  sampled: boolean;
+  updates: RosterPersonUpdateDto[];
+  additions: { code: string; name: string }[];
+  refused: RosterRefusedChangeDto[];
+  rejected: RosterRejectedRowDto[];
+  orgProblems: { what: string; detail: string }[];
+}

@@ -9,6 +9,39 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **An Import roster button on `/employees`, next to Direct Registration.** Upload the IT workbook
+  and the registry catches up with it: people who are not in the system are added, people whose
+  details changed are updated, and people the file has nothing to say about are left alone.
+
+  **A blank cell never erases anything.** This is the rule the whole feature turns on. HR fills gaps
+  in the system by hand — an address typed into a profile, a second phone somebody phoned in — and a
+  monthly roster export carries none of that back. If a blank cell overwrote, every upload would
+  quietly undo a month of that work while reporting no changes at all. Only a cell with a value in
+  it can change anything.
+
+  **It previews before it writes.** The file is read twice: once with nothing written, reporting
+  exactly what it would do — who is added, who changes, which field, from what to what — and again
+  for real only after somebody has read that and agreed. The same file object is posted both times,
+  so the run cannot differ from the preview that was approved, and nothing is held on the server
+  between them.
+
+  Placement moves with the file: a person the roster now puts in another site, department, section
+  or job title is moved there, written to both the employment block and the top-level fields the
+  list reads. One thing is deliberately refused — a National ID that DISAGREES with the one on file.
+  It is filled in when the record has none, but never overwritten: the registry derives birth date,
+  gender and place of birth from it and treats it as the one-person-forever key, and a spreadsheet
+  cell is not enough to re-identify a human being. Those are reported by name so somebody can look.
+
+  Employment history is not rewritten either. A roster names where somebody is today; it does not
+  restate when they were hired or how a spell ended, and replaying it would overwrite a correction
+  HR has since made with the spreadsheet's version of the past.
+
+  `employee.importRoster` is its own permission, not `registerDirect`: one upload adds people,
+  rewrites personal data and moves staff across the whole registry, which is a different amount of
+  authority from onboarding one walk-in hire.
+
 ### Changed
 
 - **A page header shows a title and nothing under it.** Every screen used to explain itself in a

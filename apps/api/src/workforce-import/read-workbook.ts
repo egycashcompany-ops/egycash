@@ -92,11 +92,22 @@ export interface WorkbookRead {
  * Read both sheets. Fails whole rather than partially: a workbook whose columns moved produces an
  * error list, never a half-mapped set of rows.
  */
+/**
+ * The workbook, from a path on disk or from the bytes of an upload.
+ *
+ * Two sources and ONE reader: the CLI hands a path, the employees screen hands the buffer multer
+ * held in memory, and everything after this line is identical. A second parser for the uploaded
+ * case is how the two would drift into disagreeing about the same file.
+ */
+export type WorkbookSource = { path: string } | { buffer: Buffer };
+
 export const readWorkbook = async (
-  path: string,
+  source: string | WorkbookSource,
 ): Promise<WorkbookRead | { errors: SheetReadError[] }> => {
   const wb = new ExcelJS.Workbook();
-  await wb.xlsx.readFile(path);
+  const from: WorkbookSource = typeof source === 'string' ? { path: source } : source;
+  if ('path' in from) await wb.xlsx.readFile(from.path);
+  else await wb.xlsx.load(from.buffer as unknown as ArrayBuffer);
 
   const errors: SheetReadError[] = [];
   const rows: SourceRow[] = [];

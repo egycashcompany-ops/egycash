@@ -2,7 +2,7 @@
 // on leave / suspended); exited employees appear via the explicit view filter (frozen design
 // §8). Search covers employee code, applicant code, and name. Entry points: hire from an
 // accepted offer + Direct Registration (D4).
-import { lazy, Suspense, useMemo } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { EMPLOYEE_STATUSES, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
@@ -16,8 +16,13 @@ import { Button } from '../../../../../shared/ui/Button';
 import { FilterBar } from '../../../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../../../shared/ui/SearchInput';
 import { Select } from '../../../../../shared/ui/form';
-import { PlusIcon } from '../../../../../shared/ui/icons';
+import { PlusIcon, UploadIcon } from '../../../../../shared/ui/icons';
 import { useEmployees } from '../api/employee-queries';
+// Its own chunk: the dialog pulls in the whole report renderer, and nobody who never uploads a
+// roster should pay for it on every visit to the list.
+const RosterImportDialog = lazy(() =>
+  import('../components/RosterImportDialog').then((m) => ({ default: m.RosterImportDialog })),
+);
 import { employeeColumns } from '../lib/employee-columns';
 import {
   departmentsIn,
@@ -75,6 +80,7 @@ export const EmployeesListPage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const canSettle = can('employee.viewCompensation');
+  const [importOpen, setImportOpen] = useState(false);
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
   const placement: PlacementSelection = {
@@ -208,6 +214,18 @@ export const EmployeesListPage = (): JSX.Element => {
         breadcrumbs={[{ label: t('employees.module.title') }]}
         actions={
           <div className="flex items-center gap-2">
+            {/* Next to Direct Registration, because both answer "how do people get into the
+                registry" — one person at a time, or the whole roster at once. */}
+            <Can permission="employee.importRoster">
+              <Button
+                size="sm"
+                variant="secondary"
+                leftIcon={<UploadIcon className="h-4 w-4" />}
+                onClick={() => setImportOpen(true)}
+              >
+                {t('employees.roster.action')}
+              </Button>
+            </Can>
             <Can permission="employee.registerDirect">
               <Button size="sm" variant="secondary" onClick={() => navigate('register')}>
                 {t('employees.actions.registerDirect')}
@@ -345,6 +363,18 @@ export const EmployeesListPage = (): JSX.Element => {
           </>
         )}
       </div>
+
+      {importOpen && (
+        <Suspense fallback={null}>
+          <RosterImportDialog
+            open
+            onClose={() => setImportOpen(false)}
+            // An applied import changes rows this page is showing, so the list is stale the moment
+            // it succeeds — and the row count under the filters with it.
+            onApplied={() => void refetch()}
+          />
+        </Suspense>
+      )}
     </PageContainer>
   );
 };

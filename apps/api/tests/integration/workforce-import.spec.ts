@@ -59,6 +59,8 @@ interface Person {
   hired: Date;
   site: string;
   exit?: { reason: string; date: Date };
+  /** Cells this person's row states differently — how the update tests vary one field at a time. */
+  over?: Record<string, Cell>;
 }
 
 type Cell = string | number | Date | null;
@@ -107,6 +109,7 @@ const personRow = (headers: string[], p: Person): Cell[] =>
       ...(p.exit === undefined
         ? {}
         : { 'سبب الإستبعاد': p.exit.reason, 'تاريخ الإستبعاد': p.exit.date }),
+      ...p.over,
     },
     // The duplicated headers, addressed by INDEX because that is the only way to tell them apart —
     // which is the whole point of the reader binding by occurrence.
@@ -229,12 +232,16 @@ describe('the workforce importer', () => {
     expect(employee?.personal.certifications.join(' ')).toContain('جامعة اسكندرية');
   });
 
-  it('is idempotent — a second run imports nobody twice', async () => {
+  it('is idempotent — a second run over the same file changes nothing', async () => {
     const file = join(dir, 'basic.xlsx');
     const again = await runImport({ file, write: true, actorId: adminId });
     expect(again.counts.imported).toBe(0);
-    expect(again.counts.alreadyPresent).toBe(1);
+    // Not merely "not imported again": read, compared field by field, and found identical. An
+    // update run that reported changes here would be churning the record on every upload.
+    expect(again.counts.unchanged).toBe(1);
+    expect(again.counts.updated).toBe(0);
     expect(again.counts.failed).toBe(0);
+    expect(again.updates).toEqual([]);
   }, 240_000);
 
   /**
@@ -345,5 +352,126 @@ describe('the workforce importer', () => {
     await expect(runImport({ file, write: false, actorId: adminId })).rejects.toThrow(
       /does not have the expected layout/u,
     );
+  }, 240_000);
+});
+
+/**
+ * Re-uploading the roster to bring the registry up to date.
+ *
+ * The property every one of these turns on: THE FILE CAN ONLY ADD OR CORRECT, NEVER ERASE. HR fills
+ * gaps in the system by hand — an address typed into a profile, a second phone somebody phoned in —
+ * and a monthly roster export carries none of that back. If a blank cell overwrote, each upload
+ * would quietly undo a month of that work while reporting nothing.
+ */
+describe('re-uploading the roster updates what changed and nothing else', () => {
+  const nid = nextNationalId();
+  const person = (over?: Record<string, Cell>): Person => ({
+    code: '0100055',
+    nationalId: nid,
+    name: 'سامي فؤاد',
+    hired: new Date('2021-03-01T00:00:00.000Z'),
+    site: 'المهندسين',
+    ...(over === undefined ? {} : { over }),
+  });
+
+  const upload = async (name: string, p: Person, write = true) => {
+    const file = join(dir, name);
+    await writeWorkbook(file, [p], []);
+    return runImport({ file, write, actorId: adminId });
+  };
+
+  beforeAll(async () => {
+    const first = await upload('sync-create.xlsx', person());
+    expect(first.counts.imported).toBe(1);
+  }, 240_000);
+
+  it('updates a phone the file states differently, and says whose and which field', async () => {
+    const report = await upload('sync-phone.xlsx', person({ 'رقم الهاتف': '01099887766' }));
+    expect(report.counts.updated).toBe(1);
+    expect(report.counts.imported).toBe(0);
+    expect(report.updates[0]?.code).toBe('0100055');
+    expect(report.updates[0]?.changes.map((c) => c.path)).toEqual(['personal.contact.primaryPhone']);
+
+    const after = await employeeRepository.findByCodeSystem('0100055');
+    expect(after?.personal.contact.primaryPhone).toBe('01099887766');
+  }, 240_000);
+
+  /** THE ONE THAT MATTERS. Everything else here is in service of it. */
+  it('leaves a field the system holds and the file leaves blank completely alone', async () => {
+    const before = await employeeRepository.findByCodeSystem('0100055');
+    expect(before?.personal.education?.institution).toBe('جامعة القاهره');
+
+    // A file with the education columns emptied — the exact shape of a partial roster export.
+    const report = await upload(
+      'sync-blank.xlsx',
+      person({ 'المؤهل الدراسي': null, 'مؤهلات اخرى': null, 'الرقم التاميني': null }),
+    );
+
+    const after = await employeeRepository.findByCodeSystem('0100055');
+    expect(after?.personal.education?.institution).toBe('جامعة القاهره');
+    expect(after?.personal.education?.graduationYear).toBe(2004);
+    expect(after?.insurance?.insuranceNumber).toBe('17987259');
+    expect(report.counts.updated).toBe(0);
+    expect(report.counts.unchanged).toBe(1);
+  }, 240_000);
+
+  /** The reason the button exists: the file is the roster, so where somebody sits moves with it. */
+  it('moves somebody to the department the file now puts them in', async () => {
+    const report = await upload('sync-move.xlsx', person({ الإدارة: 'الامن', القسم: null }));
+    expect(report.counts.updated).toBe(1);
+    const paths = report.updates[0]?.changes.map((c) => c.path).sort();
+    // Both the employment block and the top-level mirror the list reads — one without the other
+    // and the profile and the list would disagree about where the person works.
+    expect(paths).toContain('employment.departmentId');
+    expect(paths).toContain('departmentId');
+
+    const after = await employeeRepository.findByCodeSystem('0100055');
+    expect(String(after?.departmentId)).toBe(String(after?.employment.departmentId));
+  }, 240_000);
+
+  it('writes nothing at all in preview mode, but reports the same change it would make', async () => {
+    const preview = await upload('sync-preview.xlsx', person({ الديانة: 'مسيحي' }), false);
+    expect(preview.mode).toBe('dry-run');
+    expect(preview.counts.updated).toBe(1);
+    expect(preview.updates[0]?.changes.map((c) => c.path)).toEqual(['personal.religion']);
+
+    const after = await employeeRepository.findByCodeSystem('0100055');
+    expect(after?.personal.religion).not.toBe('مسيحي');
+  }, 240_000);
+
+  /** Re-identifying a human being is not something a spreadsheet cell gets to do silently. */
+  it('refuses a National ID that disagrees with the one on file, and names the person', async () => {
+    const other = nextNationalId();
+    const report = await upload('sync-nid.xlsx', person({ 'الرقم القومى': other }));
+    expect(report.refused.some((r) => r.code === '0100055' && r.path === 'personal.nationalId')).toBe(true);
+
+    const after = await employeeRepository.findByCodeSystem('0100055');
+    expect(after?.personal.nationalId).toBe(nid);
+  }, 240_000);
+
+  it('adds somebody new in the same run that updates everybody else', async () => {
+    const file = join(dir, 'sync-mixed.xlsx');
+    await writeWorkbook(
+      file,
+      [
+        person({ الديانة: 'مسلم' }),
+        { code: '0100056', nationalId: nextNationalId(), name: 'ندى خالد', hired: new Date('2024-01-01T00:00:00.000Z'), site: 'المهندسين' },
+      ],
+      [],
+    );
+    const report = await runImport({ file, write: true, actorId: adminId });
+    expect(report.counts.imported).toBe(1);
+    expect(report.additions.map((a) => a.code)).toEqual(['0100056']);
+    expect(await employeeRepository.findByCodeSystem('0100056')).not.toBeNull();
+  }, 240_000);
+
+  /** Somebody the file has nothing to say about is not in the file's business. */
+  it('leaves an employee who is not in the file untouched', async () => {
+    const before = await employeeRepository.findByCodeSystem('0100004');
+    await upload('sync-absent.xlsx', person());
+    const after = await employeeRepository.findByCodeSystem('0100004');
+    expect(after?.status).toBe(before?.status);
+    expect(after?.personal.contact.primaryPhone).toBe(before?.personal.contact.primaryPhone);
+    expect(String(after?.updatedAt)).toBe(String(before?.updatedAt));
   }, 240_000);
 });

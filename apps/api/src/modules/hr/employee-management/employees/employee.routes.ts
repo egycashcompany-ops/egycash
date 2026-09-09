@@ -3,7 +3,10 @@
 // never imports infrastructure directly (Module Structure §1). Literal paths (`/direct`,
 // `/rehire-check`) are declared before `/:id`. The status endpoint moved to the
 // employee-actions feature (deprecated alias over the engine).
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type RequestHandler, type Response } from 'express';
+import multer from 'multer';
+import { ErrorCodes } from '@ecms/contracts';
+import { AppError } from '../../../../shared/errors';
 import { asyncHandler, validate } from '../../../../platform/web';
 import { authenticate } from '../../../../platform/auth';
 import { authorize } from '../../../../platform/rbac';
@@ -35,6 +38,34 @@ import {
   UpdateEmployeeOfficerSchema,
   UpdateEmployeePersonalSchema,
 } from './employee.validation';
+import { importEmployeeRoster, ROSTER_MAX_MB } from './employee-roster-import';
+
+/**
+ * The workbook, held in memory rather than spooled to disk.
+ *
+ * It is read once, parsed into rows and dropped — writing a file with two thousand people's national
+ * ids onto the server's disk to read it back a line later would leave a copy of the roster lying
+ * around for no gain.
+ */
+const rosterUpload = (): RequestHandler => {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: ROSTER_MAX_MB * 1024 * 1024, files: 1 },
+  }).single('file');
+  return (req: Request, res: Response, next: NextFunction): void => {
+    upload(req, res, (error: unknown) => {
+      if (error === undefined || error === null) {
+        next();
+        return;
+      }
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        next(new AppError(ErrorCodes.VALIDATION_FAILED, 422, `File exceeds the ${ROSTER_MAX_MB} MB cap`));
+        return;
+      }
+      next(error);
+    });
+  };
+};
 
 export const buildEmployeesRouter = (): Router => {
   const router = Router();
@@ -52,6 +83,21 @@ export const buildEmployeesRouter = (): Router => {
     authorize('employee.create'),
     validate({ body: CreateEmployeeSchema }),
     asyncHandler(createEmployee),
+  );
+  /**
+   * The employees screen's upload button. `apply=true` writes; anything else previews.
+   *
+   * Declared BEFORE `/direct` and `/:id` for the usual reason — `import` must never be parsed as an
+   * employee id — and gated on its own key: one upload adds people, rewrites personal data and moves
+   * staff across the whole registry, which is a different amount of authority from onboarding one
+   * walk-in hire.
+   */
+  router.post(
+    '/import',
+    authenticate,
+    authorize('employee.importRoster'),
+    rosterUpload(),
+    asyncHandler(importEmployeeRoster),
   );
   // Direct Registration (D4) — go-live onboarding / walk-in hire (no recruitment pipeline).
   router.post(

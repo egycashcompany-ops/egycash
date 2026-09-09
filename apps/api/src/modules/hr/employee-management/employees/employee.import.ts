@@ -78,3 +78,31 @@ export const applyImportedHistory = async (
     },
   );
 };
+
+/**
+ * Apply the changes an uploaded roster makes to somebody already in the registry.
+ *
+ * WHY THIS IS NOT `updatePersonal` OR THE ACTIONS ENGINE. `updatePersonal` takes the whole personal
+ * block and a version, and would need the caller to merge by hand — with 2,600 people that is 2,600
+ * read-modify-writes and one lost update away from clobbering an edit made while the file uploaded.
+ * The actions engine is for decisions somebody made HERE; a roster that says an employee now sits
+ * in another department is recording a move that already happened, and routing it through `transfer`
+ * would assert a decision-maker who clicked nothing and notify every holder of `employee.view` about
+ * each one. So the change is written as state, like the history above it, and the audit entry the
+ * caller records is what says a person set it and when.
+ *
+ * A `$set` OF EXACTLY THE CHANGED PATHS, never the whole document: a field the file has nothing to
+ * say about is not in `set`, so it cannot be touched — which is the property the whole feature rests
+ * on. `updatedBy` moves with it so the record does not claim it changed by itself.
+ */
+export const applyImportedUpdate = async (
+  employeeId: string,
+  set: Record<string, unknown>,
+  by: string,
+): Promise<void> => {
+  if (Object.keys(set).length === 0) return;
+  await EmployeeModel.collection.updateOne(
+    { _id: new Types.ObjectId(employeeId) },
+    { $set: { ...set, updatedBy: new Types.ObjectId(by), updatedAt: new Date() } },
+  );
+};

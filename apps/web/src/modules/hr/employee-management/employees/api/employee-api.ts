@@ -26,6 +26,7 @@ import {
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type RoleAssignmentDto,
+  type RosterImportReportDto,
   type UpdateEmployeePersonal,
   type UpdateUser,
   type UserDto,
@@ -40,6 +41,24 @@ export const listEmployees = (params: EmployeeListParams): Promise<Paginated<Emp
   getPage<EmployeeDto>(`/hr/employees${buildQuery(params)}`);
 
 export const getEmployee = (id: string): Promise<EmployeeDto> => get<EmployeeDto>(`/hr/employees/${id}`);
+
+/**
+ * Upload the roster workbook — once to see what it would do, once to make it happen.
+ *
+ * The SAME file object is posted both times, so the preview a person agreed to and the run that
+ * follows read identical bytes. Nothing is held on the server between the two: there is no token to
+ * expire and no half-agreed import that can be resumed by accident.
+ */
+export const importEmployeeRoster = (
+  file: File,
+  apply: boolean,
+): Promise<RosterImportReportDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  // Only the literal string writes; anything else, including its absence, previews.
+  form.append('apply', apply ? 'true' : 'false');
+  return upload<RosterImportReportDto>('/hr/employees/import', form);
+};
 
 /**
  * The caller's OWN file (ESS). No id: the server reads it off the token, which is what lets an

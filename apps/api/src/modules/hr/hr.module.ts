@@ -456,6 +456,14 @@ const employeePermissions = declarePermissions(
       name: { en: 'Register employee directly', ar: 'تسجيل موظف مباشرة' },
     },
     {
+      // ITS OWN KEY, not `registerDirect`. One upload adds people, rewrites personal data and moves
+      // staff between departments across the whole registry at once — that is a different amount of
+      // authority from onboarding one walk-in hire, and it should be grantable and revocable on its
+      // own. Nothing else in HR writes to thousands of records from a single click.
+      action: 'importRoster',
+      name: { en: 'Import the workforce roster', ar: 'استيراد ملف الموظفين' },
+    },
+    {
       action: 'editPersonal',
       name: { en: 'Edit employee personal data', ar: 'تعديل البيانات الشخصية للموظف' },
     },

@@ -29,7 +29,9 @@ export const FilterField = ({
   className?: string;
   children: ReactNode;
 }): JSX.Element => (
-  <div className={cn('flex min-w-0 flex-col gap-1', className)}>
+  // The hook is inert markup a test can measure the bar by — one row, equal widths, names that
+  // read in full — without reaching for class names that are free to change.
+  <div data-filter-field={label} className={cn('flex min-w-0 flex-col gap-1', className)}>
     <span
       // The name is VISIBLE, so it needs no tooltip to be discoverable — but it is also
       // `truncate`, and a name cut off by a narrow column has to stay recoverable by pointer.

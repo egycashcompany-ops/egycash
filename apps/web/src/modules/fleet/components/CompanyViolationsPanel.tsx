@@ -40,7 +40,10 @@ import {
   useViolationRollup,
 } from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
+import { VehicleSelect } from './VehicleSelect';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
+import { FilterBar } from '../../../shared/ui/FilterBar';
+import { FilterField } from '../../../shared/ui/FilterField';
 import { toCsv, exportFilename } from '../lib/violations-export';
 import { printViolations } from '../lib/violations-print';
 
@@ -74,6 +77,11 @@ const TOTAL_ROWS = [
 
 const YEAR_SPAN = 20;
 
+// The filter bar's rhythm, shared with the driver half — see `FilterField`.
+const TIGHT = 'tight' as const;
+/** `flex-1 basis-0` = an EQUAL share of the row, whatever each control's own words happen to be. */
+const CELL = 'flex-1 basis-0 min-w-[6rem]';
+
 export const CompanyViolationsPanel = ({
   year,
   vehicleCodes,
@@ -102,6 +110,7 @@ export const CompanyViolationsPanel = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const mayRecord = can('fleetViolation.record');
+  const hasActiveFilters = year !== '' || vehicleCodes.length > 0;
 
   const thisYear = new Date().getFullYear();
   const years = useMemo(
@@ -124,19 +133,20 @@ export const CompanyViolationsPanel = ({
 
   // ── the entry bar ─────────────────────────────────────────────────────────
   const [formYear, setFormYear] = useState(String(thisYear));
-  const [formCode, setFormCode] = useState('');
+  // The car is now held as an ID, because it is PICKED rather than typed — there is no longer a
+  // code to resolve, and so no longer a way to have typed one that resolves to nothing.
+  const [formVehicleId, setFormVehicleId] = useState('');
   const [formType, setFormType] = useState('');
   const [formValue, setFormValue] = useState('');
   const [formCount, setFormCount] = useState('');
   const record = useRecordVehicleViolation();
 
-  const formVehicleId = idOf.get(formCode.trim());
   const isMoney = /^\d+(\.\d{1,3})?$/.test(formValue.trim());
   const isCount = /^\d+$/.test(formCount.trim()) && Number(formCount) >= 1;
-  const canSave = mayRecord && formVehicleId !== undefined && formType !== '' && isMoney && isCount;
+  const canSave = mayRecord && formVehicleId !== '' && formType !== '' && isMoney && isCount;
 
   const save = async (): Promise<void> => {
-    if (!canSave || formVehicleId === undefined) return;
+    if (!canSave) return;
     try {
       await record.mutateAsync({
         vehicleId: formVehicleId,
@@ -282,67 +292,93 @@ export const CompanyViolationsPanel = ({
             the deliberate part: a statement line is read left to right as one sentence — this car,
             this year, this fine, this much, this many, THIS TOTAL — and wrapping it put the total
             under the fields it is the result of, where it read as a separate thing. */}
-        <div className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50">
+        {/* `[&>*]:shrink-0` is the load-bearing part. Without it the flex children give up width
+            to fit, and the first to disappear was «السنة» — squeezed until only its chevron was
+            left, so the year could not be read, let alone chosen. The row keeps every control at
+            its own size and scrolls sideways if it must. */}
+        <div className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 [&>*]:shrink-0 dark:border-slate-700 dark:bg-slate-800/50">
           <Field label={t('fleet.violations.fields.year')}>
-            <Select
-              aria-label={t('fleet.violations.fields.year')}
-              data-company-form="year"
-              value={formYear}
-              onChange={(e) => setFormYear(e.target.value)}
-              className="w-24"
-            >
-              {years.map((y) => (
-                <option key={y} value={String(y)}>
-                  {y}
-                </option>
-              ))}
-            </Select>
+            {/* The width is on the WRAPPER, not the control: `cn` is a plain joiner, so a `w-28`
+                handed to `Select` sits beside its own `w-full` and loses — measured, the year
+                rendered 86px wide however large a class it was given. */}
+            <div className="w-28">
+              <Select
+                aria-label={t('fleet.violations.fields.year')}
+                data-company-form="year"
+                value={formYear}
+                onChange={(e) => setFormYear(e.target.value)}
+              >
+                {years.map((y) => (
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </Field>
-          <Field label={t('fleet.odometer.columns.vehicle')}>
-            <Input
-              data-company-form="code"
-              aria-label={t('fleet.odometer.columns.vehicle')}
-              placeholder={t('fleet.violations.codePlaceholder')}
-              value={formCode}
-              onChange={(e) => setFormCode(e.target.value)}
-              className="w-28"
-              dir="ltr"
-            />
+          <Field label={t('fleet.odometer.columns.vehicle')} required>
+            {/* PICKED, not typed. A typed code that matches no car left `formVehicleId` undefined,
+                which disabled Save with nothing on screen to say why — the commonest way this form
+                refused to file a statement anybody had filled in correctly. One car at a time,
+                because a statement row belongs to one car. */}
+            <div className="w-36">
+              <VehicleSelect
+                value={formVehicleId}
+                onChange={setFormVehicleId}
+                anyStatus
+                fullWidth
+                testId="company-entry"
+                ariaLabel={t('fleet.odometer.columns.vehicle')}
+              />
+            </div>
           </Field>
-          <Field label={t('fleet.violations.pickType')}>
+          {/* The NOUN above, the imperative inside. `Field` already renders its label and a
+              required marker, so labelling it «اختر نوع المخالفة» printed the same sentence twice,
+              stacked — once as the field's name and once as the empty row of its own select. */}
+          <Field label={t('fleet.violations.fields.type')} required>
             {/* company side ONLY — the server refuses a driver type here, so offering one would
-                be offering a 422 the reader can do nothing about. */}
-            <CatalogSelect
-              kind="violationType"
-              violationSide="company"
-              value={formType}
-              onChange={setFormType}
-              ariaLabel={t('fleet.violations.pickType')}
-              allLabel={t('fleet.violations.pickType')}
-            />
+                be offering a 422 the reader can do nothing about.
+
+                `requireChoice` makes the placeholder a DISABLED row: it still says what the
+                control is for while it is empty, but it can no longer be chosen back, so «no
+                type» stops being one of the answers on a field that has no such answer. */}
+            <div className="w-48">
+              <CatalogSelect
+                kind="violationType"
+                violationSide="company"
+                value={formType}
+                onChange={setFormType}
+                ariaLabel={t('fleet.violations.pickType')}
+                allLabel={t('fleet.violations.pickType')}
+                requireChoice
+                className="w-full"
+              />
+            </div>
           </Field>
           <Field label={t('fleet.violations.fields.unitValue')}>
-            <Input
-              data-company-form="value"
-              aria-label={t('fleet.violations.fields.unitValue')}
-              value={formValue}
-              onChange={(e) => setFormValue(e.target.value)}
-              className="w-24"
-              dir="ltr"
-              inputMode="decimal"
-            />
+            <div className="w-20">
+              <Input
+                data-company-form="value"
+                aria-label={t('fleet.violations.fields.unitValue')}
+                value={formValue}
+                onChange={(e) => setFormValue(e.target.value)}
+                dir="ltr"
+                inputMode="decimal"
+              />
+            </div>
           </Field>
           <span className="pb-2 text-sm font-medium text-slate-400">×</span>
           <Field label={t('fleet.violations.fields.count')}>
-            <Input
-              data-company-form="count"
-              aria-label={t('fleet.violations.fields.count')}
-              value={formCount}
-              onChange={(e) => setFormCount(e.target.value)}
-              className="w-20"
-              dir="ltr"
-              inputMode="numeric"
-            />
+            <div className="w-16">
+              <Input
+                data-company-form="count"
+                aria-label={t('fleet.violations.fields.count')}
+                value={formCount}
+                onChange={(e) => setFormCount(e.target.value)}
+                dir="ltr"
+                inputMode="numeric"
+              />
+            </div>
           </Field>
           {/* What this line will cost, before it is filed. The server owns the real arithmetic
               (count × unitValue) and this only mirrors it, so it shows a figure ONLY when both
@@ -375,48 +411,78 @@ export const CompanyViolationsPanel = ({
         </div>
       </div>
 
-      {/* ── what the board is showing ───────────────────────────────────── */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <Select
-          aria-label={t('fleet.violations.fields.year')}
-          data-company-filter="year"
-          value={year}
-          onChange={(e) => onYearChange(e.target.value === '' ? null : e.target.value)}
-          className="w-32"
+      {/* ── what the board is showing ────────────────────────────────────
+          The same bar as the driver half, so the two ledgers read as one screen: each filter's
+          NAME above its control, both controls the same width, the count beside them rather than
+          floating after them. See `FilterField`. */}
+      <FilterBar
+        singleRow
+        singleRowFrom={1280}
+        trailing={
+          <>
+            {/* CLEARS this half's filters, which is what its icon and its position have always
+                promised. It called `refetch()` before — a button that re-asked a question whose
+                answer had not changed, so pressing it did nothing a reader could see, on a control
+                that looks exactly like «مسح الفلاتر» everywhere else in the app. Shown only when
+                there is something to clear, as `FilterBar` does; rendered here rather than through
+                `FilterBar`'s own `onClear` so it keeps the hook the tests press it by. */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                data-company-clear="true"
+                aria-label={t('common.filters.clear')}
+                title={t('common.filters.clear')}
+                onClick={onClear}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+              >
+                <ResetIcon className="h-4 w-4" />
+              </button>
+            )}
+            <span
+              data-company-count
+              role="status"
+              title={t('fleet.violations.matchedGroups')}
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            >
+              {formatNumber(rows.length, locale)}
+            </span>
+          </>
+        }
+      >
+        <FilterField
+          label={t('fleet.violations.fields.year')}
+          active={year !== ''}
+          className={CELL}
         >
-          <option value="">{t('fleet.violations.allYears')}</option>
-          {years.map((y) => (
-            <option key={y} value={String(y)}>
-              {y}
-            </option>
-          ))}
-        </Select>
-        <VehicleCodeFilter
-          className="min-w-0 flex-1"
-          value={vehicleCodes}
-          onChange={onVehicleCodesChange}
-        />
-        {/* CLEARS this half's filters, which is what its icon and its position have always
-            promised. It called `refetch()` before — a button that re-asked a question whose answer
-            had not changed, so pressing it did nothing a reader could see, on a control that looks
-            exactly like «مسح الفلاتر» everywhere else in the app. Shown only when there is
-            something to clear, as `FilterBar` does. */}
-        {(year !== '' || vehicleCodes.length > 0) && (
-          <button
-            type="button"
-            data-company-clear="true"
-            aria-label={t('common.filters.clear')}
-            title={t('common.filters.clear')}
-            onClick={onClear}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+          <Select
+            aria-label={t('fleet.violations.fields.year')}
+            data-company-filter="year"
+            value={year}
+            onChange={(e) => onYearChange(e.target.value === '' ? null : e.target.value)}
+            density={TIGHT}
           >
-            <ResetIcon className="h-4 w-4" />
-          </button>
-        )}
-        <span data-company-count className="text-lg font-bold text-brand-700 dark:text-brand-300">
-          {formatNumber(rows.length, locale)}
-        </span>
-      </div>
+            <option value="">{t('common.filters.all')}</option>
+            {years.map((y) => (
+              <option key={y} value={String(y)}>
+                {y}
+              </option>
+            ))}
+          </Select>
+        </FilterField>
+        <FilterField
+          label={t('fleet.vehicles.fields.code')}
+          active={vehicleCodes.length > 0}
+          className={CELL}
+        >
+          <VehicleCodeFilter
+            value={vehicleCodes}
+            onChange={onVehicleCodesChange}
+            placeholder={t('common.filters.all')}
+            density={TIGHT}
+            className="w-full"
+          />
+        </FilterField>
+      </FilterBar>
 
       {rollup.isPending ? (
         <Skeleton className="h-64 w-full shrink-0" />

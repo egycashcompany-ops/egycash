@@ -89,7 +89,7 @@ const shiftDay = (date: string, delta: number): string => {
 
 /** The five seam verdicts (`DriverUnavailableReason`); anything newer shows as sent. */
 const KNOWN_REASONS = new Set([
-  'noProfile',
+  'notADriver',
   'profileInactive',
   'notEmployed',
   'fleetUnavailability',

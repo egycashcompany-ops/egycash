@@ -18,6 +18,7 @@ export const VehicleSelect = ({
   ariaLabel,
   fullWidth = false,
   textScale,
+  testId,
 }: {
   value: string;
   onChange: (vehicleId: string) => void;
@@ -42,6 +43,15 @@ export const VehicleSelect = ({
   fullWidth?: boolean;
   /** Passed straight to the control — see `form.tsx` on why the size is a prop, not a class. */
   textScale?: ControlTextScale;
+  /**
+   * A stable hook for the one screen that has to tell this control apart from a filter beside it.
+   *
+   * «كود السيارة» is the Arabic for BOTH `fleet.vehicles.fields.code` and
+   * `fleet.odometer.columns.vehicle`, so on the violations screen the entry row's car select and
+   * the filter bar's car picker carry the same accessible name — which makes `aria-label` useless
+   * for saying which one a test means.
+   */
+  testId?: string;
 }): JSX.Element => {
   const t = useT();
   const { data } = useVehicles({
@@ -57,6 +67,7 @@ export const VehicleSelect = ({
   return (
     <Select
       id={id}
+      {...(testId === undefined ? {} : { 'data-vehicle-select': testId })}
       aria-label={ariaLabel ?? t('fleet.vehicles.columns.code')}
       value={value}
       onChange={(e) => onChange(e.target.value)}

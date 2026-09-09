@@ -25,8 +25,14 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
-import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
-import { driverAvailabilityOn } from '../availability/driver-availability';
+import {
+  drivingSeatEmployeeIds,
+  drivingSeatRoster,
+} from '../driver-profiles/driving-seat-roster';
+import {
+  driverAvailabilityForRoster,
+  driverAvailabilityOn,
+} from '../availability/driver-availability';
 import { fleetFixedCrewRepository } from '../fixed-roster/fixed-crew.repository';
 import { fleetDutyAssignmentRepository } from './duty-assignment.repository';
 import { type FleetDutyAssignmentDoc } from './duty-assignment.model';
@@ -123,14 +129,25 @@ class FleetRosterService {
     const freeToday = new Set<string>();
     const availableOrder: string[] = [];
     const unavailableDrivers: FleetRosterDayDto['unavailableDrivers'] = [];
-    for (const profile of await this.allActiveDrivers()) {
-      const employeeId = String(profile.employeeId);
-      const availability = await driverAvailabilityOn(employeeId, day);
-      if (availability.available) {
-        freeToday.add(employeeId);
-        availableOrder.push(employeeId);
+    // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
+    // has recorded a profile for. See `drivingSeatRoster`.
+    //
+    // ONE batched pass, not one seam call per driver: the roster already carries each driver's
+    // employment status, and the profiles, the التمامات overlay and the leave setting are each a
+    // single query for the whole board. Asked one driver at a time this was four serial round
+    // trips per driver — a cost that grew with the pool the moment the pool became the registry.
+    const seatRoster = await drivingSeatRoster();
+    const verdicts = await driverAvailabilityForRoster(seatRoster, day);
+    for (const employee of seatRoster) {
+      const availability = verdicts.get(employee.employeeId);
+      if (availability?.available === true) {
+        freeToday.add(employee.employeeId);
+        availableOrder.push(employee.employeeId);
       } else {
-        unavailableDrivers.push({ employeeId, reason: availability.reason ?? 'unavailable' });
+        unavailableDrivers.push({
+          employeeId: employee.employeeId,
+          reason: availability?.reason ?? 'unavailable',
+        });
       }
     }
 
@@ -297,9 +314,12 @@ class FleetRosterService {
       }
     }
 
-    // FR-6 through the seam (point 1) — one verdict per distinct driver, reason named.
+    // FR-6 through the seam (point 1) — one verdict per distinct driver, reason named. The seat
+    // roster is read once for the whole payload, as on the board: the seam's first question is
+    // «is this person a driver at all», and asking the org chart once answers it for everyone.
+    const seatSet = new Set(await drivingSeatEmployeeIds());
     for (const employeeId of new Set(input.rows.flatMap(rowDrivers))) {
-      const availability = await driverAvailabilityOn(employeeId, day);
+      const availability = await driverAvailabilityOn(employeeId, day, seatSet);
       if (!availability.available) {
         throw new ConflictError(
           `driver ${employeeId} is unavailable on this date (${availability.reason ?? 'unknown'}) and cannot be assigned (FR-6)`,
@@ -442,18 +462,6 @@ class FleetRosterService {
     }
   }
 
-  private async allActiveDrivers() {
-    const drivers = [];
-    for (let page = 1; ; page += 1) {
-      const batch = await fleetDriverProfileRepository.listDrivers({
-        filter: { isActive: true },
-        page,
-        pageSize: 100,
-      });
-      drivers.push(...batch.items);
-      if (batch.items.length < 100) return drivers;
-    }
-  }
 }
 
 export const fleetRosterService = new FleetRosterService();

@@ -22,6 +22,7 @@ export const SideLayer = ({
   description,
   side = 'left',
   width = 'md',
+  dismissOnOutsideClick = true,
   footer,
   children,
 }: {
@@ -32,12 +33,20 @@ export const SideLayer = ({
   /** Which screen edge it hugs. Fixed, not locale-derived — see the note above. */
   side?: 'left' | 'right';
   width?: 'md' | 'lg';
+  /**
+   * Whether clicking the page behind closes this.
+   *
+   * True for a layer that only SHOWS things — clicking away is the fastest way out of a list you
+   * were only reading. False for one holding work that is not saved yet: a stray click anywhere
+   * on the screen threw away every card a reader had just filled in, with no warning and no undo.
+   */
+  dismissOnOutsideClick?: boolean;
   footer?: ReactNode;
   children: ReactNode;
 }): JSX.Element | null => {
   const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
-  useOnClickOutside(panelRef, onClose, open);
+  useOnClickOutside(panelRef, onClose, open && dismissOnOutsideClick);
 
   useEffect(() => {
     if (!open) return;
@@ -69,7 +78,11 @@ export const SideLayer = ({
         className={cn(
           'relative flex h-full flex-col bg-white shadow-2xl dark:bg-slate-900',
           width === 'lg' ? 'w-full max-w-2xl' : 'w-full max-w-lg',
-          side === 'left' ? 'me-auto' : 'ms-auto',
+          // PHYSICAL, not logical. `me-auto`/`ms-auto` are margin-inline, which flip with the
+          // writing direction — in this RTL app they put `side="left"` on the RIGHT and vice
+          // versa, which is exactly what shipped. `side` names a screen edge, so it has to be
+          // said in screen terms: margin-right auto pushes the panel left.
+          side === 'left' ? 'mr-auto' : 'ml-auto',
         )}
       >
         <div className="flex items-start justify-between gap-3 border-b border-slate-200 p-4 dark:border-slate-800">

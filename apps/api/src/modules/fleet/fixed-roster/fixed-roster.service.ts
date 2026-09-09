@@ -32,6 +32,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
+import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetFixedCrewRepository } from './fixed-crew.repository';
 import { type FleetFixedCrewDoc } from './fixed-crew.model';
@@ -124,10 +125,22 @@ class FleetFixedRosterService {
       };
     });
 
-    const drivers = (await this.allActiveDrivers()).map((profile) => {
-      const employeeId = String(profile.employeeId);
-      return { employeeId, assignedVehicleId: taken.get(employeeId) ?? null };
-    });
+    // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
+    // has recorded a profile for. The STANDING crew asks no date, so the day's availability does
+    // not narrow it: that is the daily board's question, not this one's.
+    //
+    // ONE thing does narrow it, and it is the one thing the SAVE below also refuses: a profile
+    // that EXISTS and has been switched off. Offering a driver the save would reject is the exact
+    // defect this whole change set exists to remove, and leaving the two halves to disagree would
+    // have reintroduced it here — the pool and the gate ask the same question, in one place.
+    const seatIds = await drivingSeatEmployeeIds();
+    const switchedOff = await fleetFixedRosterService.switchedOffProfiles(seatIds);
+    const drivers = seatIds
+      .filter((employeeId) => !switchedOff.has(employeeId))
+      .map((employeeId) => ({
+        employeeId,
+        assignedVehicleId: taken.get(employeeId) ?? null,
+      }));
 
     return { rows, drivers };
   }
@@ -193,14 +206,32 @@ class FleetFixedRosterService {
 
     // The dateless half of the availability seam: a fixed driver must BE a driver. Whether they
     // are free next Tuesday is a question this board does not ask.
-    for (const employeeId of new Set(input.rows.flatMap(rowDrivers))) {
-      const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(employeeId);
-      if (profile === null || !profile.isActive) {
+    //
+    // BE a driver means HOLD A DRIVING SEAT — the same question the pool above answers, asked the
+    // same way. It used to mean «have an active `fleet_driver_profile`», which the pool no longer
+    // requires: a board that offers somebody and then refuses to save them is the worst of both,
+    // and this is the half that had to move.
+    const wanted = [...new Set(input.rows.flatMap(rowDrivers))];
+    const seatSet = new Set(await drivingSeatEmployeeIds());
+    // The SAME question the pool asks, from the same helper — see the pool's own note on why
+    // these two may never drift apart.
+    const switchedOff = await fleetFixedRosterService.switchedOffProfiles(wanted);
+    for (const employeeId of wanted) {
+      if (!seatSet.has(employeeId)) {
         throw new ValidationError([
           {
             field: 'body.rows.driverEmployeeId',
             code: 'UNKNOWN',
-            message: 'no active driver profile for this employee',
+            message: 'this employee does not hold a driving seat',
+          },
+        ]);
+      }
+      if (switchedOff.has(employeeId)) {
+        throw new ValidationError([
+          {
+            field: 'body.rows.driverEmployeeId',
+            code: 'UNKNOWN',
+            message: 'this driver’s fleet profile is inactive',
           },
         ]);
       }
@@ -315,6 +346,21 @@ class FleetFixedRosterService {
     return { changedCount: outcome.changedCount };
   }
 
+  /**
+   * Of these drivers, the ones whose fleet profile EXISTS and is switched off.
+   *
+   * One batched read, and one definition — the pool filters by it and the save refuses by it, so
+   * the board cannot offer somebody the save would reject. A driver with NO profile is not here:
+   * nothing has been said about them, and silence is not a refusal.
+   */
+  async switchedOffProfiles(employeeIds: readonly string[]): Promise<Set<string>> {
+    if (employeeIds.length === 0) return new Set();
+    const profiles = await fleetDriverProfileRepository.findForEmployeesSystem(employeeIds);
+    return new Set(
+      profiles.filter((doc) => !doc.isActive).map((doc) => String(doc.employeeId)),
+    );
+  }
+
   private async allActiveVehicles(scope: ScopeSelector): Promise<FleetVehicleDoc[]> {
     const vehicles: FleetVehicleDoc[] = [];
     for (let page = 1; ; page += 1) {
@@ -330,18 +376,6 @@ class FleetFixedRosterService {
     }
   }
 
-  private async allActiveDrivers() {
-    const drivers = [];
-    for (let page = 1; ; page += 1) {
-      const batch = await fleetDriverProfileRepository.listDrivers({
-        filter: { isActive: true },
-        page,
-        pageSize: 100,
-      });
-      drivers.push(...batch.items);
-      if (batch.items.length < 100) return drivers;
-    }
-  }
 }
 
 export const fleetFixedRosterService = new FleetFixedRosterService();

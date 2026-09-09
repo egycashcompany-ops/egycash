@@ -60,6 +60,45 @@ describe('who the drivers registry is made of', () => {
     expect(employees.slice(at, at + 500)).toContain('EMPLOYED_STATUSES');
   });
 
+  it('is the SAME list both roster boards pool from', () => {
+    // Three screens, one answer. Both boards used to pool from `fleet_driver_profiles` while the
+    // registry beside them read the org chart, so a house that had hired drivers and enrolled
+    // none of them saw ten on one screen and «لا يوجد سائقون متاحون» on the other two. Whoever
+    // changes one of these has to change all three, and this is what says so.
+    for (const board of [
+      'src/modules/fleet/roster/roster.service.ts',
+      'src/modules/fleet/fixed-roster/fixed-roster.service.ts',
+    ]) {
+      const service = code(board);
+      expect(service, `${board} pools from the registry`).toContain('drivingSeatEmployeeIds()');
+      expect(service, `${board} does not pool from the profiles collection`).not.toContain(
+        'listDrivers(',
+      );
+    }
+    // And the seam both boards ask about a DAY asks the seat FIRST, so a driver with nothing
+    // recorded is available rather than «noProfile».
+    const seam = code('src/modules/fleet/availability/driver-availability.ts');
+    // The GUARD, not the import: `toContain('drivingSeatEmployeeIds')` alone was satisfied by the
+    // import line, so making the check conditional would have left this green.
+    expect(seam, 'a non-driver is refused by the seat').toContain(
+      "if (!seats.has(employeeId)) return { available: false, reason: 'notADriver' };",
+    );
+    expect(seam, 'an absent profile is silence, not a verdict').toContain(
+      'profile !== null && !profile.isActive',
+    );
+    // Every surface that asks «is this person a driver» asks it the one way. A second definition
+    // is a second place for the answer to drift.
+    for (const surface of [
+      'src/modules/fleet/availability/unavailability.service.ts',
+      'src/modules/fleet/violations/violation.service.ts',
+    ]) {
+      expect(code(surface), `${surface} asks the seat`).toContain('drivingSeatEmployeeIds()');
+      expect(code(surface), `${surface} does not ask the profiles collection instead`).not.toContain(
+        'findDriverByEmployeeId',
+      );
+    }
+  });
+
   it('crosses the FR-11 line through the seam, never by importing HR', () => {
     // Fleet may not read HR's collection. It asks the platform directory, exactly as it already
     // does for one employee at a time.

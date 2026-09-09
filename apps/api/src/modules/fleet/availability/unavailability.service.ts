@@ -13,7 +13,7 @@ import { ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
-import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
+import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetUnavailabilityRepository } from './unavailability.repository';
 import { type FleetUnavailabilityDoc } from './unavailability.model';
 
@@ -40,14 +40,21 @@ const eventPayload = (doc: FleetUnavailabilityDoc) => ({
 
 class FleetUnavailabilityService {
   async create(input: CreateFleetUnavailability, by: string): Promise<FleetUnavailabilityDoc> {
-    // §2.4: the subject must hold a driver profile — التمامات is about the driver pool.
-    const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(input.employeeId);
-    if (profile === null) {
+    // §2.4: the subject must be a DRIVER — التمامات is about the driver pool, and it has to be
+    // about the same pool the roster draws from.
+    //
+    // It used to demand a `fleet_driver_profile`, which was the same rule the boards pooled by.
+    // Now that they pool from the driving-seat registry, that rule would have quietly excluded
+    // every driver nobody has enrolled: they would appear on the roster as available and there
+    // would be NO WAY to mark them unavailable — the overlay would be dead for exactly the
+    // population the roster fix just added. Same question as the pool, so the two agree.
+    const seats = new Set(await drivingSeatEmployeeIds());
+    if (!seats.has(input.employeeId)) {
       throw new ValidationError([
         {
           field: 'body.employeeId',
           code: 'UNKNOWN',
-          message: 'no driver profile for this employee',
+          message: 'this employee does not hold a driving seat',
         },
       ]);
     }

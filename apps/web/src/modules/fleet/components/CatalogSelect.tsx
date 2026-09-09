@@ -19,6 +19,7 @@ export const CatalogSelect = ({
   className = 'w-auto',
   density,
   disabled = false,
+  requireChoice = false,
 }: {
   kind: FleetCatalogKind;
   /**
@@ -32,6 +33,14 @@ export const CatalogSelect = ({
   onChange: (itemId: string) => void;
   /** When set, an empty "all" option with this label is offered (filter mode). */
   allLabel?: string;
+  /**
+   * Make the empty row un-choosable.
+   *
+   * A FILTER's empty row is a real answer — «all of them». A FORM's is not: a statement row has no
+   * «no type» value, so the row exists only to say what the control is for while nothing is
+   * chosen. Leaving it selectable offered an answer the server refuses.
+   */
+  requireChoice?: boolean;
   id?: string;
   ariaLabel?: string;
   /**
@@ -71,7 +80,9 @@ export const CatalogSelect = ({
       className={className}
       {...(density === undefined ? {} : { density })}
     >
-      <option value="">{allLabel ?? t('common.select')}</option>
+      <option value="" disabled={requireChoice}>
+        {allLabel ?? t('common.select')}
+      </option>
       {items.map((item) => (
         <option key={item.id} value={item.id}>
           {localized(item.name, locale)}

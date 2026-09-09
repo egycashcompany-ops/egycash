@@ -32,6 +32,7 @@ import {
 } from '../../../shared/ui/icons';
 import { formatMoney, formatNumber } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
+import { cn } from '../../../shared/lib/cn';
 import { saveBlob } from '../../../shared/lib/api-client';
 import {
   useRecordVehicleViolation,
@@ -288,15 +289,17 @@ export const CompanyViolationsPanel = ({
         </div>
 
         {/* ── file one statement row ─────────────────────────────────────── */}
-        {/* ONE ROW, and it ends with the arithmetic. `overflow-x-auto` rather than `flex-wrap` is
-            the deliberate part: a statement line is read left to right as one sentence — this car,
-            this year, this fine, this much, this many, THIS TOTAL — and wrapping it put the total
-            under the fields it is the result of, where it read as a separate thing. */}
-        {/* `[&>*]:shrink-0` is the load-bearing part. Without it the flex children give up width
-            to fit, and the first to disappear was «السنة» — squeezed until only its chevron was
-            left, so the year could not be read, let alone chosen. The row keeps every control at
-            its own size and scrolls sideways if it must. */}
-        <div className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 [&>*]:shrink-0 dark:border-slate-700 dark:bg-slate-800/50">
+        {/* IT WRAPS, it does not scroll. This was `overflow-x-auto` on the argument that a
+            statement line reads left to right as one sentence — but a half-width panel gives the
+            row 556px and the controls need 825, so what that produced was a horizontal scrollbar
+            inside a form: «العدد» and the total sat off-screen behind it, and nothing said they
+            were there. A second line is visible; a scrolled-away field is not.
+
+            `[&>*]:shrink-0` stays, and is still the load-bearing part. Without it the flex
+            children give up width to fit rather than wrapping, and the first to disappear was
+            «السنة» — squeezed until only its chevron was left. Each control keeps its own size
+            and moves to the next line whole. */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 [&>*]:shrink-0 dark:border-slate-700 dark:bg-slate-800/50">
           <Field label={t('fleet.violations.fields.year')}>
             {/* The width is on the WRAPPER, not the control: `cn` is a plain joiner, so a `w-28`
                 handed to `Select` sits beside its own `w-full` and loses — measured, the year
@@ -479,6 +482,7 @@ export const CompanyViolationsPanel = ({
             onChange={onVehicleCodesChange}
             placeholder={t('common.filters.all')}
             density={TIGHT}
+            fullWidth
             className="w-full"
           />
         </FilterField>
@@ -513,7 +517,21 @@ export const CompanyViolationsPanel = ({
                 <tbody
                   key={`${row.vehicleId}:${row.year}`}
                   data-rollup-group={`${row.code}:${row.year}`}
-                  className="border-t border-slate-200 dark:border-slate-800"
+                  data-rollup-settled={
+                    row.rowCount > 0 && row.collectedCount === row.rowCount ? 'true' : undefined
+                  }
+                  // SETTLED IS A STATE OF THE GROUP, so the group carries it — the tick is where
+                  // it is changed, the tint is how the board reads at a glance. The tick already
+                  // changed colour on its own, which told a reader nothing until they had found
+                  // and looked at it; the driver board beside this one has tinted its settled rows
+                  // green since it was built, and the two halves have to answer the same question
+                  // the same way.
+                  className={cn(
+                    'border-t border-slate-200 dark:border-slate-800',
+                    row.rowCount > 0 &&
+                      row.collectedCount === row.rowCount &&
+                      'bg-emerald-50 dark:bg-emerald-950/40',
+                  )}
                 >
                   {TOTAL_ROWS.map((total, line) => (
                     <tr

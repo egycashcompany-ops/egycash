@@ -32,6 +32,7 @@ export const DriverPickerFilter = ({
   onChange,
   jobTitleIds = [],
   density,
+  fullWidth = false,
   placeholder,
   className,
 }: {
@@ -52,6 +53,8 @@ export const DriverPickerFilter = ({
   jobTitleIds?: readonly string[];
   /** Passed straight through, so this control matches the bar it is dropped into. */
   density?: ControlDensity;
+  /** Fill the width this control was given — see `MultiSelect`. */
+  fullWidth?: boolean;
   /**
    * What the EMPTY trigger says. A bar that writes each filter's name above its control wants the
    * short «الكل» here, because repeating «اسم/كود» inside would say the same thing twice and
@@ -134,6 +137,7 @@ export const DriverPickerFilter = ({
       searchValue={search}
       onSearch={setSearch}
       searching={results.isFetching}
+      fullWidth={fullWidth}
       {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />

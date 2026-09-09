@@ -496,6 +496,61 @@ describe('the eight reported defects, as rules the markup carries', () => {
     }
   });
 
+  it('the type filter takes SEVERAL kinds, not one', () => {
+    // A clerk reconciling a stack asks «speeding and seatbelt». A `<select>` cannot be asked that,
+    // which is why this is a listbox trigger and why the URL key carries a list.
+    const markup = page();
+    const at = markup.indexOf(`data-filter-field="${translate('ar', 'fleet.violations.fields.type')}"`);
+    expect(at, 'the type filter is named').toBeGreaterThan(-1);
+    const field = markup.slice(at, at + 700);
+    expect(field, 'a multi-select, not a dropdown').toContain('aria-haspopup="listbox"');
+    expect(field, 'and not a single-value select').not.toContain('<select');
+  });
+
+  it('no filter is NAMED with an instruction', () => {
+    // «اختر نوع المخالفة» is what to DO, not what the column asks about. A bar's labels are nouns;
+    // the imperative belongs inside the control, as its empty row.
+    const markup = page();
+    const labels = [...markup.matchAll(/data-filter-field="([^"]+)"/g)].map((m) => m[1]);
+    expect(labels.length, 'both bars rendered their fields').toBeGreaterThanOrEqual(6);
+    for (const label of labels) {
+      expect(label, `${label} names a thing, not an action`).not.toMatch(/^اختر/);
+    }
+  });
+
+  it('the company entry row WRAPS rather than scrolling sideways', () => {
+    // At half the screen the row needs 825px and has 556. `overflow-x-auto` put «العدد» and the
+    // total behind a scrollbar inside a form, where nothing said they were there.
+    const markup = page();
+    const at = markup.indexOf('data-company-form="year"');
+    const container = markup.slice(Math.max(0, at - 900), at);
+    expect(container, 'the entry row wraps').toContain('flex-wrap');
+    expect(container, 'and does not scroll').not.toContain('overflow-x-auto');
+  });
+
+  it('the driver entry PICKS its car, exactly as the company entry does', () => {
+    const markup = page();
+    expect(markup, 'no typed code box').not.toContain('data-driver-form="code"');
+    expect(markup).toContain('data-vehicle-select="driver-entry"');
+  });
+
+  it('a fully settled (vehicle, year) group is marked as such', () => {
+    // The tick changed colour on its own, which told a reader nothing until they had found it.
+    // Settled is a state of the GROUP, and the drivers' board beside this one has tinted its
+    // settled rows green since it was built.
+    const settled = page({ rollup: [rollupRow({ rowCount: 3, collectedCount: 3 })] });
+    const at = settled.indexOf('data-rollup-settled="true"');
+    expect(at, 'the group says it is settled').toBeGreaterThan(-1);
+    // The tint must be on THAT tag. `bg-emerald-50` is also how the drivers' board marks its own
+    // settled rows, and both halves render into this one string — so an unscoped `toContain`
+    // passes on the neighbour's green and proves nothing about this group.
+    const tag = settled.slice(settled.lastIndexOf('<', at), settled.indexOf('>', at));
+    expect(tag, 'and reads as settled').toContain('bg-emerald-50');
+
+    const partial = page({ rollup: [rollupRow({ rowCount: 3, collectedCount: 1 })] });
+    expect(partial, 'some is not all').not.toContain('data-rollup-settled="true"');
+  });
+
   it('every filter field takes an EQUAL share of its row', () => {
     // `flex-1 basis-0` is the whole of «الفلاتر مش مظبوطة»: without it the share of the row a
     // control gets depends on how long its own words happen to be.

@@ -28,6 +28,7 @@ export const RegistryDriverPicker = ({
   multiple = false,
   placeholder,
   density,
+  fullWidth = false,
   className,
 }: {
   /** Picked employee ids. A single-pick control still carries a list, of at most one. */
@@ -38,6 +39,8 @@ export const RegistryDriverPicker = ({
   placeholder?: string;
   /** Passed straight through — a bar sizing its controls to one rhythm asks for `tight`. */
   density?: ControlDensity;
+  /** Fill the width this control was given — see `MultiSelect`. */
+  fullWidth?: boolean;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -56,6 +59,7 @@ export const RegistryDriverPicker = ({
       onChange={(next) => onChange(multiple ? next : next.slice(-1))}
       jobTitleIds={jobTitleIds}
       placeholder={placeholder ?? t('fleet.drivers.filters.employeeShort')}
+      fullWidth={fullWidth}
       {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />

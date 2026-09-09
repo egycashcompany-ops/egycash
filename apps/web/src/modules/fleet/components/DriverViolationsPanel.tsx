@@ -40,13 +40,14 @@ import {
   useViolations,
 } from '../api/fleet-queries';
 import { SideLayer } from '../../../shared/ui/SideLayer';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
-import { CatalogSelect } from './CatalogSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
+import { VehicleSelect } from './VehicleSelect';
 import { EmployeeName } from './EmployeeName';
 import {
   cardLabel,
@@ -70,7 +71,7 @@ const CELL = 'flex-1 basis-0 min-w-[6rem]';
 export const DriverViolationsPanel = ({
   vehicleCodes,
   driverEmployeeIds,
-  typeId,
+  typeIds,
   amount,
   page,
   pageSize,
@@ -87,14 +88,14 @@ export const DriverViolationsPanel = ({
   vehicleCodes: string[];
   /** Several drivers at once — a supervisor asks about a crew, not about one person. */
   driverEmployeeIds: string[];
-  typeId: string;
+  typeIds: string[];
   /** «قيمة المخالفة» — an exact amount, as it is filed. '' = every amount. */
   amount: string;
   page: number;
   pageSize: number;
   onVehicleCodesChange: (next: string[]) => void;
   onDriverChange: (next: string | null) => void;
-  onTypeChange: (next: string | null) => void;
+  onTypeChange: (next: string[]) => void;
   onAmountChange: (next: string | null) => void;
   /** Clear this half in ONE write — see the company panel for why it is not four setter calls. */
   onClear: () => void;
@@ -111,14 +112,9 @@ export const DriverViolationsPanel = ({
   const mayEdit = can('fleetViolation.edit');
   const mayDelete = can('fleetViolation.delete');
   const hasActiveFilters =
-    vehicleCodes.length > 0 || driverEmployeeIds.length > 0 || typeId !== '' || amount !== '';
+    vehicleCodes.length > 0 || driverEmployeeIds.length > 0 || typeIds.length > 0 || amount !== '';
 
   const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
-  const idOf = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of vehicles.data?.items ?? []) map.set(v.code, v.id);
-    return map;
-  }, [vehicles.data]);
   const codeOf = useMemo(() => {
     const map = new Map<string, string>();
     for (const v of vehicles.data?.items ?? []) map.set(v.id, v.code);
@@ -140,9 +136,17 @@ export const DriverViolationsPanel = ({
     for (const type of types) map.set(type.id, type.name);
     return map;
   }, [types]);
+  /** The filter's vocabulary IS the counters' vocabulary — one catalog, read once. */
+  const typeOptions = useMemo(
+    () => types.map((type) => ({ value: type.id, label: type.name })),
+    [types],
+  );
 
   // ── the counting bar ──────────────────────────────────────────────────────
-  const [formCode, setFormCode] = useState('');
+  // The car is held as an ID, because it is PICKED. It used to be the typed code, resolved
+  // through `idOf` on every render — which meant a code no car carries produced `undefined` and
+  // a permanently disabled Save, with nothing on screen saying why.
+  const [formVehicleId, setFormVehicleId] = useState('');
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [cards, setCards] = useState<DriverEntryCard[]>([]);
   const record = useRecordDriverViolations();
@@ -159,19 +163,18 @@ export const DriverViolationsPanel = ({
   const patchCard = (key: string, patch: Partial<DriverEntryCard>): void =>
     setCards((held) => held.map((card) => (card.key === key ? { ...card, ...patch } : card)));
 
-  const formVehicleId = idOf.get(formCode.trim());
   const missing = incompleteCards(cards);
-  const canSave =
-    mayRecord && formVehicleId !== undefined && entryComplete(cards) && !record.isPending;
+  const canSave = mayRecord && formVehicleId !== '' && entryComplete(cards) && !record.isPending;
 
   const save = async (): Promise<void> => {
-    if (!canSave || formVehicleId === undefined) return;
+    if (!canSave) return;
     try {
       await record.mutateAsync(toBatchPayload(formVehicleId, cards));
       // Only on success: the batch is atomic, so a failure leaves the bar exactly as it was and
       // the reader re-tries the same stack rather than working out what got through.
       setCounts({});
       setCards([]);
+      setFormVehicleId('');
       toast.success(t('fleet.violations.batchSaved', { count: String(cards.length) }));
     } catch (error) {
       toast.error(errorMessage(error, locale));
@@ -192,9 +195,9 @@ export const DriverViolationsPanel = ({
       // use of this filter answered 400 and emptied the board.
       ...(driverEmployeeIds.length === 0 ? {} : { driverEmployeeId: driverEmployeeIds.join(',') }),
       ...(amount.trim() === '' ? {} : { amount: amount.trim() }),
-      ...(typeId === '' ? {} : { violationTypeId: typeId }),
+      ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
     }),
-    [page, pageSize, vehicleCodes, driverEmployeeIds, typeId, amount],
+    [page, pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount],
   );
   const list = useViolations(params);
   const rows = list.data?.items ?? [];
@@ -416,15 +419,20 @@ export const DriverViolationsPanel = ({
           className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
         >
           <Field label={t('fleet.odometer.columns.vehicle')}>
-            <Input
-              data-driver-form="code"
-              aria-label={t('fleet.odometer.columns.vehicle')}
-              placeholder={t('fleet.violations.codePlaceholder')}
-              value={formCode}
-              onChange={(e) => setFormCode(e.target.value)}
-              className="w-28"
-              dir="ltr"
-            />
+            {/* PICKED from the registry, exactly as the company half picks it. A typed code is a
+                code no car may carry, and this bar files a stack of fines against it in one
+                transaction — so a typo was a whole batch refused for a reason the reader could
+                only find by re-reading their own typing. */}
+            <div className="w-36">
+              <VehicleSelect
+                value={formVehicleId}
+                onChange={setFormVehicleId}
+                anyStatus
+                fullWidth
+                testId="driver-entry"
+                ariaLabel={t('fleet.odometer.columns.vehicle')}
+              />
+            </div>
           </Field>
           {types.map((type) => (
             <Field key={type.id} label={type.name}>
@@ -456,6 +464,14 @@ export const DriverViolationsPanel = ({
           setCards([]);
         }}
         side="right"
+        // As wide as the ledger it covers, because the card below needs a whole row for the three
+        // things a fine is: the day, the person, and the money.
+        width="half"
+        // NON-MODAL, which is what makes «five عكس and two حزام» possible at all. This opens the
+        // instant the first counter is typed into, and while it was a dialog it covered the very
+        // counters the reader still had to use — so a stack of mixed fines could only be entered
+        // one KIND at a time. The counters stay live behind it now.
+        modal={false}
         // Cards being filled in are unsaved work: a stray click on the board behind used to wipe
         // the lot. Escape and the two buttons are the ways out.
         dismissOnOutsideClick={false}
@@ -512,39 +528,53 @@ export const DriverViolationsPanel = ({
                     <div className="mb-1.5 text-xs font-semibold text-slate-200">
                       {cardLabel(card)}
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Input
-                        type="date"
-                        data-entry-date={card.key}
-                        aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
-                        value={card.date}
-                        onChange={(e) => patchCard(card.key, { date: e.target.value })}
-                        className="w-40"
-                        dir="ltr"
-                      />
-                      <div className="min-w-[10rem] flex-1">
+                    {/* THE THREE THINGS A FINE IS, on one row: the day, the person, the money.
+                        They used to wrap onto three lines because the layer was 512px wide and the
+                        date alone asked for 160 of it. The layer is now the width of the ledger it
+                        covers, so the row fits — `min-w-0` on the middle field is what lets the
+                        driver's name truncate instead of pushing the money off the end. */}
+                    <div className="flex flex-nowrap items-center gap-2">
+                      {/* The width is on the WRAPPER. `Input` carries its own `w-full` and `cn`
+                          is a plain joiner, so a `w-36` handed to it loses — measured, the date
+                          rendered 750px and squeezed the driver beside it to 26. */}
+                      <div className="w-36 shrink-0">
+                        <Input
+                          type="date"
+                          data-entry-date={card.key}
+                          aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.date')}`}
+                          value={card.date}
+                          onChange={(e) => patchCard(card.key, { date: e.target.value })}
+                          dir="ltr"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
                         {/* The REGISTRY, not the payroll: the server files a fine only against a
                             person who HAS a driver profile, so offering anyone else was offering a
                             400 the reader could do nothing about — «بعض الحقول تحتاج إلى مراجعة»
                             about the one field they had filled correctly. */}
+                        {/* ONE driver, never several: a fine belongs to a person. `multiple` is
+                            off by default, and `fullWidth` is what makes the trigger fill the
+                            share of the row it was given instead of shrinking to its own text. */}
                         <RegistryDriverPicker
                           value={card.driverEmployeeId === '' ? [] : [card.driverEmployeeId]}
                           onChange={(next) =>
                             patchCard(card.key, { driverEmployeeId: next[0] ?? '' })
                           }
+                          fullWidth
                           className="w-full"
                         />
                       </div>
-                      <Input
-                        data-entry-amount={card.key}
-                        aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`}
-                        placeholder={t('fleet.violations.fields.amount')}
-                        value={card.amount}
-                        onChange={(e) => patchCard(card.key, { amount: e.target.value })}
-                        className="w-24"
-                        dir="ltr"
-                        inputMode="decimal"
-                      />
+                      <div className="w-28 shrink-0">
+                        <Input
+                          data-entry-amount={card.key}
+                          aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`}
+                          placeholder={t('fleet.violations.fields.amount')}
+                          value={card.amount}
+                          onChange={(e) => patchCard(card.key, { amount: e.target.value })}
+                          dir="ltr"
+                          inputMode="decimal"
+                        />
+                      </div>
                     </div>
                   </li>
                 ))}
@@ -630,6 +660,7 @@ export const DriverViolationsPanel = ({
             onChange={onVehicleCodesChange}
             placeholder={t('common.filters.all')}
             density={TIGHT}
+            fullWidth
             className="w-full"
           />
         </FilterField>
@@ -647,23 +678,34 @@ export const DriverViolationsPanel = ({
             multiple
             placeholder={t('common.filters.all')}
             density={TIGHT}
+            fullWidth
             className="w-full"
           />
         </FilterField>
+        {/* The NOUN. «اختر نوع المخالفة» is an instruction, and an instruction reads wrong as
+            the name of a filter — a bar's labels say WHAT each column asks about, not what to do
+            about it. The imperative still belongs inside the control, as its empty row. */}
         <FilterField
-          label={t('fleet.violations.pickType')}
-          active={typeId !== ''}
+          label={t('fleet.violations.fields.type')}
+          active={typeIds.length > 0}
           className={CELL}
         >
-          <CatalogSelect
-            kind="violationType"
-            violationSide="driver"
-            value={typeId}
-            onChange={(next) => onTypeChange(next || null)}
-            ariaLabel={t('fleet.violations.pickType')}
-            allLabel={t('common.filters.all')}
-            className="w-full"
+          {/* SEVERAL kinds at once. A clerk reconciling a stack asks «speeding and seatbelt», and
+              a single-value dropdown made them ask twice and add the two answers up by hand. The
+              options are the driver side of the live catalog — the same list the counters above
+              are built from, so the bar filters by exactly what it can file. */}
+          <MultiSelect
+            label={t('fleet.violations.fields.type')}
+            placeholder={t('common.filters.all')}
+            options={typeOptions}
+            value={typeIds}
+            onChange={onTypeChange}
+            showSelectedValues
+            chips
+            searchThreshold={0}
             density={TIGHT}
+            fullWidth
+            className="w-full"
           />
         </FilterField>
         <FilterField

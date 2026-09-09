@@ -94,6 +94,7 @@ export const MultiSelect = ({
   chips = false,
   density = 'default',
   placeholder,
+  fullWidth = false,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -166,6 +167,16 @@ export const MultiSelect = ({
    */
   chips?: boolean;
   placeholder?: string;
+  /**
+   * Fill the width this control was GIVEN, instead of sizing to its own contents.
+   *
+   * The trigger is an `inline-flex`, so in a filter bar that hands every field an equal share of
+   * the row it shrank to the width of the word «الكل» while the `<select>` and `<input>` beside
+   * it filled theirs — four controls in four different widths under four equally-sized labels,
+   * which is what «شكل الفلاتر بايظ» was. Off by default, so every bar that sizes this control by
+   * its contents keeps reading exactly as it does today.
+   */
+  fullWidth?: boolean;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -214,6 +225,10 @@ export const MultiSelect = ({
         }}
         className={cn(
           'inline-flex items-center rounded-lg border py-2 text-sm',
+          // `justify-between` as well as `w-full`: once the trigger is wider than its own text the
+          // chevron belongs at the far edge, the way a `<select>`'s does, not tucked against the
+          // label with dead space after it.
+          fullWidth && 'w-full justify-between',
           // Only the GUTTERS tighten. The type size stays `text-sm`, which is what `Input` and
           // `Select` are at BOTH densities — `density` moves their padding and nothing else. This
           // used to drop to `text-xs`, and the 4px of line-height it lost made the trigger 34px

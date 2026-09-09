@@ -157,7 +157,9 @@ export const CompanyViolationsDetailLayer = ({
       open={open}
       onClose={onClose}
       side="left"
-      width="lg"
+      // The width of the ledger it covers — the drivers' half — so the two layers are the same
+      // size as each other and each sits over its sibling rather than across both.
+      width="half"
       title={
         row === null
           ? ''

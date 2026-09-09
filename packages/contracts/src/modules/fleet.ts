@@ -1617,14 +1617,15 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    */
   amount: z.coerce.number().min(0).optional(),
   /**
-   * One KIND of violation — «سرعة», «حزام», «رسوم قضائية» — by its catalog id.
+   * WHICH KINDS of violation — «سرعة», «حزام», «رسوم قضائية» — by catalog id, ORed.
    *
-   * The screen has offered this filter since the board was split in two, and every use of it
-   * answered 400: the query schema is `.strict()` and never carried the key, so the bar's own
-   * dropdown emptied the board it was meant to narrow. Same shape and same reason as
-   * `driverEmployeeId` above.
+   * A LIST, like `driverEmployeeId` above and for the same reason: a clerk reconciling a stack
+   * asks «speeding and seatbelt», not one kind at a time, and a single-value filter made them
+   * look twice and add the answers up by hand.
+   *
+   * A single id still parses, as a one-item list, so every saved link keeps working.
    */
-  violationTypeId: objectId().optional(),
+  violationTypeId: listQuery(objectId()),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;

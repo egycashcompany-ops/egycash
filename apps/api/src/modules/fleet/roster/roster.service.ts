@@ -25,7 +25,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
-import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
+import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { driverAvailabilityOn } from '../availability/driver-availability';
 import { fleetFixedCrewRepository } from '../fixed-roster/fixed-crew.repository';
 import { fleetDutyAssignmentRepository } from './duty-assignment.repository';
@@ -123,9 +123,13 @@ class FleetRosterService {
     const freeToday = new Set<string>();
     const availableOrder: string[] = [];
     const unavailableDrivers: FleetRosterDayDto['unavailableDrivers'] = [];
-    for (const profile of await this.allActiveDrivers()) {
-      const employeeId = String(profile.employeeId);
-      const availability = await driverAvailabilityOn(employeeId, day);
+    // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
+    // has recorded a profile for. See `drivingSeatEmployeeIds`. The set is read ONCE and handed to
+    // the seam, which would otherwise re-read the org chart for every driver in it.
+    const drivingSeats = await drivingSeatEmployeeIds();
+    const seatSet = new Set(drivingSeats);
+    for (const employeeId of drivingSeats) {
+      const availability = await driverAvailabilityOn(employeeId, day, seatSet);
       if (availability.available) {
         freeToday.add(employeeId);
         availableOrder.push(employeeId);
@@ -297,9 +301,12 @@ class FleetRosterService {
       }
     }
 
-    // FR-6 through the seam (point 1) — one verdict per distinct driver, reason named.
+    // FR-6 through the seam (point 1) — one verdict per distinct driver, reason named. The seat
+    // roster is read once for the whole payload, as on the board: the seam's first question is
+    // «is this person a driver at all», and asking the org chart once answers it for everyone.
+    const seatSet = new Set(await drivingSeatEmployeeIds());
     for (const employeeId of new Set(input.rows.flatMap(rowDrivers))) {
-      const availability = await driverAvailabilityOn(employeeId, day);
+      const availability = await driverAvailabilityOn(employeeId, day, seatSet);
       if (!availability.available) {
         throw new ConflictError(
           `driver ${employeeId} is unavailable on this date (${availability.reason ?? 'unknown'}) and cannot be assigned (FR-6)`,
@@ -442,18 +449,6 @@ class FleetRosterService {
     }
   }
 
-  private async allActiveDrivers() {
-    const drivers = [];
-    for (let page = 1; ; page += 1) {
-      const batch = await fleetDriverProfileRepository.listDrivers({
-        filter: { isActive: true },
-        page,
-        pageSize: 100,
-      });
-      drivers.push(...batch.items);
-      if (batch.items.length < 100) return drivers;
-    }
-  }
 }
 
 export const fleetRosterService = new FleetRosterService();

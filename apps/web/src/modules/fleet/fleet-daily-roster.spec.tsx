@@ -765,7 +765,7 @@ describe('the driver lists', () => {
       'utf8',
     );
     for (const reason of [
-      'noProfile',
+      'notADriver',
       'profileInactive',
       'notEmployed',
       'fleetUnavailability',

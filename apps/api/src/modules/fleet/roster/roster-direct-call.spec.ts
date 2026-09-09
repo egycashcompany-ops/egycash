@@ -42,6 +42,11 @@ vi.mock('../catalogs/catalog-item.repository', () => ({
 vi.mock('../driver-profiles/driver-profile.repository', () => ({
   fleetDriverProfileRepository: { findMany: vi.fn(async () => []) },
 }));
+// The pool's source, stubbed like every other seam here: the RULE is under test, not the org
+// chart. It answers with the driver these cases plan, in the spelling a real document answers in.
+vi.mock('../driver-profiles/driving-seat-roster', () => ({
+  drivingSeatEmployeeIds: vi.fn(async () => [D]),
+}));
 vi.mock('./duty-assignment.repository', () => ({
   fleetDutyAssignmentRepository: {
     findForDate: (...a: never[]) => findForDate(...a),

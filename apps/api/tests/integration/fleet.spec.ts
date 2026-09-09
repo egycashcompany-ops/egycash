@@ -998,11 +998,33 @@ describe('driver unavailability — التمامات (FL-3)', () => {
     expect(seenEvents.some((e) => e.name === FleetEvents.UnavailabilityEnded)).toBe(true);
   });
 
-  it('the availability seam layers profile, overlay, and HR leave (owner Q1)', async () => {
+  it('the availability seam layers the SEAT, the overlay, and HR leave (owner Q1)', async () => {
+    // The first layer is the ORG CHART, not the fleet profile. Somebody in an office seat is not
+    // a driver however the rest of the day looks…
+    const office = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `NON-DRV-SEAM-${vehicleCounter++}`,
+        name: { ar: 'موظف مكتب', en: 'Office staff' },
+        jobGrade: 'G1',
+        requiresDrivingTest: false,
+      });
+    expect(office.status).toBe(201);
+    const officeTitleId = (office.body as { data: { id: string } }).data.id;
+    const clerk = await mkEmployee({ jobTitleId: officeTitleId });
+    expect(await driverAvailabilityOn(clerk, new Date('2026-09-02'))).toEqual({
+      available: false,
+      reason: 'notADriver',
+    });
+
+    // …and somebody in a DRIVING seat is available with nothing recorded about them at all. This
+    // is the defect the change closes: a house that has hired drivers and enrolled none of them
+    // saw an empty pool on a screen whose sibling listed every one of them.
     const employeeId = await mkEmployee();
     expect(await driverAvailabilityOn(employeeId, new Date('2026-09-02'))).toEqual({
-      available: false,
-      reason: 'noProfile',
+      available: true,
+      reason: null,
     });
 
     await mkDriverProfile(employeeId);
@@ -3129,6 +3151,56 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
         (e.payload as { vehicleId: string }).vehicleId === vehicleId,
     ).length;
 
+  it('pools EVERY driver on the registry, recorded or not — and can plan one of them', async () => {
+    // «لا يوجد سائقون متاحون في هذا التاريخ» on a screen whose sibling listed ten drivers. The pool
+    // was `fleet_driver_profiles`; the registry is the ORG CHART, and a driver nobody has enrolled
+    // in Fleet yet is still a driver the dispatcher can put on a car today.
+    const unenrolled = await mkEmployee({ fullNameAr: 'سائق بلا ملف مركبات' });
+    const date = '2026-11-21';
+
+    const board = data<BoardDto & { availableDrivers: { employeeId: string }[] }>(
+      await getBoard(date),
+    );
+    expect(
+      board.availableDrivers.map((d) => d.employeeId),
+      'on the board with nothing recorded about them',
+    ).toContain(unenrolled);
+
+    // And OFFERED means SAVEABLE — a pool that hands out a name the save then refuses is worse
+    // than the empty one it replaced.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const saved = await savePlan(date, [
+      { vehicleId: v.id, driver1EmployeeId: unenrolled, driver2EmployeeId: null },
+    ]);
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(dayRow(data<BoardDto>(await getBoard(date)), v.id)?.driver1EmployeeId).toBe(unenrolled);
+  });
+
+  it('leaves a non-driving seat out of the pool entirely', async () => {
+    // The pool widened to the registry, not to the payroll: an office clerk is not a driver, and
+    // is not in either column — not «available», and not «unavailable with a reason» either.
+    const office = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `NON-DRV-POOL-${vehicleCounter++}`,
+        name: { ar: 'موظف مكتب', en: 'Office staff' },
+        jobGrade: 'G1',
+        requiresDrivingTest: false,
+      });
+    const clerk = await mkEmployee({
+      jobTitleId: (office.body as { data: { id: string } }).data.id,
+    });
+    const board = data<
+      BoardDto & {
+        availableDrivers: { employeeId: string }[];
+        unavailableDrivers: { employeeId: string }[];
+      }
+    >(await getBoard('2026-11-22'));
+    expect(board.availableDrivers.map((d) => d.employeeId)).not.toContain(clerk);
+    expect(board.unavailableDrivers.map((d) => d.employeeId)).not.toContain(clerk);
+  });
+
   it('plans a day (upsert per vehicle+date), publishes both events, and a re-save is a no-op', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await mkDriver();
@@ -3515,6 +3587,45 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
       });
     expect(res.status, 'the vehicle is in the workshop').toBe(201);
   };
+
+  it('the standing board pools the whole registry, and saves one nobody has enrolled', async () => {
+    // Same defect as the daily board, same fix: the STANDING crew's pool was
+    // `fleet_driver_profiles` too, so «الطقم الثابت» offered nobody in a house that had recorded
+    // nobody. It asks no date, so nothing narrows it — every driving seat is offered.
+    const unenrolled = await mkEmployee({ fullNameAr: 'سائق ثابت بلا ملف' });
+    const board = data<{ drivers: { employeeId: string }[] }>(await fixedBoard());
+    expect(board.drivers.map((d) => d.employeeId)).toContain(unenrolled);
+
+    // And the save agrees with the offer — it used to demand an active profile, which is exactly
+    // the thing the pool no longer requires.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const saved = await saveFixedCrew([
+      { vehicleId: v.id, driver1EmployeeId: unenrolled, driver2EmployeeId: null },
+    ]);
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    const after = data<BoardDto>(await fixedBoard());
+    expect(after.rows.find((r) => r.vehicleId === v.id)?.driver1EmployeeId).toBe(unenrolled);
+  });
+
+  it('the standing board still refuses somebody who holds no driving seat', async () => {
+    const office = await request(app)
+      .post('/api/v1/platform/job-titles')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `NON-DRV-FIXED-${vehicleCounter++}`,
+        name: { ar: 'موظف مكتب', en: 'Office staff' },
+        jobGrade: 'G1',
+        requiresDrivingTest: false,
+      });
+    const clerk = await mkEmployee({
+      jobTitleId: (office.body as { data: { id: string } }).data.id,
+    });
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const refused = await saveFixedCrew([
+      { vehicleId: v.id, driver1EmployeeId: clerk, driver2EmployeeId: null },
+    ]);
+    expect(refused.status, 'widened to the registry, not to the payroll').toBe(400);
+  });
 
   it('A — an UNPLANNED day starts from the standing crew', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
@@ -4478,11 +4589,27 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     expect(board.drivers.find((d) => d.employeeId === d1)?.assignedVehicleId).toBe(b.id);
   });
 
-  it('refuses an employee who is not an active driver', async () => {
+  it('refuses a driver whose fleet profile has been switched OFF', async () => {
+    // «not an active driver» used to mean «has no profile», and that is no longer true: the pool
+    // is the drivers registry, so a driver nobody has enrolled is offered and saveable (see «the
+    // standing board pools the whole registry»). What still refuses is a profile that EXISTS and
+    // was deliberately deactivated — a decision somebody made, which the board must not undo.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const plainEmployee = await mkEmployee();
-    const res = await saveCrews([{ vehicleId: v.id, driver1EmployeeId: plainEmployee }]);
-    expect(res.status).toBe(400);
+    const employeeId = await mkEmployee();
+    const profile = await mkDriverProfile(employeeId);
+    expect(
+      (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: employeeId }])).status,
+      'seatable while the profile is live',
+    ).toBe(200);
+
+    await request(app)
+      .patch(`/api/v1/fleet/drivers/${profile.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ isActive: false, version: profile.version });
+    expect(
+      (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: employeeId }])).status,
+      'and refused once it is switched off',
+    ).toBe(400);
   });
 
   // ── DESTRUCTIVE-BEHAVIOUR AUDIT: what a save actually mutates ─────────────

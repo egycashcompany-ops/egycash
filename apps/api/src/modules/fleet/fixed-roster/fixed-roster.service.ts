@@ -32,6 +32,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
+import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetFixedCrewRepository } from './fixed-crew.repository';
 import { type FleetFixedCrewDoc } from './fixed-crew.model';
@@ -124,10 +125,13 @@ class FleetFixedRosterService {
       };
     });
 
-    const drivers = (await this.allActiveDrivers()).map((profile) => {
-      const employeeId = String(profile.employeeId);
-      return { employeeId, assignedVehicleId: taken.get(employeeId) ?? null };
-    });
+    // The pool is the DRIVERS REGISTRY — every employee in a driving seat — not the subset Fleet
+    // has recorded a profile for. The STANDING crew asks no date, so nothing narrows it further:
+    // the day's availability is the daily board's question, not this one's.
+    const drivers = (await drivingSeatEmployeeIds()).map((employeeId) => ({
+      employeeId,
+      assignedVehicleId: taken.get(employeeId) ?? null,
+    }));
 
     return { rows, drivers };
   }
@@ -193,14 +197,30 @@ class FleetFixedRosterService {
 
     // The dateless half of the availability seam: a fixed driver must BE a driver. Whether they
     // are free next Tuesday is a question this board does not ask.
+    //
+    // BE a driver means HOLD A DRIVING SEAT — the same question the pool above answers, asked the
+    // same way. It used to mean «have an active `fleet_driver_profile`», which the pool no longer
+    // requires: a board that offers somebody and then refuses to save them is the worst of both,
+    // and this is the half that had to move.
+    const seatSet = new Set(await drivingSeatEmployeeIds());
     for (const employeeId of new Set(input.rows.flatMap(rowDrivers))) {
-      const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(employeeId);
-      if (profile === null || !profile.isActive) {
+      if (!seatSet.has(employeeId)) {
         throw new ValidationError([
           {
             field: 'body.rows.driverEmployeeId',
             code: 'UNKNOWN',
-            message: 'no active driver profile for this employee',
+            message: 'this employee does not hold a driving seat',
+          },
+        ]);
+      }
+      // A profile that EXISTS and has been switched off is still a decision somebody made.
+      const profile = await fleetDriverProfileRepository.findDriverByEmployeeId(employeeId);
+      if (profile !== null && !profile.isActive) {
+        throw new ValidationError([
+          {
+            field: 'body.rows.driverEmployeeId',
+            code: 'UNKNOWN',
+            message: 'this driver’s fleet profile is inactive',
           },
         ]);
       }
@@ -330,18 +350,6 @@ class FleetFixedRosterService {
     }
   }
 
-  private async allActiveDrivers() {
-    const drivers = [];
-    for (let page = 1; ; page += 1) {
-      const batch = await fleetDriverProfileRepository.listDrivers({
-        filter: { isActive: true },
-        page,
-        pageSize: 100,
-      });
-      drivers.push(...batch.items);
-      if (batch.items.length < 100) return drivers;
-    }
-  }
 }
 
 export const fleetFixedRosterService = new FleetFixedRosterService();

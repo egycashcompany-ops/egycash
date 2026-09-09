@@ -60,6 +60,30 @@ describe('who the drivers registry is made of', () => {
     expect(employees.slice(at, at + 500)).toContain('EMPLOYED_STATUSES');
   });
 
+  it('is the SAME list both roster boards pool from', () => {
+    // Three screens, one answer. Both boards used to pool from `fleet_driver_profiles` while the
+    // registry beside them read the org chart, so a house that had hired drivers and enrolled
+    // none of them saw ten on one screen and «لا يوجد سائقون متاحون» on the other two. Whoever
+    // changes one of these has to change all three, and this is what says so.
+    for (const board of [
+      'src/modules/fleet/roster/roster.service.ts',
+      'src/modules/fleet/fixed-roster/fixed-roster.service.ts',
+    ]) {
+      const service = code(board);
+      expect(service, `${board} pools from the registry`).toContain('drivingSeatEmployeeIds()');
+      expect(service, `${board} does not pool from the profiles collection`).not.toContain(
+        'listDrivers(',
+      );
+    }
+    // And the seam both boards ask about a DAY asks the seat first, so a driver with nothing
+    // recorded is available rather than «noProfile».
+    const seam = code('src/modules/fleet/availability/driver-availability.ts');
+    expect(seam).toContain('drivingSeatEmployeeIds');
+    expect(seam, 'an absent profile is silence, not a verdict').toContain(
+      'profile !== null && !profile.isActive',
+    );
+  });
+
   it('crosses the FR-11 line through the seam, never by importing HR', () => {
     // Fleet may not read HR's collection. It asks the platform directory, exactly as it already
     // does for one employee at a time.

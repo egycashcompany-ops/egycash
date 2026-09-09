@@ -1616,6 +1616,15 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    * question, and one nobody on this screen has asked for.
    */
   amount: z.coerce.number().min(0).optional(),
+  /**
+   * One KIND of violation — «سرعة», «حزام», «رسوم قضائية» — by its catalog id.
+   *
+   * The screen has offered this filter since the board was split in two, and every use of it
+   * answered 400: the query schema is `.strict()` and never carried the key, so the bar's own
+   * dropdown emptied the board it was meant to narrow. Same shape and same reason as
+   * `driverEmployeeId` above.
+   */
+  violationTypeId: objectId().optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;

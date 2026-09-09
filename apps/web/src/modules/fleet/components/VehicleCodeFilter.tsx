@@ -26,6 +26,7 @@
 import { useMemo, useState } from 'react';
 import { splitVehicleCodeList, vehicleCodeSearchQuery } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
+import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
 import { useVehicles } from '../api/fleet-queries';
 import { readTypedVehicleCodes } from '../lib/typed-vehicle-codes';
@@ -39,6 +40,8 @@ export const VehicleCodeFilter = ({
   onChange,
   options,
   className,
+  placeholder,
+  density,
 }: {
   /** The codes currently filtering, in the order they were chosen. */
   value: string[];
@@ -49,6 +52,15 @@ export const VehicleCodeFilter = ({
    */
   options?: MultiSelectOption[];
   className?: string;
+  /**
+   * What the EMPTY trigger says, for a bar that writes the question ABOVE the control.
+   *
+   * Unset everywhere the question is only askable inside the box, which is every screen that
+   * existed before `FilterField`: the trigger then says «كود السيارة» exactly as it always has.
+   */
+  placeholder?: string;
+  /** Passed straight through — a bar sizing its controls to one rhythm asks for `tight`. */
+  density?: ControlDensity;
 }): JSX.Element => {
   const t = useT();
   // What is still being TYPED — the trailing fragment, after the completed codes have been taken
@@ -119,6 +131,8 @@ export const VehicleCodeFilter = ({
         add(splitVehicleCodeList(raw));
         setSearch('');
       }}
+      {...(placeholder === undefined ? {} : { placeholder })}
+      {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />
   );

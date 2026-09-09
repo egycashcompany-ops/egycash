@@ -40,13 +40,14 @@ import {
   useViolations,
 } from '../api/fleet-queries';
 import { SideLayer } from '../../../shared/ui/SideLayer';
+import { FilterBar } from '../../../shared/ui/FilterBar';
+import { FilterField } from '../../../shared/ui/FilterField';
 import { CatalogSelect } from './CatalogSelect';
-import { DriverPickerFilter } from './DriverPickerFilter';
+import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { EmployeeName } from './EmployeeName';
-import { OptionalEmployeeField } from './OptionalEmployeeField';
 import {
   cardLabel,
   entryCards,
@@ -59,6 +60,12 @@ import {
 } from '../lib/driver-violation-entry';
 import { toCsv, exportFilename } from '../lib/violations-export';
 import { printViolations } from '../lib/violations-print';
+
+// The filter bar's rhythm, shared by all four fields — see `FilterField` for why the name sits
+// above the control and why every control is the same width.
+const TIGHT = 'tight' as const;
+/** `flex-1 basis-0` = an EQUAL share of the row; `min-w` keeps a field from collapsing past its name. */
+const CELL = 'flex-1 basis-0 min-w-[6rem]';
 
 export const DriverViolationsPanel = ({
   vehicleCodes,
@@ -103,6 +110,8 @@ export const DriverViolationsPanel = ({
   const mayCollect = can('fleetViolation.collect');
   const mayEdit = can('fleetViolation.edit');
   const mayDelete = can('fleetViolation.delete');
+  const hasActiveFilters =
+    vehicleCodes.length > 0 || driverEmployeeIds.length > 0 || typeId !== '' || amount !== '';
 
   const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
   const idOf = useMemo(() => {
@@ -447,6 +456,9 @@ export const DriverViolationsPanel = ({
           setCards([]);
         }}
         side="right"
+        // Cards being filled in are unsaved work: a stray click on the board behind used to wipe
+        // the lot. Escape and the two buttons are the ways out.
+        dismissOnOutsideClick={false}
         title={t('fleet.violations.enteredTitle')}
         description={t('fleet.violations.enteredHint')}
         footer={
@@ -504,10 +516,17 @@ export const DriverViolationsPanel = ({
                         className="w-40"
                         dir="ltr"
                       />
-                      <div className="min-w-[10rem] flex-1 bg-white dark:bg-slate-900">
-                        <OptionalEmployeeField
-                          value={card.driverEmployeeId}
-                          onChange={(id) => patchCard(card.key, { driverEmployeeId: id })}
+                      <div className="min-w-[10rem] flex-1">
+                        {/* The REGISTRY, not the payroll: the server files a fine only against a
+                            person who HAS a driver profile, so offering anyone else was offering a
+                            400 the reader could do nothing about — «بعض الحقول تحتاج إلى مراجعة»
+                            about the one field they had filled correctly. */}
+                        <RegistryDriverPicker
+                          value={card.driverEmployeeId === '' ? [] : [card.driverEmployeeId]}
+                          onChange={(next) =>
+                            patchCard(card.key, { driverEmployeeId: next[0] ?? '' })
+                          }
+                          className="w-full"
                         />
                       </div>
                       <Input
@@ -551,67 +570,112 @@ export const DriverViolationsPanel = ({
         </div>
       </SideLayer>
 
-      {/* ── what the board is showing ───────────────────────────────────── */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <VehicleCodeFilter
-          className="min-w-0"
-          value={vehicleCodes}
-          onChange={onVehicleCodesChange}
-        />
+      {/* ── what the board is showing ────────────────────────────────────
+          FOUR filters, each with its NAME above it and all four the same width — the same shape
+          the drivers registry settled on (`FilterField`). What was here before was four controls
+          that each sized themselves: a car picker that grew with the codes ticked into it, a
+          driver picker pinned to 11rem, a `<select>` as wide as «مخالفة مرورية» happened to be,
+          and a 6rem money box — four heights of question written INSIDE four different widths,
+          with a bare number floating after them. Nothing said which of them was set.
+
+          `flex-1 basis-0` is what makes them equal: the share of the row a control gets no longer
+          depends on how long its own words are. And with the question written above, each control
+          only has to hold an ANSWER — «الكل», a code, a name — which is short. */}
+      <FilterBar
+        singleRow
+        singleRowFrom={1280}
+        trailing={
+          <>
+            {/* CLEARS this half's filters — it called `refetch()` before, which changed nothing a
+                reader could see. See the company panel for the full note. Rendered here rather
+                than through `FilterBar`'s own `onClear` so the button keeps the hook the tests
+                press it by. */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                data-driver-clear="true"
+                aria-label={t('common.filters.clear')}
+                title={t('common.filters.clear')}
+                onClick={onClear}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+              >
+                <ResetIcon className="h-4 w-4" />
+              </button>
+            )}
+            {/* HOW MANY the bar just matched — beside the question, not inside the table. */}
+            <span
+              data-driver-count-badge
+              role="status"
+              title={t('fleet.violations.matchedCount')}
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+            >
+              {formatNumber(meta?.totalItems ?? 0, locale)}
+            </span>
+          </>
+        }
+      >
+        <FilterField
+          label={t('fleet.vehicles.fields.code')}
+          active={vehicleCodes.length > 0}
+          className={CELL}
+        >
+          <VehicleCodeFilter
+            value={vehicleCodes}
+            onChange={onVehicleCodesChange}
+            placeholder={t('common.filters.all')}
+            density={TIGHT}
+            className="w-full"
+          />
+        </FilterField>
         {/* SEVERAL drivers, picked by name or code — the same control the drivers registry uses, so
             an operator who knows one knows this one. It replaced a single-value search box that
             was both narrower than the question and, sending the wrong parameter name, broken. */}
-        <DriverPickerFilter
-          value={driverEmployeeIds}
-          onChange={(next) => onDriverChange(next.length === 0 ? null : next.join(','))}
-          className="min-w-0 max-w-[11rem] flex-1"
-        />
-        <CatalogSelect
-          kind="violationType"
-          violationSide="driver"
-          value={typeId}
-          onChange={(next) => onTypeChange(next || null)}
-          ariaLabel={t('fleet.violations.pickType')}
-          allLabel={t('fleet.violations.allTypes')}
-        />
-        {/* The width lives on the WRAPPER: `cn` does not merge Tailwind classes, so a `w-24` passed
-            to `Input` would be fighting its own `w-full` and losing — which is exactly what put
-            this box on a line of its own. */}
-        <div className="w-24">
+        <FilterField
+          label={t('fleet.violations.fields.driver')}
+          active={driverEmployeeIds.length > 0}
+          className={CELL}
+        >
+          <RegistryDriverPicker
+            value={driverEmployeeIds}
+            onChange={(next) => onDriverChange(next.length === 0 ? null : next.join(','))}
+            multiple
+            placeholder={t('common.filters.all')}
+            density={TIGHT}
+            className="w-full"
+          />
+        </FilterField>
+        <FilterField
+          label={t('fleet.violations.pickType')}
+          active={typeId !== ''}
+          className={CELL}
+        >
+          <CatalogSelect
+            kind="violationType"
+            violationSide="driver"
+            value={typeId}
+            onChange={(next) => onTypeChange(next || null)}
+            ariaLabel={t('fleet.violations.pickType')}
+            allLabel={t('common.filters.all')}
+            className="w-full"
+            density={TIGHT}
+          />
+        </FilterField>
+        <FilterField
+          label={t('fleet.violations.fields.amount')}
+          active={amount !== ''}
+          className={CELL}
+        >
           <DebouncedInput
             aria-label={t('fleet.violations.fields.amount')}
             title={t('fleet.violations.fields.amount')}
-            placeholder={t('fleet.violations.fields.amount')}
             value={amount}
             onValueChange={(next) => onAmountChange(next || null)}
             dir="ltr"
             inputMode="decimal"
+            density={TIGHT}
           />
-        </div>
-        {/* CLEARS this half's filters — it called `refetch()` before, which changed nothing a
-            reader could see. See the company panel for the full note. */}
-        {(vehicleCodes.length > 0 ||
-          driverEmployeeIds.length > 0 ||
-          typeId !== '' ||
-          amount !== '') && (
-          <button
-            type="button"
-            data-driver-clear="true"
-            aria-label={t('common.filters.clear')}
-            title={t('common.filters.clear')}
-            onClick={onClear}
-            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
-          >
-            <ResetIcon className="h-4 w-4" />
-          </button>
-        )}
-        <span
-          data-driver-count-badge
-          className="text-lg font-bold text-brand-700 dark:text-brand-300"
-        >
-          {formatNumber(meta?.totalItems ?? 0, locale)}
-        </span>
-      </div>
+        </FilterField>
+      </FilterBar>
 
       {/* The BOARD scrolls, not the page — the filters above it and the totals below it stay put,
           which is what makes this half readable beside the other one. */}

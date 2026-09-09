@@ -134,9 +134,9 @@ export const MultiSelect = ({
    * How much room the TRIGGER spends on itself — the same opt-in `Input` and `Select` take.
    *
    * A filter bar that puts this control next to ten selects needs all eleven to read as one row of
-   * one kind of thing. At the default the trigger is a size larger than its neighbours (`text-sm`
-   * against their `text-xs`, and wider gutters), which on a crowded bar showed as one odd control
-   * whose own name was the only one clipped.
+   * one kind of thing. At the default the trigger spends wider gutters than its neighbours do at
+   * `tight`, which on a crowded bar showed as one odd control whose own name was the only one
+   * clipped. Only the gutters change — see the trigger's own note on why the type size may not.
    */
   density?: ControlDensity;
   /**
@@ -213,8 +213,14 @@ export const MultiSelect = ({
           onSearch?.('');
         }}
         className={cn(
-          'inline-flex items-center rounded-lg border py-2',
-          density === 'tight' ? 'gap-1 px-2 text-xs' : 'gap-1.5 px-3 text-sm',
+          'inline-flex items-center rounded-lg border py-2 text-sm',
+          // Only the GUTTERS tighten. The type size stays `text-sm`, which is what `Input` and
+          // `Select` are at BOTH densities — `density` moves their padding and nothing else. This
+          // used to drop to `text-xs`, and the 4px of line-height it lost made the trigger 34px
+          // tall in a row of 38px boxes: on the violations bar that showed as two filters sitting
+          // lower than the two beside them, and on the drivers registry as one short box among
+          // ten. A row of controls is only one row if the controls are one height.
+          density === 'tight' ? 'gap-1 px-2' : 'gap-1.5 px-3',
           // Never wider than the box it was given. A no-op for every bar that sizes this control
           // to its content, and the thing that keeps a trigger inside its lane when a caller
           // sizes it instead — a filter bar holding eleven controls on one row does.

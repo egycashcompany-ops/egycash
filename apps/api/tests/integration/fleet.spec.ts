@@ -7118,6 +7118,45 @@ describe('the violations board, as the screen actually asks it', () => {
     expect(data<{ amount: number }[]>(res).map((r) => r.amount)).toEqual([375]);
   });
 
+  it('filters by ONE KIND of violation — the third question the bar asks', async () => {
+    // The same defect as the driver list above, one filter over: the bar has offered a violation
+    // type dropdown since the board was split in two, and the strict query schema never carried
+    // the key — so choosing a type answered 400 and emptied the board it was meant to narrow.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const phone = await typeIdByName('تليفون');
+    const speed = await typeIdByName('سرعة');
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    for (const violationTypeId of [phone, speed, speed]) {
+      const res = await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2027-07-04',
+          driverEmployeeId: employeeId,
+          violationTypeId,
+          amount: 200,
+        });
+      expect(res.status).toBe(201);
+    }
+
+    const narrowed = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, violationTypeId: speed, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(narrowed.status, 'a violation type is a valid question now').toBe(200);
+    const kinds = data<{ violationTypeId: string }[]>(narrowed).map((r) => r.violationTypeId);
+    expect(kinds).toEqual([speed, speed]);
+
+    // And it NARROWS: the same car unfiltered still holds the phone row it left out.
+    const all = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ violationTypeId: string }[]>(all)).toHaveLength(3);
+  });
+
   it('settles a WHOLE (vehicle, year) with one tick, and the rollup reports how much is settled',
     async () => {
       const v = data<FleetVehicleDto>(await createVehicle(adminToken));

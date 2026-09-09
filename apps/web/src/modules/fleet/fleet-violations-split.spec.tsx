@@ -424,6 +424,24 @@ describe('collected: stored, shown, and never painted ahead of the write', () =>
 
 // ── 4 · a car's years stay apart ────────────────────────────────────────────
 
+/**
+ * What a count badge SAYS — the text between its own tags, found by the badge's data attribute.
+ *
+ * These panels render to a string (no DOM in this suite), so the badge is read out of the markup;
+ * reading it by tag boundaries rather than by a character count is what keeps the assertion about
+ * the count instead of about the element's attribute list.
+ */
+const countBadgeText = (markup: string, attribute: string): string => {
+  const at = markup.indexOf(attribute);
+  if (at === -1) throw new Error(`no element carries ${attribute}`);
+  const open = markup.indexOf('>', at);
+  const close = markup.indexOf('<', open);
+  return markup
+    .slice(open + 1, close)
+    .replace(/<!--.*?-->/g, '')
+    .trim();
+};
+
 describe('the company board groups by (vehicle, year)', () => {
   const MIXED = [
     rollupRow({ code: '168', year: 2026 }),
@@ -462,8 +480,11 @@ describe('the company board groups by (vehicle, year)', () => {
   it('counts the groups it is showing', () => {
     const markup = page({ rollup: MIXED });
     expect(markup).toContain('data-company-count');
-    const at = markup.indexOf('data-company-count');
-    expect(markup.slice(at, at + 120)).toContain('٢');
+    // The badge's own TEXT, not a fixed-width window into the markup after the attribute: the
+    // count is what this asserts, and a window is hostage to how many attributes the element
+    // happens to carry — adding a `title` to the badge broke this while the count it checks was
+    // still exactly where it belongs.
+    expect(countBadgeText(markup, 'data-company-count')).toBe('٢');
   });
 
   it('adds up the visible groups into the panel’s own footer', () => {

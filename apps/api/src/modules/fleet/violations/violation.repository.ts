@@ -66,6 +66,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     driverEmployeeId?: readonly string[] | undefined;
     /** The EXACT filed amount. `0` is a real answer, so this is checked against `undefined`. */
     amount?: number | undefined;
+    /** One catalog kind of violation. */
+    violationTypeId?: string | undefined;
     year?: number | undefined;
   }): FilterQuery<FleetViolationDoc> {
     const clauses: FilterQuery<FleetViolationDoc>[] = [];
@@ -82,6 +84,9 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       });
     }
     if (query.amount !== undefined) clauses.push({ amount: query.amount });
+    if (query.violationTypeId !== undefined) {
+      clauses.push({ violationTypeId: new Types.ObjectId(query.violationTypeId) });
+    }
     if (query.year !== undefined) {
       // The year filter means the same thing for BOTH shapes: vehicle rows carry it stored,
       // driver rows carry it as the year of their event date (§2.9 — no synthesized dates).

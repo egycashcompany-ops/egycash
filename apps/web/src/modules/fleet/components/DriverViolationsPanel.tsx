@@ -46,6 +46,7 @@ import { FilterField } from '../../../shared/ui/FilterField';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
+import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { VehicleSelect } from './VehicleSelect';
 import { EmployeeName } from './EmployeeName';
@@ -134,6 +135,12 @@ export const DriverViolationsPanel = ({
   const typeName = useMemo(() => {
     const map = new Map<string, string>();
     for (const type of types) map.set(type.id, type.name);
+    return map;
+  }, [types]);
+  /** Where each type sits in the catalog — what makes every colour on this board a different one. */
+  const typeIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    types.forEach((type, i) => map.set(type.id, i));
     return map;
   }, [types]);
   /** The filter's vocabulary IS the counters' vocabulary — one catalog, read once. */
@@ -259,7 +266,7 @@ export const DriverViolationsPanel = ({
       render: (row) => (
         <span
           data-violation-type-chip={row.violationTypeId}
-          className={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${violationTypeColour(row.violationTypeId)}`}
+          className={`inline-block rounded-full border px-2 py-0.5 text-xs font-medium ${violationTypeColour(row.violationTypeId, { index: typeIndex.get(row.violationTypeId) })}`}
         >
           {typeName.get(row.violationTypeId) ?? '—'}
         </span>
@@ -443,7 +450,11 @@ export const DriverViolationsPanel = ({
                 onChange={(e) => setCount(type.id, e.target.value)}
                 // Its own colour, the same one its rows and its cards carry, so counting «عكس»
                 // here and reading «عكس» on the board below are visibly the same subject.
-                className={`w-20 border ${violationTypeColour(type.id)}`}
+                // Through `tone`, NOT `className`: passed as a class it landed beside the
+                // control's own `bg-white` and lost, so every counter rendered plain white while
+                // the source said otherwise.
+                tone={violationTypeColour(type.id, { index: typeIndex.get(type.id) })}
+                className="w-20"
                 dir="ltr"
                 inputMode="numeric"
               />
@@ -518,16 +529,19 @@ export const DriverViolationsPanel = ({
                     key={card.key}
                     data-entry-card={card.key}
                     data-entry-incomplete={missing.includes(card.key) ? 'true' : undefined}
-                    className={[
+                    // THE CARD WEARS ITS TYPE'S COLOUR — «كل مخالفة بباك جراوند مختلف». A stack of
+                    // seven cards of two kinds was seven identical grey boxes told apart only by
+                    // reading each heading; the colour is the one its counter above and its row
+                    // below already carry, so one fine is visibly one subject all the way through.
+                    // An INCOMPLETE card keeps its amber ring on top: «this will not save» has to
+                    // outrank «this is a speeding fine».
+                    className={cn(
                       'rounded-lg border p-2',
-                      missing.includes(card.key)
-                        ? 'border-amber-500/60 bg-slate-800'
-                        : 'border-slate-700 bg-slate-800',
-                    ].join(' ')}
+                      violationTypeColour(card.typeId, { index: typeIndex.get(card.typeId) }),
+                      missing.includes(card.key) && 'border-amber-500 ring-1 ring-amber-500/60',
+                    )}
                   >
-                    <div className="mb-1.5 text-xs font-semibold text-slate-200">
-                      {cardLabel(card)}
-                    </div>
+                    <div className="mb-1.5 text-xs font-semibold">{cardLabel(card)}</div>
                     {/* THE THREE THINGS A FINE IS, on one row: the day, the person, the money.
                         They used to wrap onto three lines because the layer was 512px wide and the
                         date alone asked for 160 of it. The layer is now the width of the ledger it

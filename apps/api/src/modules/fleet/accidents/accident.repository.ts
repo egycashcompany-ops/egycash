@@ -81,6 +81,8 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
     vehicleId?: string | undefined;
     vehicleIds?: readonly string[] | undefined;
     culprit?: string | undefined;
+    /** Which drivers, ORed. `[]` narrows to nothing, as every id list on this module does. */
+    culpritEmployeeId?: readonly string[] | undefined;
     status?: string | undefined;
     from?: Date | undefined;
     to?: Date | undefined;
@@ -94,6 +96,13 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
     }
     // Escaped, so `.` and `*` are the characters the reader typed rather than a pattern they did
     // not write — a search box is not a regex console, and an unescaped `.*` would match all.
+    if (query.culpritEmployeeId !== undefined) {
+      clauses.push({
+        culpritEmployeeId: {
+          $in: query.culpritEmployeeId.map((id) => new Types.ObjectId(id)),
+        },
+      });
+    }
     if (query.culprit !== undefined) {
       clauses.push({
         culprit: new RegExp(query.culprit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),

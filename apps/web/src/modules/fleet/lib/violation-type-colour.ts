@@ -28,15 +28,33 @@ const NONE =
   'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700';
 
 /**
- * The Tailwind classes for one violation type's chip.
+ * The Tailwind classes for one violation type.
  *
- * Same id → same colour, always: the hash is over the id's own characters, so it does not depend on
- * how many types exist, what order they arrived in, or which page is asking.
+ * Two ways to ask, and the difference matters:
+ *
+ *   • WITH an index — its position in the live catalog — every type up to eight gets a DIFFERENT
+ *     colour, guaranteed. That is what a board of four types needs: hashing gave «سرعة» and
+ *     «تليفون» the same indigo out of eight slots, and two fines that look identical are exactly
+ *     what the colour was added to prevent. A caller that holds the catalog (the bar, the cards,
+ *     the board) always knows the position.
+ *
+ *   • WITHOUT one, the id is hashed. Same id → same colour, on a caller that has a violation but
+ *     not the list it came from. Distinct colours are not promised there, and cannot be: nothing
+ *     in hand says how many types exist or which this is among them.
  */
-export const violationTypeColour = (violationTypeId: string | null | undefined): string => {
+export const violationTypeColour = (
+  violationTypeId: string | null | undefined,
+  // An OBJECT, not a bare number, and deliberately: `list.map(violationTypeColour)` hands every
+  // callback the array index as its second argument, so a positional parameter here would silently
+  // turn every such call into the position form. As an object the stray number is a type error
+  // instead — which is exactly how this was caught.
+  options?: { index?: number | undefined },
+): string => {
   if (violationTypeId === null || violationTypeId === undefined || violationTypeId === '') {
     return NONE;
   }
+  const index = options?.index;
+  if (index !== undefined && index >= 0) return PALETTE[index % PALETTE.length] as string;
   let hash = 0;
   for (let i = 0; i < violationTypeId.length; i += 1) {
     hash = (hash * 31 + violationTypeId.charCodeAt(i)) | 0;

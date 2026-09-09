@@ -159,6 +159,7 @@ export const toAccidentDto = (doc: FleetAccidentDoc): FleetAccidentDto => ({
   vehicleId: String(doc.vehicleId),
   occurredAt: iso(doc.occurredAt),
   culprit: doc.culprit,
+  culpritEmployeeId: doc.culpritEmployeeId === null ? null : String(doc.culpritEmployeeId),
   statement: doc.statement,
   companyCost: doc.companyCost,
   amountCollected: doc.amountCollected,

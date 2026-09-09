@@ -73,6 +73,22 @@ const COMPANY_TYPES = [
   catalogItem(CT_COURT, 'رسوم قضائية', 'company'),
   catalogItem(CT_PARK, 'الانتظار في الممنوع', 'company'),
 ];
+/**
+ * The palette's own order, as `violation-type-colour` declares it. Written out here so a test can
+ * say WHICH colour each position gets — the rule is «the Nth type gets the Nth hue», and only a
+ * test that names them can tell that apart from «they happened not to collide».
+ */
+const PALETTE_ORDER = [
+  'sky',
+  'amber',
+  'emerald',
+  'violet',
+  'rose',
+  'cyan',
+  'orange',
+  'indigo',
+] as const;
+
 const DRIVER_TYPES = [
   catalogItem(DT_SPEED, 'سرعة', 'driver'),
   catalogItem(DT_BELT, 'حزام', 'driver'),
@@ -493,6 +509,31 @@ describe('the eight reported defects, as rules the markup carries', () => {
       expect(markup, `${label} is named above its control`).toContain(
         `data-filter-field="${label}"`,
       );
+    }
+  });
+
+  it('every violation type wears a DIFFERENT colour, on the counter and on the card', () => {
+    // «كل مخالفة بباك جراوند مختلف». Two things had to be true and neither was: the counters were
+    // handed their colour as a `className`, where the control's own `bg-white` beat it, so they
+    // rendered plain; and the colour came from a HASH, which gave two of the four seeded types the
+    // same slot out of eight.
+    const markup = page();
+    // `class` is emitted BEFORE the data attribute, so the counter is found by its hook and its
+    // class list read backwards from there.
+    const counters = [...markup.matchAll(/class="([^"]*)"[^>]*data-driver-count="/g)].map(
+      (m) => m[1] ?? '',
+    );
+    expect(counters.length, 'a counter per type').toBeGreaterThanOrEqual(2);
+    const hues = counters.map((c) => c.match(/bg-(\w+)-100/)?.[1] ?? '');
+    expect(new Set(hues).size, `distinct hues: ${hues.join(',')}`).toBe(counters.length);
+    // The colour follows the type's POSITION in the catalog, which is what makes «all different»
+    // a promise rather than luck. Distinctness alone does not prove it: two types out of eight
+    // slots rarely collide under a hash either, and the real board's four DID.
+    expect(hues, 'the palette, in catalog order').toEqual(PALETTE_ORDER.slice(0, hues.length));
+    // And the tone is the ONLY background on the control: handed in as a `className` it landed
+    // beside the input's own `bg-white` and lost, which is why every counter rendered plain.
+    for (const c of counters) {
+      expect(c, 'no white underneath the tone').not.toContain('bg-white');
     }
   });
 

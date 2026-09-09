@@ -8,16 +8,34 @@ import {
   employeeService,
   employeeRepository,
   applyImportedHistory,
+  applyImportedUpdate,
   type ImportedPeriod,
 } from '../modules/hr/employee-management/employees';
 import { raiseEmployeeSequenceTo } from '../modules/hr/employee-management/employees/employee-sequence';
 import { logger } from '../infrastructure/logging/logger';
+import { auditService } from '../platform/audit';
+import { Types } from 'mongoose';
 import { type AuthContext } from '../shared/types';
-import { readWorkbook } from './read-workbook';
+import { readWorkbook, type WorkbookSource } from './read-workbook';
 import { buildPlan, type PersonPlan, type Rejection, type SourceRow } from './plan';
 import { OrgResolver, deriveBranchCodes } from './org';
 import { maritalStatus } from './vocabulary';
+import {
+  diffPerson,
+  setFrom,
+  OBJECT_ID_PATHS,
+  type ExistingEmployee,
+  type FieldChange,
+  type RefusedChange,
+} from './sync';
 import { type MaritalStatus } from '@ecms/contracts';
+
+/** One person the file would change, and how — what the preview shows and the result confirms. */
+export interface PersonUpdate {
+  code: string;
+  name: string;
+  changes: { path: string; from: string; to: string }[];
+}
 
 export interface ImportReport {
   mode: 'dry-run' | 'write';
@@ -29,7 +47,10 @@ export interface ImportReport {
     serving: number;
     exited: number;
     imported: number;
-    alreadyPresent: number;
+    /** Already in the registry AND identical to the file — read, compared, left alone. */
+    unchanged: number;
+    /** Already in the registry and differing — updated, or listed by a dry run. */
+    updated: number;
     failed: number;
     branchesCreated: number;
     departmentsCreated: number;
@@ -38,12 +59,27 @@ export interface ImportReport {
   };
   /** Rows that were not imported, each with the reason and the row a human can go and open. */
   rejected: (Rejection | { sheet: string; rowNumber: number; code: string | null; reason: string })[];
+  /** Who would change and how. Capped for the report; `counts.updated` is the real total. */
+  updates: PersonUpdate[];
+  /** People the file is newly adding, by code — so a preview can be read before it is agreed to. */
+  additions: { code: string; name: string }[];
+  /** Changes the file asks for that this importer will not make, each with its reason. */
+  refused: { code: string; path: string; from: string; to: string; reason: string }[];
   orgProblems: { what: string; detail: string }[];
   ambiguousSites: { site: string; counts: Record<string, number> }[];
 }
 
+/**
+ * How many changed people the report names one by one.
+ *
+ * A preview of 2,600 updates is not a preview — nobody reads it, and shipping it to a browser turns
+ * a confirmation dialog into a several-megabyte download. The count above is always the whole truth;
+ * this is how much of the detail travels with it, and the UI says when it is showing a sample.
+ */
+export const UPDATE_SAMPLE = 200;
+
 export const runImport = async (opts: {
-  file: string;
+  file: string | WorkbookSource;
   write: boolean;
   actorId: string;
 }): Promise<ImportReport> => {
@@ -61,16 +97,37 @@ export const runImport = async (opts: {
   const resolver = new OrgResolver(codes, opts.actorId, !opts.write);
 
   const rejected: ImportReport['rejected'] = [...plan.rejected];
+  const updates: PersonUpdate[] = [];
+  const additions: ImportReport['additions'] = [];
+  const refusedChanges: ImportReport['refused'] = [];
   let imported = 0;
-  let alreadyPresent = 0;
+  let unchanged = 0;
+  let updated = 0;
   let failed = 0;
 
   for (const person of plan.people) {
     try {
       const outcome = await importPerson(person, resolver, opts);
-      if (outcome === 'imported') imported += 1;
-      else if (outcome === 'already-present') alreadyPresent += 1;
-      else {
+      if (outcome === 'imported') {
+        imported += 1;
+        if (additions.length < UPDATE_SAMPLE) {
+          additions.push({ code: person.code, name: person.current.fullNameAr ?? person.code });
+        }
+      } else if (outcome === 'unchanged') unchanged += 1;
+      else if (typeof outcome === 'object' && 'changes' in outcome) {
+        for (const r of outcome.refused) refusedChanges.push({ code: person.code, ...r });
+        if (outcome.changes.length === 0) unchanged += 1;
+        else {
+          updated += 1;
+          if (updates.length < UPDATE_SAMPLE) {
+            updates.push({
+              code: person.code,
+              name: person.current.fullNameAr ?? person.code,
+              changes: outcome.changes.map((c) => ({ path: c.path, from: c.from, to: c.to })),
+            });
+          }
+        }
+      } else {
         failed += 1;
         rejected.push({
           sheet: person.current.sheet,
@@ -106,7 +163,8 @@ export const runImport = async (opts: {
       serving: plan.people.filter((p) => p.serving).length,
       exited: plan.people.filter((p) => !p.serving).length,
       imported,
-      alreadyPresent,
+      unchanged,
+      updated,
       failed,
       branchesCreated: resolver.created.branches,
       departmentsCreated: resolver.created.departments,
@@ -114,12 +172,19 @@ export const runImport = async (opts: {
       jobTitlesCreated: resolver.created.jobTitles,
     },
     rejected,
+    updates,
+    additions,
+    refused: refusedChanges,
     orgProblems: resolver.problems,
     ambiguousSites: ambiguous,
   };
 };
 
-type Outcome = 'imported' | 'already-present' | { reason: string };
+type Outcome =
+  | 'imported'
+  | 'unchanged'
+  | { changes: FieldChange[]; refused: RefusedChange[] }
+  | { reason: string };
 
 /**
  * The context the import acts as — the seed admin, so every audited write is attributable to a
@@ -163,8 +228,7 @@ const importPerson = async (
   // and then fail the insert on the index, which is an unreadable `Duplicate resource` where a
   // named reason belongs.
   const existing = await employeeRepository.findByCodeAnyState(person.code);
-  if (existing !== null) {
-    if (existing.isDeleted !== true) return 'already-present';
+  if (existing !== null && existing.isDeleted === true) {
     return {
       reason:
         `code ${person.code} is held by a DELETED employee record, which still occupies it in the ` +
@@ -176,6 +240,13 @@ const importPerson = async (
   if (org === null) {
     return { reason: `could not place this person in the organization (site/department/job title)` };
   }
+
+  // ALREADY HERE — so this is an update, not a second copy of somebody. What the file has nothing
+  // to say about is not in the diff at all, so it cannot be touched; see `sync.ts`.
+  if (existing !== null) {
+    return updatePerson(existing as unknown as ExistingEmployee & { _id: unknown }, person, org, opts);
+  }
+
   if (!opts.write) return 'imported'; // the dry run counts what it would do, and does none of it
 
   const row = person.current;
@@ -242,6 +313,57 @@ const importPerson = async (
   });
 
   return 'imported';
+};
+
+/**
+ * Bring somebody already in the registry into line with the file.
+ *
+ * The history is deliberately NOT rewritten here. A roster export names where a person is today; it
+ * does not restate when they were hired or how a spell ended, and `applyImportedHistory` recomputes
+ * the whole `employmentPeriods`/`exit`/`status` triple from the sheet. Running that over a record
+ * HR has since corrected would overwrite the correction with the spreadsheet's version of the past.
+ * Creation loads history once, from a registry that had none; an update leaves it alone.
+ */
+const updatePerson = async (
+  existing: ExistingEmployee & { _id: unknown },
+  person: PersonPlan,
+  org: { branchId: string; departmentId: string; sectionId: string | null; jobTitleId: string },
+  opts: { write: boolean; actorId: string },
+): Promise<Outcome> => {
+  const diff = diffPerson(existing, person.current, org);
+  if (diff.changes.length === 0) return diff;
+  if (!opts.write) return diff; // the preview reports the same diff it would apply, and applies none
+
+  const set = setFrom(diff.changes);
+  for (const path of Object.keys(set)) {
+    // The document stores these as ObjectIds; the diff carries the string the resolver returned.
+    if (OBJECT_ID_PATHS.has(path) && typeof set[path] === 'string') {
+      set[path] = new Types.ObjectId(set[path] as string);
+    }
+  }
+  await applyImportedUpdate(String(existing._id), set, opts.actorId);
+  await auditImportedUpdate(String(existing._id), person.code, diff.changes, opts.actorId);
+  return diff;
+};
+
+/** The trail that says a person uploaded a file and what it moved — one entry, not one per field. */
+const auditImportedUpdate = async (
+  employeeId: string,
+  code: string,
+  changes: readonly FieldChange[],
+  actorId: string,
+): Promise<void> => {
+  await auditService.record({
+    entityRef: { moduleId: 'hr', entityType: 'employee', entityId: employeeId },
+    action: 'update',
+    actor: { userId: actorId, ip: null, userAgent: null },
+    // One entry naming every field that moved, rather than one entry per field: the reader wants
+    // "this upload changed these six things about this person", not six disconnected rows.
+    changes: [
+      { field: 'source', old: null, new: `workforce-import (${code})` },
+      ...changes.map((c) => ({ field: c.path, old: c.from, new: c.to })),
+    ],
+  });
 };
 
 /** The personal block, with the fields the sheet actually carries. */

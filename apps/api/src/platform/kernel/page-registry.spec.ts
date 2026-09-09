@@ -22,9 +22,9 @@ describe('the assembled page registry', () => {
     expect(validatePageRegistry(pages, permissions)).toEqual([]);
   });
 
-  it('declares 71 pages over 272 permissions', () => {
+  it('declares 71 pages over 273 permissions', () => {
     expect(pages).toHaveLength(71);
-    expect(permissions).toHaveLength(272);
+    expect(permissions).toHaveLength(273);
   });
 
   /**
@@ -60,9 +60,9 @@ describe('the assembled page registry', () => {
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
    */
-  it('assigns 243 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 244 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(243);
+    expect(assigned).toHaveLength(244);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -71,6 +71,12 @@ describe('the assembled page registry', () => {
     // was phase 4, and assigning keys to a page that does not exist would make this registry
     // describe a system nobody can open. Phase 4 built that screen, so the three moved here — in
     // the change that built it, exactly as `employeeLoan` did and never before.
+    // The roster import adds ONE key and no page: `employee.importRoster` is a button on the
+    // employees list, so it routes to `hr.employees` and the unassigned count does not move. It is
+    // its own key rather than `registerDirect` because one upload adds people, rewrites personal
+    // data and moves staff across the whole registry — a different amount of authority from
+    // onboarding one walk-in hire, and one that should be grantable and revocable on its own.
+    //
     // AT-D1 added two: `attendanceDevice.view` and `.manage`. They are unassigned for the reason
     // this list exists to record — the screen they belong on is the device HEALTH screen, and
     // health is AT-D4. Routing them to an unrelated page to keep a number still would make this

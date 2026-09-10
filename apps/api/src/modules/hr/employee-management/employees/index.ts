@@ -6,7 +6,12 @@ export { employeeService } from './employee.service';
 export { toEmployeeDto, toRehireCheckResultDto } from './employee.mapper';
 export { employeeRepository } from './employee.repository';
 export { buildEmployeeCode } from './employee-number';
-export { applyImportedHistory, applyImportedUpdate, type ImportedPeriod } from './employee.import';
+export {
+  applyImportedExit,
+  applyImportedHistory,
+  applyImportedUpdate,
+  type ImportedPeriod,
+} from './employee.import';
 export {
   migrateEmployeeIndexes,
   migrateEmployeesToRegistry,

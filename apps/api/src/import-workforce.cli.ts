@@ -29,7 +29,7 @@ import { moduleManifests } from './modules';
 import { env } from './infrastructure/config/env';
 import { userService } from './platform/users';
 import { assertLoginProvisioningDisabled } from './workforce-boot-guard';
-import { runImport } from './workforce-import/run';
+import { ALL_IMPORT_ACTIONS, runImport } from './workforce-import/run';
 
 const flag = (name: string): string | null => {
   const index = process.argv.indexOf(`--${name}`);
@@ -58,7 +58,13 @@ const main = async (): Promise<void> => {
     throw new Error(`seed admin ${env.SEED_ADMIN_EMAIL} not found — run \`npm run seed\` first`);
   }
 
-  const report = await runImport({ file, write, actorId: String(admin._id) });
+  // `--write` at the command line means "do all of it" — the selective form belongs to the screen,
+  // where somebody is looking at the counts when they choose.
+  const report = await runImport({
+    file,
+    apply: new Set(write ? ALL_IMPORT_ACTIONS : []),
+    actorId: String(admin._id),
+  });
 
   const reportPath = flag('report') ?? `workforce-import-${write ? 'write' : 'dry-run'}.json`;
   await writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8');

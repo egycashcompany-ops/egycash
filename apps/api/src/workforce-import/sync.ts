@@ -132,6 +132,7 @@ export const desiredFrom = (row: SourceRow, placement: ResolvedPlacement): Recor
 
 /** The shape `diffPerson` reads. Narrowed to what is compared, so a test needs no full document. */
 export interface ExistingEmployee {
+  status?: string;
   personal: Record<string, unknown> & { nationalId?: string | null };
   insurance: Record<string, unknown> | null;
   officer: Record<string, unknown> | null;
@@ -140,6 +141,36 @@ export interface ExistingEmployee {
   departmentId?: unknown;
   sectionId?: unknown;
 }
+
+/**
+ * The two blocks that are `null` until somebody files one — and the reason they need special care.
+ *
+ * A dotted `$set` INTO a null field is an error in MongoDB, not a convenience: `insurance.grossWage`
+ * cannot be created "in element {insurance: null}", and the write fails for that person. Somebody
+ * who has never had an insurance file — every employee registered without one, and the two the
+ * go-live added by hand — would fail on the first upload that carried a wage for them.
+ *
+ * So when the block is absent, the WHOLE block is written at once, with `null` for the fields the
+ * file does not carry. That is also the more honest preview: the record gains an insurance file,
+ * which is one fact, not nine.
+ */
+const NULLABLE_BLOCKS = ['insurance', 'officer'] as const;
+
+/** Every field of a block, as the schema declares it — so a whole-block write is never partial. */
+const BLOCK_FIELDS: Record<string, readonly string[]> = {
+  insurance: [
+    'insuranceNumber',
+    'occupation',
+    'occupationCode',
+    'grossWage',
+    'contributionWage',
+    'basicWage',
+    'employerShare',
+    'employeeShare',
+    'status',
+  ],
+  officer: ['reserveOfficer', 'rank', 'weaponLicense', 'professionPractice', 'retirementDate'],
+};
 
 /** Read a dotted path off the stored document, tolerating the null insurance/officer blocks. */
 export const readPath = (doc: ExistingEmployee, path: string): unknown => {
@@ -236,10 +267,40 @@ export const diffPerson = (
     }
   }
 
+  // A block that does not exist yet is written whole — a dotted `$set` into `null` is a MongoDB
+  // error, and would fail the write for every employee who never had an insurance or officer file.
+  const wholeBlocks = new Set(
+    NULLABLE_BLOCKS.filter(
+      (block) =>
+        (existing as unknown as Record<string, unknown>)[block] === null ||
+        (existing as unknown as Record<string, unknown>)[block] === undefined,
+    ) as string[],
+  );
+
+  const pending = new Map<string, Record<string, unknown>>();
   for (const [path, value] of Object.entries(desired)) {
+    const block = path.includes('.') ? (path.split('.')[0] as string) : '';
+    if (wholeBlocks.has(block)) {
+      const field = path.slice(block.length + 1);
+      const draft = pending.get(block) ?? {};
+      draft[field] = value;
+      pending.set(block, draft);
+      continue;
+    }
     const stored = readPath(existing, path);
     if (sameValue(stored, value)) continue;
     changes.push({ path, from: describe(stored), to: describe(value), value });
+  }
+
+  for (const [block, supplied] of pending) {
+    // Every declared field, so the block that lands is complete rather than a fragment the schema
+    // would not recognise. What the file did not carry is recorded as absent, not omitted.
+    const value = Object.fromEntries(
+      (BLOCK_FIELDS[block] ?? Object.keys(supplied)).map((f) => [f, supplied[f] ?? null]),
+    );
+    // Nothing but defaults — the file said nothing about this block, so it stays absent.
+    if (Object.values(value).every((v) => v === null || v === false)) continue;
+    changes.push({ path: block, from: '—', to: describe(value), value });
   }
   return { changes, refused };
 };

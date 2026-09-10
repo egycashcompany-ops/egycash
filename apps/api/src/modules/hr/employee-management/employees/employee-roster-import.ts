@@ -17,19 +17,41 @@ import { ok } from '../../../../platform/web';
 import { authContext } from '../../../../platform/auth';
 import { AppError } from '../../../../shared/errors';
 import { ErrorCodes } from '@ecms/contracts';
-import { runImport, UPDATE_SAMPLE, type ImportReport } from '../../../../workforce-import/run';
+import {
+  ALL_IMPORT_ACTIONS,
+  runImport,
+  UPDATE_SAMPLE,
+  type ImportAction,
+  type ImportReport,
+} from '../../../../workforce-import/run';
 
 /** Excel only. A 3,000-row roster is well under this; the cap is against a mistake, not a size. */
 export const ROSTER_MAX_MB = 20;
 
-const toDto = (report: ImportReport, preview: boolean): RosterImportReportDto => ({
-  mode: preview ? 'preview' : 'applied',
+/**
+ * Which kinds of write the caller agreed to.
+ *
+ * A multipart field arrives as a string, so it is read as one: a comma-separated list of the action
+ * names. ANYTHING UNRECOGNISED IS DROPPED rather than treated as "all" — the default has to be the
+ * harmless one, so a malformed request previews instead of writing to two thousand records.
+ */
+const requestedActions = (raw: unknown): Set<ImportAction> => {
+  const names = String(raw ?? '')
+    .split(',')
+    .map((s) => s.trim());
+  return new Set(ALL_IMPORT_ACTIONS.filter((a) => names.includes(a)));
+};
+
+const toDto = (report: ImportReport): RosterImportReportDto => ({
+  mode: report.applied.length > 0 ? 'applied' : 'preview',
+  applied: report.applied,
   counts: {
     rowsRead: report.counts.rowsRead,
     people: report.counts.people,
     imported: report.counts.imported,
     unchanged: report.counts.unchanged,
     updated: report.counts.updated,
+    exits: report.counts.exits,
     failed: report.counts.failed,
     branchesCreated: report.counts.branchesCreated,
     departmentsCreated: report.counts.departmentsCreated,
@@ -38,9 +60,13 @@ const toDto = (report: ImportReport, preview: boolean): RosterImportReportDto =>
   },
   // Said out loud rather than left for the reader to infer from a list that stops: a screen showing
   // 200 of 2,600 changes without saying so reads as "these are all of them".
-  sampled: report.counts.updated > UPDATE_SAMPLE || report.counts.imported > UPDATE_SAMPLE,
+  sampled:
+    report.counts.updated > UPDATE_SAMPLE ||
+    report.counts.imported > UPDATE_SAMPLE ||
+    report.counts.exits > UPDATE_SAMPLE,
   updates: report.updates,
   additions: report.additions,
+  exits: report.exits,
   refused: report.refused,
   rejected: report.rejected.map((r) => ({
     sheet: String(r.sheet),
@@ -57,22 +83,17 @@ export const importEmployeeRoster = async (req: Request, res: Response): Promise
   if (file === undefined) {
     throw new AppError(ErrorCodes.VALIDATION_FAILED, 422, 'no workbook was uploaded');
   }
-  // The default is the harmless one: only an explicit `apply=true` writes. A truthy-ish body field
-  // arriving from a multipart form is a string, so it is compared as one.
-  const preview = String((req.body as { apply?: unknown }).apply ?? '') !== 'true';
+  // The default is the harmless one: with nothing named, nothing is written.
+  const apply = requestedActions((req.body as { apply?: unknown }).apply);
 
   let report: ImportReport;
   try {
-    report = await runImport({
-      file: { buffer: file.buffer },
-      write: !preview,
-      actorId: ctx.userId,
-    });
+    report = await runImport({ file: { buffer: file.buffer }, apply, actorId: ctx.userId });
   } catch (error) {
     // A workbook with the wrong sheets or headers is the caller's file, not a server fault — it
     // has to come back as something the screen can show next to the upload button.
     const message = error instanceof Error ? error.message : String(error);
     throw new AppError(ErrorCodes.VALIDATION_FAILED, 422, message);
   }
-  ok(res, toDto(report, preview));
+  ok(res, toDto(report));
 };

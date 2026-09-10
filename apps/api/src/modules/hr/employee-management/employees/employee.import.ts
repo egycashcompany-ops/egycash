@@ -106,3 +106,54 @@ export const applyImportedUpdate = async (
     { $set: { ...set, updatedBy: new Types.ObjectId(by), updatedAt: new Date() } },
   );
 };
+
+/**
+ * Record that somebody the roster now lists as a leaver has left.
+ *
+ * DELIBERATELY NARROWER THAN `applyImportedHistory`, which recomputes the whole history from the
+ * sheet — including `hiredAt`. That is right at creation, where the registry knows nothing; it is
+ * wrong on an update, where it would overwrite a hire date HR has since corrected with the
+ * spreadsheet's version of it. So this closes the OPEN period and nothing else: the exit the sheet
+ * describes, the status that follows from it, and the periods behind it left exactly as they are.
+ *
+ * Idempotent: a person with no open period has already been exited, and the write is skipped.
+ */
+export const applyImportedExit = async (
+  employeeId: string,
+  exit: { type: EmployeeExitType; effectiveDate: Date; reason: string | null },
+  by: string,
+): Promise<boolean> => {
+  const id = new Types.ObjectId(employeeId);
+  const doc = await EmployeeModel.collection.findOne<{
+    employmentPeriods?: { hiredAt: Date; exitedAt: Date | null; exitType: string | null }[];
+  }>({ _id: id });
+  const periods = doc?.employmentPeriods ?? [];
+  const openIndex = periods.findIndex((p) => p.exitedAt === null || p.exitedAt === undefined);
+  if (openIndex === -1) return false;
+
+  const closed = periods.map((p, i) =>
+    i === openIndex ? { ...p, exitedAt: exit.effectiveDate, exitType: exit.type } : p,
+  );
+  await EmployeeModel.collection.updateOne(
+    { _id: id },
+    {
+      $set: {
+        employmentPeriods: closed,
+        exit: {
+          type: exit.type,
+          reason: exit.reason,
+          effectiveDate: exit.effectiveDate,
+          // An imported exit records no rehire decision, because nobody made one — the sheet says
+          // why somebody left, never whether they would be taken back. Same reasoning, and same
+          // value, as the history loader above.
+          eligibleForRehire: true,
+          by: null,
+        },
+        status: 'exited',
+        updatedBy: new Types.ObjectId(by),
+        updatedAt: new Date(),
+      },
+    },
+  );
+  return true;
+};

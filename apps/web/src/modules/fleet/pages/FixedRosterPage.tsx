@@ -66,9 +66,7 @@ import {
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = [
-  'q',
-] as const;
+const REMEMBERED_FILTERS = ['q'] as const;
 
 /** The one thing a drag carries. Read on drop; nothing else is inferred from the event. */
 const DRAG_TYPE = 'application/x-ecms-driver';
@@ -777,7 +775,7 @@ export const FixedRosterPage = (): JSX.Element => {
   const editingRow = draft.find((row) => row.vehicleId === editing) ?? null;
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.fixedRoster')}
         breadcrumbs={[
@@ -813,12 +811,19 @@ export const FixedRosterPage = (): JSX.Element => {
         }
       />
 
-      <div className="grid gap-6 xl:grid-cols-5">
+      {/* THE BOARD IS EXACTLY THE SCREEN, and the page itself never scrolls. The shell hands the
+          page its height (`PageContainer fullHeight`), this grid takes it (`min-h-0 flex-1`), and
+          the two regions scroll INSIDE themselves — the table in its own box, the pool in its own
+          list. It replaces `sticky top-4` + `max-h-[calc(100vh-2rem)]` on the pool, which bounded
+          the panel by the viewport but not by where it started, so its foot still hung a
+          page-scroll below the fold. */}
+      <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-5">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the wrapper
             just grows and takes the PAGE sideways with it. With it, a narrow screen scrolls
-            inside the table, which is where the scrolling belongs. */}
-        <div className="min-w-0 space-y-4 xl:col-span-4">
+            inside the table, which is where the scrolling belongs. `min-h-0` is the same rule in
+            the other axis, and is what keeps the table's height off the grid row. */}
+        <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:col-span-4">
           <FilterBar hasActiveFilters={search !== ''} onClear={() => patch({ q: null })}>
             <SearchInput
               value={search}
@@ -838,18 +843,20 @@ export const FixedRosterPage = (): JSX.Element => {
             </span>
           </FilterBar>
 
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => row.vehicleId}
-            loading={boardQuery.isPending}
-            error={boardQuery.isError ? boardQuery.error : undefined}
-            onRetry={() => void boardQuery.refetch()}
-            empty={<EmptyState title={t('fleet.fixedRoster.noVehicles')} />}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(row) => row.vehicleId}
+              loading={boardQuery.isPending}
+              error={boardQuery.isError ? boardQuery.error : undefined}
+              onRetry={() => void boardQuery.refetch()}
+              empty={<EmptyState title={t('fleet.fixedRoster.noVehicles')} />}
+            />
+          </div>
         </div>
 
-        <div className="min-w-0 space-y-6">
+        <div className="flex min-h-0 min-w-0 flex-col">
           {/* Tinted like the reference: the pool is a CONTROL surface, not another data panel,
               and the green ties it to the chips it holds — so the eye reads list-and-chips as one
               thing beside the board rather than a second table competing with it.
@@ -860,7 +867,7 @@ export const FixedRosterPage = (): JSX.Element => {
               land on the element and the winner is stylesheet order — which put white on top and
               left the tint silently doing nothing. Every other tinted surface in this app is built
               exactly like this one, from the same three tokens. */}
-          <div className="sticky top-4 flex max-h-[calc(100vh-2rem)] flex-col rounded-lg border border-green-200 bg-green-50 shadow-card dark:border-green-900 dark:bg-green-950/30">
+          <div className="flex min-h-0 flex-1 flex-col rounded-lg border border-green-200 bg-green-50 shadow-card dark:border-green-900 dark:bg-green-950/30">
             {/* Compact header: the count belongs beside the title, and the search directly under
                 it, so the panel spends its height on drivers rather than on chrome. */}
             <div className="shrink-0 space-y-2 px-3 pb-2 pt-3">
@@ -877,14 +884,19 @@ export const FixedRosterPage = (): JSX.Element => {
                 className="w-full"
               />
             </div>
-            {/* THE POOL RUNS TO THE BOTTOM OF THE SCREEN. It was a fixed `max-h-[26rem]` box —
-                416px of list with a scrollbar inside it, and on a 950px screen that left a
-                quarter of the page blank underneath while the reader paged through a fleet of
-                three hundred. The height is now whatever is left: the panel is bounded by the
-                VIEWPORT (`sticky` + `max-h-[calc(100vh-2rem)]`) and the list takes the room the
-                title and the search box do not, so it fits any screen without a number picked
-                for one of them. `sticky` also keeps it in view while the board beside it
-                scrolls, which is the point of a pool you drag FROM. */}
+            {/* THE POOL IS THE SCREEN, TO THE PIXEL. It was a fixed `max-h-[26rem]` box — 416px
+                of list with a scrollbar inside it, and on a 950px screen that left a quarter of
+                the page blank underneath while the reader paged through a fleet of three
+                hundred. Then it was `sticky` + `max-h-[calc(100vh-2rem)]`, which bounded the
+                panel by the viewport but not by where the panel STARTS: it still began below the
+                page header, so its last drivers sat past the fold and only came into view once
+                you scrolled — the pool you drag FROM, out of reach.
+
+                The height is now inherited rather than computed. The shell hands the page its
+                exact height, the board grid takes it, this panel fills its share of the grid row,
+                and the list takes whatever the title and search box leave (`min-h-0 flex-1
+                overflow-y-auto`). No `100vh` arithmetic, no number picked for one screen, and no
+                page scroll: the only thing that scrolls is the list itself. */}
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : shownDrivers.length === 0 ? (

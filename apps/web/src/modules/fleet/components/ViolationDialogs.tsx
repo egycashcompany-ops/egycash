@@ -25,7 +25,7 @@ import {
 } from '../api/fleet-queries';
 import { VehicleSelect } from './VehicleSelect';
 import { CatalogSelect } from './CatalogSelect';
-import { OptionalEmployeeField } from './OptionalEmployeeField';
+import { RegistryDriverPicker } from './RegistryDriverPicker';
 
 const currentYear = (): number => new Date().getFullYear();
 
@@ -119,6 +119,10 @@ export const VehicleViolationDialog = ({
           ...(violationTypeId !== violation.violationTypeId ? { violationTypeId } : {}),
           ...(Number(count) !== violation.count ? { count: Number(count) } : {}),
           ...(Number(unitValue) !== violation.unitValue ? { unitValue: Number(unitValue) } : {}),
+          // Only what CHANGED travels — an update that restates every field would make a no-op
+          // edit look like a five-field change in the audit trail.
+          ...(vehicleId !== violation.vehicleId ? { vehicleId } : {}),
+          ...(Number(year) !== violation.year ? { year: Number(year) } : {}),
         },
       });
     }
@@ -156,20 +160,27 @@ export const VehicleViolationDialog = ({
       }
     >
       <fieldset disabled={readOnly} className="space-y-4">
-        {violation === null && (
-          <Field label={t('fleet.odometer.columns.vehicle')} required>
-            <VehicleSelect value={vehicleId} onChange={setVehicleId} anyStatus />
-          </Field>
-        )}
-        {violation !== null && (
-          <Field label={t('fleet.odometer.columns.vehicle')}>
-            {/* The car is not editable on an existing row — moving a fine to another car is a
-                different act from correcting one — so it is SHOWN rather than offered. */}
-            <p data-violation-code className="font-mono text-sm" dir="ltr">
-              {code}
-            </p>
-          </Field>
-        )}
+        {/* THE CAR AND THE YEAR ARE CORRECTABLE, on a filed row as much as on a new one.
+            They used to be frozen once filed — the car shown as plain text, the year's box
+            disabled — on the argument that moving a fine is a different act from correcting one.
+            The commonest correction is exactly those two: a statement arrives naming one plate
+            and is keyed against another, or lands in the wrong year, and the only way back was to
+            delete the row and re-file it, which throws away the row's history to fix a typo.
+            The DELETE path still shows them read-only, because the whole `fieldset` is. */}
+        <Field label={t('fleet.odometer.columns.vehicle')} required>
+          <VehicleSelect
+            value={vehicleId}
+            onChange={setVehicleId}
+            anyStatus
+            fullWidth
+            ariaLabel={t('fleet.odometer.columns.vehicle')}
+          />
+          {/* The code stays on the page under the picker, for the reader who came to CONFIRM a
+              row rather than change it — and it is what the delete dialog is really asking about. */}
+          <p data-violation-code className="mt-1 font-mono text-xs text-slate-500" dir="ltr">
+            {code}
+          </p>
+        </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('fleet.violations.fields.year')} required>
             <Input
@@ -180,7 +191,6 @@ export const VehicleViolationDialog = ({
               value={year}
               onChange={(e) => setYear(e.target.value)}
               dir="ltr"
-              disabled={violation !== null}
             />
           </Field>
           <Field label={t('fleet.violations.fields.type')} required>
@@ -343,7 +353,19 @@ export const DriverViolationDialog = ({
           </Field>
         </div>
         <Field label={t('fleet.violations.fields.driver')} required>
-          <OptionalEmployeeField value={driver} onChange={setDriver} />
+          {/* THE DRIVERS REGISTRY, and it lists BEFORE anything is typed.
+              This was `OptionalEmployeeField`, which searched the whole payroll and showed
+              nothing at all until a letter was typed — so clearing a driver and coming back to
+              the box left a reader staring at an empty field with no way to discover who could
+              go in it, and offering colleagues who are not drivers if they guessed a name. This
+              is the same control every other «مين السائق؟» on the screen uses: driving seats
+              only, and one page of them already on show when it opens. */}
+          <RegistryDriverPicker
+            value={driver === '' ? [] : [driver]}
+            onChange={(next) => setDriver(next[0] ?? '')}
+            fullWidth
+            className="w-full"
+          />
         </Field>
         <Field label={t('fleet.violations.fields.amount')} required>
           <MoneyInput value={amount} onChange={(next) => setAmount(next)} />

@@ -40,7 +40,17 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
  * One shared filter would mean narrowing the left half every time somebody looked up a car on the
  * right, and the two halves are read side by side precisely so they can disagree.
  */
-const REMEMBERED_FILTERS = ['year', 'codes', 'dcodes', 'driver', 'dtype', 'damt', 'size'] as const;
+const REMEMBERED_FILTERS = [
+  'year',
+  'codes',
+  'cset',
+  'dcodes',
+  'driver',
+  'dtype',
+  'damt',
+  'dset',
+  'size',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -55,6 +65,9 @@ export const ViolationsPage = (): JSX.Element => {
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
   const driverAmount = sp.get('damt') ?? '';
+  // «الحالة» on each half: '' = both, 'true' = settled, 'false' = still outstanding.
+  const companySettled = sp.get('cset') ?? '';
+  const driverSettled = sp.get('dset') ?? '';
   // A LIST, like `driver` above: «speeding AND seatbelt» is one question, not two.
   const typeIds = splitVehicleCodeList(sp.get('dtype') ?? '');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -114,11 +127,13 @@ export const ViolationsPage = (): JSX.Element => {
         <CompanyViolationsPanel
           year={year}
           vehicleCodes={codes}
+          settled={companySettled}
+          onSettledChange={(next) => patch({ cset: next })}
           onYearChange={(next) => patch({ year: next })}
           onVehicleCodesChange={(next) =>
             patch({ codes: next.length === 0 ? null : next.join(',') })
           }
-          onClear={() => patch({ year: null, codes: null })}
+          onClear={() => patch({ year: null, codes: null, cset: null })}
           onInspect={setInspecting}
         />
         <DriverViolationsPanel
@@ -126,6 +141,8 @@ export const ViolationsPage = (): JSX.Element => {
           driverEmployeeIds={driverEmployeeIds}
           typeIds={typeIds}
           amount={driverAmount}
+          settled={driverSettled}
+          onSettledChange={(next) => patch({ dset: next })}
           page={page}
           pageSize={pageSize}
           onVehicleCodesChange={(next) =>
@@ -134,7 +151,9 @@ export const ViolationsPage = (): JSX.Element => {
           onDriverChange={(next) => patch({ driver: next })}
           onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
           onAmountChange={(next) => patch({ damt: next })}
-          onClear={() => patch({ dcodes: null, driver: null, dtype: null, damt: null })}
+          onClear={() =>
+            patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })
+          }
           onPageChange={(next) => patch({ page: String(next) }, false)}
           onPageSizeChange={(next) => patch({ size: String(next), page: null }, false)}
           onEdit={setEditing}

@@ -37,7 +37,6 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
-import { SearchInput } from '../../../shared/ui/SearchInput';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -57,7 +56,6 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
-  'culprit',
   'culpritBy',
   'from',
   'status',
@@ -77,7 +75,6 @@ export const AccidentsPage = (): JSX.Element => {
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
-  const culprit = sp.get('culprit') ?? '';
   // WHICH drivers, exactly — where the name box above is a guess that matches anyone sharing a
   // first name, and is the only way to find a third party.
   const culpritBy = splitVehicleCodeList(sp.get('culpritBy') ?? '');
@@ -121,7 +118,6 @@ export const AccidentsPage = (): JSX.Element => {
   const filters = useMemo(
     () => ({
       vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
-      culprit: culprit || undefined,
       culpritEmployeeId: culpritBy.length === 0 ? undefined : culpritBy.join(','),
       status: status || undefined,
       from: from || undefined,
@@ -144,10 +140,9 @@ export const AccidentsPage = (): JSX.Element => {
   const clearFilters = (): void =>
     // ONE update, all six keys. The code search and the vehicle pick go together — leaving either
     // behind would hand back a "cleared" bar that is still filtering.
-    patch({ vehicleCodes: null, culprit: null, culpritBy: null, status: null, from: null, to: null });
+    patch({ vehicleCodes: null, culpritBy: null, status: null, from: null, to: null });
   const hasFilters =
     vehicleCodes.length > 0 ||
-    culprit !== '' ||
     culpritBy.length > 0 ||
     status !== '' ||
     from !== '' ||
@@ -442,14 +437,6 @@ export const AccidentsPage = (): JSX.Element => {
               multiple
               fullWidth
               className="w-full"
-            />
-          </div>
-          <div className="min-w-[11rem] flex-1">
-            <SearchInput
-              value={culprit}
-              onChange={(term) => patch({ culprit: term || null })}
-              placeholder={t('fleet.accidents.searchCulprit')}
-              textScale="comfortable"
             />
           </div>
           <div className="flex shrink-0 items-center gap-2">

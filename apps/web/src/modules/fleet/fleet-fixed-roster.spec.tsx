@@ -860,7 +860,17 @@ describe('the driver panel', () => {
     expect(SOURCE, 'five columns').toContain('xl:grid-cols-5');
     expect(SOURCE, 'four of them are the board').toContain('xl:col-span-4');
     expect(SOURCE, 'so the panel is one').not.toContain('xl:col-span-3');
-    expect(SOURCE, 'the panel can shrink too').toContain('min-w-0 space-y-6');
+    // `min-w-0` on both halves is what lets the table keep its own overflow rather than pushing
+    // the page sideways; `min-h-0` is the same rule in the other axis, and is what lets the panel
+    // be exactly the screen instead of demanding its content's height.
+    //
+    // Asserted on the POOL PANEL's own class, not on a shape both columns share: the board column
+    // is `flex min-h-0 min-w-0 flex-col` too, so a bare `toContain` of that would go on passing
+    // with the pool column reverted to its old rigid `min-w-0 space-y-6`. It did, once.
+    expect(SOURCE, 'the pool fills the height its column was given').toContain(
+      'flex min-h-0 flex-1 flex-col rounded-lg border border-green-200',
+    );
+    expect(SOURCE, 'and no rigid stack is left in the column').not.toContain('min-w-0 space-y-6');
     // The note's ceiling rises with it. Measured in a browser: panel 326px → 256px, notes cell
     // 256px → 384px at 1440px wide.
     expect(SOURCE, 'the note may run wider before it truncates').toContain('max-w-[22rem]');
@@ -892,7 +902,7 @@ describe('the driver panel', () => {
     // `white` after `green`. Nothing failed; the tint simply never appeared. This pins the shape
     // that works and refuses the one that looks identical in a diff and loses the colour.
     const PANEL = SOURCE.slice(
-      SOURCE.indexOf('min-w-0 space-y-6'),
+      SOURCE.indexOf('flex min-h-0 flex-1 flex-col rounded-lg'),
       SOURCE.indexOf('shownDrivers.map((driver)'),
     );
     expect(PANEL, 'the surface carries the tint itself').toContain('bg-green-50');

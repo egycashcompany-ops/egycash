@@ -18,8 +18,8 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { Pagination } from '../../../shared/ui/Pagination';
-import { Field, Input } from '../../../shared/ui/form';
+import { PageSizeSelect, Pagination } from '../../../shared/ui/Pagination';
+import { Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   CheckIcon,
@@ -74,12 +74,14 @@ export const DriverViolationsPanel = ({
   driverEmployeeIds,
   typeIds,
   amount,
+  settled,
   page,
   pageSize,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
   onAmountChange,
+  onSettledChange,
   onClear,
   onPageChange,
   onPageSizeChange,
@@ -92,12 +94,15 @@ export const DriverViolationsPanel = ({
   typeIds: string[];
   /** «قيمة المخالفة» — an exact amount, as it is filed. '' = every amount. */
   amount: string;
+  /** '' = both, 'true' = settled, 'false' = still outstanding. */
+  settled: string;
   page: number;
   pageSize: number;
   onVehicleCodesChange: (next: string[]) => void;
   onDriverChange: (next: string | null) => void;
   onTypeChange: (next: string[]) => void;
   onAmountChange: (next: string | null) => void;
+  onSettledChange: (next: string | null) => void;
   /** Clear this half in ONE write — see the company panel for why it is not four setter calls. */
   onClear: () => void;
   onPageChange: (next: number) => void;
@@ -113,7 +118,11 @@ export const DriverViolationsPanel = ({
   const mayEdit = can('fleetViolation.edit');
   const mayDelete = can('fleetViolation.delete');
   const hasActiveFilters =
-    vehicleCodes.length > 0 || driverEmployeeIds.length > 0 || typeIds.length > 0 || amount !== '';
+    vehicleCodes.length > 0 ||
+    driverEmployeeIds.length > 0 ||
+    typeIds.length > 0 ||
+    amount !== '' ||
+    settled !== '';
 
   const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
   const codeOf = useMemo(() => {
@@ -203,8 +212,9 @@ export const DriverViolationsPanel = ({
       ...(driverEmployeeIds.length === 0 ? {} : { driverEmployeeId: driverEmployeeIds.join(',') }),
       ...(amount.trim() === '' ? {} : { amount: amount.trim() }),
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
+      ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),
-    [page, pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount],
+    [page, pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
   );
   const list = useViolations(params);
   const rows = list.data?.items ?? [];
@@ -391,9 +401,28 @@ export const DriverViolationsPanel = ({
       data-violations-panel="driver"
       className="flex min-h-0 min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
     >
-      <h2 className="mb-4 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
-        {t('fleet.violations.driverTitle')}
-      </h2>
+      {/* The page-size box rides the TITLE ROW, on the far left. It used to sit under the board
+          inside «عرض ١–٢٥ من ٤٨ · لكل صفحة», a sentence that restated a number the count badge
+          in the filter bar already gives — three statements of one figure, at the foot of a panel
+          whose whole point is that nothing under the board moves. The sentence is gone; the
+          choice it was attached to is not, because a board of a few hundred fines is unreadable
+          twenty-five at a time.
+
+          `order-last` is what puts it on the left: this row is RTL, so the child listed last is
+          drawn first from the left edge — the same idiom as the print and export icons below. */}
+      <div className="mb-4 flex items-center gap-3">
+        <PageSizeSelect
+          className="order-last shrink-0"
+          pageSize={pageSize}
+          onChange={onPageSizeChange}
+        />
+        <h2 className="flex-1 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
+          {t('fleet.violations.driverTitle')}
+        </h2>
+        {/* Balances the box opposite it so the title stays centred on the PANEL, not pushed off
+            it — a heading that drifts when a control appears beside it reads as a mistake. */}
+        <span aria-hidden className="w-[5.5rem] shrink-0" />
+      </div>
 
       <div className="mb-3 flex items-start gap-3">
         {/* Listed LAST so an RTL row draws it on the LEFT — see the company panel for the note. */}
@@ -441,11 +470,19 @@ export const DriverViolationsPanel = ({
               />
             </div>
           </Field>
+          {/* THE COUNTERS ARE SHUT UNTIL A CAR IS CHOSEN. The batch is filed against ONE car, so
+              counting before picking one leads somewhere that cannot be saved: a reader would fill
+              a date, a driver and an amount in the layer, see «١ للتسجيل» and a live-looking
+              button, and never learn that the one missing thing was behind the layer they were
+              working in. Refusing the first keystroke is better than explaining the dead end
+              afterwards — and the field that has to be filled first is the one right beside it. */}
           {types.map((type) => (
             <Field key={type.id} label={type.name}>
               <Input
                 data-driver-count={type.id}
                 aria-label={type.name}
+                disabled={formVehicleId === ''}
+                title={formVehicleId === '' ? t('fleet.violations.pickVehicleFirst') : type.name}
                 value={String(counts[type.id] ?? 0)}
                 onChange={(e) => setCount(type.id, e.target.value)}
                 // Its own colour, the same one its rows and its cards carry, so counting «عكس»
@@ -460,6 +497,15 @@ export const DriverViolationsPanel = ({
               />
             </Field>
           ))}
+          {formVehicleId === '' && (
+            <p
+              data-driver-needs-vehicle
+              role="status"
+              className="self-center text-xs text-amber-600 dark:text-amber-400"
+            >
+              {t('fleet.violations.pickVehicleFirst')}
+            </p>
+          )}
           {/* NO Save here any more. Counting opens the layer, and the layer is where each fine is
               named and filed — a Save on this bar could only ever be the disabled twin of the one
               beside the cards it depends on, which is precisely the button that told a reader
@@ -593,14 +639,23 @@ export const DriverViolationsPanel = ({
                   </li>
                 ))}
               </ul>
-              {/* WHY SAVE IS OFF, in words. The button used to sit dead beside an amber border and
-                nothing else: a reader who had typed a date and an amount had no way to learn that
-                the driver — a field that only fills by PICKING a name from its search — was still
-                empty. Naming the incomplete cards is the whole difference between a form that
-                refuses and a form that explains. */}
+              {/* WHY SAVE IS OFF, in words — and the CAR comes first.
+                  The counters are shut until a car is picked, so this cannot be how a batch STARTS
+                  any more. It is still reachable the other way round: pick a car, count, then set
+                  the car back to «اختر…» with the cards already open. Named first because it
+                  blocks the whole batch, where an incomplete card blocks only itself. */}
+              {formVehicleId === '' && (
+                <p
+                  data-entry-blocked="vehicle"
+                  role="status"
+                  className="mt-2 rounded-md border border-amber-500/60 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+                >
+                  {t('fleet.violations.entryNeedsVehicle')}
+                </p>
+              )}
               {missing.length > 0 && (
                 <p
-                  data-entry-blocked
+                  data-entry-blocked="cards"
                   role="status"
                   className="mt-2 rounded-md border border-amber-500/60 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
                 >
@@ -668,6 +723,7 @@ export const DriverViolationsPanel = ({
           label={t('fleet.vehicles.fields.code')}
           active={vehicleCodes.length > 0}
           className={CELL}
+          density={TIGHT}
         >
           <VehicleCodeFilter
             value={vehicleCodes}
@@ -685,6 +741,7 @@ export const DriverViolationsPanel = ({
           label={t('fleet.violations.fields.driver')}
           active={driverEmployeeIds.length > 0}
           className={CELL}
+          density={TIGHT}
         >
           <RegistryDriverPicker
             value={driverEmployeeIds}
@@ -703,6 +760,7 @@ export const DriverViolationsPanel = ({
           label={t('fleet.violations.fields.type')}
           active={typeIds.length > 0}
           className={CELL}
+          density={TIGHT}
         >
           {/* SEVERAL kinds at once. A clerk reconciling a stack asks «speeding and seatbelt», and
               a single-value dropdown made them ask twice and add the two answers up by hand. The
@@ -722,10 +780,32 @@ export const DriverViolationsPanel = ({
             className="w-full"
           />
         </FilterField>
+        {/* «الحالة» — settled or still outstanding. The tick is the commonest thing a clerk
+            changes on this board and «what is still open» the commonest question they ask of it,
+            which was answerable only by reading every row's tick on every page. */}
+        <FilterField
+          label={t('fleet.violations.columns.settledState')}
+          active={settled !== ''}
+          className={CELL}
+          density={TIGHT}
+        >
+          <Select
+            aria-label={t('fleet.violations.columns.settledState')}
+            data-driver-settled
+            value={settled}
+            onChange={(e) => onSettledChange(e.target.value || null)}
+            density={TIGHT}
+          >
+            <option value="">{t('common.filters.all')}</option>
+            <option value="true">{t('fleet.violations.settled')}</option>
+            <option value="false">{t('fleet.violations.outstanding')}</option>
+          </Select>
+        </FilterField>
         <FilterField
           label={t('fleet.violations.fields.amount')}
           active={amount !== ''}
           className={CELL}
+          density={TIGHT}
         >
           <DebouncedInput
             aria-label={t('fleet.violations.fields.amount')}
@@ -774,7 +854,7 @@ export const DriverViolationsPanel = ({
               </tr>
             </tbody>
           </table>
-          <Pagination meta={meta} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} />
+          <Pagination meta={meta} onPageChange={onPageChange} summary={false} />
         </>
       )}
     </section>

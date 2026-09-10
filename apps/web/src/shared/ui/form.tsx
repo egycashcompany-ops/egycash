@@ -58,8 +58,7 @@ const controlText = (scale: ControlTextScale): string =>
  * one gutter ever reaches the element.
  */
 export type ControlDensity = 'default' | 'tight';
-const controlGutter = (density: ControlDensity): string =>
-  density === 'tight' ? 'px-2' : 'px-3';
+const controlGutter = (density: ControlDensity): string => (density === 'tight' ? 'px-2' : 'px-3');
 const ring = (error: boolean): string =>
   error
     ? 'border-red-400 focus:border-red-500'
@@ -72,6 +71,7 @@ export const Field = ({
   hint,
   warning,
   error,
+  className,
   children,
 }: {
   label?: string;
@@ -85,9 +85,16 @@ export const Field = ({
    */
   warning?: string | undefined;
   error?: string | undefined;
+  /**
+   * Layout for the field AS A WHOLE — how it sits in the row that holds it, not how its control
+   * looks. A form row that has to fit one line gives each field its share of the width here; the
+   * control inside keeps its own `w-full`. There is no width of its own to lose to (`cn` is a
+   * plain joiner and this element carries none), so a class passed here stands.
+   */
+  className?: string;
   children: ReactNode;
 }): JSX.Element => (
-  <div className="space-y-1.5">
+  <div className={cn('space-y-1.5', className)}>
     {label !== undefined && (
       <label
         htmlFor={htmlFor}
@@ -152,7 +159,13 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     <textarea
       ref={ref}
       rows={rows}
-      className={cn(controlBase, controlGutter('default'), controlText(textScale), ring(error), className)}
+      className={cn(
+        controlBase,
+        controlGutter('default'),
+        controlText(textScale),
+        ring(error),
+        className,
+      )}
       {...rest}
     />
   ),
@@ -165,7 +178,10 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   density?: ControlDensity;
 }
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ error = false, textScale = 'compact', density = 'default', className, children, ...rest }, ref) => (
+  (
+    { error = false, textScale = 'compact', density = 'default', className, children, ...rest },
+    ref,
+  ) => (
     <div className="relative">
       <select
         ref={ref}

@@ -141,39 +141,24 @@ export const AccidentFormDialog = ({
             <Input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
           </Field>
         </div>
-        {/* PICK the driver, or NAME a third party. Picking one writes their name into the field
-            below as well, because the name is what the board, the export and the print-out have
-            always shown and is the historical fact — a driver renamed next year did not change
-            who caused this accident. The id is what makes «every accident سائق X caused» an exact
-            question instead of a substring search that matches two people sharing a first name. */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.accidents.fields.culpritDriver')}>
-            <RegistryDriverPicker
-              value={culpritEmployeeId === '' ? [] : [culpritEmployeeId]}
-              onChange={(next) => {
-                const picked = next[0] ?? '';
-                setCulpritEmployeeId(picked);
-                if (picked === '') return;
-                const chosen = drivers.get(picked);
-                if (chosen !== undefined) setCulprit(chosen);
-              }}
-              fullWidth
-              className="w-full"
-            />
-          </Field>
-          <Field label={t('fleet.accidents.fields.culprit')} required>
-            <Input
-              data-accident-culprit
-              value={culprit}
-              onChange={(e) => {
-                setCulprit(e.target.value);
-                // Typed over by hand — this is no longer the driver that was picked, and saying
-                // it still is would file an accident against somebody the name does not name.
-                setCulpritEmployeeId('');
-              }}
-            />
-          </Field>
-        </div>
+        {/* ONE field: «المتسبب», and it is the drivers list. Picking somebody writes their NAME
+            into the record as well as their id — the name is what the board, the export and the
+            print-out show, and it is the historical fact: a driver renamed next year did not
+            change who caused this accident. The id is what makes «every accident سائق X caused» an
+            exact question instead of a substring search that matches two people sharing a first
+            name. */}
+        <Field label={t('fleet.accidents.fields.culprit')} required>
+          <RegistryDriverPicker
+            value={culpritEmployeeId === '' ? [] : [culpritEmployeeId]}
+            onChange={(next) => {
+              const picked = next[0] ?? '';
+              setCulpritEmployeeId(picked);
+              setCulprit(picked === '' ? '' : (drivers.get(picked) ?? ''));
+            }}
+            fullWidth
+            className="w-full"
+          />
+        </Field>
         <Field label={t('fleet.accidents.fields.statement')} required>
           <Textarea rows={3} value={statement} onChange={(e) => setStatement(e.target.value)} />
         </Field>

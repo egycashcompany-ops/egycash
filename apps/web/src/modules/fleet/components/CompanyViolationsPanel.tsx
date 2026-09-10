@@ -86,7 +86,9 @@ const CELL = 'flex-1 basis-0 min-w-[6rem]';
 export const CompanyViolationsPanel = ({
   year,
   vehicleCodes,
+  settled,
   onYearChange,
+  onSettledChange,
   onVehicleCodesChange,
   onClear,
   onInspect,
@@ -94,6 +96,9 @@ export const CompanyViolationsPanel = ({
   /** '' = every year. The board is read as a history, so no year is a real answer. */
   year: string;
   vehicleCodes: string[];
+  /** '' = both, 'true' = fully settled, 'false' = anything still outstanding. */
+  settled: string;
+  onSettledChange: (next: string | null) => void;
   onYearChange: (next: string | null) => void;
   onVehicleCodesChange: (next: string[]) => void;
   /**
@@ -111,7 +116,7 @@ export const CompanyViolationsPanel = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const mayRecord = can('fleetViolation.record');
-  const hasActiveFilters = year !== '' || vehicleCodes.length > 0;
+  const hasActiveFilters = year !== '' || vehicleCodes.length > 0 || settled !== '';
 
   const thisYear = new Date().getFullYear();
   const years = useMemo(
@@ -130,7 +135,20 @@ export const CompanyViolationsPanel = ({
   const soleVehicleId = vehicleCodes.length === 1 ? idOf.get(vehicleCodes[0] as string) : undefined;
 
   const rollup = useViolationRollup(year === '' ? undefined : Number(year), soleVehicleId);
-  const rows = rollup.data ?? [];
+  // «الحالة», applied IN HAND. The rollup arrives whole — that is what lets this half count its
+  // own groups — so narrowing it here asks the server nothing extra and keeps the totals below
+  // agreeing with the rows above, which a server-side page could not promise.
+  //
+  // A group is SETTLED when every row in it is ticked. «Some of them» is not settled: a year with
+  // one fine outstanding is a year somebody still has to chase.
+  const allRows = rollup.data ?? [];
+  const rows =
+    settled === ''
+      ? allRows
+      : allRows.filter((row) => {
+          const done = row.rowCount > 0 && row.collectedCount === row.rowCount;
+          return settled === 'true' ? done : !done;
+        });
 
   // ── the entry bar ─────────────────────────────────────────────────────────
   const [formYear, setFormYear] = useState(String(thisYear));
@@ -289,27 +307,48 @@ export const CompanyViolationsPanel = ({
         </div>
 
         {/* ── file one statement row ─────────────────────────────────────── */}
-        {/* IT WRAPS, it does not scroll. This was `overflow-x-auto` on the argument that a
-            statement line reads left to right as one sentence — but a half-width panel gives the
-            row 556px and the controls need 825, so what that produced was a horizontal scrollbar
-            inside a form: «العدد» and the total sat off-screen behind it, and nothing said they
-            were there. A second line is visible; a scrolled-away field is not.
+        {/* ONE LINE FROM `md` UP, AND IT NEVER SCROLLS SIDEWAYS. Two earlier shapes were both
+            wrong and both were tried: `overflow-x-auto` hid «العدد» and the total behind a
+            scrollbar inside a form, and `flex-wrap` + `[&>*]:shrink-0` broke the statement over
+            five lines in a half-width panel — a statement row reads as one sentence and the owner
+            asked for it back on one line, with no sideways scroll.
 
-            `[&>*]:shrink-0` stays, and is still the load-bearing part. Without it the flex
-            children give up width to fit rather than wrapping, and the first to disappear was
-            «السنة» — squeezed until only its chevron was left. Each control keeps its own size
-            and moves to the next line whole. */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 [&>*]:shrink-0 dark:border-slate-700 dark:bg-slate-800/50">
-          <Field label={t('fleet.violations.fields.year')}>
-            {/* The width is on the WRAPPER, not the control: `cn` is a plain joiner, so a `w-28`
+            So the fields SHARE the width instead of claiming it. Each is `flex-… basis-0`,
+            weighted by how much text it has to show (a violation type is the longest, «العدد» the
+            shortest), over a `min-w-[…]` floor so compression stops while the value is still
+            readable. `density="tight"` buys back 8px of side gutter per control and `gap-1.5`
+            another 14px across the row, which is most of the margin this row has.
+
+            The floors are sized for the WORST case, which is 1536 — the width at which the screen
+            splits into two ledgers, giving this one the narrowest bar it ever gets (~510px of
+            content). The floors and gaps come to ~491px there, so the row fits with a little to
+            spare and every wider screen hands out slack through the weights.
+
+            Below `md` it WRAPS instead. Eight controls cannot be one legible line on a phone, and
+            of the two ways to not fit, a second line is visible and a scrolled-away field is not.
+
+            The floor is the load-bearing part and is stated ONCE per field: a flex child defaults
+            to `min-width:auto` and refuses to shrink below its content, which is exactly how this
+            row overflowed its panel before. A single `min-w-[…]` both lifts that default and sets
+            where compression stops — pairing it with `min-w-0` would put two `min-width` rules on
+            one element and leave which of them wins to Tailwind's emission order (`cn` is a plain
+            joiner, so both would ship). */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2 md:flex-nowrap dark:border-slate-700 dark:bg-slate-800/50">
+          <Field
+            label={t('fleet.violations.fields.year')}
+            className="flex-[1.2] basis-0 min-w-[3.875rem]"
+          >
+            {/* The width is on the WRAPPER, not the control: `cn` is a plain joiner, so a width
                 handed to `Select` sits beside its own `w-full` and loses — measured, the year
-                rendered 86px wide however large a class it was given. */}
-            <div className="w-28">
+                rendered 86px wide however large a class it was given. The wrapper now fills the
+                share the field was given rather than naming a fixed size. */}
+            <div className="w-full">
               <Select
                 aria-label={t('fleet.violations.fields.year')}
                 data-company-form="year"
                 value={formYear}
                 onChange={(e) => setFormYear(e.target.value)}
+                density="tight"
               >
                 {years.map((y) => (
                   <option key={y} value={String(y)}>
@@ -319,17 +358,22 @@ export const CompanyViolationsPanel = ({
               </Select>
             </div>
           </Field>
-          <Field label={t('fleet.odometer.columns.vehicle')} required>
+          <Field
+            label={t('fleet.odometer.columns.vehicle')}
+            required
+            className="flex-[1.6] basis-0 min-w-[4.625rem]"
+          >
             {/* PICKED, not typed. A typed code that matches no car left `formVehicleId` undefined,
                 which disabled Save with nothing on screen to say why — the commonest way this form
                 refused to file a statement anybody had filled in correctly. One car at a time,
                 because a statement row belongs to one car. */}
-            <div className="w-36">
+            <div className="w-full">
               <VehicleSelect
                 value={formVehicleId}
                 onChange={setFormVehicleId}
                 anyStatus
                 fullWidth
+                density="tight"
                 testId="company-entry"
                 ariaLabel={t('fleet.odometer.columns.vehicle')}
               />
@@ -338,14 +382,18 @@ export const CompanyViolationsPanel = ({
           {/* The NOUN above, the imperative inside. `Field` already renders its label and a
               required marker, so labelling it «اختر نوع المخالفة» printed the same sentence twice,
               stacked — once as the field's name and once as the empty row of its own select. */}
-          <Field label={t('fleet.violations.fields.type')} required>
+          <Field
+            label={t('fleet.violations.fields.type')}
+            required
+            className="flex-[2] basis-0 min-w-[5.25rem]"
+          >
             {/* company side ONLY — the server refuses a driver type here, so offering one would
                 be offering a 422 the reader can do nothing about.
 
                 `requireChoice` makes the placeholder a DISABLED row: it still says what the
                 control is for while it is empty, but it can no longer be chosen back, so «no
                 type» stops being one of the answers on a field that has no such answer. */}
-            <div className="w-48">
+            <div className="w-full">
               <CatalogSelect
                 kind="violationType"
                 violationSide="company"
@@ -354,12 +402,16 @@ export const CompanyViolationsPanel = ({
                 ariaLabel={t('fleet.violations.pickType')}
                 allLabel={t('fleet.violations.pickType')}
                 requireChoice
+                density="tight"
                 className="w-full"
               />
             </div>
           </Field>
-          <Field label={t('fleet.violations.fields.unitValue')}>
-            <div className="w-20">
+          <Field
+            label={t('fleet.violations.fields.unitValue')}
+            className="flex-[0.9] basis-0 min-w-[3.125rem]"
+          >
+            <div className="w-full">
               <Input
                 data-company-form="value"
                 aria-label={t('fleet.violations.fields.unitValue')}
@@ -367,12 +419,16 @@ export const CompanyViolationsPanel = ({
                 onChange={(e) => setFormValue(e.target.value)}
                 dir="ltr"
                 inputMode="decimal"
+                density="tight"
               />
             </div>
           </Field>
-          <span className="pb-2 text-sm font-medium text-slate-400">×</span>
-          <Field label={t('fleet.violations.fields.count')}>
-            <div className="w-16">
+          <span className="shrink-0 pb-2 text-sm font-medium text-slate-400">×</span>
+          <Field
+            label={t('fleet.violations.fields.count')}
+            className="flex-[0.8] basis-0 min-w-[2.625rem]"
+          >
+            <div className="w-full">
               <Input
                 data-company-form="count"
                 aria-label={t('fleet.violations.fields.count')}
@@ -380,6 +436,7 @@ export const CompanyViolationsPanel = ({
                 onChange={(e) => setFormCount(e.target.value)}
                 dir="ltr"
                 inputMode="numeric"
+                density="tight"
               />
             </div>
           </Field>
@@ -387,11 +444,14 @@ export const CompanyViolationsPanel = ({
               (count × unitValue) and this only mirrors it, so it shows a figure ONLY when both
               halves are valid — a total computed from a half-typed number is a wrong number, and a
               wrong number beside a Save button is worse than none. */}
-          <Field label={t('fleet.violations.fields.amount')}>
+          <Field
+            label={t('fleet.violations.fields.amount')}
+            className="flex-[1.1] basis-0 min-w-[4rem]"
+          >
             <output
               data-company-form-total
               className={[
-                'block min-w-[5.5rem] rounded-md border px-2 py-1.5 text-center text-sm font-semibold tabular-nums',
+                'block w-full truncate rounded-md border px-2 py-1.5 text-center text-sm font-semibold tabular-nums',
                 isMoney && isCount
                   ? 'border-brand-200 bg-brand-50 text-brand-800 dark:border-brand-800 dark:bg-brand-950 dark:text-brand-200'
                   : 'border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900',
@@ -456,6 +516,7 @@ export const CompanyViolationsPanel = ({
           label={t('fleet.violations.fields.year')}
           active={year !== ''}
           className={CELL}
+          density={TIGHT}
         >
           <Select
             aria-label={t('fleet.violations.fields.year')}
@@ -473,9 +534,28 @@ export const CompanyViolationsPanel = ({
           </Select>
         </FilterField>
         <FilterField
+          label={t('fleet.violations.columns.settledState')}
+          active={settled !== ''}
+          className={CELL}
+          density={TIGHT}
+        >
+          <Select
+            aria-label={t('fleet.violations.columns.settledState')}
+            data-company-settled
+            value={settled}
+            onChange={(e) => onSettledChange(e.target.value || null)}
+            density={TIGHT}
+          >
+            <option value="">{t('common.filters.all')}</option>
+            <option value="true">{t('fleet.violations.settled')}</option>
+            <option value="false">{t('fleet.violations.outstanding')}</option>
+          </Select>
+        </FilterField>
+        <FilterField
           label={t('fleet.vehicles.fields.code')}
           active={vehicleCodes.length > 0}
           className={CELL}
+          density={TIGHT}
         >
           <VehicleCodeFilter
             value={vehicleCodes}

@@ -390,9 +390,10 @@ describe('the screen is laid out to be read, not scanned', () => {
     const controls = [...bar.matchAll(/<(?:input|select)[^>]*class="([^"]*)"/g)].map(
       (m) => m[1] ?? '',
     );
-    // Five now: the code box and the vehicle dropdown collapsed into ONE vehicle-code picker,
-    // which is a button rather than an input and so is counted separately below.
-    expect(controls.length, 'culprit, from, to, status').toBe(4);
+    // Three now. The code box and the vehicle dropdown collapsed into ONE vehicle-code picker,
+    // and the culprit's free-text box became the drivers picker — both are buttons rather than
+    // inputs, and are counted separately below.
+    expect(controls.length, 'from, to, status').toBe(3);
     for (const cls of controls) expect(cls, cls).toContain('text-base');
   });
 
@@ -430,12 +431,14 @@ describe('the filter bar', () => {
     expect(html).toContain('flex-nowrap');
     const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
     // Matched on things unique to each control rather than on its visible word, which can occur
-    // elsewhere in the markup: two placeholders, the "all vehicles" option, the two date ids, and
-    // the "all statuses" option.
-    // One vehicle control where there were two — see «one vehicle control» below.
+    // elsewhere in the markup: the two pickers' accessible names, the two date ids, and the "all
+    // statuses" option.
+    // One vehicle control where there were two — see «one vehicle control» below. The culprit is
+    // the DRIVERS picker, named by the question it asks, where a free-text «اسم المتسبب» box used
+    // to be: a fine is filed against somebody in the registry, and a typed name matched nobody.
     const order = [
       'كود السيارة',
-      'اسم المتسبب',
+      'اسم السائق أو كود الموظف',
       'accidents-from',
       'accidents-to',
       'كل الحالات',
@@ -452,7 +455,7 @@ describe('the filter bar', () => {
     for (const path of [
       '/fleet/accidents?vehicleCodes=FLT210',
       '/fleet/accidents?vehicleCodes=FLT210,FLT211',
-      '/fleet/accidents?culprit=%D8%A7%D8%B4%D8%B1%D9%81',
+      '/fleet/accidents?culpritBy=64b1f1f1f1f1f1f1f1f1f1f1',
       '/fleet/accidents?status=open',
       '/fleet/accidents?from=2026-01-01',
       '/fleet/accidents?to=2026-12-31',
@@ -481,12 +484,17 @@ describe('the filter bar', () => {
     expect(html).toContain('كلاهما مطبق');
   });
 
-  it('sends the culprit search and the date range to the server too', () => {
+  it('sends the culprit — as an EMPLOYEE, not a typed name — and the date range to the server', () => {
+    // The culprit filter used to send `culprit`, a substring of a name somebody typed. A fine is
+    // filed against a person the registry holds, so the question the picker asks is «which
+    // employee?» and the answer travels as an id. Seeded ONLY under the id key, so a page still
+    // sending the old free-text one would look for a different key and render nothing.
+    const CULPRIT = '64b1f1f1f1f1f1f1f1f1f1f1';
     const html = render({
-      path: '/fleet/accidents?culprit=%D8%A7%D8%B4%D8%B1%D9%81&from=2026-01-01&to=2026-12-31',
+      path: `/fleet/accidents?culpritBy=${CULPRIT}&from=2026-01-01&to=2026-12-31`,
       seed: withRows([accident({ statement: 'فُلتر على الخادم' })], {
-        list: { culprit: 'اشرف', from: '2026-01-01', to: '2026-12-31' },
-        summary: { culprit: 'اشرف', from: '2026-01-01', to: '2026-12-31' },
+        list: { culpritEmployeeId: CULPRIT, from: '2026-01-01', to: '2026-12-31' },
+        summary: { culpritEmployeeId: CULPRIT, from: '2026-01-01', to: '2026-12-31' },
       }),
     });
     expect(html).toContain('فُلتر على الخادم');

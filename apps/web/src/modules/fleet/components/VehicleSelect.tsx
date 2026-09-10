@@ -5,7 +5,7 @@
 // refuse anyway (FR-4/FR-5) — the server remains the authority, this only spares the user a
 // guaranteed 409.
 import { useT } from '../../../platform/localization/useT';
-import { Select, type ControlTextScale } from '../../../shared/ui/form';
+import { Select, type ControlDensity, type ControlTextScale } from '../../../shared/ui/form';
 import { useVehicles } from '../api/fleet-queries';
 
 export const VehicleSelect = ({
@@ -18,6 +18,7 @@ export const VehicleSelect = ({
   ariaLabel,
   fullWidth = false,
   textScale,
+  density,
   testId,
 }: {
   value: string;
@@ -43,6 +44,12 @@ export const VehicleSelect = ({
   fullWidth?: boolean;
   /** Passed straight to the control — see `form.tsx` on why the size is a prop, not a class. */
   textScale?: ControlTextScale;
+  /**
+   * Side gutter, same reasoning as `textScale`: `px-2` handed in as a class would join the
+   * control's own `px-3` rather than replace it. A row that has to fit its controls on one line
+   * buys back the difference here.
+   */
+  density?: ControlDensity;
   /**
    * A stable hook for the one screen that has to tell this control apart from a filter beside it.
    *
@@ -73,6 +80,7 @@ export const VehicleSelect = ({
       onChange={(e) => onChange(e.target.value)}
       className={fullWidth ? undefined : 'w-auto'}
       {...(textScale === undefined ? {} : { textScale })}
+      {...(density === undefined ? {} : { density })}
     >
       <option value="">{allLabel ?? t('common.select')}</option>
       {/*

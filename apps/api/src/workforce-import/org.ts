@@ -19,6 +19,7 @@ import {
   sectionCatalogService,
   sectionService,
 } from '../platform/organization';
+import { MAX_PAGE_SIZE } from '@ecms/contracts';
 import { orgKey } from './vocabulary';
 
 /** `المهندسين` → `010`, from the prefixes the workbook's own employee codes carry. */
@@ -83,6 +84,40 @@ export interface OrgProblem {
  * `dryRun` decides whether a missing unit is CREATED or merely counted: a dry run must be able to
  * say "this would create 40 sections" without creating any of them.
  */
+/**
+ * Every unit in a catalogue, not the first page of one.
+ *
+ * WHY THIS EXISTS. `BaseRepository.list` clamps `pageSize` to `MAX_PAGE_SIZE` (100), so the
+ * `pageSize: 500` and `pageSize: 1000` these reads used to pass returned a HUNDRED units and
+ * silently dropped the rest — and with no `sortBy`, the hundred it returned were the oldest.
+ *
+ * What that costs is not a slow lookup, it is a wrong one. A department, section or job title past
+ * the hundredth reads as ABSENT, so the resolver creates a second copy of it — and mints its code
+ * from the hundred it could see, which lands on a code that already exists and fails the unique
+ * index. The person being placed then fails outright. It bites on a LATER upload rather than the
+ * first, because within one run every unit the resolver touches is cached: the go-live import built
+ * the catalogues from empty and never noticed, and the first re-upload afterwards failed for
+ * everybody whose section happened to be past the hundredth row.
+ *
+ * The same defect, in the same shape, as the one `all-options.ts` fixed for the unit dropdowns.
+ */
+export const readAllForTest = <T>(
+  read: (page: number, pageSize: number) => Promise<{ items: T[]; meta: { totalPages: number } }>,
+): Promise<T[]> => readAll(read);
+
+const readAll = async <T>(
+  read: (page: number, pageSize: number) => Promise<{ items: T[]; meta: { totalPages: number } }>,
+): Promise<T[]> => {
+  const out: T[] = [];
+  for (let page = 1; ; page += 1) {
+    const res = await read(page, MAX_PAGE_SIZE);
+    out.push(...res.items);
+    // Bounded by the reader's own count, so an empty catalogue reads one page and a full one reads
+    // exactly as many as it has.
+    if (page >= res.meta.totalPages) return out;
+  }
+};
+
 export class OrgResolver {
   private readonly branches = new Map<string, string>();
   private readonly departments = new Map<string, string>();
@@ -189,11 +224,13 @@ export class OrgResolver {
    * people already filed against it. The mismatch is reported instead, so a human decides.
    */
   private async findBranch(code: string, key: string): Promise<string | null> {
-    const page = await branchService.list(
-      { page: 1, pageSize: 500, sortDir: 'asc' },
-      { scope: 'organization', userId: this.actorId, branchId: null, departmentId: null, sectionId: null },
+    const items = await readAll((page, pageSize) =>
+      branchService.list(
+        { page, pageSize, sortDir: 'asc' },
+        { scope: 'organization', userId: this.actorId, branchId: null, departmentId: null, sectionId: null },
+      ),
     );
-    const match = matchBranch(page.items, code, key);
+    const match = matchBranch(items, code, key);
     if (match === null) return null;
     if (match.mismatch !== null) {
       this.note(
@@ -253,10 +290,10 @@ export class OrgResolver {
 
     const catalogId = await this.departmentCatalogEntry(name, key);
     const scope = this.scope();
-    const page = await departmentService.list({ page: 1, pageSize: 500, sortDir: 'asc' }, scope);
-    const hit = page.items.find(
-      (d) => String(d.branchId) === branchId && orgKey(d.name.ar) === key,
+    const items = await readAll((page, pageSize) =>
+      departmentService.list({ page, pageSize, sortDir: 'asc' }, scope),
     );
+    const hit = items.find((d) => String(d.branchId) === branchId && orgKey(d.name.ar) === key);
     if (hit !== undefined) {
       const id = String(hit._id);
       this.departments.set(cacheKey, id);
@@ -273,7 +310,7 @@ export class OrgResolver {
     }
     const made = await departmentService.create(
       {
-        code: nextFreeCode('DEP', [...page.items.map((d) => d.code), ...this.mintedCodes]),
+        code: nextFreeCode('DEP', [...items.map((d) => d.code), ...this.mintedCodes]),
         // No `name`: the row takes the catalog entry's spelling, which is the point.
         branchId,
         catalogId,
@@ -335,8 +372,10 @@ export class OrgResolver {
     if (cached !== undefined) return cached;
 
     const scope = this.scope();
-    const page = await sectionService.list({ page: 1, pageSize: 1000, sortDir: 'asc' }, scope);
-    const hit = page.items.find(
+    const items = await readAll((page, pageSize) =>
+      sectionService.list({ page, pageSize, sortDir: 'asc' }, scope),
+    );
+    const hit = items.find(
       (s) => String(s.departmentId) === departmentId && orgKey(s.name.ar) === key,
     );
     if (hit !== undefined) {
@@ -361,7 +400,7 @@ export class OrgResolver {
     }
     const made = await sectionService.create(
       {
-        code: nextFreeCode('SEC', [...page.items.map((x) => x.code), ...this.mintedCodes]),
+        code: nextFreeCode('SEC', [...items.map((x) => x.code), ...this.mintedCodes]),
         departmentId,
         ...(catalogId === null ? { name: { ar: name, en: name } } : { catalogId }),
       },
@@ -381,8 +420,10 @@ export class OrgResolver {
     if (cached !== undefined) return cached;
 
     const scope = this.scope();
-    const page = await jobTitleService.list({ page: 1, pageSize: 1000, sortDir: 'asc' }, scope);
-    const hit = page.items.find((t) => orgKey(t.name.ar) === key);
+    const items = await readAll((page, pageSize) =>
+      jobTitleService.list({ page, pageSize, sortDir: 'asc' }, scope),
+    );
+    const hit = items.find((t) => orgKey(t.name.ar) === key);
     if (hit !== undefined) {
       const id = String(hit._id);
       this.jobTitles.set(key, id);
@@ -395,7 +436,7 @@ export class OrgResolver {
     }
     const made = await jobTitleService.create(
       {
-        code: nextFreeCode('JOB', [...page.items.map((t) => t.code), ...this.mintedCodes]),
+        code: nextFreeCode('JOB', [...items.map((t) => t.code), ...this.mintedCodes]),
         name: { ar: name, en: name },
         // A grade is required and the workbook has no column for one. `IMPORTED` names where the
         // title came from instead of inventing a grade nobody assigned — HR grades them afterwards,

@@ -39,6 +39,22 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **An upload failed outright for anybody whose department, section or job title sat past the
+  hundredth row of its catalogue.** The org resolver asked for `pageSize: 500` and `1000`, but
+  `BaseRepository.list` clamps to `MAX_PAGE_SIZE` (100) — and with no `sortBy`, the hundred it got
+  back were the oldest. A unit past that read as ABSENT, so the resolver created a second copy of it
+  and minted the new code from the hundred it could see, which landed on a code that already existed
+  and failed the unique index. The person being placed failed with it.
+
+  It bit on a LATER upload rather than the first, which is why the go-live import looked fine:
+  within one run every unit the resolver touches is cached, so building the catalogues from empty
+  never noticed. The first re-upload afterwards failed for everybody whose section happened to be
+  past the hundredth row — three people, reported as unimportable with no obvious reason why.
+
+  All four catalogue reads now page to exhaustion, and the next free code is computed from the whole
+  catalogue rather than from the first page of it. Same defect, same shape, and the same fix as the
+  one the unit dropdowns needed.
+
 - **An upload would have failed for anybody with no insurance or officer file on record.** Those two
   blocks are `null` until somebody files one, and a dotted `$set` into `null` is a MongoDB error —
   `insurance.grossWage` cannot be created "in element {insurance: null}". The company's own first

@@ -677,8 +677,23 @@ describe('the next round of reports, as rules the markup carries', () => {
       'summary={false}',
     );
     expect(panel, 'and the box rides the title row').toContain('<PageSizeSelect');
-    expect(panel, 'on the LEFT, which in RTL is the child listed last').toMatch(
+    // OUT OF THE FLOW, at the PHYSICAL left edge. The first attempt was a flex row of
+    // [box][title][spacer] with `order-last` on the box — but `order-last` moves the box to the
+    // end of the order, which in RTL draws it on the LEFT, the same side as the spacer meant to
+    // balance it. Measured, the heading sat 121px off the panel's centre. `left-0` does not flip,
+    // and a heading centred on the whole row cannot be pushed by a control laid over it.
+    expect(panel, 'the box is laid over the row at its left edge').toMatch(
+      /PageSizeSelect[\s\S]{0,120}absolute left-0/,
+    );
+    // Comments stripped: the note beside the row NAMES the spacer it replaced, and a rule about
+    // the markup must not be broken — or satisfied — by prose.
+    const panelCode = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(panelCode, 'no hand-measured spacer is left to drift').not.toContain('w-[5.5rem]');
+    expect(panelCode, 'and the order-last balancing act is gone').not.toMatch(
       /PageSizeSelect[\s\S]{0,120}order-last/,
+    );
+    expect(panel, 'the heading is centred on the whole row').toMatch(
+      /<h2 className="w-full text-center[\s\S]{0,160}driverTitle/,
     );
   });
 

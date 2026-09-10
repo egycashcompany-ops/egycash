@@ -405,23 +405,28 @@ export const DriverViolationsPanel = ({
           inside «عرض ١–٢٥ من ٤٨ · لكل صفحة», a sentence that restated a number the count badge
           in the filter bar already gives — three statements of one figure, at the foot of a panel
           whose whole point is that nothing under the board moves. The sentence is gone; the
-          choice it was attached to is not, because a board of a few hundred fines is unreadable
-          twenty-five at a time.
+          choice it was attached to is not, and with the pager gone too it is now the ONLY way to
+          see more than a page of fines, which is why it is the one thing kept.
 
-          `order-last` is what puts it on the left: this row is RTL, so the child listed last is
-          drawn first from the left edge — the same idiom as the print and export icons below. */}
-      <div className="mb-4 flex items-center gap-3">
+          TAKEN OUT OF THE FLOW, rather than balanced against a spacer. The first attempt was a
+          flex row of [box][title][spacer] with `order-last` on the box — but `order-last` moves
+          the box to the END of the order, which in RTL draws it on the LEFT, i.e. on the SAME
+          side as the spacer that was supposed to balance it. Both sat left, and the heading was
+          measured 121px off the panel's centre. A hard-coded spacer could not have held anyway:
+          it was `w-[5.5rem]` against a box whose real width changes with the font and the
+          language.
+
+          So the heading is centred on the WHOLE row and the box is positioned over it. `left-0`
+          is physical and does not flip, which is exactly what «على الشمال خالص» asks for. */}
+      <div className="relative mb-4 flex min-h-9 items-center">
+        <h2 className="w-full text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
+          {t('fleet.violations.driverTitle')}
+        </h2>
         <PageSizeSelect
-          className="order-last shrink-0"
+          className="absolute left-0 top-1/2 -translate-y-1/2"
           pageSize={pageSize}
           onChange={onPageSizeChange}
         />
-        <h2 className="flex-1 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
-          {t('fleet.violations.driverTitle')}
-        </h2>
-        {/* Balances the box opposite it so the title stays centred on the PANEL, not pushed off
-            it — a heading that drifts when a control appears beside it reads as a mistake. */}
-        <span aria-hidden className="w-[5.5rem] shrink-0" />
       </div>
 
       <div className="mb-3 flex items-start gap-3">

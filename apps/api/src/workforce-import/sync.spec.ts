@@ -159,12 +159,54 @@ describe('a filled cell that differs is a change', () => {
     expect(changes.find((c) => c.path === 'personal.searchName')?.value).toBe('جمال احمد محمد علي');
   });
 
-  it('fills an insurance block the registry never had', () => {
+  /**
+   * A block that does not exist yet is written WHOLE, and that is not a stylistic choice: a dotted
+   * `$set` into `null` is a MongoDB error — `insurance.grossWage` cannot be created "in element
+   * {insurance: null}" — so the per-field form would fail the write for every employee who never
+   * had an insurance file. It is also the more honest preview: the record gains an insurance file,
+   * which is one fact rather than nine.
+   */
+  it('writes a whole insurance block when the registry has none, not nine dotted fields', () => {
     const row = blankRow();
     row.insurance.insuranceNumber = '17987259';
     row.insurance.grossWage = 12600;
     const { changes } = diffPerson(stored(), row, placement);
-    expect(changes.map((c) => c.path).sort()).toEqual(['insurance.grossWage', 'insurance.insuranceNumber']);
+    expect(changes.map((c) => c.path)).toEqual(['insurance']);
+    // Complete, so what lands is a block the schema recognises rather than a fragment. What the
+    // file did not carry is recorded as absent.
+    expect(changes[0]?.value).toEqual({
+      insuranceNumber: '17987259',
+      occupation: null,
+      occupationCode: null,
+      grossWage: 12600,
+      contributionWage: null,
+      basicWage: null,
+      employerShare: null,
+      employeeShare: null,
+      status: null,
+    });
+  });
+
+  it('goes back to per-field changes once the block exists', () => {
+    const existing = stored();
+    existing.insurance = { insuranceNumber: '17987259', grossWage: 12000 };
+    const row = blankRow();
+    row.insurance.grossWage = 12600;
+    const { changes } = diffPerson(existing, row, placement);
+    expect(changes.map((c) => c.path)).toEqual(['insurance.grossWage']);
+  });
+
+  /**
+   * The case that produced this rule. The company's first employee was inserted by hand with
+   * `insurance: null` and `officer: null`; the file carries only zeros and falses for him, which
+   * say nothing. A block of nothing but defaults is not a filing, so none is created.
+   */
+  it('does not invent an empty block from a file that says nothing about it', () => {
+    const existing = stored();
+    existing.insurance = null;
+    existing.officer = null;
+    const { changes } = diffPerson(existing, blankRow(), placement);
+    expect(changes.map((c) => c.path)).toEqual([]);
   });
 });
 

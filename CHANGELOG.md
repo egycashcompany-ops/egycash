@@ -11,6 +11,32 @@ its entry here in the same PR.
 
 ### Added
 
+- **The roster import records leavers, and every group is agreed to separately.** The preview now
+  has five numbers instead of four: added, **cleared**, updated, unchanged, and not-read. Cleared is
+  new — somebody the Resignation sheet lists as gone whom the registry still has on the books. It
+  closes their open employment period, records the exit the sheet describes, and sets their status.
+  It does NOT rewrite their hire date: that is the registry's, and a roster export is not a claim
+  about when somebody started.
+
+  **Each number is a toggle.** Press it to include or exclude that group before applying. Added and
+  Cleared are on by default — a person the file names and the registry does not almost always
+  belongs in it, and a leaver almost always has left. Rewriting the personal data of two thousand
+  people already on file is not obviously right, so Updated is offered rather than assumed. Unchanged
+  and not-read are drawn plainly and cannot be pressed: one has nothing to write, the other cannot be
+  written at all.
+
+  Going the other way is refused and reported: a person the file has gone back to listing as serving,
+  whom the registry has exited, is a **rehire** — a decision with a start date, a job and an
+  eligibility check behind it, which the system has a Rehire action for. An upload does not make it.
+
+### Fixed
+
+- **An upload would have failed for anybody with no insurance or officer file on record.** Those two
+  blocks are `null` until somebody files one, and a dotted `$set` into `null` is a MongoDB error —
+  `insurance.grossWage` cannot be created "in element {insurance: null}". The company's own first
+  employee was in exactly that state. When the block is absent it is now written whole, with `null`
+  for what the file does not carry, and a block of nothing but empty values is not created at all.
+
 - **An Import roster button on `/employees`, next to Direct Registration.** Upload the IT workbook
   and the registry catches up with it: people who are not in the system are added, people whose
   details changed are updated, and people the file has nothing to say about are left alone.

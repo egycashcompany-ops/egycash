@@ -8,6 +8,7 @@ import {
   employeeService,
   employeeRepository,
   applyImportedHistory,
+  applyImportedExit,
   applyImportedUpdate,
   type ImportedPeriod,
 } from '../modules/hr/employee-management/employees';
@@ -28,7 +29,20 @@ import {
   type FieldChange,
   type RefusedChange,
 } from './sync';
-import { type MaritalStatus } from '@ecms/contracts';
+import { type EmployeeExitType, type MaritalStatus } from '@ecms/contracts';
+
+/**
+ * The kinds of write an upload can make, each of which the operator agrees to separately.
+ *
+ * Separate because they are different decisions with different weight. Adding somebody the file
+ * names and the registry does not is nearly always right. Recording that a leaver has left is
+ * nearly always right. Rewriting the personal data of two thousand people already on file is not
+ * obviously right at all — it depends on whether this export is more current than the registry —
+ * so it is offered rather than assumed.
+ */
+export type ImportAction = 'added' | 'updated' | 'exited';
+
+export const ALL_IMPORT_ACTIONS: readonly ImportAction[] = ['added', 'updated', 'exited'];
 
 /** One person the file would change, and how — what the preview shows and the result confirms. */
 export interface PersonUpdate {
@@ -37,7 +51,18 @@ export interface PersonUpdate {
   changes: { path: string; from: string; to: string }[];
 }
 
+/** Somebody the file says has left, who the registry still has on the books. */
+export interface PersonExit {
+  code: string;
+  name: string;
+  /** The last day of service, as the Resignation sheet records it. */
+  effectiveDate: string;
+  reason: string | null;
+}
+
 export interface ImportReport {
+  /** Which kinds of write actually happened. Empty is a preview: nothing was touched. */
+  applied: ImportAction[];
   mode: 'dry-run' | 'write';
   fingerprints: { sheet: string; fingerprint: string }[];
   branchCodes: Record<string, string>;
@@ -51,6 +76,8 @@ export interface ImportReport {
     unchanged: number;
     /** Already in the registry and differing — updated, or listed by a dry run. */
     updated: number;
+    /** On the Resignation sheet, and still on the books here — their exit is waiting to be recorded. */
+    exits: number;
     failed: number;
     branchesCreated: number;
     departmentsCreated: number;
@@ -63,6 +90,8 @@ export interface ImportReport {
   updates: PersonUpdate[];
   /** People the file is newly adding, by code — so a preview can be read before it is agreed to. */
   additions: { code: string; name: string }[];
+  /** Leavers whose exit the file would record. */
+  exits: PersonExit[];
   /** Changes the file asks for that this importer will not make, each with its reason. */
   refused: { code: string; path: string; from: string; to: string; reason: string }[];
   orgProblems: { what: string; detail: string }[];
@@ -80,9 +109,15 @@ export const UPDATE_SAMPLE = 200;
 
 export const runImport = async (opts: {
   file: string | WorkbookSource;
-  write: boolean;
+  /**
+   * What to actually write. An EMPTY set is the preview: every person is read and compared and the
+   * report says exactly what would happen, and nothing is written — the same path, so a preview can
+   * never be reassuring about something a run would do differently.
+   */
+  apply: ReadonlySet<ImportAction>;
   actorId: string;
 }): Promise<ImportReport> => {
+  const writes = opts.apply.size > 0;
   const read = await readWorkbook(opts.file);
   if ('errors' in read) {
     throw new Error(
@@ -94,47 +129,66 @@ export const runImport = async (opts: {
 
   const plan = buildPlan(read.rows);
   const { codes, ambiguous } = deriveBranchCodes(read.rows);
-  const resolver = new OrgResolver(codes, opts.actorId, !opts.write);
+  // The org structure is only created for real when somebody is actually being added — a preview,
+  // or a run that only records exits, has no business minting a department.
+  const resolver = new OrgResolver(codes, opts.actorId, !opts.apply.has('added'));
 
   const rejected: ImportReport['rejected'] = [...plan.rejected];
   const updates: PersonUpdate[] = [];
   const additions: ImportReport['additions'] = [];
+  const exits: PersonExit[] = [];
   const refusedChanges: ImportReport['refused'] = [];
   let imported = 0;
   let unchanged = 0;
   let updated = 0;
+  let exitCount = 0;
   let failed = 0;
+
+  const named = (person: PersonPlan) => ({
+    code: person.code,
+    name: person.current.fullNameAr ?? person.code,
+  });
 
   for (const person of plan.people) {
     try {
       const outcome = await importPerson(person, resolver, opts);
-      if (outcome === 'imported') {
-        imported += 1;
-        if (additions.length < UPDATE_SAMPLE) {
-          additions.push({ code: person.code, name: person.current.fullNameAr ?? person.code });
-        }
-      } else if (outcome === 'unchanged') unchanged += 1;
-      else if (typeof outcome === 'object' && 'changes' in outcome) {
-        for (const r of outcome.refused) refusedChanges.push({ code: person.code, ...r });
-        if (outcome.changes.length === 0) unchanged += 1;
-        else {
+      for (const r of outcome.refused ?? []) refusedChanges.push({ code: person.code, ...r });
+
+      switch (outcome.kind) {
+        case 'added':
+          imported += 1;
+          if (additions.length < UPDATE_SAMPLE) additions.push(named(person));
+          break;
+        case 'unchanged':
+          unchanged += 1;
+          break;
+        case 'updated':
           updated += 1;
           if (updates.length < UPDATE_SAMPLE) {
             updates.push({
-              code: person.code,
-              name: person.current.fullNameAr ?? person.code,
+              ...named(person),
               changes: outcome.changes.map((c) => ({ path: c.path, from: c.from, to: c.to })),
             });
           }
-        }
-      } else {
-        failed += 1;
-        rejected.push({
-          sheet: person.current.sheet,
-          rowNumber: person.current.rowNumber,
-          code: person.code,
-          reason: outcome.reason,
-        });
+          break;
+        case 'exited':
+          exitCount += 1;
+          if (exits.length < UPDATE_SAMPLE) {
+            exits.push({
+              ...named(person),
+              effectiveDate: outcome.exit.effectiveDate.toISOString().slice(0, 10),
+              reason: outcome.exit.reason,
+            });
+          }
+          break;
+        default:
+          failed += 1;
+          rejected.push({
+            sheet: person.current.sheet,
+            rowNumber: person.current.rowNumber,
+            code: person.code,
+            reason: outcome.reason,
+          });
       }
     } catch (error) {
       // One bad person must not end the run: 2,638 imported plus a named failure beats an
@@ -151,10 +205,13 @@ export const runImport = async (opts: {
     }
   }
 
-  if (opts.write) await advanceSequencePast(plan.people);
+  // Only after somebody was actually added: the counter guards against a future hire colliding with
+  // an imported code, and nothing was imported unless `added` was agreed to.
+  if (opts.apply.has('added')) await advanceSequencePast(plan.people);
 
   return {
-    mode: opts.write ? 'write' : 'dry-run',
+    applied: [...opts.apply],
+    mode: writes ? 'write' : 'dry-run',
     fingerprints: read.fingerprints,
     branchCodes: Object.fromEntries(codes),
     counts: {
@@ -165,6 +222,7 @@ export const runImport = async (opts: {
       imported,
       unchanged,
       updated,
+      exits: exitCount,
       failed,
       branchesCreated: resolver.created.branches,
       departmentsCreated: resolver.created.departments,
@@ -174,17 +232,32 @@ export const runImport = async (opts: {
     rejected,
     updates,
     additions,
+    exits,
     refused: refusedChanges,
     orgProblems: resolver.problems,
     ambiguousSites: ambiguous,
   };
 };
 
+/**
+ * What happened, or would happen, to one person. Exactly one kind each — a person appears in one
+ * card on the screen and is agreed to once.
+ *
+ * `exited` WINS over `updated` when both are true. Somebody the roster has moved to the Resignation
+ * sheet has left, and that is the fact about them worth agreeing to; their field changes ride along
+ * with it, because a record you are already writing should not be left half stale.
+ */
 type Outcome =
-  | 'imported'
-  | 'unchanged'
-  | { changes: FieldChange[]; refused: RefusedChange[] }
-  | { reason: string };
+  | { kind: 'added'; refused?: RefusedChange[] }
+  | { kind: 'unchanged'; refused: RefusedChange[] }
+  | { kind: 'updated'; changes: FieldChange[]; refused: RefusedChange[] }
+  | {
+      kind: 'exited';
+      changes: FieldChange[];
+      refused: RefusedChange[];
+      exit: { type: EmployeeExitType; effectiveDate: Date; reason: string | null };
+    }
+  | { kind: 'failed'; reason: string; refused?: RefusedChange[] };
 
 /**
  * The context the import acts as — the seed admin, so every audited write is attributable to a
@@ -219,7 +292,7 @@ const importContext = (actorId: string): AuthContext => ({
 const importPerson = async (
   person: PersonPlan,
   resolver: OrgResolver,
-  opts: { write: boolean; actorId: string },
+  opts: { apply: ReadonlySet<ImportAction>; actorId: string },
 ): Promise<Outcome> => {
   // Idempotence: the code is the identity, and a re-run must not create a second copy of anybody.
   //
@@ -230,6 +303,7 @@ const importPerson = async (
   const existing = await employeeRepository.findByCodeAnyState(person.code);
   if (existing !== null && existing.isDeleted === true) {
     return {
+      kind: 'failed',
       reason:
         `code ${person.code} is held by a DELETED employee record, which still occupies it in the ` +
         'unique index. Restore that record or purge it, then re-run.',
@@ -238,7 +312,10 @@ const importPerson = async (
 
   const org = await resolver.resolve(person.current);
   if (org === null) {
-    return { reason: `could not place this person in the organization (site/department/job title)` };
+    return {
+      kind: 'failed',
+      reason: `could not place this person in the organization (site/department/job title)`,
+    };
   }
 
   // ALREADY HERE — so this is an update, not a second copy of somebody. What the file has nothing
@@ -247,7 +324,8 @@ const importPerson = async (
     return updatePerson(existing as unknown as ExistingEmployee & { _id: unknown }, person, org, opts);
   }
 
-  if (!opts.write) return 'imported'; // the dry run counts what it would do, and does none of it
+  // Counted either way; written only when adding was agreed to.
+  if (!opts.apply.has('added')) return { kind: 'added' };
 
   const row = person.current;
   const { doc } = await employeeService.registerDirect(
@@ -296,7 +374,19 @@ const importPerson = async (
     { provisionLogin: false, identity: { code: person.code, employeeNumber: person.employeeNumber } },
   );
 
-  const closed: ImportedPeriod[] = person.spells
+  const closed = closedPeriodsOf(person);
+
+  await applyImportedHistory(String(doc._id), {
+    closed,
+    current: person.serving ? { hiredAt: person.current.hiredAt as Date } : null,
+  });
+
+  return { kind: 'added' };
+};
+
+/** The closed spells behind somebody, oldest first — the same shape creation and exit both need. */
+const closedPeriodsOf = (person: PersonPlan): ImportedPeriod[] =>
+  person.spells
     .filter((s) => s.exit !== null && s.exit.effectiveDate !== null && s.exit.type !== null)
     .map((s) => ({
       hiredAt: s.hiredAt as Date,
@@ -306,14 +396,6 @@ const importPerson = async (
       // records why a departure went the way it did.
       reason: [s.exit?.reason, s.exit?.note].filter((v) => v != null && v !== '').join(' — ') || null,
     }));
-
-  await applyImportedHistory(String(doc._id), {
-    closed,
-    current: person.serving ? { hiredAt: person.current.hiredAt as Date } : null,
-  });
-
-  return 'imported';
-};
 
 /**
  * Bring somebody already in the registry into line with the file.
@@ -328,22 +410,95 @@ const updatePerson = async (
   existing: ExistingEmployee & { _id: unknown },
   person: PersonPlan,
   org: { branchId: string; departmentId: string; sectionId: string | null; jobTitleId: string },
-  opts: { write: boolean; actorId: string },
+  opts: { apply: ReadonlySet<ImportAction>; actorId: string },
 ): Promise<Outcome> => {
   const diff = diffPerson(existing, person.current, org);
-  if (diff.changes.length === 0) return diff;
-  if (!opts.write) return diff; // the preview reports the same diff it would apply, and applies none
+  const leaving = pendingExit(existing, person);
 
-  const set = setFrom(diff.changes);
+  // A REHIRE — exited here, serving in the file. Reported and not applied: bringing somebody back
+  // is a decision with a start date, a job and a rehire eligibility check behind it, and the system
+  // has a Rehire action that asks for all three. A spreadsheet row is not that decision.
+  if (person.serving && existing.status === 'exited') {
+    return {
+      kind: 'unchanged',
+      refused: [
+        ...diff.refused,
+        {
+          path: 'status',
+          from: 'exited',
+          to: 'active',
+          reason:
+            'the file lists this person as serving but the registry has them exited — bringing ' +
+            'somebody back is a Rehire, which records a decision an upload cannot make',
+        },
+      ],
+    };
+  }
+
+  if (leaving !== null) {
+    if (opts.apply.has('exited')) {
+      await writeChanges(existing, person, diff.changes, opts.actorId);
+      await applyImportedExit(String(existing._id), leaving, opts.actorId);
+      await auditImportedUpdate(
+        String(existing._id),
+        person.code,
+        [
+          {
+            path: 'status',
+            from: String(existing.status ?? '—'),
+            to: 'exited',
+            value: 'exited',
+          },
+          ...diff.changes,
+        ],
+        opts.actorId,
+      );
+    }
+    return { kind: 'exited', changes: diff.changes, refused: diff.refused, exit: leaving };
+  }
+
+  if (diff.changes.length === 0) return { kind: 'unchanged', refused: diff.refused };
+  if (opts.apply.has('updated')) {
+    await writeChanges(existing, person, diff.changes, opts.actorId);
+    await auditImportedUpdate(String(existing._id), person.code, diff.changes, opts.actorId);
+  }
+  return { kind: 'updated', changes: diff.changes, refused: diff.refused };
+};
+
+/**
+ * The exit this file records for somebody the registry still has on the books — or null.
+ *
+ * Null when the person is still serving in the file, when the registry has already exited them, or
+ * when the Resignation row carries no usable exit date. The last is a cell to fill in, not a
+ * departure to invent a date for.
+ */
+const pendingExit = (
+  existing: ExistingEmployee,
+  person: PersonPlan,
+): { type: EmployeeExitType; effectiveDate: Date; reason: string | null } | null => {
+  if (person.serving || existing.status === 'exited') return null;
+  const last = closedPeriodsOf(person).at(-1);
+  if (last === undefined) return null;
+  return { type: last.exitType, effectiveDate: last.exitedAt, reason: last.reason };
+};
+
+/** Apply the field changes, casting the ids the document stores as ObjectIds. */
+const writeChanges = async (
+  existing: { _id: unknown },
+  person: PersonPlan,
+  changes: readonly FieldChange[],
+  actorId: string,
+): Promise<void> => {
+  void person;
+  if (changes.length === 0) return;
+  const set = setFrom(changes);
   for (const path of Object.keys(set)) {
     // The document stores these as ObjectIds; the diff carries the string the resolver returned.
     if (OBJECT_ID_PATHS.has(path) && typeof set[path] === 'string') {
       set[path] = new Types.ObjectId(set[path] as string);
     }
   }
-  await applyImportedUpdate(String(existing._id), set, opts.actorId);
-  await auditImportedUpdate(String(existing._id), person.code, diff.changes, opts.actorId);
-  return diff;
+  await applyImportedUpdate(String(existing._id), set, actorId);
 };
 
 /** The trail that says a person uploaded a file and what it moved — one entry, not one per field. */

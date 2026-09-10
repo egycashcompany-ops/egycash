@@ -25,7 +25,8 @@ import { moduleManifests } from '../../src/modules';
 import { userService } from '../../src/platform/users';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { employeeRepository } from '../../src/modules/hr/employee-management/employees';
-import { runImport } from '../../src/workforce-import/run';
+import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { ALL_IMPORT_ACTIONS, runImport } from '../../src/workforce-import/run';
 import { nextEmployeeNumber } from '../../src/modules/hr/employee-management/employees/employee-sequence';
 import { nextNationalId } from './helpers/national-id';
 
@@ -178,13 +179,13 @@ describe('the workforce importer', () => {
       [],
     );
 
-    const dry = await runImport({ file, write: false, actorId: adminId });
+    const dry = await runImport({ file, apply: new Set<never>(), actorId: adminId });
     expect(dry.mode).toBe('dry-run');
     expect(dry.counts.people).toBe(1);
     // A dry run must leave the database exactly as it found it.
     expect(await employeeRepository.findByCodeSystem('0100004')).toBeNull();
 
-    const report = await runImport({ file, write: true, actorId: adminId });
+    const report = await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
     expect(report.counts.imported).toBe(1);
     expect(report.counts.failed).toBe(0);
 
@@ -234,7 +235,7 @@ describe('the workforce importer', () => {
 
   it('is idempotent — a second run over the same file changes nothing', async () => {
     const file = join(dir, 'basic.xlsx');
-    const again = await runImport({ file, write: true, actorId: adminId });
+    const again = await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
     expect(again.counts.imported).toBe(0);
     // Not merely "not imported again": read, compared field by field, and found identical. An
     // update run that reported changes here would be churning the record on every upload.
@@ -267,7 +268,7 @@ describe('the workforce importer', () => {
       ],
     );
 
-    const report = await runImport({ file, write: true, actorId: adminId });
+    const report = await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
     expect(report.counts.people).toBe(1);
     expect(report.counts.imported).toBe(1);
 
@@ -297,7 +298,7 @@ describe('the workforce importer', () => {
       },
     ]);
 
-    const report = await runImport({ file, write: true, actorId: adminId });
+    const report = await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
     expect(report.counts.imported).toBe(1);
 
     const employee = await employeeRepository.findByCodeSystem('0300857');
@@ -323,7 +324,7 @@ describe('the workforce importer', () => {
       [{ code: '0102717', nationalId: nextNationalId(), name: 'سعيد فتحي', hired: new Date('2021-05-01T00:00:00.000Z'), site: 'المهندسين' }],
       [],
     );
-    await runImport({ file, write: true, actorId: adminId });
+    await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
     expect(Number(await nextEmployeeNumber())).toBeGreaterThan(2717);
   }, 240_000);
 
@@ -340,7 +341,7 @@ describe('the workforce importer', () => {
       [{ code: '0100007', nationalId: nextNationalId(), name: 'هالة سمير', hired: new Date('2022-02-01T00:00:00.000Z'), site: 'المهندسين' }],
       [],
     );
-    await runImport({ file, write: true, actorId: adminId });
+    await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
     expect(Number(await nextEmployeeNumber())).toBeGreaterThan(before);
   }, 240_000);
 
@@ -349,7 +350,7 @@ describe('the workforce importer', () => {
     const wb = new ExcelJS.Workbook();
     wb.addWorksheet('Master').addRow(['nothing', 'like', 'the', 'real', 'thing']);
     await wb.xlsx.writeFile(file);
-    await expect(runImport({ file, write: false, actorId: adminId })).rejects.toThrow(
+    await expect(runImport({ file, apply: new Set<never>(), actorId: adminId })).rejects.toThrow(
       /does not have the expected layout/u,
     );
   }, 240_000);
@@ -384,7 +385,7 @@ describe('re-uploading the roster updates what changed and nothing else', () => 
   const upload = async (name: string, people: Person[], write = true) => {
     const file = join(dir, name);
     await writeWorkbook(file, people, []);
-    return runImport({ file, write, actorId: adminId });
+    return runImport({ file, apply: new Set(write ? ALL_IMPORT_ACTIONS : []), actorId: adminId });
   };
 
   /** Create somebody, then hand back a file-builder that restates them with one thing changed. */
@@ -493,5 +494,139 @@ describe('re-uploading the roster updates what changed and nothing else', () => 
     expect(after?.personal.contact.primaryPhone).toBe(before?.personal.contact.primaryPhone);
     // Not merely equal-looking: the document was never written at all.
     expect(String(after?.updatedAt)).toBe(String(before?.updatedAt));
+  }, 240_000);
+});
+
+/**
+ * The Resignation sheet acting on somebody who is already in the registry — and the fact that each
+ * kind of write is agreed to separately.
+ *
+ * The exit is the one that has to be right: it changes a person's status, closes their employment,
+ * and is what payroll and settlement read. It must happen when the file says so, must not happen
+ * when the operator did not ask for it, and must never rewrite the hire date on the way past.
+ */
+describe('recording that a leaver has left, and only what was agreed to', () => {
+  let nextCode = 100090;
+  const freshPerson = (over?: Record<string, Cell>): Person => ({
+    code: `0${String((nextCode += 1))}`,
+    nationalId: nextNationalId(),
+    name: 'هشام لطفي',
+    hired: new Date('2019-04-01T00:00:00.000Z'),
+    site: 'المهندسين',
+    ...(over === undefined ? {} : { over }),
+  });
+
+  const run = async (
+    name: string,
+    master: Person[],
+    resignation: Person[],
+    apply: readonly ('added' | 'updated' | 'exited')[],
+  ) => {
+    const file = join(dir, name);
+    await writeWorkbook(file, master, resignation);
+    return runImport({ file, apply: new Set(apply), actorId: adminId });
+  };
+
+  /** Create somebody who is serving, then hand back the row that says they resigned. */
+  const seedServing = async (name: string) => {
+    const person = freshPerson();
+    const created = await run(`${name}-create.xlsx`, [person], [], ALL_IMPORT_ACTIONS);
+    expect(created.counts.imported).toBe(1);
+    const leaver: Person = {
+      ...person,
+      exit: { reason: 'استقالة', date: new Date('2025-08-31T00:00:00.000Z') },
+    };
+    return { person, leaver };
+  };
+
+  it('counts a leaver the registry still has on the books, and says when they left', async () => {
+    const { person, leaver } = await seedServing('exit-count');
+    const preview = await run('exit-count.xlsx', [], [leaver], []);
+    expect(preview.counts.exits).toBe(1);
+    expect(preview.exits[0]?.code).toBe(person.code);
+    expect(preview.exits[0]?.effectiveDate).toBe('2025-08-31');
+
+    // A preview writes nothing, exits included.
+    expect((await employeeRepository.findByCodeSystem(person.code))?.status).not.toBe('exited');
+  }, 240_000);
+
+  it('records the exit when that is what was agreed to', async () => {
+    const { person, leaver } = await seedServing('exit-apply');
+    const report = await run('exit-apply.xlsx', [], [leaver], ['exited']);
+    expect(report.counts.exits).toBe(1);
+
+    const after = await employeeRepository.findByCodeSystem(person.code);
+    expect(after?.status).toBe('exited');
+    expect(after?.exit?.effectiveDate?.toISOString().slice(0, 10)).toBe('2025-08-31');
+    // The open period was CLOSED, not appended to — one spell, now ended.
+    expect(after?.employmentPeriods).toHaveLength(1);
+    expect(after?.employmentPeriods[0]?.exitedAt?.toISOString().slice(0, 10)).toBe('2025-08-31');
+    // And the hire date is the registry's, untouched by the sheet.
+    expect(after?.hiredAt.toISOString().slice(0, 10)).toBe('2019-04-01');
+  }, 240_000);
+
+  /** THE POINT OF THE TOGGLES: a group nobody selected is reported and not written. */
+  it('leaves the exit alone when only additions were agreed to', async () => {
+    const { person, leaver } = await seedServing('exit-unpicked');
+    const report = await run('exit-unpicked.xlsx', [], [leaver], ['added']);
+    expect(report.counts.exits).toBe(1);
+    expect((await employeeRepository.findByCodeSystem(person.code))?.status).not.toBe('exited');
+  }, 240_000);
+
+  it('is idempotent — a second run finds nobody left to exit', async () => {
+    const { leaver } = await seedServing('exit-twice');
+    await run('exit-twice-a.xlsx', [], [leaver], ['exited']);
+    const again = await run('exit-twice-b.xlsx', [], [leaver], ['exited']);
+    expect(again.counts.exits).toBe(0);
+  }, 240_000);
+
+  /** Bringing somebody back is a decision with a date, a job and an eligibility check behind it. */
+  it('refuses to un-exit somebody the file has gone back to listing as serving', async () => {
+    const { person, leaver } = await seedServing('exit-rehire');
+    await run('exit-rehire-a.xlsx', [], [leaver], ['exited']);
+
+    const report = await run('exit-rehire-b.xlsx', [person], [], ALL_IMPORT_ACTIONS);
+    expect(report.refused.some((r) => r.code === person.code && r.path === 'status')).toBe(true);
+    expect((await employeeRepository.findByCodeSystem(person.code))?.status).toBe('exited');
+  }, 240_000);
+
+  it('updates nobody when updates were not agreed to', async () => {
+    const person = freshPerson();
+    await run('pick-create.xlsx', [person], [], ALL_IMPORT_ACTIONS);
+    const changed = { ...person, over: { 'رقم الهاتف': '01055443322' } };
+
+    const report = await run('pick-skip.xlsx', [changed], [], ['added']);
+    expect(report.counts.updated).toBe(1);
+    expect((await employeeRepository.findByCodeSystem(person.code))?.personal.contact.primaryPhone).toBe(
+      '01125232225',
+    );
+
+    // And writes them once it is.
+    await run('pick-do.xlsx', [changed], [], ['updated']);
+    expect((await employeeRepository.findByCodeSystem(person.code))?.personal.contact.primaryPhone).toBe(
+      '01055443322',
+    );
+  }, 240_000);
+
+  /**
+   * The company's first employee was inserted by hand with `insurance: null`. A dotted `$set` into
+   * null is a MongoDB ERROR — the write fails for that person — so the block has to be written
+   * whole. Proven here rather than only in the unit test, because the unit test cannot see MongoDB
+   * refuse the write.
+   */
+  it('gives an employee with no insurance file a whole block rather than failing the write', async () => {
+    const person = freshPerson();
+    await run('block-create.xlsx', [person], [], ALL_IMPORT_ACTIONS);
+    await EmployeeModel.collection.updateOne(
+      { code: person.code },
+      { $set: { insurance: null, officer: null } },
+    );
+
+    const report = await run('block-fill.xlsx', [person], [], ['updated']);
+    expect(report.counts.failed).toBe(0);
+    const after = await employeeRepository.findByCodeSystem(person.code);
+    expect(after?.insurance?.insuranceNumber).toBe('17987259');
+    // Complete, not a fragment: the fields the sheet did not carry are present and null.
+    expect(after?.insurance).toHaveProperty('occupationCode');
   }, 240_000);
 });

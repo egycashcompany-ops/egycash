@@ -945,8 +945,23 @@ export interface RosterRejectedRowDto {
  * report success from one. The counts are always the whole truth; `updates` and `additions` are a
  * bounded sample of the detail, because 2,600 rows of it is not a preview anybody reads.
  */
+/** The kinds of write an upload can make, each agreed to separately on the screen. */
+export const ROSTER_IMPORT_ACTIONS = ['added', 'updated', 'exited'] as const;
+export type RosterImportAction = (typeof ROSTER_IMPORT_ACTIONS)[number];
+
+/** Somebody the file says has left, who the registry still has on the books. */
+export interface RosterExitDto {
+  code: string;
+  name: string;
+  /** The last day of service, as the Resignation sheet records it (ISO date). */
+  effectiveDate: string;
+  reason: string | null;
+}
+
 export interface RosterImportReportDto {
   mode: 'preview' | 'applied';
+  /** Which kinds of write actually happened. Empty on a preview. */
+  applied: RosterImportAction[];
   counts: {
     rowsRead: number;
     people: number;
@@ -956,6 +971,8 @@ export interface RosterImportReportDto {
     unchanged: number;
     /** Already present and differing — the file's values were written. */
     updated: number;
+    /** On the Resignation sheet and still on the books here — their exit is waiting to be recorded. */
+    exits: number;
     failed: number;
     branchesCreated: number;
     departmentsCreated: number;
@@ -966,6 +983,7 @@ export interface RosterImportReportDto {
   sampled: boolean;
   updates: RosterPersonUpdateDto[];
   additions: { code: string; name: string }[];
+  exits: RosterExitDto[];
   refused: RosterRefusedChangeDto[];
   rejected: RosterRejectedRowDto[];
   orgProblems: { what: string; detail: string }[];

@@ -26,6 +26,7 @@ import {
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type RoleAssignmentDto,
+  type RosterImportAction,
   type RosterImportReportDto,
   type UpdateEmployeePersonal,
   type UpdateUser,
@@ -51,12 +52,13 @@ export const getEmployee = (id: string): Promise<EmployeeDto> => get<EmployeeDto
  */
 export const importEmployeeRoster = (
   file: File,
-  apply: boolean,
+  apply: readonly RosterImportAction[],
 ): Promise<RosterImportReportDto> => {
   const form = new FormData();
   form.append('file', file);
-  // Only the literal string writes; anything else, including its absence, previews.
-  form.append('apply', apply ? 'true' : 'false');
+  // Named one by one; an empty list is the preview. The server drops anything it does not
+  // recognise rather than reading it as "all", so a malformed request previews.
+  form.append('apply', apply.join(','));
   return upload<RosterImportReportDto>('/hr/employees/import', form);
 };
 

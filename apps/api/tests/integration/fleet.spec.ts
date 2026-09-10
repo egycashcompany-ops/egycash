@@ -7124,6 +7124,91 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     expect(data<FleetViolationDto>(back).collected).toBe(false);
   });
 
+  it('moves a filed statement row to another CAR and another YEAR', async () => {
+    // The commonest correction on this screen is the car or the year: a statement arrives naming
+    // one plate and is keyed against another, or lands in the wrong year. Both were once frozen
+    // once filed, so the only way back was to delete the row and re-file it — which throws away
+    // the row's history to fix a typo.
+    const from = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const to = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const created = await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: from.id,
+        year: 2026,
+        violationTypeId: await typeIdByName('رسوم خدمة'),
+        count: 2,
+        unitValue: 250,
+      });
+    const row = data<FleetViolationDto>(created);
+
+    const moved = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: row.version, vehicleId: to.id, year: 2024 });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+
+    // Read it back from the LIST, and from the car it LEFT as well — a move that only added is
+    // not a move.
+    const there = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ vehicleId: to.id, year: 2024, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetViolationDto[]>(there).map((r) => r.id), 'filed under the new car').toContain(
+      row.id,
+    );
+    const gone = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ vehicleId: from.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<FleetViolationDto[]>(gone).map((r) => r.id), 'and no longer under the old').not.toContain(
+      row.id,
+    );
+    // The amount is still the row's own arithmetic — moving a fine does not re-price it.
+    expect(data<FleetViolationDto[]>(there).find((r) => r.id === row.id)?.amount).toBe(500);
+  });
+
+  it('refuses a year on a DRIVER row, and a car the registry does not have', async () => {
+    // A driver fine's period is its DATE; its `year` is null and stays null, so accepting one
+    // would store a second, competing answer to «which year is this in?».
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await someDriver();
+    await mkDriverProfile(driver).catch(() => undefined);
+    const created = await request(app)
+      .post('/api/v1/fleet/violations/driver')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        date: '2026-03-04',
+        driverEmployeeId: driver,
+        violationTypeId: await typeIdByName('سرعة'),
+        amount: 300,
+      });
+    const row = data<FleetViolationDto>(created);
+
+    const withYear = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: row.version, year: 2024 });
+    expect(withYear.status, 'a driver row has no year to correct').toBe(400);
+
+    const bogusCar = await request(app)
+      .patch(`/api/v1/fleet/violations/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: row.version, vehicleId: '000000000000000000000000' });
+    expect(bogusCar.status, 'the registry is asked before the write').toBe(404);
+
+    // Neither refusal left anything behind.
+    const after = await request(app)
+      .get('/api/v1/fleet/violations')
+      .query({ vehicleId: v.id, pageSize: 50 })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const still = data<FleetViolationDto[]>(after).find((r) => r.id === row.id);
+    expect(still?.year, 'still no year').toBeNull();
+    expect(still?.vehicleId, 'still the car it was filed against').toBe(v.id);
+  });
+
   it('rolls a car’s YEARS up separately, and narrows to one when asked', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const type = await typeIdByName('رسوم خدمة');

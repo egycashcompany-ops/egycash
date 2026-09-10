@@ -316,10 +316,23 @@ class FleetViolationService {
       set.violationTypeId = new Types.ObjectId(input.violationTypeId);
     }
 
+    // The car a fine is filed against, correctable on EITHER shape: a statement row and an event
+    // row both name one, and both are keyed against the wrong plate often enough that deleting
+    // and re-filing was the standing workaround. The registry is asked first, so a car that does
+    // not exist is refused here rather than stored and discovered later by a board that cannot
+    // name it.
+    if (input.vehicleId !== undefined) {
+      await fleetVehicleRepository.getById(input.vehicleId);
+      set.vehicleId = new Types.ObjectId(input.vehicleId);
+    }
+
     if (before.kind === 'vehicle') {
       if (input.date !== undefined || input.driverEmployeeId !== undefined) {
         throw invalid('date', 'a vehicle statement row carries a year, not an event date/driver');
       }
+      // The year IS the statement row's period — H8's stored fact — so correcting it moves the
+      // row between yearly totals, which is exactly what a mis-keyed statement needs.
+      if (input.year !== undefined) set.year = input.year;
       if (input.amount !== undefined) {
         throw invalid('amount', 'the amount of a vehicle row is count × unitValue (FR-9)');
       }
@@ -333,6 +346,11 @@ class FleetViolationService {
     } else {
       if (input.count !== undefined || input.unitValue !== undefined) {
         throw invalid('count', 'a driver event row has no count/unitValue — its amount is entered');
+      }
+      // A driver row's period is its DATE; its `year` is null and stays null, so accepting one
+      // here would store a second, competing answer to «which year is this fine in?».
+      if (input.year !== undefined) {
+        throw invalid('year', 'a driver event row carries an event date, not a year');
       }
       if (input.date !== undefined) set.date = input.date;
       if (input.amount !== undefined) set.amount = input.amount;

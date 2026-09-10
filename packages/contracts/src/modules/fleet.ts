@@ -1541,6 +1541,17 @@ export type RecordFleetDriverViolation = z.infer<typeof RecordFleetDriverViolati
 
 export const UpdateFleetViolationSchema = z
   .object({
+    /**
+     * The car a filed fine belongs to, and — for a statement row — the year it belongs in.
+     *
+     * Both were once fixed at recording time and shown read-only afterwards, on the argument that
+     * moving a fine is a different act from correcting one. In practice the commonest correction
+     * IS the car or the year: a statement arrives naming one plate, is keyed against another, and
+     * the only way back was to delete the row and re-file it — which loses the row's history to
+     * fix a typo. The service still owns which of the two each shape may carry.
+     */
+    vehicleId: objectId().optional(),
+    year: z.number().int().min(2000).max(2100).optional(),
     violationTypeId: objectId().optional(),
     count: z.number().int().min(1).optional(),
     unitValue: egp().optional(),
@@ -1647,6 +1658,14 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    * A single id still parses, as a one-item list, so every saved link keeps working.
    */
   violationTypeId: listQuery(objectId()),
+  /**
+   * SETTLED or not — «الحالة» on the bar.
+   *
+   * The tick is the commonest thing a clerk changes on this board and the commonest question they
+   * ask of it: «what is still outstanding». It was answerable only by reading every row's tick,
+   * which on a paged board means reading every page.
+   */
+  collected: booleanQuery().optional(),
   year: z.coerce.number().int().min(2000).max(2100).optional(),
 }).strict();
 export type ListFleetViolationsQuery = z.infer<typeof ListFleetViolationsQuerySchema>;

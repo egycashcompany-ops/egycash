@@ -19,6 +19,7 @@ import { cn } from '../lib/cn';
 export const FilterField = ({
   label,
   active = false,
+  density = 'default',
   className,
   children,
 }: {
@@ -26,12 +27,22 @@ export const FilterField = ({
   label: string;
   /** Whether this filter currently narrows the list. Colours the label; changes no geometry. */
   active?: boolean;
+  /**
+   * The gutter of the CONTROL below, so the name lines up with the value it names.
+   *
+   * A label at `px-0.5` above a `tight` control at `px-2` starts six pixels outboard of the text
+   * it belongs to, and eleven of them side by side made the row of names read as a separate,
+   * slightly-misplaced strip above the bar rather than as part of it. Matching the gutter is the
+   * whole of the fix, and it changes no width: the label is `truncate` inside a `min-w-0`
+   * column, so its padding cannot push the column wider.
+   */
+  density?: 'default' | 'tight';
   className?: string;
   children: ReactNode;
 }): JSX.Element => (
   // The hook is inert markup a test can measure the bar by — one row, equal widths, names that
   // read in full — without reaching for class names that are free to change.
-  <div data-filter-field={label} className={cn('flex min-w-0 flex-col gap-1', className)}>
+  <div data-filter-field={label} className={cn('flex min-w-0 flex-col gap-1.5', className)}>
     <span
       // The name is VISIBLE, so it needs no tooltip to be discoverable — but it is also
       // `truncate`, and a name cut off by a narrow column has to stay recoverable by pointer.
@@ -39,10 +50,13 @@ export const FilterField = ({
       className={cn(
         // `truncate` is the honest end of a name too long for its column, and it is why the
         // label may never be the thing a caller sizes the column by.
-        'truncate px-0.5 text-[11px] font-medium leading-none',
-        active
-          ? 'text-brand-600 dark:text-brand-300'
-          : 'text-slate-500 dark:text-slate-400',
+        //
+        // 12px with a real line box, not 11px squeezed to `leading-none`: at eleven-across this
+        // strip is the only thing telling a reader what each box is, and `leading-none` crops the
+        // Arabic hamza and the descenders that tell «الرخصة» from «الرخصه» at a glance.
+        'truncate text-xs font-medium leading-4',
+        density === 'tight' ? 'px-2' : 'px-3',
+        active ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400',
       )}
     >
       {label}

@@ -84,7 +84,6 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
-
 /**
  * Every filter is `density="tight"`: 8px off a text box, 24px off a select, and — since the
  * picker takes it too — the whole row is one size of control rather than ten of one and one of
@@ -114,9 +113,6 @@ const TIGHT = 'tight' as const;
  * «الكل» demands almost none. `min-w` is the floor at which a field's NAME is still readable.
  */
 const CELL = 'flex-1 basis-0 min-w-[4.5rem]';
-
-
-
 
 /**
  * A text box's own width. Unlike a `<select>`, an `<input>` has no content to be as wide as — its
@@ -563,6 +559,7 @@ export const DriversListPage = (): JSX.Element => {
               label={t('fleet.drivers.filters.employeeShort')}
               active={pickedDrivers.length > 0}
               className={CELL}
+              density={TIGHT}
             >
               <DriverPickerFilter
                 value={pickedDrivers}
@@ -573,6 +570,10 @@ export const DriversListPage = (): JSX.Element => {
                 density={TIGHT}
                 // The question is written above now, so the trigger says only the ANSWER.
                 placeholder={t('common.filters.all')}
+                // Its trigger is an `inline-flex`, so without this it shrank to the width of the
+                // word «الكل» while the ten selects beside it filled theirs — one small box at the
+                // end of an otherwise even row.
+                fullWidth
                 className="w-full"
               />
             </FilterField>
@@ -581,6 +582,7 @@ export const DriversListPage = (): JSX.Element => {
             label={t('fleet.drivers.columns.jobTitle')}
             active={job !== ''}
             className={CELL}
+            density={TIGHT}
           >
             <CatalogSelect
               kind="driverJob"
@@ -597,6 +599,7 @@ export const DriversListPage = (): JSX.Element => {
               label={t('fleet.drivers.columns.branch')}
               active={branch !== ''}
               className={CELL}
+              density={TIGHT}
             >
               <Select
                 aria-label={t('fleet.drivers.columns.branch')}
@@ -618,6 +621,7 @@ export const DriversListPage = (): JSX.Element => {
               label={t('fleet.drivers.columns.address')}
               active={hrFilter.address !== ''}
               className={CELL}
+              density={TIGHT}
             >
               <DebouncedInput
                 aria-label={t('fleet.drivers.columns.address')}
@@ -632,6 +636,7 @@ export const DriversListPage = (): JSX.Element => {
               label={t('fleet.drivers.columns.phone')}
               active={hrFilter.phone !== ''}
               className={CELL}
+              density={TIGHT}
             >
               <DebouncedInput
                 aria-label={t('fleet.drivers.columns.phone')}
@@ -647,6 +652,7 @@ export const DriversListPage = (): JSX.Element => {
               label={t('fleet.drivers.columns.governorate')}
               active={hrFilter.governorate !== ''}
               className={CELL}
+              density={TIGHT}
             >
               <DebouncedInput
                 aria-label={t('fleet.drivers.columns.governorate')}
@@ -660,6 +666,7 @@ export const DriversListPage = (): JSX.Element => {
             label={t('fleet.drivers.columns.specialization')}
             active={specialization !== ''}
             className={CELL}
+            density={TIGHT}
           >
             <CatalogSelect
               kind="driverSpecialization"
@@ -675,6 +682,7 @@ export const DriversListPage = (): JSX.Element => {
             label={t('fleet.drivers.columns.licenseType')}
             active={licenseType !== ''}
             className={CELL}
+            density={TIGHT}
           >
             <CatalogSelect
               kind="driverLicenseType"
@@ -690,6 +698,7 @@ export const DriversListPage = (): JSX.Element => {
             label={t('fleet.drivers.columns.licenseImage')}
             active={image !== ''}
             className={CELL}
+            density={TIGHT}
           >
             <Select
               aria-label={t('fleet.drivers.columns.licenseImage')}

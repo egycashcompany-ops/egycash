@@ -13,6 +13,9 @@
 // The suite has no DOM, so a click cannot be made here: what IS asserted is everything either
 // side of it — which control each half renders, from which list, and what the pure entry rules do
 // with the values a click would produce. The clicking itself is verified in Chromium.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -43,6 +46,7 @@ import {
 import { toCsv, exportFilename } from './lib/violations-export';
 import { buildViolationsPrintHtml } from './lib/violations-print';
 
+const HERE = dirname(fileURLToPath(import.meta.url));
 const t = (key: string): string => translate('ar', key);
 
 const V1 = '650000000000000000000001';
@@ -488,15 +492,28 @@ describe('the eight reported defects, as rules the markup carries', () => {
     expect(select, 'the empty option is disabled').toMatch(/<option value=""[^>]*disabled/);
   });
 
-  it('the year is sized by a WRAPPER, because `cn` cannot merge widths', () => {
-    // `cn` is a plain joiner: a `w-28` handed to `Select` sits beside its own `w-full` and loses,
-    // which is why the year measured 86px however large a class it was given.
+  it('the year is sized OUTSIDE the control, because `cn` cannot merge widths', () => {
+    // `cn` is a plain joiner: a width handed to `Select` sits beside its own `w-full` and loses,
+    // which is why the year measured 86px however large a class it was given. The width therefore
+    // lives on the elements around it — and now that the entry row is one line that COMPRESSES
+    // rather than a row of fixed boxes, that is the field's share of the row (`flex-… basis-0`
+    // over a `min-w-[…]` floor) with a `w-full` wrapper filling it.
     const markup = page();
     const at = markup.indexOf('data-company-form="year"');
     expect(at).toBeGreaterThan(-1);
-    // The wrapper is the element immediately before the select in the markup.
-    const before = markup.slice(Math.max(0, at - 400), at);
-    expect(before, 'a sized wrapper, not a class on the control').toMatch(/class="w-\d+"/);
+    // From the FIELD that holds it: `Field`'s own `space-y-1.5` is the nearest landmark before
+    // the control, and the field is where the share and the floor live.
+    const field = markup.slice(markup.lastIndexOf('space-y-1.5', at), at);
+    expect(field, 'the wrapper fills the field rather than naming a size').toContain(
+      'class="w-full"',
+    );
+    expect(field, 'and the field takes a weighted share of the row').toMatch(
+      /flex-\[[\d.]+\] basis-0 min-w-\[/,
+    );
+    // The control itself still carries no width of its own beyond `w-full` — the trap this test
+    // was written for.
+    const select = markup.slice(at, markup.indexOf('>', at));
+    expect(select, 'no fixed width smuggled onto the control').not.toMatch(/\sw-\d/);
   });
 
   it('both filter bars write each filter NAME above its control', () => {
@@ -609,6 +626,95 @@ describe('the eight reported defects, as rules the markup carries', () => {
   // render contains no `<ul>` at all, so any assertion about it would pass whatever the class
   // list said. It is checked in Chromium instead, against COMPUTED styles and the panel's real
   // painted height, which is stronger than a string match would have been either way.
+});
+
+describe('the next round of reports, as rules the markup carries', () => {
+  it('no counter can be typed into until the car is chosen', () => {
+    // «زرار الحفظ مش شغال» — it was working; the car had not been picked, and `canSave` needs
+    // one. Saying so in a message was the first attempt and the owner asked for PREVENTION
+    // instead: with no car, there is nothing to count fines against, so the counters are shut.
+    const markup = page();
+    const counters = markup.split('data-driver-count=').slice(1);
+    expect(counters.length, 'the drivers bar renders one counter per type').toBeGreaterThan(0);
+    for (const counter of counters) {
+      expect(counter.slice(0, 400), 'shut while no car is chosen').toContain('disabled');
+    }
+  });
+
+  it('the company entry row is ONE line that compresses, never a scroll box', () => {
+    // Two earlier shapes were both wrong: `overflow-x-auto` hid «العدد» and the total behind a
+    // scrollbar inside a form, and `flex-wrap` + `[&>*]:shrink-0` broke the statement over five
+    // lines in a half-width panel.
+    const markup = page();
+    const save = markup.indexOf('data-company-save');
+    const row = markup.slice(markup.lastIndexOf('<div class="flex min-w-0 flex-1', save), save);
+    expect(row, 'one line from `md` up').toContain('md:flex-nowrap');
+    expect(row, 'and it does not scroll sideways').not.toContain('overflow-x-auto');
+    expect(row, 'nothing refuses to shrink any more').not.toContain('[&>*]:shrink-0');
+    // Every field takes a weighted share over a floor — that is what "compresses" means.
+    const shares = [...row.matchAll(/flex-\[[\d.]+\] basis-0 min-w-\[/g)];
+    expect(shares.length, 'year, car, type, unit value, count, total').toBe(6);
+  });
+
+  it('both bars ask about the collected state, and the drivers half asks the SERVER', () => {
+    // The company rollup arrives whole and is narrowed here; the drivers list is paged, so its
+    // filter has to travel or the answer would be «the settled rows of page one».
+    const markup = page();
+    expect(markup, 'the company half').toContain('data-company-settled');
+    expect(markup, 'and the drivers half').toContain('data-driver-settled');
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel, 'the drivers filter is a query parameter').toContain('collected:');
+  });
+
+  it('the «عرض … من …» sentence is gone, and the page-size box moved up beside the title', () => {
+    // It restated a number the count badge already gives, at the foot of a panel whose whole
+    // point is that nothing under the board moves. The CHOICE survives: a board of a few hundred
+    // fines is unreadable twenty-five at a time.
+    const markup = page();
+    expect(markup, 'no "showing X–Y of Z"').not.toContain(t('common.pagination.showing'));
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel, 'the pager keeps its prev/next but drops the summary').toContain(
+      'summary={false}',
+    );
+    expect(panel, 'and the box rides the title row').toContain('<PageSizeSelect');
+    expect(panel, 'on the LEFT, which in RTL is the child listed last').toMatch(
+      /PageSizeSelect[\s\S]{0,120}order-last/,
+    );
+  });
+
+  it('the edit dialog offers the car and the year, rather than printing them', () => {
+    // The commonest correction on this screen is exactly those two, and the only way back used
+    // to be delete-and-re-file — which throws away the row's history to fix a typo.
+    const dialogs = readFileSync(join(HERE, 'components/ViolationDialogs.tsx'), 'utf8');
+    const vehicleDialog = dialogs.slice(
+      dialogs.indexOf('export const VehicleViolationDialog'),
+      dialogs.indexOf('export const DriverViolationDialog'),
+    );
+    expect(vehicleDialog, 'the car is a picker on an existing row too').not.toContain(
+      'violation === null && (',
+    );
+    expect(vehicleDialog, 'and the year is no longer frozen once filed').not.toContain(
+      'disabled={violation !== null}',
+    );
+    expect(vehicleDialog, 'both travel on the update').toContain('{ vehicleId }');
+    expect(vehicleDialog, 'and only when they changed').toContain(
+      'Number(year) !== violation.year',
+    );
+  });
+
+  it('the driver on a filed fine is picked from the REGISTRY, listed before typing', () => {
+    // It was `OptionalEmployeeField`: the whole payroll, and nothing shown at all until a letter
+    // was typed — so clearing a driver left an empty box with no way to discover who could go in
+    // it. `RegistryDriverPicker` runs its query with an empty search, by design.
+    // Comments stripped: the note beside the control NAMES the thing it replaced, and a rule
+    // about the code must not be satisfiable — or broken — by prose.
+    const dialogs = readFileSync(join(HERE, 'components/ViolationDialogs.tsx'), 'utf8');
+    const code = dialogs.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'the registry picker').toContain('<RegistryDriverPicker');
+    expect(code, 'not the payroll search box').not.toContain('OptionalEmployeeField');
+    const picker = readFileSync(join(HERE, 'components/DriverPickerFilter.tsx'), 'utf8');
+    expect(picker, 'and it lists with an empty search').toContain('enabled: allowed,');
+  });
 });
 
 describe('the company board groups by (vehicle, year)', () => {

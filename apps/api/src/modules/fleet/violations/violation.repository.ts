@@ -68,6 +68,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     amount?: number | undefined;
     /** Which catalog kinds of violation, ORed. `[]` narrows to nothing, as `vehicleIds` does. */
     violationTypeId?: readonly string[] | undefined;
+    /** Settled or not. `false` is a real answer, so this is checked against `undefined`. */
+    collected?: boolean | undefined;
     year?: number | undefined;
   }): FilterQuery<FleetViolationDoc> {
     const clauses: FilterQuery<FleetViolationDoc>[] = [];
@@ -84,6 +86,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       });
     }
     if (query.amount !== undefined) clauses.push({ amount: query.amount });
+    if (query.collected !== undefined) clauses.push({ collected: query.collected });
     if (query.violationTypeId !== undefined) {
       clauses.push({
         violationTypeId: { $in: query.violationTypeId.map((id) => new Types.ObjectId(id)) },

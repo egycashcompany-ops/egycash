@@ -73,11 +73,7 @@ import { useDraftBoard } from '../lib/useDraftBoard';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = [
-  'mission',
-  'q',
-  'view',
-] as const;
+const REMEMBERED_FILTERS = ['mission', 'q', 'view'] as const;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -732,7 +728,7 @@ export const RosterPage = (): JSX.Element => {
     KNOWN_REASONS.has(reason) ? t(`fleet.roster.reason.${reason}`) : reason;
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.roster')}
         breadcrumbs={[
@@ -891,16 +887,26 @@ export const RosterPage = (): JSX.Element => {
         )}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
+      {/* THE BOARD IS EXACTLY THE SCREEN, and the page itself never scrolls. `sticky top-4` on
+          the pools was the older answer and it only half worked: sticky pins an element once you
+          have scrolled to it, so the pools still began wherever the header and the filter row
+          left off — measured, 830px of pool starting at y=267 on a 950px screen, its bottom a
+          page-scroll away. The give now comes from the shell instead (`PageContainer fullHeight`),
+          this grid takes it (`min-h-0 flex-1`), and each region scrolls INSIDE itself: the table
+          in its own box, each pool in its own list. */}
+      <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-3">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the column
-            grows to the table's `min-w-[40rem]` and takes the PAGE sideways at 390px. */}
-        <div className="min-w-0 space-y-4 xl:col-span-2">
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => row.vehicleId}
-            /*
+            grows to the table's `min-w-[40rem]` and takes the PAGE sideways at 390px. `min-h-0`
+            is the same rule in the other axis: without it this column would demand the table's
+            full height and push the grid past the screen. */}
+        <div className="flex min-h-0 min-w-0 flex-col xl:col-span-2">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <DataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(row) => row.vehicleId}
+              /*
               A car the workshop holds on THIS DATE, tinted whole.
 
               `inMaintenance` and nothing else: it is the server's own FR-5 verdict for the day on
@@ -913,24 +919,27 @@ export const RosterPage = (): JSX.Element => {
               `roster.service` where a client cannot reach it. The badge in the code cell stays,
               so the state is never carried by colour alone.
             */
-            rowClassName={(row) =>
-              row.inMaintenance
-                ? 'bg-rose-50 text-rose-950 hover:bg-rose-100/70 dark:bg-rose-950/40 dark:text-rose-50 dark:hover:bg-rose-950/60'
-                : undefined
-            }
-            // `board === undefined` while the query reports success means the answer on hand is
-            // for another date — still waiting for this one, so the table says so rather than
-            // rendering an empty day that looks like a fleet with nothing on it.
-            loading={boardQuery.isPending || (board === undefined && !boardQuery.isError)}
-            error={boardQuery.isError ? boardQuery.error : undefined}
-            onRetry={() => void boardQuery.refetch()}
-          />
+              rowClassName={(row) =>
+                row.inMaintenance
+                  ? 'bg-rose-50 text-rose-950 hover:bg-rose-100/70 dark:bg-rose-950/40 dark:text-rose-50 dark:hover:bg-rose-950/60'
+                  : undefined
+              }
+              // `board === undefined` while the query reports success means the answer on hand is
+              // for another date — still waiting for this one, so the table says so rather than
+              // rendering an empty day that looks like a fleet with nothing on it.
+              loading={boardQuery.isPending || (board === undefined && !boardQuery.isError)}
+              error={boardQuery.isError ? boardQuery.error : undefined}
+              onRetry={() => void boardQuery.refetch()}
+            />
+          </div>
         </div>
 
         {/* The two lists SIDE BY SIDE, each its own column. Stacked, the unavailable list pushed
             the available one off the fold on a real fleet, and the board lost the height to a
-            section nobody drags from. */}
-        <div className="sticky top-4 grid max-h-[calc(100vh-2rem)] min-w-0 grid-cols-2 gap-3">
+            section nobody drags from. The column is bounded by the GRID ROW, which is bounded by
+            the screen — no `sticky`, no `100vh` arithmetic, and nothing left hanging below the
+            fold for the reader to scroll to. */}
+        <div className="grid min-h-0 min-w-0 grid-cols-2 gap-3">
           <div className="flex min-h-0 min-w-0 flex-col rounded-lg border border-emerald-200 bg-emerald-50 shadow-card dark:border-emerald-900 dark:bg-emerald-950/30">
             {/* Compact header: the count beside the title and the search directly under it, so
                 the panel spends its height on drivers rather than on chrome — the same block the
@@ -949,14 +958,19 @@ export const RosterPage = (): JSX.Element => {
                 className="w-full"
               />
             </div>
-            {/* THE POOL RUNS TO THE BOTTOM OF THE SCREEN. It was a fixed `max-h-[26rem]` box —
-                416px of list with a scrollbar inside it, and on a 950px screen that left a
-                quarter of the page blank underneath while the reader paged through a fleet of
-                three hundred. The height is now whatever is left: the panel is bounded by the
-                VIEWPORT (`sticky` + `max-h-[calc(100vh-2rem)]`) and the list takes the room the
-                title and the search box do not, so it fits any screen without a number picked
-                for one of them. `sticky` also keeps it in view while the board beside it
-                scrolls, which is the point of a pool you drag FROM. */}
+            {/* THE POOL IS THE SCREEN, TO THE PIXEL. It was a fixed `max-h-[26rem]` box — 416px
+                of list with a scrollbar inside it, and on a 950px screen that left a quarter of
+                the page blank underneath while the reader paged through a fleet of three
+                hundred. Then it was `sticky` + `max-h-[calc(100vh-2rem)]`, which bounded the
+                panel by the viewport but not by where the panel STARTS: it still began below the
+                page header, so its last drivers sat past the fold and only came into view once
+                you scrolled — the pool you drag FROM, out of reach.
+
+                The height is now inherited rather than computed. The shell hands the page its
+                exact height, the board grid takes it, this panel fills its share of the grid row,
+                and the list takes whatever the title and search box leave (`min-h-0 flex-1
+                overflow-y-auto`). No `100vh` arithmetic, no number picked for one screen, and no
+                page scroll: the only thing that scrolls is the list itself. */}
             {pool.length === 0 ? (
               <EmptyState title={t('fleet.roster.availableEmpty')} />
             ) : shownAvailable.length === 0 ? (

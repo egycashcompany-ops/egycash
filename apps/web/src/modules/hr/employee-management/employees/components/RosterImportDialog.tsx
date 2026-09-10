@@ -325,9 +325,42 @@ export const RosterImportDialog = ({
 
             {report.additions.length > 0 && (
               <Section title={t('employees.roster.additionsTitle')}>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  {report.additions.map((a) => `${a.code} — ${a.name}`).join('، ')}
-                </p>
+                <div className="max-h-48 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                  <table className="w-full text-start text-xs">
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {report.additions.map((a) => (
+                        <tr key={a.code}>
+                          <td className="whitespace-nowrap p-2 font-mono" dir="ltr">
+                            {a.code}
+                          </td>
+                          <td className="p-2">{a.name}</td>
+                          {/*
+                            Said plainly, because most of them are leavers: the workbook's larger
+                            sheet is Resignation, and somebody it names joins the registry already
+                            exited. Without this the reader goes looking for them on a list that
+                            hides exited people by default, and concludes they were never added.
+                          */}
+                          <td className="whitespace-nowrap p-2 text-end">
+                            {a.serving ? (
+                              <span className="text-emerald-600 dark:text-emerald-400">
+                                {t('employees.roster.addedServing')}
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {t('employees.roster.addedExited')}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {report.additions.some((a) => !a.serving) && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('employees.roster.addedExitedHint')}
+                  </p>
+                )}
               </Section>
             )}
 

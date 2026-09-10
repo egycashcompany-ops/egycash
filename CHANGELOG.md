@@ -11,6 +11,14 @@ its entry here in the same PR.
 
 ### Added
 
+- **The import preview says which of the people it is adding are leavers.** Two thirds of the
+  workbook is the Resignation sheet, so most of the people an upload adds join the registry already
+  exited — a record of somebody who worked here, not a colleague starting on Monday. Listing them
+  under "New employees" with nothing beside it sent a reader to look for them on the employees list,
+  which hides exited people unless the view filter is set to All, and to conclude they had never been
+  added. Each addition now says `on the job` or `added as a leaver`, and the section says where to
+  find the latter.
+
 - **The roster import records leavers, and every group is agreed to separately.** The preview now
   has five numbers instead of four: added, **cleared**, updated, unchanged, and not-read. Cleared is
   new — somebody the Resignation sheet lists as gone whom the registry still has on the books. It

@@ -479,6 +479,7 @@ describe('re-uploading the roster updates what changed and nothing else', () => 
     expect(report.counts.imported).toBe(1);
     expect(report.counts.updated).toBe(1);
     expect(report.additions.map((a) => a.code)).toEqual([newcomer.code]);
+    expect(report.additions[0]?.serving).toBe(true);
     expect(await employeeRepository.findByCodeSystem(newcomer.code)).not.toBeNull();
     expect((await employeeRepository.findByCodeSystem(person.code))?.personal.religion).toBe('مسلم');
   }, 240_000);
@@ -538,6 +539,29 @@ describe('recording that a leaver has left, and only what was agreed to', () => 
     };
     return { person, leaver };
   };
+
+  /**
+   * Two thirds of the workbook is the Resignation sheet, so most people it ADDS are already gone.
+   * The report has to say so: called "a new employee" with nothing beside it, a reader goes looking
+   * for them on a list that hides exited people by default and concludes they were never added.
+   * That is exactly what happened with the first three the go-live could not import.
+   */
+  it('marks somebody added straight from the Resignation sheet as a leaver, not a new colleague', async () => {
+    const person = freshPerson();
+    const leaver: Person = {
+      ...person,
+      exit: { reason: 'استقالة', date: new Date('2021-02-28T00:00:00.000Z') },
+    };
+    const report = await run('added-leaver.xlsx', [], [leaver], ALL_IMPORT_ACTIONS);
+    expect(report.counts.imported).toBe(1);
+    expect(report.additions[0]?.code).toBe(person.code);
+    expect(report.additions[0]?.serving).toBe(false);
+
+    // And that is what the registry holds — added, and exited.
+    const after = await employeeRepository.findByCodeSystem(person.code);
+    expect(after).not.toBeNull();
+    expect(after?.status).toBe('exited');
+  }, 240_000);
 
   it('counts a leaver the registry still has on the books, and says when they left', async () => {
     const { person, leaver } = await seedServing('exit-count');

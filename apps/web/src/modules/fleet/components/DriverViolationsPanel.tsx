@@ -18,7 +18,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { PageSizeSelect, Pagination } from '../../../shared/ui/Pagination';
+import { PageSizeSelect } from '../../../shared/ui/Pagination';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -48,7 +48,7 @@ import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
-import { VehicleSelect } from './VehicleSelect';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { EmployeeName } from './EmployeeName';
 import {
   cardLabel,
@@ -83,7 +83,6 @@ export const DriverViolationsPanel = ({
   onAmountChange,
   onSettledChange,
   onClear,
-  onPageChange,
   onPageSizeChange,
   onEdit,
   onDelete,
@@ -105,7 +104,6 @@ export const DriverViolationsPanel = ({
   onSettledChange: (next: string | null) => void;
   /** Clear this half in ONE write — see the company panel for why it is not four setter calls. */
   onClear: () => void;
-  onPageChange: (next: number) => void;
   onPageSizeChange: (next: number) => void;
   onEdit: (row: FleetViolationDto) => void;
   onDelete: (row: FleetViolationDto) => void;
@@ -234,7 +232,11 @@ export const DriverViolationsPanel = ({
     }
   };
 
-  const pageTotal = rows.reduce((sum, row) => sum + row.amount, 0);
+  // WHAT IS STILL OWED on this page. A ticked fine is settled, and the owner reads «إجمالى
+  // السائقين» as the outstanding balance — the same rule the server now applies to the company
+  // half's four figures. Done in hand rather than by sending `collected: false`, because that
+  // would hide the rows themselves and this board is exactly where a clerk unticks a mistake.
+  const pageTotal = rows.filter((row) => !row.collected).reduce((sum, row) => sum + row.amount, 0);
 
   const columns: Column<FleetViolationDto>[] = [
     {
@@ -457,19 +459,24 @@ export const DriverViolationsPanel = ({
         {/* ── count the stack ─────────────────────────────────────────────── */}
         <div
           data-driver-bar="true"
-          className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
+          // IT WRAPS, IT DOES NOT SCROLL. This was `overflow-x-auto`, which had two problems. The
+          // owner does not want a sideways scroll in a form — «ميكونش فيه اسكرول يمين وشمال» — and
+          // an `overflow-x` ancestor computes `overflow-y` to `auto` as well, which would clip the
+          // car box's own dropdown: the list of codes would open inside a scroll port instead of
+          // over the bar. A native `<select>` popup escaped that; a typed combobox cannot.
+          className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
         >
           <Field label={t('fleet.odometer.columns.vehicle')}>
-            {/* PICKED from the registry, exactly as the company half picks it. A typed code is a
-                code no car may carry, and this bar files a stack of fines against it in one
-                transaction — so a typo was a whole batch refused for a reason the reader could
-                only find by re-reading their own typing. */}
-            <div className="w-36">
-              <VehicleSelect
+            {/* TYPED OR PICKED, exactly as the company half now does it — the owner asked for
+                both rows: «انه يقدر يكتب برضو وهتكون واحد بس». The typing is only ever a SEARCH:
+                the control commits an option or nothing, so a code no car carries still cannot be
+                stored, which is what this bar needs — it files a stack of fines against one car in
+                one transaction, and a typo used to mean the whole batch refused. */}
+            <div className="w-40">
+              <VehicleCodeCombobox
                 value={formVehicleId}
                 onChange={setFormVehicleId}
                 anyStatus
-                fullWidth
                 testId="driver-entry"
                 ariaLabel={t('fleet.odometer.columns.vehicle')}
               />
@@ -717,7 +724,7 @@ export const DriverViolationsPanel = ({
               data-driver-count-badge
               role="status"
               title={t('fleet.violations.matchedCount')}
-              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
               {formatNumber(meta?.totalItems ?? 0, locale)}
             </span>
@@ -859,7 +866,6 @@ export const DriverViolationsPanel = ({
               </tr>
             </tbody>
           </table>
-          <Pagination meta={meta} onPageChange={onPageChange} summary={false} />
         </>
       )}
     </section>

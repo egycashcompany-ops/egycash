@@ -13,10 +13,11 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
 import { useAppSelector } from '../../../store';
-import { localized } from '../../../shared/lib/format';
+import { formatDate, localized } from '../../../shared/lib/format';
 import { fetchDriverLicenseImage } from '../api/fleet-api';
+import { printLicenceRecord } from './vehicle-print';
 import {
   useDeleteDriverLicenseImage,
   useRosterDay,
@@ -259,11 +260,13 @@ export const DriverLicenseImageCell = ({
   onPreview: (driver: FleetDriverProfileDto) => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
   const upload = useUploadDriverLicenseImage();
   const [inputKey, setInputKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const mayManage = can('fleetDriver.manage');
+  const { name, code } = useEmployeeName(driver.employeeId);
 
   const pick = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return;
@@ -271,6 +274,42 @@ export const DriverLicenseImageCell = ({
     toast.success(t('fleet.drivers.licenseImage.uploaded'));
     // Remount the input so picking the SAME file again still fires a change event.
     setInputKey((k) => k + 1);
+  };
+
+  /**
+   * The licence, on paper — the same document the vehicle registry prints, composed here.
+   *
+   * The rows are what this screen already knows about the profile and nothing else: the printer
+   * fetches no record of its own, so what is printed is what the reader was looking at.
+   */
+  const print = async (): Promise<void> => {
+    // Who this licence belongs to, from the same cached record the row's own name column reads —
+    // so printing costs no request the screen has not already made.
+    const who =
+      name === null ? (code ?? driver.employeeId) : `${name}${code === null ? '' : ` — ${code}`}`;
+    try {
+      await printLicenceRecord({
+        title: t('fleet.drivers.licenseImage.printTitle'),
+        subtitle: who,
+        rows: [
+          { label: t('fleet.drivers.columns.driver'), value: name ?? '—' },
+          { label: t('fleet.drivers.columns.employeeCode'), value: code ?? '—' },
+          {
+            label: t('fleet.drivers.columns.licenseExpiresAt'),
+            value: formatDate(driver.licenseExpiresAt, locale),
+          },
+        ],
+        licenseImage: {
+          heading: t('fleet.drivers.licenseImage.previewTitle'),
+          caption: who,
+          fetch: () => fetchDriverLicenseImage(driver.id),
+        },
+        locale,
+      });
+    } catch {
+      // A blocked popup is the only way this throws; say so rather than failing silently.
+      toast.error(t('fleet.drivers.licenseImage.popupBlocked'));
+    }
   };
 
   if (driver.licenseImage === null) {
@@ -310,6 +349,22 @@ export const DriverLicenseImageCell = ({
         onClick={() => onPreview(driver)}
       >
         <EyeIcon className="h-4 w-4" />
+      </button>
+      {/* PRINT, the one thing this cell could not do that the vehicles' could. The owner asked for
+          the two to match — «تكون زى اللى عند السيارات يقدر يرفع ويشوف ويمسح ويطبع» — and upload,
+          view and delete were already here; only the printer was missing. It prints through the
+          SAME document builder the vehicle registry prints through, which is why the licence
+          arrives inlined as a data URL rather than as a same-origin `<img src>` a torn-off window
+          may not have loaded before the print dialog measures the page. */}
+      <button
+        type="button"
+        data-driver-license-print={driver.id}
+        className={actionButton}
+        aria-label={t('fleet.drivers.licenseImage.print')}
+        title={t('fleet.drivers.licenseImage.print')}
+        onClick={() => void print()}
+      >
+        <PrinterIcon className="h-4 w-4" />
       </button>
       {mayManage && (
         <button

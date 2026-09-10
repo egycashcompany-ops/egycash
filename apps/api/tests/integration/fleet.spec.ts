@@ -22,6 +22,7 @@ import {
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
   type FleetViolationDto,
+  type FleetViolationRollupDto,
   type PageMeta,
   SaveFleetFixedRosterSchema,
 } from '@ecms/contracts';
@@ -7122,6 +7123,116 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ collected: false, version: data<FleetViolationDto>(ticked).version });
     expect(data<FleetViolationDto>(back).collected).toBe(false);
+  });
+
+  it('a collected fine leaves the three totals, but not the collected TALLY', async () => {
+    // «تخرج من إجمالى الشركة و إجمالى السائقين و إجمالى المخالفات». The board is read as the
+    // outstanding balance, so a settled row stops counting toward what is owed — while
+    // rowCount/collectedCount go on counting every row, because they are what the group's tick,
+    // its green tint and the «الحالة» filter are computed from.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const driver = await someDriver();
+    await mkDriverProfile(driver).catch(() => undefined);
+    const statement = data<FleetViolationDto>(
+      await request(app)
+        .post('/api/v1/fleet/violations/vehicle')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          year: 2026,
+          violationTypeId: await typeIdByName('رسوم خدمة'),
+          count: 3,
+          unitValue: 100,
+        }),
+    );
+    const fine = data<FleetViolationDto>(
+      await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2026-05-06',
+          driverEmployeeId: driver,
+          violationTypeId: await typeIdByName('سرعة'),
+          amount: 250,
+        }),
+    );
+
+    const group = async (): Promise<FleetViolationRollupDto> => {
+      const res = await request(app)
+        .get('/api/v1/fleet/violations/rollup')
+        .query({ year: 2026, vehicleId: v.id })
+        .set('Authorization', `Bearer ${adminToken}`);
+      const row = data<FleetViolationRollupDto[]>(res).find((r) => r.year === 2026);
+      if (row === undefined) throw new Error('the group vanished from the rollup');
+      return row;
+    };
+
+    const before = await group();
+    expect(
+      [before.vehicleCount, before.vehicleAmount, before.driverCount, before.driverAmount],
+      'nothing is collected yet, so everything counts',
+    ).toEqual([3, 300, 1, 250]);
+    expect([before.totalCount, before.totalAmount]).toEqual([4, 550]);
+    expect([before.collectedCount, before.rowCount]).toEqual([0, 2]);
+
+    // Tick the DRIVER fine only — a partly-settled group is the case a client cannot compute for
+    // itself, because the DTO carries no collected money.
+    await request(app)
+      .patch(`/api/v1/fleet/violations/${fine.id}/collected`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ collected: true, version: fine.version });
+
+    const half = await group();
+    expect(
+      [half.driverCount, half.driverAmount],
+      'the settled fine is out of the drivers’ figures',
+    ).toEqual([0, 0]);
+    expect(
+      [half.vehicleCount, half.vehicleAmount],
+      'and the statement row it did not touch is untouched',
+    ).toEqual([3, 300]);
+    expect([half.totalCount, half.totalAmount], 'the total follows the two halves').toEqual([
+      3, 300,
+    ]);
+    expect(
+      [half.collectedCount, half.rowCount],
+      'while the tally still sees both rows — this is what «١ من ٢» is made of',
+    ).toEqual([1, 2]);
+
+    // Now the statement row too: a fully-settled group owes nothing and says so.
+    await request(app)
+      .patch(`/api/v1/fleet/violations/${statement.id}/collected`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ collected: true, version: statement.version });
+
+    const done = await group();
+    expect(
+      [done.vehicleCount, done.vehicleAmount, done.driverCount, done.driverAmount],
+      'every money line is zero',
+    ).toEqual([0, 0, 0, 0]);
+    expect([done.totalCount, done.totalAmount]).toEqual([0, 0]);
+    expect(
+      [done.collectedCount, done.rowCount],
+      'and the group still reports itself fully collected — the green tint depends on it',
+    ).toEqual([2, 2]);
+
+    // UNTICKING brings the money back. A tick is a statement about payment, not a delete.
+    const ticked = data<FleetViolationDto[]>(
+      await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ vehicleId: v.id, pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const again = ticked.find((r) => r.id === statement.id);
+    await request(app)
+      .patch(`/api/v1/fleet/violations/${statement.id}/collected`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ collected: false, version: again?.version ?? 1 });
+    const back = await group();
+    expect([back.vehicleCount, back.vehicleAmount], 'the statement is owed again').toEqual([
+      3, 300,
+    ]);
   });
 
   it('moves a filed statement row to another CAR and another YEAR', async () => {

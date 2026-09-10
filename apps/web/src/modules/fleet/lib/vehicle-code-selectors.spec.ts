@@ -59,6 +59,10 @@ const CODE_SELECTORS = [
     what: 'the vehicle picker on the maintenance check-in',
   },
   {
+    file: 'modules/fleet/components/VehicleCodeCombobox.tsx',
+    what: 'the typed car code on both violation entry rows — company statements and the drivers’ batch bar',
+  },
+  {
     file: 'modules/gold/api/gold-api.ts',
     what: "Gold's receiving picker, through its own module's call",
   },
@@ -93,11 +97,11 @@ const NOT_A_CODE_SELECTOR = [
   },
   {
     file: 'modules/fleet/components/CompanyViolationsPanel.tsx',
-    why: 'the code→id lookup the rollup axis and the statement form need; filtering is VehicleCodeFilter’s',
+    why: 'the code→id lookup the rollup axis needs; the entry row’s car is VehicleCodeCombobox’s and the filter is VehicleCodeFilter’s',
   },
   {
     file: 'modules/fleet/components/DriverViolationsPanel.tsx',
-    why: 'an id→code map so a retired car’s fine still prints its code, plus code→id for the batch bar; filtering is VehicleCodeFilter’s',
+    why: 'an id→code map so a retired car’s fine still prints its code; the batch bar’s car is VehicleCodeCombobox’s and filtering is VehicleCodeFilter’s',
   },
   {
     file: 'modules/fleet/components/ViolationDialogs.tsx',

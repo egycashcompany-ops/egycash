@@ -102,7 +102,8 @@ const en: Record<string, string> = {
   'hr.announcements.picker.noMatches': 'No employee matches that.',
   'hr.announcements.picker.remove': 'Remove this person',
   'hr.requisitions.title': 'Job requisitions',
-  'hr.requisitions.subtitle': 'Requests to hire — what was asked for, who approved it, and how much of it is still open.',
+  'hr.requisitions.subtitle':
+    'Requests to hire — what was asked for, who approved it, and how much of it is still open.',
   'hr.requisitions.new': 'New requisition',
   'hr.requisitions.notFound': 'This requisition no longer exists.',
   'hr.requisitions.created': 'Requisition created.',
@@ -130,7 +131,8 @@ const en: Record<string, string> = {
   'hr.requisitions.hires': 'Hires against this requisition',
   'hr.requisitions.noHires': 'Nobody has been hired against it yet.',
   'hr.requisitions.empty.title': 'No requisitions yet',
-  'hr.requisitions.empty.body': 'A requisition asks to hire for a job in a department — approved by that department and then by HR.',
+  'hr.requisitions.empty.body':
+    'A requisition asks to hire for a job in a department — approved by that department and then by HR.',
   'hr.requisitions.columns.code': 'Code',
   'hr.requisitions.columns.department': 'Department',
   'hr.requisitions.columns.filled': 'Filled',
@@ -152,7 +154,8 @@ const en: Record<string, string> = {
   'hr.requisitions.form.priority': 'Priority',
   'hr.requisitions.form.neededBy': 'Needed by',
   'hr.requisitions.form.reason': 'Why',
-  'hr.requisitions.form.reapprovalWarning': 'Asking for more than was approved sends this back to the department manager.',
+  'hr.requisitions.form.reapprovalWarning':
+    'Asking for more than was approved sends this back to the department manager.',
   'hr.requisitions.status.draft': 'Draft',
   'hr.requisitions.status.pendingManager': 'With the manager',
   'hr.requisitions.status.pendingHr': 'With HR',
@@ -167,7 +170,8 @@ const en: Record<string, string> = {
   'hr.requisitions.priority.high': 'High',
   'hr.requisitions.priority.urgent': 'Urgent',
   'hr.rules.title': 'Notification rules',
-  'hr.rules.subtitle': 'When something happens, tell the right people — without anyone having to remember.',
+  'hr.rules.subtitle':
+    'When something happens, tell the right people — without anyone having to remember.',
   'hr.rules.new': 'New rule',
   'hr.rules.edit': 'Edit rule',
   'hr.rules.on': 'On',
@@ -190,7 +194,8 @@ const en: Record<string, string> = {
   'hr.rules.editor.event': 'Event',
   'hr.rules.editor.eventPlaceholder': 'Choose an event…',
   'hr.rules.editor.conditions': 'Only if',
-  'hr.rules.editor.conditionsRule': 'Every condition must hold. Leave this empty to fire on every occurrence.',
+  'hr.rules.editor.conditionsRule':
+    'Every condition must hold. Leave this empty to fire on every occurrence.',
   'hr.rules.editor.addCondition': 'Add condition',
   'hr.rules.editor.noValue': 'No value needed',
   'hr.rules.editor.valuePlaceholder': 'Choose a value…',
@@ -207,8 +212,10 @@ const en: Record<string, string> = {
   'hr.rules.editor.placeholders': 'You can use these in the title and body:',
   'hr.rules.editor.enabled': 'Active',
   'hr.rules.reach.count': 'Reaches {{count}} people right now.',
-  'hr.rules.reach.nobody': 'This audience reaches nobody right now — the rule would fire and tell no one.',
-  'hr.rules.reach.perEvent': 'Recipients are read from each event, so they differ every time this fires.',
+  'hr.rules.reach.nobody':
+    'This audience reaches nobody right now — the rule would fire and tell no one.',
+  'hr.rules.reach.perEvent':
+    'Recipients are read from each event, so they differ every time this fires.',
   'hr.rules.audience.subject': 'The person it is about',
   'hr.rules.audience.subjectHint': 'Read from the event itself — different every time it fires.',
   'hr.rules.audience.permission': 'Whoever can do something',
@@ -1677,7 +1684,8 @@ const en: Record<string, string> = {
   'payroll.bulk.empty': 'No rows yet. Search for an employee to add one.',
   'payroll.bulk.submit': 'Record the batch',
   'payroll.bulk.recorded': '{{count}} rows recorded as drafts',
-  'payroll.bulk.result': '{{created}} recorded · {{duplicates}} already there · {{rejected}} refused',
+  'payroll.bulk.result':
+    '{{created}} recorded · {{duplicates}} already there · {{rejected}} refused',
   'payroll.bulk.rejectedRow': 'Row {{index}} ({{employeeId}}) was refused: {{reason}}',
   'payroll.cost.title': 'What this run cost',
   'payroll.cost.hint':
@@ -1894,7 +1902,8 @@ const en: Record<string, string> = {
   'training.course.descriptionAr': 'Description (Arabic)',
   'training.course.descriptionEn': 'Description (English)',
   'training.course.hours': 'Hours',
-  'training.course.hoursHint': 'Roughly how long one delivery takes. A session states its own dates.',
+  'training.course.hoursHint':
+    'Roughly how long one delivery takes. A session states its own dates.',
   'training.course.active': 'Taught',
   'training.course.retired': 'Retired',
   'training.course.retire': 'Retire',
@@ -1971,7 +1980,8 @@ const en: Record<string, string> = {
   'medical.insurance.tierHint': 'As the policy writes it. Nothing derives it from a grade.',
   'medical.insurance.startsOn': 'Cover starts',
   'medical.insurance.endsOn': 'Cover ends',
-  'medical.insurance.endsOnHint': 'From the policy. Nothing acts on it — end the card when it ends.',
+  'medical.insurance.endsOnHint':
+    'From the policy. Nothing acts on it — end the card when it ends.',
   'medical.insurance.window': 'Cover',
   'medical.insurance.dependants': 'Dependants',
   'medical.insurance.dependantsHint': 'One per line: name — relationship',
@@ -2018,7 +2028,8 @@ const en: Record<string, string> = {
   'medical.mine.title': 'My medical record',
   'medical.mine.subtitle': 'What the company holds about your health. All of it.',
   'medical.mine.none': 'Nothing is recorded about your health.',
-  'medical.mine.howToCorrect': 'To correct anything here, speak to HR — that is how it was recorded.',
+  'medical.mine.howToCorrect':
+    'To correct anything here, speak to HR — that is how it was recorded.',
 
   'performance.mine.title': 'My performance',
   'performance.mine.subtitle': 'Your finalized reviews. A review appears here once it is closed.',
@@ -2123,7 +2134,8 @@ const en: Record<string, string> = {
   'training.nomination.done.rejected': 'Refused',
 
   'training.session.title': 'Training sessions',
-  'training.session.subtitle': 'Each delivery of a course — when it runs, who teaches it, and how it ended.',
+  'training.session.subtitle':
+    'Each delivery of a course — when it runs, who teaches it, and how it ended.',
   'training.session.new': 'Schedule a session',
   'training.session.schedule': 'Schedule',
   'training.session.scheduled': 'Session scheduled',
@@ -2331,7 +2343,8 @@ const en: Record<string, string> = {
   'employees.filters.anyStatus': 'Any status',
   'employees.roster.action': 'Import roster',
   'employees.roster.title': 'Import the workforce roster',
-  'employees.roster.subtitle': 'Adds new employees and updates the ones that changed. A blank cell never erases what the system already holds.',
+  'employees.roster.subtitle':
+    'Adds new employees and updates the ones that changed. A blank cell never erases what the system already holds.',
   'employees.roster.reading': 'Reading the file and comparing it against the registry…',
   'employees.roster.applying': 'Applying the changes…',
   'employees.roster.previewNotice': 'Nothing has been written yet. This is what the file would do.',
@@ -2374,7 +2387,8 @@ const en: Record<string, string> = {
   'employees.roster.field.retirementDate': 'Retirement date',
   'employees.roster.counts.exits': 'Cleared',
   'employees.roster.exitsTitle': 'Leavers whose exit would be recorded',
-  'employees.roster.pickHint': 'Press a number to include or exclude that group. Added and Cleared are on by default.',
+  'employees.roster.pickHint':
+    'Press a number to include or exclude that group. Added and Cleared are on by default.',
   'employees.roster.counts.added': 'Added',
   'employees.roster.counts.updated': 'Updated',
   'employees.roster.counts.unchanged': 'Unchanged',
@@ -2522,7 +2536,8 @@ const en: Record<string, string> = {
   // Social insurance — the wages here are statutory brackets, never pay. The hint says so on the
   // screen, because the distinction is the whole reason this block is separate from the salary.
   'employees.insurance.title': 'Social insurance',
-  'employees.insurance.hint': 'The file held with the social insurance authority. These wages are statutory contribution brackets — not the employee’s pay.',
+  'employees.insurance.hint':
+    'The file held with the social insurance authority. These wages are statutory contribution brackets — not the employee’s pay.',
   'employees.insurance.none': 'No insurance file has been recorded for this employee.',
   'employees.insurance.hidden': 'You do not have permission to view the social insurance file.',
   'employees.insurance.saved': 'Social insurance file saved',
@@ -2541,7 +2556,8 @@ const en: Record<string, string> = {
   'employees.insurance.status.notInsured': 'Not insured',
   // Officer / armed security.
   'employees.officer.title': 'Officer & armed security',
-  'employees.officer.hint': 'Rank, weapon licence and pension referral — recorded only for officers and armed staff.',
+  'employees.officer.hint':
+    'Rank, weapon licence and pension referral — recorded only for officers and armed staff.',
   'employees.officer.none': 'No officer details recorded for this employee.',
   'employees.officer.hidden': 'You do not have permission to view the officer profile.',
   'employees.officer.saved': 'Officer profile saved',
@@ -3624,6 +3640,10 @@ const en: Record<string, string> = {
   'fleet.drivers.licenseImage.replace': 'Replace image',
   'fleet.drivers.licenseImage.view': 'View image',
   'fleet.drivers.licenseImage.delete': 'Delete image',
+  'fleet.drivers.licenseImage.print': 'Print the license',
+  'fleet.drivers.licenseImage.printTitle': 'Driving license',
+  'fleet.drivers.licenseImage.popupBlocked':
+    'The print window was blocked — allow pop-ups for this site.',
   'fleet.drivers.licenseImage.uploaded': 'License image saved.',
   'fleet.drivers.licenseImage.deleted': 'License image deleted.',
   'fleet.drivers.licenseImage.loadFailed': 'The image could not be loaded.',
@@ -3944,8 +3964,10 @@ const en: Record<string, string> = {
   'fleet.violations.batchSaved': '{{count}} violations recorded',
   'fleet.violations.enteredTitle': 'Entered violations',
   'fleet.violations.enteredHint': 'Name the driver on each card, then save them together.',
-  'fleet.violations.entryIncomplete': '{{count}} card(s) still need a driver, a date or an amount — pick a driver from the search on each one.',
-  'fleet.violations.entryNeedsVehicle': 'Choose the car on the bar behind this panel — the whole batch is filed against one car.',
+  'fleet.violations.entryIncomplete':
+    '{{count}} card(s) still need a driver, a date or an amount — pick a driver from the search on each one.',
+  'fleet.violations.entryNeedsVehicle':
+    'Choose the car on the bar behind this panel — the whole batch is filed against one car.',
   'fleet.violations.pickVehicleFirst': 'Choose the car first — a batch is filed against one car.',
   'fleet.violations.columns.settledState': 'Status',
   'fleet.violations.settled': 'Settled',
@@ -6573,8 +6595,7 @@ const ar: Record<string, string> = {
   'hr.announcements.titleEn': 'العنوان (بالإنجليزية)',
   'hr.announcements.bodyAr': 'النص (بالعربية)',
   'hr.announcements.bodyEn': 'النص (بالإنجليزية)',
-  'hr.announcements.bothLanguages':
-    'اللغتان مطلوبتان — كل شخص تصله النسخة التي يقرأ بها.',
+  'hr.announcements.bothLanguages': 'اللغتان مطلوبتان — كل شخص تصله النسخة التي يقرأ بها.',
   'hr.announcements.send': 'إرسال الإعلان',
   'hr.announcements.sent': 'أُرسل الإعلان إلى {{count}} شخصًا.',
   'hr.announcements.sendFailed': 'تعذّر إرسال الإعلان.',
@@ -6650,7 +6671,8 @@ const ar: Record<string, string> = {
   'hr.requisitions.hires': 'التعيينات على هذا الطلب',
   'hr.requisitions.noHires': 'لم يُعيَّن عليه أحد بعد.',
   'hr.requisitions.empty.title': 'لا توجد طلبات بعد',
-  'hr.requisitions.empty.body': 'الطلب يطلب تعيينًا لوظيفة في إدارة — يعتمده مدير الإدارة ثم الموارد البشرية.',
+  'hr.requisitions.empty.body':
+    'الطلب يطلب تعيينًا لوظيفة في إدارة — يعتمده مدير الإدارة ثم الموارد البشرية.',
   'hr.requisitions.columns.code': 'الكود',
   'hr.requisitions.columns.department': 'الإدارة',
   'hr.requisitions.columns.filled': 'المُشغَّل',
@@ -6727,8 +6749,10 @@ const ar: Record<string, string> = {
   'hr.rules.editor.placeholders': 'يمكنك استخدام هذه داخل العنوان والنص:',
   'hr.rules.editor.enabled': 'مفعّلة',
   'hr.rules.reach.count': 'تصل حاليًا إلى {{count}} شخص.',
-  'hr.rules.reach.nobody': 'هذه الفئة لا تشمل أحدًا حاليًا — ستُنفَّذ القاعدة ولن يصل الإشعار لأحد.',
-  'hr.rules.reach.perEvent': 'المستلمون يُقرَؤون من كل حدث، فيختلفون في كل مرة تُنفَّذ فيها القاعدة.',
+  'hr.rules.reach.nobody':
+    'هذه الفئة لا تشمل أحدًا حاليًا — ستُنفَّذ القاعدة ولن يصل الإشعار لأحد.',
+  'hr.rules.reach.perEvent':
+    'المستلمون يُقرَؤون من كل حدث، فيختلفون في كل مرة تُنفَّذ فيها القاعدة.',
   'hr.rules.audience.subject': 'الشخص الذي يخصه الحدث',
   'hr.rules.audience.subjectHint': 'يُقرأ من الحدث نفسه — يختلف في كل مرة تُنفَّذ فيها القاعدة.',
   'hr.rules.audience.permission': 'من يملك صلاحية معينة',
@@ -8354,7 +8378,8 @@ const ar: Record<string, string> = {
   'training.statusColumn': 'الحالة',
 
   'training.course.title': 'كتالوج التدريب',
-  'training.course.subtitle': 'الدورات التي نُدرّسها. الدورة تُوقَف ولا تُحذف — لأن سجلات التدريب تحمل اسمها.',
+  'training.course.subtitle':
+    'الدورات التي نُدرّسها. الدورة تُوقَف ولا تُحذف — لأن سجلات التدريب تحمل اسمها.',
   'training.course.new': 'دورة جديدة',
   'training.course.edit': 'تعديل الدورة',
   'training.course.key': 'المُعرّف',
@@ -8488,7 +8513,8 @@ const ar: Record<string, string> = {
   'medical.mine.title': 'سجلي الطبي',
   'medical.mine.subtitle': 'ما تحفظه الشركة عن صحتك. كلّه.',
   'medical.mine.none': 'لا يوجد شيء مسجَّل عن صحتك.',
-  'medical.mine.howToCorrect': 'لتصحيح أي شيء هنا، تحدّث إلى الموارد البشرية — فهي الجهة التي سجّلته.',
+  'medical.mine.howToCorrect':
+    'لتصحيح أي شيء هنا، تحدّث إلى الموارد البشرية — فهي الجهة التي سجّلته.',
 
   'performance.mine.title': 'أدائي',
   'performance.mine.subtitle': 'مراجعاتك المعتمدة. تظهر المراجعة هنا بعد اعتمادها.',
@@ -8549,10 +8575,12 @@ const ar: Record<string, string> = {
   'performance.review.searchPlaceholder': 'اسم الموظف أو الكود',
 
   'training.record.title': 'سجلات التدريب',
-  'training.record.subtitle': 'ما تعلَّمه كل شخص ومتى. السجل يظل كما كُتب يوم كُتب — ولا يُعدَّل بعدها.',
+  'training.record.subtitle':
+    'ما تعلَّمه كل شخص ومتى. السجل يظل كما كُتب يوم كُتب — ولا يُعدَّل بعدها.',
   'training.record.completedAt': 'تاريخ الإتمام',
   'training.record.expiresAt': 'تاريخ الانتهاء',
-  'training.record.expiresAtHint': 'يُسجَّل لأنه مكتوب على الشهادة. لا يترتّب عليه أي إجراء في النظام.',
+  'training.record.expiresAtHint':
+    'يُسجَّل لأنه مكتوب على الشهادة. لا يترتّب عليه أي إجراء في النظام.',
   'training.record.certificate': 'الشهادة',
   'training.record.noCertificate': 'لم تصل بعد',
   'training.record.attachCertificate': 'إرفاق الشهادة',
@@ -8582,8 +8610,10 @@ const ar: Record<string, string> = {
   'training.nomination.status.withdrawn': 'مسحوب',
   'training.nomination.action.approved': 'اعتماد',
   'training.nomination.action.rejected': 'رفض',
-  'training.nomination.confirm.approved': 'سيحجز مقعدًا في هذه الجلسة، وإذا كانت مكتملة يُرفض الاعتماد.',
-  'training.nomination.confirm.rejected': 'اذكر السبب — فمَن رشّحه سيُبلَّغ، ويمكنه الترشيح مجددًا إذا زال السبب.',
+  'training.nomination.confirm.approved':
+    'سيحجز مقعدًا في هذه الجلسة، وإذا كانت مكتملة يُرفض الاعتماد.',
+  'training.nomination.confirm.rejected':
+    'اذكر السبب — فمَن رشّحه سيُبلَّغ، ويمكنه الترشيح مجددًا إذا زال السبب.',
   'training.nomination.done.submitted': 'أُرسل الترشيح',
   'training.nomination.done.approved': 'تم الاعتماد — المقعد له',
   'training.nomination.done.rejected': 'تم الرفض',
@@ -8614,8 +8644,10 @@ const ar: Record<string, string> = {
   'training.session.action.complete': 'إنهاء',
   'training.session.action.cancel': 'إلغاء الجلسة',
   'training.session.confirm.start': 'تبدأ الجلسة الآن ويمكن تسجيل الحضور فيها.',
-  'training.session.confirm.complete': 'الإنهاء هو ما يُثبت اجتياز مَن حضروا، ولا يمكن التراجع عنه.',
-  'training.session.confirm.cancel': 'لن تُدرَّس هذه الجلسة لأحد. اذكر السبب — فمَن كانوا ينتظرونها سيُبلَّغون.',
+  'training.session.confirm.complete':
+    'الإنهاء هو ما يُثبت اجتياز مَن حضروا، ولا يمكن التراجع عنه.',
+  'training.session.confirm.cancel':
+    'لن تُدرَّس هذه الجلسة لأحد. اذكر السبب — فمَن كانوا ينتظرونها سيُبلَّغون.',
   'training.session.done.start': 'بدأت الجلسة',
   'training.session.done.complete': 'اكتملت الجلسة — كُتب {{n}} سجل',
   'training.session.done.cancel': 'أُلغيت الجلسة',
@@ -8802,7 +8834,8 @@ const ar: Record<string, string> = {
   'employees.filters.anyStatus': 'كل الحالات',
   'employees.roster.action': 'استيراد ملف',
   'employees.roster.title': 'استيراد ملف الموظفين',
-  'employees.roster.subtitle': 'بيضيف الموظفين الجداد ويعدّل اللي اتغيّر. الخانة الفاضية في الملف مش بتمسح حاجة موجودة في السيستم.',
+  'employees.roster.subtitle':
+    'بيضيف الموظفين الجداد ويعدّل اللي اتغيّر. الخانة الفاضية في الملف مش بتمسح حاجة موجودة في السيستم.',
   'employees.roster.reading': 'بيقرا الملف ويقارنه بالسيستم…',
   'employees.roster.applying': 'بيطبّق التعديلات…',
   'employees.roster.previewNotice': 'لسه مفيش حاجة اتكتبت. ده اللي الملف هيعمله.',
@@ -8845,7 +8878,8 @@ const ar: Record<string, string> = {
   'employees.roster.field.retirementDate': 'تاريخ الإحالة للمعاش',
   'employees.roster.counts.exits': 'تم إخلاء طرفهم',
   'employees.roster.exitsTitle': 'اللي هيتسجّل إنهم مشيوا',
-  'employees.roster.pickHint': 'اضغط على أي رقم عشان تختاره أو تشيله. «اتضافوا» و«تم إخلاء طرفهم» مختارين تلقائياً.',
+  'employees.roster.pickHint':
+    'اضغط على أي رقم عشان تختاره أو تشيله. «اتضافوا» و«تم إخلاء طرفهم» مختارين تلقائياً.',
   'employees.roster.counts.added': 'اتضافوا',
   'employees.roster.counts.updated': 'اتعدّلوا',
   'employees.roster.counts.unchanged': 'زي ما هم',
@@ -8985,7 +9019,8 @@ const ar: Record<string, string> = {
   'employees.personal.placeOfBirth': 'محل الميلاد',
   'employees.personal.edit': 'تعديل البيانات الشخصية',
   'employees.insurance.title': 'التأمينات الاجتماعية',
-  'employees.insurance.hint': 'الملف التأميني لدى الهيئة. هذه الأجور شرائح اشتراك قانونية — وليست أجر الموظف.',
+  'employees.insurance.hint':
+    'الملف التأميني لدى الهيئة. هذه الأجور شرائح اشتراك قانونية — وليست أجر الموظف.',
   'employees.insurance.none': 'لا يوجد ملف تأميني مسجَّل لهذا الموظف.',
   'employees.insurance.hidden': 'لا تملك صلاحية عرض بيانات التأمينات الاجتماعية.',
   'employees.insurance.saved': 'تم حفظ الملف التأميني',
@@ -9003,7 +9038,8 @@ const ar: Record<string, string> = {
   'employees.insurance.status.insured': 'مؤمَّن عليه',
   'employees.insurance.status.notInsured': 'غير مؤمَّن عليه',
   'employees.officer.title': 'بيانات الضباط والأمن المسلح',
-  'employees.officer.hint': 'الرتبة ورخصة السلاح والإحالة للمعاش — تُسجَّل للضباط والأفراد المسلحين فقط.',
+  'employees.officer.hint':
+    'الرتبة ورخصة السلاح والإحالة للمعاش — تُسجَّل للضباط والأفراد المسلحين فقط.',
   'employees.officer.none': 'لا توجد بيانات ضباط مسجَّلة لهذا الموظف.',
   'employees.officer.hidden': 'لا تملك صلاحية عرض بيانات الضباط.',
   'employees.officer.saved': 'تم حفظ بيانات الضباط',
@@ -10060,6 +10096,10 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.replace': 'استبدال الصورة',
   'fleet.drivers.licenseImage.view': 'عرض الصورة',
   'fleet.drivers.licenseImage.delete': 'حذف الصورة',
+  'fleet.drivers.licenseImage.print': 'طباعة الرخصة',
+  'fleet.drivers.licenseImage.printTitle': 'رخصة القيادة',
+  'fleet.drivers.licenseImage.popupBlocked':
+    'نافذة الطباعة اتمنعت — اسمح بالنوافذ المنبثقة لهذا الموقع.',
   'fleet.drivers.licenseImage.uploaded': 'تم حفظ صورة الرخصة.',
   'fleet.drivers.licenseImage.deleted': 'تم حذف صورة الرخصة.',
   'fleet.drivers.licenseImage.loadFailed': 'تعذّر تحميل الصورة.',
@@ -10374,8 +10414,10 @@ const ar: Record<string, string> = {
   'fleet.violations.batchSaved': 'تم تسجيل {{count}} مخالفة',
   'fleet.violations.enteredTitle': 'المخالفات المدخلة',
   'fleet.violations.enteredHint': 'سمِّ السائق في كل كارت، ثم احفظهم معًا.',
-  'fleet.violations.entryIncomplete': 'باقي {{count}} كارت محتاج سائق أو تاريخ أو مبلغ — اختر السائق من البحث في كل كارت.',
-  'fleet.violations.entryNeedsVehicle': 'اختر كود السيارة من الشريط خلف هذه اللوحة — الدفعة كلها تُسجَّل على سيارة واحدة.',
+  'fleet.violations.entryIncomplete':
+    'باقي {{count}} كارت محتاج سائق أو تاريخ أو مبلغ — اختر السائق من البحث في كل كارت.',
+  'fleet.violations.entryNeedsVehicle':
+    'اختر كود السيارة من الشريط خلف هذه اللوحة — الدفعة كلها تُسجَّل على سيارة واحدة.',
   'fleet.violations.pickVehicleFirst': 'اختر كود السيارة أولاً — الدفعة تُسجَّل على سيارة واحدة.',
   'fleet.violations.columns.settledState': 'الحالة',
   'fleet.violations.settled': 'محصَّلة',
@@ -12612,8 +12654,7 @@ const ar: Record<string, string> = {
   // بوابة المتقدمين (P-HR-APP)
   // مراجعة مستندات المتقدمين (P-HR-APP §5)
   'hr.applicantDocuments.title': 'مستندات المتقدمين',
-  'hr.applicantDocuments.description':
-    'ما رفعه المتقدمون بعد اجتياز الفرز، وما ينتظر قرارًا منك.',
+  'hr.applicantDocuments.description': 'ما رفعه المتقدمون بعد اجتياز الفرز، وما ينتظر قرارًا منك.',
   'hr.applicantDocuments.tab.waiting': 'في الانتظار',
   'hr.applicantDocuments.tab.all': 'الكل',
   'hr.applicantDocuments.searchPlaceholder': 'الاسم أو كود المتقدم',

@@ -468,17 +468,26 @@ describe('the eight reported defects, as rules the markup carries', () => {
   // encodes — and none of it was, so every one of these could be reverted with the whole suite
   // green. Each assertion below fails against the code as it stood before its fix.
 
-  it('the car is CHOSEN from the registry, never typed', () => {
-    // A typed code is a code the statement may not carry; the screen already holds the list.
+  it('the car comes from the REGISTRY — typing searches it, it is never free text', () => {
+    // The rule has not changed: a code the registry does not carry must not be storable, because
+    // the statement would name a car that does not exist. What changed is how the registry is
+    // reached — the owner asked to type the code, and a `<select>` could only ever offer one page
+    // of it (MAX_PAGE_SIZE, 100), so the hundred-and-first car was unpickable. The typed text is a
+    // SEARCH; `Combobox` still commits an option or nothing.
     const markup = page();
-    expect(markup, 'no free-text code box').not.toContain('data-company-form="code"');
+    expect(markup, 'no free-text code box writing straight into the form').not.toContain(
+      'data-company-form="code"',
+    );
     // By its own hook, not by `aria-label`: «كود السيارة» is the Arabic for both
     // `fleet.vehicles.fields.code` and `fleet.odometer.columns.vehicle`, so the filter bar's car
     // picker answers to the same name and an assertion on it proves nothing about this control.
     const at = markup.indexOf('data-vehicle-select="company-entry"');
     expect(at, 'the entry row picks the car from the registry').toBeGreaterThan(-1);
-    expect(markup.slice(markup.lastIndexOf('<', at), at), 'and it is a select').toMatch(
-      /^<select\b/,
+    const tag = markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at));
+    expect(tag, 'a searchable box').toContain('role="combobox"');
+    const source = readFileSync(join(HERE, 'components/VehicleCodeCombobox.tsx'), 'utf8');
+    expect(source, 'and it commits an id the registry answered with').toContain(
+      'byCode.get(code) ?? ',
     );
   });
 
@@ -666,15 +675,15 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(panel, 'the drivers filter is a query parameter').toContain('collected:');
   });
 
-  it('the «عرض … من …» sentence is gone, and the page-size box moved up beside the title', () => {
+  it('the «عرض … من …» sentence and the pager are gone; the page-size box is beside the title', () => {
     // It restated a number the count badge already gives, at the foot of a panel whose whole
     // point is that nothing under the board moves. The CHOICE survives: a board of a few hundred
     // fines is unreadable twenty-five at a time.
     const markup = page();
     expect(markup, 'no "showing X–Y of Z"').not.toContain(t('common.pagination.showing'));
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
-    expect(panel, 'the pager keeps its prev/next but drops the summary').toContain(
-      'summary={false}',
+    expect(panel, 'the pager is gone entirely, not just its summary').not.toContain(
+      '<Pagination',
     );
     expect(panel, 'and the box rides the title row').toContain('<PageSizeSelect');
     // OUT OF THE FLOW, at the PHYSICAL left edge. The first attempt was a flex row of
@@ -695,6 +704,72 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(panel, 'the heading is centred on the whole row').toMatch(
       /<h2 className="w-full text-center[\s\S]{0,160}driverTitle/,
     );
+  });
+
+  it('the car code can be TYPED in both entry rows, and still commits one car', () => {
+    // «انه يقدر يكتب برضو وهتكون واحد بس». A native `<select>` also capped the offer at one page
+    // of the registry — MAX_PAGE_SIZE, 100 — so on a larger fleet the hundred-and-first car was
+    // unpickable and a row already filed against it showed the empty «اختر…» row.
+    const markup = page();
+    for (const which of ['company-entry', 'driver-entry']) {
+      const at = markup.indexOf(`data-vehicle-select="${which}"`);
+      expect(at, `${which} renders a car control`).toBeGreaterThan(-1);
+      const tag = markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at));
+      expect(tag, `${which} is a text box, not a dropdown`).toMatch(/^<input\b/);
+      expect(tag, `${which} announces itself as a combobox`).toContain('role="combobox"');
+    }
+    const source = readFileSync(join(HERE, 'components/VehicleCodeCombobox.tsx'), 'utf8');
+    expect(source, 'the typing is a SERVER search, not a filter over one page').toContain(
+      'vehicleCodeSearchQuery(query)',
+    );
+    // `Combobox` only ever commits an option, which is what «واحد بس» has to mean here: a code no
+    // car carries cannot be stored, however it was typed.
+    expect(source, 'and the value is a single vehicle id').toContain(
+      'onChange: (vehicleId: string) => void',
+    );
+  });
+
+  it('the drivers bar wraps rather than scrolling, so the code list is not clipped', () => {
+    // An `overflow-x` ancestor computes `overflow-y` to `auto` as well, which would open the car
+    // box's dropdown inside a scroll port instead of over the bar. A native select popup escaped
+    // that; a typed combobox cannot. The owner did not want a sideways scroll in a form either.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const bar = panel.slice(panel.indexOf('data-driver-bar'), panel.indexOf('data-driver-bar') + 400);
+    expect(bar, 'no sideways scroll in the entry bar').not.toContain('overflow-x-auto');
+    expect(bar, 'it wraps instead').toContain('flex-wrap');
+  });
+
+  it('the entry row’s total can hold a real money figure without cutting it', () => {
+    // Measured at the 2xl split: «112,500.00 ج.م.» wanted 140px in a 62px cell, and `truncate`
+    // showed a cut-off number beside a Save button. A truncated amount is not a smaller amount.
+    const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const at = panel.indexOf('data-company-form-total');
+    const field = panel.slice(panel.lastIndexOf('<Field', at), at);
+    expect(field, 'the widest share in the row').toMatch(/flex-\[1\.6\] basis-0 min-w-\[5\.5rem\]/);
+    expect(
+      panel.slice(at, at + 600),
+      'and the full figure is always recoverable',
+    ).toContain('title={');
+  });
+
+  it('a settled fine is out of the drivers’ page total too', () => {
+    // The company half is narrowed on the server; this figure is computed in the browser, so it
+    // has to apply the same rule or the two halves of one screen disagree.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel).toMatch(/rows\s*\.filter\(\(row\) => !row\.collected\)\s*\.reduce/);
+  });
+
+  it('the count beside each filter bar is readable, not a hairline', () => {
+    const markup = page();
+    for (const hook of ['data-driver-count-badge', 'data-company-count']) {
+      const at = markup.indexOf(hook);
+      expect(at, `${hook} is rendered`).toBeGreaterThan(-1);
+      const attrs = markup.slice(at, markup.indexOf('>', at));
+      expect(attrs, `${hook} is 14px`).toContain('text-sm');
+      expect(attrs, `${hook} is no longer 11px`).not.toContain('text-[11px]');
+    }
   });
 
   it('the edit dialog offers the car and the year, rather than printing them', () => {

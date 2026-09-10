@@ -41,7 +41,7 @@ import {
   useViolationRollup,
 } from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
-import { VehicleSelect } from './VehicleSelect';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
@@ -368,11 +368,10 @@ export const CompanyViolationsPanel = ({
                 refused to file a statement anybody had filled in correctly. One car at a time,
                 because a statement row belongs to one car. */}
             <div className="w-full">
-              <VehicleSelect
+              <VehicleCodeCombobox
                 value={formVehicleId}
                 onChange={setFormVehicleId}
                 anyStatus
-                fullWidth
                 density="tight"
                 testId="company-entry"
                 ariaLabel={t('fleet.odometer.columns.vehicle')}
@@ -446,10 +445,20 @@ export const CompanyViolationsPanel = ({
               wrong number beside a Save button is worse than none. */}
           <Field
             label={t('fleet.violations.fields.amount')}
-            className="flex-[1.1] basis-0 min-w-[4rem]"
+            // THE WIDEST SHARE AND THE HIGHEST FLOOR, because this is the one cell that must never
+            // lie. It was `flex-[1.1]` over a 4rem floor with `truncate`, and at the 2xl split a
+            // real figure — 112,500.00 — needed 140px in a 62px box, so the board silently showed
+            // a cut-off number beside a Save button. A truncated amount is not a smaller amount;
+            // it is a different one.
+            className="flex-[1.6] basis-0 min-w-[5.5rem]"
           >
             <output
               data-company-form-total
+              title={
+                isMoney && isCount
+                  ? formatMoney(Number(formValue) * Number(formCount), 'EGP', locale)
+                  : undefined
+              }
               className={[
                 'block w-full truncate rounded-md border px-2 py-1.5 text-center text-sm font-semibold tabular-nums',
                 isMoney && isCount
@@ -457,8 +466,11 @@ export const CompanyViolationsPanel = ({
                   : 'border-slate-200 bg-white text-slate-400 dark:border-slate-700 dark:bg-slate-900',
               ].join(' ')}
             >
+              {/* The figure alone: every amount on this screen is EGP and the cell is labelled
+                  «المبلغ», so the currency word was spending a third of a cell that had none to
+                  spare. The full formatted figure stays on `title` for the reader who wants it. */}
               {isMoney && isCount
-                ? formatMoney(Number(formValue) * Number(formCount), 'EGP', locale)
+                ? formatNumber(Number(formValue) * Number(formCount), locale)
                 : '—'}
             </output>
           </Field>
@@ -505,7 +517,7 @@ export const CompanyViolationsPanel = ({
               data-company-count
               role="status"
               title={t('fleet.violations.matchedGroups')}
-              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
               {formatNumber(rows.length, locale)}
             </span>

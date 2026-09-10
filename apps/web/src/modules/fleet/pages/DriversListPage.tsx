@@ -528,7 +528,7 @@ export const DriversListPage = (): JSX.Element => {
             matchedDrivers === null ? undefined : (
               <span
                 role="status"
-                className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 title={t('fleet.drivers.countLabel')}
               >
                 {t('fleet.drivers.count', { count: formatNumber(matchedDrivers, locale) })}

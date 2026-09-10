@@ -577,7 +577,10 @@ describe('the print view carries the image only when there is one', () => {
   const imageMeta = {
     heading: 'صورة رخصة السيارة',
     caption: 'كود العربية: 150 | الماركة: مرسيدس اسبرانتر 515',
-    vehicleId: 'v1',
+    // The document carries HOW to get the bytes, not which registry holds them — a driver's
+    // licence prints from the same builder. The builder itself never calls it: it is handed the
+    // resolved data URL, which is what makes it testable at all.
+    fetch: (): Promise<Blob> => Promise.resolve(new Blob()),
   };
 
   it('prints the record, the identity line and the rows', () => {

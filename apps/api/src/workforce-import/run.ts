@@ -88,8 +88,15 @@ export interface ImportReport {
   rejected: (Rejection | { sheet: string; rowNumber: number; code: string | null; reason: string })[];
   /** Who would change and how. Capped for the report; `counts.updated` is the real total. */
   updates: PersonUpdate[];
-  /** People the file is newly adding, by code — so a preview can be read before it is agreed to. */
-  additions: { code: string; name: string }[];
+  /**
+   * People the file is newly adding, so a preview can be read before it is agreed to.
+   *
+   * `serving` is here because most of them are NOT. Two thirds of the workbook is the Resignation
+   * sheet, and somebody it names is added to the registry already exited — a record of a person who
+   * worked here, not a colleague starting on Monday. Calling that "a new employee" with nothing
+   * beside it sends the reader to look for them on a list that filters exited people out by default.
+   */
+  additions: { code: string; name: string; serving: boolean }[];
   /** Leavers whose exit the file would record. */
   exits: PersonExit[];
   /** Changes the file asks for that this importer will not make, each with its reason. */
@@ -148,6 +155,7 @@ export const runImport = async (opts: {
     code: person.code,
     name: person.current.fullNameAr ?? person.code,
   });
+  const namedWithState = (person: PersonPlan) => ({ ...named(person), serving: person.serving });
 
   for (const person of plan.people) {
     try {
@@ -157,7 +165,7 @@ export const runImport = async (opts: {
       switch (outcome.kind) {
         case 'added':
           imported += 1;
-          if (additions.length < UPDATE_SAMPLE) additions.push(named(person));
+          if (additions.length < UPDATE_SAMPLE) additions.push(namedWithState(person));
           break;
         case 'unchanged':
           unchanged += 1;

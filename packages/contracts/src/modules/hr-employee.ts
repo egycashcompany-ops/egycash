@@ -982,7 +982,13 @@ export interface RosterImportReportDto {
   /** Whether `updates`/`additions` were cut short — the counts above still hold. */
   sampled: boolean;
   updates: RosterPersonUpdateDto[];
-  additions: { code: string; name: string }[];
+  /**
+   * People the file is newly adding. `serving` is false for somebody added straight from the
+   * Resignation sheet — a record of a person who worked here, already exited, rather than a
+   * colleague starting on Monday. The screen says which, because the employees list hides exited
+   * people by default and a reader who is not told will go looking for them and not find them.
+   */
+  additions: { code: string; name: string; serving: boolean }[];
   exits: RosterExitDto[];
   refused: RosterRefusedChangeDto[];
   rejected: RosterRejectedRowDto[];

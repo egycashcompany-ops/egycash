@@ -26,6 +26,7 @@ import { userService } from '../../src/platform/users';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { employeeRepository } from '../../src/modules/hr/employee-management/employees';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
+import { jobTitleService } from '../../src/platform/organization';
 import { ALL_IMPORT_ACTIONS, runImport } from '../../src/workforce-import/run';
 import { nextEmployeeNumber } from '../../src/modules/hr/employee-management/employees/employee-sequence';
 import { nextNationalId } from './helpers/national-id';
@@ -345,6 +346,55 @@ describe('the workforce importer', () => {
     expect(Number(await nextEmployeeNumber())).toBeGreaterThan(before);
   }, 240_000);
 
+  /**
+   * The catalogue read, proven against a real database.
+   *
+   * With more than one page of job titles on file, a person whose title sits past the hundredth
+   * used to fail: the resolver could not see it, created a second copy, minted its code from the
+   * hundred it could see, and hit the unique index. The unit test pins the paging; only this can
+   * show the write surviving it.
+   */
+  it('places somebody whose job title sits past the first page of the catalogue', async () => {
+    const scope = {
+      scope: 'organization' as const,
+      userId: adminId,
+      branchId: null,
+      departmentId: null,
+      sectionId: null,
+    };
+    const before = (await jobTitleService.list({ page: 1, pageSize: 1, sortDir: 'asc' }, scope)).meta.totalItems;
+    // Push the catalogue past one page, so the title this person needs cannot be on the first.
+    for (let i = before; i <= 105; i += 1) {
+      await jobTitleService.create(
+        { code: `JT-PAGE-${i}`, name: { ar: `وظيفة ${i}`, en: `Job ${i}` }, jobGrade: 'G1' },
+        adminId,
+      );
+    }
+    const titleName = 'وظيفة 105';
+
+    const file = join(dir, 'past-a-page.xlsx');
+    await writeWorkbook(
+      file,
+      [
+        {
+          code: '0100310',
+          nationalId: nextNationalId(),
+          name: 'ياسر منير',
+          hired: new Date('2023-01-02T00:00:00.000Z'),
+          site: 'المهندسين',
+          over: { الوظيفة: titleName },
+        },
+      ],
+      [],
+    );
+    const report = await runImport({ file, apply: new Set(ALL_IMPORT_ACTIONS), actorId: adminId });
+    expect(report.counts.failed).toBe(0);
+    expect(report.counts.imported).toBe(1);
+    // Matched the title that already existed rather than minting a second copy of it.
+    expect(report.counts.jobTitlesCreated).toBe(0);
+    expect(await employeeRepository.findByCodeSystem('0100310')).not.toBeNull();
+  }, 240_000);
+
   it('refuses the workbook when a sheet is missing rather than importing half of it', async () => {
     const file = join(dir, 'broken.xlsx');
     const wb = new ExcelJS.Workbook();
@@ -479,6 +529,7 @@ describe('re-uploading the roster updates what changed and nothing else', () => 
     expect(report.counts.imported).toBe(1);
     expect(report.counts.updated).toBe(1);
     expect(report.additions.map((a) => a.code)).toEqual([newcomer.code]);
+    expect(report.additions[0]?.serving).toBe(true);
     expect(await employeeRepository.findByCodeSystem(newcomer.code)).not.toBeNull();
     expect((await employeeRepository.findByCodeSystem(person.code))?.personal.religion).toBe('مسلم');
   }, 240_000);
@@ -538,6 +589,29 @@ describe('recording that a leaver has left, and only what was agreed to', () => 
     };
     return { person, leaver };
   };
+
+  /**
+   * Two thirds of the workbook is the Resignation sheet, so most people it ADDS are already gone.
+   * The report has to say so: called "a new employee" with nothing beside it, a reader goes looking
+   * for them on a list that hides exited people by default and concludes they were never added.
+   * That is exactly what happened with the first three the go-live could not import.
+   */
+  it('marks somebody added straight from the Resignation sheet as a leaver, not a new colleague', async () => {
+    const person = freshPerson();
+    const leaver: Person = {
+      ...person,
+      exit: { reason: 'استقالة', date: new Date('2021-02-28T00:00:00.000Z') },
+    };
+    const report = await run('added-leaver.xlsx', [], [leaver], ALL_IMPORT_ACTIONS);
+    expect(report.counts.imported).toBe(1);
+    expect(report.additions[0]?.code).toBe(person.code);
+    expect(report.additions[0]?.serving).toBe(false);
+
+    // And that is what the registry holds — added, and exited.
+    const after = await employeeRepository.findByCodeSystem(person.code);
+    expect(after).not.toBeNull();
+    expect(after?.status).toBe('exited');
+  }, 240_000);
 
   it('counts a leaver the registry still has on the books, and says when they left', async () => {
     const { person, leaver } = await seedServing('exit-count');

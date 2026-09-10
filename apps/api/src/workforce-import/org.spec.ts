@@ -1,7 +1,8 @@
 // The two pure decisions in the org resolver, both of which reach the database and neither of which
 // had a unit test until one of them shipped a bug that only an integration run caught.
 import { describe, expect, it } from 'vitest';
-import { deriveBranchCodes, matchBranch, nextFreeCode } from './org';
+import { MAX_PAGE_SIZE } from '@ecms/contracts';
+import { deriveBranchCodes, matchBranch, nextFreeCode, readAllForTest } from './org';
 
 /**
  * THE BUG THIS PINS, and it is the second one in this file found only by a real run.
@@ -143,5 +144,84 @@ describe('deriveBranchCodes reads the mapping out of the workbook itself', () =>
   it('skips rows with no code or no site rather than inventing a mapping', () => {
     const { codes } = deriveBranchCodes([row(null, 'المهندسين'), row('0100004', null)]);
     expect(codes.size).toBe(0);
+  });
+});
+
+/**
+ * The catalogue read, which is where an upload quietly broke.
+ *
+ * `BaseRepository.list` clamps `pageSize` to `MAX_PAGE_SIZE` (100). The resolver used to ask for
+ * 500 or 1000 in one go and take what came back, so a department, section or job title past the
+ * hundredth read as ABSENT — and the resolver's answer to absent is to CREATE it, minting a code
+ * from the hundred it could see, which lands on a code that already exists and fails the unique
+ * index. The person being placed then fails outright.
+ *
+ * It bit on a LATER upload rather than the first: within one run every unit the resolver touches is
+ * cached, so the go-live import built the catalogues from empty and never noticed. The first
+ * re-upload afterwards failed for everybody whose section was past the hundredth row.
+ */
+describe('reading a catalogue that is longer than one page', () => {
+  const unit = (i: number) => ({ _id: `id-${i}`, code: `SEC-${String(i).padStart(4, '0')}` });
+
+  /** Pages exactly the way `BaseRepository.list` does — clamp included. */
+  const catalogue = (total: number) => {
+    const asked: number[] = [];
+    return {
+      asked,
+      read: (page: number, pageSize: number) => {
+        asked.push(pageSize);
+        const size = Math.min(pageSize, MAX_PAGE_SIZE);
+        const start = (page - 1) * size;
+        return Promise.resolve({
+          items: Array.from({ length: total }, (_, i) => unit(i + 1)).slice(start, start + size),
+          meta: { totalPages: Math.max(1, Math.ceil(total / size)) },
+        });
+      },
+    };
+  };
+
+  it('returns all 142 when a page holds 100', async () => {
+    const src = catalogue(142);
+    const items = await readAllForTest(src.read);
+    expect(items).toHaveLength(142);
+    expect(items[141]?.code).toBe('SEC-0142');
+  });
+
+  it('never asks for a page bigger than the repository would honour', async () => {
+    const src = catalogue(142);
+    await readAllForTest(src.read);
+    expect(src.asked.every((size) => size <= MAX_PAGE_SIZE)).toBe(true);
+  });
+
+  it('stops at the last page instead of reading forever', async () => {
+    const src = catalogue(142);
+    await readAllForTest(src.read);
+    expect(src.asked).toHaveLength(2);
+  });
+
+  it('does not read a second page when the catalogue is exactly one page long', async () => {
+    const src = catalogue(MAX_PAGE_SIZE);
+    expect(await readAllForTest(src.read)).toHaveLength(MAX_PAGE_SIZE);
+    expect(src.asked).toHaveLength(1);
+  });
+
+  it('reads one page, and returns nothing, for an empty catalogue', async () => {
+    const src = catalogue(0);
+    expect(await readAllForTest(src.read)).toEqual([]);
+    expect(src.asked).toHaveLength(1);
+  });
+
+  /**
+   * THE ONE THE OUTAGE TURNED ON. The next free code has to be computed from the WHOLE catalogue:
+   * from the first hundred alone it lands on a code the 101st already holds, and the create fails
+   * the unique index.
+   */
+  it('mints a code past the whole catalogue, not past the first page of it', async () => {
+    const src = catalogue(142);
+    const items = await readAllForTest(src.read);
+    expect(nextFreeCode('SEC', items.map((u) => u.code))).toBe('SEC-0143');
+    // What the clamped read would have produced, and why it collided.
+    const firstPage = items.slice(0, MAX_PAGE_SIZE).map((u) => u.code);
+    expect(nextFreeCode('SEC', firstPage)).toBe('SEC-0101');
   });
 });

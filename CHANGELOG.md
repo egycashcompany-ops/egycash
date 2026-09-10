@@ -11,6 +11,14 @@ its entry here in the same PR.
 
 ### Added
 
+- **The import preview says which of the people it is adding are leavers.** Two thirds of the
+  workbook is the Resignation sheet, so most of the people an upload adds join the registry already
+  exited — a record of somebody who worked here, not a colleague starting on Monday. Listing them
+  under "New employees" with nothing beside it sent a reader to look for them on the employees list,
+  which hides exited people unless the view filter is set to All, and to conclude they had never been
+  added. Each addition now says `on the job` or `added as a leaver`, and the section says where to
+  find the latter.
+
 - **The roster import records leavers, and every group is agreed to separately.** The preview now
   has five numbers instead of four: added, **cleared**, updated, unchanged, and not-read. Cleared is
   new — somebody the Resignation sheet lists as gone whom the registry still has on the books. It
@@ -30,6 +38,22 @@ its entry here in the same PR.
   eligibility check behind it, which the system has a Rehire action for. An upload does not make it.
 
 ### Fixed
+
+- **An upload failed outright for anybody whose department, section or job title sat past the
+  hundredth row of its catalogue.** The org resolver asked for `pageSize: 500` and `1000`, but
+  `BaseRepository.list` clamps to `MAX_PAGE_SIZE` (100) — and with no `sortBy`, the hundred it got
+  back were the oldest. A unit past that read as ABSENT, so the resolver created a second copy of it
+  and minted the new code from the hundred it could see, which landed on a code that already existed
+  and failed the unique index. The person being placed failed with it.
+
+  It bit on a LATER upload rather than the first, which is why the go-live import looked fine:
+  within one run every unit the resolver touches is cached, so building the catalogues from empty
+  never noticed. The first re-upload afterwards failed for everybody whose section happened to be
+  past the hundredth row — three people, reported as unimportable with no obvious reason why.
+
+  All four catalogue reads now page to exhaustion, and the next free code is computed from the whole
+  catalogue rather than from the first page of it. Same defect, same shape, and the same fix as the
+  one the unit dropdowns needed.
 
 - **An upload would have failed for anybody with no insurance or officer file on record.** Those two
   blocks are `null` until somebody files one, and a dotted `$set` into `null` is a MongoDB error —

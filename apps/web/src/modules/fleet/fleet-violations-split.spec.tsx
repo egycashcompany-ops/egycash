@@ -1038,6 +1038,33 @@ describe('print and CSV carry exactly what is on screen', () => {
 // sits AFTER the grievance line rather than anywhere in the file, and that the three row actions
 // are defined exactly ONCE for both tables.
 
+describe('the counters are one row, and they wrap as one', () => {
+  // «ال4 بتوع الادخال يكونوا فى صف واحد جمب بعض». Each counter used to be a direct child of the
+  // wrapping bar, so a narrow enough bar broke the four across two lines — «عكس» and «سرعة» on
+  // one, «تليفون» and «حزام» under them. They are four readings of the same stack.
+  const SOURCE = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  it('wraps the counters in a group of their own', () => {
+    // Anchored on the counter input itself — `types.map` appears earlier for the options list, and
+    // a guard that matched the wrong one would pass while the counters stayed split.
+    const at = CODE.indexOf('data-driver-count=');
+    expect(at, 'the counters are still rendered from the catalogue').toBeGreaterThan(-1);
+    const openedBefore = CODE.slice(0, at);
+    const group = openedBefore.lastIndexOf('flex-nowrap');
+    const mapAt = openedBefore.lastIndexOf('types.map');
+    expect(group, 'a non-wrapping group holds them').toBeGreaterThan(-1);
+    expect(group, 'and it opens BEFORE the map, so it holds all four').toBeLessThan(mapAt);
+  });
+
+  it('the bar itself still wraps, so the group can drop below the car box', () => {
+    // `flex-nowrap` on the GROUP, never on the bar: an unwrappable bar would push the row off the
+    // page instead of folding it, which is the scroll the owner asked to be rid of.
+    const bar = CODE.slice(CODE.indexOf('data-driver-bar'), CODE.indexOf('data-driver-bar') + 600);
+    expect(bar).toContain('flex-wrap');
+  });
+});
+
 describe('opening a car’s year shows BOTH halves of what its totals are made of', () => {
   const SOURCE = readFileSync(join(HERE, 'components/CompanyViolationsDetailLayer.tsx'), 'utf8');
   const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');

@@ -147,3 +147,85 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
     });
   });
 });
+
+describe('a (vehicle, year) with nothing in it leaves the board', () => {
+  // «لما مسحت كله فضلت موجوده». A grievance record is keyed by (vehicle, year) and outlives the
+  // violations it was raised against, so deleting the last fine used to leave a row of four zeroes
+  // with nothing behind it to open, tick or settle.
+  const sums = (over: Partial<Parameters<typeof assembleRollups>[0][number]> = {}): Parameters<
+    typeof assembleRollups
+  >[0] => [
+    {
+      vehicleId: 'v1',
+      year: 2025,
+      vehicleCount: 0,
+      vehicleAmount: 0,
+      driverCount: 0,
+      driverAmount: 0,
+      rowCount: 0,
+      collectedCount: 0,
+      ...over,
+    },
+  ];
+
+  it('drops a row whose grievance is the only thing holding it up, and that is zero', () => {
+    expect(assembleRollups([], [{ vehicleId: 'v1', year: 2025, totalBeforeGrievance: 0 }], codes)).toEqual(
+      [],
+    );
+  });
+
+  it('KEEPS a car whose fines are all collected — zero money, but rows to untick', () => {
+    // The distinction the fix turns on. Excluding collected rows from the sums makes every amount
+    // 0; dropping on a zero total would take a settled car off the board with its history inside.
+    const rows = assembleRollups(sums({ rowCount: 4, collectedCount: 4 }), [], codes);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.totalAmount).toBe(0);
+    expect(rows[0]?.rowCount).toBe(4);
+  });
+
+  it('KEEPS a grievance-only car when the figure is real — the appeal wiped the statement', () => {
+    const rows = assembleRollups([], [{ vehicleId: 'v2', year: 2025, totalBeforeGrievance: 900 }], codes);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.totalBeforeGrievance).toBe(900);
+  });
+
+  it('keeps a car that still owes money', () => {
+    expect(assembleRollups(sums({ vehicleCount: 1, vehicleAmount: 50, rowCount: 1 }), [], codes)).toHaveLength(1);
+  });
+
+  it('drops the empty one and keeps the rest in the same answer', () => {
+    const rows = assembleRollups(
+      [
+        {
+          vehicleId: 'v1',
+          year: 2026,
+          vehicleCount: 2,
+          vehicleAmount: 1000,
+          driverCount: 0,
+          driverAmount: 0,
+          rowCount: 2,
+          collectedCount: 0,
+        },
+      ],
+      [
+        { vehicleId: 'v1', year: 2026, totalBeforeGrievance: 0 },
+        { vehicleId: 'v2', year: 2025, totalBeforeGrievance: 0 },
+      ],
+      codes,
+    );
+    expect(rows.map((row) => `${row.code}:${row.year}`)).toEqual(['V1:2026']);
+  });
+
+  it('answers with nothing at all when every row is empty', () => {
+    expect(
+      assembleRollups(
+        [],
+        [
+          { vehicleId: 'v1', year: 2025, totalBeforeGrievance: 0 },
+          { vehicleId: 'v2', year: 2024, totalBeforeGrievance: 0 },
+        ],
+        codes,
+      ),
+    ).toEqual([]);
+  });
+});

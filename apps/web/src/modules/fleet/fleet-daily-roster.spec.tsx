@@ -1124,15 +1124,27 @@ describe('the day’s counters', () => {
   });
 
   it('sits in the same top strip as the filters, not in a block of its own', () => {
+    // The CODE PICKER, not a search box: the owner asked for the same control the accidents board
+    // carries — «كود العربيه ... يكونوا زى شاشه الحوادث» — so what is looked for here is the
+    // picker's own label. The claim is unchanged: both filters stand above the counters, in one
+    // strip, and the old `FilterBar` block under the header has not come back.
     const markup = render();
     const strip = markup.indexOf('data-counter="total"');
-    const searchAt = markup.indexOf(t('fleet.roster.searchPlaceholder'));
+    const codeFilterAt = markup.indexOf(t('fleet.vehicles.fields.code'));
     const missionFilterAt = markup.indexOf(t('fleet.roster.allMissions'));
-    expect(searchAt, 'the code search is above the counters').toBeGreaterThan(-1);
+    expect(codeFilterAt, 'the code picker is above the counters').toBeGreaterThan(-1);
     expect(missionFilterAt, 'so is «كل المهمات»').toBeGreaterThan(-1);
-    expect(searchAt, 'search comes first in the strip').toBeLessThan(strip);
+    expect(codeFilterAt, 'the code picker comes first in the strip').toBeLessThan(strip);
     expect(missionFilterAt, 'then the mission filter').toBeLessThan(strip);
     expect(SOURCE, 'the old FilterBar block under the header is gone').not.toContain('<FilterBar');
+  });
+
+  it('narrows the board by a code PICKED, not by a code typed from memory', () => {
+    // The defect this replaced: a free-text box asks the reader to already know a code, and
+    // offers no way to see what the board holds. The picker's options are the board's own cars.
+    expect(SOURCE, 'the roster reaches for the shared picker').toContain('<VehicleCodeFilter');
+    expect(SOURCE, 'and offers the rows it already holds').toContain('options={codeOptions}');
+    expect(SOURCE, 'the free-text box is gone').not.toContain('fleet.roster.searchPlaceholder');
   });
 });
 
@@ -1446,5 +1458,39 @@ describe('the daily draft is persisted, per day', () => {
   it('never posts the draft anywhere', () => {
     const storage = readFileSync(join(HERE, 'lib/draft-storage.ts'), 'utf8');
     expect(storage).not.toMatch(/\bfetch\(|planRoster|saveFixedRoster/);
+  });
+});
+
+// ── taking somebody off the day says «احذف», and it looks like it ───────────
+//
+// «الاكس اللى جمب السواق لما ادوس عليها تشيل السواق زى ما هى ماشى لكن اللى جمب التعديل تشيل
+// الاتنين السواقيين بس خليهم علامه سله». Both gestures were a cross. A cross dismisses a thing on
+// screen; these two REMOVE people from a plan, and the Fixed Roster has said so with a bin since
+// it was built — the two boards are read side by side.
+describe('the board removes with a bin, not with a cross', () => {
+  it('the per-driver control is a bin', () => {
+    const at = SOURCE.indexOf('data-clear-slot=');
+    expect(at, 'the per-driver control is still there').toBeGreaterThan(-1);
+    expect(SOURCE.slice(at, at + 900), 'and wears a bin').toContain('<TrashIcon');
+  });
+
+  it('the row control is a bin too, and it empties the whole car', () => {
+    const at = SOURCE.indexOf('fleet.roster.clearAssignment');
+    expect(at, 'the row control is still there').toBeGreaterThan(-1);
+    expect(SOURCE.slice(at, at + 700)).toContain('<TrashIcon');
+  });
+
+  it('no cross is left doing a removal on this board', () => {
+    expect(SOURCE, 'CloseIcon is gone from the board entirely').not.toContain('CloseIcon');
+  });
+
+  it('the row control still clears BOTH seats, the mission and the note', () => {
+    // The behaviour the icon now advertises. Changing the icon without this would be a label on
+    // the wrong box.
+    const at = SOURCE.indexOf('if (clearing === null) return;');
+    const body = SOURCE.slice(at, at + 400);
+    expect(body).toContain('driver1EmployeeId: null');
+    expect(body).toContain('driver2EmployeeId: null');
+    expect(body).toContain('missionTypeId: null');
   });
 });

@@ -21,6 +21,23 @@ export interface GrievanceFigure {
  */
 const keyOf = (vehicleId: string, year: number): string => `${vehicleId}:${year}`;
 
+/**
+ * Does this (vehicle, year) still hold anything to show?
+ *
+ * "Has anything in it" was the rule the paragraph above already stated, but nothing enforced it:
+ * a grievance record is keyed by (vehicle, year) and survives the violations it was raised
+ * against, so deleting the last fine left a row of four zeroes sitting on the board — «لما مسحت
+ * كله فضلت موجوده». There is nothing behind it to open, tick or settle.
+ *
+ * `rowCount` is the test rather than the money, and the difference matters: a car whose fines are
+ * all COLLECTED reports 0 in every amount — that is what excluding collected rows from the sums
+ * means — while still holding rows a reader may untick. Dropping on a zero total would take that
+ * car off the board with its settled history inside it. A grievance figure that is a real number
+ * also keeps its row: the appeal wiped the statement, and the figure IS the history.
+ */
+const hasSomethingInIt = (row: FleetViolationRollupDto): boolean =>
+  row.rowCount > 0 || row.totalBeforeGrievance !== 0;
+
 export const assembleRollups = (
   sums: readonly ViolationYearSums[],
   grievances: readonly GrievanceFigure[],
@@ -64,5 +81,7 @@ export const assembleRollups = (
 
   // Newest year first, then by code — the board is read as "what is outstanding now", and a
   // vehicle's current year is the row a reader is looking for.
-  return [...byVehicle.values()].sort((a, b) => b.year - a.year || a.code.localeCompare(b.code));
+  return [...byVehicle.values()]
+    .filter(hasSomethingInIt)
+    .sort((a, b) => b.year - a.year || a.code.localeCompare(b.code));
 };

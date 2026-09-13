@@ -82,7 +82,12 @@ export const FilterBar = ({
     >
       {children}
       {((onClear !== undefined && hasActiveFilters) || trailing !== undefined) && (
-        <div className="ms-auto flex shrink-0 items-center gap-2">
+        // ALIGNED WITH THE CONTROLS, not with the middle of the bar. Every `FilterField` writes
+        // its question ABOVE its control, so a filter child is a label plus a box while this group
+        // is a single 36px button — and `items-center` on the row centred it against the taller
+        // child, leaving the reset and the count floating level with the LABELS instead of with
+        // the boxes they belong to. `self-end` puts them back on the controls' line.
+        <div className="ms-auto flex shrink-0 items-center gap-2 self-end">
           {onClear !== undefined && hasActiveFilters && (
             <button
               type="button"

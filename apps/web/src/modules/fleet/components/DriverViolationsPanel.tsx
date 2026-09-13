@@ -474,27 +474,34 @@ export const DriverViolationsPanel = ({
               button, and never learn that the one missing thing was behind the layer they were
               working in. Refusing the first keystroke is better than explaining the dead end
               afterwards — and the field that has to be filled first is the one right beside it. */}
-          {types.map((type) => (
-            <Field key={type.id} label={type.name}>
-              <Input
-                data-driver-count={type.id}
-                aria-label={type.name}
-                disabled={formVehicleId === ''}
-                title={formVehicleId === '' ? t('fleet.violations.pickVehicleFirst') : type.name}
-                value={String(counts[type.id] ?? 0)}
-                onChange={(e) => setCount(type.id, e.target.value)}
-                // Its own colour, the same one its rows and its cards carry, so counting «عكس»
-                // here and reading «عكس» on the board below are visibly the same subject.
-                // Through `tone`, NOT `className`: passed as a class it landed beside the
-                // control's own `bg-white` and lost, so every counter rendered plain white while
-                // the source said otherwise.
-                tone={violationTypeColour(type.id, { index: typeIndex.get(type.id) })}
-                className="w-20"
-                dir="ltr"
-                inputMode="numeric"
-              />
-            </Field>
-          ))}
+          {/* THE COUNTERS ARE ONE GROUP, and they wrap as one. Each was a direct child of the
+              wrapping bar, so a narrow-enough bar broke the four of them across two lines —
+              «عكس» and «سرعة» on the first, «تليفون» and «حزام» underneath. They are four
+              readings of the SAME stack and belong on one line beside each other; the group may
+              drop below the car box, but it may not split. */}
+          <div className="flex shrink-0 flex-nowrap items-end gap-2">
+            {types.map((type) => (
+              <Field key={type.id} label={type.name}>
+                <Input
+                  data-driver-count={type.id}
+                  aria-label={type.name}
+                  disabled={formVehicleId === ''}
+                  title={formVehicleId === '' ? t('fleet.violations.pickVehicleFirst') : type.name}
+                  value={String(counts[type.id] ?? 0)}
+                  onChange={(e) => setCount(type.id, e.target.value)}
+                  // Its own colour, the same one its rows and its cards carry, so counting «عكس»
+                  // here and reading «عكس» on the board below are visibly the same subject.
+                  // Through `tone`, NOT `className`: passed as a class it landed beside the
+                  // control's own `bg-white` and lost, so every counter rendered plain white while
+                  // the source said otherwise.
+                  tone={violationTypeColour(type.id, { index: typeIndex.get(type.id) })}
+                  className="w-20"
+                  dir="ltr"
+                  inputMode="numeric"
+                />
+              </Field>
+            ))}
+          </div>
           {formVehicleId === '' && (
             <p
               data-driver-needs-vehicle

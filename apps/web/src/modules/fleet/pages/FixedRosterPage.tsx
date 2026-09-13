@@ -33,6 +33,7 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -534,6 +535,11 @@ export const FixedRosterPage = (): JSX.Element => {
   // every filter bar in the application read a code box with, so `150 - 151` names two cars here
   // too. It used to match the plate as well, on a board whose cells print only the code.
   const rows = draft.filter((row) => matchesVehicleCode(row.code, search));
+  /** Every car this board reports on, as the picker's options — no request for what is on screen. */
+  const codeOptions = useMemo(
+    () => draft.map((row) => ({ value: row.code, label: row.code })),
+    [draft],
+  );
 
   const drop = (vehicleId: string, slot: CrewSlot, employeeId: string): void => {
     setOver(null);
@@ -825,11 +831,15 @@ export const FixedRosterPage = (): JSX.Element => {
             the other axis, and is what keeps the table's height off the grid row. */}
         <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:col-span-4">
           <FilterBar hasActiveFilters={search !== ''} onClear={() => patch({ q: null })}>
-            <SearchInput
-              value={search}
-              onChange={(value) => patch({ q: value || null })}
-              placeholder={t('fleet.roster.searchPlaceholder')}
-              className="w-56"
+            {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES, and the same one the daily roster
+                now carries — «كود العربيه ... يكونوا زى شاشه الحوادث». `matchesVehicleCode` below
+                already reads a list, so what narrows the rows is unchanged; the options come from
+                the draft, which is every car this board reports on. */}
+            <VehicleCodeFilter
+              className="w-56 shrink-0"
+              value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
+              options={codeOptions}
+              onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
             />
             <span className="text-sm text-slate-500 dark:text-slate-400">
               {t('fleet.fixedRoster.summary', {

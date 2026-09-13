@@ -1,6 +1,6 @@
 // What "this month" means, pinned against fixed dates rather than against today.
 import { describe, expect, it } from 'vitest';
-import { currentMonthRange, odometerRange } from './odometer-range';
+import { currentMonthRange, odometerRange, WIDER_RANGE_MONTHS, widerRange } from './odometer-range';
 
 const at = (iso: string): Date => new Date(iso);
 
@@ -83,5 +83,43 @@ describe('odometerRange', () => {
       to: '2026-08-18',
       defaulted: false,
     });
+  });
+});
+
+describe('widerRange — what the «اعرض آخر ١٢ شهر» button asks for', () => {
+  it('starts at the FIRST of the month a year back and ends where this month does', () => {
+    expect(widerRange(at('2026-09-13T11:00:00.000Z'))).toEqual({
+      from: '2025-09-01',
+      to: '2026-09-30',
+    });
+  });
+
+  it('is the same answer from any day of the same month — so pressing it twice is one request', () => {
+    const early = widerRange(at('2026-09-01T00:00:00.000Z'));
+    const late = widerRange(at('2026-09-30T23:59:59.000Z'));
+    expect(early).toEqual(late);
+  });
+
+  it('walks back across the turn of the year without landing in month 13', () => {
+    expect(widerRange(at('2026-02-10T00:00:00.000Z'))).toEqual({
+      from: '2025-02-01',
+      to: '2026-02-28',
+    });
+    expect(widerRange(at('2026-01-05T00:00:00.000Z')).from).toBe('2025-01-01');
+  });
+
+  it('ends at the END of the current month, not at today', () => {
+    // A closing reading can be filed for a day that has not happened yet. Stopping at today would
+    // hide exactly the rows the reader pressed the button to find.
+    const range = widerRange(at('2026-09-13T11:00:00.000Z'));
+    expect(range.to, 'past today').toBe('2026-09-30');
+  });
+
+  it('covers a whole year — twelve months back plus the month it is in', () => {
+    const { from, to } = widerRange(at('2026-09-13T11:00:00.000Z'));
+    const months =
+      (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 +
+      (Number(to.slice(5, 7)) - Number(from.slice(5, 7)));
+    expect(months, 'twelve whole months back').toBe(WIDER_RANGE_MONTHS);
   });
 });

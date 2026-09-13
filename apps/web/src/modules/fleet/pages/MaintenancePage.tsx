@@ -27,7 +27,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  MAX_PAGE_SIZE,
   type FleetCatalogItemDto,
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
@@ -62,7 +61,7 @@ import {
   useMaintenanceVisits,
   useReopenMaintenance,
   } from '../api/fleet-queries';
-import { useDriverHrFilter } from '../api/driver-hr-filter';
+import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { EmployeeName } from '../components/EmployeeName';
 import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, RemainingKm, alarmCellTint } from '../components/AlarmBadge';
@@ -75,7 +74,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
-  'driver',
+  'drv',
   'from',
   'notes',
   'outFrom',
@@ -103,7 +102,9 @@ export const MaintenancePage = (): JSX.Element => {
   const from = sp.get('from') ?? '';
   const outFrom = sp.get('outFrom') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
-  const driver = sp.get('driver') ?? '';
+  // WHO, as ids picked off the drivers registry — the same `drv` parameter the drivers screen
+  // and the odometer carry, so a filtered link reads the same on all three.
+  const drivers = csv(sp.get('drv'));
   const workshopIds = csv(sp.get('workshops'));
   const workTypeIds = csv(sp.get('workTypes'));
   const sparePartIds = csv(sp.get('parts'));
@@ -135,23 +136,19 @@ export const MaintenancePage = (): JSX.Element => {
     from !== '' ||
     outFrom !== '' ||
     vehicleCodes.length > 0 ||
-    driver !== '' ||
+    drivers.length > 0 ||
     workshopIds.length > 0 ||
     workTypeIds.length > 0 ||
     sparePartIds.length > 0 ||
     notes !== '' ||
     state !== '';
 
-  // The driver NAME is HR's fact: ask HR first, filter Fleet by the ids it returns. Reuses the
-  // drivers registry's own hook, so the "HR matched more than one page" refusal is the same here.
+  // NO HR SEARCH STEP ANY MORE — see the same note on `OdometerPage`. A text box routed through
+  // HR's `search` brought three states the reader had to be warned about (still answering, more
+  // matches than one page, refused) and searched the whole payroll, so a name that belonged to
+  // nobody with a driving seat returned an empty grid under a bar insisting a driver was picked.
+  // Ids picked off the registry need no resolving and can only name people this table can show.
   const mayFilterByDriver = can('employee.view');
-  const hr = useDriverHrFilter({
-    search: mayFilterByDriver ? driver : '',
-    address: '',
-    governorate: '',
-    phone: '',
-  });
-  const driverEmployeeIds = hr.employeeIds;
 
   const params = useMemo(
     () => ({
@@ -167,21 +164,13 @@ export const MaintenancePage = (): JSX.Element => {
       sparePartIds: sparePartIds.length > 0 ? sparePartIds : undefined,
       notes: notes || undefined,
       open: state === '' ? undefined : state === 'open',
-      // Always sent once a driver filter is set, including when HR matched nobody: an empty list
-      // is "no matches", and dropping it would answer a narrowed question with every visit.
-      driverEmployeeIds: driverEmployeeIds ?? undefined,
+      // Matched against the entry driver OR the exit driver, server-side.
+      driverEmployeeIds: drivers.length > 0 ? drivers : undefined,
     }),
-    [paramsKey, driverEmployeeIds],
+    [paramsKey],
   );
-  // Three states must hold the query back rather than let it answer the wrong question: the HR
-  // step still running, HR matching more than one page, HR refusing.
-  const blocked = hr.loading || hr.tooMany || hr.failed;
-  const emptyMatch = driverEmployeeIds !== null && driverEmployeeIds.length === 0;
-  const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(
-    params,
-    !blocked && !emptyMatch,
-  );
-  const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
+  const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(params);
+  const rows = data?.items ?? [];
 
   /**
    * The vehicle's maintenance alarm, from the ONE server projection the other two screens read.
@@ -581,7 +570,7 @@ export const MaintenancePage = (): JSX.Element => {
               from: null,
               outFrom: null,
               vehicleCodes: null,
-              driver: null,
+              drv: null,
               workshops: null,
               workTypes: null,
               parts: null,
@@ -604,13 +593,15 @@ export const MaintenancePage = (): JSX.Element => {
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
+          {/* Several drivers at once: a visit is matched on its ENTRY driver or its EXIT driver,
+              so asking about a crew is one question, not two searches run in turn. */}
           {mayFilterByDriver && (
-            <div className="w-40 min-w-0">
-              <Input
-                aria-label={t('fleet.odometer.columns.driver')}
-                placeholder={t('fleet.odometer.driverPlaceholder')}
-                value={driver}
-                onChange={(e) => patch({ driver: e.target.value || null })}
+            <div className="w-52 min-w-0">
+              <RegistryDriverPicker
+                multiple
+                fullWidth
+                value={drivers}
+                onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
               />
             </div>
           )}
@@ -660,28 +651,11 @@ export const MaintenancePage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        {hr.tooMany && (
-          <p
-            role="status"
-            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-          >
-            {t('fleet.drivers.hrFilterTooMany', { matched: hr.matched, max: MAX_PAGE_SIZE })}
-          </p>
-        )}
-        {hr.failed && (
-          <p
-            role="status"
-            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-          >
-            {t('fleet.drivers.hrFilterUnavailable')}
-          </p>
-        )}
-
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(visit) => visit.id}
-          loading={hr.loading || (isLoading && !blocked && !emptyMatch)}
+          loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}
@@ -693,7 +667,7 @@ export const MaintenancePage = (): JSX.Element => {
             visit.outDate === null ? undefined : 'bg-emerald-50/70 dark:bg-emerald-950/30'
           }
         />
-        {data !== undefined && !blocked && !emptyMatch && data.meta.totalItems > 0 && (
+        {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}

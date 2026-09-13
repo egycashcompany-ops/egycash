@@ -54,6 +54,9 @@ const pageOf = <T,>(items: T[]) => ({
 });
 
 const VEHICLE_ID = 'v1';
+/** Two drivers to pick, as real employee ids — what `drv` carries now. */
+const DRIVER_A = '64b1f0dddddddddddddddd01';
+const DRIVER_B = '64b1f0dddddddddddddddd02';
 /** The registry SEARCH the filter and the dialog now make — a shortlist for a query, not a page. */
 const VEHICLE_SEARCH_KEY = (search?: string) =>
   listKey('fleet', 'vehicles', {
@@ -202,8 +205,7 @@ const REQUIRED_COLUMNS = [
   'fleet.odometer.columns.no',
   'fleet.odometer.fields.date',
   'fleet.odometer.columns.vehicle',
-  'fleet.odometer.columns.driver1',
-  'fleet.odometer.columns.driver2',
+  'fleet.odometer.columns.driver',
   'fleet.odometer.columns.outReading',
   'fleet.odometer.columns.inReading',
   'fleet.odometer.columns.km',
@@ -215,7 +217,7 @@ const REQUIRED_COLUMNS = [
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the odometer table', () => {
-  it('renders the eleven columns in the required order, and nothing else', () => {
+  it('renders the ten columns in the required order, and nothing else', () => {
     // Exact equality, not "each one appears after the last": that is what makes this catch a
     // column silently added, dropped or moved, rather than only a reordering.
     expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
@@ -279,14 +281,45 @@ describe('the odometer table', () => {
     }
   });
 
-  it('names the two driver slots by their shift, as separate columns', () => {
-    expect(t('fleet.odometer.columns.driver1')).toBe('اسم السائق الأول (صباحي)');
-    expect(t('fleet.odometer.columns.driver2')).toBe('اسم السائق الثاني (مسائي)');
+  /**
+   * «اسم السائق في الجدول يكون زى شاشه الmaintanance» + «يفضل عمودين (صباحى/مسائى) زى دلوقتى».
+   *
+   * ONE column, the shape the maintenance grid already prints two drivers in — and both shifts
+   * still told apart, by a caption on each line rather than by a header. Two columns would give
+   * the eleventh column of an eleven-column grid to a fact that fits on one line.
+   */
+  it('prints both drivers in ONE «اسم السائق» column, as the maintenance grid does', () => {
     const head = thead(render());
-    expect(head).toContain(t('fleet.odometer.columns.driver1'));
-    expect(head).toContain(t('fleet.odometer.columns.driver2'));
-    // The old single "Drivers" column is gone — the two slots are distinct facts.
-    expect(head).not.toContain(`>${t('fleet.odometer.columns.drivers')}<`);
+    expect(head, 'one driver column').toContain(t('fleet.odometer.columns.driver'));
+    expect(head, 'not a column per shift').not.toContain(t('fleet.odometer.columns.driver1'));
+    expect(head, 'not a column per shift').not.toContain(t('fleet.odometer.columns.driver2'));
+  });
+
+  it('names the SHIFT on each line, so colour is never the only thing saying which is which', () => {
+    const body = tbody(
+      render({ qc: client([log({ driver1EmployeeId: 'e1', driver2EmployeeId: 'e2' })]) }),
+    );
+    expect(t('fleet.odometer.driverShift.morning')).toBe('صباحى');
+    expect(t('fleet.odometer.driverShift.evening')).toBe('مسائى');
+    expect(body, 'the morning line says so').toContain(t('fleet.odometer.driverShift.morning'));
+    expect(body, 'and the evening line says so').toContain(
+      t('fleet.odometer.driverShift.evening'),
+    );
+  });
+
+  it('prints only the shifts the row actually recorded — never a line saying «null»', () => {
+    const oneDriver = tbody(
+      render({ qc: client([log({ driver1EmployeeId: 'e1', driver2EmployeeId: null })]) }),
+    );
+    expect(oneDriver).toContain(t('fleet.odometer.driverShift.morning'));
+    expect(oneDriver, 'no evening line on a day one person drove').not.toContain(
+      t('fleet.odometer.driverShift.evening'),
+    );
+    const neither = tbody(
+      render({ qc: client([log({ driver1EmployeeId: null, driver2EmployeeId: null })]) }),
+    );
+    expect(neither).not.toContain(t('fleet.odometer.driverShift.morning'));
+    expect(neither).not.toContain('null');
   });
 
   it('keeps an unbreakable note inside its column instead of widening the table', () => {
@@ -623,9 +656,14 @@ describe('the filter bar', () => {
       expect(bar, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
       expect(bar, `${key} title`).toContain(`title="${t(key)}"`);
     }
-    // The driver box is named and hinted; the two multi-selects name themselves in their trigger.
-    expect(bar).toContain(`aria-label="${t('fleet.odometer.columns.driver')}"`);
-    expect(bar).toContain(`placeholder="${t('fleet.odometer.driverPlaceholder')}"`);
+    // The driver filter and the two multi-selects name themselves in their trigger. The driver
+    // one is the drivers REGISTRY's own picker now, so it carries that control's accessible name
+    // — the full «اسم السائق أو كود الموظف», with the short form drawn inside the trigger.
+    expect(bar).toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
+    expect(bar).toContain(t('fleet.drivers.filters.employeeShort'));
+    expect(bar, 'and the free-text box it replaced is gone').not.toContain(
+      `placeholder="${t('fleet.odometer.driverPlaceholder')}"`,
+    );
     expect(bar).toContain(t('fleet.odometer.columns.vehicle'));
     expect(bar).toContain(t('fleet.odometer.columns.alert'));
   });
@@ -654,8 +692,8 @@ describe('the filter bar', () => {
     );
     // The date bounds are the narrow ones — a date needs ten characters, not a share of the row.
     expect(bar.match(/class="w-36"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
-    // …and the two text-ish filters are the medium ones.
-    expect(bar, 'the driver box is medium').toContain('w-44');
+    // …and the driver picker is the medium one — wider than a date, because it draws a NAME.
+    expect(bar, 'the driver picker is medium').toContain('w-56');
   });
 
   it('asks the REGISTRY for codes matching what was typed, not the first page of it', () => {
@@ -754,13 +792,44 @@ describe('the filter bar', () => {
   });
 
   it('reads every filter from the URL, so a filtered view is a shareable link', () => {
+    // The driver now travels as IDS (`drv`), the same parameter the drivers registry carries, so
+    // the link names exactly the people it was built for instead of a string HR has to search.
+    // The proof it reached the QUERY is the cache: this row sits on a key that includes them, so
+    // a table that ignored the parameter would find nothing there and render empty.
     const html = render({
-      route: '/fleet/odometer?from=2026-08-01&to=2026-08-18&driver=%D9%85%D8%AD%D9%85%D8%AF',
-      qc: client([log()], [alarm()], { from: '2026-08-01', to: '2026-08-18' }),
+      route: `/fleet/odometer?from=2026-08-01&to=2026-08-18&drv=${DRIVER_A},${DRIVER_B}`,
+      qc: client([log()], [alarm()], {
+        from: '2026-08-01',
+        to: '2026-08-18',
+        driverEmployeeIds: [DRIVER_A, DRIVER_B],
+      }),
     });
     expect(html).toContain('value="2026-08-01"');
     expect(html).toContain('value="2026-08-18"');
-    expect(html).toContain('value="محمد"');
+    expect(tbody(html), 'the picked drivers narrowed the request').toContain('١٥٠٬٠٠٠');
+  });
+
+  it('sends NO driver parameter at all when nobody is picked', () => {
+    // An empty list is not "no matches" here — it is "the reader has not asked about anyone", and
+    // sending `driverEmployeeIds: []` would narrow the table to nothing.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source).toContain('drivers.length > 0 ? drivers : undefined');
+  });
+
+  /**
+   * The HR SEARCH STEP IS GONE, and with it the three states it made the reader deal with.
+   *
+   * The old box sent free text to HR and waited for ids before the table could be asked, so the
+   * page had to hold its own query back while HR answered, and warn when HR matched more people
+   * than one page held or refused outright. Ids picked off the registry need none of that.
+   */
+  it('asks the table directly — no HR round trip, and no banners about one', () => {
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source, 'the HR search hook is gone').not.toContain('useDriverHrFilter');
+    expect(source, 'and nothing holds the query back for it').not.toContain('hr.loading');
+    expect(source, 'no «HR matched too many» banner').not.toContain('hrFilterTooMany');
+    expect(source, 'no «HR unavailable» banner').not.toContain('hrFilterUnavailable');
+    expect(source, 'the registry picker is what asks').toContain('<RegistryDriverPicker');
   });
 
   it('clears every filter at once', () => {
@@ -769,7 +838,7 @@ describe('the filter bar', () => {
       source.indexOf('onClear={'),
       source.indexOf('>\n          {/* Several'),
     );
-    for (const key of ['vehicleCodes', 'from', 'to', 'driver', 'alerts']) {
+    for (const key of ['vehicleCodes', 'from', 'to', 'drv', 'alerts']) {
       expect(clear, `${key} cleared`).toContain(`${key}: null`);
     }
   });
@@ -814,11 +883,68 @@ describe('the filter bar', () => {
     ).toThrow();
   });
 
+  /**
+   * THE EMPTY MONTH SAYS WHY IT IS EMPTY — «خليه زى ما هو وضيف رسالة وزرار».
+   *
+   * The screen opens narrowed to the current month, and that stays exactly as it was. What was
+   * missing is that a fleet whose last reading was filed in a previous month landed on a blank
+   * grid under a filter bar showing nothing active, with no way to tell an empty log from a log
+   * outside the range.
+   */
+  it('names the RANGE as the reason the default view is empty, and offers a way out', () => {
+    const html = render({ qc: client([]) });
+    expect(html, 'the reason').toContain(t('fleet.odometer.emptyMonth.title'));
+    expect(html, 'and what it means').toContain(t('fleet.odometer.emptyMonth.description'));
+    expect(html, 'and a way out').toContain(t('fleet.odometer.emptyMonth.action'));
+    expect(html, 'never the generic «no results» here').not.toContain(t('common.empty.title'));
+  });
+
+  it('the button widens the dates — it does not clear them', () => {
+    // Clearing both bounds would put the page back on the defaulted month, which is the state the
+    // reader is pressing the button to LEAVE: the request would be identical and nothing changes.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    const empty = source.slice(source.indexOf('const emptyMonth ='), source.indexOf('const columns'));
+    expect(empty, 'it sets both bounds').toContain('patch({ from: wider.from, to: wider.to })');
+    expect(empty, 'it does not clear them').not.toContain('from: null');
+  });
+
+  it('says nothing about the month once the reader has narrowed something else', () => {
+    // With a car, a driver or an alarm level picked, the range is not necessarily the reason —
+    // widening the dates might find nothing, and a button promising otherwise would be a guess.
+    // The honest answer there is the generic empty state.
+    for (const route of [
+      '/fleet/odometer?vehicleCodes=150',
+      `/fleet/odometer?drv=${DRIVER_A}`,
+      '/fleet/odometer?alerts=red',
+    ]) {
+      const key =
+        route.includes('vehicleCodes') ? { vehicleCodes: ['150'] }
+        : route.includes('drv') ? { driverEmployeeIds: [DRIVER_A] }
+        : { alerts: ['red'] };
+      const html = render({ route, qc: client([], [alarm()], key) });
+      expect(html, `${route} gets the generic empty state`).not.toContain(
+        t('fleet.odometer.emptyMonth.action'),
+      );
+      expect(html, `${route} still says the table is empty`).toContain(t('common.empty.title'));
+    }
+  });
+
+  it('says nothing about the month once the reader has chosen the dates themselves', () => {
+    // A range the reader picked is not a default to explain away — they already know which days
+    // they asked for, and offering to replace their choice would be answering a different one.
+    const html = render({
+      route: '/fleet/odometer?from=2020-01-01&to=2020-01-31',
+      qc: client([], [alarm()], { from: '2020-01-01', to: '2020-01-31' }),
+    });
+    expect(html).not.toContain(t('fleet.odometer.emptyMonth.action'));
+    expect(html).toContain(t('common.empty.title'));
+  });
+
   it('offers the driver filter only to someone who can read HR', () => {
     const without = render({ permissions: ['fleetOdometer.view'] });
-    expect(without).not.toContain(`aria-label="${t('fleet.odometer.columns.driver')}"`);
+    expect(without).not.toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
     const with_ = render({ permissions: ['fleetOdometer.view', 'employee.view'] });
-    expect(with_).toContain(`aria-label="${t('fleet.odometer.columns.driver')}"`);
+    expect(with_).toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
   });
 });
 

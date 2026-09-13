@@ -55,6 +55,9 @@ const VEHICLE_ID = 'v1';
 const WORKSHOP_ID = 'ws1';
 const WORK_TYPE_ID = 'wt1';
 const PART_ID = 'sp1';
+/** Two drivers to pick, as real employee ids — what `drv` carries now. */
+const DRIVER_A = '64b1f0dddddddddddddddd01';
+const DRIVER_B = '64b1f0dddddddddddddddd02';
 
 const visit = (o: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisitDto => ({
   id: 'm1',
@@ -454,6 +457,14 @@ describe('the filter bar', () => {
     { name: 'notes', route: 'notes=فرامل', params: { notes: 'فرامل' } },
     { name: 'maintenance status — in the workshop', route: 'state=open', params: { open: true } },
     { name: 'maintenance status — left it', route: 'state=closed', params: { open: false } },
+    // The driver is an ORDINARY parameter now. It used to need its own test below, because the
+    // page had to send free text to HR and wait for ids before it could ask this table anything;
+    // picked ids go straight through, matched server-side against the entry OR the exit driver.
+    {
+      name: 'drivers',
+      route: `drv=${DRIVER_A},${DRIVER_B}`,
+      params: { driverEmployeeIds: [DRIVER_A, DRIVER_B] },
+    },
   ];
 
   for (const { name, route, params } of CASES) {
@@ -466,36 +477,38 @@ describe('the filter bar', () => {
 
   it('covers every filter the screen offers', () => {
     // Nine filters on the bar. Each date is ONE input, the counter filter is gone entirely, and
-    // the state filter is exercised from both sides — nine cases here; the ninth filter, the
-    // driver, goes through HR first and has its own test below. Pinned so a filter added to the
-    // bar without a test fails rather than passes silently.
-    expect(CASES).toHaveLength(9);
+    // the state filter is exercised from both sides — ten cases for nine filters. The driver is
+    // among them now rather than in a test of its own. Pinned so a filter added to the bar
+    // without a test fails rather than passes silently.
+    expect(CASES).toHaveLength(10);
   });
 
-  it('resolves the DRIVER through HR first, then narrows the visits by the ids it returned', () => {
-    // Two steps, both server-side: HR answers "which employees are these words", Fleet answers
-    // "which visits belong to a car they had that day". Nothing is filtered out of a fetched page.
-    const hrFilter = { search: 'سائق', address: '', governorate: '', phone: '' };
-    const qc = client([visit()], { driverEmployeeIds: ['d1', 'd2'] });
-    qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', hrFilter, ''], {
-      items: [{ id: 'd1' }, { id: 'd2' }],
-      meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
-    });
-    const markup = render({ route: '/fleet/maintenance?driver=سائق', qc });
-    expect(tbody(markup), 'the visits narrowed by HR’s answer').toContain('١٢٠٬٠٠٠');
+  /**
+   * «الفلاتر بتاعت الشاشتين كمان» — the driver filter is the drivers REGISTRY's picker, not a box.
+   *
+   * The box sent whatever was typed to HR as one `search` and narrowed this table by the ids that
+   * came back. That searched the whole payroll, so a reader could type an accountant's name and
+   * get an empty grid under a bar insisting a driver was selected; and it made the page carry
+   * three states of somebody else's request — HR still answering, HR matching more than a page,
+   * HR refusing — each with a banner of its own above the table.
+   */
+  it('asks the drivers registry, not HR’s free-text search', () => {
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source, 'the picker every other fleet screen uses').toContain('<RegistryDriverPicker');
+    expect(source, 'the HR search hook is gone').not.toContain('useDriverHrFilter');
+    expect(source, 'and nothing holds the query back for it').not.toContain('hr.loading');
+    expect(source, 'no «HR matched too many» banner').not.toContain('hrFilterTooMany');
+    expect(source, 'no «HR unavailable» banner').not.toContain('hrFilterUnavailable');
+    expect(source, 'several drivers at once — a visit has two').toContain('multiple');
   });
 
-  it('shows an EMPTY table when HR matched nobody — never an unfiltered one', () => {
-    const hrFilter = { search: 'لا أحد', address: '', governorate: '', phone: '' };
-    // The unnarrowed page is seeded and must NOT be what the reader sees: an empty HR match is a
-    // real answer, and answering it with every visit is the one wrong result available.
-    const qc = client([visit()]);
-    qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', hrFilter, ''], {
-      items: [],
-      meta: { page: 1, pageSize: 100, totalItems: 0, totalPages: 1 },
-    });
-    const markup = render({ route: '/fleet/maintenance?driver=لا أحد', qc });
-    expect(tbody(markup)).not.toContain('١٢٠٬٠٠٠');
+  it('sends NO driver parameter at all when nobody is picked', () => {
+    // An empty list is not "no matches" here — it is "the reader has not asked about anyone", and
+    // sending `driverEmployeeIds: []` would narrow the table to nothing.
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toContain('drivers.length > 0 ? drivers : undefined');
+    const unfiltered = render({ route: '/fleet/maintenance', qc: client([visit()]) });
+    expect(tbody(unfiltered), 'every visit, as before').toContain('١٢٠٬٠٠٠');
   });
 
   it('builds a query the CONTRACT accepts', () => {

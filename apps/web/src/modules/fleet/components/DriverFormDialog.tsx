@@ -108,11 +108,22 @@ export const DriverFormDialog = ({
   onClose,
   employeeId: subjectId,
   profile,
+  initialImage = null,
 }: {
   open: boolean;
   onClose: () => void;
   /** WHO the row is about. Always known — the registry's rows are people, not profiles. */
   employeeId: string;
+  /**
+   * A scan the caller ALREADY has in hand, staged the moment the dialog opens.
+   *
+   * The registry's licence cell offers the file picker first — «تدوس الأيقونة، مستكشف الملفات
+   * يفتح على طول، تختار الصورة» — so by the time this dialog appears the reader has chosen the
+   * image and is only being asked for the two facts the server refuses to create a profile
+   * without. Passing the file in rather than making them pick it again is the whole point of
+   * opening the picker first.
+   */
+  initialImage?: File | null;
   /**
    * What Fleet has recorded about them, or null when nothing has been.
    *
@@ -128,9 +139,6 @@ export const DriverFormDialog = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [form, setForm] = useState<FormState>(fromProfile(profile));
-  useEffect(() => {
-    if (open) setForm(fromProfile(profile));
-  }, [open, profile]);
 
   const update = useUpdateDriverProfile();
   const create = useCreateDriverProfile();
@@ -144,7 +152,15 @@ export const DriverFormDialog = ({
    * row again and only then upload is two visits for one intention; the file is held here instead
    * and sent the moment the create answers with an id.
    */
-  const [stagedImage, setStagedImage] = useState<File | null>(null);
+  const [stagedImage, setStagedImage] = useState<File | null>(initialImage);
+  // ONE reset, on open, for the form AND the staged scan together. They are one draft: a file
+  // chosen for one driver and then cancelled must not still be attached when the dialog reopens
+  // on the next one, and `initialImage` is only ever the file THIS opening was given.
+  useEffect(() => {
+    if (!open) return;
+    setForm(fromProfile(profile));
+    setStagedImage(initialImage);
+  }, [open, profile, initialImage]);
   // HR's own mutation, called with HR's own permission — see the note beside the field.
   const mayEditPhone = can('employee.editPersonal');
   const [phone, setPhone] = useState('');

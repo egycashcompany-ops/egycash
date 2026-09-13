@@ -1826,26 +1826,77 @@ describe('the licence column is icons, on every row', () => {
     })
     .join('\n');
 
-  it('the way in for an unenrolled driver is an icon button', () => {
-    const at = CODE.indexOf('data-driver-enrol=');
-    expect(at, 'the way in is still offered').toBeGreaterThan(-1);
-    const control = CODE.slice(at, at + 600);
+  /** The unenrolled row's licence control, from its marker to the end of its element. */
+  const wayIn = (): string => {
+    const marker = CODE.indexOf('data-driver-enrol=');
+    expect(marker, 'the way in is still offered').toBeGreaterThan(-1);
+    // From the opening tag the marker sits on, so the assertions can speak about the ELEMENT —
+    // what it is, not only what attributes it happens to carry.
+    const at = CODE.lastIndexOf('<', marker);
+    const end = CODE.indexOf('</label>', marker);
+    expect(end, 'and it is one element, not a fragment').toBeGreaterThan(marker);
+    return CODE.slice(at, end);
+  };
+
+  it('the way in for an unenrolled driver is an icon control', () => {
+    const control = wayIn();
     expect(control, 'wearing the upload icon a car with no scan wears').toContain('<UploadIcon');
-    expect(control, 'and the column’s own button styling').toContain('className={actionButton}');
+    expect(control, 'and the column’s own button styling').toContain('${actionButton}');
   });
 
   it('what it does is still said, in the accessible name rather than in prose', () => {
-    // The difference from the vehicles' upload — this opens the enrolment dialog — has to survive
-    // losing its visible words, or the icon is a riddle.
-    const at = CODE.indexOf('data-driver-enrol=');
-    const control = CODE.slice(at, at + 600);
+    const control = wayIn();
     expect(control).toContain("aria-label={t('fleet.drivers.licenseImage.addViaProfile')}");
     expect(control).toContain("title={t('fleet.drivers.licenseImage.addViaProfile')}");
   });
 
-  it('it still opens the dialog that can actually fix it', () => {
-    const at = CODE.indexOf('data-driver-enrol=');
-    const control = CODE.slice(at, at + 600);
-    expect(control).toContain('setFormOpen(true)');
+  /**
+   * «تدوس الأيقونة، مستكشف الملفات يفتح على طول، تختار الصورة».
+   *
+   * The gesture, not just the destination. Pressing it used to open the enrolment dialog and leave
+   * the reader to find the file field inside it; it opens the FILE PICKER now, exactly as the same
+   * icon does on a car and on an enrolled driver, and the dialog that follows is handed the file
+   * already chosen. Replace the hidden input with a button that only sets `formOpen` and this
+   * fails — which is the point.
+   */
+  it('pressing it opens the FILE PICKER, not a dialog', () => {
+    const control = wayIn();
+    expect(control, 'a real file input, so the platform opens the picker').toContain(
+      "type=\"file\"",
+    );
+    expect(control, 'offering what the server accepts, from the one shared list').toContain(
+      'accept={DRIVER_LICENSE_IMAGE_ACCEPT}',
+    );
+    expect(control, 'and the picker is what the reader presses').toContain('<label');
+  });
+
+  it('the chosen file is staged and carried into the dialog, not dropped', () => {
+    const control = wayIn();
+    expect(control, 'held').toContain('setStagedScan(file)');
+    expect(control, 'and only then is the dialog opened').toContain('setFormOpen(true)');
+    expect(PAGE, 'and handed to it').toContain('initialImage={stagedScan}');
+  });
+
+  it('a cancelled picker changes nothing at all', () => {
+    // The change event still fires with an empty list on some platforms. Opening the enrolment
+    // dialog because somebody pressed Cancel is exactly the modal they asked not to see.
+    expect(wayIn()).toContain('if (file === undefined) return;');
+  });
+
+  /**
+   * The dialog must actually take the file it is handed. `stagedImage` already uploads after the
+   * create; what is new is that it can START full, and that it is re-seeded on every open — a file
+   * chosen for one driver and cancelled must not ride into the next row's dialog.
+   */
+  it('the dialog seeds its staged scan from what the cell handed it, on every open', () => {
+    const dialog = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
+    const code = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'the prop exists').toContain('initialImage?: File | null');
+    expect(code, 'and seeds the staged file').toContain(
+      'useState<File | null>(initialImage)',
+    );
+    expect(code, 'and is re-applied whenever the dialog opens').toContain(
+      'setStagedImage(initialImage)',
+    );
   });
 });

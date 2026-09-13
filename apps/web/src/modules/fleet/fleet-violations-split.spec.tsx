@@ -1042,6 +1042,13 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
   const SOURCE = readFileSync(join(HERE, 'components/CompanyViolationsDetailLayer.tsx'), 'utf8');
   const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
+  it('is a component that actually loads — the source below is read, not imported', () => {
+    // The assertions in this block read the file as TEXT, which proves nothing about whether the
+    // module still resolves. Importing it does: a broken import inside the layer, or an export
+    // renamed out from under the screen, fails here rather than in the browser.
+    expect(typeof CompanyViolationsDetailLayer).toBe('function');
+  });
+
   it('asks the server for the DRIVERS’ fines of the same car and the same year', () => {
     // «إجمالى السيارة» on the board is the company rows PLUS these, so a layer that showed only
     // the first was a ledger you could not reconcile: the number on the board did not match the

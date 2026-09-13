@@ -41,6 +41,7 @@ import {
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
 import { nextViolationsPage } from '../lib/violations-paging';
+import { fetchWholeCatalog } from '../lib/whole-catalog';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import { useCan } from '../../../platform/rbac/Can';
 import { useSetSetting } from '../../../platform/settings/settings-api';
@@ -141,21 +142,32 @@ export const useVehicleTypes = (params: FleetListParams = { pageSize: 100 }, ena
   });
 
 /**
- * One kind's live catalog, cached.
+ * One kind's live catalog, WHOLE, cached.
  *
  * `violationSide` narrows a violation type to the half of the violations screen that files it —
  * it is part of the key, so the company form's list and the drivers' bar's list are two cache
  * entries and cannot be served one for the other.
+ *
+ * Every page, not the first. This asked for `pageSize: 100`, which is the server's own cap and not
+ * a number a caller can raise, so a catalog past a hundred entries was cut here — and cut for
+ * everything downstream at once, because this ONE cache entry is what the dropdowns offer AND what
+ * the list pages build their id → name maps from. An entry off the end was missing from the
+ * pickers and rendered as a blank cell in the tables, neither of which looks like a fault. See
+ * `lib/whole-catalog` for why the pages are gathered here rather than behind a «تحميل المزيد»
+ * nobody would press on a dropdown.
  */
 export const useFleetCatalog = (kind: string, violationSide?: FleetViolationSide) =>
   useQuery({
     queryKey: listKey(MODULE, 'catalogs', { kind, violationSide }),
-    queryFn: () =>
-      api.listCatalogItems({
-        kind,
-        pageSize: 100,
-        ...(violationSide === undefined ? {} : { violationSide }),
-      }),
+    queryFn: async () =>
+      fetchWholeCatalog((page, pageSize) =>
+        api.listCatalogItems({
+          kind,
+          page,
+          pageSize,
+          ...(violationSide === undefined ? {} : { violationSide }),
+        }),
+      ),
     staleTime: 60_000,
   });
 

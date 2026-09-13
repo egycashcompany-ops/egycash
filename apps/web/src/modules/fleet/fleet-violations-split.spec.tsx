@@ -32,6 +32,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
+import { formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
 import {
@@ -159,6 +160,8 @@ const store = (
 const page = ({
   rollup = [rollupRow()],
   drivers = [driverRow()],
+  driverPages,
+  driverTotal,
   permissions,
   seedCatalogs = true,
   year,
@@ -167,6 +170,10 @@ const page = ({
    *  through to the default and quietly seed a row. */
   rollup?: FleetViolationRollupDto[] | null;
   drivers?: FleetViolationDto[] | null;
+  /** Several pages already in hand — for the cases about reaching past the first one. */
+  driverPages?: FleetViolationDto[][];
+  /** How many rows MATCHED, when that is more than the pages seeded here hold. */
+  driverTotal?: number;
   permissions?: string[];
   seedCatalogs?: boolean;
   year?: string;
@@ -202,17 +209,35 @@ const page = ({
     );
   }
   if (drivers !== null) {
+    // AN INFINITE QUERY'S CACHE SHAPE, not a plain one. The board accumulates pages
+    // (`useViolationsPages`) so that a fleet with more fines than one page still reaches all of
+    // them, and TanStack stores that as `{ pages, pageParams }`. Seeding the old single-page
+    // object left every driver row off the board — which is how this suite caught the change.
+    //
+    // `driverPages` lets a case seed SEVERAL pages and say how many rows matched in total, which
+    // is what the >100 cases need; the common case is one page holding everything.
+    const pages = driverPages ?? [drivers];
+    const matched = driverTotal ?? drivers.length;
+    const size = pages[0]?.length ?? 25;
     qc.setQueryData(
       listKey('fleet', 'violations', {
         kind: 'driver',
-        page: 1,
         pageSize: 25,
         sortBy: 'date',
         sortDir: 'desc',
+        paged: 'infinite',
       }),
       {
-        items: drivers,
-        meta: { page: 1, pageSize: 25, totalItems: drivers.length, totalPages: 1 },
+        pages: pages.map((items, at) => ({
+          items,
+          meta: {
+            page: at + 1,
+            pageSize: size,
+            totalItems: matched,
+            totalPages: Math.max(1, Math.ceil(matched / Math.max(1, size))),
+          },
+        })),
+        pageParams: pages.map((_, at) => at + 1),
       },
     );
   }
@@ -673,6 +698,53 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(markup, 'and the drivers half').toContain('data-driver-settled');
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
     expect(panel, 'the drivers filter is a query parameter').toContain('collected:');
+  });
+
+  it('the drivers board can reach every matched row, with no pager — the 100-row cap stays shut', () => {
+    // REGRESSION. Removing «السابق / التالي» first left a board that fetched ONE page and stopped:
+    // the count beside the filters said «٤٤٠» over a hundred visible rows, with no control
+    // anywhere to reach the other three hundred and forty. The paging rules themselves live in
+    // `lib/violations-paging.spec.ts` and the presses are done in Chromium against a real >100
+    // dataset; what is pinned HERE is the WIRING, because a component that quietly went back to a
+    // single `useQuery` would pass both of those and still hide 340 fines.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'pages accumulate rather than replace').toContain('useViolationsPages(params)');
+    expect(code, 'every page fetched so far is what the board renders').toContain('flatMap');
+    expect(code, 'there is a control that fetches the next one').toContain('fetchNextPage()');
+    expect(code, 'offered only while the server still has rows').toContain('hasNextPage === true');
+    expect(code, 'and the reader is told how much is on screen').toContain('data-driver-loaded');
+    // The page number must not travel in the request params — the hook owns it, and a pinned one
+    // would refetch page 1 for every «more».
+    const params = code.slice(code.indexOf('const params = useMemo'), code.indexOf('const list ='));
+    expect(params, 'no page in the request params').not.toMatch(/\bpage,/);
+  });
+
+  it('shows how much of a >100 answer is on screen, and offers the rest', () => {
+    // The reported shape, exactly: 440 matched, one page of 100 in hand.
+    const first = Array.from({ length: 100 }, (_, i) => driverRow({ id: `vio-${i + 1}` }));
+    const markup = page({ driverPages: [first], driverTotal: 440 });
+    const at = markup.indexOf('data-driver-loaded');
+    expect(at, 'the board says how much it is showing').toBeGreaterThan(-1);
+    const said = markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('<', at));
+    expect(said, 'both numbers, not just the total').toContain(formatNumber(100, 'ar'));
+    expect(said, 'and the size of the whole answer').toContain(formatNumber(440, 'ar'));
+    expect(markup, 'with a way to the other 340').toContain('data-driver-load-more');
+  });
+
+  it('stops offering «تحميل المزيد» once every matched row is on screen', () => {
+    const all = Array.from({ length: 12 }, (_, i) => driverRow({ id: `vio-${i + 1}` }));
+    const markup = page({ driverPages: [all], driverTotal: 12 });
+    expect(markup, 'nothing left to load').not.toContain('data-driver-load-more');
+  });
+
+  it('numbers the rows from the top of the accumulated list, not from a page offset', () => {
+    // With one page on screen, row 1 of page 3 was really row 51 and the offset was right. With
+    // pages accumulating, `rows` starts at the top and the same offset would count it twice.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'the index is the position').toContain('formatNumber(index + 1, locale)');
+    expect(code, 'no page-size offset survives').not.toContain('(meta.page - 1) * meta.pageSize');
   });
 
   it('the «عرض … من …» sentence and the pager are gone; the page-size box is beside the title', () => {

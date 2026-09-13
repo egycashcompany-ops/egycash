@@ -30,6 +30,7 @@ import {
   DownloadIcon,
 } from '../../../shared/ui/icons';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
+import { violationsLoadState } from '../lib/violations-paging';
 import { errorMessage } from '../../../shared/lib/errors';
 import { saveBlob } from '../../../shared/lib/api-client';
 import {
@@ -37,7 +38,7 @@ import {
   useRecordDriverViolations,
   useSetViolationCollected,
   useVehicles,
-  useViolations,
+  useViolationsPages,
 } from '../api/fleet-queries';
 import { SideLayer } from '../../../shared/ui/SideLayer';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -75,7 +76,6 @@ export const DriverViolationsPanel = ({
   typeIds,
   amount,
   settled,
-  page,
   pageSize,
   onVehicleCodesChange,
   onDriverChange,
@@ -95,7 +95,6 @@ export const DriverViolationsPanel = ({
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
-  page: number;
   pageSize: number;
   onVehicleCodesChange: (next: string[]) => void;
   onDriverChange: (next: string | null) => void;
@@ -199,7 +198,8 @@ export const DriverViolationsPanel = ({
   const params = useMemo(
     () => ({
       kind: 'driver' as const,
-      page,
+      // NO `page` — `useViolationsPages` owns the page number, and a pinned one here would refetch
+      // the same page for every «تحميل المزيد».
       pageSize,
       sortBy: 'date',
       sortDir: 'desc' as const,
@@ -212,11 +212,17 @@ export const DriverViolationsPanel = ({
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),
-    [page, pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
+    [pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
   );
-  const list = useViolations(params);
-  const rows = list.data?.items ?? [];
-  const meta: PageMeta | undefined = list.data?.meta;
+  const list = useViolationsPages(params);
+  // EVERY page fetched so far, in the order the server sorted them. This is what replaced the
+  // pager: the board grows downward instead of swapping its contents, so the four-hundredth fine
+  // is reachable without «السابق / التالي» ever coming back.
+  const rows = (list.data?.pages ?? []).flatMap((p) => p.items);
+  // The counts come from the FIRST page's meta — `totalItems` is the size of the whole answer, not
+  // of the chunk, and every page repeats it.
+  const meta: PageMeta | undefined = list.data?.pages[0]?.meta;
+  const loadState = violationsLoadState(meta, rows.length);
   const collect = useSetViolationCollected();
 
   const toggleCollected = async (row: FleetViolationDto): Promise<void> => {
@@ -243,11 +249,10 @@ export const DriverViolationsPanel = ({
       key: 'seq',
       header: t('fleet.violations.columns.seq'),
       align: 'center',
-      render: (_row, index) =>
-        formatNumber(
-          (meta === undefined ? 0 : (meta.page - 1) * meta.pageSize) + index + 1,
-          locale,
-        ),
+      // The index IS the position now. It used to be offset by the page the board was showing,
+      // because the board showed ONE page and row 1 of page 3 was really row 51. Pages accumulate
+      // instead, so `rows` is the list from the top and the offset would double-count it.
+      render: (_row, index) => formatNumber(index + 1, locale),
     },
     {
       key: 'date',
@@ -866,6 +871,51 @@ export const DriverViolationsPanel = ({
               </tr>
             </tbody>
           </table>
+
+          {/* HOW MUCH OF THE ANSWER IS ON SCREEN, and the way to the rest.
+              This is what stands in for «السابق / التالي», which the owner asked to be gone: the
+              board grows downward instead of swapping its contents, so nothing is ever a page
+              away. The pair of numbers is the point — the count beside the filters used to say
+              «٤٤٠» over a hundred visible rows with no control anywhere to reach the others, and a
+              count that is true and unreachable is worse than no count.
+
+              It is the idiom the users screen's activity timeline already uses (`useUserTimeline`
+              + «تحميل الأقدم»), not a new one invented here. */}
+          <div className="mt-2 flex items-center justify-between gap-3 px-3 pb-1">
+            <span
+              data-driver-loaded
+              role="status"
+              className="text-xs text-slate-500 dark:text-slate-400"
+            >
+              {loadState.complete
+                ? t('fleet.violations.allLoaded', {
+                    total: formatNumber(loadState.total, locale),
+                  })
+                : t('fleet.violations.loadedOf', {
+                    shown: formatNumber(loadState.shown, locale),
+                    total: formatNumber(loadState.total, locale),
+                  })}
+            </span>
+            {list.hasNextPage === true && (
+              <Button
+                size="sm"
+                variant="secondary"
+                data-driver-load-more="true"
+                loading={list.isFetchingNextPage}
+                onClick={() => void list.fetchNextPage()}
+              >
+                {t('fleet.violations.loadMore')}
+              </Button>
+            )}
+          </div>
+
+          {/* A page that fails AFTER rows are on screen must not wipe them — the board keeps what
+              it has and reports the failure under it, the same way the activity timeline does. */}
+          {list.isError && rows.length > 0 && (
+            <p className="px-3 pb-2 text-xs text-red-600 dark:text-red-400">
+              {t('fleet.violations.loadMoreFailed')}
+            </p>
+          )}
         </>
       )}
     </section>

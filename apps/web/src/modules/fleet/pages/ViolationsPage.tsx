@@ -71,16 +71,15 @@ export const ViolationsPage = (): JSX.Element => {
   // A LIST, like `driver` above: «speeding AND seatbelt» is one question, not two.
   const typeIds = splitVehicleCodeList(sp.get('dtype') ?? '');
   /**
-   * ALWAYS THE FIRST PAGE, because there is no longer any control that can ask for another.
+   * NO PAGE NUMBER AT ALL on this screen any more.
    *
-   * `page` used to be read from the URL. With the pager gone that read became a trap rather than a
-   * feature: `useRememberedFilters` deliberately lets a URL that already carries a query string
-   * win, and nothing left on this screen writes or clears `page` — so a shared or bookmarked
-   * `?page=3` would land a reader on a blank board under a ٠٫٠٠ total, with no control anywhere to
-   * get them back. How many rows to show is «لكل صفحة» beside the title; how to narrow them is the
-   * filter bar.
+   * It was read from the URL while the pager existed, then pinned to 1 when the pager went, and is
+   * now gone entirely: the drivers' board loads its pages cumulatively (`useViolationsPages`) and
+   * owns its own page numbers, and the company board is a rollup that is never paged. That closes
+   * the `?page=3` trap for good rather than defending against it — `useRememberedFilters`
+   * deliberately lets a URL that already carries a query string win, so a pinned `page` was still
+   * a value somebody could contradict. There is nothing left to contradict.
    */
-  const page = 1;
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
 
   /** Null or '' deletes the key. There is no page key left to reset — see `page` above. */
@@ -153,7 +152,6 @@ export const ViolationsPage = (): JSX.Element => {
           amount={driverAmount}
           settled={driverSettled}
           onSettledChange={(next) => patch({ dset: next })}
-          page={page}
           pageSize={pageSize}
           onVehicleCodesChange={(next) =>
             patch({ dcodes: next.length === 0 ? null : next.join(',') })

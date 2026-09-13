@@ -61,6 +61,7 @@ import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
 import { DriverFormDialog } from '../components/DriverFormDialog';
 import {
+  DRIVER_LICENSE_IMAGE_ACCEPT,
   DriverLicenseImageCell,
   DriverLicenseImagePreviewDialog,
 } from '../components/DriverLicenseImage';
@@ -304,6 +305,17 @@ export const DriversListPage = (): JSX.Element => {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<FleetDriverRowDto | null>(null);
   const [previewing, setPreviewing] = useState<FleetDriverProfileDto | null>(null);
+  /**
+   * The scan chosen from the licence cell of a driver who has NO profile yet, on its way into the
+   * dialog that will create one. See the cell for why the picker comes first.
+   *
+   * `pickerKey` remounts the file input after each choice so picking the SAME file again still
+   * fires a change event — the identical trick `DriverLicenseImageCell` uses for an enrolled
+   * driver, and needed here for the same reason: a reader who cancels the dialog and comes back
+   * to the same row is choosing the same file.
+   */
+  const [stagedScan, setStagedScan] = useState<File | null>(null);
+  const [pickerKey, setPickerKey] = useState(0);
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
@@ -446,37 +458,53 @@ export const DriversListPage = (): JSX.Element => {
       header: t('fleet.drivers.columns.licenseImage'),
       render: (d) =>
         d.profile === null ? (
-          // «مفيش مكان ان ارفع صوره الرخصه لو مش موجوده بيقولى غير مسجل». The cell used to be dead
-          // grey text. The licence file hangs on the PROFILE — every endpoint is
-          // `/fleet/drivers/:profileId/license-image` — so there is genuinely nothing to attach a
-          // scan to until the driver is enrolled, and enrolling needs a licence number and an
-          // expiry date that only a person can supply. What was missing was not an upload button
-          // but a WAY IN: the only affordance was the same pencil as every other row, telling a
-          // reader nothing about what it would do from here.
+          // THE PICKER OPENS FIRST — «تدوس الأيقونة، مستكشف الملفات يفتح على طول، تختار الصورة».
           //
-          // So the cell says what it is and opens the very dialog that fixes it — where the scan
-          // can be chosen in the same visit and is uploaded the moment the profile exists.
-          // AND IT LOOKS LIKE THE VEHICLES' COLUMN, because it is the same column — «زى شاشه
-          // السيارات بالظبط». It was a two-line block of text, the only prose in a strip of icon
-          // buttons, and it set the width of the column for every other row. An upload icon is
-          // what a car with no scan shows; a driver with no PROFILE shows the same icon, and the
-          // difference — that pressing it opens the enrolment dialog rather than a file picker —
-          // lives in the accessible name and the tooltip, which is where a difference in what a
-          // control DOES belongs when the thing it is aiming at is identical.
+          // This is the same icon a car with no scan shows, and now the same GESTURE: press it and
+          // the file picker is there, with no dialog in between. That is the whole of what was
+          // asked, and all of it that the server permits — the licence file hangs on the PROFILE
+          // (every endpoint is `/fleet/drivers/:profileId/license-image`), and a driver with no
+          // profile has no id to upload against. Creating one needs a licence number and an expiry
+          // date, two facts that exist nowhere in the system and that only a person can supply.
+          //
+          // So the order is inverted instead: the scan is chosen FIRST and handed to the dialog
+          // already staged, which then asks only for the two facts it cannot invent and uploads
+          // the file the moment the create returns an id. The reader picks the image once, in the
+          // gesture they expected, and never comes back to this cell for it.
+          //
+          // A `<label>` wrapping a hidden input rather than a button that pokes a ref: it is what
+          // `DriverLicenseImageCell` does one branch over for an enrolled driver, and it gets the
+          // keyboard and the accessible name from the platform rather than from us. `relative` is
+          // load-bearing — `sr-only` is absolutely positioned, and without a positioned ancestor
+          // the hidden text lands at a page coordinate of its own, giving a scrollable table a
+          // horizontal scrollbar nothing on screen explains.
           can('fleetDriver.manage') ? (
-            <button
-              type="button"
+            <label
               data-driver-enrol={d.employeeId}
-              aria-label={t('fleet.drivers.licenseImage.addViaProfile')}
+              className={`${actionButton} relative inline-flex cursor-pointer`}
               title={t('fleet.drivers.licenseImage.addViaProfile')}
-              className={actionButton}
-              onClick={() => {
-                setEditing(d);
-                setFormOpen(true);
-              }}
             >
               <UploadIcon className="h-4 w-4" />
-            </button>
+              <span className="sr-only">{t('fleet.drivers.licenseImage.addViaProfile')}</span>
+              <input
+                key={pickerKey}
+                type="file"
+                accept={DRIVER_LICENSE_IMAGE_ACCEPT}
+                className="hidden"
+                aria-label={t('fleet.drivers.licenseImage.addViaProfile')}
+                title={t('fleet.drivers.licenseImage.addViaProfile')}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  // A cancelled picker must change nothing — no dialog, no staged file. The
+                  // change event still fires on some platforms with an empty list.
+                  if (file === undefined) return;
+                  setStagedScan(file);
+                  setEditing(d);
+                  setFormOpen(true);
+                  setPickerKey((k) => k + 1);
+                }}
+              />
+            </label>
           ) : (
             <NotRecorded />
           )
@@ -808,9 +836,13 @@ export const DriversListPage = (): JSX.Element => {
         onClose={() => {
           setFormOpen(false);
           setEditing(null);
+          // The staged scan belongs to ONE opening. Dropping it on close is what stops a file
+          // picked for one driver, then cancelled, from riding into the next row's dialog.
+          setStagedScan(null);
         }}
         employeeId={editing?.employeeId ?? ''}
         profile={editing?.profile ?? null}
+        initialImage={stagedScan}
       />
       <DriverLicenseImagePreviewDialog
         open={previewing !== null}

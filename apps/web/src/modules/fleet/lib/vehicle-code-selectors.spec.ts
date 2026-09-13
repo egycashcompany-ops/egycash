@@ -48,7 +48,7 @@ const code = (rel: string): string =>
 const CODE_SELECTORS = [
   {
     file: 'modules/fleet/components/VehicleCodeFilter.tsx',
-    what: 'the multi-select on the six filtered fleet screens (odometer, maintenance, alarms, registry, accidents, violations)',
+    what: 'the multi-select on the filtered fleet screens (odometer, maintenance, alarms, registry, accidents, violations) and — with `options`, over rows already in hand — both roster boards',
   },
   {
     file: 'modules/fleet/components/RecordOdometerDialog.tsx',
@@ -77,8 +77,14 @@ const CODE_SELECTORS = [
  * answer. They must go through `matchesVehicleCode` rather than spell a comparison of their own.
  */
 const CLIENT_SIDE_FILTERS = [
-  { file: 'modules/fleet/lib/roster-view.ts', what: 'the daily board’s `?q=` box' },
-  { file: 'modules/fleet/pages/FixedRosterPage.tsx', what: 'the fixed roster’s `?q=` box' },
+  {
+    file: 'modules/fleet/lib/roster-view.ts',
+    what: 'the daily board’s `?q=` codes — written by the same picker the accidents board uses',
+  },
+  {
+    file: 'modules/fleet/pages/FixedRosterPage.tsx',
+    what: 'the fixed roster’s `?q=` codes — the same picker again',
+  },
 ] as const;
 
 /**

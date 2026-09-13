@@ -47,7 +47,7 @@ import { FilterField } from '../../../shared/ui/FilterField';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
-import { EditIcon, EyeIcon } from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, UploadIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
@@ -456,17 +456,26 @@ export const DriversListPage = (): JSX.Element => {
           //
           // So the cell says what it is and opens the very dialog that fixes it — where the scan
           // can be chosen in the same visit and is uploaded the moment the profile exists.
+          // AND IT LOOKS LIKE THE VEHICLES' COLUMN, because it is the same column — «زى شاشه
+          // السيارات بالظبط». It was a two-line block of text, the only prose in a strip of icon
+          // buttons, and it set the width of the column for every other row. An upload icon is
+          // what a car with no scan shows; a driver with no PROFILE shows the same icon, and the
+          // difference — that pressing it opens the enrolment dialog rather than a file picker —
+          // lives in the accessible name and the tooltip, which is where a difference in what a
+          // control DOES belongs when the thing it is aiming at is identical.
           can('fleetDriver.manage') ? (
             <button
               type="button"
               data-driver-enrol={d.employeeId}
-              className="rounded-md px-2 py-1 text-xs font-medium text-brand-600 underline-offset-2 hover:bg-brand-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300 dark:hover:bg-brand-950"
+              aria-label={t('fleet.drivers.licenseImage.addViaProfile')}
+              title={t('fleet.drivers.licenseImage.addViaProfile')}
+              className={actionButton}
               onClick={() => {
                 setEditing(d);
                 setFormOpen(true);
               }}
             >
-              {t('fleet.drivers.licenseImage.addViaProfile')}
+              <UploadIcon className="h-4 w-4" />
             </button>
           ) : (
             <NotRecorded />

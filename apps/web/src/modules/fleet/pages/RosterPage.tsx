@@ -36,14 +36,15 @@ import { errorMessage } from '../../../shared/lib/errors';
 import {
   ChevronEndIcon,
   ChevronStartIcon,
-  CloseIcon,
   EditIcon,
   ResetIcon,
+  TrashIcon,
 } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { useFleetCatalog, usePlanRoster, useRosterDay } from '../api/fleet-queries';
 import { EmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { DriverChip } from '../components/DriverChip';
@@ -245,7 +246,10 @@ const RosterSlotCell = ({
                 onClick={() => onClear(row, slot)}
                 className="shrink-0 rounded p-0.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-700 dark:hover:text-slate-100"
               >
-                <CloseIcon className="h-3.5 w-3.5" />
+                {/* A BIN, not a cross — the Fixed Roster has said «احذف» with this icon since it
+                    was built, and the two boards are read side by side. A cross is the gesture for
+                    dismissing a thing on screen; this takes somebody OFF the day. */}
+                <TrashIcon className="h-3.5 w-3.5" />
               </button>
             )}
           </>
@@ -382,6 +386,11 @@ export const RosterPage = (): JSX.Element => {
   );
 
   const filtered = search !== '' || mission !== '' || view !== null;
+  /** Every car the board reports on, as the picker's options — no request for what is on screen. */
+  const codeOptions = useMemo(
+    () => shown.map((row) => ({ value: row.code, label: row.code })),
+    [shown],
+  );
   /**
    * «إعادة ضبط» — every filter off in ONE update, and the day left alone.
    *
@@ -714,7 +723,10 @@ export const RosterPage = (): JSX.Element => {
                     title={t('fleet.roster.clearAssignment')}
                     onClick={() => setClearing(row)}
                   >
-                    <CloseIcon className="h-4 w-4" />
+                    {/* CLEARS THE WHOLE ROW — both drivers, the mission and the note — which is a
+                        deletion, not a dismissal, and now says so. The per-driver bins above take
+                        one person off; this one empties the car. */}
+                    <TrashIcon className="h-4 w-4" />
                   </button>
                 )}
               </span>
@@ -794,12 +806,20 @@ export const RosterPage = (): JSX.Element => {
           code search and the mission filter sit beside the day's tally, and the whole thing wraps
           rather than scrolling — which is what keeps it honest at 390px. */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        <SearchInput
-          value={search}
-          onChange={(value) => patch({ q: value || null })}
-          placeholder={t('fleet.roster.searchPlaceholder')}
-          className="w-56"
-        />
+          {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES — «كود العربيه ... يكونوا زى شاشه
+              الحوادث». It was a free-text box, which asked the reader to know a code before they
+              could narrow by one and offered no way to see what the board actually holds. This
+              offers the codes on the board and takes several at once; `matchesVehicleCode` already
+              reads a list, so what NARROWS the rows is unchanged — only the way the list is
+              written. Options come from the rows in hand rather than the registry: this board
+              already holds every car it reports on, so asking the server again would be a request
+              for something on screen. */}
+          <VehicleCodeFilter
+            className="w-56 shrink-0"
+            value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
+            options={codeOptions}
+            onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
+          />
         <div className="w-44">
           <CatalogSelect
             kind="missionType"

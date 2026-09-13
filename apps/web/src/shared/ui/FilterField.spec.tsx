@@ -14,6 +14,9 @@
 //      whole reason a bar can give every filter an equal width regardless of how long each
 //      filter's name happens to be. Padding added to a truncating label cannot push the column
 //      wider — but a label that stopped truncating would.
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { FilterField } from './FilterField';
@@ -95,5 +98,38 @@ describe('a filter name lines up with the value it names', () => {
     const strip = (cls: string): string =>
       cls.replace(/text-(?:slate|brand)-\d+/g, '').replace(/dark:text-(?:slate|brand)-\d+/g, '');
     expect(strip(labelClasses(on))).toBe(strip(labelClasses(off)));
+  });
+});
+
+// ── the reset and whatever follows it line up with the CONTROLS ─────────────
+//
+// Every `FilterField` writes its question above its control, so a filter child is a label plus a
+// box while the trailing group is a single 36px button. `items-center` on the row centred that
+// group against the taller child, leaving the reset and the count floating level with the LABELS
+// instead of the boxes — «الرقم وزرار ريست يكونوا فى نفس مستوى الفلاتر على صف واحد».
+describe('the filter bar’s trailing group', () => {
+  const BAR = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), 'FilterBar.tsx'),
+    'utf8',
+  );
+  const CODE = BAR.split('\n')
+    .filter((line) => {
+      const t = line.trimStart();
+      return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+    })
+    .join('\n');
+
+  it('aligns itself to the end of the row, not to its middle', () => {
+    const at = CODE.indexOf('ms-auto');
+    expect(at, 'the trailing group is still pushed to the end').toBeGreaterThan(-1);
+    expect(CODE.slice(at, CODE.indexOf('>', at)), 'and sits on the controls’ line').toContain(
+      'self-end',
+    );
+  });
+
+  it('leaves the row itself centring its filters', () => {
+    // `items-end` on the ROW would drag every child down, including bars whose children carry no
+    // label. Only the trailing group moves.
+    expect(CODE).toContain('items-center gap-2 rounded-lg');
   });
 });

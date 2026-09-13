@@ -1810,3 +1810,42 @@ describe('the licence preview names the driver’s vehicle for today', () => {
     expect(t('fleet.drivers.licenseImage.previewTitle')).toBe('صورة رخصة القيادة');
   });
 });
+
+// ── the licence column looks like the vehicles' licence column ──────────────
+//
+// «صوره الرخصه فى شاشه السواقيين ... تكون زى شاشه السيارات بالظبط». The enrolled rows already
+// matched — view, print, delete, and an upload icon when there is no scan. The UNENROLLED row did
+// not: it was a two-line block of prose, the only text in a strip of icon buttons, and it set the
+// width of the column for every other row.
+describe('the licence column is icons, on every row', () => {
+  const PAGE = readFileSync(join(HERE, 'pages/DriversListPage.tsx'), 'utf8');
+  const CODE = PAGE.split('\n')
+    .filter((line) => {
+      const t = line.trimStart();
+      return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*');
+    })
+    .join('\n');
+
+  it('the way in for an unenrolled driver is an icon button', () => {
+    const at = CODE.indexOf('data-driver-enrol=');
+    expect(at, 'the way in is still offered').toBeGreaterThan(-1);
+    const control = CODE.slice(at, at + 600);
+    expect(control, 'wearing the upload icon a car with no scan wears').toContain('<UploadIcon');
+    expect(control, 'and the column’s own button styling').toContain('className={actionButton}');
+  });
+
+  it('what it does is still said, in the accessible name rather than in prose', () => {
+    // The difference from the vehicles' upload — this opens the enrolment dialog — has to survive
+    // losing its visible words, or the icon is a riddle.
+    const at = CODE.indexOf('data-driver-enrol=');
+    const control = CODE.slice(at, at + 600);
+    expect(control).toContain("aria-label={t('fleet.drivers.licenseImage.addViaProfile')}");
+    expect(control).toContain("title={t('fleet.drivers.licenseImage.addViaProfile')}");
+  });
+
+  it('it still opens the dialog that can actually fix it', () => {
+    const at = CODE.indexOf('data-driver-enrol=');
+    const control = CODE.slice(at, at + 600);
+    expect(control).toContain('setFormOpen(true)');
+  });
+});

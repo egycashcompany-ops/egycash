@@ -51,6 +51,7 @@ import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import {
   applyEdit,
+  clearCrew,
   assignDriver,
   availableDrivers,
   clearSlot,
@@ -552,8 +553,11 @@ export const RosterPage = (): JSX.Element => {
 
   const confirmClear = (): void => {
     if (clearing === null) return;
+    // BOTH SEATS IN ONE WRITE, then the rest of the row. `applyEdit` clears slot by slot, and
+    // clearing seat 1 promotes seat 2 into it — right for the per-driver bin, wrong here: the
+    // promotion happened BETWEEN the two clears and the car kept a driver. «بتمسح واحد واحد بس».
     setDraft(() =>
-      applyEdit(draft, clearing.vehicleId, {
+      applyEdit(clearCrew(draft, clearing.vehicleId), clearing.vehicleId, {
         missionTypeId: null,
         driver1EmployeeId: null,
         driver2EmployeeId: null,

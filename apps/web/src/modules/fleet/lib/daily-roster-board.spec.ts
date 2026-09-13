@@ -10,6 +10,7 @@ import {
   assignDriver,
   availableDrivers,
   changedRows,
+  clearCrew,
   clearSlot,
   DUTY_SLOTS,
   findSeat,
@@ -630,5 +631,43 @@ describe('a drag leaves untouched vehicles alone', () => {
     const baseline = [row('v1', '150', 'e1', 'e2'), row('v2', '151')];
     const after = assignDriver(baseline, 'v2', 'driver1EmployeeId', 'e1');
     expect(crews(after)).toEqual(['150:e2/-', '151:e1/-']);
+  });
+});
+
+// ── the bin beside the pencil empties the CAR, not one seat ─────────────────
+//
+// The same defect the fixed board had, in the same place and for the same reason: clearing seat 1
+// PROMOTES seat 2 into it, so a control that cleared the slots one after the other left a driver
+// on the car. «بتمسح واحد واحد بس».
+describe('clearCrew takes every driver off one day', () => {
+  const crewed = (
+    vehicleId: string,
+    driver1EmployeeId: string | null,
+    driver2EmployeeId: string | null,
+  ): FleetRosterRowDto =>
+    ({ vehicleId, code: vehicleId, driver1EmployeeId, driver2EmployeeId }) as FleetRosterRowDto;
+
+  it('empties BOTH seats — the defect, in one test', () => {
+    const [only] = clearCrew([crewed('v1', 'a', 'b')], 'v1');
+    expect(only?.driver1EmployeeId).toBeNull();
+    expect(only?.driver2EmployeeId).toBeNull();
+  });
+
+  it('and clearing the slots one after the other does NOT', () => {
+    const folded = DUTY_SLOTS.reduce(
+      (rows, slot) => clearSlot(rows, 'v1', slot),
+      [crewed('v1', 'a', 'b')] as readonly FleetRosterRowDto[],
+    );
+    expect(folded[0]?.driver1EmployeeId, 'the promoted driver survives').toBe('b');
+  });
+
+  it('touches no other vehicle', () => {
+    const rows = clearCrew([crewed('v1', 'a', 'b'), crewed('v2', 'c', 'd')], 'v1');
+    expect(rows[1]?.driver1EmployeeId).toBe('c');
+  });
+
+  it('leaves the PER-DRIVER bin promoting, which is what that gesture wants', () => {
+    const [only] = clearSlot([crewed('v1', 'a', 'b')], 'v1', 'driver1EmployeeId');
+    expect(only?.driver1EmployeeId).toBe('b');
   });
 });

@@ -56,11 +56,11 @@ import { matchesVehicleCode } from '../lib/vehicle-code-match';
 import { FIXED_ROSTER_DRAFT_KEY, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import { useDraftBoard } from '../lib/useDraftBoard';
 import {
-  CREW_SLOTS,
   applyEdit,
   assignDriver,
   availableDrivers,
   changedRows,
+  clearCrew,
   clearSlot,
   type CrewSlot,
 } from '../lib/fixed-roster-board';
@@ -762,11 +762,10 @@ export const FixedRosterPage = (): JSX.Element => {
                 className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                 aria-label={t('fleet.fixedRoster.clearCrew')}
                 title={t('fleet.fixedRoster.clearCrew')}
-                onClick={() =>
-                  setDraft((c) =>
-                    CREW_SLOTS.reduce((rows, slot) => clearSlot(rows, row.vehicleId, slot), c),
-                  )
-                }
+                // BOTH SEATS, IN ONE WRITE. Folding `clearSlot` over the slots promoted seat 2
+                // into seat 1 between the two clears, so the row kept a driver — the bin beside
+                // the pencil is «امسح الطاقم», not «امسح واحد».
+                onClick={() => setDraft((c) => clearCrew(c, row.vehicleId))}
               >
                 <TrashIcon className="h-4 w-4" />
               </button>

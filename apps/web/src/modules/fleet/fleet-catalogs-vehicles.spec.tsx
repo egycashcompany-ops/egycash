@@ -721,3 +721,78 @@ describe('every literal fleet key the module uses resolves in both locales', () 
     });
   }
 });
+
+// ── a form dialog is not dismissed by a stray click ─────────────────────────
+//
+// «لو دوست في اى حته الموديل ميتقفلش غير لما ادوس على الاكس». `Dialog` closed on any click
+// outside its panel, so a half-filled reading or check-in vanished with nothing to undo it.
+// Reproduced in Chromium before the fix: the panel was gone after one click on the backdrop.
+describe('the Fleet form dialogs survive a click outside them', () => {
+  const HERE_DIR = dirname(fileURLToPath(import.meta.url));
+  const read = (rel: string): string => readFileSync(join(HERE_DIR, rel), 'utf8');
+  const DIALOG = readFileSync(join(HERE_DIR, '../../shared/ui/Dialog.tsx'), 'utf8');
+
+  it('the shared dialog lets each caller decide', () => {
+    expect(DIALOG, 'the option exists').toContain('dismissOnOutsideClick');
+    expect(DIALOG, 'and it gates the listener').toContain(
+      'useOnClickOutside(panelRef, onClose, open && dismissOnOutsideClick)',
+    );
+  });
+
+  it('and still closes on Escape, which is a decision rather than a slip', () => {
+    expect(DIALOG).toContain("if (e.key === 'Escape') onClose()");
+  });
+
+  it('the reading dialog turns it off', () => {
+    expect(read('components/RecordOdometerDialog.tsx')).toContain('dismissOnOutsideClick={false}');
+  });
+
+  it('so do all three workshop dialogs — in, out, and the edit', () => {
+    const source = read('components/MaintenanceDialogs.tsx');
+    expect(source.split('dismissOnOutsideClick={false}')).toHaveLength(4);
+  });
+
+  it('the default is untouched, so no other module′s dialogs change', () => {
+    // The same trap sits under every other module's forms. That is their call, not a change to
+    // make on the way past.
+    expect(DIALOG).toContain('dismissOnOutsideClick = true');
+  });
+});
+
+// ── «مين السائق؟» is asked of the drivers registry, never of the payroll ────
+//
+// Five driver slots searched every employee in the company and showed nothing until a letter was
+// typed — so the control offered colleagues who are not drivers, and clearing a name left an empty
+// box with no way to discover who could go in it. The violations screen met both halves of this
+// and answered them with `RegistryDriverPicker`; this is the same swap at the places that still
+// had the payroll box.
+describe('the odometer and workshop driver slots ask the registry', () => {
+  const HERE_DIR = dirname(fileURLToPath(import.meta.url));
+  const read = (rel: string): string => readFileSync(join(HERE_DIR, rel), 'utf8');
+
+  it('the field reaches for the registry picker', () => {
+    const field = read('components/OptionalDriverField.tsx');
+    expect(field).toContain('RegistryDriverPicker');
+    expect(field, 'not the payroll search box').not.toContain('EmployeeSearchPicker');
+  });
+
+  it('the payroll-backed field is gone from the module', () => {
+    for (const rel of ['components/RecordOdometerDialog.tsx', 'components/MaintenanceDialogs.tsx']) {
+      expect(read(rel), `${rel} still imports the payroll field`).not.toContain(
+        'OptionalEmployeeField',
+      );
+    }
+  });
+
+  it('both odometer seats and all three workshop slots use it', () => {
+    expect(read('components/RecordOdometerDialog.tsx').split('<OptionalDriverField')).toHaveLength(
+      3,
+    );
+    expect(read('components/MaintenanceDialogs.tsx').split('<OptionalDriverField')).toHaveLength(4);
+  });
+
+  it('the seat stays OPTIONAL — a reading with nobody named is a real state', () => {
+    const field = read('components/OptionalDriverField.tsx');
+    expect(field, 'clearing it is offered').toContain("onChange('')");
+  });
+});

@@ -209,8 +209,16 @@ export const VehicleLicenseImageCell = ({
   const upload = useUploadVehicleLicenseImage();
   const [inputKey, setInputKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
-  // Editing a disposed vehicle is refused by the API (§4.1), so the action is not offered either.
-  const mayEdit = can('fleetVehicle.edit') && vehicle.status !== 'disposed';
+  // UPLOAD AND DELETE ARE NOT THE SAME PERMISSION QUESTION, and folding them into one flag hid a
+  // control the server was happy to serve. `setLicenseImage` refuses a disposed vehicle
+  // (`vehicle.service.ts`, §4.1 — its record does not change while it is out of the fleet), but
+  // `deleteLicenseImage` has no such check and answers 200: removing a scan is data hygiene, not
+  // an edit to the record. The old single `mayEdit` gated both on the status, so a «مكهنة» car's
+  // scan could not be deleted from the screen even though `DELETE …/license-image` would have
+  // done it — and the comment that used to sit here asserted the opposite, which is how it
+  // survived. Bringing the car back to active is now also an option; this is the other half.
+  const mayUpload = can('fleetVehicle.edit') && vehicle.status !== 'disposed';
+  const mayDelete = can('fleetVehicle.edit');
 
   const pick = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return;
@@ -221,7 +229,8 @@ export const VehicleLicenseImageCell = ({
   };
 
   if (vehicle.licenseImage === null) {
-    if (!mayEdit) return <span className="text-slate-400">—</span>;
+    // Nothing to delete and nothing allowed to be added — a disposed car with no scan shows a dash.
+    if (!mayUpload) return <span className="text-slate-400">—</span>;
     return (
       <label className={`${actionButton} inline-flex cursor-pointer`}>
         <UploadIcon className="h-4 w-4" />
@@ -251,9 +260,10 @@ export const VehicleLicenseImageCell = ({
       >
         <EyeIcon className="h-4 w-4" />
       </button>
-      {mayEdit && (
+      {mayDelete && (
         <button
           type="button"
+          data-vehicle-license-delete={vehicle.id}
           className={actionButton}
           aria-label={t('fleet.vehicles.licenseImage.delete')}
           title={t('fleet.vehicles.licenseImage.delete')}

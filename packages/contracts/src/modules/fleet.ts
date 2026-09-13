@@ -263,7 +263,7 @@ export interface FleetDefaultBranchDto {
   configuredName: string;
 }
 
-/** Lifecycle §4.1: reason is REQUIRED when leaving `active`; `disposed` is terminal. */
+/** Lifecycle §4.1: reason is REQUIRED when leaving `active`; a `disposed` car returns to `active`. */
 export const ChangeFleetVehicleStatusSchema = z
   .object({
     status: FleetVehicleStatusSchema,

@@ -442,7 +442,10 @@ export const VehiclesListPage = (): JSX.Element => {
               <EditIcon className="h-4 w-4" />
             </button>
           )}
-          {can('fleetVehicle.changeStatus') && v.status !== 'disposed' && (
+          {/* OFFERED ON A DISPOSED CAR TOO — it is the only way back, and hiding it was what made
+              a mis-keyed disposal permanent. Editing such a car is still hidden above: the record
+              stays frozen while it is out of the fleet, and the way to edit one is to return it. */}
+          {can('fleetVehicle.changeStatus') && (
             <button
               type="button"
               className={actionButton}

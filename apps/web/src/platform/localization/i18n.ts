@@ -3521,7 +3521,7 @@ const en: Record<string, string> = {
   'fleet.vehicles.deleteBody':
     'The vehicle is removed from every list. Its history stays in the audit log.',
   'fleet.vehicles.disposedWarning':
-    'Disposal is final: a disposed vehicle cannot be edited or returned to service.',
+    'Disposal takes the vehicle out of service and deletes nothing — no data, no images. A disposed vehicle cannot be edited, but it can be returned to service at any time.',
   'fleet.vehicles.fields.code': 'Vehicle code',
   'fleet.vehicles.fields.type': 'Vehicle type',
   'fleet.vehicles.fields.plate': 'Plate number',
@@ -9984,7 +9984,8 @@ const ar: Record<string, string> = {
   'fleet.vehicles.statusChanged': 'تم تغيير حالة السيارة.',
   'fleet.vehicles.deleteTitle': 'حذف السيارة؟',
   'fleet.vehicles.deleteBody': 'تُزال السيارة من كل القوائم، ويبقى تاريخها في سجل التدقيق.',
-  'fleet.vehicles.disposedWarning': 'التكهين نهائي: السيارة المكهنة لا تُعدل ولا تعود للخدمة.',
+  'fleet.vehicles.disposedWarning':
+    'التكهين بيوقف السيارة عن الخدمة ومش بيمسح أي بيانات أو صور. السيارة المكهنة مبتتعدلش، وتقدر ترجّعها للخدمة في أي وقت.',
   'fleet.vehicles.fields.code': 'كود السيارة',
   'fleet.vehicles.fields.type': 'نوع السيارة',
   'fleet.vehicles.fields.plate': 'رقم اللوحة',

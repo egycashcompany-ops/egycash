@@ -314,7 +314,7 @@ class FleetVehicleService {
     const before = await fleetVehicleRepository.getById(id, scope);
     if (!canTransitionVehicle(before.status, input.status)) {
       throw new ConflictError(
-        `a ${before.status} vehicle cannot become ${input.status} (§4.1: disposed is terminal, no-ops are refused)`,
+        `a ${before.status} vehicle cannot become ${input.status} (§4.1: a disposed car returns to active, and no-ops are refused)`,
       );
     }
     const updated = await fleetVehicleRepository.updateById(

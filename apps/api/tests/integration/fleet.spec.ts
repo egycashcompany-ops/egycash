@@ -558,7 +558,7 @@ describe('vehicle registry (FR-1, §4.1)', () => {
     expect(stale.status).toBe(409);
   });
 
-  it('walks the lifecycle: reason required, disposed terminal, reason cleared on return', async () => {
+  it('walks the lifecycle: reason required, a disposed car RETURNS, reason cleared on return', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
 
     const out = await request(app)
@@ -588,17 +588,52 @@ describe('vehicle registry (FR-1, §4.1)', () => {
       .send({ status: 'disposed', reason: 'تكهين', version: data<FleetVehicleDto>(back).version });
     expect(disposed.status).toBe(200);
 
-    // Terminal: no way out, and no edits.
-    const revive = await request(app)
-      .post(`/api/v1/fleet/vehicles/${v.id}/status`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ status: 'active', version: data<FleetVehicleDto>(disposed).version });
-    expect(revive.status).toBe(409);
+    // WHILE DISPOSED, the record is frozen — disposal deletes nothing, but a car out of the fleet
+    // does not drift while it is out.
     const edit = await request(app)
       .patch(`/api/v1/fleet/vehicles/${v.id}`)
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ licenseClassId: null, version: data<FleetVehicleDto>(disposed).version });
-    expect(edit.status).toBe(409);
+    expect(edit.status, 'a disposed car is not edited in place').toBe(409);
+
+    // AND IT COMES BACK. Disposal used to be terminal; the owner asked for it to be reversible
+    // — «مكهنة لازم ترجع نشطة تاني» — so the way to correct a car keyed as disposed by mistake is
+    // to return it, not to edit the database.
+    const revive = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'active', version: data<FleetVehicleDto>(disposed).version });
+    expect(revive.status, 'a disposed car returns to service').toBe(200);
+    const revived = data<FleetVehicleDto>(revive);
+    expect(revived.status).toBe('active');
+    expect(revived.statusReason, 'and «تكهين» is not a reason to still be carrying').toBeNull();
+
+    // Back in service, it is editable again — which is the whole point of the return.
+    const afterEdit = await request(app)
+      .patch(`/api/v1/fleet/vehicles/${v.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ licenseClassId: null, version: revived.version });
+    expect(afterEdit.status, 'a returned car edits like any other').toBe(200);
+
+    // Into SERVICE only: a disposed car cannot be "returned" straight into another absence.
+    const disposedAgain = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'disposed',
+        reason: 'تكهين',
+        version: data<FleetVehicleDto>(afterEdit).version,
+      });
+    expect(disposedAgain.status).toBe(200);
+    const sideways = await request(app)
+      .post(`/api/v1/fleet/vehicles/${v.id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        status: 'outOfService',
+        reason: 'x',
+        version: data<FleetVehicleDto>(disposedAgain).version,
+      });
+    expect(sideways.status, 'disposed → outOfService is not a return').toBe(409);
   });
 
   it('a missing reason on leaving active is a validation error', async () => {
@@ -740,9 +775,7 @@ describe('the drivers registry’s three catalogs (الوظيفة / التخصص
     expect(await listKind('driverSpecialization')).toEqual(
       expect.arrayContaining(['نقل اموال', 'ملاكى', 'ATM', 'سزوكى']),
     );
-    expect(await listKind('driverLicenseType')).toEqual(
-      expect.arrayContaining(['اولى', 'تانيه']),
-    );
+    expect(await listKind('driverLicenseType')).toEqual(expect.arrayContaining(['اولى', 'تانيه']));
   });
 
   it('lets the admin ADD a value, and the new one is immediately filterable', async () => {
@@ -1641,17 +1674,18 @@ describe('the alarm projection has two permission doors and one answer', () => {
 
   beforeAll(async () => {
     const roleFor = async (key: string, name: string) =>
-      rbacService.createRole(
-        { name: { en: name, ar: name }, permissionKeys: [key] },
-        adminUserId,
-      );
+      rbacService.createRole({ name: { en: name, ar: name }, permissionKeys: [key] }, adminUserId);
     const grant = async (email: string, key: string, name: string): Promise<string> => {
       const role = await roleFor(key, name);
       const userId = await mkUser(email);
       await rbacService.ensureAssignment(userId, String(role._id), 'organization');
       return login(email);
     };
-    maintenanceOnly = await grant('alarm-maint@ecms.local', 'fleetMaintenance.view', 'Workshop reader');
+    maintenanceOnly = await grant(
+      'alarm-maint@ecms.local',
+      'fleetMaintenance.view',
+      'Workshop reader',
+    );
     odometerOnly = await grant('alarm-odo@ecms.local', 'fleetOdometer.view', 'Odometer reader');
     await mkUser('alarm-none@ecms.local');
     neither = await login('alarm-none@ecms.local');
@@ -1688,7 +1722,9 @@ describe('the alarm projection has two permission doors and one answer', () => {
     const viaMaintenance = data<Record<string, unknown>[]>(
       await getAlarms(MAINTENANCE_URL, maintenanceOnly),
     );
-    const viaOdometer = data<Record<string, unknown>[]>(await getAlarms(ODOMETER_URL, odometerOnly));
+    const viaOdometer = data<Record<string, unknown>[]>(
+      await getAlarms(ODOMETER_URL, odometerOnly),
+    );
 
     const byVehicle = (rows: Record<string, unknown>[]) =>
       Object.fromEntries(rows.map((row) => [String(row.vehicleId), row]));
@@ -2483,12 +2519,19 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     });
     const open = data<FleetMaintenanceVisitDto>(opened);
     expect(
-      (await checkOut(open.id, { outDate: '2026-08-31', exitOdometer: 59_900, version: open.version }))
-        .status,
+      (
+        await checkOut(open.id, {
+          outDate: '2026-08-31',
+          exitOdometer: 59_900,
+          version: open.version,
+        })
+      ).status,
     ).toBe(200);
     expect((await record(60_400, '2026-09-05')).status).toBe(201);
 
-    const row = data<{ code: string; noAlarmReason: string | null; sinceServiceKm: number | null }[]>(
+    const row = data<
+      { code: string; noAlarmReason: string | null; sinceServiceKm: number | null }[]
+    >(
       await request(app)
         .get('/api/v1/fleet/odometer/alarms')
         .set('Authorization', `Bearer ${adminToken}`),
@@ -2534,7 +2577,15 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     // A reading AFTER the service — every earlier guard passes, so the arithmetic is reached.
     expect((await record(90_100, '2026-09-05')).status).toBe(201);
 
-    const row = data<{ code: string; noAlarmReason: string | null; level: string; sinceServiceKm: number | null; remainingKm: number | null }[]>(
+    const row = data<
+      {
+        code: string;
+        noAlarmReason: string | null;
+        level: string;
+        sinceServiceKm: number | null;
+        remainingKm: number | null;
+      }[]
+    >(
       await request(app)
         .get('/api/v1/fleet/odometer/alarms')
         .set('Authorization', `Bearer ${adminToken}`),
@@ -2960,7 +3011,9 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(JSON.stringify(refused.body)).toContain('inDate');
 
     // A refused edit writes nothing.
-    const after = data<FleetMaintenanceVisitDto[]>(await listVisits({ vehicleId: visit.vehicleId }));
+    const after = data<FleetMaintenanceVisitDto[]>(
+      await listVisits({ vehicleId: visit.vehicleId }),
+    );
     expect(after[0]?.inDate).toContain('2026-09-01');
     expect(after[0]?.outDate).toContain('2026-09-03');
   });
@@ -3952,9 +4005,7 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
 
     const derived = dayRow(data<BoardDto>(await getBoard(date)), v.id);
     expect(derived?.planned, 'nothing is stored for this vehicle on this date').toBe(false);
-    expect(derived?.missionTypeId, 'but the standing operation is projected onto it').toBe(
-      mission,
-    );
+    expect(derived?.missionTypeId, 'but the standing operation is projected onto it').toBe(mission);
 
     expect((await savePlan(date, [{ vehicleId: v.id, missionTypeId: mission }])).status).toBe(200);
     const stored = dayRow(data<BoardDto>(await getBoard(date)), v.id);
@@ -3972,9 +4023,10 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
 
     // The board projects it; the client sends it back verbatim, which is what «حفظ» now does.
     const projected = dayRow(data<BoardDto>(await getBoard(date)), v.id);
-    expect((await savePlan(date, [
-      { vehicleId: v.id, missionTypeId: projected?.missionTypeId ?? null },
-    ])).status).toBe(200);
+    expect(
+      (await savePlan(date, [{ vehicleId: v.id, missionTypeId: projected?.missionTypeId ?? null }]))
+        .status,
+    ).toBe(200);
 
     const duty = await dutyDoc(v.id, date);
     expect(duty, 'a duty row now exists for the pair').not.toBeNull();
@@ -4037,9 +4089,8 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     const [d1, d2] = [await mkDriver(), await mkDriver()];
     const date = shift(15);
     expect(
-      (await savePlan(date, [
-        { vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 },
-      ])).status,
+      (await savePlan(date, [{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }]))
+        .status,
     ).toBe(200);
     expect(dayRow(data<BoardDto>(await getBoard(date)), v.id)).toMatchObject({
       driver1EmployeeId: d1,
@@ -4159,9 +4210,9 @@ describe('daily duty roster (§4.5, FR-5/6/7 — FL-5)', () => {
     await putInWorkshop(v.id, shift(23));
 
     expect(dayRow(data<BoardDto>(await getBoard(before)), v.id)?.inMaintenance).toBe(false);
-    expect(
-      (await savePlan(before, [{ vehicleId: v.id, missionTypeId: mission }])).status,
-    ).toBe(200);
+    expect((await savePlan(before, [{ vehicleId: v.id, missionTypeId: mission }])).status).toBe(
+      200,
+    );
     expect(await dutyDoc(v.id, before)).not.toBeNull();
   });
 
@@ -5373,9 +5424,7 @@ describe('fixed crew (الطقم الثابت) — the standing crew, with no da
     await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }]);
     expect((await getCrews()).status).toBe(200);
     expect(
-      (
-        await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }])
-      ).status,
+      (await saveCrews([{ vehicleId: v.id, driver1EmployeeId: d1, driver2EmployeeId: d2 }])).status,
     ).toBe(200);
   });
 });
@@ -5467,7 +5516,13 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         const res = await request(app)
           .post('/api/v1/fleet/violations/vehicle')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ vehicleId: car.id, year: 2026, violationTypeId: typeId, count: 1, unitValue: 100 });
+          .send({
+            vehicleId: car.id,
+            year: 2026,
+            violationTypeId: typeId,
+            count: 1,
+            unitValue: 100,
+          });
         expect(res.status).toBe(201);
       }
     });
@@ -5843,11 +5898,17 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         await codesOn({ vehicleCodes: 'FLT210,FLT350', culprit: 'اشرف', status: 'open' }),
       ).toEqual(expect.arrayContaining(['FLT210']));
       // The date bound still applies on top of the codes.
-      expect(await codesOn({ vehicleCodes: 'FLT210,FLT350', to: '2025-12-31' })).toEqual(['FLT350']);
+      expect(await codesOn({ vehicleCodes: 'FLT210,FLT350', to: '2025-12-31' })).toEqual([
+        'FLT350',
+      ]);
     });
 
     it('pages and sorts the NARROWED set, not the whole one', async () => {
-      const all = await codesOn({ vehicleCodes: 'FLT210,FLT211,FLT350', sortBy: 'date', sortDir: 'asc' });
+      const all = await codesOn({
+        vehicleCodes: 'FLT210,FLT211,FLT350',
+        sortBy: 'date',
+        sortDir: 'asc',
+      });
       expect(all.length).toBe(3);
       const first = await list({
         vehicleCodes: 'FLT210,FLT211,FLT350',
@@ -5867,7 +5928,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       });
       expect(data<unknown[]>(second).length).toBe(1);
       // Descending is the same three cars, in the opposite order.
-      const desc = await codesOn({ vehicleCodes: 'FLT210,FLT211,FLT350', sortBy: 'date', sortDir: 'desc' });
+      const desc = await codesOn({
+        vehicleCodes: 'FLT210,FLT211,FLT350',
+        sortBy: 'date',
+        sortDir: 'desc',
+      });
       expect(desc).toEqual([...all].reverse());
     });
 
@@ -6625,8 +6690,10 @@ describe('who is on the drivers registry — the org chart, not a list Fleet kee
     // The whole point: a driver Fleet knows nothing about is still a driver, and null says
     // "nothing recorded yet" rather than inventing a licence nobody entered.
     const bare = rows.find((row) => row.employeeId === notYetRecorded);
-    expect(bare, 'an employed driver is on the registry before anyone records a licence')
-      .toBeDefined();
+    expect(
+      bare,
+      'an employed driver is on the registry before anyone records a licence',
+    ).toBeDefined();
     expect(bare?.profile).toBeNull();
   });
 
@@ -6913,7 +6980,9 @@ describe('the registry filters narrow SERVER-side', () => {
       `  ${target.code} ,  ${other.code}  `,
       `${target.code},${other.code},${target.code}`,
     ]) {
-      expect((await list({ vehicleCodes: written })).map((v) => v.id).sort(), written).toEqual(pair);
+      expect((await list({ vehicleCodes: written })).map((v) => v.id).sort(), written).toEqual(
+        pair,
+      );
     }
   });
 
@@ -6931,7 +7000,9 @@ describe('the registry filters narrow SERVER-side', () => {
 
   it('composes with the other filters, and does not disturb them', async () => {
     expect(
-      (await list({ vehicleCodes: target.code, operationId, branchId: branchBId })).map((v) => v.id),
+      (await list({ vehicleCodes: target.code, operationId, branchId: branchBId })).map(
+        (v) => v.id,
+      ),
     ).toEqual([target.id]);
     // A real code with someone else's operation matches nothing — still an AND across axes.
     const stranger = await mkCatalogItem('operation', 'تشغيل آخر', 'Other operation');
@@ -6942,10 +7013,14 @@ describe('the registry filters narrow SERVER-side', () => {
     const a = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
     const b = data<FleetVehicleDto>(await createVehicle(adminToken, { branchId: branchBId }));
     const codes = `${a.code},${b.code}`;
-    const asc = (await list({ vehicleCodes: codes, sortBy: 'code', sortDir: 'asc' })).map((v) => v.code);
+    const asc = (await list({ vehicleCodes: codes, sortBy: 'code', sortDir: 'asc' })).map(
+      (v) => v.code,
+    );
     expect(asc.length).toBe(2);
     expect([...asc].sort()).toEqual(asc);
-    const desc = (await list({ vehicleCodes: codes, sortBy: 'code', sortDir: 'desc' })).map((v) => v.code);
+    const desc = (await list({ vehicleCodes: codes, sortBy: 'code', sortDir: 'desc' })).map(
+      (v) => v.code,
+    );
     expect(desc).toEqual([...asc].reverse());
 
     const page1 = await request(app)
@@ -7049,8 +7124,18 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .send({
         vehicleId: v.id,
         rows: [
-          { date: '2026-02-01', driverEmployeeId: driver, violationTypeId: await typeIdByName('سرعة'), amount: 400 },
-          { date: '2026-02-02', driverEmployeeId: driver, violationTypeId: await typeIdByName('حزام'), amount: 300 },
+          {
+            date: '2026-02-01',
+            driverEmployeeId: driver,
+            violationTypeId: await typeIdByName('سرعة'),
+            amount: 400,
+          },
+          {
+            date: '2026-02-02',
+            driverEmployeeId: driver,
+            violationTypeId: await typeIdByName('حزام'),
+            amount: 300,
+          },
         ],
       });
     expect(res.status).toBe(201);
@@ -7072,9 +7157,19 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .send({
         vehicleId: v.id,
         rows: [
-          { date: '2026-02-01', driverEmployeeId: driver, violationTypeId: await typeIdByName('سرعة'), amount: 400 },
+          {
+            date: '2026-02-01',
+            driverEmployeeId: driver,
+            violationTypeId: await typeIdByName('سرعة'),
+            amount: 400,
+          },
           // A company type in a driver batch — the whole stack must be refused, not trimmed.
-          { date: '2026-02-02', driverEmployeeId: driver, violationTypeId: await typeIdByName('رسوم خدمة'), amount: 300 },
+          {
+            date: '2026-02-02',
+            driverEmployeeId: driver,
+            violationTypeId: await typeIdByName('رسوم خدمة'),
+            amount: 300,
+          },
         ],
       });
     expect(res.status).toBe(400);
@@ -7083,10 +7178,7 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .get('/api/v1/fleet/violations')
       .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(
-      data<FleetViolationDto[]>(listed),
-      'not even the good row got through',
-    ).toHaveLength(0);
+    expect(data<FleetViolationDto[]>(listed), 'not even the good row got through').toHaveLength(0);
   });
 
   it('persists a collected tick, and takes it back', async () => {
@@ -7266,16 +7358,18 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .get('/api/v1/fleet/violations')
       .query({ vehicleId: to.id, year: 2024, pageSize: 50 })
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(data<FleetViolationDto[]>(there).map((r) => r.id), 'filed under the new car').toContain(
-      row.id,
-    );
+    expect(
+      data<FleetViolationDto[]>(there).map((r) => r.id),
+      'filed under the new car',
+    ).toContain(row.id);
     const gone = await request(app)
       .get('/api/v1/fleet/violations')
       .query({ vehicleId: from.id, pageSize: 50 })
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(data<FleetViolationDto[]>(gone).map((r) => r.id), 'and no longer under the old').not.toContain(
-      row.id,
-    );
+    expect(
+      data<FleetViolationDto[]>(gone).map((r) => r.id),
+      'and no longer under the old',
+    ).not.toContain(row.id);
     // The amount is still the row's own arithmetic — moving a fine does not re-price it.
     expect(data<FleetViolationDto[]>(there).find((r) => r.id === row.id)?.amount).toBe(500);
   });
@@ -7339,7 +7433,10 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .set('Authorization', `Bearer ${adminToken}`);
     expect(all.status).toBe(200);
     const years = data<{ year: number; vehicleAmount: number }[]>(all);
-    expect(years.map((r) => r.year), 'newest first, and NOT folded together').toEqual([2026, 2025]);
+    expect(
+      years.map((r) => r.year),
+      'newest first, and NOT folded together',
+    ).toEqual([2026, 2025]);
     expect(years[0]?.vehicleAmount).toBe(300);
     expect(years[1]?.vehicleAmount).toBe(200);
 
@@ -7402,9 +7499,10 @@ describe('the driving seats are ASKED for, not filtered out of a page', () => {
       rows.every((row) => row.requiresDrivingTest),
       'every returned seat carries the flag',
     ).toBe(true);
-    expect(rows.some((row) => row.id === jobTitleAId), 'including the one the drivers here hold').toBe(
-      true,
-    );
+    expect(
+      rows.some((row) => row.id === jobTitleAId),
+      'including the one the drivers here hold',
+    ).toBe(true);
   });
 
   it('finds that seat even when the catalogue is longer than one page', async () => {
@@ -7414,7 +7512,11 @@ describe('the driving seats are ASKED for, not filtered out of a page', () => {
       const pad = await request(app)
         .post('/api/v1/platform/job-titles')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ code: `PAGE-${String(i).padStart(3, '0')}`, name: { ar: `حشو ${i}`, en: `Pad ${i}` }, jobGrade: 'G1' });
+        .send({
+          code: `PAGE-${String(i).padStart(3, '0')}`,
+          name: { ar: `حشو ${i}`, en: `Pad ${i}` },
+          jobGrade: 'G1',
+        });
       expect(pad.status).toBe(201);
     }
     const unfiltered = await request(app)
@@ -7612,64 +7714,63 @@ describe('the violations board, as the screen actually asks it', () => {
     expect(data<{ violationTypeId: string }[]>(one).map((r) => r.violationTypeId)).toEqual([phone]);
   });
 
-  it('settles a WHOLE (vehicle, year) with one tick, and the rollup reports how much is settled',
-    async () => {
-      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-      const vehicleType = await typeIdByName('رسوم خدمة');
-      const driverType = await typeIdByName('تليفون');
-      const employeeId = await mkEmployee();
-      await mkDriverProfile(employeeId);
-      await request(app)
-        .post('/api/v1/fleet/violations/vehicle')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ vehicleId: v.id, year: 2028, violationTypeId: vehicleType, count: 2, unitValue: 50 });
-      await request(app)
-        .post('/api/v1/fleet/violations/driver')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({
-          vehicleId: v.id,
-          date: '2028-03-09',
-          driverEmployeeId: employeeId,
-          violationTypeId: driverType,
-          amount: 90,
-        });
-
-      const before = await request(app)
-        .get('/api/v1/fleet/violations/rollup')
-        .query({ year: 2028, vehicleId: v.id })
-        .set('Authorization', `Bearer ${adminToken}`);
-      expect(data<{ rowCount: number; collectedCount: number }[]>(before)[0]).toMatchObject({
-        rowCount: 2,
-        collectedCount: 0,
+  it('settles a WHOLE (vehicle, year) with one tick, and the rollup reports how much is settled', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const vehicleType = await typeIdByName('رسوم خدمة');
+    const driverType = await typeIdByName('تليفون');
+    const employeeId = await mkEmployee();
+    await mkDriverProfile(employeeId);
+    await request(app)
+      .post('/api/v1/fleet/violations/vehicle')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2028, violationTypeId: vehicleType, count: 2, unitValue: 50 });
+    await request(app)
+      .post('/api/v1/fleet/violations/driver')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        date: '2028-03-09',
+        driverEmployeeId: employeeId,
+        violationTypeId: driverType,
+        amount: 90,
       });
 
-      const tick = await request(app)
-        .patch('/api/v1/fleet/violations/collected')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ vehicleId: v.id, year: 2028, collected: true });
-      expect(tick.status).toBe(200);
-      expect(data<{ changed: number }>(tick).changed, 'BOTH shapes, in one act').toBe(2);
-
-      const after = await request(app)
-        .get('/api/v1/fleet/violations/rollup')
-        .query({ year: 2028, vehicleId: v.id })
-        .set('Authorization', `Bearer ${adminToken}`);
-      expect(data<{ rowCount: number; collectedCount: number }[]>(after)[0]).toMatchObject({
-        rowCount: 2,
-        collectedCount: 2,
-      });
-
-      // And untick puts it all back — the tick is a toggle over the group, not a one-way door.
-      await request(app)
-        .patch('/api/v1/fleet/violations/collected')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ vehicleId: v.id, year: 2028, collected: false });
-      const back = await request(app)
-        .get('/api/v1/fleet/violations/rollup')
-        .query({ year: 2028, vehicleId: v.id })
-        .set('Authorization', `Bearer ${adminToken}`);
-      expect(data<{ collectedCount: number }[]>(back)[0]?.collectedCount).toBe(0);
+    const before = await request(app)
+      .get('/api/v1/fleet/violations/rollup')
+      .query({ year: 2028, vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ rowCount: number; collectedCount: number }[]>(before)[0]).toMatchObject({
+      rowCount: 2,
+      collectedCount: 0,
     });
+
+    const tick = await request(app)
+      .patch('/api/v1/fleet/violations/collected')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2028, collected: true });
+    expect(tick.status).toBe(200);
+    expect(data<{ changed: number }>(tick).changed, 'BOTH shapes, in one act').toBe(2);
+
+    const after = await request(app)
+      .get('/api/v1/fleet/violations/rollup')
+      .query({ year: 2028, vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ rowCount: number; collectedCount: number }[]>(after)[0]).toMatchObject({
+      rowCount: 2,
+      collectedCount: 2,
+    });
+
+    // And untick puts it all back — the tick is a toggle over the group, not a one-way door.
+    await request(app)
+      .patch('/api/v1/fleet/violations/collected')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, year: 2028, collected: false });
+    const back = await request(app)
+      .get('/api/v1/fleet/violations/rollup')
+      .query({ year: 2028, vehicleId: v.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ collectedCount: number }[]>(back)[0]?.collectedCount).toBe(0);
+  });
 
   it('the group tick needs `fleetViolation.collect`, like the row tick', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));

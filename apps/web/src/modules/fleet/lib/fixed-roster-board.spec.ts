@@ -11,6 +11,7 @@ import {
   assignDriver,
   availableDrivers,
   changedRows,
+  clearCrew,
   clearSlot,
   CREW_SLOTS,
   findSeat,
@@ -791,5 +792,60 @@ describe('the save payload is the edit, not the board', () => {
       notes: null,
     });
     expect(changedRows(saved, after).map((r) => r.vehicleId)).toEqual(['v3']);
+  });
+});
+
+// ── the bin beside the pencil empties the CAR, not one seat ─────────────────
+//
+// «اللى جمب السواق تمسح السواق بتاعها واللى جمب التعديل تمسح السواقيين اللى على العربيه كلها».
+// It did not: the row control folded `clearSlot` over both seats, and clearing seat 1 PROMOTES
+// seat 2 into it — so the promotion happened between the two clears and the car kept a driver.
+describe('clearCrew takes every driver off one vehicle', () => {
+  const crewed = (
+    vehicleId: string,
+    driver1EmployeeId: string | null,
+    driver2EmployeeId: string | null,
+  ): FleetFixedCrewRowDto =>
+    ({ vehicleId, code: vehicleId, driver1EmployeeId, driver2EmployeeId }) as FleetFixedCrewRowDto;
+
+  it('empties BOTH seats — the defect, in one test', () => {
+    const [only] = clearCrew([crewed('v1', 'a', 'b')], 'v1');
+    expect(only?.driver1EmployeeId).toBeNull();
+    expect(only?.driver2EmployeeId).toBeNull();
+  });
+
+  it('and folding clearSlot over the seats does NOT — which is why it exists', () => {
+    // The old expression, kept here as the counterexample. Seat 2 is promoted, then "cleared"
+    // finds nothing, and a driver survives a gesture that said «امسح الطاقم».
+    const folded = CREW_SLOTS.reduce(
+      (rows, slot) => clearSlot(rows, 'v1', slot),
+      [crewed('v1', 'a', 'b')] as readonly FleetFixedCrewRowDto[],
+    );
+    expect(folded[0]?.driver1EmployeeId, 'the promoted driver survives').toBe('b');
+  });
+
+  it('leaves a car with one driver empty too', () => {
+    const [only] = clearCrew([crewed('v1', 'a', null)], 'v1');
+    expect(only?.driver1EmployeeId).toBeNull();
+    expect(only?.driver2EmployeeId).toBeNull();
+  });
+
+  it('touches no other vehicle', () => {
+    const rows = clearCrew([crewed('v1', 'a', 'b'), crewed('v2', 'c', 'd')], 'v1');
+    expect(rows[1]?.driver1EmployeeId).toBe('c');
+    expect(rows[1]?.driver2EmployeeId).toBe('d');
+  });
+
+  it('is a no-op on a car that already carries nobody', () => {
+    const [only] = clearCrew([crewed('v1', null, null)], 'v1');
+    expect(only?.driver1EmployeeId).toBeNull();
+  });
+
+  it('leaves the PER-DRIVER bin promoting, which is what that gesture wants', () => {
+    // Removing the morning driver should leave the evening one driving, not sitting in a seat the
+    // board reads as empty. The two controls are two questions.
+    const [only] = clearSlot([crewed('v1', 'a', 'b')], 'v1', 'driver1EmployeeId');
+    expect(only?.driver1EmployeeId, 'the evening driver moves up').toBe('b');
+    expect(only?.driver2EmployeeId).toBeNull();
   });
 });

@@ -186,6 +186,29 @@ export const applyEdit = (
  * rather than leaving the car holding only a second man — see `seatOrder`. Clearing slot 2 is
  * the ordinary case and simply empties it.
  */
+
+/**
+ * Take EVERY driver off one vehicle, in one step.
+ *
+ * Not `CREW_SLOTS.reduce(clearSlot)`, and the difference is a defect somebody reported: clearing
+ * seat 1 PROMOTES seat 2 into it — that is what `seatOrder` is for, and it is right for the
+ * per-driver bin, where removing the morning driver should leave the evening one driving rather
+ * than sitting in a seat the board reads as empty. Fold the two together and the promotion happens
+ * BETWEEN them: seat 2 moves up, then clearing seat 2 finds it already empty, and the row keeps a
+ * driver. «بتمسح واحد واحد بس».
+ *
+ * So both seats are emptied in the same write, with nothing in between to promote.
+ */
+export const clearCrew = (
+  rows: readonly FleetFixedCrewRowDto[],
+  vehicleId: string,
+): FleetFixedCrewRowDto[] =>
+  rows.map((row) =>
+    row.vehicleId === vehicleId
+      ? { ...row, ...Object.fromEntries(CREW_SLOTS.map((slot) => [slot, null])) }
+      : row,
+  );
+
 export const clearSlot = (
   rows: readonly FleetFixedCrewRowDto[],
   vehicleId: string,

@@ -1063,6 +1063,42 @@ describe('the counters are one row, and they wrap as one', () => {
     const bar = CODE.slice(CODE.indexOf('data-driver-bar'), CODE.indexOf('data-driver-bar') + 600);
     expect(bar).toContain('flex-wrap');
   });
+
+  /**
+   * AND THE FIVE OF THEM FIT ON ONE ROW — «مدخلات السواقيين كلها على صف واحد».
+   *
+   * They did not, and the measurement said why. `w-20` was handed to `Input` as a `className`,
+   * and `cn` is a plain joiner: it landed beside the control's own `w-full` and lost on emission
+   * order, so every counter rendered 200px wide. Four of them wanted 800px inside a 716px panel,
+   * «حزام» measured at `left: -18` — outside its own panel — and the bar folded the group onto a
+   * second line. The same trap the tone hit one block above, on the same control.
+   */
+  it('puts the counter WIDTH on the field, never on the control', () => {
+    const at = CODE.indexOf('data-driver-count=');
+    const field = CODE.slice(0, at).lastIndexOf('<Field');
+    const counter = CODE.slice(field, CODE.indexOf('</Field>', at));
+    expect(counter, 'the field carries the width').toMatch(/<Field[^>]*className="w-20"/);
+    // `Field`'s wrapper has no width of its own, so a class passed there stands. `Input`'s does.
+    const control = counter.slice(counter.indexOf('<Input'));
+    expect(control, 'and the control is not asked to carry it').not.toMatch(/className="w-\d/);
+  });
+
+  it('leaves the car box room for the four counters beside it', () => {
+    // 160px for a three-character code was width the counters needed. Measured after: the five
+    // controls all sit at the same offsetTop and the bar's scrollWidth equals its clientWidth.
+    const bar = CODE.slice(CODE.indexOf('data-driver-bar'), CODE.indexOf('data-driver-count='));
+    expect(bar, 'the car box is narrow').toContain('w-28');
+    expect(bar, 'and not what it was').not.toContain('w-40');
+  });
+
+  it('lets the «pick a car first» notice wrap its TEXT rather than wrap the row', () => {
+    // Unbounded it demanded the width of its own sentence — 283px, measured — and that, not a
+    // panel out of room, is what pushed the counters onto a second line.
+    const at = CODE.indexOf('data-driver-needs-vehicle');
+    const notice = CODE.slice(CODE.lastIndexOf('<p', at), CODE.indexOf('>', at + 200));
+    expect(notice, 'bounded').toMatch(/max-w-\[/);
+    expect(notice, 'and allowed to give width back').toContain('shrink');
+  });
 });
 
 describe('opening a car’s year shows BOTH halves of what its totals are made of', () => {
@@ -1128,5 +1164,73 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
     expect(pageSource, 'the page decides by kind').toMatch(/kind === 'driver'|kind !== 'driver'/);
     expect(CODE, 'the layer just reports the row').toContain('onEdit(v)');
     expect(CODE, 'and the row it reports is whichever table it came from').toContain('onDelete(v)');
+  });
+});
+
+/**
+ * THE COMPANY ENTRY ROW'S PROPORTIONS — «قلل السنه شويه وكود العربيه شويه وكبر قيمة الوحدة والعدد».
+ *
+ * Every field on this row is `flex-<weight> basis-0` over a `min-w-[…]` floor, so what changes is
+ * the SHARE each one takes, not a fixed size. The two picked fields hold short, fixed-length
+ * values — a four-digit year, a three-character code — and the two typed ones hold figures a
+ * person reads back before saving, so the share moves from the first pair to the second.
+ *
+ * The floors move with them, and they are the part that can break the row: a flex child refuses
+ * to shrink below its floor, so raising two of them without lowering another pushes the row past
+ * its panel. Measured at 1536 — the width where the screen splits into two ledgers and this bar
+ * is narrowest — the row went 7px over until the type's floor came down 8px.
+ */
+describe('the company entry row gives its width to the figures that are typed', () => {
+  const SOURCE = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  /** One field's `flex-[…]` weight and `min-w-[…]` floor, found by the hook inside it. */
+  const field = (hook: string): { weight: number; floor: number } => {
+    const at = CODE.indexOf(hook);
+    expect(at, `${hook} is on the row`).toBeGreaterThan(-1);
+    const open = CODE.slice(0, at).lastIndexOf('<Field');
+    const head = CODE.slice(open, at);
+    const weight = Number(head.match(/flex-\[([\d.]+)\]/)?.[1] ?? NaN);
+    const floor = Number(head.match(/min-w-\[([\d.]+)rem\]/)?.[1] ?? NaN);
+    expect(weight, `${hook} has a weight`).not.toBeNaN();
+    expect(floor, `${hook} has a floor`).not.toBeNaN();
+    return { weight, floor };
+  };
+
+  const YEAR = 'data-company-form="year"';
+  const VALUE = 'data-company-form="value"';
+  const COUNT = 'data-company-form="count"';
+
+  it('the two TYPED figures now outweigh the year', () => {
+    expect(field(VALUE).weight, 'unit value over year').toBeGreaterThan(field(YEAR).weight);
+    expect(field(COUNT).weight, 'count over year').toBeGreaterThan(field(YEAR).weight);
+  });
+
+  it('and they outweigh the vehicle code too', () => {
+    const code = field('testId="company-entry"').weight;
+    expect(field(VALUE).weight, 'unit value over the code').toBeGreaterThan(code);
+    expect(field(COUNT).weight, 'count is at least the code’s share').toBeGreaterThanOrEqual(code);
+  });
+
+  it('their floors rose with their weights — a share is no use under a floor that clips', () => {
+    // A figure that compresses to 50px is a figure somebody mis-reads. Both were under 3.2rem.
+    expect(field(VALUE).floor, 'unit value').toBeGreaterThanOrEqual(4);
+    expect(field(COUNT).floor, 'count').toBeGreaterThanOrEqual(3.25);
+  });
+
+  it('the row’s total floor did not grow — that is what keeps it inside the panel at 1536', () => {
+    // Every floor on the row, summed. It was 25rem before this change and must not exceed it:
+    // the bar has ~510px of content at the split, and the floors plus gaps are what fill it.
+    const floors = [YEAR, 'testId="company-entry"', 'allLabel', VALUE, COUNT, 'data-company-form-total'];
+    const total = floors.reduce((sum, hook) => sum + field(hook).floor, 0);
+    expect(total, `floors sum to ${total}rem`).toBeLessThanOrEqual(25);
+  });
+
+  it('the row is still one line from `md` up, and still never scrolls sideways', () => {
+    const row = CODE.slice(CODE.indexOf('<div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5'));
+    const open = row.slice(0, row.indexOf('>'));
+    expect(open, 'one line on a desktop').toContain('md:flex-nowrap');
+    expect(open, 'wrapping is the phone fallback').toContain('flex-wrap');
+    expect(open, 'never a sideways scroll in a form').not.toContain('overflow-x');
   });
 });

@@ -336,7 +336,9 @@ export const CompanyViolationsPanel = ({
         <div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5 rounded-lg border border-slate-200 bg-slate-50 p-2 md:flex-nowrap dark:border-slate-700 dark:bg-slate-800/50">
           <Field
             label={t('fleet.violations.fields.year')}
-            className="flex-[1.2] basis-0 min-w-[3.875rem]"
+            // «قلل السنه شويه». A year is four digits and a chevron and never more, so the share
+            // it was taking was share the two number boxes at the other end of the row needed.
+            className="flex-[0.9] basis-0 min-w-[3.5rem]"
           >
             {/* The width is on the WRAPPER, not the control: `cn` is a plain joiner, so a width
                 handed to `Select` sits beside its own `w-full` and loses — measured, the year
@@ -361,7 +363,8 @@ export const CompanyViolationsPanel = ({
           <Field
             label={t('fleet.odometer.columns.vehicle')}
             required
-            className="flex-[1.6] basis-0 min-w-[4.625rem]"
+            // «وكود العربيه شويه» — three or four characters, for the same reason.
+            className="flex-[1.2] basis-0 min-w-[4rem]"
           >
             {/* PICKED, not typed. A typed code that matches no car left `formVehicleId` undefined,
                 which disabled Save with nothing on screen to say why — the commonest way this form
@@ -384,7 +387,12 @@ export const CompanyViolationsPanel = ({
           <Field
             label={t('fleet.violations.fields.type')}
             required
-            className="flex-[2] basis-0 min-w-[5.25rem]"
+            // The floor came down 8px when the two number boxes' floors went up. Measured at 1536
+            // — the width where the screen splits into two ledgers and this bar is narrowest —
+            // the row was 7px over its panel with the old one. This is the field that can afford
+            // it: at that width every choice in it is already truncated, so 8px changes how much
+            // of a sentence is cut, not whether a value can be read.
+            className="flex-[2] basis-0 min-w-[4.75rem]"
           >
             {/* company side ONLY — the server refuses a driver type here, so offering one would
                 be offering a 422 the reader can do nothing about.
@@ -408,7 +416,11 @@ export const CompanyViolationsPanel = ({
           </Field>
           <Field
             label={t('fleet.violations.fields.unitValue')}
-            className="flex-[0.9] basis-0 min-w-[3.125rem]"
+            // «وكبر قيمة الوحدة». This is a typed MONEY figure — «1250.50» is seven characters
+            // and was being asked to live in 50px — so it takes what the year and the code gave
+            // back. The floor rises with it: compression must stop while the amount is still
+            // legible, because this is a value somebody types and re-reads before saving.
+            className="flex-[1.5] basis-0 min-w-[4rem]"
           >
             <div className="w-full">
               <Input
@@ -425,7 +437,9 @@ export const CompanyViolationsPanel = ({
           <span className="shrink-0 pb-2 text-sm font-medium text-slate-400">×</span>
           <Field
             label={t('fleet.violations.fields.count')}
-            className="flex-[0.8] basis-0 min-w-[2.625rem]"
+            // «و العدد». Typed too, and the narrowest box on the row at 42px — narrow enough that
+            // a three-digit count had nowhere to sit.
+            className="flex-[1.2] basis-0 min-w-[3.25rem]"
           >
             <div className="w-full">
               <Input

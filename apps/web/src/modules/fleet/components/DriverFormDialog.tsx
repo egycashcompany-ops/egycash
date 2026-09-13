@@ -47,7 +47,11 @@ import {
   mayDelegateTo,
   type HrDelegationGroup,
 } from './hr-delegation';
-import { DRIVER_LICENSE_IMAGE_ACCEPT, DriverLicenseImageField } from './DriverLicenseImage';
+import {
+  DRIVER_LICENSE_IMAGE_ACCEPT,
+  DriverLicenseImageField,
+  StagedDriverLicenseImage,
+} from './DriverLicenseImage';
 import { UploadIcon } from '../../../shared/ui/icons';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useUpdateEmployeePersonal } from '../../hr/employee-management/employees/api/employee-queries';
@@ -153,6 +157,7 @@ export const DriverFormDialog = ({
    * and sent the moment the create answers with an id.
    */
   const [stagedImage, setStagedImage] = useState<File | null>(initialImage);
+  const [inputKey, setInputKey] = useState(0);
   // ONE reset, on open, for the form AND the staged scan together. They are one draft: a file
   // chosen for one driver and then cancelled must not still be attached when the dialog reopens
   // on the next one, and `initialImage` is only ever the file THIS opening was given.
@@ -332,11 +337,21 @@ export const DriverFormDialog = ({
             : {})}
         >
           {profile === null ? (
-            <span className="flex items-center gap-2">
+            // ONCE A SCAN IS CHOSEN, THE PICKER IS DONE — «انا مش عاوز دى تظهر انا رفعت الصوره
+            // خلاص». It answers with the picture, an eye and a bin, exactly as the vehicles
+            // registry does, rather than with the upload button still sitting there beside a file
+            // name off somebody's phone. Until then it is the picker and nothing else.
+            //
+            // `inputKey` remounts the input after the bin empties it, so choosing the SAME file
+            // again still fires a change event — the trick `DriverLicenseImageCell` needs for the
+            // same reason, and needed here because unstaging and re-picking one image is the
+            // obvious way to check you picked the right one.
+            stagedImage === null ? (
               <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 focus-within:ring-2 focus-within:ring-brand-500/40 dark:border-slate-700 dark:hover:bg-slate-800">
                 <UploadIcon className="h-4 w-4" />
                 {t('fleet.drivers.licenseImage.upload')}
                 <input
+                  key={inputKey}
                   type="file"
                   data-driver-license-staged
                   accept={DRIVER_LICENSE_IMAGE_ACCEPT}
@@ -345,12 +360,15 @@ export const DriverFormDialog = ({
                   onChange={(e) => setStagedImage(e.target.files?.[0] ?? null)}
                 />
               </label>
-              {stagedImage !== null && (
-                <span className="truncate text-sm text-slate-600 dark:text-slate-300">
-                  {t('fleet.drivers.licenseImage.staged', { name: stagedImage.name })}
-                </span>
-              )}
-            </span>
+            ) : (
+              <StagedDriverLicenseImage
+                file={stagedImage}
+                onClear={() => {
+                  setStagedImage(null);
+                  setInputKey((k) => k + 1);
+                }}
+              />
+            )
           ) : (
             <DriverLicenseImageField driver={profile} />
           )}

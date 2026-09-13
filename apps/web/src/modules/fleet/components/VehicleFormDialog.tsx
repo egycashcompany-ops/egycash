@@ -172,6 +172,11 @@ export const VehicleFormDialog = ({
   return (
     <>
       <Dialog
+        // A FORM, and the longest one in the module — «عند اضافه سياره الموديل اللى يظهر لازم
+        // ادوس على الاكس عشان يتقفل مش فى اى حته». A stray click on the backdrop while reaching
+        // for a field threw away everything typed so far. Escape still closes it, and so do the
+        // two buttons in the footer.
+        dismissOnOutsideClick={false}
         open={open}
         onClose={onClose}
         title={vehicle === null ? t('fleet.vehicles.create') : t('fleet.vehicles.edit')}

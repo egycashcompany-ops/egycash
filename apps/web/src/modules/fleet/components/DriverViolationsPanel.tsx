@@ -458,7 +458,9 @@ export const DriverViolationsPanel = ({
                 the control commits an option or nothing, so a code no car carries still cannot be
                 stored, which is what this bar needs — it files a stack of fines against one car in
                 one transaction, and a typo used to mean the whole batch refused. */}
-            <div className="w-40">
+            {/* Narrower than it was. A vehicle CODE is three or four characters, and the 160px
+                this box used to take was width the four counters needed to stay on the row. */}
+            <div className="w-28">
               <VehicleCodeCombobox
                 value={formVehicleId}
                 onChange={setFormVehicleId}
@@ -481,7 +483,14 @@ export const DriverViolationsPanel = ({
               drop below the car box, but it may not split. */}
           <div className="flex shrink-0 flex-nowrap items-end gap-2">
             {types.map((type) => (
-              <Field key={type.id} label={type.name}>
+              // THE WIDTH LIVES ON THE FIELD. `Input` is `w-full` at its base and `cn` does not
+              // merge Tailwind classes, so the `w-20` this used to pass to the control sat beside
+              // that `w-full` and LOST on emission order: every counter rendered 200px wide, the
+              // four of them needed 800px inside a 716px panel, and «حزام» was measured at
+              // `left: -18` — off the edge of its own panel, which is exactly what the owner
+              // photographed. Passed here it stands, because `Field`'s wrapper carries no width
+              // of its own to lose to.
+              <Field key={type.id} label={type.name} className="w-20">
                 <Input
                   data-driver-count={type.id}
                   aria-label={type.name}
@@ -495,7 +504,6 @@ export const DriverViolationsPanel = ({
                   // control's own `bg-white` and lost, so every counter rendered plain white while
                   // the source said otherwise.
                   tone={violationTypeColour(type.id, { index: typeIndex.get(type.id) })}
-                  className="w-20"
                   dir="ltr"
                   inputMode="numeric"
                 />
@@ -506,7 +514,12 @@ export const DriverViolationsPanel = ({
             <p
               data-driver-needs-vehicle
               role="status"
-              className="self-center text-xs text-amber-600 dark:text-amber-400"
+              // BOUNDED, and allowed to shrink. Unbounded it demanded the width of its own
+              // sentence — 283px, measured — and that was what pushed the counters onto a second
+              // line long before the panel had actually run out of room. Capped and shrinkable it
+              // wraps to two or three short lines at the end of the row instead, which is where
+              // the owner drew it.
+              className="min-w-0 max-w-[11rem] shrink self-center text-xs text-amber-600 dark:text-amber-400"
             >
               {t('fleet.violations.pickVehicleFirst')}
             </p>

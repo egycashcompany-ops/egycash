@@ -752,6 +752,12 @@ describe('the Fleet form dialogs survive a click outside them', () => {
     expect(source.split('dismissOnOutsideClick={false}')).toHaveLength(4);
   });
 
+  it('and so does the vehicle form — the longest form in the module', () => {
+    // «عند اضافه سياره الموديل اللى يظهر لازم ادوس على الاكس عشان يتقفل مش فى اى حته». Reaching
+    // for a field past the edge of the panel threw away every box already filled in.
+    expect(read('components/VehicleFormDialog.tsx')).toContain('dismissOnOutsideClick={false}');
+  });
+
   it('the default is untouched, so no other module′s dialogs change', () => {
     // The same trap sits under every other module's forms. That is their call, not a change to
     // make on the way past.

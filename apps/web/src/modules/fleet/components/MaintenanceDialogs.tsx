@@ -33,7 +33,7 @@ import {
   workshopOdometerWarningKey,
 } from '../lib/workshop-odometer-warning';
 import { CatalogSelect } from './CatalogSelect';
-import { OptionalEmployeeField } from './OptionalEmployeeField';
+import { OptionalDriverField } from './OptionalDriverField';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 /** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
@@ -237,6 +237,9 @@ export const CheckInDialog = ({
 
   return (
     <Dialog
+      // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
+      // لما ادوس على الاكس». Escape still closes it.
+      dismissOnOutsideClick={false}
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.checkIn')}
@@ -305,7 +308,7 @@ export const CheckInDialog = ({
             slots use. Not the custody employee: that one is the logged-in user, recorded by the
             server, and never asked for here. */}
         <Field label={t('fleet.maintenance.fields.driverIn')} required>
-          <OptionalEmployeeField value={driverIn} onChange={setDriverIn} />
+          <OptionalDriverField value={driverIn} onChange={setDriverIn} />
         </Field>
         <Field label={t('fleet.maintenance.fields.spareParts')}>
           <SparePartsField value={partIds} onChange={setPartIds} />
@@ -378,6 +381,9 @@ export const CheckOutDialog = ({
 
   return (
     <Dialog
+      // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
+      // لما ادوس على الاكس». Escape still closes it.
+      dismissOnOutsideClick={false}
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.checkOut')}
@@ -402,7 +408,7 @@ export const CheckOutDialog = ({
           {/* Who drove it away. Required, like the exit reading beside it — and, like the
               check-in driver, distinct from the custody employee the server records. */}
           <Field label={t('fleet.maintenance.fields.driverOut')} required>
-            <OptionalEmployeeField value={driverOut} onChange={setDriverOut} />
+            <OptionalDriverField value={driverOut} onChange={setDriverOut} />
           </Field>
         </div>
         <Field label={t('fleet.maintenance.fields.outDate')} required>
@@ -509,6 +515,9 @@ export const MaintenanceEditDialog = ({
 
   return (
     <Dialog
+      // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
+      // لما ادوس على الاكس». Escape still closes it.
+      dismissOnOutsideClick={false}
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.edit')}
@@ -549,7 +558,7 @@ export const MaintenanceEditDialog = ({
         </Field>
         <div className="sm:col-span-2">
           <Field label={t('fleet.maintenance.fields.driverIn')}>
-            <OptionalEmployeeField value={driverIn} onChange={setDriverIn} />
+            <OptionalDriverField value={driverIn} onChange={setDriverIn} />
           </Field>
         </div>
         <div className="sm:col-span-2">

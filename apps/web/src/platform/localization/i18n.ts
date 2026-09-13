@@ -3644,7 +3644,10 @@ const en: Record<string, string> = {
   'fleet.drivers.licenseImage.view': 'View image',
   'fleet.drivers.licenseImage.delete': 'Delete image',
   'fleet.drivers.licenseImage.print': 'Print the license',
-  'fleet.drivers.licenseImage.addViaProfile': 'Enrol + add',
+  // What pressing it DOES, and what follows — the picker opens first now, and the two facts the
+  // server will not create a profile without are asked after the image is already chosen.
+  'fleet.drivers.licenseImage.addViaProfile':
+    'Add license image — the license number and expiry are asked next',
   'fleet.drivers.licenseImage.stagedHint':
     'The image will be uploaded as soon as the driver is enrolled.',
   'fleet.drivers.licenseImage.staged': 'Chosen: {{name}}',
@@ -10112,7 +10115,8 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.view': 'عرض الصورة',
   'fleet.drivers.licenseImage.delete': 'حذف الصورة',
   'fleet.drivers.licenseImage.print': 'طباعة الرخصة',
-  'fleet.drivers.licenseImage.addViaProfile': 'تسجيل + إضافة صورة',
+  'fleet.drivers.licenseImage.addViaProfile':
+    'إضافة صورة الرخصة — هيطلب رقم الرخصة وتاريخ انتهائها بعدها',
   'fleet.drivers.licenseImage.stagedHint':
     'الصورة هتترفع أول ما السائق يتسجّل.',
   'fleet.drivers.licenseImage.staged': 'تم اختيار: {{name}}',

@@ -3641,6 +3641,10 @@ const en: Record<string, string> = {
   'fleet.drivers.licenseImage.view': 'View image',
   'fleet.drivers.licenseImage.delete': 'Delete image',
   'fleet.drivers.licenseImage.print': 'Print the license',
+  'fleet.drivers.licenseImage.addViaProfile': 'Enrol + add',
+  'fleet.drivers.licenseImage.stagedHint':
+    'The image will be uploaded as soon as the driver is enrolled.',
+  'fleet.drivers.licenseImage.staged': 'Chosen: {{name}}',
   'fleet.drivers.licenseImage.printTitle': 'Driving license',
   'fleet.drivers.licenseImage.popupBlocked':
     'The print window was blocked — allow pop-ups for this site.',
@@ -10102,6 +10106,10 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.view': 'عرض الصورة',
   'fleet.drivers.licenseImage.delete': 'حذف الصورة',
   'fleet.drivers.licenseImage.print': 'طباعة الرخصة',
+  'fleet.drivers.licenseImage.addViaProfile': 'تسجيل + إضافة صورة',
+  'fleet.drivers.licenseImage.stagedHint':
+    'الصورة هتترفع أول ما السائق يتسجّل.',
+  'fleet.drivers.licenseImage.staged': 'تم اختيار: {{name}}',
   'fleet.drivers.licenseImage.printTitle': 'رخصة القيادة',
   'fleet.drivers.licenseImage.popupBlocked':
     'نافذة الطباعة اتمنعت — اسمح بالنوافذ المنبثقة لهذا الموقع.',

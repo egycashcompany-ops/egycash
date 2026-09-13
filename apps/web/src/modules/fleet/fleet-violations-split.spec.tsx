@@ -36,6 +36,7 @@ import { translate } from '../../platform/localization/i18n';
 import { formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
+import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
 import {
   cardLabel,
   entryCards,
@@ -1021,5 +1022,77 @@ describe('print and CSV carry exactly what is on screen', () => {
     });
     expect(html).toContain('class="empty"');
     expect(html, 'no table headers over nothing').not.toContain('<tbody></tbody>');
+  });
+});
+
+
+// ── the car's own ledger ────────────────────────────────────────────────────
+//
+// The layer portals through `SideLayer` into `document.body`, and this suite runs with
+// `environment: 'node'` and no jsdom — so it cannot be RENDERED here at all, let alone opened by a
+// click. What is asserted below is therefore the structure of the source, and the rendering half
+// is proved in Chromium against a real (vehicle, year) that has fines of both kinds.
+//
+// Weak on its own, so the assertions are chosen to be the ones a regression would actually break:
+// that a SECOND server query exists and narrows by the same car and year, that the drivers' table
+// sits AFTER the grievance line rather than anywhere in the file, and that the three row actions
+// are defined exactly ONCE for both tables.
+
+describe('opening a car’s year shows BOTH halves of what its totals are made of', () => {
+  const SOURCE = readFileSync(join(HERE, 'components/CompanyViolationsDetailLayer.tsx'), 'utf8');
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  it('asks the server for the DRIVERS’ fines of the same car and the same year', () => {
+    // «إجمالى السيارة» on the board is the company rows PLUS these, so a layer that showed only
+    // the first was a ledger you could not reconcile: the number on the board did not match the
+    // rows behind it, and the only way to the missing half was to leave and filter the drivers'
+    // board by hand to the same car and the same year.
+    //
+    // A driver fine stores a DATE, not a year — `yearClause` turns the year into a UTC range on
+    // the server — so this is one more query, not a filter over a car's whole history.
+    expect(CODE, 'a second list query').toContain('const driverList = useViolations(');
+    const q = CODE.slice(CODE.indexOf('const driverList'), CODE.indexOf('const catalog'));
+    expect(q, 'for the driver shape').toContain("kind: 'driver'");
+    expect(q, 'the same car').toContain('vehicleId: row.vehicleId');
+    expect(q, 'the same year').toContain('year: String(row.year)');
+    expect(CODE, 'named by the drivers’ own catalogue').toContain(
+      "useFleetCatalog('violationType', 'driver')",
+    );
+  });
+
+  it('puts that table UNDER the «قبل التظلم» line, not somewhere else in the layer', () => {
+    // The owner asked for it there specifically: it is the figure that reports both halves.
+    const grievance = SOURCE.indexOf('data-detail-grievance');
+    const heading = SOURCE.indexOf("t('fleet.violations.driverTitle')");
+    const table = SOURCE.indexOf('columns={driverColumns}');
+    expect(grievance, 'the grievance line is still there').toBeGreaterThan(-1);
+    expect(heading, 'the drivers’ heading comes after it').toBeGreaterThan(grievance);
+    expect(table, 'and its table after that').toBeGreaterThan(heading);
+  });
+
+  it('gives the driver rows the SAME three actions, from one definition', () => {
+    // «اقدر برضو اعمل علامه صح او امسح او اعدل». Defined once and used by both tables: two copies
+    // drift, and the one that drifts is always the permission check.
+    expect(CODE, 'one definition').toContain('const rowActions =');
+    for (const hook of ['data-detail-collect=', 'data-detail-delete=', 'data-detail-edit=']) {
+      expect((CODE.match(new RegExp(hook, 'g')) ?? []).length, `${hook} is not copied`).toBe(1);
+    }
+    expect(
+      (CODE.match(/render: rowActions,/g) ?? []).length,
+      'and both tables use it',
+    ).toBe(2);
+    // Each still behind its own grant — the thing a second copy would have lost.
+    for (const grant of ['fleetViolation.collect', 'fleetViolation.delete', 'fleetViolation.edit']) {
+      expect(CODE, `${grant} still gates its action`).toContain(`can('${grant}')`);
+    }
+  });
+
+  it('routes edit and delete by the row’s KIND, so a driver fine opens the driver dialog', () => {
+    // The layer hands the row straight up; the page already dispatches on `violation.kind`, which
+    // is why this needed no new dialog and no new prop.
+    const pageSource = readFileSync(join(HERE, 'pages/ViolationsPage.tsx'), 'utf8');
+    expect(pageSource, 'the page decides by kind').toMatch(/kind === 'driver'|kind !== 'driver'/);
+    expect(CODE, 'the layer just reports the row').toContain('onEdit(v)');
+    expect(CODE, 'and the row it reports is whichever table it came from').toContain('onDelete(v)');
   });
 });

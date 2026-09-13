@@ -33,7 +33,11 @@ import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { ExternalLinkIcon } from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
-import { useCreateDriverProfile, useUpdateDriverProfile } from '../api/fleet-queries';
+import {
+  useCreateDriverProfile,
+  useUpdateDriverProfile,
+  useUploadDriverLicenseImage,
+} from '../api/fleet-queries';
 import { useBranches, useJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { CatalogSelect } from './CatalogSelect';
 import { EmployeeName, useEmployeeRecord } from './EmployeeName';
@@ -43,7 +47,9 @@ import {
   mayDelegateTo,
   type HrDelegationGroup,
 } from './hr-delegation';
-import { DriverLicenseImageField } from './DriverLicenseImage';
+import { DRIVER_LICENSE_IMAGE_ACCEPT, DriverLicenseImageField } from './DriverLicenseImage';
+import { UploadIcon } from '../../../shared/ui/icons';
+import { errorMessage } from '../../../shared/lib/errors';
 import { useUpdateEmployeePersonal } from '../../hr/employee-management/employees/api/employee-queries';
 
 interface FormState {
@@ -128,6 +134,17 @@ export const DriverFormDialog = ({
 
   const update = useUpdateDriverProfile();
   const create = useCreateDriverProfile();
+  const uploadLicense = useUploadDriverLicenseImage();
+  /**
+   * A SCAN CHOSEN BEFORE THERE IS ANYWHERE TO PUT IT.
+   *
+   * Every licence endpoint is keyed on the profile id, so on a driver who is not enrolled yet
+   * there is literally no id to upload against — which is why this field used to render «—» and
+   * why the list's cell had nothing to offer. Making the reader enrol, close the dialog, find the
+   * row again and only then upload is two visits for one intention; the file is held here instead
+   * and sent the moment the create answers with an id.
+   */
+  const [stagedImage, setStagedImage] = useState<File | null>(null);
   // HR's own mutation, called with HR's own permission — see the note beside the field.
   const mayEditPhone = can('employee.editPersonal');
   const [phone, setPhone] = useState('');
@@ -185,13 +202,23 @@ export const DriverFormDialog = ({
     // deactivating one is a decision about a driver who already exists.
     if (profile === null) {
       if (subjectId === '') return;
-      await create.mutateAsync({
+      const created = await create.mutateAsync({
         employeeId: subjectId,
         licenseNumber: form.licenseNumber.trim(),
         licenseExpiresAt: new Date(form.licenseExpiresAt),
         specializationId: ref(form.specializationId),
         licenseTypeId: ref(form.licenseTypeId),
       });
+      // The scan, now that there is something to hang it on. A failure here must not read as a
+      // failed enrolment — the profile IS created, and saying otherwise would send the reader
+      // looking for a driver who is already there.
+      if (stagedImage !== null) {
+        try {
+          await uploadLicense.mutateAsync({ id: created.id, file: stagedImage });
+        } catch (error) {
+          toast.error(errorMessage(error, locale));
+        }
+      }
       await persistPhone();
       toast.success(t('fleet.drivers.recorded'));
       onClose();
@@ -282,9 +309,32 @@ export const DriverFormDialog = ({
           onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.checked }))}
         />
 
-        <Field label={t('fleet.drivers.columns.licenseImage')}>
+        <Field
+          label={t('fleet.drivers.columns.licenseImage')}
+          {...(profile === null && stagedImage !== null
+            ? { hint: t('fleet.drivers.licenseImage.stagedHint') }
+            : {})}
+        >
           {profile === null ? (
-            <p className="text-sm">—</p>
+            <span className="flex items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50 focus-within:ring-2 focus-within:ring-brand-500/40 dark:border-slate-700 dark:hover:bg-slate-800">
+                <UploadIcon className="h-4 w-4" />
+                {t('fleet.drivers.licenseImage.upload')}
+                <input
+                  type="file"
+                  data-driver-license-staged
+                  accept={DRIVER_LICENSE_IMAGE_ACCEPT}
+                  className="hidden"
+                  aria-label={t('fleet.drivers.licenseImage.upload')}
+                  onChange={(e) => setStagedImage(e.target.files?.[0] ?? null)}
+                />
+              </label>
+              {stagedImage !== null && (
+                <span className="truncate text-sm text-slate-600 dark:text-slate-300">
+                  {t('fleet.drivers.licenseImage.staged', { name: stagedImage.name })}
+                </span>
+              )}
+            </span>
           ) : (
             <DriverLicenseImageField driver={profile} />
           )}

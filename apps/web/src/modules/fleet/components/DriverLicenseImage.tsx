@@ -499,3 +499,106 @@ export const DriverLicenseImageField = ({
     </div>
   );
 };
+
+/**
+ * A scan CHOSEN but not yet uploaded — because the profile it will hang on does not exist yet.
+ *
+ * «انا مش عاوز دى تظهر انا رفعت الصوره خلاص — عاوز بقى العين تظهر و علامه السله زى شاشه السيارات».
+ * The field used to answer a chosen file with the upload button still sitting there and the file
+ * NAME printed beside it, which reads as though nothing had happened: the one thing a reader
+ * wants after picking an image is to see that it is the right one, and the name of a file off a
+ * phone («333333333.png») tells them nothing.
+ *
+ * So it shows what the vehicles registry shows: the picture, an eye, and a bin. Same icons, same
+ * button styling, same order — the difference is only in what they act on, because there is no id
+ * to fetch from yet. The bytes are already in the browser, so the thumbnail and the preview both
+ * come from an object URL over the `File` itself, and the bin simply unstages it rather than
+ * calling a delete endpoint that has nothing to delete.
+ */
+const useLocalFileUrl = (file: File | null): string | null => {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (file === null) {
+      setUrl(null);
+      return;
+    }
+    const objectUrl = URL.createObjectURL(file);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [file]);
+  return url;
+};
+
+export const StagedDriverLicenseImage = ({
+  file,
+  onClear,
+}: {
+  file: File;
+  onClear: () => void;
+}): JSX.Element => {
+  const t = useT();
+  const url = useLocalFileUrl(file);
+  const [previewing, setPreviewing] = useState(false);
+
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {url !== null && (
+        <button
+          type="button"
+          data-driver-license-staged-preview
+          onClick={() => setPreviewing(true)}
+          aria-label={t('fleet.drivers.licenseImage.view')}
+          title={t('fleet.drivers.licenseImage.view')}
+        >
+          <img
+            src={url}
+            alt={t('fleet.drivers.licenseImage.previewTitle')}
+            className="h-16 w-auto rounded-md border border-slate-200 object-contain dark:border-slate-800"
+          />
+        </button>
+      )}
+      <button
+        type="button"
+        className={actionButton}
+        aria-label={t('fleet.drivers.licenseImage.view')}
+        title={t('fleet.drivers.licenseImage.view')}
+        onClick={() => setPreviewing(true)}
+      >
+        <EyeIcon className="h-4 w-4" />
+      </button>
+      {/* The bin UNSTAGES. There is no profile and therefore no file on the server, so this asks
+          no confirmation — nothing is lost that is not already sitting in the reader's own file
+          picker, and a confirm dialog over a local choice would be ceremony. */}
+      <button
+        type="button"
+        data-driver-license-unstage
+        className={actionButton}
+        aria-label={t('fleet.drivers.licenseImage.delete')}
+        title={t('fleet.drivers.licenseImage.delete')}
+        onClick={onClear}
+      >
+        <TrashIcon className="h-4 w-4" />
+      </button>
+
+      <Dialog
+        open={previewing}
+        onClose={() => setPreviewing(false)}
+        title={t('fleet.drivers.licenseImage.previewTitle')}
+        description={file.name}
+        footer={
+          <Button variant="secondary" onClick={() => setPreviewing(false)}>
+            {t('common.close')}
+          </Button>
+        }
+      >
+        {url !== null && (
+          <img
+            src={url}
+            alt={t('fleet.drivers.licenseImage.previewTitle')}
+            className="mx-auto max-h-[60vh] w-auto max-w-full rounded-lg border border-slate-200 object-contain dark:border-slate-800"
+          />
+        )}
+      </Dialog>
+    </span>
+  );
+};

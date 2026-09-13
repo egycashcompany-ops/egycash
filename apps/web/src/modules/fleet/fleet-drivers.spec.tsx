@@ -1888,6 +1888,51 @@ describe('the licence column is icons, on every row', () => {
    * create; what is new is that it can START full, and that it is re-seeded on every open — a file
    * chosen for one driver and cancelled must not ride into the next row's dialog.
    */
+  /**
+   * A CHOSEN SCAN ANSWERS WITH THE PICTURE, THE EYE AND THE BIN — «انا مش عاوز دى تظهر انا رفعت
+   * الصوره خلاص، عاوز بقى العين تظهر و علامه السله زى شاشه السيارات».
+   *
+   * The field used to answer a chosen file with the upload button still sitting there and the
+   * file NAME printed beside it, which reads as though nothing had happened — and a name off a
+   * phone («333333333.png») tells a reader nothing about whether they picked the right image.
+   * The vehicles registry answers the same question with a thumbnail, an eye and a bin, and this
+   * is now the same three, acting on the `File` rather than on an id there is none of yet.
+   */
+  it('replaces the picker with the picture, the eye and the bin once a scan is chosen', () => {
+    const source = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    // The two branches are exclusive: the picker while nothing is staged, the trio once one is.
+    expect(code, 'the picker is conditional on nothing being staged').toContain(
+      'stagedImage === null ? (',
+    );
+    expect(code, 'and the other branch is the vehicles-screen trio').toContain(
+      '<StagedDriverLicenseImage',
+    );
+    expect(code, 'the bin unstages and lets the same file be picked again').toContain(
+      'setStagedImage(null)',
+    );
+    expect(code, 'the file NAME is no longer what a chosen scan is shown as').not.toContain(
+      "t('fleet.drivers.licenseImage.staged',",
+    );
+  });
+
+  it('the trio is the vehicles registry’s own three, acting on the File', () => {
+    const source = readFileSync(join(HERE, 'components/DriverLicenseImage.tsx'), 'utf8');
+    expect(source, 'the component exists').toContain('export const StagedDriverLicenseImage');
+    // From the object-URL hook it is built on, which sits immediately above it and is the half
+    // that makes a picture out of bytes that have never reached the server.
+    const component = source.slice(source.indexOf('const useLocalFileUrl'));
+    expect(component, 'the picture itself').toContain('data-driver-license-staged-preview');
+    expect(component, 'an eye').toContain('<EyeIcon');
+    expect(component, 'and a bin').toContain('<TrashIcon');
+    expect(component, 'no upload button left in this branch').not.toContain('<UploadIcon');
+    // The bytes are already in the browser: there is no id to fetch from and nothing on the
+    // server to delete, so the thumbnail is an object URL and the bin is a local `onClear`.
+    expect(component, 'shown from the file in hand').toContain('URL.createObjectURL(file)');
+    expect(component, 'and revoked when it changes').toContain('URL.revokeObjectURL');
+    expect(component, 'the bin calls no endpoint').not.toContain('useDeleteDriverLicenseImage');
+  });
+
   it('the dialog seeds its staged scan from what the cell handed it, on every open', () => {
     const dialog = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
     const code = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');

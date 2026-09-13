@@ -68,6 +68,31 @@ const shift = (days: number): string => {
   return d.toISOString().slice(0, 10);
 };
 
+/**
+ * The same idea pinned to a DAY OF THE MONTH. A suite whose window is a calendar month needs its
+ * fixture days to sit inside one month together, which a bare offset cannot promise: land it on
+ * the 28th and "four days later" is next month. Snapping to a low day of the month that `shift`
+ * has already cleared keeps the whole group in one window, wherever the run falls.
+ */
+const monthAnchor = (days: number, dayOfMonth: number): string => {
+  const d = new Date(`${shift(days)}T00:00:00Z`);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), dayOfMonth))
+    .toISOString()
+    .slice(0, 10);
+};
+
+/** The calendar month around an ISO day, `offsetMonths` on from it, as an inclusive range. */
+const monthRange = (iso: string, offsetMonths = 0): { from: string; to: string } => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const first = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + offsetMonths, 1));
+  const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + offsetMonths + 1, 0));
+  return { from: first.toISOString().slice(0, 10), to: last.toISOString().slice(0, 10) };
+};
+
+/** A day of the month inside the month `monthRange(iso, offsetMonths)` describes. */
+const dayInMonth = (iso: string, offsetMonths: number, dayOfMonth: number): string =>
+  `${monthRange(iso, offsetMonths).from.slice(0, 8)}${String(dayOfMonth).padStart(2, '0')}`;
+
 const PLAN_DATE = shift(150);
 const DELIVERY_DATE = shift(151);
 const ORDER_DATE = shift(152);
@@ -966,7 +991,7 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
 
   // ── Crewing a shipment at creation (legacy leader1 + car_num1, restored) ───────────────────────
   describe('naming the collection crew when the shipment is booked', () => {
-    const CREATE_CREW_DATE = '2026-12-15';
+    const CREATE_CREW_DATE = shift(260);
     let bookCaptainId: string;
     let bookCrewId: string;
 
@@ -1073,7 +1098,7 @@ describe('crew board — the tashghela workflow on the Fleet boundary (OP-3)', (
           originBranchId: branchA1.id,
           destinationBranchId: branchA1.id,
           lines: [{ currencyId: egp.id, amount: 99 }],
-          collectionDate: '2026-12-16', // no crew planned on this day
+          collectionDate: shift(261), // no crew planned on this day
           pickup: { crewAssignmentId: bookCrewId, captainEmployeeId: bookCaptainId },
         });
       expect(res.status).toBe(422);
@@ -1810,7 +1835,7 @@ describe('secured (محصنة) workflow — the four legacy screens (OP-4)', () 
   // the only way to reach it was to name a different crew row — a different VEHICLE. Now the
   // ordinary act of handing a load to the co-captain of the same van goes straight through it.
   describe('re-assigning the delivery leg to the other captain of the same crew', () => {
-    const HANDOVER_DATE = '2026-12-08';
+    const HANDOVER_DATE = shift(250);
     let handoverCrewId: string;
     let handoverCaptainA: string;
     let handoverCaptainB: string;
@@ -2203,13 +2228,13 @@ const currentOrder = async (): Promise<{ assignmentId: string; version: number }
 };
 
 describe('captain mobile read model — NEW capability, no legacy counterpart (OP-6)', () => {
-  const MOBILE_DATE = '2026-09-10';
+  const MOBILE_DATE = shift(200);
   /**
    * A day the captain is PLANNED onto a vehicle but has no shipments — captaincy without stops.
    * Deliberately a date no other case touches: this one asserts an EMPTY stop list, so sharing a
    * day with a case that assigns work would make it pass or fail on declaration order.
    */
-  const PLANNED_ONLY_DATE = '2026-09-14';
+  const PLANNED_ONLY_DATE = shift(204);
   let captainUserToken = '';
   let captainUserId = '';
   let otherCaptainToken = '';
@@ -2379,7 +2404,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
     // had the field been widened in place — Mongo matches an array against the old scalar query
     // just as happily, so the anchor would have kept working while the comparisons behind it did
     // not.
-    const CO_CAPTAIN_DATE = '2026-09-16';
+    const CO_CAPTAIN_DATE = shift(206);
 
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
@@ -2478,7 +2503,7 @@ describe('captain mobile read model — NEW capability, no legacy counterpart (O
   });
 
   it('7. the secured delivery leg resolves on its own day', async () => {
-    const DELIVERY = '2026-09-11';
+    const DELIVERY = shift(201);
     await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -2581,8 +2606,8 @@ describe('captain mobile EXECUTION — sequential workflow (OP-7, NEW capability
   // Everything in this block is new ECMS behaviour. The legacy system had no captain surface, so
   // there is no legacy execution to be parity with — only the shipment, its legs, the (day,
   // vehicle) crew row and PR 5's persisted `sequence` underneath it, none of which this changes.
-  const EXEC_DATE = '2026-09-20';
-  const NO_STOPS_DATE = '2026-09-21';
+  const EXEC_DATE = shift(210);
+  const NO_STOPS_DATE = shift(211);
 
   let execCaptainId = '';
   let execToken = '';
@@ -2980,8 +3005,8 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
   //   daily   → rec_date == today
   //   secured → del_date == today AND status in [1,3]  (completed | dispatched)
   // Everything below asserts that union, because it is the one rule a client must never rebuild.
-  const BOARD_DATE = '2026-10-05';
-  const OTHER_DATE = '2026-10-06';
+  const BOARD_DATE = shift(220);
+  const OTHER_DATE = shift(221);
 
   const board = async (date?: string): Promise<request.Response> =>
     request(app)
@@ -3115,7 +3140,7 @@ describe('the daily operations board — legacy /main_ops (B2)', () => {
   });
 
   it('is empty, not an error, on a day with no work', async () => {
-    const res = await board('2026-10-09');
+    const res = await board(shift(224));
     expect(res.status).toBe(200);
     expect(data<{ shipments: OperationsShipmentDto[] }>(res).shipments).toEqual([]);
   });
@@ -3140,7 +3165,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
   // only ONE of them (`leader`) was ever read by a server query. The approved decision carried
   // since PR 1 is that requirements gate NOTHING — so the tests below prove both halves: the flags
   // round-trip as data, AND an employee missing every one of them can still be crewed.
-  const ROSTER_DATE = '2026-11-03';
+  const ROSTER_DATE = shift(240);
   let memberA = '';
   let memberB = '';
 
@@ -3284,7 +3309,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
 
     // The SAME day, a different day: the answer is per-day, not per-person.
     const other = data<{ members: { employeeId: string; assignedVehicleId: string | null }[] }>(
-      await directory('2026-11-04'),
+      await directory(shift(241)),
     );
     expect(other.members.find((m) => m.employeeId === memberA)?.assignedVehicleId).toBeNull();
   });
@@ -3296,7 +3321,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-11-05', rows: [{ vehicleId: vehicleAId, notes: 'flagless seed' }] });
+      .send({ date: shift(242), rows: [{ vehicleId: vehicleAId, notes: 'flagless seed' }] });
     expect(roster.status).toBe(200);
 
     // No weapon, no signature, no licence, not even marked a captain — and the captain slot takes
@@ -3304,7 +3329,7 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-11-05', rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [flagless] }] });
+      .send({ date: shift(242), rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [flagless] }] });
     expect(plan.status).toBe(200);
   });
 
@@ -3314,12 +3339,12 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-11-06', rows: [{ vehicleId: vehicleAId, notes: 'stranger seed' }] });
+      .send({ date: shift(243), rows: [{ vehicleId: vehicleAId, notes: 'stranger seed' }] });
     expect(roster.status).toBe(200);
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-11-06', rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [stranger] }] });
+      .send({ date: shift(243), rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [stranger] }] });
     expect(plan.status).toBe(200);
   });
 
@@ -3362,7 +3387,15 @@ describe('crew roster and requirements — legacy /requirement (B3)', () => {
 describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', () => {
   // The reports are where three legacy DEFECTS lived, and each of them changed a number a user
   // has read before. These tests exist to pin the corrected numbers, not just the shapes.
-  const REPORT_MONTH = { from: '2026-09-01', to: '2026-09-30' };
+  // Anchored, not written down. A roster cannot be planned for a day already past, so the fixed
+  // day this suite used to seed expired the moment the calendar walked past it, and took the
+  // whole suite's `beforeAll` with it. The day is the 10th of a month far enough ahead to stay
+  // ahead, and everything else here derives from it: the window is that day's own month, and the
+  // "outside" day is the month after. The range assertions then keep meaning what they say in
+  // whatever month the suite happens to run.
+  const REPORT_DAY = monthAnchor(270, 10);
+  const REPORT_MONTH = monthRange(REPORT_DAY);
+  const NEXT_MONTH = monthRange(REPORT_DAY, 1);
   let reportCaptain = '';
   let reportCrewId = '';
   let usd: OperationsCurrencyDto;
@@ -3403,7 +3436,7 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
   /** Create a daily shipment collected inside the report month, then complete it. */
   const completedDaily = async (
     lines: { currencyId: string; amount: number }[],
-    collectionDate = '2026-09-10',
+    collectionDate = REPORT_DAY,
   ): Promise<OperationsShipmentDto> => {
     const created = await mkShipment({
       lines,
@@ -3450,20 +3483,20 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
     const roster = await request(app)
       .post('/api/v1/fleet/roster')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ date: '2026-09-10', rows: [{ vehicleId: vehicleAId, notes: 'report seed' }] });
+      .send({ date: REPORT_DAY, rows: [{ vehicleId: vehicleAId, notes: 'report seed' }] });
     expect(roster.status).toBe(200);
 
     const plan = await request(app)
       .post('/api/v1/operations/crew-board')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
-        date: '2026-09-10',
+        date: REPORT_DAY,
         rows: [{ vehicleId: vehicleAId, captainEmployeeIds: [reportCaptain] }],
       });
     expect(plan.status).toBe(200);
     // The crew assignment id is not on the board DTO — the board shows the crew, not its row id —
     // so it comes from the collection seam, the same way the OP-5 suite gets it.
-    reportCrewId = await crewAssignmentIdForDay('2026-09-10');
+    reportCrewId = await crewAssignmentIdForDay(REPORT_DAY);
     expect(reportCrewId).not.toBe('');
   });
 
@@ -3486,7 +3519,7 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
       shipmentType: 'secured',
       // The SAME day the crew row is on: `assign-delivery` requires the crew assignment to belong
       // to the shipment's delivery day, which is what makes (day, vehicle, leg) → crew resolvable.
-      deliveryDate: '2026-09-10',
+      deliveryDate: REPORT_DAY,
       mainBankId: reportBank.id,
       originBranchId: reportBranch.id,
       destinationBranchId: reportBranch.id,
@@ -3568,7 +3601,10 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
     // Legacy's report DROPPED such a document entirely, taking its count with it. ECMS closes the
     // hole one step earlier: `lines` requires at least one entry, so a shipment carrying no money
     // never enters the system in the first place.
-    const refused = await mkShipment({ lines: [], collectionDate: '2026-09-14' });
+    const refused = await mkShipment({
+      lines: [],
+      collectionDate: dayInMonth(REPORT_DAY, 0, 14),
+    });
     expect(refused.status).toBe(400);
 
     // The roll-up still handles the case, because MIGRATED legacy rows can carry it. That path is
@@ -3593,7 +3629,7 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
   });
 
   it('5. attributes a shipment to the captain of the leg its TYPE reports on', async () => {
-    const shipment = await completedDaily([{ currencyId: egp.id, amount: 500 }], '2026-09-10');
+    const shipment = await completedDaily([{ currencyId: egp.id, amount: 500 }], REPORT_DAY);
     const assigned = await request(app)
       .post(`/api/v1/operations/assignments/shipments/${shipment.id}/assign-pickup`)
       .set('Authorization', `Bearer ${adminToken}`)
@@ -3614,7 +3650,10 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
   it('6. reports an unassigned shipment under a null captain rather than dropping it', async () => {
     // Its own shipment, deliberately never assigned — a case that depends on another test's
     // leftovers passes or fails for reasons that have nothing to do with what it claims.
-    const orphan = await completedDaily([{ currencyId: egp.id, amount: 42 }], '2026-09-16');
+    const orphan = await completedDaily(
+      [{ currencyId: egp.id, amount: 42 }],
+      dayInMonth(REPORT_DAY, 0, 16),
+    );
     expect(orphan.status).toBe('completed');
 
     const report = data<OperationsCaptainReportDto>(await captainReport());
@@ -3628,17 +3667,18 @@ describe('operations reports — legacy /ops_report and /ops_bank_report (B5)', 
   });
 
   it('7. excludes a shipment completed OUTSIDE the range, by its own type\'s date', async () => {
-    const outside = await completedDaily([{ currencyId: egp.id, amount: 999 }], '2026-10-05');
+    const outside = await completedDaily(
+      [{ currencyId: egp.id, amount: 999 }],
+      dayInMonth(REPORT_DAY, 1, 5),
+    );
     expect(outside.status).toBe('completed');
 
-    const inSeptember = data<OperationsCaptainReportDto>(await captainReport());
-    const inOctober = data<OperationsCaptainReportDto>(
-      await captainReport({ from: '2026-10-01', to: '2026-10-31' }),
-    );
-    expect(inOctober.grandTotal.shipmentCount).toBeGreaterThanOrEqual(1);
-    // The October shipment did not leak into September's totals.
-    expect(inSeptember.grandTotal.shipmentCount).toBe(
-      inSeptember.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0),
+    const inWindow = data<OperationsCaptainReportDto>(await captainReport());
+    const inNextMonth = data<OperationsCaptainReportDto>(await captainReport(NEXT_MONTH));
+    expect(inNextMonth.grandTotal.shipmentCount).toBeGreaterThanOrEqual(1);
+    // The next month's shipment did not leak into the window's totals.
+    expect(inWindow.grandTotal.shipmentCount).toBe(
+      inWindow.rows.reduce((acc, r) => acc + r.totals.shipmentCount, 0),
     );
   });
 
@@ -3660,7 +3700,7 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
   // the cash-transfer department, so an absent captain could be crewed without objection. The
   // tests below prove BOTH halves of the decision: attendance is now visible, and it still gates
   // nothing.
-  const ATT_DATE = '2026-09-22';
+  const ATT_DATE = shift(212);
   let attendanceMember = '';
 
   const attendance = (date = ATT_DATE, token = adminToken): request.Test =>
@@ -3748,7 +3788,7 @@ describe('crew attendance — NO legacy counterpart, read-only and non-gating (B
 });
 
 describe('vault roll-up and operational areas — legacy /vault1_reports and /data_edit cities (B6)', () => {
-  const VAULT_DATE = '2026-10-14';
+  const VAULT_DATE = shift(230);
   let vaultBank: OperationsBankDto;
   let vaultBranch: OperationsBankBranchDto;
 

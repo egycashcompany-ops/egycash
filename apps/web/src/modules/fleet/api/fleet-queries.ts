@@ -3,7 +3,7 @@
 // mutation moves alarms and the vehicle's derived facts, so both invalidate together; a roster
 // save replaces the whole day. Read hooks land here in FW-1 as the module's data foundation;
 // each later slice adds its mutation hooks beside them.
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type ChangeFleetVehicleStatus,
   type CheckInFleetMaintenance,
@@ -40,6 +40,7 @@ import {
   type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
+import { nextViolationsPage } from '../lib/violations-paging';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import { useCan } from '../../../platform/rbac/Can';
 import { useSetSetting } from '../../../platform/settings/settings-api';
@@ -351,7 +352,9 @@ export const useOdometerBracket = (vehicleId: string, on: string, enabled = true
   return useQuery({
     queryKey: [MODULE, 'odometer', 'bracket', vehicleId, on],
     queryFn: () =>
-      viaMaintenance ? api.odometerBracketForMaintenance(vehicleId, on) : api.odometerBracket(vehicleId, on),
+      viaMaintenance
+        ? api.odometerBracketForMaintenance(vehicleId, on)
+        : api.odometerBracket(vehicleId, on),
     staleTime: 30_000,
     enabled: enabled && vehicleId !== '' && on !== '' && (viaMaintenance || viaOdometer),
   });
@@ -598,6 +601,28 @@ export const useViolations = (params: FleetListParams) =>
     queryKey: listKey(MODULE, 'violations', params),
     queryFn: () => api.listViolations(params),
     placeholderData: (prev) => prev,
+  });
+
+/**
+ * The same list, LOADED A PAGE AT A TIME AND KEPT.
+ *
+ * The drivers' board carries no pager — the owner asked for «السابق / التالي» gone — and a single
+ * `useViolations` then showed one page and no way to the rest: the count beside the filters said
+ * «٤٤٠» over a hundred visible rows. This is the idiom the users screen's activity timeline
+ * already uses for the same problem (`useUserTimeline`): one query key, pages accumulated in
+ * `data.pages`, and a «تحميل المزيد» under the board.
+ *
+ * `params` must NOT carry `page` — the page number is this hook's to supply, and a caller that
+ * pinned one would fetch it again for every «more».
+ */
+export const useViolationsPages = (params: Omit<FleetListParams, 'page'>) =>
+  useInfiniteQuery({
+    queryKey: listKey(MODULE, 'violations', { ...params, paged: 'infinite' }),
+    queryFn: ({ pageParam }) => api.listViolations({ ...params, page: pageParam }),
+    initialPageParam: 1,
+    // The stop is the SERVER's `totalPages`, not «did this page come back full?» — see
+    // `lib/violations-paging` for why the difference matters on an exact multiple of the page size.
+    getNextPageParam: (last, pages) => nextViolationsPage(last.meta, pages.length),
   });
 
 /** `year` omitted = every year, one row per (vehicle, year). */

@@ -9,7 +9,6 @@
 // The image section renders ONLY when there is an image (§9): an empty "license image" heading
 // over blank paper is worse than no section, so absent means absent.
 import { type Locale } from '@ecms/contracts';
-import { fetchVehicleLicenseImage } from '../api/fleet-api';
 
 export interface VehiclePrintRow {
   label: string;
@@ -21,16 +20,21 @@ export interface VehiclePrintDocument {
   /** Rendered as the document's identity line under the title. */
   subtitle: string;
   rows: VehiclePrintRow[];
-  licenseImage: { heading: string; caption: string; vehicleId: string } | null;
+  /**
+   * The image section, and HOW TO GET the bytes.
+   *
+   * The fetch travels with the document rather than being hard-wired to the vehicle registry: a
+   * driver's licence prints from the same idiom and the same builder, and the only thing that
+   * differs between them is which endpoint holds the file. Everything else — the inlining, the
+   * "omit the section rather than print an empty heading" rule, the torn-off window — is the same
+   * document, and forking it would have meant two of them drifting apart.
+   */
+  licenseImage: { heading: string; caption: string; fetch: () => Promise<Blob> } | null;
   locale: Locale;
 }
 
 const escapeHtml = (value: string): string =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const blobToDataUrl = async (blob: Blob): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -47,10 +51,7 @@ export const buildVehiclePrintHtml = (
 ): string => {
   const rtl = doc.locale === 'ar';
   const rows = doc.rows
-    .map(
-      (row) =>
-        `<tr><th>${escapeHtml(row.label)}</th><td>${escapeHtml(row.value)}</td></tr>`,
-    )
+    .map((row) => `<tr><th>${escapeHtml(row.label)}</th><td>${escapeHtml(row.value)}</td></tr>`)
     .join('');
   // Both conditions matter: no image on the vehicle, or bytes that failed to load, and either way
   // the section is omitted rather than printed empty.
@@ -92,11 +93,12 @@ export const buildVehiclePrintHtml = (
 };
 
 /** Compose the document, resolve the image if there is one, and hand it to the print dialog. */
-export const printVehicle = async (doc: VehiclePrintDocument): Promise<void> => {
+export const printLicenceRecord = async (doc: VehiclePrintDocument): Promise<void> => {
   let imageDataUrl: string | null = null;
   if (doc.licenseImage !== null) {
     // A failed image must not cost the user the printout — the record still prints, without it.
-    imageDataUrl = await fetchVehicleLicenseImage(doc.licenseImage.vehicleId)
+    imageDataUrl = await doc.licenseImage
+      .fetch()
       .then(blobToDataUrl)
       .catch(() => null);
   }

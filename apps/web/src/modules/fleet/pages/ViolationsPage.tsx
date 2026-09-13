@@ -18,7 +18,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { type Locale } from '@ecms/contracts';
@@ -49,10 +49,8 @@ const REMEMBERED_FILTERS = [
   'dtype',
   'damt',
   'dset',
-  'size',
 ] as const;
 
-const DEFAULT_PAGE_SIZE = 25;
 
 export const ViolationsPage = (): JSX.Element => {
   const t = useT();
@@ -70,17 +68,24 @@ export const ViolationsPage = (): JSX.Element => {
   const driverSettled = sp.get('dset') ?? '';
   // A LIST, like `driver` above: «speeding AND seatbelt» is one question, not two.
   const typeIds = splitVehicleCodeList(sp.get('dtype') ?? '');
-  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
-  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  /**
+   * NO PAGE NUMBER AT ALL on this screen any more.
+   *
+   * It was read from the URL while the pager existed, then pinned to 1 when the pager went, and is
+   * now gone entirely: the drivers' board loads its pages cumulatively (`useViolationsPages`) and
+   * owns its own page numbers, and the company board is a rollup that is never paged. That closes
+   * the `?page=3` trap for good rather than defending against it — `useRememberedFilters`
+   * deliberately lets a URL that already carries a query string win, so a pinned `page` was still
+   * a value somebody could contradict. There is nothing left to contradict.
+   */
 
-  /** Null or '' deletes the key; any filter change resets the page, as every list screen does. */
-  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+  /** Null or '' deletes the key. There is no page key left to reset — see `page` above. */
+  const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
     for (const [key, value] of Object.entries(updates)) {
       if (value === null || value === '') next.delete(key);
       else next.set(key, value);
     }
-    if (resetPage) next.delete('page');
     setSp(next, { replace: true });
   };
 
@@ -103,14 +108,15 @@ export const ViolationsPage = (): JSX.Element => {
 
   return (
     <PageContainer fullHeight>
-      <PageHeader
-        title={t('fleet.nav.violations')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.violations') },
-        ]}
-      />
+      {/* NO PAGE HEADER, and no pager under the board — both by the owner's instruction:
+          «انا عاوز اشيلهم خالص ميبقوش فى البيدج دى بس». This is the only screen in the app
+          without one, so it is a deliberate exception rather than a pattern: the two panels name
+          themselves, and the ~85px the h1, its rule and its margin took now go to the ledgers,
+          which is what the rest of this screen's rules have all been asking for.
 
+          What goes with it, and is worth knowing: the breadcrumb «الحركة › مخالفات السيارات»,
+          which was the only in-page link back to /fleet. The sidebar and ⌘K still carry it —
+          they read the server's nav, not this page. */}
       {/*
         Company FIRST in the DOM. The app is RTL, so the first child of a row sits on the RIGHT —
         which is where the business reads its own ledger. On a narrow screen the grid collapses to
@@ -143,19 +149,13 @@ export const ViolationsPage = (): JSX.Element => {
           amount={driverAmount}
           settled={driverSettled}
           onSettledChange={(next) => patch({ dset: next })}
-          page={page}
-          pageSize={pageSize}
           onVehicleCodesChange={(next) =>
             patch({ dcodes: next.length === 0 ? null : next.join(',') })
           }
           onDriverChange={(next) => patch({ driver: next })}
           onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
           onAmountChange={(next) => patch({ damt: next })}
-          onClear={() =>
-            patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })
-          }
-          onPageChange={(next) => patch({ page: String(next) }, false)}
-          onPageSizeChange={(next) => patch({ size: String(next), page: null }, false)}
+          onClear={() => patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })}
           onEdit={setEditing}
           onDelete={setDeleting}
         />

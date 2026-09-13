@@ -54,6 +54,7 @@ export const AccidentFormDialog = ({
     setAmountCollected(accident === null ? '' : String(accident.amountCollected));
     setPaidAmount(accident === null ? '' : String(accident.paidAmount));
     setNotes(accident?.notes ?? '');
+    setAwaitingNameFor('');
   }, [open, accident, initialVehicleId]);
 
   // The picked driver's NAME, from the same cached records every other fleet screen reads.
@@ -61,6 +62,30 @@ export const AccidentFormDialog = ({
   const drivers = new Map(
     [...records.entries()].map(([id, employee]) => [id, employee.personal.fullNameAr]),
   );
+
+  /**
+   * WHOSE NAME IS STILL BEING LOOKED UP — and the reason this form could not be submitted at all.
+   *
+   * `drivers` is keyed on the id ALREADY in state, because that is what `useEmployeeRecords` was
+   * asked for. Inside the picker's `onChange` the chosen id is by construction NOT that id (and on
+   * a create it is the first id there has ever been, so the map is empty), so reading the name out
+   * of `drivers` at pick time always missed — and the culprit name, which `complete` requires and
+   * the contract enforces, was written as ''. Save then stayed disabled with nothing on screen
+   * saying why: no accident could be recorded, and on an edit, changing the driver wiped the name
+   * it had.
+   *
+   * So the pick is recorded as a REQUEST for a name, and the effect below fills it in when the
+   * record arrives. It is deliberately not "always sync the name to the employee's current name":
+   * the stored name is the historical fact — a driver renamed next year did not change who caused
+   * this accident — so an existing row's name is left exactly as filed until somebody picks again.
+   */
+  const [awaitingNameFor, setAwaitingNameFor] = useState('');
+  const resolvedName = awaitingNameFor === '' ? undefined : drivers.get(awaitingNameFor);
+  useEffect(() => {
+    if (awaitingNameFor === '' || resolvedName === undefined) return;
+    setCulprit(resolvedName);
+    setAwaitingNameFor('');
+  }, [awaitingNameFor, resolvedName]);
 
   const create = useCreateAccident();
   const update = useUpdateAccident();
@@ -147,13 +172,32 @@ export const AccidentFormDialog = ({
             change who caused this accident. The id is what makes «every accident سائق X caused» an
             exact question instead of a substring search that matches two people sharing a first
             name. */}
-        <Field label={t('fleet.accidents.fields.culprit')} required>
+        <Field
+          label={t('fleet.accidents.fields.culprit')}
+          required
+          // Save is disabled until the NAME is in hand, so while it is on its way the form says so
+          // rather than presenting a dead button with no reason. It is the state that used to be
+          // permanent and silent.
+          {...(awaitingNameFor === '' ? {} : { warning: t('fleet.accidents.culpritNameLoading') })}
+        >
           <RegistryDriverPicker
             value={culpritEmployeeId === '' ? [] : [culpritEmployeeId]}
             onChange={(next) => {
               const picked = next[0] ?? '';
               setCulpritEmployeeId(picked);
-              setCulprit(picked === '' ? '' : (drivers.get(picked) ?? ''));
+              // Clearing the driver clears the name with it; picking one asks for the name and the
+              // effect above writes it the moment the directory answers.
+              if (picked === '') {
+                setCulprit('');
+                setAwaitingNameFor('');
+                return;
+              }
+              const known = drivers.get(picked);
+              if (known === undefined) setAwaitingNameFor(picked);
+              else {
+                setCulprit(known);
+                setAwaitingNameFor('');
+              }
             }}
             fullWidth
             className="w-full"

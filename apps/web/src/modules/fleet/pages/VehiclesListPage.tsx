@@ -30,18 +30,34 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, EyeIcon, PlusIcon, PrinterIcon, TrashIcon, WrenchIcon } from '../../../shared/ui/icons';
+import {
+  EditIcon,
+  EyeIcon,
+  PlusIcon,
+  PrinterIcon,
+  TrashIcon,
+  WrenchIcon,
+} from '../../../shared/ui/icons';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
-import { useDeleteVehicle, useFleetCatalog, useVehicleTypes, useVehicles } from '../api/fleet-queries';
+import {
+  useDeleteVehicle,
+  useFleetCatalog,
+  useVehicleTypes,
+  useVehicles,
+} from '../api/fleet-queries';
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
-import { LicenseImagePreviewDialog, VehicleLicenseImageCell } from '../components/VehicleLicenseImage';
-import { printVehicle } from '../components/vehicle-print';
+import {
+  LicenseImagePreviewDialog,
+  VehicleLicenseImageCell,
+} from '../components/VehicleLicenseImage';
+import { printLicenceRecord } from '../components/vehicle-print';
+import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -217,7 +233,7 @@ export const VehiclesListPage = (): JSX.Element => {
   const print = async (vehicle: FleetVehicleDto): Promise<void> => {
     const make = dash(typeName.get(vehicle.typeId));
     try {
-      await printVehicle({
+      await printLicenceRecord({
         locale,
         title: t('fleet.vehicles.print.title'),
         subtitle: t('fleet.vehicles.licenseImage.previewSubtitle', {
@@ -273,7 +289,7 @@ export const VehiclesListPage = (): JSX.Element => {
           vehicle.licenseImage === null
             ? null
             : {
-                vehicleId: vehicle.id,
+                fetch: () => fetchVehicleLicenseImage(vehicle.id),
                 heading: t('fleet.vehicles.licenseImage.previewTitle'),
                 caption: t('fleet.vehicles.licenseImage.previewSubtitle', {
                   code: vehicle.code,
@@ -426,7 +442,10 @@ export const VehiclesListPage = (): JSX.Element => {
               <EditIcon className="h-4 w-4" />
             </button>
           )}
-          {can('fleetVehicle.changeStatus') && v.status !== 'disposed' && (
+          {/* OFFERED ON A DISPOSED CAR TOO — it is the only way back, and hiding it was what made
+              a mis-keyed disposal permanent. Editing such a car is still hidden above: the record
+              stays frozen while it is out of the fleet, and the way to edit one is to return it. */}
+          {can('fleetVehicle.changeStatus') && (
             <button
               type="button"
               className={actionButton}

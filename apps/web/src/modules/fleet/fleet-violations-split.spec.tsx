@@ -23,6 +23,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  MAX_PAGE_SIZE,
   type FleetCatalogItemDto,
   type FleetViolationDto,
   type FleetViolationRollupDto,
@@ -32,8 +33,10 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
+import { formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
+import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
 import {
   cardLabel,
   entryCards,
@@ -159,6 +162,8 @@ const store = (
 const page = ({
   rollup = [rollupRow()],
   drivers = [driverRow()],
+  driverPages,
+  driverTotal,
   permissions,
   seedCatalogs = true,
   year,
@@ -167,6 +172,10 @@ const page = ({
    *  through to the default and quietly seed a row. */
   rollup?: FleetViolationRollupDto[] | null;
   drivers?: FleetViolationDto[] | null;
+  /** Several pages already in hand — for the cases about reaching past the first one. */
+  driverPages?: FleetViolationDto[][];
+  /** How many rows MATCHED, when that is more than the pages seeded here hold. */
+  driverTotal?: number;
   permissions?: string[];
   seedCatalogs?: boolean;
   year?: string;
@@ -202,17 +211,37 @@ const page = ({
     );
   }
   if (drivers !== null) {
+    // AN INFINITE QUERY'S CACHE SHAPE, not a plain one. The board accumulates pages
+    // (`useViolationsPages`) so that a fleet with more fines than one page still reaches all of
+    // them, and TanStack stores that as `{ pages, pageParams }`. Seeding the old single-page
+    // object left every driver row off the board — which is how this suite caught the change.
+    //
+    // `driverPages` lets a case seed SEVERAL pages and say how many rows matched in total, which
+    // is what the >100 cases need; the common case is one page holding everything.
+    const pages = driverPages ?? [drivers];
+    const matched = driverTotal ?? drivers.length;
+    const size = pages[0]?.length ?? 25;
     qc.setQueryData(
       listKey('fleet', 'violations', {
         kind: 'driver',
-        page: 1,
-        pageSize: 25,
+        // The chunk the board asks for is a CONSTANT now — there is no «لكل صفحة» box on this
+        // screen, because reaching the whole answer is «تحميل المزيد» rather than a page size.
+        pageSize: MAX_PAGE_SIZE,
         sortBy: 'date',
         sortDir: 'desc',
+        paged: 'infinite',
       }),
       {
-        items: drivers,
-        meta: { page: 1, pageSize: 25, totalItems: drivers.length, totalPages: 1 },
+        pages: pages.map((items, at) => ({
+          items,
+          meta: {
+            page: at + 1,
+            pageSize: size,
+            totalItems: matched,
+            totalPages: Math.max(1, Math.ceil(matched / Math.max(1, size))),
+          },
+        })),
+        pageParams: pages.map((_, at) => at + 1),
       },
     );
   }
@@ -468,17 +497,26 @@ describe('the eight reported defects, as rules the markup carries', () => {
   // encodes — and none of it was, so every one of these could be reverted with the whole suite
   // green. Each assertion below fails against the code as it stood before its fix.
 
-  it('the car is CHOSEN from the registry, never typed', () => {
-    // A typed code is a code the statement may not carry; the screen already holds the list.
+  it('the car comes from the REGISTRY — typing searches it, it is never free text', () => {
+    // The rule has not changed: a code the registry does not carry must not be storable, because
+    // the statement would name a car that does not exist. What changed is how the registry is
+    // reached — the owner asked to type the code, and a `<select>` could only ever offer one page
+    // of it (MAX_PAGE_SIZE, 100), so the hundred-and-first car was unpickable. The typed text is a
+    // SEARCH; `Combobox` still commits an option or nothing.
     const markup = page();
-    expect(markup, 'no free-text code box').not.toContain('data-company-form="code"');
+    expect(markup, 'no free-text code box writing straight into the form').not.toContain(
+      'data-company-form="code"',
+    );
     // By its own hook, not by `aria-label`: «كود السيارة» is the Arabic for both
     // `fleet.vehicles.fields.code` and `fleet.odometer.columns.vehicle`, so the filter bar's car
     // picker answers to the same name and an assertion on it proves nothing about this control.
     const at = markup.indexOf('data-vehicle-select="company-entry"');
     expect(at, 'the entry row picks the car from the registry').toBeGreaterThan(-1);
-    expect(markup.slice(markup.lastIndexOf('<', at), at), 'and it is a select').toMatch(
-      /^<select\b/,
+    const tag = markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at));
+    expect(tag, 'a searchable box').toContain('role="combobox"');
+    const source = readFileSync(join(HERE, 'components/VehicleCodeCombobox.tsx'), 'utf8');
+    expect(source, 'and it commits an id the registry answered with').toContain(
+      'byCode.get(code) ?? ',
     );
   });
 
@@ -666,20 +704,150 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(panel, 'the drivers filter is a query parameter').toContain('collected:');
   });
 
-  it('the «عرض … من …» sentence is gone, and the page-size box moved up beside the title', () => {
-    // It restated a number the count badge already gives, at the foot of a panel whose whole
-    // point is that nothing under the board moves. The CHOICE survives: a board of a few hundred
-    // fines is unreadable twenty-five at a time.
+  it('the drivers board can reach every matched row, with no pager — the 100-row cap stays shut', () => {
+    // REGRESSION. Removing «السابق / التالي» first left a board that fetched ONE page and stopped:
+    // the count beside the filters said «٤٤٠» over a hundred visible rows, with no control
+    // anywhere to reach the other three hundred and forty. The paging rules themselves live in
+    // `lib/violations-paging.spec.ts` and the presses are done in Chromium against a real >100
+    // dataset; what is pinned HERE is the WIRING, because a component that quietly went back to a
+    // single `useQuery` would pass both of those and still hide 340 fines.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'pages accumulate rather than replace').toContain('useViolationsPages(params)');
+    expect(code, 'every page fetched so far is what the board renders').toContain('flatMap');
+    expect(code, 'there is a control that fetches the next one').toContain('fetchNextPage()');
+    expect(code, 'offered only while the server still has rows').toContain('hasNextPage === true');
+    expect(code, 'and the reader is told how much is on screen').toContain('data-driver-loaded');
+    // The page number must not travel in the request params — the hook owns it, and a pinned one
+    // would refetch page 1 for every «more».
+    const params = code.slice(code.indexOf('const params = useMemo'), code.indexOf('const list ='));
+    expect(params, 'no page in the request params').not.toMatch(/\bpage,/);
+  });
+
+  it('shows how much of a >100 answer is on screen, and offers the rest', () => {
+    // The reported shape, exactly: 440 matched, one page of 100 in hand.
+    const first = Array.from({ length: 100 }, (_, i) => driverRow({ id: `vio-${i + 1}` }));
+    const markup = page({ driverPages: [first], driverTotal: 440 });
+    const at = markup.indexOf('data-driver-loaded');
+    expect(at, 'the board says how much it is showing').toBeGreaterThan(-1);
+    const said = markup.slice(markup.indexOf('>', at) + 1, markup.indexOf('<', at));
+    expect(said, 'both numbers, not just the total').toContain(formatNumber(100, 'ar'));
+    expect(said, 'and the size of the whole answer').toContain(formatNumber(440, 'ar'));
+    expect(markup, 'with a way to the other 340').toContain('data-driver-load-more');
+  });
+
+  it('stops offering «تحميل المزيد» once every matched row is on screen', () => {
+    const all = Array.from({ length: 12 }, (_, i) => driverRow({ id: `vio-${i + 1}` }));
+    const markup = page({ driverPages: [all], driverTotal: 12 });
+    expect(markup, 'nothing left to load').not.toContain('data-driver-load-more');
+  });
+
+  it('numbers the rows from the top of the accumulated list, not from a page offset', () => {
+    // With one page on screen, row 1 of page 3 was really row 51 and the offset was right. With
+    // pages accumulating, `rows` starts at the top and the same offset would count it twice.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'the index is the position').toContain('formatNumber(index + 1, locale)');
+    expect(code, 'no page-size offset survives').not.toContain('(meta.page - 1) * meta.pageSize');
+  });
+
+  it('this screen carries NO title, NO pager and NO «لكل صفحة» — and the others keep theirs', () => {
+    // All three by the owner's instruction, arrived at in that order. The page-size box was the
+    // last to go and is the one worth explaining: it only ever existed to work around the pager,
+    // and once «تحميل المزيد» reached the whole answer a chunk size stopped being a question to
+    // put to a reader at all.
     const markup = page();
+    expect(markup, 'no page heading').not.toMatch(/<h1[^>]*>[^<]*مخالفات السيارات/);
     expect(markup, 'no "showing X–Y of Z"').not.toContain(t('common.pagination.showing'));
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
-    expect(panel, 'the pager keeps its prev/next but drops the summary').toContain(
-      'summary={false}',
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'no pager').not.toContain('<Pagination');
+    expect(code, 'no page-size box either').not.toContain('PageSizeSelect');
+    expect(code, 'and nothing is left importing it').not.toMatch(/import[\s\S]{0,80}PageSizeSelect/);
+    // The chunk the board asks for is a constant, not a control the reader sets.
+    expect(code, 'the chunk is fixed').toMatch(/pageSize: MAX_PAGE_SIZE/);
+    // The heading is a plain centred h2 again — there is no longer a control laid over the row to
+    // balance against, which is what the `absolute left-0` was for.
+    expect(panel, 'a plain centred heading').toMatch(
+      /<h2 className="mb-4 text-center[\s\S]{0,160}driverTitle/,
     );
-    expect(panel, 'and the box rides the title row').toContain('<PageSizeSelect');
-    expect(panel, 'on the LEFT, which in RTL is the child listed last').toMatch(
-      /PageSizeSelect[\s\S]{0,120}order-last/,
+    expect(code, 'no hand-measured spacer is left to drift').not.toContain('w-[5.5rem]');
+
+    // AND THE REST OF THE APP IS UNTOUCHED. `Pagination` is shared by ~20 other screens; the
+    // summary sentence and the page-size box are still its default, so removing them HERE must
+    // not have removed them THERE.
+    const pagination = readFileSync(
+      join(HERE, '../../shared/ui/Pagination.tsx'),
+      'utf8',
     );
+    expect(pagination, 'the summary is still on by default').toContain('summary = true');
+    expect(pagination, 'and the page-size box still ships with it').toContain('<PageSizeSelect');
+  });
+
+  it('the car code can be TYPED in both entry rows, and still commits one car', () => {
+    // «انه يقدر يكتب برضو وهتكون واحد بس». A native `<select>` also capped the offer at one page
+    // of the registry — MAX_PAGE_SIZE, 100 — so on a larger fleet the hundred-and-first car was
+    // unpickable and a row already filed against it showed the empty «اختر…» row.
+    const markup = page();
+    for (const which of ['company-entry', 'driver-entry']) {
+      const at = markup.indexOf(`data-vehicle-select="${which}"`);
+      expect(at, `${which} renders a car control`).toBeGreaterThan(-1);
+      const tag = markup.slice(markup.lastIndexOf('<', at), markup.indexOf('>', at));
+      expect(tag, `${which} is a text box, not a dropdown`).toMatch(/^<input\b/);
+      expect(tag, `${which} announces itself as a combobox`).toContain('role="combobox"');
+    }
+    const source = readFileSync(join(HERE, 'components/VehicleCodeCombobox.tsx'), 'utf8');
+    expect(source, 'the typing is a SERVER search, not a filter over one page').toContain(
+      'vehicleCodeSearchQuery(query)',
+    );
+    // `Combobox` only ever commits an option, which is what «واحد بس» has to mean here: a code no
+    // car carries cannot be stored, however it was typed.
+    expect(source, 'and the value is a single vehicle id').toContain(
+      'onChange: (vehicleId: string) => void',
+    );
+  });
+
+  it('the drivers bar wraps rather than scrolling, so the code list is not clipped', () => {
+    // An `overflow-x` ancestor computes `overflow-y` to `auto` as well, which would open the car
+    // box's dropdown inside a scroll port instead of over the bar. A native select popup escaped
+    // that; a typed combobox cannot. The owner did not want a sideways scroll in a form either.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+    const bar = panel.slice(panel.indexOf('data-driver-bar'), panel.indexOf('data-driver-bar') + 400);
+    expect(bar, 'no sideways scroll in the entry bar').not.toContain('overflow-x-auto');
+    expect(bar, 'it wraps instead').toContain('flex-wrap');
+  });
+
+  it('the entry row’s total can hold a real money figure without cutting it', () => {
+    // Measured at the 2xl split: «112,500.00 ج.م.» wanted 140px in a 62px cell, and `truncate`
+    // showed a cut-off number beside a Save button. A truncated amount is not a smaller amount.
+    const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const at = panel.indexOf('data-company-form-total');
+    const field = panel.slice(panel.lastIndexOf('<Field', at), at);
+    expect(field, 'the widest share in the row').toMatch(/flex-\[1\.6\] basis-0 min-w-\[5\.5rem\]/);
+    expect(
+      panel.slice(at, at + 600),
+      'and the full figure is always recoverable',
+    ).toContain('title={');
+  });
+
+  it('a settled fine is out of the drivers’ page total too', () => {
+    // The company half is narrowed on the server; this figure is computed in the browser, so it
+    // has to apply the same rule or the two halves of one screen disagree.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel).toMatch(/rows\s*\.filter\(\(row\) => !row\.collected\)\s*\.reduce/);
+  });
+
+  it('the count beside each filter bar is readable, not a hairline', () => {
+    const markup = page();
+    for (const hook of ['data-driver-count-badge', 'data-company-count']) {
+      const at = markup.indexOf(hook);
+      expect(at, `${hook} is rendered`).toBeGreaterThan(-1);
+      const attrs = markup.slice(at, markup.indexOf('>', at));
+      expect(attrs, `${hook} is 14px`).toContain('text-sm');
+      expect(attrs, `${hook} is no longer 11px`).not.toContain('text-[11px]');
+    }
   });
 
   it('the edit dialog offers the car and the year, rather than printing them', () => {
@@ -854,5 +1022,84 @@ describe('print and CSV carry exactly what is on screen', () => {
     });
     expect(html).toContain('class="empty"');
     expect(html, 'no table headers over nothing').not.toContain('<tbody></tbody>');
+  });
+});
+
+
+// ── the car's own ledger ────────────────────────────────────────────────────
+//
+// The layer portals through `SideLayer` into `document.body`, and this suite runs with
+// `environment: 'node'` and no jsdom — so it cannot be RENDERED here at all, let alone opened by a
+// click. What is asserted below is therefore the structure of the source, and the rendering half
+// is proved in Chromium against a real (vehicle, year) that has fines of both kinds.
+//
+// Weak on its own, so the assertions are chosen to be the ones a regression would actually break:
+// that a SECOND server query exists and narrows by the same car and year, that the drivers' table
+// sits AFTER the grievance line rather than anywhere in the file, and that the three row actions
+// are defined exactly ONCE for both tables.
+
+describe('opening a car’s year shows BOTH halves of what its totals are made of', () => {
+  const SOURCE = readFileSync(join(HERE, 'components/CompanyViolationsDetailLayer.tsx'), 'utf8');
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  it('is a component that actually loads — the source below is read, not imported', () => {
+    // The assertions in this block read the file as TEXT, which proves nothing about whether the
+    // module still resolves. Importing it does: a broken import inside the layer, or an export
+    // renamed out from under the screen, fails here rather than in the browser.
+    expect(typeof CompanyViolationsDetailLayer).toBe('function');
+  });
+
+  it('asks the server for the DRIVERS’ fines of the same car and the same year', () => {
+    // «إجمالى السيارة» on the board is the company rows PLUS these, so a layer that showed only
+    // the first was a ledger you could not reconcile: the number on the board did not match the
+    // rows behind it, and the only way to the missing half was to leave and filter the drivers'
+    // board by hand to the same car and the same year.
+    //
+    // A driver fine stores a DATE, not a year — `yearClause` turns the year into a UTC range on
+    // the server — so this is one more query, not a filter over a car's whole history.
+    expect(CODE, 'a second list query').toContain('const driverList = useViolations(');
+    const q = CODE.slice(CODE.indexOf('const driverList'), CODE.indexOf('const catalog'));
+    expect(q, 'for the driver shape').toContain("kind: 'driver'");
+    expect(q, 'the same car').toContain('vehicleId: row.vehicleId');
+    expect(q, 'the same year').toContain('year: String(row.year)');
+    expect(CODE, 'named by the drivers’ own catalogue').toContain(
+      "useFleetCatalog('violationType', 'driver')",
+    );
+  });
+
+  it('puts that table UNDER the «قبل التظلم» line, not somewhere else in the layer', () => {
+    // The owner asked for it there specifically: it is the figure that reports both halves.
+    const grievance = SOURCE.indexOf('data-detail-grievance');
+    const heading = SOURCE.indexOf("t('fleet.violations.driverTitle')");
+    const table = SOURCE.indexOf('columns={driverColumns}');
+    expect(grievance, 'the grievance line is still there').toBeGreaterThan(-1);
+    expect(heading, 'the drivers’ heading comes after it').toBeGreaterThan(grievance);
+    expect(table, 'and its table after that').toBeGreaterThan(heading);
+  });
+
+  it('gives the driver rows the SAME three actions, from one definition', () => {
+    // «اقدر برضو اعمل علامه صح او امسح او اعدل». Defined once and used by both tables: two copies
+    // drift, and the one that drifts is always the permission check.
+    expect(CODE, 'one definition').toContain('const rowActions =');
+    for (const hook of ['data-detail-collect=', 'data-detail-delete=', 'data-detail-edit=']) {
+      expect((CODE.match(new RegExp(hook, 'g')) ?? []).length, `${hook} is not copied`).toBe(1);
+    }
+    expect(
+      (CODE.match(/render: rowActions,/g) ?? []).length,
+      'and both tables use it',
+    ).toBe(2);
+    // Each still behind its own grant — the thing a second copy would have lost.
+    for (const grant of ['fleetViolation.collect', 'fleetViolation.delete', 'fleetViolation.edit']) {
+      expect(CODE, `${grant} still gates its action`).toContain(`can('${grant}')`);
+    }
+  });
+
+  it('routes edit and delete by the row’s KIND, so a driver fine opens the driver dialog', () => {
+    // The layer hands the row straight up; the page already dispatches on `violation.kind`, which
+    // is why this needed no new dialog and no new prop.
+    const pageSource = readFileSync(join(HERE, 'pages/ViolationsPage.tsx'), 'utf8');
+    expect(pageSource, 'the page decides by kind').toMatch(/kind === 'driver'|kind !== 'driver'/);
+    expect(CODE, 'the layer just reports the row').toContain('onEdit(v)');
+    expect(CODE, 'and the row it reports is whichever table it came from').toContain('onDelete(v)');
   });
 });

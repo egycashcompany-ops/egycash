@@ -191,7 +191,9 @@ const me = (permissions: readonly string[]): MeDto =>
  * makes the first paint the loaded state instead of the skeleton.
  */
 const seededClient = (
-  rows: FleetDriverProfileDto[] = [driver()],
+  // `null` is a real row here, not an absence: a driver is on this list because their job title
+  // requires a driving test, so the row exists before anybody records a licence.
+  rows: (FleetDriverProfileDto | null)[] = [driver()],
   params = {},
   { hr = true }: { hr?: boolean } = {},
 ): QueryClient => {
@@ -507,6 +509,59 @@ describe('the columns are filled from the three real sources', () => {
 });
 
 // ── 2. The licence image ────────────────────────────────────────────────────
+
+describe('a driver who is not enrolled yet has a way IN to the licence scan', () => {
+  /**
+   * «مفيش مكان ان ارفع صوره الرخصه لو مش موجوده بيقولى غير مسجل».
+   *
+   * The cell was dead grey text. Nothing could be uploaded there and nothing ever could have been:
+   * every licence endpoint is `/fleet/drivers/:profileId/license-image`, so with no profile there
+   * is no id to upload against, and enrolling needs a licence number and an expiry date only a
+   * person can supply. What was missing was not a button that uploads but a WAY IN — the sole
+   * affordance on such a row was the same pencil as every other row.
+   */
+  const unenrolled = (permissions = ALL_PERMISSIONS): string =>
+    render(<DriversListPage />, { client: seededClient([null]), permissions });
+
+  it('offers a labelled way in where «غير مسجّل» used to sit', () => {
+    const html = unenrolled();
+    expect(html, 'the cell is a control now').toContain(`data-driver-enrol="${EMPLOYEE_ID}"`);
+    expect(html, 'and it says what it does').toContain(
+      t('fleet.drivers.licenseImage.addViaProfile'),
+    );
+  });
+
+  it('offers nothing to a reader who cannot enrol drivers — the old text stands', () => {
+    const html = unenrolled(['fleetDriver.view', 'employee.view']);
+    expect(html, 'no control').not.toContain('data-driver-enrol');
+    expect(html, 'the honest empty state instead').toContain(t('fleet.drivers.notRecorded'));
+  });
+
+  it('the enrolment dialog takes the scan in the SAME visit and uploads it after the create', () => {
+    // Otherwise this is two visits for one intention: enrol, close, find the row again, upload.
+    // The file is held until the create answers with an id, because there is no id before that.
+    const dialog = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
+    const code = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'a file can be chosen before the profile exists').toContain(
+      'data-driver-license-staged',
+    );
+    expect(code, 'held, not sent').toContain('setStagedImage');
+    expect(code, 'and sent against the id the create returned').toMatch(
+      /const created = await create\.mutateAsync/,
+    );
+    expect(code, 'the upload uses that id').toMatch(
+      /uploadLicense\.mutateAsync\(\{ id: created\.id, file: stagedImage \}\)/,
+    );
+    // A failed upload must not read as a failed enrolment: the profile IS created.
+    const after = code.slice(code.indexOf('uploadLicense.mutateAsync'));
+    expect(after.slice(0, 400), 'the failure is reported, not thrown away').toContain(
+      'toast.error',
+    );
+    expect(after.slice(0, 400), 'and the enrolment is still announced').toContain(
+      "toast.success(t('fleet.drivers.recorded'))",
+    );
+  });
+});
 
 describe('the licence-image cell', () => {
   const cell = (row: FleetDriverProfileDto, permissions = ALL_PERMISSIONS): string =>

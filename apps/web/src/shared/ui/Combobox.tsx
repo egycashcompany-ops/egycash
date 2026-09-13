@@ -24,6 +24,9 @@ export const Combobox = ({
   clearLabel,
   onBlur,
   onSearch,
+  density = 'default',
+  testId,
+  ariaLabel,
 }: {
   value: string;
   options: readonly string[];
@@ -45,6 +48,21 @@ export const Combobox = ({
    * `options` are taken as the answer already.
    */
   onSearch?: (query: string) => void;
+  /**
+   * Side gutter and type size, the same two knobs `form.tsx`'s controls take and for the same
+   * reason: `cn` is a plain joiner, so a `px-2` handed in as a class would sit beside this input's
+   * own `px-3` and the winner would be Tailwind's emission order. A bar that has to fit its
+   * controls on one line buys the difference back here.
+   */
+  density?: 'default' | 'tight';
+  /**
+   * A stable hook for a test that has to tell this control apart from a neighbour with the same
+   * accessible name — «كود السيارة» names both the entry control and the filter on the violations
+   * screen, so `aria-label` cannot say which is which.
+   */
+  testId?: string;
+  /** The control's own accessible name, when no `<label>` points at it. */
+  ariaLabel?: string;
 }): JSX.Element => {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -130,6 +148,8 @@ export const Combobox = ({
         id={id}
         type="text"
         role="combobox"
+        {...(testId === undefined ? {} : { 'data-vehicle-select': testId })}
+        {...(ariaLabel === undefined ? {} : { 'aria-label': ariaLabel })}
         aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
@@ -156,7 +176,9 @@ export const Combobox = ({
           if (!open) onBlur?.();
         }}
         className={cn(
-          'w-full rounded-lg border bg-white px-3 py-2 pe-16 text-sm text-slate-800',
+          'w-full rounded-lg border bg-white py-2 text-sm text-slate-800',
+          // The trailing gutter has to clear the clear-button and the chevron that sit over it.
+          density === 'tight' ? 'px-2 pe-12' : 'px-3 pe-16',
           'placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50',
           'dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800',
           error

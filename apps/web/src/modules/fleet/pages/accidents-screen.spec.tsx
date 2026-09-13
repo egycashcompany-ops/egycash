@@ -8,6 +8,9 @@
 //
 // What the server enforces — how the filters combine, what a code resolves to — is proven in
 // `apps/api/src/modules/fleet/accidents/accident-filters.spec.ts`. Nothing here can enforce it.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -188,6 +191,8 @@ const rowWith = (html: string, needle: string): string => {
   if (found === undefined) throw new Error(`no row containing ${needle}`);
   return found;
 };
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe('the columns the reader asked for, in order', () => {
   it('runs م → الكود → التاريخ → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → ملاحظات', () => {
@@ -498,5 +503,64 @@ describe('the filter bar', () => {
       }),
     });
     expect(html).toContain('فُلتر على الخادم');
+  });
+});
+
+// ── the culprit's NAME, which is what made the form unsubmittable ───────────
+//
+// «المتسبب» became a single control — the drivers picker — which is also responsible for writing
+// the culprit NAME the contract requires (`culprit: z.string().trim().min(1)`) and `complete`
+// gates Save on. The name was read out of `drivers`, a map keyed on the employee id ALREADY in
+// state; inside the picker's `onChange` the chosen id is by construction NOT that id, and on a
+// create there has never been one, so the lookup always missed and the name was written as ''.
+// Save then sat disabled with nothing on screen saying why: NO ACCIDENT COULD BE RECORDED, and
+// changing the driver on an existing one wiped the name it had.
+//
+// This has no DOM, so the pick itself is exercised in Chromium. What is pinned here is the shape
+// that makes the pick survivable: the name is REQUESTED and filled in when the directory answers,
+// never read from a map that cannot hold it yet.
+describe('the culprit’s name outlives the moment it was picked', () => {
+  const SOURCE = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
+  // Comments name the bug they replaced, so a rule about the code reads the code alone.
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+  it('never writes an empty name just because the record has not arrived', () => {
+    // The exact line that killed the form. `?? ''` on a map that cannot contain the new id is the
+    // whole defect, and it looks entirely reasonable in a diff.
+    expect(CODE, 'no unconditional blanking on pick').not.toContain("(drivers.get(picked) ?? '')");
+  });
+
+  it('records the pick as a REQUEST and fills the name in when the directory answers', () => {
+    expect(CODE, 'the pending lookup is state, not a hope').toContain('setAwaitingNameFor');
+    expect(CODE, 'and an effect completes it').toMatch(
+      /useEffect\(\(\) => \{[\s\S]{0,200}awaitingNameFor[\s\S]{0,200}setCulprit\(resolvedName\)/,
+    );
+  });
+
+  it('clearing the driver still clears the name — an empty picker is an empty culprit', () => {
+    expect(CODE).toMatch(/if \(picked === ''\) \{[\s\S]{0,120}setCulprit\(''\)/);
+  });
+
+  it('says why Save is disabled while the name is on its way', () => {
+    // The state that used to be permanent and silent is now temporary and announced.
+    expect(SOURCE).toContain('fleet.accidents.culpritNameLoading');
+    // Both language blocks carry it — a key present in one only renders the raw key to half the
+    // users, which has shipped from this file before.
+    const i18n = readFileSync(join(HERE, '../../../platform/localization/i18n.ts'), 'utf8');
+    expect(
+      i18n.match(/'fleet\.accidents\.culpritNameLoading':/g)?.length,
+      'in the ar block and the en block',
+    ).toBe(2);
+  });
+
+  it('leaves an already-filed name alone — it is the historical fact, not today’s spelling', () => {
+    // Re-syncing every open to the employee's CURRENT name would rewrite who caused an accident
+    // whenever somebody's record was corrected. Only a fresh pick may overwrite it.
+    expect(CODE, 'the open-effect takes the stored name').toContain(
+      "setCulprit(accident?.culprit ?? '')",
+    );
+    expect(CODE, 'and starts with nothing pending').toMatch(
+      /setCulprit\(accident\?\.culprit \?\? ''\)[\s\S]{0,400}setAwaitingNameFor\(''\)/,
+    );
   });
 });

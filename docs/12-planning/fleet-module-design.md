@@ -273,8 +273,15 @@ org branch/department ── fleet_vehicles (scoping)     settings: FleetAlarmYe
 
 ### 4.1 Vehicle lifecycle
 
-`active` ⇄ `outOfService` → `disposed` (terminal; §13-Q6 may add labels like sold/scrapped as
-*reasons* on `disposed`, not new states). "In workshop" is **derived** (an open maintenance visit
+`active` ⇄ `outOfService` → `disposed` → `active` (§13-Q6 may add labels like sold/scrapped as
+*reasons* on `disposed`, not new states). Disposal was terminal until 2026-09-13, when the owner
+asked for it to be reversible: a car keyed as disposed by mistake had no way back short of a
+database edit, and nothing external required the rule — there is no retention, audit or legal
+constraint anywhere in these docs that turns on it. Disposal DELETES NOTHING: it writes the status
+and the reason, and every reading, fine, accident and licence scan stays exactly where it was.
+While a car is disposed its record is still frozen (`isVehicleWritable`), so it cannot drift while
+it is out of the fleet — the way to edit one is to return it. The return goes to `active` only:
+a car that comes back is a car in service, and standing it down again is one more ordinary step. "In workshop" is **derived** (an open maintenance visit
 exists), never a stored state — deriving it is what makes it impossible to forget to flip back.
 Every transition audited + published (§8).
 
@@ -404,7 +411,7 @@ Driver events: single rows. All edits audited; deletes soft.
 
 | Entity | States | Notes |
 |---|---|---|
-| Vehicle | `active`, `outOfService`, `disposed` (+ soft-deleted) | inWorkshop derived; §13-Q6 refines disposal *reasons* |
+| Vehicle | `active`, `outOfService`, `disposed` (+ soft-deleted) | inWorkshop derived; §13-Q6 refines disposal *reasons*; `disposed → active` returns a car to service (2026-09-13) |
 | Maintenance visit | `open`, `closed` (+ soft-deleted) | reopen allowed; these two are the whole status — no separate status field, and the derived alarm level is not one (§4.2) |
 | Odometer entry | `open` (no inReading), `closed` | closed by the next reading |
 | Duty assignment | present/empty per (vehicle, date) | vehicle-side flag `maintenance` derived |

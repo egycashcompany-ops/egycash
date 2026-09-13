@@ -446,7 +446,31 @@ export const DriversListPage = (): JSX.Element => {
       header: t('fleet.drivers.columns.licenseImage'),
       render: (d) =>
         d.profile === null ? (
-          <NotRecorded />
+          // «مفيش مكان ان ارفع صوره الرخصه لو مش موجوده بيقولى غير مسجل». The cell used to be dead
+          // grey text. The licence file hangs on the PROFILE — every endpoint is
+          // `/fleet/drivers/:profileId/license-image` — so there is genuinely nothing to attach a
+          // scan to until the driver is enrolled, and enrolling needs a licence number and an
+          // expiry date that only a person can supply. What was missing was not an upload button
+          // but a WAY IN: the only affordance was the same pencil as every other row, telling a
+          // reader nothing about what it would do from here.
+          //
+          // So the cell says what it is and opens the very dialog that fixes it — where the scan
+          // can be chosen in the same visit and is uploaded the moment the profile exists.
+          can('fleetDriver.manage') ? (
+            <button
+              type="button"
+              data-driver-enrol={d.employeeId}
+              className="rounded-md px-2 py-1 text-xs font-medium text-brand-600 underline-offset-2 hover:bg-brand-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300 dark:hover:bg-brand-950"
+              onClick={() => {
+                setEditing(d);
+                setFormOpen(true);
+              }}
+            >
+              {t('fleet.drivers.licenseImage.addViaProfile')}
+            </button>
+          ) : (
+            <NotRecorded />
+          )
         ) : (
           <DriverLicenseImageCell driver={d.profile} onPreview={setPreviewing} />
         ),
@@ -528,7 +552,7 @@ export const DriversListPage = (): JSX.Element => {
             matchedDrivers === null ? undefined : (
               <span
                 role="status"
-                className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 title={t('fleet.drivers.countLabel')}
               >
                 {t('fleet.drivers.count', { count: formatNumber(matchedDrivers, locale) })}

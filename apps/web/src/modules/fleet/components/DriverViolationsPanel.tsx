@@ -18,7 +18,6 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { PageSizeSelect, Pagination } from '../../../shared/ui/Pagination';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -30,6 +29,7 @@ import {
   DownloadIcon,
 } from '../../../shared/ui/icons';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
+import { violationsLoadState } from '../lib/violations-paging';
 import { errorMessage } from '../../../shared/lib/errors';
 import { saveBlob } from '../../../shared/lib/api-client';
 import {
@@ -37,7 +37,7 @@ import {
   useRecordDriverViolations,
   useSetViolationCollected,
   useVehicles,
-  useViolations,
+  useViolationsPages,
 } from '../api/fleet-queries';
 import { SideLayer } from '../../../shared/ui/SideLayer';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -48,7 +48,7 @@ import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
-import { VehicleSelect } from './VehicleSelect';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { EmployeeName } from './EmployeeName';
 import {
   cardLabel,
@@ -75,16 +75,12 @@ export const DriverViolationsPanel = ({
   typeIds,
   amount,
   settled,
-  page,
-  pageSize,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
   onAmountChange,
   onSettledChange,
   onClear,
-  onPageChange,
-  onPageSizeChange,
   onEdit,
   onDelete,
 }: {
@@ -96,8 +92,6 @@ export const DriverViolationsPanel = ({
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
-  page: number;
-  pageSize: number;
   onVehicleCodesChange: (next: string[]) => void;
   onDriverChange: (next: string | null) => void;
   onTypeChange: (next: string[]) => void;
@@ -105,8 +99,6 @@ export const DriverViolationsPanel = ({
   onSettledChange: (next: string | null) => void;
   /** Clear this half in ONE write — see the company panel for why it is not four setter calls. */
   onClear: () => void;
-  onPageChange: (next: number) => void;
-  onPageSizeChange: (next: number) => void;
   onEdit: (row: FleetViolationDto) => void;
   onDelete: (row: FleetViolationDto) => void;
 }): JSX.Element => {
@@ -201,8 +193,13 @@ export const DriverViolationsPanel = ({
   const params = useMemo(
     () => ({
       kind: 'driver' as const,
-      page,
-      pageSize,
+      // NO `page` — `useViolationsPages` owns the page number, and a pinned one here would refetch
+      // the same page for every «تحميل المزيد».
+      // HOW BIG A CHUNK, not how much of the answer. With «تحميل المزيد» under the board this is
+      // an implementation detail — a reader reaches everything whatever it is — so it is a
+      // constant here rather than a control. Kept at MAX_PAGE_SIZE so a fleet's whole year of
+      // fines arrives in as few presses as the server allows.
+      pageSize: MAX_PAGE_SIZE,
       sortBy: 'date',
       sortDir: 'desc' as const,
       ...(vehicleCodes.length === 0 ? {} : { vehicleCodes: vehicleCodes.join(',') }),
@@ -214,11 +211,17 @@ export const DriverViolationsPanel = ({
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),
-    [page, pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
+    [vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
   );
-  const list = useViolations(params);
-  const rows = list.data?.items ?? [];
-  const meta: PageMeta | undefined = list.data?.meta;
+  const list = useViolationsPages(params);
+  // EVERY page fetched so far, in the order the server sorted them. This is what replaced the
+  // pager: the board grows downward instead of swapping its contents, so the four-hundredth fine
+  // is reachable without «السابق / التالي» ever coming back.
+  const rows = (list.data?.pages ?? []).flatMap((p) => p.items);
+  // The counts come from the FIRST page's meta — `totalItems` is the size of the whole answer, not
+  // of the chunk, and every page repeats it.
+  const meta: PageMeta | undefined = list.data?.pages[0]?.meta;
+  const loadState = violationsLoadState(meta, rows.length);
   const collect = useSetViolationCollected();
 
   const toggleCollected = async (row: FleetViolationDto): Promise<void> => {
@@ -234,18 +237,21 @@ export const DriverViolationsPanel = ({
     }
   };
 
-  const pageTotal = rows.reduce((sum, row) => sum + row.amount, 0);
+  // WHAT IS STILL OWED on this page. A ticked fine is settled, and the owner reads «إجمالى
+  // السائقين» as the outstanding balance — the same rule the server now applies to the company
+  // half's four figures. Done in hand rather than by sending `collected: false`, because that
+  // would hide the rows themselves and this board is exactly where a clerk unticks a mistake.
+  const pageTotal = rows.filter((row) => !row.collected).reduce((sum, row) => sum + row.amount, 0);
 
   const columns: Column<FleetViolationDto>[] = [
     {
       key: 'seq',
       header: t('fleet.violations.columns.seq'),
       align: 'center',
-      render: (_row, index) =>
-        formatNumber(
-          (meta === undefined ? 0 : (meta.page - 1) * meta.pageSize) + index + 1,
-          locale,
-        ),
+      // The index IS the position now. It used to be offset by the page the board was showing,
+      // because the board showed ONE page and row 1 of page 3 was really row 51. Pages accumulate
+      // instead, so `rows` is the list from the top and the offset would double-count it.
+      render: (_row, index) => formatNumber(index + 1, locale),
     },
     {
       key: 'date',
@@ -401,28 +407,15 @@ export const DriverViolationsPanel = ({
       data-violations-panel="driver"
       className="flex min-h-0 min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
     >
-      {/* The page-size box rides the TITLE ROW, on the far left. It used to sit under the board
-          inside «عرض ١–٢٥ من ٤٨ · لكل صفحة», a sentence that restated a number the count badge
-          in the filter bar already gives — three statements of one figure, at the foot of a panel
-          whose whole point is that nothing under the board moves. The sentence is gone; the
-          choice it was attached to is not, because a board of a few hundred fines is unreadable
-          twenty-five at a time.
-
-          `order-last` is what puts it on the left: this row is RTL, so the child listed last is
-          drawn first from the left edge — the same idiom as the print and export icons below. */}
-      <div className="mb-4 flex items-center gap-3">
-        <PageSizeSelect
-          className="order-last shrink-0"
-          pageSize={pageSize}
-          onChange={onPageSizeChange}
-        />
-        <h2 className="flex-1 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
-          {t('fleet.violations.driverTitle')}
-        </h2>
-        {/* Balances the box opposite it so the title stays centred on the PANEL, not pushed off
-            it — a heading that drifts when a control appears beside it reads as a mistake. */}
-        <span aria-hidden className="w-[5.5rem] shrink-0" />
-      </div>
+      {/* JUST THE HEADING. This screen carries no page title, no «السابق / التالي» and no
+          «لكل صفحة» — all three by the owner's instruction, and the last of them because the box
+          only ever existed to work around a pager that is itself gone. Reaching the whole answer
+          is «تحميل المزيد» under the board now, so a chunk size is an implementation detail and
+          not a question to put to a reader. The other screens keep their page-size box exactly
+          where it has always been; nothing in `Pagination` changed for them. */}
+      <h2 className="mb-4 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
+        {t('fleet.violations.driverTitle')}
+      </h2>
 
       <div className="mb-3 flex items-start gap-3">
         {/* Listed LAST so an RTL row draws it on the LEFT — see the company panel for the note. */}
@@ -452,19 +445,24 @@ export const DriverViolationsPanel = ({
         {/* ── count the stack ─────────────────────────────────────────────── */}
         <div
           data-driver-bar="true"
-          className="flex min-w-0 flex-1 items-end gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
+          // IT WRAPS, IT DOES NOT SCROLL. This was `overflow-x-auto`, which had two problems. The
+          // owner does not want a sideways scroll in a form — «ميكونش فيه اسكرول يمين وشمال» — and
+          // an `overflow-x` ancestor computes `overflow-y` to `auto` as well, which would clip the
+          // car box's own dropdown: the list of codes would open inside a scroll port instead of
+          // over the bar. A native `<select>` popup escaped that; a typed combobox cannot.
+          className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
         >
           <Field label={t('fleet.odometer.columns.vehicle')}>
-            {/* PICKED from the registry, exactly as the company half picks it. A typed code is a
-                code no car may carry, and this bar files a stack of fines against it in one
-                transaction — so a typo was a whole batch refused for a reason the reader could
-                only find by re-reading their own typing. */}
-            <div className="w-36">
-              <VehicleSelect
+            {/* TYPED OR PICKED, exactly as the company half now does it — the owner asked for
+                both rows: «انه يقدر يكتب برضو وهتكون واحد بس». The typing is only ever a SEARCH:
+                the control commits an option or nothing, so a code no car carries still cannot be
+                stored, which is what this bar needs — it files a stack of fines against one car in
+                one transaction, and a typo used to mean the whole batch refused. */}
+            <div className="w-40">
+              <VehicleCodeCombobox
                 value={formVehicleId}
                 onChange={setFormVehicleId}
                 anyStatus
-                fullWidth
                 testId="driver-entry"
                 ariaLabel={t('fleet.odometer.columns.vehicle')}
               />
@@ -712,7 +710,7 @@ export const DriverViolationsPanel = ({
               data-driver-count-badge
               role="status"
               title={t('fleet.violations.matchedCount')}
-              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+              className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
             >
               {formatNumber(meta?.totalItems ?? 0, locale)}
             </span>
@@ -854,7 +852,51 @@ export const DriverViolationsPanel = ({
               </tr>
             </tbody>
           </table>
-          <Pagination meta={meta} onPageChange={onPageChange} summary={false} />
+
+          {/* HOW MUCH OF THE ANSWER IS ON SCREEN, and the way to the rest.
+              This is what stands in for «السابق / التالي», which the owner asked to be gone: the
+              board grows downward instead of swapping its contents, so nothing is ever a page
+              away. The pair of numbers is the point — the count beside the filters used to say
+              «٤٤٠» over a hundred visible rows with no control anywhere to reach the others, and a
+              count that is true and unreachable is worse than no count.
+
+              It is the idiom the users screen's activity timeline already uses (`useUserTimeline`
+              + «تحميل الأقدم»), not a new one invented here. */}
+          <div className="mt-2 flex items-center justify-between gap-3 px-3 pb-1">
+            <span
+              data-driver-loaded
+              role="status"
+              className="text-xs text-slate-500 dark:text-slate-400"
+            >
+              {loadState.complete
+                ? t('fleet.violations.allLoaded', {
+                    total: formatNumber(loadState.total, locale),
+                  })
+                : t('fleet.violations.loadedOf', {
+                    shown: formatNumber(loadState.shown, locale),
+                    total: formatNumber(loadState.total, locale),
+                  })}
+            </span>
+            {list.hasNextPage === true && (
+              <Button
+                size="sm"
+                variant="secondary"
+                data-driver-load-more="true"
+                loading={list.isFetchingNextPage}
+                onClick={() => void list.fetchNextPage()}
+              >
+                {t('fleet.violations.loadMore')}
+              </Button>
+            )}
+          </div>
+
+          {/* A page that fails AFTER rows are on screen must not wipe them — the board keeps what
+              it has and reports the failure under it, the same way the activity timeline does. */}
+          {list.isError && rows.length > 0 && (
+            <p className="px-3 pb-2 text-xs text-red-600 dark:text-red-400">
+              {t('fleet.violations.loadMoreFailed')}
+            </p>
+          )}
         </>
       )}
     </section>

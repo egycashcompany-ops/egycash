@@ -161,14 +161,59 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
             vehicleId: '$vehicleId',
             year: { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
           },
+          // WHAT IS STILL OWED, not what was ever fined. A row that has been ticked as collected
+          // is settled, and the owner reads these four figures as the outstanding balance —
+          // «تخرج من إجمالى الشركة و إجمالى السائقين و إجمالى المخالفات». So the tick takes the
+          // row out of all four here, at the one place violation money is summed; every other
+          // consumer (the group lines, the panel footers, the CSV and the print sheet) is a
+          // re-rendering of these fields and follows for free, which is what keeps screen, export
+          // and print from disagreeing.
+          //
+          // MONEY AND COUNTS MOVE TOGETHER, deliberately: they sit in the same table row, so
+          // excluding only the amount would print «٣ مخالفات · ٠٫٠٠ ج.م» — a line that contradicts
+          // itself.
+          //
+          // The exclusion is a $cond INSIDE the group, never a `collected: false` in the $match.
+          // Matching would have been the shorter edit and would take the settled rows out of
+          // `rowCount`/`collectedCount` too — and those two are what the board's three-state tick,
+          // its green tint and the «الحالة» filter are all computed from, so a fully-collected
+          // group would stop reporting that it is collected at all.
           vehicleCount: {
-            $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, { $ifNull: ['$count', 0] }, 0] },
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$kind', 'vehicle'] }, { $not: ['$collected'] }] },
+                { $ifNull: ['$count', 0] },
+                0,
+              ],
+            },
           },
-          vehicleAmount: { $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, '$amount', 0] } },
-          driverCount: { $sum: { $cond: [{ $eq: ['$kind', 'driver'] }, 1, 0] } },
-          driverAmount: { $sum: { $cond: [{ $eq: ['$kind', 'driver'] }, '$amount', 0] } },
-          // ROWS, not fines: a statement row of «×5» is one row that is collected or not, so the
-          // group's tick counts documents rather than the `count` on them.
+          vehicleAmount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$kind', 'vehicle'] }, { $not: ['$collected'] }] },
+                '$amount',
+                0,
+              ],
+            },
+          },
+          driverCount: {
+            $sum: {
+              $cond: [{ $and: [{ $eq: ['$kind', 'driver'] }, { $not: ['$collected'] }] }, 1, 0],
+            },
+          },
+          driverAmount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$kind', 'driver'] }, { $not: ['$collected'] }] },
+                '$amount',
+                0,
+              ],
+            },
+          },
+          // ROWS, not fines, and EVERY row: a statement row of «×5» is one row that is collected
+          // or not, so the group's tick counts documents rather than the `count` on them — and it
+          // counts them whether they are collected or not, because «٣ من ٥ محصَّلة» is exactly the
+          // question these two answer.
           rowCount: { $sum: 1 },
           collectedCount: { $sum: { $cond: ['$collected', 1, 0] } },
         },

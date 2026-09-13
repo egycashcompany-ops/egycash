@@ -443,6 +443,64 @@ describe('the registry table renders the frozen column order', () => {
     return render(<VehiclesListPage />, { client, permissions });
   };
 
+  it('a DISPOSED car can still be brought back — the status action is offered on its row', () => {
+    // REGRESSION, and a rule the owner changed rather than a bug: disposal used to be terminal and
+    // this button was hidden for it, so a car keyed as disposed by mistake was disposed for good
+    // and the only way back was a database edit. «مكهنة لازم ترجع نشطة تاني».
+    const html = withRows([vehicle({ id: 'v-gone', status: 'disposed' })]);
+    expect(html, 'the status action is there').toContain(t('fleet.vehicles.changeStatus'));
+    // The record itself is still frozen while the car is out of the fleet — the way to EDIT one
+    // is to return it first, which is now possible. That half is unchanged on purpose.
+    const row = html.slice(html.indexOf('v-gone'));
+    expect(row.slice(0, 4000), 'and editing it is still not offered').not.toContain(
+      t('fleet.vehicles.edit'),
+    );
+  });
+
+  it('and the dialog offers «نشطة» as the way out of «مكهنة», and only that', () => {
+    const dialog = readFileSync(join(HERE, 'components/VehicleStatusDialog.tsx'), 'utf8');
+    const code = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'a disposed car has a way out').toMatch(/disposed: \['active'\]/);
+    expect(code, 'and it is not the empty table any more').not.toMatch(/disposed: \[\]/);
+  });
+
+  it('the disposal warning no longer promises something untrue', () => {
+    // It used to read «التكهين نهائي: السيارة المكهنة لا تُعدل ولا تعود للخدمة.» Half of that is
+    // still true (it is not edited) and half is not (it does come back), and a warning that is
+    // half wrong is worse than none. It also now says the thing the owner cared about most:
+    // disposal deletes nothing.
+    for (const locale of ['ar', 'en'] as const) {
+      const warning = translate(locale, 'fleet.vehicles.disposedWarning');
+      expect(warning, `${locale}: no longer claims it is final`).not.toMatch(/نهائي|final/i);
+      expect(warning, `${locale}: says nothing is deleted`).toMatch(/مش بيمسح|deletes nothing/i);
+    }
+  });
+
+  it('a disposed car’s licence scan can still be DELETED — the server always allowed it', () => {
+    // The cell folded upload and delete into one `mayEdit` flag gated on the status. Upload is
+    // genuinely refused by the API for a disposed car; delete is not — `deleteLicenseImage` has no
+    // writability check and answers 200 — so the screen was hiding a control the server would have
+    // served. The comment that used to sit there asserted the opposite, which is how it survived.
+    const cell = readFileSync(join(HERE, 'components/VehicleLicenseImage.tsx'), 'utf8');
+    const code = cell.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'upload still respects the status').toMatch(
+      /mayUpload = can\('fleetVehicle.edit'\) && vehicle.status !== 'disposed'/,
+    );
+    expect(code, 'delete asks only about the permission').toMatch(
+      /mayDelete = can\('fleetVehicle.edit'\);/,
+    );
+    expect(code, 'and the two are no longer one flag').not.toContain('const mayEdit =');
+
+    const html = withRows([
+      vehicle({
+        id: 'v-scan',
+        status: 'disposed',
+        licenseImage: WITH_IMAGE.licenseImage,
+      }),
+    ]);
+    expect(html, 'the delete is on the row').toContain('data-vehicle-license-delete="v-scan"');
+  });
+
   it('every column header appears, in order', () => {
     const html = withRows([vehicle()]);
     // Scoped to <thead>: several filter controls carry the same words as their columns ("الفرع"
@@ -577,7 +635,10 @@ describe('the print view carries the image only when there is one', () => {
   const imageMeta = {
     heading: 'صورة رخصة السيارة',
     caption: 'كود العربية: 150 | الماركة: مرسيدس اسبرانتر 515',
-    vehicleId: 'v1',
+    // The document carries HOW to get the bytes, not which registry holds them — a driver's
+    // licence prints from the same builder. The builder itself never calls it: it is handed the
+    // resolved data URL, which is what makes it testable at all.
+    fetch: (): Promise<Blob> => Promise.resolve(new Blob()),
   };
 
   it('prints the record, the identity line and the rows', () => {

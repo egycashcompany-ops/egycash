@@ -1,7 +1,11 @@
-// Change vehicle status (§4.1): the dialog offers only the transitions the lifecycle allows
-// (disposed is terminal and never offered as a source — the button is hidden for it upstream),
-// requires a reason whenever the vehicle leaves active service, and spells out that disposal
-// cannot be undone. The server enforces the same rules; this mirrors them for honest UX.
+// Change vehicle status (§4.1): the dialog offers only the transitions the lifecycle allows,
+// requires a reason whenever the vehicle leaves active service, and says what disposal does. The
+// server enforces the same rules; this mirrors them for honest UX.
+//
+// A DISPOSED CAR IS A SOURCE NOW. Disposal was terminal until the owner asked for it to be
+// reversible — «مكهنة لازم ترجع نشطة تاني» — and the one transition out is back into service. The
+// table below is the same table as `apps/api/.../vehicle-status.ts`; if they ever disagree the
+// server wins and this dialog offers a button that answers 409.
 import { useEffect, useState } from 'react';
 import { type FleetVehicleDto, type FleetVehicleStatus } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -14,7 +18,8 @@ import { useChangeVehicleStatus } from '../api/fleet-queries';
 const TARGETS: Record<FleetVehicleStatus, FleetVehicleStatus[]> = {
   active: ['outOfService', 'disposed'],
   outOfService: ['active', 'disposed'],
-  disposed: [],
+  // Back into service only — see the server's note on why not `outOfService` as well.
+  disposed: ['active'],
 };
 
 export const VehicleStatusDialog = ({

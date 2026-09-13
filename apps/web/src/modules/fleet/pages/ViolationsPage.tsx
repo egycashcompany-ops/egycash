@@ -49,10 +49,8 @@ const REMEMBERED_FILTERS = [
   'dtype',
   'damt',
   'dset',
-  'size',
 ] as const;
 
-const DEFAULT_PAGE_SIZE = 25;
 
 export const ViolationsPage = (): JSX.Element => {
   const t = useT();
@@ -80,7 +78,6 @@ export const ViolationsPage = (): JSX.Element => {
    * deliberately lets a URL that already carries a query string win, so a pinned `page` was still
    * a value somebody could contradict. There is nothing left to contradict.
    */
-  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
 
   /** Null or '' deletes the key. There is no page key left to reset — see `page` above. */
   const patch = (updates: Record<string, string | null>): void => {
@@ -152,7 +149,6 @@ export const ViolationsPage = (): JSX.Element => {
           amount={driverAmount}
           settled={driverSettled}
           onSettledChange={(next) => patch({ dset: next })}
-          pageSize={pageSize}
           onVehicleCodesChange={(next) =>
             patch({ dcodes: next.length === 0 ? null : next.join(',') })
           }
@@ -160,7 +156,6 @@ export const ViolationsPage = (): JSX.Element => {
           onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
           onAmountChange={(next) => patch({ damt: next })}
           onClear={() => patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })}
-          onPageSizeChange={(next) => patch({ size: String(next) })}
           onEdit={setEditing}
           onDelete={setDeleting}
         />

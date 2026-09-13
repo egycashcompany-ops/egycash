@@ -23,6 +23,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  MAX_PAGE_SIZE,
   type FleetCatalogItemDto,
   type FleetViolationDto,
   type FleetViolationRollupDto,
@@ -222,7 +223,9 @@ const page = ({
     qc.setQueryData(
       listKey('fleet', 'violations', {
         kind: 'driver',
-        pageSize: 25,
+        // The chunk the board asks for is a CONSTANT now — there is no «لكل صفحة» box on this
+        // screen, because reaching the whole answer is «تحميل المزيد» rather than a page size.
+        pageSize: MAX_PAGE_SIZE,
         sortBy: 'date',
         sortDir: 'desc',
         paged: 'infinite',
@@ -747,35 +750,37 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(code, 'no page-size offset survives').not.toContain('(meta.page - 1) * meta.pageSize');
   });
 
-  it('the «عرض … من …» sentence and the pager are gone; the page-size box is beside the title', () => {
-    // It restated a number the count badge already gives, at the foot of a panel whose whole
-    // point is that nothing under the board moves. The CHOICE survives: a board of a few hundred
-    // fines is unreadable twenty-five at a time.
+  it('this screen carries NO title, NO pager and NO «لكل صفحة» — and the others keep theirs', () => {
+    // All three by the owner's instruction, arrived at in that order. The page-size box was the
+    // last to go and is the one worth explaining: it only ever existed to work around the pager,
+    // and once «تحميل المزيد» reached the whole answer a chunk size stopped being a question to
+    // put to a reader at all.
     const markup = page();
+    expect(markup, 'no page heading').not.toMatch(/<h1[^>]*>[^<]*مخالفات السيارات/);
     expect(markup, 'no "showing X–Y of Z"').not.toContain(t('common.pagination.showing'));
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
-    expect(panel, 'the pager is gone entirely, not just its summary').not.toContain(
-      '<Pagination',
+    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'no pager').not.toContain('<Pagination');
+    expect(code, 'no page-size box either').not.toContain('PageSizeSelect');
+    expect(code, 'and nothing is left importing it').not.toMatch(/import[\s\S]{0,80}PageSizeSelect/);
+    // The chunk the board asks for is a constant, not a control the reader sets.
+    expect(code, 'the chunk is fixed').toMatch(/pageSize: MAX_PAGE_SIZE/);
+    // The heading is a plain centred h2 again — there is no longer a control laid over the row to
+    // balance against, which is what the `absolute left-0` was for.
+    expect(panel, 'a plain centred heading').toMatch(
+      /<h2 className="mb-4 text-center[\s\S]{0,160}driverTitle/,
     );
-    expect(panel, 'and the box rides the title row').toContain('<PageSizeSelect');
-    // OUT OF THE FLOW, at the PHYSICAL left edge. The first attempt was a flex row of
-    // [box][title][spacer] with `order-last` on the box — but `order-last` moves the box to the
-    // end of the order, which in RTL draws it on the LEFT, the same side as the spacer meant to
-    // balance it. Measured, the heading sat 121px off the panel's centre. `left-0` does not flip,
-    // and a heading centred on the whole row cannot be pushed by a control laid over it.
-    expect(panel, 'the box is laid over the row at its left edge').toMatch(
-      /PageSizeSelect[\s\S]{0,120}absolute left-0/,
+    expect(code, 'no hand-measured spacer is left to drift').not.toContain('w-[5.5rem]');
+
+    // AND THE REST OF THE APP IS UNTOUCHED. `Pagination` is shared by ~20 other screens; the
+    // summary sentence and the page-size box are still its default, so removing them HERE must
+    // not have removed them THERE.
+    const pagination = readFileSync(
+      join(HERE, '../../shared/ui/Pagination.tsx'),
+      'utf8',
     );
-    // Comments stripped: the note beside the row NAMES the spacer it replaced, and a rule about
-    // the markup must not be broken — or satisfied — by prose.
-    const panelCode = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    expect(panelCode, 'no hand-measured spacer is left to drift').not.toContain('w-[5.5rem]');
-    expect(panelCode, 'and the order-last balancing act is gone').not.toMatch(
-      /PageSizeSelect[\s\S]{0,120}order-last/,
-    );
-    expect(panel, 'the heading is centred on the whole row').toMatch(
-      /<h2 className="w-full text-center[\s\S]{0,160}driverTitle/,
-    );
+    expect(pagination, 'the summary is still on by default').toContain('summary = true');
+    expect(pagination, 'and the page-size box still ships with it').toContain('<PageSizeSelect');
   });
 
   it('the car code can be TYPED in both entry rows, and still commits one car', () => {

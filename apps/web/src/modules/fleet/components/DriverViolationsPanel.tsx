@@ -18,7 +18,6 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { PageSizeSelect } from '../../../shared/ui/Pagination';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
@@ -76,14 +75,12 @@ export const DriverViolationsPanel = ({
   typeIds,
   amount,
   settled,
-  pageSize,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
   onAmountChange,
   onSettledChange,
   onClear,
-  onPageSizeChange,
   onEdit,
   onDelete,
 }: {
@@ -95,7 +92,6 @@ export const DriverViolationsPanel = ({
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
-  pageSize: number;
   onVehicleCodesChange: (next: string[]) => void;
   onDriverChange: (next: string | null) => void;
   onTypeChange: (next: string[]) => void;
@@ -103,7 +99,6 @@ export const DriverViolationsPanel = ({
   onSettledChange: (next: string | null) => void;
   /** Clear this half in ONE write — see the company panel for why it is not four setter calls. */
   onClear: () => void;
-  onPageSizeChange: (next: number) => void;
   onEdit: (row: FleetViolationDto) => void;
   onDelete: (row: FleetViolationDto) => void;
 }): JSX.Element => {
@@ -200,7 +195,11 @@ export const DriverViolationsPanel = ({
       kind: 'driver' as const,
       // NO `page` — `useViolationsPages` owns the page number, and a pinned one here would refetch
       // the same page for every «تحميل المزيد».
-      pageSize,
+      // HOW BIG A CHUNK, not how much of the answer. With «تحميل المزيد» under the board this is
+      // an implementation detail — a reader reaches everything whatever it is — so it is a
+      // constant here rather than a control. Kept at MAX_PAGE_SIZE so a fleet's whole year of
+      // fines arrives in as few presses as the server allows.
+      pageSize: MAX_PAGE_SIZE,
       sortBy: 'date',
       sortDir: 'desc' as const,
       ...(vehicleCodes.length === 0 ? {} : { vehicleCodes: vehicleCodes.join(',') }),
@@ -212,7 +211,7 @@ export const DriverViolationsPanel = ({
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),
-    [pageSize, vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
+    [vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
   );
   const list = useViolationsPages(params);
   // EVERY page fetched so far, in the order the server sorted them. This is what replaced the
@@ -408,33 +407,15 @@ export const DriverViolationsPanel = ({
       data-violations-panel="driver"
       className="flex min-h-0 min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
     >
-      {/* The page-size box rides the TITLE ROW, on the far left. It used to sit under the board
-          inside «عرض ١–٢٥ من ٤٨ · لكل صفحة», a sentence that restated a number the count badge
-          in the filter bar already gives — three statements of one figure, at the foot of a panel
-          whose whole point is that nothing under the board moves. The sentence is gone; the
-          choice it was attached to is not, and with the pager gone too it is now the ONLY way to
-          see more than a page of fines, which is why it is the one thing kept.
-
-          TAKEN OUT OF THE FLOW, rather than balanced against a spacer. The first attempt was a
-          flex row of [box][title][spacer] with `order-last` on the box — but `order-last` moves
-          the box to the END of the order, which in RTL draws it on the LEFT, i.e. on the SAME
-          side as the spacer that was supposed to balance it. Both sat left, and the heading was
-          measured 121px off the panel's centre. A hard-coded spacer could not have held anyway:
-          it was `w-[5.5rem]` against a box whose real width changes with the font and the
-          language.
-
-          So the heading is centred on the WHOLE row and the box is positioned over it. `left-0`
-          is physical and does not flip, which is exactly what «على الشمال خالص» asks for. */}
-      <div className="relative mb-4 flex min-h-9 items-center">
-        <h2 className="w-full text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
-          {t('fleet.violations.driverTitle')}
-        </h2>
-        <PageSizeSelect
-          className="absolute left-0 top-1/2 -translate-y-1/2"
-          pageSize={pageSize}
-          onChange={onPageSizeChange}
-        />
-      </div>
+      {/* JUST THE HEADING. This screen carries no page title, no «السابق / التالي» and no
+          «لكل صفحة» — all three by the owner's instruction, and the last of them because the box
+          only ever existed to work around a pager that is itself gone. Reaching the whole answer
+          is «تحميل المزيد» under the board now, so a chunk size is an implementation detail and
+          not a question to put to a reader. The other screens keep their page-size box exactly
+          where it has always been; nothing in `Pagination` changed for them. */}
+      <h2 className="mb-4 text-center text-lg font-semibold text-slate-800 dark:text-slate-100">
+        {t('fleet.violations.driverTitle')}
+      </h2>
 
       <div className="mb-3 flex items-start gap-3">
         {/* Listed LAST so an RTL row draws it on the LEFT — see the company panel for the note. */}

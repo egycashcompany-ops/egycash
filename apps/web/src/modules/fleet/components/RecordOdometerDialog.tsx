@@ -27,7 +27,7 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { vehicleCodeLabel } from '../lib/vehicle-code-options';
-import { OptionalEmployeeField } from './OptionalEmployeeField';
+import { OptionalDriverField } from './OptionalDriverField';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 /** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
@@ -194,6 +194,9 @@ export const RecordOdometerDialog = ({
 
   return (
     <Dialog
+      // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
+      // لما ادوس على الاكس». Escape still closes it.
+      dismissOnOutsideClick={false}
       open={open}
       onClose={onClose}
       title={t('fleet.odometer.record')}
@@ -261,10 +264,10 @@ export const RecordOdometerDialog = ({
             "السائق الأول/الثاني" the roster screens use leaves the operator to guess which is
             which at the one moment it is being decided. */}
         <Field label={t('fleet.odometer.columns.driver1')}>
-          <OptionalEmployeeField value={driver1} onChange={setDriver1} />
+          <OptionalDriverField value={driver1} onChange={setDriver1} />
         </Field>
         <Field label={t('fleet.odometer.columns.driver2')}>
-          <OptionalEmployeeField value={driver2} onChange={setDriver2} />
+          <OptionalDriverField value={driver2} onChange={setDriver2} />
         </Field>
         <Field label={t('fleet.attendance.fields.notes')}>
           <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />

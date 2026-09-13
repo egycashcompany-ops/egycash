@@ -1,5 +1,5 @@
-// Accessible modal dialog rendered in a portal. Closes on overlay click and Escape, locks body
-// scroll while open, and is RTL-safe. Focus management is basic (the panel is the labelled
+// Accessible modal dialog rendered in a portal. Closes on Escape and — unless the dialog says
+// otherwise — on a click outside the panel. Locks body scroll while open, and is RTL-safe. Focus management is basic (the panel is the labelled
 // dialog); a fuller focus-trap can layer on later without changing the API.
 import { useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
@@ -27,6 +27,7 @@ export const Dialog = ({
   description,
   footer,
   size = 'md',
+  dismissOnOutsideClick = true,
   children,
 }: {
   open: boolean;
@@ -35,11 +36,24 @@ export const Dialog = ({
   description?: string;
   footer?: ReactNode;
   size?: Size;
+  /**
+   * Does a click OUTSIDE the panel close this dialog?
+   *
+   * On by default, which is right for a dialog that only shows something: a stray click costs a
+   * glance. It is the wrong default for a dialog you FILL IN — «لو دوست في اى حته الموديل
+   * ميتقفلش غير لما ادوس على الاكس» — where the same stray click throws away everything typed,
+   * with no warning and nothing to undo it. A form dialog turns this off and keeps the two
+   * deliberate ways out: the × and Escape.
+   *
+   * Off does NOT mean trapped. Escape still closes, because a keyboard user needs a way out that
+   * does not depend on finding a button, and pressing it is a decision rather than a slip.
+   */
+  dismissOnOutsideClick?: boolean;
   children: ReactNode;
 }): JSX.Element | null => {
   const t = useT();
   const panelRef = useRef<HTMLDivElement>(null);
-  useOnClickOutside(panelRef, onClose, open);
+  useOnClickOutside(panelRef, onClose, open && dismissOnOutsideClick);
 
   useEffect(() => {
     if (!open) return;

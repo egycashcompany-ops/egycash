@@ -45,3 +45,22 @@ export const odometerRange = (
   }
   return { from: params.from, to: params.to, defaulted: false };
 };
+
+/**
+ * How far back the «وسّع المدى» button on the empty table reaches.
+ *
+ * Twelve months, and a WHOLE number of them: the lower bound is the first of the month a year
+ * ago, not "today minus 365 days", so pressing the button twice from different days of the same
+ * month asks the server the same question and reads out of the cache instead of re-fetching.
+ *
+ * The upper bound is the end of the CURRENT month rather than today. A reading may be filed for a
+ * day that has not happened yet — a closing reading entered in advance, a clock ahead of the
+ * server's — and a range that stopped at today would hide exactly the rows the reader pressed the
+ * button to find.
+ */
+export const WIDER_RANGE_MONTHS = 12;
+
+export const widerRange = (now: Date, months = WIDER_RANGE_MONTHS): OdometerRange => ({
+  from: isoDate(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months, 1))),
+  to: currentMonthRange(now).to,
+});

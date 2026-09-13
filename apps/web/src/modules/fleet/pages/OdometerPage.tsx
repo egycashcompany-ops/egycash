@@ -14,7 +14,6 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_ALARM_LEVELS,
-  MAX_PAGE_SIZE,
   type FleetMaintenanceAlarmDto,
   type FleetOdometerLogDto,
   type Locale,
@@ -24,6 +23,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -36,8 +36,8 @@ import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
 import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
-import { useDriverHrFilter } from '../api/driver-hr-filter';
-import { odometerRange } from '../lib/odometer-range';
+import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
+import { odometerRange, widerRange } from '../lib/odometer-range';
 import { EmployeeName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
@@ -46,7 +46,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'alerts',
-  'driver',
+  'drv',
   'from',
   'to',
   'vehicleCodes',
@@ -72,7 +72,9 @@ export const OdometerPage = (): JSX.Element => {
   const range = odometerRange({ from: sp.get('from') ?? '', to: sp.get('to') ?? '' }, now);
   const from = range.from;
   const to = range.to;
-  const driver = sp.get('driver') ?? '';
+  // WHO, as ids picked off the drivers registry — not as a string HR has to search for.
+  // `drv` is the drivers screen's own parameter name, so a filtered link reads the same on both.
+  const drivers = (sp.get('drv') ?? '').split(',').filter((id) => id !== '');
   const alerts = (sp.get('alerts') ?? '').split(',').filter((a) => a !== '');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -99,18 +101,20 @@ export const OdometerPage = (): JSX.Element => {
   // The defaulted month is not an "active filter": it is where the page starts, so the reset
   // affordance stays off until the reader has actually narrowed something.
   const hasActiveFilters =
-    vehicleCodes.length > 0 || !range.defaulted || driver !== '' || alerts.length > 0;
+    vehicleCodes.length > 0 || !range.defaulted || drivers.length > 0 || alerts.length > 0;
 
-  // The driver NAME is HR's fact: ask HR first, filter Fleet by the ids it returns. Reuses the
-  // drivers registry's own hook, so the "HR matched more than one page" refusal is the same here.
+  // NO HR SEARCH STEP ANY MORE.
+  //
+  // The filter used to be a text box: whatever was typed went to HR as one `search`, and the ids
+  // that came back narrowed this table. That is three failure modes the reader had to be told
+  // about — HR still answering, HR matching more than one page, HR refusing — and each needed its
+  // own banner above the grid. It also searched the WHOLE payroll, so a reader could type an
+  // accountant's name and get an empty odometer with the bar insisting a driver was selected.
+  //
+  // Picking from the drivers REGISTRY removes all of it. The ids are already ids, so there is
+  // nothing to resolve before the table can be asked; and everyone offered holds a seat that
+  // requires a driving test, so every offer is a driver this table could actually show.
   const mayFilterByDriver = can('employee.view');
-  const hr = useDriverHrFilter({
-    search: mayFilterByDriver ? driver : '',
-    address: '',
-    governorate: '',
-    phone: '',
-  });
-  const driverEmployeeIds = hr.employeeIds;
 
   const params = useMemo(
     () => ({
@@ -122,21 +126,42 @@ export const OdometerPage = (): JSX.Element => {
       from: from || undefined,
       to: to || undefined,
       alerts: alerts.length > 0 ? alerts : undefined,
-      // Always sent once a driver filter is set, including when HR matched nobody: an empty list
-      // is "no matches", and dropping it would answer a narrowed question with every reading.
-      driverEmployeeIds: driverEmployeeIds ?? undefined,
+      driverEmployeeIds: drivers.length > 0 ? drivers : undefined,
     }),
-    [paramsKey, driverEmployeeIds],
+    [paramsKey],
   );
-  // Three states must hold the query back rather than let it answer the wrong question: the HR
-  // step still running, HR matching more than one page, HR refusing.
-  const blocked = hr.loading || hr.tooMany || hr.failed;
-  const emptyMatch = driverEmployeeIds !== null && driverEmployeeIds.length === 0;
-  const { data, isLoading, isError, error, refetch } = useOdometerLogs(
-    params,
-    !blocked && !emptyMatch,
+  const { data, isLoading, isError, error, refetch } = useOdometerLogs(params);
+  const rows = data?.items ?? [];
+
+  /**
+   * THE MONTH IS THE REASON THE TABLE IS EMPTY — say so, and offer the way out.
+   *
+   * Opening the screen narrows the request to the current month (`odometerRange`), which is right:
+   * the log grows one row per vehicle per day it runs, and "no date filter" would be a request for
+   * the whole history. But on a fleet whose last reading was filed in a previous month it means
+   * the reader lands on an empty grid under a bar that shows no active filter, and nothing on the
+   * screen says the range is why. «خليه زى ما هو وضيف رسالة وزرار» — the default stays exactly as
+   * it was, and the empty cell explains itself instead.
+   *
+   * Only when the month is ACTUALLY the reason: the range must be the defaulted one, and no other
+   * filter may be narrowing the question. With a car or a driver or an alarm level picked, the
+   * honest answer is the generic «no results» — widening the dates would not necessarily find
+   * anything, and a button promising it would be a guess.
+   */
+  const monthIsTheReason =
+    range.defaulted && vehicleCodes.length === 0 && drivers.length === 0 && alerts.length === 0;
+  const wider = widerRange(now);
+  const emptyMonth = (
+    <EmptyState
+      title={t('fleet.odometer.emptyMonth.title')}
+      description={t('fleet.odometer.emptyMonth.description')}
+      action={
+        <Button size="sm" variant="secondary" onClick={() => patch({ from: wider.from, to: wider.to })}>
+          {t('fleet.odometer.emptyMonth.action')}
+        </Button>
+      }
+    />
   );
-  const rows = blocked || emptyMatch ? [] : (data?.items ?? []);
 
   // The vehicle CODE arrives on the row (`vehicleCode`), resolved server-side. It used to be
   // joined here from one page of the registry, which silently bounded the answer at
@@ -192,16 +217,56 @@ export const OdometerPage = (): JSX.Element => {
       ),
     },
     {
-      key: 'driver1',
-      header: t('fleet.odometer.columns.driver1'),
-      render: (log) =>
-        log.driver1EmployeeId === null ? '—' : <EmployeeName employeeId={log.driver1EmployeeId} />,
-    },
-    {
-      key: 'driver2',
-      header: t('fleet.odometer.columns.driver2'),
-      render: (log) =>
-        log.driver2EmployeeId === null ? '—' : <EmployeeName employeeId={log.driver2EmployeeId} />,
+      key: 'driver',
+      header: t('fleet.odometer.columns.driver'),
+      // ONE COLUMN, TWO LINES — «اسم السائق في الجدول يكون زى شاشه الmaintanance», and the two
+      // shifts kept as they were, «يفضل عمودين (صباحى/مسائى) زى دلوقتى».
+      //
+      // Those two asks only look like they disagree. The maintenance grid already prints TWO
+      // drivers for one visit — who brought the car in, above who drove it away — in a single
+      // «اسم السائق» cell, each line in its own tone. Applying that shape here keeps the morning
+      // and the evening driver just as distinguishable as two columns made them while giving the
+      // table back a whole column of width, on a grid that carries eleven of them.
+      //
+      // Where it does NOT copy maintenance is the caption. There, order and colour are enough:
+      // the entry driver is always above the exit driver, and the tones are the danger/success
+      // pair the design system already spends on that meaning. Morning and evening have no such
+      // convention to lean on, so each line names its shift — colour alone would be a riddle in a
+      // column that used to say «صباحي» and «مسائي» in its headers.
+      //
+      // Each line is conditional. A day driven by one person has one line, and a row from before
+      // these fields existed has none — which renders as a dash, never as `null`. Keyed by SHIFT,
+      // not by employee: the same person may well drive both.
+      render: (log) => {
+        const lines: { shift: string; id: string; label: string; tone: string }[] = [];
+        if (log.driver1EmployeeId !== null) {
+          lines.push({
+            shift: 'morning',
+            id: log.driver1EmployeeId,
+            label: t('fleet.odometer.driverShift.morning'),
+            tone: 'text-amber-700 dark:text-amber-300',
+          });
+        }
+        if (log.driver2EmployeeId !== null) {
+          lines.push({
+            shift: 'evening',
+            id: log.driver2EmployeeId,
+            label: t('fleet.odometer.driverShift.evening'),
+            tone: 'text-indigo-700 dark:text-indigo-300',
+          });
+        }
+        if (lines.length === 0) return '—';
+        return (
+          <span className="flex flex-col gap-0.5">
+            {lines.map(({ shift, id, label, tone }) => (
+              <span key={shift} className={tone}>
+                <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>{' '}
+                <EmployeeName employeeId={id} />
+              </span>
+            ))}
+          </span>
+        );
+      },
     },
     {
       key: 'outReading',
@@ -314,7 +379,7 @@ export const OdometerPage = (): JSX.Element => {
           singleRow
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
-            patch({ vehicleCodes: null, from: null, to: null, driver: null, alerts: null })
+            patch({ vehicleCodes: null, from: null, to: null, drv: null, alerts: null })
           }
         >
           {/* One row on a desktop, in the order the question is asked: which cars, over which
@@ -372,13 +437,18 @@ export const OdometerPage = (): JSX.Element => {
               />
             </span>
           </label>
+          {/* WHO, picked off the drivers registry rather than typed. Several at once, because a
+              question about a shift is usually a question about more than one person — and the
+              same `multiple` the maintenance board's filter takes. The width is fixed like every
+              other control on this bar: the picker is `fullWidth` inside a box this row owns, so
+              a long Arabic name does not stretch the row the way an intrinsic width would. */}
           {mayFilterByDriver && (
-            <div className="w-44 shrink-0">
-              <Input
-                aria-label={t('fleet.odometer.columns.driver')}
-                placeholder={t('fleet.odometer.driverPlaceholder')}
-                value={driver}
-                onChange={(e) => patch({ driver: e.target.value || null })}
+            <div className="w-56 shrink-0">
+              <RegistryDriverPicker
+                multiple
+                fullWidth
+                value={drivers}
+                onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
               />
             </div>
           )}
@@ -398,34 +468,18 @@ export const OdometerPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        {hr.tooMany && (
-          <p
-            role="status"
-            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-          >
-            {t('fleet.drivers.hrFilterTooMany', { matched: hr.matched, max: MAX_PAGE_SIZE })}
-          </p>
-        )}
-        {hr.failed && (
-          <p
-            role="status"
-            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-          >
-            {t('fleet.drivers.hrFilterUnavailable')}
-          </p>
-        )}
-
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(log) => log.id}
-          loading={hr.loading || (isLoading && !blocked && !emptyMatch)}
+          loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}
           onSortChange={changeSort}
+          {...(monthIsTheReason ? { empty: emptyMonth } : {})}
         />
-        {data !== undefined && !blocked && !emptyMatch && data.meta.totalItems > 0 && (
+        {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}

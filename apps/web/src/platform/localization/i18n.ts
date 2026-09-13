@@ -3745,6 +3745,14 @@ const en: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'First driver (morning)',
   'fleet.odometer.columns.driver2': 'Second driver (evening)',
   'fleet.odometer.columns.driver': 'Driver',
+  // The two seats, short enough to sit in front of a name inside one cell.
+  'fleet.odometer.driverShift.morning': 'Morning',
+  'fleet.odometer.driverShift.evening': 'Evening',
+  // The empty table on the month the screen opens on — see `OdometerPage`.
+  'fleet.odometer.emptyMonth.title': 'No readings this month',
+  'fleet.odometer.emptyMonth.description':
+    'The table opens on the current month. Readings older than that are not missing — they are outside the range.',
+  'fleet.odometer.emptyMonth.action': 'Show the last 12 months',
   'fleet.odometer.columns.notes': 'Notes',
   'fleet.odometer.columns.sinceService': 'Distance since service',
   'fleet.odometer.columns.alert': 'Maintenance alert',
@@ -10213,6 +10221,12 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'اسم السائق الأول (صباحي)',
   'fleet.odometer.columns.driver2': 'اسم السائق الثاني (مسائي)',
   'fleet.odometer.columns.driver': 'اسم السائق',
+  'fleet.odometer.driverShift.morning': 'صباحى',
+  'fleet.odometer.driverShift.evening': 'مسائى',
+  'fleet.odometer.emptyMonth.title': 'مفيش قراءات فى الشهر ده',
+  'fleet.odometer.emptyMonth.description':
+    'الجدول بيفتح على الشهر الحالى. القراءات الأقدم من كده مش ناقصة — هى بره المدى.',
+  'fleet.odometer.emptyMonth.action': 'اعرض آخر ١٢ شهر',
   'fleet.odometer.columns.notes': 'ملاحظات',
   'fleet.odometer.columns.sinceService': 'فارق عداد الصيانة',
   'fleet.odometer.columns.alert': 'إنذار الصيانة',

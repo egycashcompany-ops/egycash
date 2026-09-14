@@ -24,3 +24,7 @@ coverage/
 # "storage" (e.g. apps/api/src/infrastructure/storage) are NOT ignored
 /storage/
 apps/api/storage/
+
+# Redis dumps from a local stack — never part of the repo.
+dump.rdb
+*.rdb

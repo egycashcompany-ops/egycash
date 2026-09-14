@@ -999,10 +999,13 @@ describe('editing a driver', () => {
     }
     // «انا مش عاوز اغير الرقم انا عاوز النوع بتاع الرخصه اولى او تانيه» — the licence NUMBER is
     // asked once, when the profile is made, and never offered again. See its own tests below.
-    // «نشط فى مجمع السائقين» is NOT among them — «انا عاوز الانبوتس اللى انا قولت عليها تبقى
-    // موجوده وبس». It was the only writer of `isActive` in the whole application, so this is a
-    // capability removed on purpose rather than a control that moved somewhere else.
-    expect(source, 'the active switch is gone').not.toContain('fleet.drivers.fields.isActive');
+    //
+    // «نشط فى مجمع السائقين» STAYS. It was nearly dropped with the rest, and it is the only
+    // writer of `isActive` anywhere in the application — the profile screen displays the flag
+    // and never sets it, and the only other thing that moves it is the service deactivating a
+    // driver when HR records the employee's exit. Without this box an activated driver could
+    // never be retired by hand.
+    expect(source, 'the active switch is kept').toContain('fleet.drivers.fields.isActive');
   });
 
   /**

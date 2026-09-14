@@ -31,7 +31,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Field, Input } from '../../../shared/ui/form';
+import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 
 import {
@@ -312,6 +312,19 @@ export const DriverFormDialog = ({
             </Field>
           )}
         </div>
+
+        {/* «نشط فى مجمع السائقين» — KEPT, after it was nearly dropped.
+            
+            It looks like a preference and it is not: this checkbox is the only writer of
+            `isActive` anywhere in the application. The profile screen displays the flag and
+            never sets it, and the one other thing that moves it is automatic — the service
+            deactivates a driver when HR records the employee's exit. Removing it would have left
+            a driver who had been activated impossible to retire by hand, ever. */}
+        <Checkbox
+          label={t('fleet.drivers.fields.isActive')}
+          checked={form.isActive}
+          onChange={(e) => setForm((prev) => ({ ...prev, isActive: e.target.checked }))}
+        />
 
         <Field
           label={t('fleet.drivers.columns.licenseImage')}

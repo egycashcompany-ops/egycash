@@ -230,7 +230,24 @@ export const RecordOdometerDialog = ({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.odometer.fields.reading')} required hint={expectedHint}>
+          {/* A READING EQUAL TO THE LAST ONE IS ALLOWED, AND WARNED ABOUT.
+              
+              FR-2 refuses a reading BELOW the previous one — `input.reading < floor` throws — so
+              an equal one passes, and it should: a vehicle that did not move all day really did
+              read the same twice. But it is also exactly what a double-press of «تسجيل قراءة»
+              produces, and that writes a second row with `km = 0` that nothing on the screen
+              explains. Observed on a real stack while walking a car through its cycle.
+              
+              So it warns rather than refuses — `Field`'s own distinction: an `error` says the
+              save will be refused, a `warning` says the value is probably not what was meant and
+              the save goes through anyway. Refusing would make a legitimate standing day
+              unrecordable to stop a slip. */}
+          <Field
+            label={t('fleet.odometer.fields.reading')}
+            required
+            hint={expectedHint}
+            {...(derivedKm === 0 ? { warning: t('fleet.odometer.sameAsPrevious') } : {})}
+          >
             <Input
               type="number"
               min={0}

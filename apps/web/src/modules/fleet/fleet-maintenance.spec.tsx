@@ -728,3 +728,77 @@ describe('the check-out dialog', () => {
     expect(save).toContain('disabled');
   });
 });
+
+/**
+ * TWO WARNINGS, BOTH FOUND BY WALKING A REAL CAR THROUGH ITS CYCLE.
+ *
+ * Neither value is wrong and neither is refused. What was wrong in both cases was the SILENCE:
+ * the screen let a reader do something reasonable-looking, and then reported a result with no
+ * connection back to the choice that caused it.
+ */
+describe('the maintenance and odometer dialogs say what a choice will cost', () => {
+  const HERE_DIR = dirname(fileURLToPath(import.meta.url));
+  const read = (rel: string): string =>
+    readFileSync(join(HERE_DIR, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+  /**
+   * A visit becomes the alarm's baseline only if its work type is flagged `countsForAlarm` — the
+   * server's `alarmBaselines` matches on exactly that set. A visit recorded with any other type
+   * is filed correctly and changes nothing, and the alarms board goes on saying «لا صيانة محسوبة
+   * بعد» with nothing pointing at why. Reproduced on a real stack: four steps followed exactly,
+   * and the only wrong thing was an unticked work type.
+   */
+  it('warns when the chosen work type will not reset the maintenance counter', () => {
+    const code = read('components/MaintenanceDialogs.tsx');
+    expect(code, 'the warning exists').toContain('fleet.maintenance.workTypeNotCounting');
+    expect(code, 'and reads the flag the SERVER matches on').toContain('countsForAlarm === true');
+    // Both dialogs — checking a car in, and editing the visit afterwards. Editing the type has
+    // exactly the same consequence, so a warning on only one of them is half a warning.
+    expect(
+      code.split('warning: notCounting').length - 1,
+      'check-in and edit both warn',
+    ).toBe(2);
+  });
+
+  it('says nothing while the catalog is still loading', () => {
+    // A warning that appears on every open and then withdraws itself teaches the reader to
+    // ignore it, which costs more than it buys.
+    const code = read('components/MaintenanceDialogs.tsx');
+    expect(code).toContain('data === undefined) return undefined');
+  });
+
+  it('never REFUSES a non-counting type — plenty of visits legitimately are not services', () => {
+    const code = read('components/MaintenanceDialogs.tsx');
+    // `warning` is `Field`'s advisory channel; `error` is the one that says a save is refused.
+    expect(code).toContain('warning: notCounting');
+    expect(code, 'the type is not gated on it').not.toMatch(/canSubmit[^\n]*notCounting/);
+  });
+
+  /**
+   * FR-2 refuses a reading BELOW the previous one, so an EQUAL one passes — and it should: a
+   * vehicle that stood still all day really did read the same twice. It is also what a
+   * double-press of «تسجيل قراءة» produces, writing a second row with `km = 0` that nothing on
+   * the screen explains. Seen on a real stack.
+   */
+  it('warns when a reading repeats the last one, and still allows it', () => {
+    const code = read('components/RecordOdometerDialog.tsx');
+    expect(code, 'the warning exists').toContain('fleet.odometer.sameAsPrevious');
+    expect(code, 'fired on a zero-distance period').toContain('derivedKm === 0');
+    expect(code, 'as advice, not as a refusal').toContain('warning: t(');
+    // The submit guard must not have grown a clause about it.
+    const submit = code.slice(code.indexOf('const canSubmit'), code.indexOf('return ('));
+    expect(submit, 'a standing day stays recordable').not.toContain('derivedKm === 0');
+  });
+
+  it('both messages say what happens, not just that something is odd', () => {
+    for (const key of ['fleet.maintenance.workTypeNotCounting', 'fleet.odometer.sameAsPrevious']) {
+      for (const locale of ['ar', 'en'] as Locale[]) {
+        const text = translate(locale, key);
+        expect(text, `${key} in ${locale}`).not.toBe(key);
+        expect(text.length, `${key} in ${locale} explains itself`).toBeGreaterThan(40);
+      }
+    }
+  });
+});

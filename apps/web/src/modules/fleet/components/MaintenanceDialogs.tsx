@@ -33,6 +33,32 @@ import {
   workshopOdometerWarningKey,
 } from '../lib/workshop-odometer-warning';
 import { CatalogSelect } from './CatalogSelect';
+
+/**
+ * «نوع العمل ده مش بيصفّر عداد الصيانة» — the warning, or `undefined` when there is nothing to say.
+ *
+ * A maintenance visit only becomes the alarm's baseline if its work type is flagged
+ * `countsForAlarm`; the server's `alarmBaselines` matches on exactly that set. Nothing in either
+ * dialog said so, so a visit could be recorded correctly — right car, right date, closed
+ * properly — and the alarm would go on reporting «لا صيانة محسوبة بعد» with no hint as to why.
+ * Observed on a real stack: four steps followed exactly, and the only wrong thing was a work type
+ * nobody had ticked.
+ *
+ * A WARNING, never a refusal. Plenty of visits legitimately do not reset the counter — a tyre, a
+ * body repair — and refusing them would be refusing the truth to prevent a misunderstanding. The
+ * silence is what was wrong, not the choice.
+ *
+ * Undefined while the catalog is still loading: a warning that flashes on every open and then
+ * withdraws itself teaches the reader to ignore it.
+ */
+const useNotCountingWarning = (workTypeId: string): string | undefined => {
+  const t = useT();
+  const { data } = useFleetCatalog('workType');
+  if (workTypeId === '' || data === undefined) return undefined;
+  const picked = data.items.find((item) => item.id === workTypeId);
+  if (picked === undefined || picked.countsForAlarm === true) return undefined;
+  return t('fleet.maintenance.workTypeNotCounting');
+};
 import { OptionalDriverField } from './OptionalDriverField';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -129,6 +155,7 @@ export const CheckInDialog = ({
   const [inDate, setInDate] = useState(today());
   const [workshopId, setWorkshopId] = useState('');
   const [workTypeId, setWorkTypeId] = useState('');
+  const notCounting = useNotCountingWarning(workTypeId);
   const [odometer, setOdometer] = useState('');
   const [driverIn, setDriverIn] = useState('');
   const [partIds, setPartIds] = useState<string[]>([]);
@@ -300,7 +327,11 @@ export const CheckInDialog = ({
           <Field label={t('fleet.maintenance.fields.workshop')} required>
             <CatalogSelect kind="workshop" value={workshopId} onChange={setWorkshopId} />
           </Field>
-          <Field label={t('fleet.maintenance.fields.workType')} required>
+          <Field
+            label={t('fleet.maintenance.fields.workType')}
+            required
+            {...(notCounting === undefined ? {} : { warning: notCounting })}
+          >
             <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
           </Field>
         </div>
@@ -456,6 +487,7 @@ export const MaintenanceEditDialog = ({
   const [inDate, setInDate] = useState('');
   const [workshopId, setWorkshopId] = useState('');
   const [workTypeId, setWorkTypeId] = useState('');
+  const notCounting = useNotCountingWarning(workTypeId);
   const [odometer, setOdometer] = useState('');
   const [driverIn, setDriverIn] = useState('');
   const [partIds, setPartIds] = useState<string[]>([]);
@@ -553,7 +585,11 @@ export const MaintenanceEditDialog = ({
         <Field label={t('fleet.maintenance.fields.workshop')} required>
           <CatalogSelect kind="workshop" value={workshopId} onChange={setWorkshopId} />
         </Field>
-        <Field label={t('fleet.maintenance.fields.workType')} required>
+        <Field
+          label={t('fleet.maintenance.fields.workType')}
+          required
+          {...(notCounting === undefined ? {} : { warning: notCounting })}
+        >
           <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
         </Field>
         <div className="sm:col-span-2">

@@ -1046,6 +1046,69 @@ describe('editing a driver', () => {
     expect(body, 'but still carries what the form does show').toContain('licenseExpiresAt');
   });
 
+  /**
+   * AN EMPTY BOX MEANS «LEAVE IT», NOT «CLEAR IT» — «عاوز كل البيانات دى اختيارى ... لو في داتا
+   * كانت موجوده لو عدل عليها يحط داتا مكانها لكن ميمسحهاش».
+   *
+   * «Optional» had two readings and they are opposites. An empty select could travel as `null`
+   * and ERASE what is stored — which is what this form used to do, through `ref()` — or it could
+   * not travel at all and leave it. The owner named the second.
+   *
+   * The update contract is what makes that expressible: every key on it is `.optional()`, and a
+   * key the body omits is a key the service never `$set`s.
+   */
+  it('sends no key at all for a field the reader left empty', () => {
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf('await update.mutateAsync');
+    const body = code.slice(at, code.indexOf('toast.success', at));
+    for (const key of ['licenseExpiresAt', 'specializationId', 'licenseTypeId']) {
+      expect(body, `${key} is conditional`).toMatch(
+        new RegExp(`given\\(form\\.${key}\\)[\\s\\S]{0,80}${key}`),
+      );
+    }
+    // And the old behaviour is gone: `ref()` turned '' into null, which is the erase.
+    expect(body, 'nothing maps empty to null any more').not.toContain('ref(');
+  });
+
+  it('the contract lets a key be absent — this is not the form pretending', () => {
+    // Omitting a key only preserves the stored value if the schema accepts its absence and the
+    // service writes a partial. Asserted against the real schema, not against the form's hope.
+    const shape = UpdateFleetDriverProfileSchema.shape;
+    for (const key of ['licenseNumber', 'licenseExpiresAt', 'specializationId', 'licenseTypeId']) {
+      expect(
+        UpdateFleetDriverProfileSchema.safeParse({ version: 1 }).success,
+        `${key} may be omitted`,
+      ).toBe(true);
+      expect(shape, `${key} is on the contract`).toHaveProperty(key);
+    }
+  });
+
+  it('drops the required markers, because nothing on the edit form is required', () => {
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'no starred field left').not.toMatch(/<Field[^>]*\brequired\b/);
+  });
+
+  /**
+   * Creating is the exception, and not because this screen wants it to be:
+   * `CreateFleetDriverProfileSchema` requires a licence number and an expiry, and the document
+   * stores both `required: true`. A live Save without them would be a button that only ever
+   * produced a 422.
+   */
+  it('still demands the two the SERVER demands, but only while creating', () => {
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf('const complete =');
+    const decl = code.slice(at, code.indexOf(';', at));
+    expect(decl, 'editing is never gated').toContain('profile !== null ||');
+    expect(decl, 'creating needs the number').toContain("form.licenseNumber.trim() !== ''");
+    expect(decl, 'and the expiry').toContain("form.licenseExpiresAt !== ''");
+    expect(
+      CreateFleetDriverProfileSchema.safeParse({
+        employeeId: '64b1f0dddddddddddddddd01',
+      }).success,
+      'the server refuses a create without them',
+    ).toBe(false);
+  });
+
   it('Save stays reachable on an edit, where the number is not on screen to fill in', () => {
     // Requiring it would disable Save over a box the reader cannot see.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');

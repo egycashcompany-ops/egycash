@@ -701,6 +701,51 @@ describe('the check-in dialog', () => {
     expect(source, 'and gates the save').toContain("driverOut === ''");
   });
 
+  it('lets a part that is NOT on the list be typed, and turns it into a catalog item', () => {
+    // «لو مش موجود عادى يضيفها مش لازم من القايمه اللى تظهر وهى لو مش موجوده فى القايمه اللى فى
+    // شاشه fleet/catalogs يضيفها تبع قطع الغيار».
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const field = code.slice(code.indexOf('const SparePartsField'), code.indexOf('const counterWarning'));
+    // Typed and committed — the picker's own «Enter in the search box» seam, not a second input.
+    expect(field, 'Enter commits what was typed').toContain('onCommitSearch');
+    expect(field, 'and the box is always offered, however short the list').toContain(
+      'searchThreshold: 0',
+    );
+    // It becomes a CATALOG ITEM, which is what keeps this from being free text again.
+    expect(field, 'created in the sparePart catalog').toContain("kind: 'sparePart'");
+    expect(field, 'through the same mutation the catalogs screen uses').toContain(
+      'useCreateCatalogItem',
+    );
+    expect(field, 'and the new id is selected').toContain('onChange([...value, made.id])');
+  });
+
+  it('selects an existing part instead of creating a second spelling of it', () => {
+    // The whole reason the catalog exists: two spellings of one part are two parts to every report
+    // that counts them. A name that is already there — in either language, in any case — is
+    // SELECTED, never added again.
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const field = code.slice(code.indexOf('const SparePartsField'), code.indexOf('const counterWarning'));
+    expect(field, 'case-folded').toContain('toLocaleLowerCase()');
+    expect(field, 'against the Arabic name').toContain('item.name.ar');
+    expect(field, 'and the English one').toContain('item.name.en');
+    const guard = field.slice(field.indexOf('const existing ='), field.indexOf('try {'));
+    expect(guard, 'an existing match returns before anything is created').toContain('return;');
+  });
+
+  it('offers the affordance only to someone the server would let use it', () => {
+    // A reader without `fleetCatalog.manage` types the part, presses Enter, and gets a 403 for the
+    // one action the form appeared to invite. They keep the picker; they lose only the typing.
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const field = code.slice(code.indexOf('const SparePartsField'), code.indexOf('const counterWarning'));
+    expect(field).toContain("can('fleetCatalog.manage')");
+    // The two props are spread TOGETHER behind that grant — a search box with no commit would be
+    // an invitation to type something that goes nowhere.
+    expect(field).toMatch(/mayAdd[\s\S]{0,140}searchThreshold: 0[\s\S]{0,80}onCommitSearch/);
+  });
+
   it('never asks for the custody employee — the server records the login', () => {
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
     expect(source).not.toContain('takenInByEmployeeId');

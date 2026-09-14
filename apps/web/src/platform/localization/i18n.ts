@@ -4067,6 +4067,7 @@ const en: Record<string, string> = {
   'fleet.catalogs.fields.nameEn': 'Name (English)',
   'fleet.catalogs.fields.countsForAlarm': 'Counts for the maintenance alarm',
   // Two warnings, not refusals — both values are legitimate and both are usually a slip.
+  'fleet.maintenance.sparePartAdded': '“{{name}}” was added to spare parts and selected.',
   'fleet.maintenance.workTypeNotCounting':
     'This work type does not reset the maintenance counter — the alarm will keep measuring from the previous service.',
   'fleet.odometer.sameAsPrevious':
@@ -10542,6 +10543,7 @@ const ar: Record<string, string> = {
   'fleet.catalogs.fields.nameAr': 'الاسم (عربي)',
   'fleet.catalogs.fields.nameEn': 'الاسم (إنجليزي)',
   'fleet.catalogs.fields.countsForAlarm': 'تُحتسب لإنذار الصيانة',
+  'fleet.maintenance.sparePartAdded': 'اتضافت «{{name}}» فى قطع الغيار واتختارت.',
   'fleet.maintenance.workTypeNotCounting':
     'نوع العمل ده مش بيصفّر عداد الصيانة — الإنذار هيفضل يحسب من الصيانة اللى قبلها.',
   'fleet.odometer.sameAsPrevious':

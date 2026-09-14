@@ -17,7 +17,9 @@ import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
+import { errorMessage } from '../../../shared/lib/errors';
 import {
+  useCreateCatalogItem,
   useFleetCatalog,
   useCheckInMaintenance,
   useCheckOutMaintenance,
@@ -69,6 +71,15 @@ const VEHICLE_SEARCH_SIZE = 20;
  * The parts fitted, chosen from the `sparePart` catalog — the same admin-owned vocabulary the
  * Fleet Catalogs screen edits, read through the same hook. Free text is what this replaces: two
  * spellings of one part are two parts to every report that counts them.
+ *
+ * AND A PART THAT IS NOT ON THE LIST CAN BE TYPED — «لو مش موجود عادى يضيفها مش لازم من القايمه».
+ * Typing it and pressing Enter creates it in the catalog and selects it in one go, so the reader
+ * never has to leave a half-filled visit, walk to /fleet/catalogs, add it, and come back.
+ *
+ * That is NOT a return to free text, and the difference is the whole point: the typed name becomes
+ * a catalog ITEM with an id, so the next visit picks the same one from the list instead of
+ * spelling it a second way. The list is still the vocabulary — this only lets it grow from the
+ * place the gap is noticed.
  */
 const SparePartsField = ({
   value,
@@ -78,8 +89,10 @@ const SparePartsField = ({
   onChange: (next: string[]) => void;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const { data } = useFleetCatalog('sparePart');
+  const create = useCreateCatalogItem();
   const options = useMemo(
     () =>
       (data?.items ?? []).map((item) => ({
@@ -88,6 +101,47 @@ const SparePartsField = ({
       })),
     [data, locale],
   );
+
+  // WHO MAY GROW THE LIST is the catalog's own grant, not this screen's. Offering the affordance
+  // to a reader the server would refuse is worse than not offering it: they type the part, press
+  // Enter, and get a 403 for the one action the form appeared to invite.
+  const mayAdd = can('fleetCatalog.manage');
+
+  const add = async (raw: string): Promise<void> => {
+    const name = raw.trim();
+    if (name === '') return;
+    // ALREADY THERE, however it was typed: match case-insensitively against BOTH languages before
+    // creating anything. Without this, «فلتر زيت» typed beside an existing «فلتر زيت » is a second
+    // part, and the two split every report that counts them — exactly what the catalog exists to
+    // prevent. An existing match is simply selected, which is what the typist meant anyway.
+    const folded = name.toLocaleLowerCase();
+    const existing = (data?.items ?? []).find(
+      (item) =>
+        item.name.ar.trim().toLocaleLowerCase() === folded ||
+        item.name.en.trim().toLocaleLowerCase() === folded,
+    );
+    if (existing !== undefined) {
+      if (!value.includes(existing.id)) onChange([...value, existing.id]);
+      return;
+    }
+    try {
+      // ONE NAME, BOTH LANGUAGES. The contract requires each, and a workshop clerk typing a part
+      // in Arabic has not been asked for an English one — storing the same string twice is honest
+      // about that, and the catalogs screen is where somebody who knows can translate it later.
+      // `countsForAlarm: false` is stated rather than left to the schema's default: the flag is
+      // only meaningful on a work TYPE, and the contract refuses it as true on any other kind.
+      const made = await create.mutateAsync({
+        kind: 'sparePart',
+        name: { ar: name, en: name },
+        countsForAlarm: false,
+      });
+      onChange([...value, made.id]);
+      toast.success(t('fleet.maintenance.sparePartAdded', { name }));
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
+    }
+  };
+
   return (
     <MultiSelect
       showSelectedValues
@@ -98,6 +152,9 @@ const SparePartsField = ({
       options={options}
       value={value}
       onChange={onChange}
+      // The box is always offered once a part can be TYPED into it — the default threshold hides
+      // it on a short list, which is precisely the list most in need of a new entry.
+      {...(mayAdd ? { searchThreshold: 0, onCommitSearch: (raw: string) => void add(raw) } : {})}
     />
   );
 };

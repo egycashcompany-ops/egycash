@@ -402,7 +402,9 @@ describe('the vehicle form reads real catalogs and requires a branch', () => {
 
 describe('the registry table renders the frozen column order', () => {
   const COLUMNS = [
-    'ordinal',
+    // No `ordinal`. «شيل عمود الترتيب من الجدول وحط جمب الفلاتر عدد العربيات» — a serial that
+    // only ever counted the rows already on screen spent a column saying what the bar now says
+    // once, for the whole filtered set.
     'type',
     'code',
     'plate',
@@ -616,10 +618,52 @@ describe('the registry table renders the frozen column order', () => {
     expect(html).not.toContain(t('fleet.vehicles.licenseImage.upload'));
   });
 
-  it('numbers the rows from their position in the WHOLE result set', () => {
+  /**
+   * THE TALLY MOVED OUT OF THE TABLE AND INTO THE BAR — «حط جمب الفلاتر عدد العربيات».
+   *
+   * And it counts a different thing on purpose. The column numbered the rows in hand, which is
+   * one page of at most 25; the bar reads the SERVER's `totalItems`, so it answers «how many cars
+   * match this filter» rather than «how many fit on this screen». Counting `rows.length` would
+   * look like the same answer and be a different one the moment a filter matches more than a
+   * page.
+   */
+  it('says how many cars the filter matched, beside the filters', () => {
     const html = withRows([vehicle({ id: 'v1' }), vehicle({ id: 'v2', code: '151' })]);
-    expect(html).toContain('>1<');
-    expect(html).toContain('>2<');
+    expect(html, 'the count is rendered').toContain('data-vehicle-count');
+    // IN the bar, and specifically in `FilterBar`'s own trailing group — the same group that
+    // already holds the reset and the active-filter badge. "Somewhere above the table" would be
+    // satisfied by a loose span dropped between the bar and the grid, which is not what was
+    // asked for and would not line up with anything.
+    const source = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const open = code.indexOf('<FilterBar');
+    const trailing = code.indexOf('trailing:', open);
+    expect(trailing, 'passed as the bar’s trailing content').toBeGreaterThan(open);
+    expect(trailing, 'and inside the opening tag, not loose after it').toBeLessThan(
+      code.indexOf('<DataTable'),
+    );
+    expect(code.slice(trailing, code.indexOf('</span>', trailing))).toContain('data-vehicle-count');
+    // Nothing dropped between the bar and the table.
+    const between = code.slice(code.indexOf('</FilterBar>'), code.indexOf('<DataTable'));
+    expect(between, 'nothing between the bar and the grid').not.toContain('data-vehicle-count');
+  });
+
+  it('reads the count off the SERVER, never off the page in hand', () => {
+    const source = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf('data-vehicle-count');
+    const cell = code.slice(at, code.indexOf('</span>', at));
+    expect(cell, 'the server’s total').toContain('data.meta.totalItems');
+    expect(cell, 'not the rows on screen').not.toContain('rows.length');
+  });
+
+  it('the serial column and its arithmetic are both gone', () => {
+    const source = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code, 'no column').not.toContain("key: 'ordinal'");
+    // The per-page offset it was computed from goes with it, or it is dead arithmetic nothing
+    // reads — which lint would flag and a reader would have to work out the history of.
+    expect(code, 'no offset left behind').not.toContain('ordinalBase');
   });
 });
 

@@ -610,7 +610,6 @@ export const CompanyViolationsPanel = ({
             <table data-company-table className="w-full min-w-[38rem] border-collapse">
               <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800/60">
                 <tr>
-                  <th className={head}>{t('fleet.violations.columns.seq')}</th>
                   <th className={head}>{t('fleet.violations.fields.year')}</th>
                   <th className={head}>{t('fleet.odometer.columns.vehicle')}</th>
                   <th className={head}>{t('fleet.violations.columns.totals')}</th>
@@ -619,7 +618,7 @@ export const CompanyViolationsPanel = ({
                   <th className={head}>{t('fleet.violations.edit')}</th>
                 </tr>
               </thead>
-              {rows.map((row, index) => (
+              {rows.map((row) => (
                 // One tbody per (vehicle, year): the group is the unit, and the browser keeps its
                 // four lines together when the board is printed or scrolled.
                 <tbody
@@ -648,9 +647,6 @@ export const CompanyViolationsPanel = ({
                     >
                       {line === 0 && (
                         <>
-                          <td rowSpan={4} className={`${cell} text-center tabular-nums`}>
-                            {formatNumber(index + 1, locale)}
-                          </td>
                           <td rowSpan={4} className={`${cell} text-center tabular-nums`}>
                             {row.year}
                           </td>

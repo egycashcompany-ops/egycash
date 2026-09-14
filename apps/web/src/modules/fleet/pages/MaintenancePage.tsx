@@ -60,11 +60,10 @@ import {
   useMaintenanceAlarms,
   useMaintenanceVisits,
   useReopenMaintenance,
-  } from '../api/fleet-queries';
+} from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { EmployeeName } from '../components/EmployeeName';
-import { cn } from '../../../shared/lib/cn';
-import { AlarmBadge, RemainingKm, alarmCellTint } from '../components/AlarmBadge';
+import { RemainingKm } from '../components/AlarmBadge';
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -181,7 +180,7 @@ export const MaintenancePage = (): JSX.Element => {
    * decided here — this screen only looks the vehicle up.
    *
    * Gated on `fleetOdometer.view` because that is the grant the endpoint carries. A reader who may
-   * see the workshop but not the odometer gets the visits without these four columns rather than a
+   * see the workshop but not the odometer gets the visits without these two columns rather than a
    * 403 that would take the whole page down — see the report's open question about that grant.
    */
   const alarmsQuery = useMaintenanceAlarms();
@@ -190,7 +189,6 @@ export const MaintenancePage = (): JSX.Element => {
     for (const alarm of alarmsQuery.data ?? []) map.set(alarm.vehicleId, alarm);
     return map;
   }, [alarmsQuery.data]);
-
 
   // The three catalogs the screen names — the same admin-owned lists the Fleet Catalogs screen
   // edits, read through the same per-kind cached hook one request at a time.
@@ -242,18 +240,7 @@ export const MaintenancePage = (): JSX.Element => {
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
   const dash = <span className="text-slate-400">—</span>;
 
-  // The serial counts through the WHOLE filtered list rather than restarting at 1 on every page,
-  // and the offset comes from the server's own `meta`: the server may clamp a page size it was
-  // handed, and numbering off the unclamped request would drift from the rows on screen.
-  const firstRowNumber = ((data?.meta.page ?? page) - 1) * (data?.meta.pageSize ?? pageSize) + 1;
-
   const columns: Column<FleetMaintenanceVisitDto>[] = [
-    {
-      key: 'no',
-      header: t('fleet.odometer.columns.no'),
-      align: 'end',
-      render: (_visit, index) => formatNumber(firstRowNumber + index, locale),
-    },
     {
       key: 'inDate',
       header: t('fleet.maintenance.fields.inDate'),
@@ -377,57 +364,6 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.maintenance.fields.odometerAtService'),
       align: 'end',
       render: (visit) => formatNumber(visit.odometerAtService, locale),
-    },
-    {
-      // ── the vehicle's alarm, read from the shared projection ────────────────
-      key: 'alarmLevel',
-      header: t('fleet.alarms.columns.level'),
-      render: (visit) => {
-        const alarm = alarmByVehicle.get(visit.vehicleId);
-        if (alarm === undefined) return dash;
-        return (
-          // Tinted HERE and never on the row. The row's own colour already says something else —
-          // green means the car has left the workshop — and an alarm painted across it would take
-          // a colour that is spoken for. Inside the cell the two coexist: the green frames this.
-          <span
-            className={cn('inline-flex items-center gap-1.5', alarmCellTint(alarm.level))}
-          >
-            {/* Rows here are VISITS — one car has several — so the reason is a tooltip, not a
-                sentence repeated down the column. Said in full on the alarms board. */}
-            <AlarmBadge
-              level={alarm.level}
-              noAlarmReason={alarm.noAlarmReason}
-              reasonDisplay="tooltip"
-            />
-            {/*
-              THIS visit is the one the countdown is measured from. `lastServiceVisitId` is the
-              server's own answer — the id of the row its baseline aggregate picked — so the mark
-              cannot drift from the figures beside it the way a second client-side "find the last
-              closed counting visit" would.
-            */}
-            {alarm.lastServiceVisitId === visit.id && (
-              <Badge tone="success">{t('fleet.maintenance.isAlarmBaseline')}</Badge>
-            )}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'lastServiceAt',
-      header: t('fleet.vehicle.lastService'),
-      render: (visit) => {
-        const alarm = alarmByVehicle.get(visit.vehicleId);
-        if (alarm === undefined) return dash;
-        // A DATE column: no closed counting visit means no date, and an absent value here reads
-        // as the same dash every other absent value on this row does. WHY there is no service is
-        // the level column's answer, carried there as a tooltip (PR #384) because a row here is a
-        // VISIT and a per-vehicle sentence repeated down the column reads as several problems.
-        return alarm.lastServiceAt === null ? (
-          dash
-        ) : (
-          <span className="tabular-nums">{formatDate(alarm.lastServiceAt, locale)}</span>
-        );
-      },
     },
     {
       key: 'sinceServiceKm',

@@ -237,8 +237,12 @@ describe('each screen says the reason at the size its rows can carry', () => {
   // The screens differ in what ONE ROW is, and that decides how much room the reason may take.
   // A per-vehicle sentence printed on a per-visit or per-reading row repeats down the column and
   // reads as several problems instead of one — the same noise a per-row tint would have made.
+  //
+  // Maintenance used to carry it as a tooltip on a level column. That column was taken off the
+  // grid by request («شيل دول من الجدول بتاع شاشه fleet/maintenance»), so the grid now sits with
+  // the odometer: a row there is a VISIT, not a car, and the car's alarm is the board's subject.
   for (const reason of REASONS) {
-    it(`«${translate('ar', `fleet.alarms.noAlarmReason.${reason}`)}» — in full on the board, as a tooltip on maintenance, absent from the odometer`, () => {
+    it(`«${translate('ar', `fleet.alarms.noAlarmReason.${reason}`)}» — in full on the board, absent from maintenance and from the odometer`, () => {
       const text = translate('ar', `fleet.alarms.noAlarmReason.${reason}`);
       const a = alarm({ noAlarmReason: reason });
 
@@ -250,12 +254,13 @@ describe('each screen says the reason at the size its rows can carry', () => {
       expect(onBoard, 'the alarms board spells it out').toContain(`>${text}<`);
       expect(onBoard, 'and does not demote it to a tooltip').not.toContain(`title="${text}"`);
 
-      // Rows are VISITS: the short word shows, the sentence hangs off it.
+      // Rows are VISITS: a visits grid stays a visits grid.
       const onMaintenance = maintenance(a);
-      expect(onMaintenance, 'maintenance keeps the short word').toContain(
+      expect(onMaintenance, 'maintenance prints no reason at all').not.toContain(text);
+      expect(onMaintenance, 'not even as a tooltip').not.toContain(`title="${text}"`);
+      expect(onMaintenance, 'and not the short word either').not.toContain(
         translate('ar', 'fleet.vehicle.alarmNone'),
       );
-      expect(onMaintenance, 'and carries the reason as a tooltip').toContain(`title="${text}"`);
 
       // Rows are READINGS: a distance column stays a distance column.
       const onOdometer = odometer(a);
@@ -272,22 +277,32 @@ describe('each screen says the reason at the size its rows can carry', () => {
     expect(markup.split(text).length - 1, 'and the reason nowhere').toBe(0);
   });
 
-  it('a car with SEVERAL visits does not repeat the sentence down the maintenance column', () => {
-    // `noInterval` deliberately: `noService`'s wording is shared with the «آخر صيانة» column,
-    // which legitimately prints it per row, and counting it would count that column too.
+  it('a car with SEVERAL visits says the reason NO times down the maintenance column', () => {
+    // It used to be once per row, as a tooltip — the compromise a level column forced. With the
+    // column gone the honest count is zero: three visits of one car, and not a word about why the
+    // car has no alarm, because the grid no longer claims to answer that.
     const text = translate('ar', 'fleet.alarms.noAlarmReason.noInterval');
     const markup = maintenanceWithVisits(alarm({ noAlarmReason: 'noInterval' }), 3);
-    // The sentence appears only inside `title` attributes — never as visible text in a cell.
     expect(markup.split(`>${text}<`).length - 1, 'not printed in any cell').toBe(0);
-    expect(markup.split(`title="${text}"`).length - 1, 'carried as a tooltip per row').toBe(3);
+    expect(markup.split(`title="${text}"`).length - 1, 'and not hung off one either').toBe(0);
   });
 
-  it('a HEALTHY car keeps «لا يوجد» everywhere and is given no reason', () => {
+  it('a HEALTHY car is given no reason on ANY screen, and says «لا يوجد» where a level is shown', () => {
     // The distinction the change exists for: this `none` was measured, and inventing a cause for
-    // it would be the same lie in the opposite direction.
+    // it would be the same lie in the opposite direction. Only the screens that still SHOW a
+    // level owe the word — maintenance stopped being one of them when its level column came off.
+    // The odometer still prints the badge beside «فارق عداد الصيانة»; what it never prints is a
+    // REASON.
+    const SHOWS_A_LEVEL = new Set(['maintenance-alarms', 'odometer']);
     for (const [name, render] of SCREENS) {
       const markup = render(HEALTHY);
-      expect(markup, `${name} says none`).toContain(translate('ar', 'fleet.vehicle.alarmNone'));
+      if (SHOWS_A_LEVEL.has(name)) {
+        expect(markup, `${name} says none`).toContain(translate('ar', 'fleet.vehicle.alarmNone'));
+      } else {
+        expect(markup, `${name} shows no level at all`).not.toContain(
+          translate('ar', 'fleet.vehicle.alarmNone'),
+        );
+      }
       for (const reason of REASONS) {
         expect(markup, `${name} invents no cause`).not.toContain(
           translate('ar', `fleet.alarms.noAlarmReason.${reason}`),
@@ -326,18 +341,15 @@ describe('the reason is the server’s, and is written in ONE place', () => {
       for (const reason of REASONS) {
         expect(source, `${page} does not name ${reason}`).not.toContain(`'${reason}'`);
       }
-      // (The «آخر صيانة» column legitimately tests `lastServiceAt` — it is describing its own
-      //  field, not inferring why the alarm is missing. What must not happen is a page turning
-      //  that, or anything else it holds, into a REASON — which the checks above and below
-      //  forbid: no reason literal, no reason string, and the server's value passed through.)
       // Where a page shows the reason at all, it passes the SERVER's value straight through.
-      // The odometer shows none, so it passes none — that is the point of this PR, not a gap.
-      if (page !== 'OdometerPage') {
+      // Two of the three show none, so they pass none — that is the point, not a gap. The
+      // maintenance grid joined them when its level column came off.
+      if (page === 'MaintenanceAlarmsPage') {
         expect(source, `${page} passes it through`).toMatch(
           /noAlarmReason=\{alarm\.noAlarmReason\}/,
         );
       } else {
-        expect(source, 'the odometer asks for no reason').not.toContain('noAlarmReason');
+        expect(source, `${page} asks for no reason`).not.toContain('noAlarmReason');
       }
     }
   });

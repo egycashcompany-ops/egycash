@@ -1504,4 +1504,21 @@ describe('the standing board wears the daily board’s bar', () => {
     expect(width(CODE)).toBe(width(DAILY));
     expect(width(CODE)).toContain('w-56');
   });
+
+  /**
+   * AND THE PICKER FILLS THE WIDTH IT RESERVES — «راعى الابعاد والمسافات».
+   *
+   * The wrapper is `w-56` (224px) and `MultiSelect`'s trigger sizes to its own content — 116px,
+   * measured — so 108px inside the box was dead. On the daily board the mission select stood
+   * next to it and hid that; here nothing does, and the reader saw 114px of nothing between the
+   * box and the first chip while every other pair on the row sat 6px apart. `fullWidth` spends
+   * the width the wrapper had already reserved: measured after, dead space 0 on both boards and
+   * the gap to the first chip 6px, the same as every other gap.
+   */
+  it('makes the picker fill its box, on BOTH boards', () => {
+    for (const [name, code] of [['standing', CODE], ['daily', DAILY]] as const) {
+      const mount = code.slice(code.indexOf('<VehicleCodeFilter'), code.indexOf('/>', code.indexOf('<VehicleCodeFilter')));
+      expect(mount, `${name} board`).toContain('fullWidth');
+    }
+  });
 });

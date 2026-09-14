@@ -861,6 +861,7 @@ export const FixedRosterPage = (): JSX.Element => {
                 the draft, which is every car this board reports on. */}
             <VehicleCodeFilter
               className="w-56 shrink-0"
+              fullWidth
               value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
               options={codeOptions}
               onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}

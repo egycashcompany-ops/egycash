@@ -1200,6 +1200,25 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
     }
   });
 
+  it('numbers no rows either — «شيل التسلسل» reached the side layer as well', () => {
+    // The layer is where a car's year opens into the fines behind it, and it draws TWO tables:
+    // the company rows and the drivers' rows of the same car and year. Both opened on a serial,
+    // the same «م» the two boards behind them have just lost.
+    expect(CODE, 'no serial header in either table').not.toContain(
+      'fleet.violations.columns.seq',
+    );
+    expect(CODE, 'and no serial cell').not.toContain('formatNumber(index + 1, locale)');
+    // Which column each table opens on now — read from the source in order, so a serial put back
+    // under a different name still moves these and still fails.
+    const firstKeyAfter = (decl: string): string => {
+      const at = CODE.indexOf(decl);
+      expect(at, `${decl} is declared`).toBeGreaterThan(-1);
+      return /key: '([^']+)'/.exec(CODE.slice(at))?.[1] ?? '';
+    };
+    expect(firstKeyAfter('const columns:'), 'the company table opens on the type').toBe('type');
+    expect(firstKeyAfter('const driverColumns:'), 'the drivers’ table on the date').toBe('date');
+  });
+
   it('routes edit and delete by the row’s KIND, so a driver fine opens the driver dialog', () => {
     // The layer hands the row straight up; the page already dispatches on `violation.kind`, which
     // is why this needed no new dialog and no new prop.

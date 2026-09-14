@@ -25,8 +25,8 @@ export interface FleetDriverLicenseImage {
 export interface FleetDriverProfileDoc extends BaseDocFields {
   employeeId: Types.ObjectId;
   kind: string;
-  licenseNumber: string;
-  licenseExpiresAt: Date;
+  licenseNumber: string | null;
+  licenseExpiresAt: Date | null;
   /** `driverJob` catalog reference — «الوظيفة», Fleet's own grade and not HR's job title. */
   jobId: Types.ObjectId | null;
   /** `driverSpecialization` catalog reference — «التخصص». */
@@ -59,8 +59,10 @@ const driverProfileSchema = new Schema<FleetDriverProfileDoc>(
   {
     employeeId: { type: Schema.Types.ObjectId, required: true },
     kind: { type: String, required: true, default: DRIVER_PROFILE_KIND },
-    licenseNumber: { type: String, required: true, trim: true },
-    licenseExpiresAt: { type: Date, required: true },
+    // OPTIONAL: a driver is on this registry because of their seat, and the paperwork follows.
+    // `null` is «not on file yet» — a state every reader handles rather than one nobody can store.
+    licenseNumber: { type: String, default: null, trim: true },
+    licenseExpiresAt: { type: Date, default: null },
     jobId: { type: Schema.Types.ObjectId, default: null },
     specializationId: { type: Schema.Types.ObjectId, default: null },
     licenseTypeId: { type: Schema.Types.ObjectId, default: null },

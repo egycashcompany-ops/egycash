@@ -430,8 +430,10 @@ export type FleetDriverSpecialization = z.infer<typeof FleetDriverSpecialization
 export interface FleetDriverProfileDto {
   id: string;
   employeeId: string;
-  licenseNumber: string;
-  licenseExpiresAt: string;
+  /** null = not on file yet. See `CreateFleetDriverProfileSchema` for why that is a legal state. */
+  licenseNumber: string | null;
+  /** null = not on file yet — the profile is neither «expiring» nor «valid», it is unjudgeable. */
+  licenseExpiresAt: string | null;
   /**
    * «الوظيفة» — a `driverJob` catalog reference (سائق أ / سائق ب / سائق ج / سائق صراف الى).
    *
@@ -469,8 +471,20 @@ export interface FleetDriverProfileDto {
 export const CreateFleetDriverProfileSchema = z
   .object({
     employeeId: objectId(),
-    licenseNumber: z.string().trim().min(1).max(60),
-    licenseExpiresAt: z.coerce.date(),
+    /**
+     * BOTH OPTIONAL — «عاوز كل البيانات الموجوده دى اختيارى».
+     *
+     * A driver reaches this registry because of their SEAT, not their licence: the person is on
+     * the roster on their first day and the paperwork follows. Requiring the licence to enrol them
+     * meant the clerk either waited — leaving a working driver off every board — or typed a
+     * placeholder, which is worse, because a made-up number is indistinguishable from a real one.
+     *
+     * `null` is a fact here, not a gap in the record: it says «we have not been given this yet».
+     * Every reader treats it that way — a profile with no expiry is not reported as expiring, and
+     * not reported as valid either; it simply cannot be judged on a date nobody has.
+     */
+    licenseNumber: z.string().trim().min(1).max(60).nullish(),
+    licenseExpiresAt: z.coerce.date().nullish(),
     jobId: objectId().nullish(),
     specializationId: objectId().nullish(),
     licenseTypeId: objectId().nullish(),
@@ -941,10 +955,18 @@ export const CheckInFleetMaintenanceSchema = z
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
     odometerAtService: z.number().int().min(0),
     /**
-     * Who drove the vehicle in. REQUIRED and explicit — the roster is a plan, and a plan is not
-     * a record of who actually arrived.
+     * Who drove the vehicle in. OPTIONAL — «سائق الدخول ميكونش اجبارى يكون اختيارى».
+     *
+     * It was required on the reasoning that the roster is a plan and a plan is not a record of who
+     * actually arrived. That reasoning still holds for the VALUE: when it is given it is a record,
+     * never inferred from the roster. What it does not justify is refusing the check-in outright,
+     * because the car is in the workshop either way and a visit nobody can open is a visit nobody
+     * records. The document has always stored `null` here.
+     *
+     * The check-OUT driver stays required: that write also sets the alarm's baseline, and it is
+     * made by someone standing in front of the car.
      */
-    driverInEmployeeId: objectId(),
+    driverInEmployeeId: objectId().nullish(),
     /**
      * Custody, and normally NOT sent: the server records whoever is logged in. Kept accepted for
      * the case the seam cannot answer — a platform account with no employee behind it — so the
@@ -965,8 +987,18 @@ export const CheckOutFleetMaintenanceSchema = z
      * being counted from the arrival reading and falling due early.
      */
     exitOdometer: z.number().int().min(0),
-    /** Who drove the vehicle away. REQUIRED, for the same reason the check-in driver is. */
+    /** Who drove the vehicle away. REQUIRED — this write also sets the alarm's baseline. */
     driverOutEmployeeId: objectId(),
+    /**
+     * The parts fitted, REPLACING whatever the check-in recorded — «قطع الغيار دى بتكون لما باجى
+     * اخرجه من الورشه برضو».
+     *
+     * They belong here because this is when they are known: a car goes in for a fault and the
+     * workshop finds out what it needs while it has it. Absent means «leave the check-in list
+     * alone», and an empty array means «there were none» — the two are different answers, and a
+     * check-out that cannot express the first would quietly erase a list somebody typed.
+     */
+    sparePartIds: z.array(objectId()).max(50).optional(),
     /** As on check-in: the server records the logged-in user; this is the fallback. */
     takenOutByEmployeeId: objectId().nullish(),
     version: z.number().int().min(0),

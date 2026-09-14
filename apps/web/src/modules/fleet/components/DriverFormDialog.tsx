@@ -61,7 +61,7 @@ interface FormState {
 
 const fromProfile = (profile: FleetDriverProfileDto | null): FormState => ({
   licenseNumber: profile?.licenseNumber ?? '',
-  licenseExpiresAt: profile === null ? '' : profile.licenseExpiresAt.slice(0, 10),
+  licenseExpiresAt: profile?.licenseExpiresAt?.slice(0, 10) ?? '',
   specializationId: profile?.specializationId ?? '',
   licenseTypeId: profile?.licenseTypeId ?? '',
   isActive: profile?.isActive ?? true,
@@ -155,8 +155,11 @@ export const DriverFormDialog = ({
    * them `required: true`. A create without them is refused by the server, so a live Save would
    * be a button that only ever produced an error.
    */
-  const complete =
-    profile !== null || (form.licenseNumber.trim() !== '' && form.licenseExpiresAt !== '');
+  // NOTHING ON THIS FORM IS REQUIRED — «عاوز كل البيانات الموجوده دى اختيارى». A driver is on the
+  // registry because of their seat, and the licence follows when the paperwork does. The one thing
+  // an enrolment cannot do without is the employee it is for, and that comes from the row that
+  // opened this dialog rather than from a box anyone types.
+  const complete = profile !== null || subjectId !== '';
 
   /**
    * Send the phone to HR, and only if it CHANGED.
@@ -188,8 +191,10 @@ export const DriverFormDialog = ({
       if (subjectId === '') return;
       const created = await create.mutateAsync({
         employeeId: subjectId,
-        licenseNumber: form.licenseNumber.trim(),
-        licenseExpiresAt: new Date(form.licenseExpiresAt),
+        // An empty box travels as `null` — «not on file yet» — and never as `''` or as an
+        // Invalid Date, which is what `new Date('')` would have sent.
+        licenseNumber: form.licenseNumber.trim() === '' ? null : form.licenseNumber.trim(),
+        licenseExpiresAt: form.licenseExpiresAt === '' ? null : new Date(form.licenseExpiresAt),
         specializationId: ref(form.specializationId),
         licenseTypeId: ref(form.licenseTypeId),
       });
@@ -263,7 +268,12 @@ export const DriverFormDialog = ({
       <div className="space-y-4">
         <Field label={t('fleet.drivers.fields.employee')}>
           <p className="text-sm">
-            {profile === null ? '—' : <EmployeeName employeeId={profile.employeeId} />}
+            {/* NAMED IN BOTH MODES. This used to print a dash whenever `profile` was null — which
+                is every ENROLMENT, the one case where the reader most needs to know whose licence
+                they are about to write down. The dialog has always known: `employeeId` is the
+                profile's employee when editing and the row that opened it when enrolling, and it
+                is the id the create call is about to send. */}
+            {employeeId === '' ? '—' : <EmployeeName employeeId={employeeId} />}
           </p>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -394,7 +404,6 @@ export const DriverFormDialog = ({
             <DriverLicenseImageField driver={profile} />
           )}
         </Field>
-
       </div>
     </Dialog>
   );

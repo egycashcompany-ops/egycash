@@ -112,7 +112,12 @@ const SparePartsField = ({
  */
 const counterWarning = (
   counter: number | null,
-  bracket: { lowerBound: number | null; lowerBoundAt: string | null; upperBound: number | null; upperBoundAt: string | null } | null,
+  bracket: {
+    lowerBound: number | null;
+    lowerBoundAt: string | null;
+    upperBound: number | null;
+    upperBoundAt: string | null;
+  } | null,
   t: (key: string, params?: Record<string, string>) => string,
   locale: 'ar' | 'en',
 ): string | undefined => {
@@ -242,10 +247,10 @@ export const CheckInDialog = ({
     workshopId !== '' &&
     workTypeId !== '' &&
     odometer !== '' &&
-    Number.isInteger(odometerNumber) &&
-    // The driver is REQUIRED: a visit records who actually brought the car in, and the server
-    // refuses a check-in without one.
-    driverIn !== '';
+    Number.isInteger(odometerNumber);
+  // THE DRIVER IS NOT PART OF `complete` — «سائق الدخول ميكونش اجبارى يكون اختيارى». The car is in
+  // the workshop whether or not the person opening the visit can say who drove it there, and the
+  // server stores the absence rather than refusing the visit.
 
   const submit = async (): Promise<void> => {
     await checkIn.mutateAsync({
@@ -255,7 +260,8 @@ export const CheckInDialog = ({
       workTypeId,
       sparePartIds: partIds,
       odometerAtService: odometerNumber,
-      driverInEmployeeId: driverIn,
+      // `null`, not `''`: an empty box means nobody was named, and an empty string is not an id.
+      driverInEmployeeId: driverIn === '' ? null : driverIn,
       notes: notes.trim() === '' ? null : notes.trim(),
     });
     toast.success(t('fleet.maintenance.checkedIn'));
@@ -338,7 +344,7 @@ export const CheckInDialog = ({
         {/* The DRIVER who brought the car in — the same directory picker the odometer's driver
             slots use. Not the custody employee: that one is the logged-in user, recorded by the
             server, and never asked for here. */}
-        <Field label={t('fleet.maintenance.fields.driverIn')} required>
+        <Field label={t('fleet.maintenance.fields.driverIn')}>
           <OptionalDriverField value={driverIn} onChange={setDriverIn} />
         </Field>
         <Field label={t('fleet.maintenance.fields.spareParts')}>
@@ -364,15 +370,29 @@ export const CheckOutDialog = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [outDate, setOutDate] = useState(today());
-  const [exitOdometer, setExitOdometer] = useState('');
+  // SEEDED AT FIRST RENDER, not only in the effect below. An effect runs after the paint, so the
+  // reader would see the box empty and then filled — and, more usefully here, a value that only
+  // an effect supplies is a value that does not exist for anything rendering without one.
+  const [exitOdometer, setExitOdometer] = useState(() =>
+    visit === null ? '' : String(visit.odometerAtService),
+  );
   const [driverOut, setDriverOut] = useState('');
+  const [partIds, setPartIds] = useState<string[]>(() => visit?.sparePartIds ?? []);
   useEffect(() => {
     if (open) {
       setOutDate(today());
-      setExitOdometer('');
+      // OPENS ON THE READING THE CAR CAME IN ON — «لما بحط [العداد] بيبقى هو هو [عداد] الخروج».
+      // A car does not move inside a workshop, so that IS the answer nearly every time, and it was
+      // being retyped from the row above. Editable, because a car that was road-tested did move.
+      //
+      // It matters more here than a saved keystroke: this reading becomes the alarm's baseline, so
+      // a digit mistyped while copying it does not stay in this row — it moves the next service.
+      setExitOdometer(visit === null ? '' : String(visit.odometerAtService));
       setDriverOut('');
+      // The parts the check-in recorded, as the starting point for the list this door writes.
+      setPartIds(visit?.sparePartIds ?? []);
     }
-  }, [open]);
+  }, [open, visit]);
   const exitNumber = Number(exitOdometer);
   const exitValid = exitOdometer !== '' && Number.isInteger(exitNumber) && exitNumber >= 0;
   // The workshop cannot hand the car back on a lower reading than it arrived on. The server
@@ -403,6 +423,7 @@ export const CheckOutDialog = ({
         outDate: new Date(outDate),
         exitOdometer: exitNumber,
         driverOutEmployeeId: driverOut,
+        sparePartIds: partIds,
         version: visit.version,
       },
     });
@@ -468,6 +489,15 @@ export const CheckOutDialog = ({
             dir="ltr"
           />
         </Field>
+        {/* THE PARTS, ON THE DOOR THE CAR LEAVES BY — «قطع الغيار دى بتكون لما باجى اخرجه من
+            الورشه برضو». The workshop finds out what a car needs while it has it, so the check-in
+            list is a guess and this one is the record. It starts from that guess rather than from
+            nothing, so an unchanged list is saved unchanged. */}
+        <div className="sm:col-span-2">
+          <Field label={t('fleet.maintenance.fields.spareParts')}>
+            <SparePartsField value={partIds} onChange={setPartIds} />
+          </Field>
+        </div>
       </div>
     </Dialog>
   );

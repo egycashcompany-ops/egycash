@@ -29,9 +29,15 @@ const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog
 const invalid = (field: string, message: string): ValidationError =>
   new ValidationError([{ field: `body.${field}`, code: 'INVALID', message }]);
 
+/** The day a bound was taken on, for a refusal that has to name WHICH reading it is refusing. */
+const iso = (date: Date): string => date.toISOString().slice(0, 10);
+
 interface RecordOutcome {
   created: FleetOdometerLogDoc;
+  /** The row this reading closed (an append) or split in two (a back-dated insert). */
   closed: FleetOdometerLogDoc | null;
+  /** true = the reading landed INSIDE the chain rather than extending it. */
+  inserted: boolean;
   code: string;
 }
 
@@ -73,31 +79,83 @@ class FleetOdometerService {
     }
 
     const outcome = await unitOfWork(async (session): Promise<RecordOutcome> => {
-      const latest = await fleetOdometerRepository.findLatest(input.vehicleId, session);
-      const floor =
-        latest === null ? 0 : Math.max(latest.outReading, latest.inReading ?? latest.outReading);
-      // FR-2 — the odometer never runs backwards. The ONLY way past this is the correction flow.
-      if (latest !== null && input.reading < floor) {
+      /*
+       * FR-2, ASKED OF THE READING'S OWN DATE RATHER THAN OF THE END OF THE CHAIN.
+       *
+       * «لو مدخلتش يوم وضيف اليوم اللى بعده … يشوف قراءه السبت تكون اقل من الاحد واكتر من الخميس».
+       *
+       * The rule used to be "not below the vehicle's latest reading", which is the same question
+       * only while readings arrive in order. A day that was missed cannot arrive in order: enter
+       * Sunday, then go back for Saturday, and Saturday is legitimately BELOW Sunday — the old
+       * rule refused the only reading that could be correct, and sent the clerk to the correction
+       * flow to repair a chain that was never wrong.
+       *
+       * So the floor and the ceiling are both read off the DATE: the highest reading standing on
+       * or before that day, and the lowest taken after it. An odometer that never runs backwards
+       * is exactly a reading that sits between its own two neighbours in time. Either bound may be
+       * absent — the first reading a vehicle ever has no floor, the newest has no ceiling — and an
+       * absent bound constrains nothing.
+       *
+       * Equal to a bound is ACCEPTED at both ends, as the old floor accepted equality: a car that
+       * did not move between two readings is an ordinary fact, and a zero-km period is how the log
+       * says so. The dialog warns about it; nothing refuses it.
+       */
+      const bounds = await fleetOdometerRepository.chainBounds(
+        input.vehicleId,
+        input.date,
+        session,
+      );
+      if (bounds.lower !== null && input.reading < bounds.lower.reading) {
         throw new ConflictError(
-          `reading ${input.reading} is below the vehicle's latest reading ${floor} (FR-2); use the correction flow for a mis-entered past reading`,
+          `reading ${input.reading} is below the ${bounds.lower.reading} already recorded on or before ${iso(bounds.lower.date)} (FR-2); use the correction flow for a mis-entered past reading`,
+        );
+      }
+      if (bounds.upper !== null && input.reading > bounds.upper.reading) {
+        throw new ConflictError(
+          `reading ${input.reading} is above the ${bounds.upper.reading} recorded later, on ${iso(bounds.upper.date)} (FR-2); the odometer would have to run backwards after this date`,
         );
       }
 
+      /*
+       * WHERE IT GOES IN THE CHAIN — the row it follows, found by DATE. Three shapes, and they are
+       * the only three:
+       *   • prior is the OPEN row  → the reading extends the chain: close it, open the next.
+       *   • prior is a closed row  → the reading lands INSIDE its period: split it in two.
+       *   • there is no prior      → nothing is dated earlier: it becomes the chain's head.
+       *
+       * Whichever it is, the new row takes over exactly what the row before it was closing with,
+       * so the model's one invariant — `inReading` of entry k IS `outReading` of entry k+1 — comes
+       * out true by construction rather than by a second pass over the chain.
+       */
+      const prior = await fleetOdometerRepository.findPriorByDate(
+        input.vehicleId,
+        input.date,
+        session,
+      );
+      const head =
+        prior === null
+          ? await fleetOdometerRepository.findChainHead(input.vehicleId, session)
+          : null;
+
       let closed: FleetOdometerLogDoc | null = null;
-      if (latest !== null && latest.inReading === null) {
+      if (prior !== null) {
         closed = await fleetOdometerRepository.updateById(
-          String(latest._id),
-          { inReading: input.reading, km: input.reading - latest.outReading },
-          { by, version: latest.__v, session },
+          String(prior._id),
+          { inReading: input.reading, km: input.reading - prior.outReading },
+          { by, version: prior.__v, session },
         );
       }
+      // What the new row hands ON to the row after it. `null` only when it is taking over the open
+      // period; otherwise it inherits whatever the row it displaced used to close with, so the
+      // entry that followed still opens on a reading somebody is handing it.
+      const handOn = prior === null ? (head?.outReading ?? null) : prior.inReading;
       const created = await fleetOdometerRepository.create(
         {
           vehicleId: new Types.ObjectId(input.vehicleId),
           date: input.date,
           outReading: input.reading,
-          inReading: null,
-          km: null,
+          inReading: handOn,
+          km: handOn === null ? null : handOn - input.reading,
           driver1EmployeeId:
             input.driver1EmployeeId == null ? null : new Types.ObjectId(input.driver1EmployeeId),
           driver2EmployeeId:
@@ -106,7 +164,7 @@ class FleetOdometerService {
         },
         { by, session },
       );
-      return { created, closed, code: vehicle.code };
+      return { created, closed, inserted: handOn !== null, code: vehicle.code };
     });
 
     await auditService.record({
@@ -114,6 +172,10 @@ class FleetOdometerService {
       action: 'create',
       changes: [
         { field: 'outReading', old: null, new: outcome.created.outReading },
+        // A back-dated reading SPLITS a period that was already closed, so the trail has to say
+        // that rather than reading like an ordinary close: two rows now carry the km one row used
+        // to, and the audit is where that is explained if the figures are ever questioned.
+        ...(outcome.inserted ? [{ field: 'insertedIntoChain', old: null, new: true }] : []),
         ...(outcome.closed === null
           ? []
           : [{ field: 'closedPeriodKm', old: null, new: outcome.closed.km }]),
@@ -134,8 +196,12 @@ class FleetOdometerService {
    *
    * `asOf` is the date OF THAT SAME DOCUMENT, read from the row the floor was taken from rather
    * than looked up again: a second query could pick a different row and date a floor it did not
-   * produce. The floor itself is unchanged — this is the same `findLatest` and the same `max`
-   * that FR-2 refuses new readings against.
+   * produce.
+   *
+   * This is the END of the chain, which is the right answer for the ordinary case — a reading
+   * taken today — and only for that case. A reading being entered for a day that was MISSED is
+   * bracketed by its own two neighbours instead (see `record`), and the dialog asks `bracket` for
+   * those. Nothing here is a rule: `expectedReading` is a hint, and `record` is the authority.
    */
   async expectedReading(vehicleId: string): Promise<ExpectedReading> {
     const latest = await fleetOdometerRepository.findLatest(vehicleId);

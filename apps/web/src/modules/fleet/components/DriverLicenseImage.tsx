@@ -102,7 +102,9 @@ export const DriverLicenseImageDeleteDialog = ({
       open={open}
       onClose={onClose}
       title={t('fleet.drivers.licenseImage.deleteTitle')}
-      description={driver === null ? '' : `${name ?? ''} — ${driver.licenseNumber}`.trim()}
+      description={
+        driver === null ? '' : `${name ?? ''} — ${driver.licenseNumber ?? '—'}`.trim()
+      }
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -191,7 +193,9 @@ export const DriverLicenseImagePreviewDialog = ({
             : t('fleet.drivers.licenseImage.previewSubtitle', {
                 driver: name ?? '—',
                 code: code ?? '—',
-                license: driver.licenseNumber,
+                // A dash, not an empty string: the sentence names three facts and a blank one
+                // would read as a missing WORD rather than as a number nobody has on file.
+                license: driver.licenseNumber ?? '—',
               })
         }
         footer={
@@ -296,7 +300,10 @@ export const DriverLicenseImageCell = ({
           { label: t('fleet.drivers.columns.employeeCode'), value: code ?? '—' },
           {
             label: t('fleet.drivers.columns.licenseExpiresAt'),
-            value: formatDate(driver.licenseExpiresAt, locale),
+            value:
+              driver.licenseExpiresAt === null
+                ? '—'
+                : formatDate(driver.licenseExpiresAt, locale),
           },
         ],
         licenseImage: {

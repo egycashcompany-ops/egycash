@@ -728,6 +728,56 @@ describe('driver profiles (FL-3 — FR-11, the HR extension)', () => {
     expect(dup.status).toBe(409);
   });
 
+  it('enrols a driver with NO licence number and NO expiry, and stores both as null', async () => {
+    // «عاوز كل البيانات الموجوده دى اختيارى». A driver is on this registry because of their seat;
+    // the paperwork follows. Requiring the licence to enrol them meant either leaving a working
+    // driver off every board, or typing a placeholder — and a made-up number is indistinguishable
+    // from a real one.
+    const employeeId = await mkEmployee();
+    const bare = await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId });
+    expect(bare.status).toBe(201);
+    const profile = data<FleetDriverProfileDto>(bare);
+    expect(profile.licenseNumber).toBeNull();
+    expect(profile.licenseExpiresAt).toBeNull();
+    expect(profile.isActive, 'and it is a live profile like any other').toBe(true);
+  });
+
+  it('a profile with no expiry is neither «expiring» nor «valid» — it is out of the question', async () => {
+    // The trap this exists for: `$lte` against a null date, or `.getTime()` on one. A driver whose
+    // expiry nobody has given us is not the most urgent renewal in the fleet, and is not a safe
+    // one either. Both filters leave them out; they are still in the unfiltered list.
+    const withDate = await mkEmployee();
+    await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: withDate, licenseNumber: 'SOON-1', licenseExpiresAt: '2026-01-01' });
+    const without = await mkEmployee();
+    await request(app)
+      .post('/api/v1/fleet/drivers')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ employeeId: without });
+
+    const expiring = data<{ employeeId: string }[]>(
+      await request(app)
+        .get('/api/v1/fleet/drivers')
+        .query({ licenseExpiresBefore: '2027-01-01', pageSize: 100 })
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).map((row) => row.employeeId);
+    expect(expiring, 'the dated one is reported').toContain(withDate);
+    expect(expiring, 'the undated one is not').not.toContain(without);
+
+    const all = data<{ employeeId: string }[]>(
+      await request(app)
+        .get('/api/v1/fleet/drivers')
+        .query({ pageSize: 100 })
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).map((row) => row.employeeId);
+    expect(all, 'but the driver is still on the registry').toContain(without);
+  });
+
   it('profile mutations need fleetDriver.manage — the branch operator lacks it', async () => {
     const res = await request(app)
       .post('/api/v1/fleet/drivers')
@@ -1314,6 +1364,91 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
     // not the vehicle.
     expect((await record(v.id, 8100, '2026-12-02')).status).toBe(201);
     expect(await logsFor(v.id)).toHaveLength(2);
+  });
+
+  /*
+   * A DAY THAT WAS MISSED, entered afterwards — «لو مدخلتش يوم وضيف اليوم اللى بعده».
+   *
+   * The rule these pin is the one the owner stated: the reading for a day must sit between the
+   * reading before that day and the reading after it. Under the old append-only floor none of
+   * this was reachable — every one of these would have been a 409 for running "backwards".
+   */
+  it('accepts Saturday AFTER Sunday, and splits Thursday’s period around it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09'); // Thursday
+    await record(v.id, 1600, '2026-07-12'); // Sunday — Thursday's period now runs 1000 → 1600
+    // Saturday, entered last and legitimately BELOW Sunday.
+    expect((await record(v.id, 1400, '2026-07-11')).status).toBe(201);
+
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => [r.outReading, r.inReading, r.km])).toEqual([
+      [1000, 1400, 400], // Thursday, re-closed on Saturday's reading
+      [1400, 1600, 200], // Saturday, taking over the rest of the old period
+      [1600, null, null], // Sunday, still the open one
+    ]);
+    // The invariant the whole model rests on: each row hands its closing reading to the next.
+    expect(rows.filter((r) => r.inReading === null), 'exactly one open period').toHaveLength(1);
+  });
+
+  it('brackets a back-dated reading on BOTH sides — under the day before, over the day after', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+
+    // Below Thursday's 1,000: the car would have had to run backwards to reach Saturday.
+    const tooLow = await record(v.id, 900, '2026-07-11');
+    expect(tooLow.status).toBe(409);
+    expect(JSON.stringify(tooLow.body)).toContain('FR-2');
+    // Above Sunday's 1,600: it would have to run backwards AFTER Saturday instead.
+    const tooHigh = await record(v.id, 1700, '2026-07-11');
+    expect(tooHigh.status).toBe(409);
+    expect(JSON.stringify(tooHigh.body)).toContain('FR-2');
+    // Neither refusal wrote anything.
+    expect(await logsFor(v.id)).toHaveLength(2);
+    // And a value inside the bracket lands.
+    expect((await record(v.id, 1500, '2026-07-11')).status).toBe(201);
+  });
+
+  it('the owner’s own example: Thursday, Sunday, then Saturday, then Friday', async () => {
+    // «لو مثلا اخر قراءه الخميس وجيت ضيفت الاحد بعدين هضيف السبت وبعدين [الجمعه]».
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09'); // Thursday
+    await record(v.id, 1600, '2026-07-12'); // Sunday
+    expect((await record(v.id, 1400, '2026-07-11')).status).toBe(201); // Saturday < Sunday
+    expect((await record(v.id, 1200, '2026-07-10')).status).toBe(201); // Friday < Saturday
+
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => r.outReading), 'in date order, the chain climbs').toEqual([
+      1000, 1200, 1400, 1600,
+    ]);
+    expect(rows.map((r) => r.km)).toEqual([200, 200, 200, null]);
+    expect(rows.filter((r) => r.inReading === null)).toHaveLength(1);
+  });
+
+  it('a reading dated BEFORE every other becomes the chain’s head', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 5000, '2026-08-10');
+    await record(v.id, 5600, '2026-08-12');
+    // Earlier than both, and below both: the chain grows a new first entry.
+    expect((await record(v.id, 4800, '2026-08-01')).status).toBe(201);
+
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => [r.outReading, r.inReading, r.km])).toEqual([
+      [4800, 5000, 200],
+      [5000, 5600, 600],
+      [5600, null, null],
+    ]);
+  });
+
+  it('a back-dated reading EQUAL to a neighbour is accepted — the car stood still', async () => {
+    // Equality was always accepted at the floor, and taking it away at the new ceiling would
+    // refuse the ordinary fact of a car that did not move. The dialog warns; nothing refuses.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 3000, '2026-09-01');
+    await record(v.id, 3000, '2026-09-05');
+    expect((await record(v.id, 3000, '2026-09-03')).status).toBe(201);
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => r.km)).toEqual([0, 0, null]);
   });
 
   it('never stores two open periods for one vehicle, however many days it runs', async () => {
@@ -2906,7 +3041,87 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     expect(ids(await listVisits({ driverEmployeeIds: other }))).not.toContain(opened.id);
   });
 
-  it('refuses a check-in with no driver, and a check-out with no driver', async () => {
+  it('records the parts at CHECK-OUT, and leaves the check-in list alone when it says nothing', async () => {
+    // «قطع الغيار دى بتكون لما باجى اخرجه من الورشه برضو» — a workshop finds out what a car needs
+    // while it has it, so the list belongs to the door the car leaves by as well as the one it
+    // arrives by. ABSENT and EMPTY are different answers and both have to be expressible.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const filter = await mkCatalog('sparePart', 'فلتر خروج');
+    const brakes = await mkCatalog('sparePart', 'فرامل خروج');
+    const open = async () =>
+      data<FleetMaintenanceVisitDto>(
+        await checkIn({
+          vehicleId: v.id,
+          inDate: '2026-10-18',
+          workshopId: await mkCatalog('workshop', 'ورشة القطع'),
+          workTypeId: await countingWorkTypeId(),
+          odometerAtService: 90_000,
+          sparePartIds: [filter],
+        }),
+      );
+
+    // 1. Naming parts on the way out REPLACES the list.
+    const first = await open();
+    const out = data<FleetMaintenanceVisitDto>(
+      await checkOut(first.id, {
+        outDate: '2026-10-19',
+        exitOdometer: 90_000,
+        driverOutEmployeeId: await someDriver(),
+        sparePartIds: [filter, brakes],
+        version: first.version,
+      }),
+    );
+    expect([...out.sparePartIds].sort()).toEqual([filter, brakes].sort());
+
+    // 2. Saying NOTHING leaves what the check-in recorded — the case that must not erase a list.
+    const second = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-20',
+        workshopId: await mkCatalog('workshop', 'ورشة القطع'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 90_100,
+        sparePartIds: [filter],
+      }),
+    );
+    const quiet = data<FleetMaintenanceVisitDto>(
+      await checkOut(second.id, {
+        outDate: '2026-10-21',
+        exitOdometer: 90_200,
+        driverOutEmployeeId: await someDriver(),
+        version: second.version,
+      }),
+    );
+    expect(quiet.sparePartIds, 'absent means «leave it», never «clear it»').toEqual([filter]);
+  });
+
+  it('refuses a spare part id at CHECK-OUT that it would have refused at check-in', async () => {
+    // One catalog, one rule. A second door that skipped the check would store an id the first
+    // door would never have accepted.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const visit = data<FleetMaintenanceVisitDto>(
+      await checkIn({
+        vehicleId: v.id,
+        inDate: '2026-10-22',
+        workshopId: await mkCatalog('workshop', 'ورشة الرفض'),
+        workTypeId: await countingWorkTypeId(),
+        odometerAtService: 95_000,
+      }),
+    );
+    const bogus = await checkOut(visit.id, {
+      outDate: '2026-10-23',
+      exitOdometer: 95_100,
+      driverOutEmployeeId: await someDriver(),
+      sparePartIds: [await mkCatalog('workshop', 'مش قطعة غيار')],
+      version: visit.version,
+    });
+    expect(bogus.status).toBe(400);
+  });
+
+  it('opens a visit with NO entry driver, and still refuses a check-out with no driver', async () => {
+    // «سائق الدخول ميكونش اجبارى يكون اختيارى». The car is in the workshop whether or not anyone
+    // can say who drove it there, and a visit nobody can open is a visit nobody records. The
+    // check-OUT driver stays required: that write also sets the alarm's baseline.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const body = {
       vehicleId: v.id,
@@ -2915,12 +3130,11 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
       workTypeId: await countingWorkTypeId(),
       odometerAtService: 80_000,
     };
-    // Omitted on the wire, not sent as null: the field is required, so the schema refuses it.
-    const noDriver = await checkIn({ ...body, driverInEmployeeId: undefined });
-    expect(noDriver.status).toBe(400);
-
-    const opened = data<FleetMaintenanceVisitDto>(await checkIn(body));
-    expect(opened.driverInEmployeeId, 'the driver that WAS sent is stored').not.toBeNull();
+    const opened = data<FleetMaintenanceVisitDto>(
+      await checkIn({ ...body, driverInEmployeeId: undefined }),
+    );
+    expect(opened.driverInEmployeeId, 'absent means absent — never the roster’s planned driver')
+      .toBeNull();
 
     const noExitDriver = await checkOut(opened.id, {
       outDate: '2026-10-19',

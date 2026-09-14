@@ -90,8 +90,11 @@ export const toVehicleDto = (doc: FleetVehicleDoc, inWorkshop: boolean): FleetVe
 export const toDriverProfileDto = (doc: FleetDriverProfileDoc): FleetDriverProfileDto => ({
   id: String(doc._id),
   employeeId: String(doc.employeeId),
-  licenseNumber: doc.licenseNumber,
-  licenseExpiresAt: iso(doc.licenseExpiresAt),
+  // `== null`, like the catalog references below: both were REQUIRED until licences became
+  // optional, so a profile written before that carries a value, one written since may carry null,
+  // and neither shape is a surprise to a reader who is told the field can be absent.
+  licenseNumber: doc.licenseNumber ?? null,
+  licenseExpiresAt: doc.licenseExpiresAt == null ? null : iso(doc.licenseExpiresAt),
   // `== null` for the three catalog references and the legacy enum alike: every one of them was
   // added after profiles already existed, so a stored row simply has no such key and it arrives
   // as `undefined` rather than as the `null` the schema default writes.

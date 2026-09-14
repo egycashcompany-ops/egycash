@@ -62,7 +62,13 @@ export const licenseExpirySweep = async (now: Date = new Date()): Promise<void> 
   }
 
   const profiles = await FleetDriverProfileModel.find(
-    { isDeleted: false, isActive: true, licenseExpiresAt: { $lte: windowEnd(driverWarnDays) } },
+    // `$ne: null` alongside the window: a profile with no expiry on file cannot be «expiring» and
+    // cannot be «expired» — announcing either would be the sweep inventing a date nobody gave it.
+    {
+      isDeleted: false,
+      isActive: true,
+      licenseExpiresAt: { $ne: null, $lte: windowEnd(driverWarnDays) },
+    },
     { employeeId: 1, licenseNumber: 1, licenseExpiresAt: 1 },
   ).lean<
     {

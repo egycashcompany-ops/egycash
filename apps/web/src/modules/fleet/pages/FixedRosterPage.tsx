@@ -31,7 +31,6 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { Button } from '../../../shared/ui/Button';
@@ -40,7 +39,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Field, Select, Textarea } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, ResetIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage, validationDetails } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -64,6 +63,7 @@ import {
   clearSlot,
   type CrewSlot,
 } from '../lib/fixed-roster-board';
+import { COUNTER_TONES, UNSAVED_ROW } from '../lib/roster-view';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
@@ -469,6 +469,51 @@ export const FixedRosterPage = (): JSX.Element => {
 
   const pending = useMemo(() => changedRows(saved, draft), [saved, draft]);
   const dirty = pending.length > 0;
+  /**
+   * WHICH CARS ARE EDITED AND NOT YET SAVED — «العربيه اللى حصل عليها تغيير ولسه معملش حفظ ...
+   * عشان ممكن يعمل تعديل ويخودش باله هو عدل ايه».
+   *
+   * Straight off `pending`, which on this board already IS the reader's own edits, so the tint
+   * and the «حفظ» button are answering the same question and can never disagree about it.
+   *
+   * It clears itself on save with no extra step: a completed save hands the screen a new server
+   * board, `useDraftBoard` resets the draft against it, and a draft equal to the baseline has no
+   * changed rows. The same reset is what makes «إلغاء» clear the tint too.
+   */
+  const unsavedIds = useMemo(
+    () => new Set(pending.map((row) => row.vehicleId)),
+    [pending],
+  );
+
+  /**
+   * THE BOARD'S TALLY AS CHIPS — «شاشه fleet/fixed-roster تكون زى /fleet/roster».
+   *
+   * This screen said the same thing in a sentence («٣ سيارة · ٠ بطقم») while its twin said it in
+   * a row of coloured chips, which is most of why the two did not look like one pair of screens.
+   * Same shape, same tones, same arithmetic-off-the-DRAFT: what is counted is what is on screen
+   * right now, not the server's last answer, so the numbers move as the reader crews cars.
+   *
+   * They are read-outs, NOT buttons, and they are deliberately not made into filters. The daily
+   * board's chips narrow by mission and by workshop state — axes that board actually has. This
+   * one has no such axis, and inventing a filter to make the two match would be matching the
+   * wrong thing. So: the tone and the shape, without an `aria-pressed` state that would promise
+   * a press does something.
+   */
+  const counters = useMemo(() => {
+    const crewed = draft.filter(
+      (row) => row.driver1EmployeeId !== null || row.driver2EmployeeId !== null,
+    ).length;
+    return [
+      { key: 'total', label: t('fleet.roster.counter.total'), value: draft.length, tone: COUNTER_TONES.total },
+      { key: 'crewed', label: t('fleet.fixedRoster.counter.crewed'), value: crewed, tone: COUNTER_TONES.assigned },
+      {
+        key: 'uncrewed',
+        label: t('fleet.fixedRoster.counter.uncrewed'),
+        value: draft.length - crewed,
+        tone: COUNTER_TONES.workshop,
+      },
+    ];
+  }, [draft, t]);
 
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -787,33 +832,6 @@ export const FixedRosterPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.fixedRoster') },
         ]}
-        actions={
-          mayPlan ? (
-            <div className="flex items-center gap-2">
-              {dirty && (
-                <span className="text-sm text-amber-700 dark:text-amber-300">
-                  {t('fleet.fixedRoster.unsaved')}
-                </span>
-              )}
-              <Button
-                size="sm"
-                variant="secondary"
-                disabled={!dirty || save.isPending}
-                onClick={discard}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button
-                size="sm"
-                disabled={!dirty}
-                loading={save.isPending}
-                onClick={() => void commit()}
-              >
-                {t('common.save')}
-              </Button>
-            </div>
-          ) : undefined
-        }
       />
 
       {/* THE BOARD IS EXACTLY THE SCREEN, and the page itself never scrolls. The shell hands the
@@ -829,9 +847,16 @@ export const FixedRosterPage = (): JSX.Element => {
             inside the table, which is where the scrolling belongs. `min-h-0` is the same rule in
             the other axis, and is what keeps the table's height off the grid row. */}
         <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:col-span-4">
-          <FilterBar hasActiveFilters={search !== ''} onClear={() => patch({ q: null })}>
+          {/* THE DAILY BOARD'S STRIP, not the shared `FilterBar` — «شاشه fleet/fixed-roster تكون
+              زى /fleet/roster». One row holding what narrows the board, what the board adds up
+              to, and what saves it, wrapping rather than scrolling so it stays honest at 390px.
+
+              The shared `FilterBar` it replaced writes its own reset and its own active-filter
+              count, which is a good bar and the wrong one HERE: the two roster screens are a
+              pair, and a reader moving between them was meeting two different bars. */}
+          <div className="flex flex-wrap items-center gap-1.5">
             {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES, and the same one the daily roster
-                now carries — «كود العربيه ... يكونوا زى شاشه الحوادث». `matchesVehicleCode` below
+                carries, at the same width — «تظبط ابعاد الفلاتر». `matchesVehicleCode` below
                 already reads a list, so what narrows the rows is unchanged; the options come from
                 the draft, which is every car this board reports on. */}
             <VehicleCodeFilter
@@ -840,23 +865,67 @@ export const FixedRosterPage = (): JSX.Element => {
               options={codeOptions}
               onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
             />
-            <span className="text-sm text-slate-500 dark:text-slate-400">
-              {t('fleet.fixedRoster.summary', {
-                total: formatNumber(draft.length, locale),
-                crewed: formatNumber(
-                  draft.filter((r) => r.driver1EmployeeId !== null || r.driver2EmployeeId !== null)
-                    .length,
-                  locale,
-                ),
-              })}
-            </span>
-          </FilterBar>
+
+            {counters.map((counter) => (
+              <span
+                key={counter.key}
+                data-counter={counter.key}
+                className={`flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium ${counter.tone}`}
+              >
+                <span className="truncate">{counter.label}</span>
+                <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
+              </span>
+            ))}
+
+            {/* Offered only when there is something to undo — the daily board's rule and its
+                button, down to the hue. */}
+            {search !== '' && (
+              <button
+                type="button"
+                data-reset-filters="true"
+                onClick={() => patch({ q: null })}
+                aria-label={t('common.filters.clear')}
+                title={t('common.filters.clear')}
+                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"
+              >
+                <ResetIcon className="h-3.5 w-3.5" />
+                {t('common.filters.clear')}
+              </button>
+            )}
+
+            {/* «حفظ» at the END of the strip, where the daily board keeps it — not in the page
+                header. It belongs beside the tally that says what the board currently IS, and
+                `ms-auto` pins it to the far edge whatever the chips add up to. */}
+            {mayPlan && (
+              <div className="ms-auto flex items-center gap-2">
+                {dirty && (
+                  <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
+                    {t('fleet.fixedRoster.unsaved')}
+                  </span>
+                )}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  disabled={!dirty || save.isPending}
+                  onClick={discard}
+                >
+                  {t('common.cancel')}
+                </Button>
+                <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => void commit()}>
+                  {t('common.save')}
+                </Button>
+              </div>
+            )}
+          </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
             <DataTable
               columns={columns}
               rows={rows}
               rowKey={(row) => row.vehicleId}
+              // The same amber the daily roster paints an unsaved row with, from the same
+              // constant — two boards showing one state in two colours is the thing this avoids.
+              rowClassName={(row) => (unsavedIds.has(row.vehicleId) ? UNSAVED_ROW : undefined)}
               loading={boardQuery.isPending}
               error={boardQuery.isError ? boardQuery.error : undefined}
               onRetry={() => void boardQuery.refetch()}

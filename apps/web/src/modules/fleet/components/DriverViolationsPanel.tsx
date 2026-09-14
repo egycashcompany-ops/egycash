@@ -69,6 +69,16 @@ const TIGHT = 'tight' as const;
 /** `flex-1 basis-0` = an EQUAL share of the row; `min-w` keeps a field from collapsing past its name. */
 const CELL = 'flex-1 basis-0 min-w-[6rem]';
 
+/**
+ * One ENTRY field's share of the counting bar, and every one of the five gets the same.
+ *
+ * The same idea as `CELL` above and for the same reason: a control's width should not depend on
+ * what it happens to hold. The floor is lower because these are a code and four counts rather
+ * than filter names — 4.5rem still holds «تليفون» above a three-digit box — and the bar wraps
+ * below that rather than pushing anything off the panel.
+ */
+const ENTRY_CELL = 'flex-1 basis-0 min-w-[4.5rem]';
+
 export const DriverViolationsPanel = ({
   vehicleCodes,
   driverEmployeeIds,
@@ -452,15 +462,14 @@ export const DriverViolationsPanel = ({
           // over the bar. A native `<select>` popup escaped that; a typed combobox cannot.
           className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
         >
-          <Field label={t('fleet.odometer.columns.vehicle')}>
+          <Field label={t('fleet.odometer.columns.vehicle')} className={ENTRY_CELL}>
             {/* TYPED OR PICKED, exactly as the company half now does it — the owner asked for
                 both rows: «انه يقدر يكتب برضو وهتكون واحد بس». The typing is only ever a SEARCH:
                 the control commits an option or nothing, so a code no car carries still cannot be
                 stored, which is what this bar needs — it files a stack of fines against one car in
                 one transaction, and a typo used to mean the whole batch refused. */}
-            {/* Narrower than it was. A vehicle CODE is three or four characters, and the 160px
-                this box used to take was width the four counters needed to stay on the row. */}
-            <div className="w-28">
+            {/* AN EQUAL SHARE, not a fixed width. See the group below. */}
+            <div className="w-full">
               <VehicleCodeCombobox
                 value={formVehicleId}
                 onChange={setFormVehicleId}
@@ -481,7 +490,24 @@ export const DriverViolationsPanel = ({
               «عكس» and «سرعة» on the first, «تليفون» and «حزام» underneath. They are four
               readings of the SAME stack and belong on one line beside each other; the group may
               drop below the car box, but it may not split. */}
-          <div className="flex shrink-0 flex-nowrap items-end gap-2">
+          {/* THE FIVE OF THEM FILL THE BAR, AND ALL FIVE ARE THE SAME WIDTH — «انا عاوزهم يكونوا
+              كلهم ب كود السياره ماليين المكان اللى هما فيه».
+              
+              They were a 112px car box beside four 80px counters, which left the far end of the
+              panel empty and made the code box the odd one out. Now every field is
+              `flex-1 basis-0` over the same floor, so they divide the bar equally and grow with
+              it: what a control gets no longer depends on what it happens to hold.
+              
+              The group is `flex-[4_1_1.5rem]` — four of those shares, PLUS a 24px basis. The
+              basis is the load-bearing part and it is arithmetic, not taste: the group holds its
+              own three 8px gaps, so at a plain `flex-[4]` the four counters divided four shares
+              MINUS 24px between them and each came out 6px narrower than the car box (measured:
+              102 against 96). Giving the group those 24px up front leaves exactly four shares
+              for four counters, so one counter equals one car box at every width.
+
+              It stays `flex-nowrap` for the reason it always has: the four are one reading of one
+              stack and may drop below the car box together, but may not split. */}
+          <div className="flex flex-[4_1_1.5rem] flex-nowrap items-end gap-2">
             {types.map((type) => (
               // THE WIDTH LIVES ON THE FIELD. `Input` is `w-full` at its base and `cn` does not
               // merge Tailwind classes, so the `w-20` this used to pass to the control sat beside
@@ -490,7 +516,7 @@ export const DriverViolationsPanel = ({
               // `left: -18` — off the edge of its own panel, which is exactly what the owner
               // photographed. Passed here it stands, because `Field`'s wrapper carries no width
               // of its own to lose to.
-              <Field key={type.id} label={type.name} className="w-20">
+              <Field key={type.id} label={type.name} className={ENTRY_CELL}>
                 <Input
                   data-driver-count={type.id}
                   aria-label={type.name}

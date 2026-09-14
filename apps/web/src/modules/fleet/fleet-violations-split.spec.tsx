@@ -1077,18 +1077,40 @@ describe('the counters are one row, and they wrap as one', () => {
     const at = CODE.indexOf('data-driver-count=');
     const field = CODE.slice(0, at).lastIndexOf('<Field');
     const counter = CODE.slice(field, CODE.indexOf('</Field>', at));
-    expect(counter, 'the field carries the width').toMatch(/<Field[^>]*className="w-20"/);
+    expect(counter, 'the field carries the share').toMatch(/<Field[^>]*className=\{ENTRY_CELL\}/);
     // `Field`'s wrapper has no width of its own, so a class passed there stands. `Input`'s does.
     const control = counter.slice(counter.indexOf('<Input'));
     expect(control, 'and the control is not asked to carry it').not.toMatch(/className="w-\d/);
   });
 
-  it('leaves the car box room for the four counters beside it', () => {
-    // 160px for a three-character code was width the counters needed. Measured after: the five
-    // controls all sit at the same offsetTop and the bar's scrollWidth equals its clientWidth.
-    const bar = CODE.slice(CODE.indexOf('data-driver-bar'), CODE.indexOf('data-driver-count='));
-    expect(bar, 'the car box is narrow').toContain('w-28');
-    expect(bar, 'and not what it was').not.toContain('w-40');
+  /**
+   * ALL FIVE THE SAME WIDTH, FILLING THE BAR — «انا عاوزهم يكونوا كلهم ب كود السياره ماليين
+   * المكان اللى هما فيه».
+   *
+   * They were a 112px car box beside four 80px counters with the far end of the panel empty.
+   * Every field now takes `flex-1 basis-0` over one floor, so the five divide the bar equally —
+   * measured at 1920: 97px each, and the bar's scrollWidth equal to its clientWidth.
+   */
+  it('gives all five fields the SAME share of the bar', () => {
+    expect(CODE, 'one share, declared once').toContain("const ENTRY_CELL = 'flex-1 basis-0");
+    const bar = CODE.slice(CODE.indexOf('data-driver-bar'), CODE.indexOf('</Field>', CODE.indexOf('data-driver-count=')));
+    // The car box's own field takes it too — that is what makes it one of the five rather than
+    // a fixed box the other four line up beside.
+    expect(bar.match(/className=\{ENTRY_CELL\}/g)?.length ?? 0, 'the code box and a counter').toBeGreaterThanOrEqual(2);
+    expect(bar, 'and no fixed width is left on the car box').not.toMatch(/<div className="w-\d+">\s*<VehicleCodeCombobox/);
+  });
+
+  it('pays the counters group for its own gaps, so a counter equals the car box exactly', () => {
+    // At a plain `flex-[4]` the group's three 8px gaps came out of the four counters and each
+    // was 6px narrower than the car box — measured, 102 against 96. A 1.5rem basis covers them.
+    // Anchored BACKWARDS from the counter itself: `types.map` appears earlier for the options
+    // list, and a guard that matched the wrong one would read an empty slice and pass on nothing.
+    const at = CODE.indexOf('data-driver-count=');
+    const mapAt = CODE.lastIndexOf('types.map', at);
+    const group = CODE.slice(CODE.lastIndexOf('<div', mapAt), mapAt);
+    expect(group.length, 'the group was found').toBeGreaterThan(0);
+    expect(group, 'four shares plus its own 24px of gaps').toContain('flex-[4_1_1.5rem]');
+    expect(group, 'and the four still never split across lines').toContain('flex-nowrap');
   });
 
   it('lets the «pick a car first» notice wrap its TEXT rather than wrap the row', () => {
@@ -1201,21 +1223,45 @@ describe('the company entry row gives its width to the figures that are typed', 
   const VALUE = 'data-company-form="value"';
   const COUNT = 'data-company-form="count"';
 
-  it('the two TYPED figures now outweigh the year', () => {
+  it('the typed figures still outweigh the year, which only had to FIT', () => {
+    // The year's growth is a floor, not a share: it is the smallest box that holds four digits,
+    // and above that width the two typed figures are still the ones given room to breathe.
     expect(field(VALUE).weight, 'unit value over year').toBeGreaterThan(field(YEAR).weight);
     expect(field(COUNT).weight, 'count over year').toBeGreaterThan(field(YEAR).weight);
   });
 
-  it('and they outweigh the vehicle code too', () => {
-    const code = field('testId="company-entry"').weight;
-    expect(field(VALUE).weight, 'unit value over the code').toBeGreaterThan(code);
-    expect(field(COUNT).weight, 'count is at least the code’s share').toBeGreaterThanOrEqual(code);
+  it('and the unit value still outweighs the vehicle code', () => {
+    expect(field(VALUE).weight, 'unit value over the code').toBeGreaterThan(
+      field('testId="company-entry"').weight,
+    );
   });
 
-  it('their floors rose with their weights — a share is no use under a floor that clips', () => {
-    // A figure that compresses to 50px is a figure somebody mis-reads. Both were under 3.2rem.
-    expect(field(VALUE).floor, 'unit value').toBeGreaterThanOrEqual(4);
-    expect(field(COUNT).floor, 'count').toBeGreaterThanOrEqual(3.25);
+  it('their floors stay clear of the widths that made them unreadable', () => {
+    // They were 3.125rem (50px) and 2.625rem (42px) — a money figure and a three-digit count with
+    // nowhere to sit. A little came back off them for the year, but not back to there.
+    expect(field(VALUE).floor, 'unit value').toBeGreaterThanOrEqual(3.5);
+    expect(field(COUNT).floor, 'count').toBeGreaterThanOrEqual(3);
+  });
+
+  /**
+   * THE YEAR FITS ITS FOUR DIGITS — «كبر السنه حاجه بسيطه بحيث تكون ءد الاربع ارقام».
+   *
+   * MEASURED in Chromium, not chosen: «2026» is 35.6px of text in this face, the tight select's
+   * own padding takes 32px and its borders 2px, so the box needs 69.6px before the digits start
+   * fighting the chevron. At the old 3.5rem floor it had 56px and 24px of room for 35.6px of
+   * digits. 4.5rem (72px) is the smallest round floor above what the measurement asks for, and it
+   * leaves 40px of room — verified at 1536 and 1920 alike.
+   */
+  it('gives the year a floor above what four digits and a chevron actually need', () => {
+    expect(field(YEAR).floor, 'year, in rem').toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('the year and the code both grew, and the two figures gave it back', () => {
+    // «كبر كود العربيه شويه وهتقلل شويه صغيره من قيمة الوحدة و العدد».
+    expect(field(YEAR).weight, 'year').toBeGreaterThanOrEqual(1);
+    expect(field('testId="company-entry"').weight, 'vehicle code').toBeGreaterThanOrEqual(1.3);
+    expect(field(VALUE).weight, 'unit value gave a little back').toBeLessThan(1.5);
+    expect(field(COUNT).weight, 'count gave a little back').toBeLessThan(1.2);
   });
 
   it('the row’s total floor did not grow — that is what keeps it inside the panel at 1536', () => {

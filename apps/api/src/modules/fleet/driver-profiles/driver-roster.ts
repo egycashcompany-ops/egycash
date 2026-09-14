@@ -17,8 +17,8 @@ export interface DriverRosterRow<TProfile> {
 
 /** The profile fields the filters ask about — the shape, not the document. */
 export interface DriverProfileFacts {
-  licenseNumber: string;
-  licenseExpiresAt: Date;
+  licenseNumber: string | null;
+  licenseExpiresAt: Date | null;
   /** The three catalog references, as ids. `null` = nobody has classified this driver yet. */
   jobId?: unknown;
   specializationId?: unknown;
@@ -109,11 +109,13 @@ export const matchesFleetFilters = (
     return false;
   }
   if (query.isActive !== undefined && profile.isActive !== query.isActive) return false;
-  if (
-    query.licenseExpiresBefore !== undefined &&
-    profile.licenseExpiresAt.getTime() > query.licenseExpiresBefore.getTime()
-  ) {
-    return false;
+  if (query.licenseExpiresBefore !== undefined) {
+    // NO EXPIRY ON FILE IS NOT AN ANSWER to «whose licence runs out before X». It is not a licence
+    // that runs out later either — it is a date nobody has given us, and a question about dates
+    // cannot be answered for it. Excluding it keeps the filter's meaning exact; the driver still
+    // shows up unfiltered, where the empty cell says what is actually missing.
+    if (profile.licenseExpiresAt === null) return false;
+    if (profile.licenseExpiresAt.getTime() > query.licenseExpiresBefore.getTime()) return false;
   }
   if (query.search !== undefined && !contains(profile.licenseNumber, query.search)) return false;
   if (query.area !== undefined && !contains(profile.area, query.area)) return false;
@@ -131,6 +133,10 @@ export const matchesFleetFilters = (
  * being treated as the smallest value. Ascending by expiry means "soonest to lapse first", and a
  * driver whose licence was never recorded is not the most urgent — they are a different problem,
  * and putting them at the top would bury the real one.
+ *
+ * A profile that EXISTS but carries no expiry is the same problem wearing a different shape, and
+ * gets the same answer. `?? 0` would have dated it to 1970 and floated it to the very top of the
+ * "soonest to lapse" list — the loudest possible place for the one row that cannot lapse at all.
  */
 export const sortDriverRows = <
   TProfile extends DriverProfileFacts,
@@ -149,8 +155,12 @@ export const sortDriverRows = <
     if (a.profile === null && b.profile === null) return a.employeeId.localeCompare(b.employeeId);
     if (a.profile === null) return 1;
     if (b.profile === null) return -1;
-    const left = a.profile[key]?.getTime() ?? 0;
-    const right = b.profile[key]?.getTime() ?? 0;
+    const left = a.profile[key]?.getTime() ?? null;
+    const right = b.profile[key]?.getTime() ?? null;
+    // Same rule as a missing profile, one level down: no value sorts LAST either way round.
+    if (left === null && right === null) return a.employeeId.localeCompare(b.employeeId);
+    if (left === null) return 1;
+    if (right === null) return -1;
     return left === right ? a.employeeId.localeCompare(b.employeeId) : (left - right) * dir;
   });
 };

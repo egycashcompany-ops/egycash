@@ -93,7 +93,12 @@ export const DriverProfilePage = (): JSX.Element => {
     );
   }
 
-  const licenseExpired = new Date(profile.licenseExpiresAt).getTime() < Date.now();
+  // NO EXPIRY ON FILE IS NOT AN EXPIRED ONE. `new Date(null)` is the epoch, which would have
+  // painted every driver whose paperwork has not arrived yet in the red reserved for a licence
+  // that has actually lapsed — the loudest possible wrong answer.
+  const licenseExpired =
+    profile.licenseExpiresAt !== null &&
+    new Date(profile.licenseExpiresAt).getTime() < Date.now();
   const records = unavailability.data?.items ?? [];
 
   const confirmCancel = async (): Promise<void> => {
@@ -109,11 +114,11 @@ export const DriverProfilePage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={name ?? profile.licenseNumber}
+        title={name ?? profile.licenseNumber ?? t('fleet.nav.drivers')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.drivers'), to: '/fleet/drivers' },
-          { label: name ?? profile.licenseNumber },
+          { label: name ?? profile.licenseNumber ?? t('fleet.nav.drivers') },
         ]}
         actions={
           <Can permission="fleetDriver.manage">
@@ -154,14 +159,16 @@ export const DriverProfilePage = (): JSX.Element => {
               </Row>
               <Row label={t('fleet.drivers.columns.licenseNumber')}>
                 <span className="font-mono text-xs" dir="ltr">
-                  {profile.licenseNumber}
+                  {profile.licenseNumber ?? '—'}
                 </span>
               </Row>
               <Row label={t('fleet.drivers.columns.licenseExpiresAt')}>
                 <span
                   className={cn(licenseExpired && 'font-medium text-red-600 dark:text-red-400')}
                 >
-                  {formatDate(profile.licenseExpiresAt, locale)}
+                  {profile.licenseExpiresAt === null
+                    ? '—'
+                    : formatDate(profile.licenseExpiresAt, locale)}
                   {licenseExpired && ` — ${t('fleet.dashboard.licenseExpired')}`}
                 </span>
               </Row>

@@ -443,12 +443,18 @@ export const DriversListPage = (): JSX.Element => {
       sortable: true,
       render: (d) => {
         if (d.profile === null) return <NotRecorded />;
-        const expired = new Date(d.profile.licenseExpiresAt).getTime() < Date.now();
+        // A PROFILE WITH NO EXPIRY reads the same as no profile at all in this column, because the
+        // column asks one question — when does this licence lapse — and neither row can answer it.
+        // What it must never do is treat the absence as a date: `new Date(null)` is the epoch, and
+        // that would paint the driver red for a lapse that has not happened.
+        const { licenseExpiresAt } = d.profile;
+        if (licenseExpiresAt === null) return <NotRecorded />;
+        const expired = new Date(licenseExpiresAt).getTime() < Date.now();
         return (
           <span
             className={cn('tabular-nums', expired && 'font-medium text-red-600 dark:text-red-400')}
           >
-            {formatDate(d.profile.licenseExpiresAt, locale)}
+            {formatDate(licenseExpiresAt, locale)}
           </span>
         );
       },

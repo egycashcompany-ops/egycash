@@ -1094,19 +1094,47 @@ describe('editing a driver', () => {
    * stores both `required: true`. A live Save without them would be a button that only ever
    * produced a 422.
    */
-  it('still demands the two the SERVER demands, but only while creating', () => {
+  it('demands NOTHING but the employee — the licence is optional at both ends', () => {
+    // «عاوز كل البيانات الموجوده دى اختيارى». The form and the contract have to agree, or one of
+    // them is lying to the reader: a Save the screen enables and the server refuses is worse than
+    // a Save that was never offered.
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
     const at = code.indexOf('const complete =');
     const decl = code.slice(at, code.indexOf(';', at));
     expect(decl, 'editing is never gated').toContain('profile !== null ||');
-    expect(decl, 'creating needs the number').toContain("form.licenseNumber.trim() !== ''");
-    expect(decl, 'and the expiry').toContain("form.licenseExpiresAt !== ''");
+    expect(decl, 'and creating is gated on the employee alone').toContain("subjectId !== ''");
+    expect(decl, 'the number is not demanded').not.toContain('licenseNumber');
+    expect(decl, 'nor the expiry').not.toContain('licenseExpiresAt');
     expect(
       CreateFleetDriverProfileSchema.safeParse({
         employeeId: '64b1f0dddddddddddddddd01',
       }).success,
-      'the server refuses a create without them',
-    ).toBe(false);
+      'and the server accepts a create without them',
+    ).toBe(true);
+  });
+
+  it('sends an empty box as null, never as an empty string or an Invalid Date', () => {
+    // `new Date('')` is an Invalid Date, which serialises to null and reaches the server as a
+    // rejected body — the one shape that turns «I have not got it yet» into a failed save.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code).toContain("form.licenseNumber.trim() === '' ? null :");
+    expect(code).toContain("form.licenseExpiresAt === '' ? null :");
+    expect(code, 'no unguarded date construction').not.toMatch(
+      /licenseExpiresAt: new Date\(form\.licenseExpiresAt\),/,
+    );
+  });
+
+  it('names the EMPLOYEE it was opened for, enrolling as well as editing', () => {
+    // It printed a dash whenever there was no profile yet — which is every enrolment, the one
+    // case where the reader most needs to know whose licence they are about to write down.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf("t('fleet.drivers.fields.employee')");
+    const field = code.slice(at, code.indexOf('</Field>', at));
+    expect(field, 'the name is drawn from the id the dialog holds').toContain(
+      '<EmployeeName employeeId={employeeId} />',
+    );
+    expect(field, 'and the dash is only for having no id at all').toContain("employeeId === ''");
+    expect(field, 'never for «no profile yet»').not.toContain('profile === null');
   });
 
   it('Save stays reachable on an edit, where the number is not on screen to fill in', () => {
@@ -1115,8 +1143,7 @@ describe('editing a driver', () => {
     const at = code.indexOf('const complete =');
     expect(at).toBeGreaterThan(-1);
     const decl = code.slice(at, code.indexOf(';', at));
-    expect(decl, 'the number is only demanded while creating').toContain('profile !== null ||');
-    expect(decl, 'the expiry is always demanded').toContain("form.licenseExpiresAt !== ''");
+    expect(decl, 'editing is never gated at all').toContain('profile !== null ||');
     // «الوظيفة» and «منطقة العمل» are NOT offered any more (owner request), and the form must not
     // send them either — a field a form does not show must not be written by it, or saving here
     // would silently clear whatever was set on the screen that still owns them.

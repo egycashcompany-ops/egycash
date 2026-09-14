@@ -100,8 +100,10 @@ class FleetDriverProfileService {
       {
         employeeId: new Types.ObjectId(input.employeeId),
         kind: DRIVER_PROFILE_KIND,
-        licenseNumber: input.licenseNumber,
-        licenseExpiresAt: input.licenseExpiresAt,
+        // `?? null` and not `input.x`: both are optional now, and `undefined` would leave the key
+        // off the document entirely rather than storing the fact that nobody has given it yet.
+        licenseNumber: input.licenseNumber ?? null,
+        licenseExpiresAt: input.licenseExpiresAt ?? null,
         jobId: await assertCatalogRef('jobId', 'driverJob', input.jobId),
         specializationId: await assertCatalogRef(
           'specializationId',
@@ -201,9 +203,14 @@ class FleetDriverProfileService {
     }
     if (query.isActive !== undefined) clauses.push({ isActive: query.isActive });
     if (query.licenseExpiresBefore !== undefined) {
-      clauses.push({ licenseExpiresAt: { $lte: query.licenseExpiresBefore } });
+      // A profile with NO expiry on file is not an answer to «whose licence runs out before X».
+      // `$lte` already excludes null in Mongo's ordering — null sorts below every date — but only
+      // by accident of that ordering, so the absence is stated rather than relied upon.
+      clauses.push({ licenseExpiresAt: { $ne: null, $lte: query.licenseExpiresBefore } });
     }
     if (query.search !== undefined) {
+      // A regex against null matches nothing, which is the right answer: a driver whose number is
+      // not on file is not found BY a number.
       clauses.push({ licenseNumber: rx(query.search) });
     }
     if (query.area !== undefined) clauses.push({ area: rx(query.area) });
@@ -312,7 +319,9 @@ class FleetDriverProfileService {
           entityType: 'driverProfile',
           entityId: id,
           categoryId: await resolveDriverDocsCategoryId(),
-          displayName: `${before.licenseNumber} — driver license`,
+          // The number when there is one; the profile id when there is not. A file called
+          // «null — driver license» in a document list is worse than one named by an id.
+          displayName: `${before.licenseNumber ?? id} — driver license`,
           visibility: 'private',
           tags: [],
         },

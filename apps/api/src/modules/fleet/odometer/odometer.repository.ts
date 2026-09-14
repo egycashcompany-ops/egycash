@@ -91,6 +91,53 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     return { prev, next };
   }
 
+  /**
+   * The row a reading taken on `on` would FOLLOW in the chain: the latest-dated entry on or before
+   * that day, newest insert first among several on the same day.
+   *
+   * BY DATE, AND DELIBERATELY NOT BY READING. Reading order is the chain's order only while the
+   * two agree, and they can tie: FR-2 accepts a reading equal to the one before it (a car that did
+   * not move), so three equal readings order by `_id` — by the order somebody typed them — and a
+   * day entered late would splice itself in after a day that comes later in the calendar. The
+   * chain would then hold its open period in the middle of its own history.
+   *
+   * Splicing by date cannot break the model's invariant. The new row takes over whatever this row
+   * was closing with, so `inReading` of entry k is still `outReading` of entry k+1 wherever the
+   * new row lands — that holds for any choice of predecessor, which is what makes it safe to
+   * choose the one that is also correct.
+   *
+   * `null` = nothing on or before that day, which makes the new reading the chain's head.
+   */
+  async findPriorByDate(
+    vehicleId: string,
+    on: Date,
+    session?: ClientSession,
+  ): Promise<FleetOdometerLogDoc | null> {
+    return this.model
+      .findOne({
+        vehicleId: new Types.ObjectId(vehicleId),
+        isDeleted: false,
+        date: { $lt: FleetOdometerRepository.dayAfter(on) },
+      })
+      .sort({ date: -1, _id: -1 })
+      .session(session ?? null)
+      .lean<FleetOdometerLogDoc>()
+      .exec();
+  }
+
+  /** The chain's earliest-dated entry — the row a new head has to hand its reading on to. */
+  async findChainHead(
+    vehicleId: string,
+    session?: ClientSession,
+  ): Promise<FleetOdometerLogDoc | null> {
+    return this.model
+      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .sort({ date: 1, _id: 1 })
+      .session(session ?? null)
+      .lean<FleetOdometerLogDoc>()
+      .exec();
+  }
+
   /** Newest entry per vehicle in one pass — the alarm engine's read (§4.4). */
   async latestReadings(vehicleIds: readonly string[]): Promise<Map<string, LatestReading>> {
     if (vehicleIds.length === 0) return new Map();
@@ -165,6 +212,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   async chainBounds(
     vehicleId: string,
     on: Date,
+    session?: ClientSession,
   ): Promise<{ lower: ChainBound | null; upper: ChainBound | null }> {
     const end = FleetOdometerRepository.dayAfter(on);
     const base = { vehicleId: new Types.ObjectId(vehicleId), isDeleted: false };
@@ -172,11 +220,13 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       this.model
         .findOne({ ...base, date: { $lt: end } })
         .sort(NEWEST_FIRST)
+        .session(session ?? null)
         .lean<FleetOdometerLogDoc>()
         .exec(),
       this.model
         .findOne({ ...base, date: { $gte: end } })
         .sort({ outReading: 1, _id: 1 })
+        .session(session ?? null)
         .lean<FleetOdometerLogDoc>()
         .exec(),
     ]);

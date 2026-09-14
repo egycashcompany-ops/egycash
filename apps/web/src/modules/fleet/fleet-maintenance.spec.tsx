@@ -244,7 +244,6 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.workshop',
   'fleet.maintenance.fields.workType',
   'fleet.maintenance.fields.spareParts',
-  'fleet.odometer.columns.notes',
   'fleet.maintenance.fields.odometerAtService',
   // What is left of the vehicle's derived maintenance alarm, read from the SAME projection the
   // alarms board and the odometer log read — never recomputed here. The LEVEL and the LAST
@@ -253,6 +252,9 @@ const REQUIRED_COLUMNS = [
   // the moment it is being read.
   'fleet.alarms.columns.sinceService',
   'fleet.alarms.columns.remaining',
+  // LAST of the data columns, by request — «الملاحظات تكون اخر حاجه خالص». `actions` still follows
+  // it: those are the row's controls, not a fact about the visit.
+  'fleet.odometer.columns.notes',
   'fleet.vehicles.columns.actions',
 ];
 
@@ -669,12 +671,34 @@ describe('the row actions follow the permission matrix', () => {
 });
 
 describe('the check-in dialog', () => {
-  it('asks for the DRIVER and will not submit without one', () => {
+  it('OFFERS the driver and submits without one — «سائق الدخول ميكونش اجبارى»', () => {
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
-    // The driver is part of what makes the form complete, and it is what gets sent.
-    expect(source).toContain("driverIn !== ''");
-    expect(source).toContain('driverInEmployeeId: driverIn');
-    expect(source).toContain("t('fleet.maintenance.fields.driverIn')");
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    // Still asked for — the car does have a driver and naming them is the point of the field.
+    expect(code).toContain("t('fleet.maintenance.fields.driverIn')");
+    // …but not part of what makes the form complete, and not starred.
+    const at = code.indexOf('const complete =');
+    expect(code.slice(at, code.indexOf(';', at)), 'the gate says nothing about it').not.toContain(
+      'driverIn',
+    );
+    const field = code.slice(
+      code.indexOf("t('fleet.maintenance.fields.driverIn')"),
+      code.indexOf('</Field>', code.indexOf("t('fleet.maintenance.fields.driverIn')")),
+    );
+    expect(field, 'no required star on the entry driver').not.toContain('required');
+    // An empty box travels as null, because an empty string is not an id.
+    expect(code).toContain("driverInEmployeeId: driverIn === '' ? null : driverIn");
+  });
+
+  it('keeps the EXIT driver required — that write also sets the alarm baseline', () => {
+    // The two doors are deliberately different, and a change that relaxed both would be reading
+    // the instruction as «drivers are optional» rather than as the one it actually named.
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    const at = source.indexOf("t('fleet.maintenance.fields.driverOut')");
+    expect(at, 'the exit driver is asked for').toBeGreaterThan(-1);
+    // The star sits on the `<Field>` AFTER its label prop, so the slice runs forwards.
+    expect(source.slice(at, source.indexOf('>', at) + 1), 'and starred').toContain('required');
+    expect(source, 'and gates the save').toContain("driverOut === ''");
   });
 
   it('never asks for the custody employee — the server records the login', () => {
@@ -713,6 +737,42 @@ describe('the check-out dialog', () => {
     expect(open()).toContain('١٢٠٬٠٠٠');
   });
 
+  it('opens the exit reading ON the reading the car came in on', () => {
+    // «لما بحط [العداد] بيبقى هو هو [عداد] الخروج» — a car does not move inside a workshop, so the
+    // entry reading IS the answer nearly every time and was being retyped from the row above.
+    // It matters more than a saved keystroke: this reading becomes the alarm's baseline, so a
+    // digit mistyped while copying it does not stay in this row, it moves the next service.
+    const markup = open(visit({ odometerAtService: 120000 }));
+    // The ONE `type="number"` control on this dialog is the exit reading; the slice runs from the
+    // start of that tag to its close so nothing from a neighbouring field can satisfy the match.
+    const at = markup.indexOf('type="number"');
+    expect(at, 'the numeric control is rendered').toBeGreaterThan(-1);
+    const tag = markup.slice(markup.lastIndexOf('<input', at), markup.indexOf('/>', at) + 2);
+    expect(tag, 'prefilled, not empty').toContain('value="120000"');
+    // Still editable — a car that was road-tested did move. The class list is dropped first:
+    // Tailwind's `disabled:` variants live in it and would match the attribute being looked for.
+    const attrs = tag.replace(/class="[^"]*"/, '');
+    expect(attrs).not.toContain('readonly');
+    expect(attrs).not.toContain('disabled');
+  });
+
+  it('offers the SPARE PARTS on the way out, seeded from what the check-in recorded', () => {
+    // «قطع الغيار دى بتكون لما باجى اخرجه من الورشه برضو» — the workshop finds out what a car needs
+    // while it has it, so the check-in list is a guess and this one is the record.
+    const markup = open();
+    expect(markup, 'the field is on the check-out dialog').toContain(
+      t('fleet.maintenance.fields.spareParts'),
+    );
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const checkOut = code.slice(code.indexOf('export const CheckOutDialog'));
+    expect(checkOut, 'it starts from the visit, not from nothing').toContain(
+      'setPartIds(visit?.sparePartIds ?? [])',
+    );
+    expect(checkOut, 'and it is sent').toContain('sparePartIds: partIds');
+    expect(checkOut, 'through the same picker the check-in uses').toContain('<SparePartsField');
+  });
+
   it('asks for NO employee — the custody comes from the login', () => {
     const markup = open();
     expect(markup).not.toContain(t('fleet.maintenance.fields.takenOutBy'));
@@ -720,12 +780,16 @@ describe('the check-out dialog', () => {
     expect(source).not.toContain('takenOutByEmployeeId');
   });
 
-  it('cannot be saved before a reading is entered', () => {
-    // Nothing clicks in this suite; what is proven is that the save button RENDERS disabled with
-    // the form empty, which is the state a click would have to get past.
+  it('cannot be saved before the exit DRIVER is chosen, prefilled reading or not', () => {
+    // Nothing clicks in this suite; what is proven is that the save button RENDERS disabled on a
+    // freshly opened dialog, which is the state a click would have to get past. The reading now
+    // arrives prefilled, so the driver is what is still missing — and that is the point: the one
+    // field this door cannot infer is the one that still gates it.
     const markup = open();
     const save = markup.slice(markup.lastIndexOf('<button'), markup.length);
     expect(save).toContain('disabled');
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    expect(source, 'and the gate still names the reading too').toContain('!exitValid');
   });
 
   it('sends the exit reading and the exit DRIVER, and gates the save on both', () => {

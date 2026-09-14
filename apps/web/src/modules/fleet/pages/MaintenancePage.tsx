@@ -347,19 +347,6 @@ export const MaintenancePage = (): JSX.Element => {
       },
     },
     {
-      key: 'notes',
-      // The one free-text column, and a table column is sized by its content: an unbroken run of
-      // characters has no break point to wrap at, so the column would grow to fit it and push the
-      // columns after it off the screen. A bounded box allowed to break inside a word keeps them.
-      header: t('fleet.odometer.columns.notes'),
-      render: (visit) =>
-        visit.notes === null ? (
-          dash
-        ) : (
-          <span className="block max-w-xs break-words">{visit.notes}</span>
-        ),
-    },
-    {
       key: 'odometerAtService',
       header: t('fleet.maintenance.fields.odometerAtService'),
       align: 'end',
@@ -395,6 +382,24 @@ export const MaintenancePage = (): JSX.Element => {
           />
         );
       },
+    },
+    {
+      key: 'notes',
+      // LAST of the data columns, by request — «الملاحظات تكون اخر حاجه خالص». It is also where
+      // it does least harm: the one free-text column, and a table column is sized by its content,
+      // so an unbroken run of characters has no break point to wrap at and the column grows to fit
+      // it. A bounded box allowed to break inside a word keeps the rest of the row honest, and at
+      // the end there is nothing left for it to push off the screen anyway.
+      //
+      // `actions` still follows it: those are the row's CONTROLS, not a fact about the visit, and
+      // they sit at the end of every other grid in the module.
+      header: t('fleet.odometer.columns.notes'),
+      render: (visit) =>
+        visit.notes === null ? (
+          dash
+        ) : (
+          <span className="block max-w-xs break-words">{visit.notes}</span>
+        ),
     },
     {
       key: 'actions',

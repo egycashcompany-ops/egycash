@@ -160,7 +160,11 @@ class FleetMaintenanceService {
     await this.assertCatalogRef(input.workshopId, 'workshop', 'workshopId');
     await this.assertCatalogRef(input.workTypeId, 'workType', 'workTypeId');
     await this.assertSpareParts(input.sparePartIds);
-    await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
+    // Only when one was named: the entry driver is optional now, and asserting a driver that was
+    // never given would refuse the check-in for the absence rather than for a bad value.
+    if (input.driverInEmployeeId != null) {
+      await this.assertDriver(input.driverInEmployeeId, 'body.driverInEmployeeId');
+    }
     // FR-4 — the unique partial index is the authority; the pre-check names the conflict.
     const open = await fleetMaintenanceRepository.findOpen(input.vehicleId);
     if (open !== null) {
@@ -178,8 +182,10 @@ class FleetMaintenanceService {
         // Verbatim, and only when a caller actually sent it — never derived from the catalog ids.
         spareParts: input.spareParts ?? [],
         odometerAtService: input.odometerAtService,
-        // Who actually drove it in — required by the contract, so never absent on a new visit.
-        driverInEmployeeId: new Types.ObjectId(input.driverInEmployeeId),
+        // Who actually drove it in, when the person opening the visit knows. `null` says nobody
+        // was named — never that the roster's planned driver should be assumed.
+        driverInEmployeeId:
+          input.driverInEmployeeId == null ? null : new Types.ObjectId(input.driverInEmployeeId),
         driverOutEmployeeId: null,
         takenInByEmployeeId: await this.custodian(by, input.takenInByEmployeeId),
         takenOutByEmployeeId: null,
@@ -209,6 +215,10 @@ class FleetMaintenanceService {
       ]);
     }
     await this.assertDriver(input.driverOutEmployeeId, 'body.driverOutEmployeeId');
+    // The parts, if this check-out is naming them — the ordinary case, because a workshop finds
+    // out what a car needs while it has it. Validated against the same live catalog the check-in
+    // validates against, so neither door can store an id the other would have refused.
+    if (input.sparePartIds !== undefined) await this.assertSpareParts(input.sparePartIds);
     // The car cannot leave on a lower reading than it arrived on — that is a typo, and it would
     // make the next service fall due early once this becomes the baseline.
     if (input.exitOdometer < before.odometerAtService) {
@@ -227,6 +237,13 @@ class FleetMaintenanceService {
         exitOdometer: input.exitOdometer,
         driverOutEmployeeId: new Types.ObjectId(input.driverOutEmployeeId),
         takenOutByEmployeeId: await this.custodian(by, input.takenOutByEmployeeId),
+        // ABSENT MEANS «LEAVE THE CHECK-IN LIST ALONE», and an empty array means «there were
+        // none». Spreading the key only when it was sent is what keeps those two apart: a
+        // check-out that always wrote the field would erase a list the check-in recorded every
+        // time a caller did not resend it.
+        ...(input.sparePartIds === undefined
+          ? {}
+          : { sparePartIds: input.sparePartIds.map((id) => new Types.ObjectId(id)) }),
       },
       { by, version: input.version },
     );

@@ -51,6 +51,7 @@ import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import {
   applyEdit,
+  changedRows,
   clearCrew,
   assignDriver,
   availableDrivers,
@@ -68,6 +69,7 @@ import {
   hasDriver,
   missionTone,
   readView,
+  UNSAVED_ROW,
   visibleRows,
   type RosterView,
 } from '../lib/roster-view';
@@ -352,6 +354,23 @@ export const RosterPage = (): JSX.Element => {
   // What «إلغاء» would throw away. Distinct from `dirty`: a day can be saveable (it holds an
   // unmaterialised operation) while there is nothing of the dispatcher's own to discard.
   const edited = useMemo(() => hasEdits(saved, draft), [saved, draft]);
+  /**
+   * WHICH CARS THE READER HAS CHANGED AND NOT YET SAVED — «العربيه اللى حصل عليها تغيير ولسه
+   * معملش حفظ ... عشان ممكن يعمل تعديل ويخودش باله هو عدل ايه».
+   *
+   * `changedRows`, deliberately, and NOT `pending` above. `pending` is what a save would WRITE,
+   * which includes rows whose operation is merely projected from the standing crew and that
+   * nobody has touched — tinting those would tell the reader they had edited cars they never
+   * opened. This is the reader's own edits and nothing else.
+   *
+   * It clears itself on save with no extra step: a completed save hands the screen a new server
+   * board, `useDraftBoard` resets the draft against it, and a draft equal to the baseline has no
+   * changed rows. The same reset is what makes «إلغاء» clear the tint too.
+   */
+  const unsavedIds = useMemo(
+    () => new Set(changedRows(saved, draft).map((row) => row.vehicleId)),
+    [saved, draft],
+  );
 
   const plan = usePlanRoster();
 
@@ -944,9 +963,18 @@ export const RosterPage = (): JSX.Element => {
               so the state is never carried by colour alone.
             */
               rowClassName={(row) =>
-                row.inMaintenance
-                  ? 'bg-rose-50 text-rose-950 hover:bg-rose-100/70 dark:bg-rose-950/40 dark:text-rose-50 dark:hover:bg-rose-950/60'
-                  : undefined
+                /*
+                  AN UNSAVED EDIT OUTRANKS THE WORKSHOP TINT, and that is a decision rather than an
+                  ordering accident. A car can be both, and only one row colour can win. The
+                  workshop state is ALSO carried by the badge in the code cell, so a row that
+                  loses its rose tint still says it is in the workshop; an unsaved edit has
+                  nothing but this colour, so losing it would lose the whole signal.
+                */
+                unsavedIds.has(row.vehicleId)
+                  ? UNSAVED_ROW
+                  : row.inMaintenance
+                    ? 'bg-rose-50 text-rose-950 hover:bg-rose-100/70 dark:bg-rose-950/40 dark:text-rose-50 dark:hover:bg-rose-950/60'
+                    : undefined
               }
               // `board === undefined` while the query reports success means the answer on hand is
               // for another date — still waiting for this one, so the table says so rather than

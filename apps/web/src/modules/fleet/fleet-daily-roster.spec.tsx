@@ -1494,3 +1494,52 @@ describe('the board removes with a bin, not with a cross', () => {
     expect(body).toContain('missionTypeId: null');
   });
 });
+
+/**
+ * THE UNSAVED ROWS ARE TINTED, AND THE TINT CLEARS ITSELF ON SAVE.
+ *
+ * «يعمل الbackground للصف او العربيه اللى حصل عليها تغيير ولسه معملش حفظ، لما يعمل حفظ اللون
+ * يتشال عشان ممكن يعمل تعديل ويخودش باله هو عدل ايه».
+ *
+ * Asserted at source level because the tint is a function of DRAFT state, and these specs render
+ * in a node environment where nothing can be dragged, typed or dropped to create one.
+ */
+describe('a car edited and not yet saved is tinted', () => {
+  const CODE = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
+  it('paints the row with the colour BOTH boards share', () => {
+    expect(CODE, 'from the shared constant, never a literal').toContain('UNSAVED_ROW');
+    expect(CODE, 'applied per row').toContain('unsavedIds.has(row.vehicleId)');
+  });
+
+  /**
+   * The set is `changedRows`, not `rowsToSave`. The second is what a save would WRITE, and it
+   * carries rows whose operation is merely projected from the standing crew and that nobody has
+   * touched — tinting those would tell the reader they had edited cars they never opened.
+   */
+  it('tints what the READER changed, not everything a save would write', () => {
+    const at = CODE.indexOf('const unsavedIds');
+    expect(at, 'the set exists').toBeGreaterThan(-1);
+    const decl = CODE.slice(at, CODE.indexOf(');', CODE.indexOf('[saved, draft]', at)));
+    expect(decl, 'the reader’s own edits').toContain('changedRows(saved, draft)');
+    expect(decl, 'not the save payload').not.toContain('rowsToSave');
+  });
+
+  it('an unsaved edit outranks the workshop tint — the workshop also has a badge', () => {
+    // Only one row colour can win, and the rose one is backed by the badge in the code cell.
+    // An unsaved edit has nothing but this colour, so it must not be the one that loses.
+    const at = CODE.indexOf('rowClassName');
+    const rule = CODE.slice(at, CODE.indexOf('loading=', at));
+    expect(rule.indexOf('UNSAVED_ROW'), 'unsaved is tested first').toBeGreaterThan(-1);
+    expect(rule.indexOf('UNSAVED_ROW')).toBeLessThan(rule.indexOf('inMaintenance'));
+  });
+
+  it('nothing clears the tint by hand — the draft reset is what clears it', () => {
+    // A save hands the screen a new server board; `useDraftBoard` resets the draft against it;
+    // a draft equal to its baseline has no changed rows. An explicit "clear the tint" step would
+    // be a second source of truth for the same fact, and the two would drift.
+    expect(CODE).not.toMatch(/setUnsaved|clearTint|setUnsavedIds/);
+  });
+});

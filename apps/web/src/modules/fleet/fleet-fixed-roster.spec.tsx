@@ -1399,3 +1399,109 @@ describe('the fixed draft is persisted', () => {
     expect(storage).not.toContain('localStorage');
   });
 });
+
+describe('a car edited and not yet saved is tinted here too', () => {
+  const CODE = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
+  it('paints the row with the SAME colour the daily board uses', () => {
+    // One state, one colour, across two screens meant to be twins — which is why it is a shared
+    // constant rather than a class list written out on each page.
+    expect(CODE).toContain('UNSAVED_ROW');
+    expect(CODE).toContain("from '../lib/roster-view'");
+    expect(CODE, 'never spelled out again').not.toContain('bg-amber-50 text-amber-950');
+  });
+
+  it('tints exactly the rows «حفظ» would send', () => {
+    // `pending` on this board already IS the reader's edits, so the tint and the Save button
+    // answer the same question and cannot disagree about it.
+    const at = CODE.indexOf('const unsavedIds');
+    expect(at, 'the set exists').toBeGreaterThan(-1);
+    expect(CODE.slice(at, at + 200)).toContain('pending.map');
+    expect(CODE).toContain('unsavedIds.has(row.vehicleId)');
+  });
+
+  it('nothing clears the tint by hand — the draft reset is what clears it', () => {
+    expect(CODE).not.toMatch(/setUnsaved|clearTint|setUnsavedIds/);
+  });
+});
+
+/**
+ * THE TWO ROSTER SCREENS ARE ONE PAIR — «شاشه fleet/fixed-roster تكون زى /fleet/roster و تظبط
+ * ابعاد الفلاتر».
+ *
+ * They were built two different ways: the daily board hand-rolls a strip holding its picker, its
+ * tally as coloured chips, its reset and its Save; this one used the shared `FilterBar` with a
+ * plain sentence for a tally and its Save up in the page header. Both are defensible on their
+ * own and together they read as two unrelated screens.
+ */
+describe('the standing board wears the daily board’s bar', () => {
+  const SOURCE = readFileSync(join(HERE, 'pages/FixedRosterPage.tsx'), 'utf8');
+  const CODE = SOURCE.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const DAILY = readFileSync(join(HERE, 'pages/RosterPage.tsx'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+
+  it('drops the shared FilterBar for the daily board’s own strip', () => {
+    expect(CODE, 'no FilterBar left').not.toContain('<FilterBar');
+    expect(CODE, 'nor its import').not.toContain("from '../../../shared/ui/FilterBar'");
+    expect(CODE, 'the strip the daily board uses').toContain(
+      'className="flex flex-wrap items-center gap-1.5"',
+    );
+    expect(DAILY, 'which is the same strip').toContain(
+      'flex flex-wrap items-center gap-1.5',
+    );
+  });
+
+  it('says its tally in the daily board’s chips, not in a sentence', () => {
+    expect(CODE, 'chips').toContain('data-counter=');
+    expect(CODE, 'from the shared tones, never a literal').toContain('COUNTER_TONES');
+    expect(CODE, 'the sentence is gone').not.toContain("t('fleet.fixedRoster.summary'");
+  });
+
+  it('counts off the DRAFT, so the numbers move as cars are crewed', () => {
+    const at = CODE.indexOf('const counters');
+    expect(at, 'the tally exists').toBeGreaterThan(-1);
+    const decl = CODE.slice(at, CODE.indexOf('}, [', at));
+    expect(decl, 'the draft, not the server’s last answer').toContain('draft.filter(');
+    expect(decl, 'and its total too').toContain('draft.length');
+  });
+
+  /**
+   * The chips are read-outs here and buttons there, and that difference is deliberate. The daily
+   * board's chips narrow by mission and by workshop state — axes it has. This board has neither,
+   * so a chip that looked pressable would promise something no press can do.
+   */
+  it('keeps the chips as read-outs, because this board has no axis for them to filter', () => {
+    const at = CODE.indexOf('data-counter=');
+    const chip = CODE.slice(CODE.lastIndexOf('<', at), CODE.indexOf('>', at));
+    expect(chip, 'a span, not a button').toContain('<span');
+    expect(chip, 'and it promises no press').not.toContain('aria-pressed');
+  });
+
+  it('moves Save out of the page header and onto the end of the strip', () => {
+    expect(CODE, 'the header carries no actions now').not.toMatch(/actions=\{\s*mayPlan/);
+    const strip = CODE.slice(CODE.indexOf('className="flex flex-wrap items-center gap-1.5"'));
+    const end = strip.indexOf('<DataTable');
+    expect(strip.slice(0, end), 'pinned to the far edge like the daily board').toContain('ms-auto');
+    expect(strip.slice(0, end), 'and it saves').toContain("t('common.save')");
+  });
+
+  it('carries the daily board’s reset, offered only when there is something to undo', () => {
+    expect(CODE).toContain('data-reset-filters="true"');
+    expect(DAILY, 'the same hook on the twin').toContain('data-reset-filters="true"');
+    const at = CODE.indexOf('data-reset-filters');
+    expect(CODE.slice(Math.max(0, at - 400), at), 'gated on an active filter').toContain(
+      "search !== ''",
+    );
+  });
+
+  it('gives the car picker the same width the daily board gives it', () => {
+    // «تظبط ابعاد الفلاتر» — one width for one control across the pair.
+    const width = (code: string): string | undefined =>
+      code.slice(code.indexOf('<VehicleCodeFilter')).match(/className="([^"]+)"/)?.[1];
+    expect(width(CODE)).toBe(width(DAILY));
+    expect(width(CODE)).toContain('w-56');
+  });
+});

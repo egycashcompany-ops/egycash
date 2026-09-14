@@ -136,3 +136,21 @@ const hash = (value: string): number => {
 
 export const missionTone = (missionTypeId: string): string =>
   MISSION_TONES[hash(missionTypeId) % MISSION_TONES.length] as string;
+
+/**
+ * The row colour for a car edited and not yet saved, shared by both roster boards.
+ *
+ * «يعمل الbackground للصف او العربيه اللى حصل عليها تغيير ولسه معملش حفظ، لما يعمل حفظ اللون
+ * يتشال عشان ممكن يعمل تعديل ويخودش باله هو عدل ايه».
+ *
+ * AMBER, and not by coin toss. The two roster screens already spend rose on «this car is in the
+ * workshop today» and emerald on «this car has a crew», so a third meaning needed a third hue —
+ * and amber is the one both screens ALREADY use for unsaved work: the «فيه تعديلات مش محفوظة»
+ * line and the reset control are amber on both. The row now says in colour what that line says
+ * in words, per row instead of per screen.
+ *
+ * Declared once, in the library both boards import, because two screens showing the same state
+ * in two different colours is the defect this is fixing, one level up.
+ */
+export const UNSAVED_ROW =
+  'bg-amber-50 text-amber-950 hover:bg-amber-100/70 dark:bg-amber-950/40 dark:text-amber-50 dark:hover:bg-amber-950/60';

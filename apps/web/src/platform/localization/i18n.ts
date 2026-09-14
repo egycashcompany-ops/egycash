@@ -3866,6 +3866,9 @@ const en: Record<string, string> = {
   'fleet.roster.counter.total': 'Total',
   'fleet.roster.counter.workshop': 'Workshop',
   'fleet.roster.counter.assigned': 'Operating',
+  // The standing board counts crews, not missions — see `FixedRosterPage`.
+  'fleet.fixedRoster.counter.crewed': 'Crewed',
+  'fleet.fixedRoster.counter.uncrewed': 'No crew',
   'fleet.roster.allMissions': 'All missions',
   'fleet.roster.unsaved': 'Unsaved changes',
   'fleet.roster.clearSlot': 'Remove from this slot',
@@ -10334,6 +10337,8 @@ const ar: Record<string, string> = {
   'fleet.roster.counter.total': 'إجمالي',
   'fleet.roster.counter.workshop': 'صيانة',
   'fleet.roster.counter.assigned': 'تشغيل',
+  'fleet.fixedRoster.counter.crewed': 'بطقم',
+  'fleet.fixedRoster.counter.uncrewed': 'بلا طقم',
   'fleet.roster.allMissions': 'كل المهمات',
   'fleet.roster.unsaved': 'تغييرات غير محفوظة',
   'fleet.roster.clearSlot': 'إزالة من هذه الخانة',

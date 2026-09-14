@@ -5,14 +5,7 @@
 // mission type «نقل أموال (صيانة)» share a word and mean different things.
 import { describe, expect, it } from 'vitest';
 import { type FleetRosterRowDto } from '@ecms/contracts';
-import {
-  MISSION_TONES,
-  COUNTER_TONES,
-  carriesPlan,
-  missionTone,
-  readView,
-  visibleRows,
-} from './roster-view';
+import { carriesPlan, COUNTER_TONES, MISSION_TONES, missionTone, readView, UNSAVED_ROW, visibleRows } from './roster-view';
 
 const MISSION_A = '65000000000000000000a001';
 const MISSION_B = '65000000000000000000b002';
@@ -224,5 +217,39 @@ describe('the colours', () => {
       expect(tone, tone).toMatch(/dark:bg-[a-z]+-900\/40/);
       expect(tone, tone).toMatch(/dark:text-[a-z]+-100/);
     }
+  });
+});
+
+/**
+ * «يعمل الbackground للصف او العربيه اللى حصل عليها تغيير ولسه معملش حفظ، لما يعمل حفظ اللون
+ * يتشال عشان ممكن يعمل تعديل ويخودش باله هو عدل ايه».
+ *
+ * The colour itself is asserted here because BOTH boards paint with it, and two screens showing
+ * one state in two colours is the thing this constant exists to prevent.
+ */
+describe('UNSAVED_ROW — the colour of a car edited and not yet saved', () => {
+  it('is amber, the hue both boards already spend on unsaved work', () => {
+    expect(UNSAVED_ROW).toContain('bg-amber-50');
+    expect(UNSAVED_ROW).toContain('dark:bg-amber-950/40');
+  });
+
+  it('takes neither of the two meanings these boards already colour', () => {
+    // Rose is «this car is in the workshop today» on the daily board; emerald is «crewed».
+    expect(UNSAVED_ROW, 'not the workshop tint').not.toContain('rose');
+    expect(UNSAVED_ROW, 'not the crewed tint').not.toContain('emerald');
+    expect(UNSAVED_ROW, 'not the pool tint').not.toContain('green');
+  });
+
+  it('answers both themes, and says so in text as well as background', () => {
+    // A row tint that only defines a background hands the theme's own text colour a surface it
+    // was not chosen against — which is how a tinted row ends up unreadable in one of the two.
+    for (const piece of ['bg-amber-50', 'text-amber-950', 'dark:bg-amber-950/40', 'dark:text-amber-50']) {
+      expect(UNSAVED_ROW, piece).toContain(piece);
+    }
+  });
+
+  it('keeps a hover state, so a tinted row still behaves like a row', () => {
+    expect(UNSAVED_ROW).toContain('hover:bg-amber-100/70');
+    expect(UNSAVED_ROW).toContain('dark:hover:bg-amber-950/60');
   });
 });

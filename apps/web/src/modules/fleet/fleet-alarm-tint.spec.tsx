@@ -287,22 +287,25 @@ describe('the odometer log tints the CELL — there, a row is a reading', () => 
   });
 });
 
-describe('the maintenance screen tints the CELL, and the green row is untouched', () => {
-  it('a CLOSED visit on a red car stays green — and the alarm sits inside the cell', () => {
-    // The decision, in one assertion: both colours are present, each on its own surface.
+describe('the maintenance screen carries no alarm colour at all any more', () => {
+  // It used to tint the CELL — never the row — so the visit's own green and the car's red could
+  // coexist. The cell that held the tint was the level column, and «شيل دول من الجدول بتاع شاشه
+  // fleet/maintenance» took the column off. What is left is a visits grid whose only colour is
+  // the visit's own.
+  it('a CLOSED visit on a red car is green, and nothing on the row is red', () => {
     const markup = maintenance([alarm()], [visit()]);
     const row = rows(markup)[0] as string;
     const beforeCells = row.slice(0, row.indexOf('<td'));
     expect(beforeCells, 'the row keeps its green').toContain('bg-emerald-50/70');
-    expect(beforeCells, 'and the alarm never reaches it').not.toMatch(/bg-(?:red|amber)/);
-    expect(row, 'the alarm is in the cell').toContain(alarmCellTint('red') as string);
+    expect(beforeCells, 'and no alarm reaches it').not.toMatch(/bg-(?:red|amber)/);
+    expect(row, 'nor any cell of it').not.toContain(alarmCellTint('red') as string);
   });
 
-  it('an OPEN visit on a red car has no row colour at all, and still tints its cell', () => {
+  it('an OPEN visit on a red car has no colour at all', () => {
     const markup = maintenance([alarm()], [visit({ outDate: null })]);
     const row = rows(markup)[0] as string;
     expect(row.slice(0, row.indexOf('<td'))).not.toMatch(/bg-(?:emerald|red|amber)/);
-    expect(row).toContain(alarmCellTint('red') as string);
+    expect(row).not.toContain(alarmCellTint('red') as string);
   });
 
   it('the row colour is still decided by the VISIT, not by the alarm', () => {
@@ -319,21 +322,31 @@ describe('the maintenance screen tints the CELL, and the green row is untouched'
     expect(read('pages/MaintenanceAlarmsPage.tsx')).toContain('alarmRowTint');
     for (const page of ['OdometerPage', 'MaintenancePage']) {
       expect(read(`pages/${page}.tsx`), `${page} tints no row`).not.toContain('alarmRowTint');
-      expect(read(`pages/${page}.tsx`), `${page} tints its cell`).toContain('alarmCellTint');
     }
+    // The odometer still tints the cell beside «فارق عداد الصيانة». The maintenance grid tints
+    // nothing — it stopped having a cell to tint.
+    expect(read('pages/OdometerPage.tsx'), 'the odometer tints its cell').toContain(
+      'alarmCellTint',
+    );
+    expect(read('pages/MaintenancePage.tsx'), 'maintenance tints nothing').not.toContain(
+      'alarmCellTint',
+    );
   });
 });
 
 describe('colour is a second signal, never the only one', () => {
   it('every tinted surface still carries the level in WORDS', () => {
     // A reader who cannot separate the two tints must lose nothing. The badge says «أحمر».
-    for (const markup of [
-      alarmsBoard([alarm()]),
-      maintenance([alarm()], [visit()]),
-      odometer([alarm()], [log()]),
-    ]) {
+    // The list is the screens that still TINT: the maintenance grid left it, so it owes no word
+    // — and the assertion below is what stops a tint returning there without one.
+    for (const markup of [alarmsBoard([alarm()]), odometer([alarm()], [log()])]) {
       expect(markup).toContain('أحمر');
     }
+    const onMaintenance = maintenance([alarm()], [visit()]);
+    expect(onMaintenance, 'no alarm word').not.toContain('أحمر');
+    expect(onMaintenance, 'and no alarm tint to need one').not.toContain(
+      alarmCellTint('red') as string,
+    );
   });
 
   it('and nothing about the table’s behaviour changed', () => {

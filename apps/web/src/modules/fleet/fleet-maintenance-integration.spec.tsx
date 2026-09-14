@@ -29,6 +29,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { uiSlice } from '../../store/uiSlice';
 import { listKey } from '../../shared/lib/query-keys';
+import { translate } from '../../platform/localization/i18n';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
 import { OdometerPage } from './pages/OdometerPage';
@@ -269,12 +270,13 @@ describe('the three screens agree about one vehicle', () => {
     return render(<OdometerPage />, '/fleet/odometer', qc);
   };
 
-  it('shows the same LEVEL on all three', () => {
-    // «أحمر» — one word, three screens, one source.
+  it('shows the same LEVEL on the two screens that still name one', () => {
+    // «أحمر» — one word, one source. The maintenance grid stopped being one of them: the level
+    // column came off it by request, because a row there is a VISIT and one car has several.
     const red = 'أحمر';
-    expect(maintenance(), 'maintenance').toContain(red);
     expect(alarmsBoard(), 'alarms board').toContain(red);
     expect(odometer(), 'odometer').toContain(red);
+    expect(maintenance(), 'maintenance names no level').not.toContain(red);
   });
 
   it('shows the same SINCE-SERVICE distance where it is shown', () => {
@@ -295,23 +297,31 @@ describe('the three screens agree about one vehicle', () => {
     }
   });
 
-  it('shows the same LAST SERVICE date on the two screens that carry it', () => {
-    expect(maintenance()).toContain('٢٠٢٦');
-    expect(alarmsBoard()).toContain('٢٠٢٦');
+  it('shows the LAST SERVICE date on the alarms board, the one screen that still carries it', () => {
+    expect(alarmsBoard(), 'the board keeps the date column').toContain(
+      translate('ar', 'fleet.vehicle.lastService'),
+    );
+    // The maintenance grid printed the same date beside every visit of the car; the column is
+    // gone, and its own check-in and check-out dates are what a visit row is about.
+    expect(maintenance(), 'maintenance has no last-service column').not.toContain(
+      translate('ar', 'fleet.vehicle.lastService'),
+    );
   });
 });
 
 describe('the maintenance screen and the baseline visit', () => {
-  it('marks the visit that IS the current baseline', () => {
-    expect(maintenance()).toContain('أساس الإنذار');
-  });
-
-  it('does NOT mark a visit that is not the baseline', () => {
+  // The «أساس الإنذار» badge lived inside the level cell and went with it. It marked WHICH visit
+  // the countdown was measured from — a per-car fact, on a per-visit grid.
+  it('marks no visit at all — the badge went with the level column', () => {
+    expect(maintenance(), 'the baseline visit is not marked').not.toContain('أساس الإنذار');
     const other = visit({ id: '650000000000000000000092' });
-    expect(maintenance([ALARM], [other])).not.toContain('أساس الإنذار');
+    expect(maintenance([ALARM], [other]), 'nor is any other').not.toContain('أساس الإنذار');
+    expect(MAINTENANCE, 'and the page no longer compares ids to find it').not.toContain(
+      'alarm.lastServiceVisitId',
+    );
   });
 
-  it('marks nothing when there is no counted service yet', () => {
+  it('says nothing about WHY a car has no counted service', () => {
     const noBaseline: FleetMaintenanceAlarmDto = {
       ...ALARM,
       level: 'none',
@@ -326,24 +336,19 @@ describe('the maintenance screen and the baseline visit', () => {
     };
     const markup = maintenance([noBaseline]);
     expect(markup).not.toContain('أساس الإنذار');
-    // WHERE it says so matters, and `toContain` cannot tell visible text from a `title`. On this
-    // screen a row is a VISIT, so the reason is carried as a tooltip on the level cell (PR #384)
-    // and the «آخر صيانة» column — a DATE column — shows a dash like every other absent value.
-    // It used to print the sentence there too, byte-identical to the level column's, so one car
-    // read as two findings.
-    expect(markup, 'the reason is on the level cell, as a tooltip').toContain(
-      'title="لا صيانة محسوبة بعد"',
-    );
-    expect(markup, 'and never as visible text on this screen').not.toContain(
-      '>لا صيانة محسوبة بعد<',
-    );
+    // It used to be a tooltip on the level cell (PR #384) — the smallest form the reason could
+    // take on a per-visit row. With no level cell there is no carrier and no claim: the sentence
+    // is the alarms board's, in full, where one row IS one car.
+    expect(markup, 'no tooltip').not.toContain('title="لا صيانة محسوبة بعد"');
+    expect(markup, 'and no visible text').not.toContain('>لا صيانة محسوبة بعد<');
+    // That the alarms board still spells the sentence out is fleet-alarm-reason.spec's subject.
   });
 
-  it('takes the mark from the SERVER’s id, never from its own guess at the last visit', () => {
+  it('never guessed the baseline itself, and has nothing left to guess with', () => {
     // A client-side "find the newest closed counting visit" would drift from the figures beside
     // it the moment the page holds a different slice of the visits than the aggregate saw.
-    expect(MAINTENANCE).toContain('alarm.lastServiceVisitId === visit.id');
     expect(MAINTENANCE, 'no local baseline search').not.toMatch(/outDate !== null &&.*countsFor/);
+    expect(MAINTENANCE, 'and no baseline marker of any kind').not.toContain('isAlarmBaseline');
   });
 });
 

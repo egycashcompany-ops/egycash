@@ -130,24 +130,31 @@ describe('the sentence appears once per car, not twice', () => {
     expect(markup.split(REASON).length - 1, 'and appears nowhere else at all').toBe(1);
   });
 
-  it('the maintenance screen says it once, as a tooltip — PR #384 unchanged', () => {
+  it('the maintenance screen says it ZERO times — the column that carried it is gone', () => {
+    // PR #384 put it there as a tooltip on the level cell: the smallest form a per-car sentence
+    // could take on a per-visit row. «شيل دول من الجدول بتاع شاشه fleet/maintenance» took the
+    // level cell off, so the sentence has no carrier and the grid makes no claim about the car.
     const markup = maintenanceMarkup();
-    expect(markup.split(`title="${REASON}"`).length - 1, 'one tooltip').toBe(1);
+    expect(markup.split(`title="${REASON}"`).length - 1, 'no tooltip').toBe(0);
     expect(markup, 'and never as visible text here').not.toContain(`>${REASON}<`);
-    expect(markup.split(REASON).length - 1, 'so exactly one occurrence in total').toBe(1);
+    expect(markup.split(REASON).length - 1, 'so no occurrence at all').toBe(0);
   });
 });
 
 describe('«آخر صيانة» is a date column, and answers like one', () => {
-  it('neither screen prints a sentence in it', () => {
-    for (const source of ['pages/MaintenanceAlarmsPage.tsx', 'pages/MaintenancePage.tsx']) {
-      const body = read(source);
-      const column = body.slice(body.indexOf("key: 'lastServiceAt'"));
-      const render = column.slice(0, column.indexOf('\n    },'));
-      expect(render, `${source} names no reason string`).not.toContain('noAlarmReason');
-      expect(render, `${source} names no sentence key`).not.toContain('noBaseline');
-      expect(render, `${source} draws an absent date as a dash`).toMatch(/—|dash/);
-    }
+  it('the one screen that still has the column prints no sentence in it', () => {
+    // The maintenance grid used to carry a second copy of this column, printing the same date
+    // beside every visit of the car. It came off with the level; the alarms board — where one
+    // row IS one car — is the only place the date is a column at all now.
+    const body = read('pages/MaintenanceAlarmsPage.tsx');
+    const column = body.slice(body.indexOf("key: 'lastServiceAt'"));
+    const render = column.slice(0, column.indexOf('\n    },'));
+    expect(render, 'names no reason string').not.toContain('noAlarmReason');
+    expect(render, 'names no sentence key').not.toContain('noBaseline');
+    expect(render, 'draws an absent date as a dash').toMatch(/—|dash/);
+    expect(read('pages/MaintenancePage.tsx'), 'and the grid has no such column').not.toContain(
+      "key: 'lastServiceAt'",
+    );
   });
 
   it('and the dead key is gone from both languages', () => {

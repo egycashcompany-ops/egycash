@@ -195,13 +195,13 @@ const rowWith = (html: string, needle: string): string => {
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe('the columns the reader asked for, in order', () => {
-  it('runs م → الكود → التاريخ → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → ملاحظات', () => {
+  it('runs الكود → التاريخ → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → ملاحظات', () => {
     const html = render({ seed: withRows([accident()]) });
     const headers = [...html.matchAll(/<th[^>]*>(?:<[^>]+>)*([^<]*)/g)].map((m) =>
       (m[1] ?? '').trim(),
     );
     expect(headers).toEqual([
-      'م',
+      // «شيل التسلسل» — the serial column is gone and the grid opens on the code.
       'الكود',
       'تاريخ الحادث',
       'المتسبب',
@@ -227,7 +227,9 @@ describe('the columns the reader asked for, in order', () => {
     expect(rowWith(html, 'فنوس شمال')).toContain('مغلق');
   });
 
-  it('numbers the rows from the start of the LIST, not of the page', () => {
+  it('numbers no rows at all — the serial column and its page offset went together', () => {
+    // The removed column counted from the start of the LIST, so page 3 of 25 opened at 51. That
+    // is the number a leftover would still print, and the offset that would still be computed.
     const html = render({
       path: '/fleet/accidents?page=3',
       seed: withRows([accident(), accident({ id: 'a-2', statement: 'فنوس خلفى' })], {
@@ -235,8 +237,25 @@ describe('the columns the reader asked for, in order', () => {
         meta: { page: 3, pageSize: 25, totalItems: 180 },
       }),
     });
-    expect(rowWith(html, 'فنوس شمال')).toContain('>51<');
-    expect(rowWith(html, 'فنوس خلفى')).toContain('>52<');
+    expect(rowWith(html, 'فنوس شمال')).not.toContain('>51<');
+    expect(rowWith(html, 'فنوس خلفى')).not.toContain('>52<');
+    const source = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
+    expect(source).not.toContain('serialOffset');
+    expect(source).not.toContain('fleet.accidents.columns.serial');
+  });
+
+  it('keeps the screen-reader word for the row state, now on the FIRST cell', () => {
+    // With the status column gone the open/closed fact is carried by the tint, by the direction
+    // of the action button, and by this word. It rode on the serial cell; the serial cell is
+    // gone, and the word had to move rather than go with it.
+    const html = render({ seed: withRows([accident({ status: 'closed' })]) });
+    const row = rowWith(html, 'فنوس شمال');
+    const firstCell = row.slice(row.indexOf('<td'), row.indexOf('</td>'));
+    expect(firstCell, 'the first cell is the code').toContain('150');
+    expect(firstCell, 'and it carries the state for a reader the colour misses').toContain(
+      'sr-only',
+    );
+    expect(firstCell).toContain('مغلق');
   });
 });
 

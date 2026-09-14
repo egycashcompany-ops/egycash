@@ -255,15 +255,6 @@ export const DriverViolationsPanel = ({
 
   const columns: Column<FleetViolationDto>[] = [
     {
-      key: 'seq',
-      header: t('fleet.violations.columns.seq'),
-      align: 'center',
-      // The index IS the position now. It used to be offset by the page the board was showing,
-      // because the board showed ONE page and row 1 of page 3 was really row 51. Pages accumulate
-      // instead, so `rows` is the list from the top and the offset would double-count it.
-      render: (_row, index) => formatNumber(index + 1, locale),
-    },
-    {
       key: 'date',
       header: t('fleet.violations.fields.date'),
       render: (row) => formatDate(row.date, locale),

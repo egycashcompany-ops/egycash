@@ -742,13 +742,34 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(markup, 'nothing left to load').not.toContain('data-driver-load-more');
   });
 
-  it('numbers the rows from the top of the accumulated list, not from a page offset', () => {
-    // With one page on screen, row 1 of page 3 was really row 51 and the offset was right. With
-    // pages accumulating, `rows` starts at the top and the same offset would count it twice.
-    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
-    const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    expect(code, 'the index is the position').toContain('formatNumber(index + 1, locale)');
-    expect(code, 'no page-size offset survives').not.toContain('(meta.page - 1) * meta.pageSize');
+  it('numbers no rows on EITHER board — «شيل التسلسل» from the company half and the drivers half', () => {
+    // The serial was the first cell of both: a `seq` column on the drivers grid, and a spanning
+    // first `<td>` on the company rollup that ran the four total lines of one car. Both go, and
+    // with them the `index` each was counted from.
+    const driver = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const company = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const strip = (src: string): string =>
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    for (const [name, code] of [
+      ['drivers', strip(driver)],
+      ['company', strip(company)],
+    ] as const) {
+      expect(code, `${name}: no serial cell`).not.toContain('formatNumber(index + 1, locale)');
+      expect(code, `${name}: no serial header`).not.toContain('fleet.violations.columns.seq');
+    }
+    // The company rollup renders its own `<table>`, so the head is the other half of the proof.
+    const markup = page();
+    const head = markup.slice(markup.indexOf('<thead'), markup.indexOf('</thead>'));
+    // Header TEXTS, not a substring search: «م» is one letter and lives inside «المبلغ».
+    const headings = [...head.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/g)].map((m) =>
+      (m[1] as string).replace(/<[^>]*>/g, '').trim(),
+    );
+    expect(headings, 'and no «م» in the company head').not.toContain(
+      t('fleet.violations.columns.seq'),
+    );
+    expect(headings[0], 'the company rollup opens on the year').toBe(
+      t('fleet.violations.fields.year'),
+    );
   });
 
   it('this screen carries NO title, NO pager and NO «لكل صفحة» — and the others keep theirs', () => {
@@ -1177,6 +1198,25 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
     for (const grant of ['fleetViolation.collect', 'fleetViolation.delete', 'fleetViolation.edit']) {
       expect(CODE, `${grant} still gates its action`).toContain(`can('${grant}')`);
     }
+  });
+
+  it('numbers no rows either — «شيل التسلسل» reached the side layer as well', () => {
+    // The layer is where a car's year opens into the fines behind it, and it draws TWO tables:
+    // the company rows and the drivers' rows of the same car and year. Both opened on a serial,
+    // the same «م» the two boards behind them have just lost.
+    expect(CODE, 'no serial header in either table').not.toContain(
+      'fleet.violations.columns.seq',
+    );
+    expect(CODE, 'and no serial cell').not.toContain('formatNumber(index + 1, locale)');
+    // Which column each table opens on now — read from the source in order, so a serial put back
+    // under a different name still moves these and still fails.
+    const firstKeyAfter = (decl: string): string => {
+      const at = CODE.indexOf(decl);
+      expect(at, `${decl} is declared`).toBeGreaterThan(-1);
+      return /key: '([^']+)'/.exec(CODE.slice(at))?.[1] ?? '';
+    };
+    expect(firstKeyAfter('const columns:'), 'the company table opens on the type').toBe('type');
+    expect(firstKeyAfter('const driverColumns:'), 'the drivers’ table on the date').toBe('date');
   });
 
   it('routes edit and delete by the row’s KIND, so a driver fine opens the driver dialog', () => {

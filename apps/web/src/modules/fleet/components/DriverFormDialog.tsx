@@ -142,11 +142,21 @@ export const DriverFormDialog = ({
     if (open) setPhone(storedPhone);
   }, [open, storedPhone]);
 
-  // Save is live when the form holds what THIS mode needs. Creating needs the licence number —
-  // the server refuses without it; editing does not ask for it at all, so requiring it would
-  // disable Save over a box the reader cannot see.
+  /**
+   * Save is live when the form holds what THIS mode needs, and the two modes need different
+   * things.
+   *
+   * EDITING needs nothing: every field is optional and an empty one is simply not sent, so there
+   * is no state of this form that a save could not express. Gating it would disable the button
+   * over boxes the reader deliberately left alone.
+   *
+   * CREATING still needs the licence number and its expiry, and not because this screen wants
+   * them: `CreateFleetDriverProfileSchema` requires both, and the driver profile document stores
+   * them `required: true`. A create without them is refused by the server, so a live Save would
+   * be a button that only ever produced an error.
+   */
   const complete =
-    form.licenseExpiresAt !== '' && (profile !== null || form.licenseNumber.trim() !== '');
+    profile !== null || (form.licenseNumber.trim() !== '' && form.licenseExpiresAt !== '');
 
   /**
    * Send the phone to HR, and only if it CHANGED.
@@ -198,18 +208,33 @@ export const DriverFormDialog = ({
       onClose();
       return;
     }
+    // AN EMPTY BOX MEANS «LEAVE IT», NOT «CLEAR IT» — «لو في داتا كانت موجوده لو عدل عليها يحط
+    // داتا مكانها لكن ميمسحهاش».
+    //
+    // Every field on this form is optional now, and «optional» had two possible meanings: an
+    // empty box could travel as `null` and erase what is stored, or it could not travel at all
+    // and leave it. The owner named the second. So a field is sent ONLY when it holds something,
+    // and the update contract makes that expressible — every key on it is `.optional()`, and a
+    // key that is absent is a key the service does not `$set`.
+    //
+    // The cost is that this form can no longer CLEAR a specialization or a licence type once one
+    // is set; emptying the select and saving leaves the old value. That is the trade the
+    // instruction asks for, and it is the safer half of it: a value lost to a stray click is
+    // worse than a value that needs the right screen to change.
+    const given = (value: string): boolean => value.trim() !== '';
     await update.mutateAsync({
       id: profile.id,
       body: {
         // NO `licenseNumber`. The edit form does not show it (see the field above), and a field
         // a form does not show must not be written by it — sending the value it happened to load
         // would be this screen claiming an edit nobody made.
-        licenseExpiresAt: new Date(form.licenseExpiresAt),
-        // `jobId` and `area` are NOT sent. This form no longer shows them, and a field a form
-        // does not show must not be written by it — sending `null` would silently clear whatever
-        // somebody set through the screen that still owns them.
-        specializationId: ref(form.specializationId),
-        licenseTypeId: ref(form.licenseTypeId),
+        ...(given(form.licenseExpiresAt)
+          ? { licenseExpiresAt: new Date(form.licenseExpiresAt) }
+          : {}),
+        // `jobId` and `area` are NOT sent either, for the same reason: this form does not show
+        // them, and the screen that does still owns them.
+        ...(given(form.specializationId) ? { specializationId: form.specializationId } : {}),
+        ...(given(form.licenseTypeId) ? { licenseTypeId: form.licenseTypeId } : {}),
         isActive: form.isActive,
         version: profile.version,
       },
@@ -251,7 +276,7 @@ export const DriverFormDialog = ({
               drop it — and the payload below drops it with the field, because a form that does
               not show a value must not write one. */}
           {profile === null && (
-            <Field label={t('fleet.drivers.fields.licenseNumber')} required>
+            <Field label={t('fleet.drivers.fields.licenseNumber')}>
               <Input
                 value={form.licenseNumber}
                 onChange={(e) => setForm((prev) => ({ ...prev, licenseNumber: e.target.value }))}
@@ -259,7 +284,7 @@ export const DriverFormDialog = ({
               />
             </Field>
           )}
-          <Field label={t('fleet.drivers.fields.licenseExpiresAt')} required>
+          <Field label={t('fleet.drivers.fields.licenseExpiresAt')}>
             <Input
               type="date"
               value={form.licenseExpiresAt}

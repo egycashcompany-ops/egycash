@@ -160,12 +160,6 @@ export const CompanyViolationsDetailLayer = ({
 
   const columns: Column<FleetViolationDto>[] = [
     {
-      key: 'seq',
-      header: t('fleet.violations.columns.seq'),
-      align: 'center',
-      render: (_v, index) => formatNumber(index + 1, locale),
-    },
-    {
       key: 'type',
       header: t('fleet.violations.fields.type'),
       render: (v) => typeName.get(v.violationTypeId) ?? '—',
@@ -193,12 +187,6 @@ export const CompanyViolationsDetailLayer = ({
   // The drivers' columns answer a different question from the company's: WHO and WHEN, rather than
   // how many × how much. Same three actions though — see `rowActions`.
   const driverColumns: Column<FleetViolationDto>[] = [
-    {
-      key: 'seq',
-      header: t('fleet.violations.columns.seq'),
-      align: 'center',
-      render: (_v, index) => formatNumber(index + 1, locale),
-    },
     {
       key: 'date',
       header: t('fleet.violations.fields.date'),

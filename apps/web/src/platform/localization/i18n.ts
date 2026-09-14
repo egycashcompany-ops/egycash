@@ -4066,6 +4066,11 @@ const en: Record<string, string> = {
   'fleet.catalogs.fields.nameAr': 'Name (Arabic)',
   'fleet.catalogs.fields.nameEn': 'Name (English)',
   'fleet.catalogs.fields.countsForAlarm': 'Counts for the maintenance alarm',
+  // Two warnings, not refusals — both values are legitimate and both are usually a slip.
+  'fleet.maintenance.workTypeNotCounting':
+    'This work type does not reset the maintenance counter — the alarm will keep measuring from the previous service.',
+  'fleet.odometer.sameAsPrevious':
+    'Same as the last reading — this records a period of 0 km. Correct if the vehicle did not move.',
   'fleet.catalogs.fields.violationSide': 'Filed by',
   'fleet.catalogs.fields.isActive': 'Active',
   'fleet.catalogs.countsBadge': 'Resets alarm baseline',
@@ -10537,6 +10542,10 @@ const ar: Record<string, string> = {
   'fleet.catalogs.fields.nameAr': 'الاسم (عربي)',
   'fleet.catalogs.fields.nameEn': 'الاسم (إنجليزي)',
   'fleet.catalogs.fields.countsForAlarm': 'تُحتسب لإنذار الصيانة',
+  'fleet.maintenance.workTypeNotCounting':
+    'نوع العمل ده مش بيصفّر عداد الصيانة — الإنذار هيفضل يحسب من الصيانة اللى قبلها.',
+  'fleet.odometer.sameAsPrevious':
+    'نفس آخر قراءة — دى هتسجّل فترة بـ ٠ كم. صح لو العربية ما تحركتش.',
   'fleet.catalogs.fields.violationSide': 'تُسجَّل على',
   'fleet.catalogs.fields.isActive': 'نشط',
   'fleet.catalogs.countsBadge': 'يصفّر أساس الإنذار',

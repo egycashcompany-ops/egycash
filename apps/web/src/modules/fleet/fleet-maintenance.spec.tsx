@@ -236,7 +236,7 @@ const tone = (markup: string, name: string): string => {
 };
 
 const REQUIRED_COLUMNS = [
-  'fleet.odometer.columns.no',
+  // «شيل التسلسل» — the serial column is gone, so the grid opens on the check-in date.
   'fleet.maintenance.fields.inDate',
   'fleet.maintenance.fields.outDate',
   'fleet.odometer.columns.vehicle',
@@ -246,10 +246,11 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.spareParts',
   'fleet.odometer.columns.notes',
   'fleet.maintenance.fields.odometerAtService',
-  // The vehicle's derived maintenance alarm, read from the SAME projection the alarms board and
-  // the odometer log read — never recomputed here.
-  'fleet.alarms.columns.level',
-  'fleet.vehicle.lastService',
+  // What is left of the vehicle's derived maintenance alarm, read from the SAME projection the
+  // alarms board and the odometer log read — never recomputed here. The LEVEL and the LAST
+  // SERVICE DATE were taken off this grid by request: a row here is a VISIT, and the level is the
+  // alarms board's own subject. The two distances stay because they are about the visit's car at
+  // the moment it is being read.
   'fleet.alarms.columns.sinceService',
   'fleet.alarms.columns.remaining',
   'fleet.vehicles.columns.actions',
@@ -258,7 +259,7 @@ const REQUIRED_COLUMNS = [
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the maintenance table', () => {
-  it('renders the eleven columns in the required order, and nothing else', () => {
+  it('renders the twelve columns in the required order, and nothing else', () => {
     // Exact equality, not "each appears after the last": that is what catches a column silently
     // added, dropped or moved rather than only a reordering.
     expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
@@ -272,10 +273,30 @@ describe('the maintenance table', () => {
     }
   });
 
-  it('numbers rows THROUGH the pagination — page 2 does not restart at 1', () => {
+  it('carries no serial column — the first cell is the check-in DATE, on page 2 as on page 1', () => {
+    // Page 2 is where a leftover serial would be loudest: the old column numbered through the
+    // pagination, so row 1 of page 2 printed «٢٦» rather than a date.
     const rows = [visit({ id: 'a' }), visit({ id: 'b' })];
     const qc = client(rows, { page: 2 }, { page: 2, totalItems: 27, totalPages: 2 });
-    expect(cells(render({ route: '/fleet/maintenance?page=2', qc }))[0]).toBe('٢٦');
+    const first = cells(render({ route: '/fleet/maintenance?page=2', qc }))[0] as string;
+    expect(first, 'no serial survived the offset arithmetic').not.toBe('٢٦');
+    expect(first, 'the first cell is a date').toMatch(/[٠-٩]+/);
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source, 'and the offset arithmetic went with the column').not.toContain(
+      'firstRowNumber',
+    );
+  });
+
+  it('drops «المستوى» and «آخر صيانة» — the level is the alarms board’s subject, not a visit’s', () => {
+    // Requested straight off a screenshot of the two columns. A row here is a VISIT and one car
+    // has several, so the level repeated down the column said the same thing several times; the
+    // alarms board is the one screen that answers per CAR.
+    const head = headers(render({ qc: client([visit({ vehicleId: VEHICLE_ID })]) }));
+    expect(head, 'no level column').not.toContain(t('fleet.alarms.columns.level'));
+    expect(head, 'no last-service date column').not.toContain(t('fleet.vehicle.lastService'));
+    // The «أساس الإنذار» badge lived inside the level cell and goes with it.
+    const body = tbody(render({ qc: client([visit({ vehicleId: VEHICLE_ID })]) }));
+    expect(body).not.toContain(t('fleet.maintenance.isAlarmBaseline'));
   });
 
   it('shows the code of a vehicle the registry answers for only on a LATER page', () => {
@@ -283,7 +304,7 @@ describe('the maintenance table', () => {
     // capped the answer at `MAX_PAGE_SIZE` cars, so every car past it printed a dash. Here the
     // registry search answers with a DIFFERENT car entirely and the row still names its own.
     const qc = client([visit({ vehicleId: 'v101', vehicleCode: '101' })]);
-    expect(cells(render({ qc }))[3]).toBe('101');
+    expect(cells(render({ qc }))[2]).toBe('101');
   });
 
   it('never joins the vehicle code against a page of the registry', () => {
@@ -296,7 +317,7 @@ describe('the maintenance table', () => {
   it('names the DRIVER who brought the car in — in red', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const markup = render({ qc });
-    expect(cells(markup)[4]).toContain('سائق الصباح');
+    expect(cells(markup)[3]).toContain('سائق الصباح');
     expect(tone(tbody(markup), 'سائق الصباح')).toContain('text-red-700');
   });
 
@@ -309,7 +330,7 @@ describe('the maintenance table', () => {
       }),
     ]);
     const markup = render({ qc });
-    const cell = cells(markup)[4] as string;
+    const cell = cells(markup)[3] as string;
     const inAt = cell.indexOf('سائق الصباح');
     const outAt = cell.indexOf('سائق المساء');
     expect(inAt, 'the entry driver is named').toBeGreaterThan(-1);
@@ -327,14 +348,14 @@ describe('the maintenance table', () => {
 
   it('shows only the entry driver while the car is still in the workshop', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
-    const cell = cells(render({ qc }))[4] as string;
+    const cell = cells(render({ qc }))[3] as string;
     expect(cell).toContain('سائق الصباح');
     expect(cell, 'nobody has driven it away yet').not.toContain('سائق المساء');
   });
 
   it('dashes the driver cell for a visit written before the driver fields existed', () => {
     const body = tbody(render());
-    expect(cells(render())[4]).toBe('—');
+    expect(cells(render())[3]).toBe('—');
     expect(body).not.toContain('null');
     expect(body).not.toContain('undefined');
   });
@@ -362,7 +383,7 @@ describe('the maintenance table', () => {
 
   it('shows catalog spare parts by NAME, and still shows an old visit’s free text', () => {
     const qc = client([visit({ sparePartIds: [PART_ID], spareParts: ['بوجيهات'] })]);
-    const partsCell = cells(render({ qc }))[7] as string;
+    const partsCell = cells(render({ qc }))[6] as string;
     expect(partsCell, 'the catalog name, not the id').toContain('فلتر زيت');
     expect(partsCell).not.toContain(PART_ID);
     // The words an older visit recorded are the only record of what was fitted on it.
@@ -397,8 +418,8 @@ describe('a visit that has left the workshop', () => {
   it('says it is closed with DATA, not only with colour', () => {
     // The state's non-colour carrier is the check-out DATE column: a closed visit prints one, an
     // open visit prints the «in the workshop» badge instead.
-    const closedOut = cells(render({ qc: client([closed()]) }))[2] as string;
-    const openOut = cells(render())[2] as string;
+    const closedOut = cells(render({ qc: client([closed()]) }))[1] as string;
+    const openOut = cells(render())[1] as string;
     expect(closedOut, 'a closed visit shows its check-out date').not.toBe(openOut);
     expect(openOut).toContain(t('fleet.maintenance.open'));
     expect(closedOut).not.toContain(t('fleet.maintenance.open'));
@@ -726,5 +747,79 @@ describe('the check-out dialog', () => {
     // would have to get past. Nothing clicks in this suite.
     const save = markup.slice(markup.lastIndexOf('<button'));
     expect(save).toContain('disabled');
+  });
+});
+
+/**
+ * TWO WARNINGS, BOTH FOUND BY WALKING A REAL CAR THROUGH ITS CYCLE.
+ *
+ * Neither value is wrong and neither is refused. What was wrong in both cases was the SILENCE:
+ * the screen let a reader do something reasonable-looking, and then reported a result with no
+ * connection back to the choice that caused it.
+ */
+describe('the maintenance and odometer dialogs say what a choice will cost', () => {
+  const HERE_DIR = dirname(fileURLToPath(import.meta.url));
+  const read = (rel: string): string =>
+    readFileSync(join(HERE_DIR, rel), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+
+  /**
+   * A visit becomes the alarm's baseline only if its work type is flagged `countsForAlarm` — the
+   * server's `alarmBaselines` matches on exactly that set. A visit recorded with any other type
+   * is filed correctly and changes nothing, and the alarms board goes on saying «لا صيانة محسوبة
+   * بعد» with nothing pointing at why. Reproduced on a real stack: four steps followed exactly,
+   * and the only wrong thing was an unticked work type.
+   */
+  it('warns when the chosen work type will not reset the maintenance counter', () => {
+    const code = read('components/MaintenanceDialogs.tsx');
+    expect(code, 'the warning exists').toContain('fleet.maintenance.workTypeNotCounting');
+    expect(code, 'and reads the flag the SERVER matches on').toContain('countsForAlarm === true');
+    // Both dialogs — checking a car in, and editing the visit afterwards. Editing the type has
+    // exactly the same consequence, so a warning on only one of them is half a warning.
+    expect(
+      code.split('warning: notCounting').length - 1,
+      'check-in and edit both warn',
+    ).toBe(2);
+  });
+
+  it('says nothing while the catalog is still loading', () => {
+    // A warning that appears on every open and then withdraws itself teaches the reader to
+    // ignore it, which costs more than it buys.
+    const code = read('components/MaintenanceDialogs.tsx');
+    expect(code).toContain('data === undefined) return undefined');
+  });
+
+  it('never REFUSES a non-counting type — plenty of visits legitimately are not services', () => {
+    const code = read('components/MaintenanceDialogs.tsx');
+    // `warning` is `Field`'s advisory channel; `error` is the one that says a save is refused.
+    expect(code).toContain('warning: notCounting');
+    expect(code, 'the type is not gated on it').not.toMatch(/canSubmit[^\n]*notCounting/);
+  });
+
+  /**
+   * FR-2 refuses a reading BELOW the previous one, so an EQUAL one passes — and it should: a
+   * vehicle that stood still all day really did read the same twice. It is also what a
+   * double-press of «تسجيل قراءة» produces, writing a second row with `km = 0` that nothing on
+   * the screen explains. Seen on a real stack.
+   */
+  it('warns when a reading repeats the last one, and still allows it', () => {
+    const code = read('components/RecordOdometerDialog.tsx');
+    expect(code, 'the warning exists').toContain('fleet.odometer.sameAsPrevious');
+    expect(code, 'fired on a zero-distance period').toContain('derivedKm === 0');
+    expect(code, 'as advice, not as a refusal').toContain('warning: t(');
+    // The submit guard must not have grown a clause about it.
+    const submit = code.slice(code.indexOf('const canSubmit'), code.indexOf('return ('));
+    expect(submit, 'a standing day stays recordable').not.toContain('derivedKm === 0');
+  });
+
+  it('both messages say what happens, not just that something is odd', () => {
+    for (const key of ['fleet.maintenance.workTypeNotCounting', 'fleet.odometer.sameAsPrevious']) {
+      for (const locale of ['ar', 'en'] as Locale[]) {
+        const text = translate(locale, key);
+        expect(text, `${key} in ${locale}`).not.toBe(key);
+        expect(text.length, `${key} in ${locale} explains itself`).toBeGreaterThan(40);
+      }
+    }
   });
 });

@@ -33,7 +33,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { formatNumber } from '../../shared/lib/format';
+import { formatDate, formatNumber } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
@@ -202,7 +202,8 @@ const firstCells = (markup: string): string[] =>
     });
 
 const REQUIRED_COLUMNS = [
-  'fleet.odometer.columns.no',
+  // «شيل التسلسل من شاشه fleet/odometer» — the serial column is gone, so the table opens on the
+  // date. Nothing else about the grid moved.
   'fleet.odometer.fields.date',
   'fleet.odometer.columns.vehicle',
   'fleet.odometer.columns.driver',
@@ -217,16 +218,15 @@ const REQUIRED_COLUMNS = [
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the odometer table', () => {
-  it('renders the ten columns in the required order, and nothing else', () => {
+  it('renders the nine columns in the required order, and nothing else', () => {
     // Exact equality, not "each one appears after the last": that is what makes this catch a
     // column silently added, dropped or moved, rather than only a reordering.
     expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));
   });
 
-  it('numbers rows THROUGH the pagination — page 2 does not restart at 1', () => {
-    // Three rows of a 25-per-page list, sitting on page 2: they are numbers 26, 27 and 28 of the
-    // filtered list, not 1, 2 and 3 of the page. The numbering is Arabic-Indic like every other
-    // figure in this table.
+  it('carries no serial column — the first cell is the DATE, on page 2 as on page 1', () => {
+    // The removed column used to number rows through the pagination, so page 2 is where a
+    // leftover would be loudest: a stray serial there would read «٢٦», never a date.
     const logs = [log({ id: 'a' }), log({ id: 'b' }), log({ id: 'c' })];
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(ODOMETER_KEY({ page: 2 }), {
@@ -239,38 +239,35 @@ describe('the odometer table', () => {
     );
     qc.setQueryData(['fleet', 'alarms'], [alarm()]);
 
-    const serials = firstCells(render({ route: '/fleet/odometer?page=2', qc }));
-    expect(serials, 'page 2 of 25 starts at 26').toEqual(['٢٦', '٢٧', '٢٨']);
+    const onPageTwo = firstCells(render({ route: '/fleet/odometer?page=2', qc }));
+    expect(onPageTwo, 'three rows, and not one of them is a number').toHaveLength(3);
+    for (const first of onPageTwo) {
+      expect(first, 'the first cell is a date').toMatch(/[٠-٩]+‏\/[٠-٩]+‏\/[٠-٩]+/);
+      expect(first, 'no serial survived the offset arithmetic').not.toBe('٢٦');
+    }
+    expect(firstCells(render()), 'page 1 opens on a date too').not.toEqual(['١']);
   });
 
-  it('numbers from the SERVER’s page size, not the one the URL asked for', () => {
-    // The server may clamp a page size it was handed. Numbering off the unclamped request would
-    // put the wrong serial beside every row, so the offset follows what actually came back.
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    qc.setQueryData(ODOMETER_KEY({ page: 3, pageSize: 500 }), {
-      items: [log({ id: 'a' }), log({ id: 'b' })],
-      // Asked for 500 a page; the server paginated by 200.
-      meta: { page: 3, pageSize: 200, totalItems: 402, totalPages: 3 },
-    });
-    qc.setQueryData(
-      VEHICLE_SEARCH_KEY(),
-      pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
-    );
-    qc.setQueryData(['fleet', 'alarms'], [alarm()]);
-
-    // 2 × 200 + 1 = 401, not 2 × 500 + 1 = 1001.
-    expect(firstCells(render({ route: '/fleet/odometer?page=3&size=500', qc }))).toEqual([
-      '٤٠١',
-      '٤٠٢',
-    ]);
+  it('computes no row offset at all — the page-size clamp has nothing left to get wrong', () => {
+    // The old serial was numbered off the SERVER's `meta`, because a server free to clamp a page
+    // size it was handed would otherwise drift from the rows on screen. With the column gone the
+    // arithmetic goes with it: a re-added serial would have to bring the bug back with it.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source).not.toContain('firstRowNumber');
+    // The closing quote matters: `columns.notes` starts with `columns.no`.
+    expect(source).not.toContain("fleet.odometer.columns.no'");
   });
 
-  it('opens the table with the serial column «م»', () => {
-    const head = headers(render());
-    expect(head[0], 'the first header is the serial').toBe(t('fleet.odometer.columns.no'));
-    expect(t('fleet.odometer.columns.no')).toBe('م');
+  it('opens the table with the DATE — the serial «م» is gone from the head and the rows', () => {
+    const html = render();
+    const head = headers(html);
+    expect(head[0], 'the first header is the date').toBe(t('fleet.odometer.fields.date'));
+    expect(head, 'and «م» is nowhere in the head').not.toContain(t('fleet.odometer.columns.no'));
     // …and it is the first CELL of every row, not merely the first header.
-    expect(firstCells(render()), 'the first cell of page 1 is row 1').toEqual(['١']);
+    expect(firstCells(html), 'the first cell of page 1 is a date').toEqual([
+      formatDate(log().date, 'ar'),
+    ]);
+
   });
 
   it('labels every column in BOTH locales — no header renders as a raw key', () => {
@@ -348,11 +345,11 @@ describe('the odometer table', () => {
       VEHICLE_SEARCH_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
-    // The third cell is the code column (after the serial and the date).
+    // The second cell is the code column (the date comes first now the serial is gone).
     const cells = [...tbody(render({ qc })).matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((m) =>
       (m[1] as string).replace(/<[^>]*>/g, '').trim(),
     );
-    expect(cells[2], 'the row carries its own code, not a dash').toBe('101');
+    expect(cells[1], 'the row carries its own code, not a dash').toBe('101');
   });
 
   it('never joins the code against a page of the registry', () => {
@@ -532,8 +529,8 @@ describe('the server answers the whole question — the page never slices', () =
     );
     const html = render({ route: '/fleet/odometer?page=2', qc });
     expect(tbody(html).match(/<tr/g)?.length ?? 0).toBe(25);
-    // The serial column proves it is the SECOND page: it counts from 26.
-    expect(firstCells(html)[0]).toBe('٢٦');
+    // The footer proves it is the SECOND page: it counts from 26.
+    expect(html.slice(html.indexOf('</table>'))).toContain(formatNumber(26, 'ar'));
   });
 
   it('takes the totals from the SERVER’s meta, never from the rows in hand', () => {

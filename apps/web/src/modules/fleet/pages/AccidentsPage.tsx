@@ -133,20 +133,12 @@ export const AccidentsPage = (): JSX.Element => {
   const rows = data?.items ?? [];
   const summary = useAccidentSummary(filters);
 
-  // A serial column counts from the start of the LIST, not of the page: row 26 is row 26 on page
-  // two. The table only ever sees one page, so the offset comes from the server's own meta.
-  const serialOffset = data === undefined ? 0 : (data.meta.page - 1) * data.meta.pageSize;
-
   const clearFilters = (): void =>
     // ONE update, all six keys. The code search and the vehicle pick go together — leaving either
     // behind would hand back a "cleared" bar that is still filtering.
     patch({ vehicleCodes: null, culpritBy: null, status: null, from: null, to: null });
   const hasFilters =
-    vehicleCodes.length > 0 ||
-    culpritBy.length > 0 ||
-    status !== '' ||
-    from !== '' ||
-    to !== '';
+    vehicleCodes.length > 0 || culpritBy.length > 0 || status !== '' || from !== '' || to !== '';
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
@@ -227,27 +219,19 @@ export const AccidentsPage = (): JSX.Element => {
 
   const columns: Column<FleetAccidentDto>[] = [
     {
-      key: 'serial',
-      header: t('fleet.accidents.columns.serial'),
-      render: (r, index) => (
-        <span className="tabular-nums text-slate-500 dark:text-slate-400">
-          {serialOffset + index + 1}
-          {/*
-            The row's state, for anyone the colour does not reach. With the Status column gone the
-            open/closed fact is carried by the tint and by the direction of the action button —
-            and a reader who has neither the colour nor the close grant would be left with
-            nothing. This is that third carrier, and it costs no width.
-          */}
-          <span className="sr-only"> — {t(`fleet.accidents.status.${r.status}`)}</span>
-        </span>
-      ),
-    },
-    {
       key: 'vehicle',
       header: t('fleet.vehicles.columns.code'),
       render: (r) => (
         <span className="font-mono text-xs" dir="ltr">
           {codeOf(r.vehicleId)}
+          {/*
+            The row's state, for anyone the colour does not reach. With the Status column gone the
+            open/closed fact is carried by the tint and by the direction of the action button —
+            and a reader who has neither the colour nor the close grant would be left with
+            nothing. This is that third carrier, and it costs no width. It rode on the serial
+            until the serial column went; the first cell of the row is still where it belongs.
+          */}
+          <span className="sr-only"> — {t(`fleet.accidents.status.${r.status}`)}</span>
         </span>
       ),
     },

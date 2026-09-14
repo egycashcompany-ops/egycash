@@ -38,7 +38,7 @@ import {
   TrashIcon,
   WrenchIcon,
 } from '../../../shared/ui/icons';
-import { formatDate, localized } from '../../../shared/lib/format';
+import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
@@ -206,14 +206,6 @@ export const VehiclesListPage = (): JSX.Element => {
   const { data: branches = [] } = useBranches(can('branch.view'));
   const branchName = useMemo(() => nameMap(branches, locale), [branches, locale]);
 
-  // "الترتيب" — the row's position in the WHOLE result set, not on the page, so paging forward
-  // continues the count instead of restarting it.
-  const ordinalBase = (page - 1) * pageSize;
-  const ordinal = useMemo(
-    () => new Map(rows.map((row, index) => [row.id, ordinalBase + index + 1])),
-    [rows, ordinalBase],
-  );
-
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<FleetVehicleDto | null>(null);
   const [statusFor, setStatusFor] = useState<FleetVehicleDto | null>(null);
@@ -309,12 +301,6 @@ export const VehiclesListPage = (): JSX.Element => {
   // rather than taking a fifteenth column: dropping them would lose real information the registry
   // has always shown, and the column list did not ask for them to go.
   const columns: Column<FleetVehicleDto>[] = [
-    {
-      key: 'ordinal',
-      header: t('fleet.vehicles.columns.ordinal'),
-      align: 'center',
-      render: (v) => <span className="tabular-nums text-xs">{ordinal.get(v.id) ?? '—'}</span>,
-    },
     {
       key: 'type',
       header: t('fleet.vehicles.columns.type'),
@@ -499,6 +485,20 @@ export const VehiclesListPage = (): JSX.Element => {
       <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
+          {...(data === undefined
+            ? {}
+            : {
+                trailing: (
+                  <span
+                    data-vehicle-count
+                    className="whitespace-nowrap text-xs font-medium text-slate-500 dark:text-slate-400"
+                  >
+                    {t('fleet.vehicles.count', {
+                      count: formatNumber(data.meta.totalItems, locale),
+                    })}
+                  </span>
+                ),
+              })}
           onClear={() =>
             patch({
               status: null,
@@ -609,6 +609,16 @@ export const VehiclesListPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
+          {/* HOW MANY CARS THE FILTER MATCHES — «حط جمب الفلاتر عدد العربيات».
+              
+              It reads the SERVER's `totalItems`, never `rows.length`. The rows in hand are one
+              page of at most 25, so counting them would answer «how many are on this screen»
+              while looking like an answer to «how many are there» — and the two differ the
+              moment a filter matches more than a page.
+              
+              `trailing`, so it lands in the same group as the reset and the active-filter count
+              that `FilterBar` already draws there, rather than as a twelfth control in a row of
+              eleven filters. */}
         </FilterBar>
 
         <DataTable

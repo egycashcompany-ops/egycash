@@ -3855,6 +3855,8 @@ const en: Record<string, string> = {
   'fleet.fixedRoster.saved': 'Fixed crews saved',
   'fleet.fixedRoster.noVehicles': 'No vehicles',
   'fleet.fixedRoster.summary': '{{total}} vehicles · {{crewed}} crewed',
+  // How many cars the CURRENT filter matches — the registry's own tally, in its bar.
+  'fleet.vehicles.count': '{{count}} vehicles',
 
   // Fleet — daily roster (FW-7)
   'fleet.roster.subtitle':
@@ -10327,6 +10329,7 @@ const ar: Record<string, string> = {
   'fleet.fixedRoster.saved': 'تم حفظ الطقم الثابت',
   'fleet.fixedRoster.noVehicles': 'لا توجد سيارات',
   'fleet.fixedRoster.summary': '{{total}} سيارة · {{crewed}} بطقم',
+  'fleet.vehicles.count': '{{count}} سيارة',
 
   // Fleet — daily roster (FW-7)
   'fleet.roster.subtitle': 'تخطيط تعيينات يوم واحد — قواعد الإتاحة والورشة والحصرية يفرضها الخادم.',

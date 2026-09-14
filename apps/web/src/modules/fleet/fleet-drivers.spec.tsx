@@ -989,16 +989,71 @@ describe('the branch filter', () => {
 describe('editing a driver', () => {
   const source = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
 
-  it('offers every fleet-owned field the update contract accepts', () => {
+  it('offers the fleet-owned fields the owner asked for, and only those', () => {
     for (const key of [
-      'fleet.drivers.fields.licenseNumber',
       'fleet.drivers.fields.licenseExpiresAt',
       'fleet.drivers.fields.specialization',
       'fleet.drivers.fields.licenseType',
-      'fleet.drivers.fields.isActive',
     ]) {
       expect(source, `${key} field`).toContain(key);
     }
+    // «انا مش عاوز اغير الرقم انا عاوز النوع بتاع الرخصه اولى او تانيه» — the licence NUMBER is
+    // asked once, when the profile is made, and never offered again. See its own tests below.
+    //
+    // «نشط فى مجمع السائقين» STAYS. It was nearly dropped with the rest, and it is the only
+    // writer of `isActive` anywhere in the application — the profile screen displays the flag
+    // and never sets it, and the only other thing that moves it is the service deactivating a
+    // driver when HR records the employee's exit. Without this box an activated driver could
+    // never be retired by hand.
+    expect(source, 'the active switch is kept').toContain('fleet.drivers.fields.isActive');
+  });
+
+  /**
+   * THE LICENCE NUMBER IS A CREATE-ONLY FIELD.
+   *
+   * It cannot go entirely: `CreateFleetDriverProfileSchema` requires at least one character, so a
+   * create form without the box could not enrol anybody. `UpdateFleetDriverProfileSchema` makes
+   * it optional, which is exactly what lets the edit form drop it.
+   */
+  it('asks for the licence number only while there is no profile yet', () => {
+    expect(
+      CreateFleetDriverProfileSchema.safeParse({
+        employeeId: '64b1f0dddddddddddddddd01',
+        licenseNumber: '',
+        licenseExpiresAt: new Date(),
+      }).success,
+      'the server refuses a blank number on create',
+    ).toBe(false);
+    expect(
+      UpdateFleetDriverProfileSchema.safeParse({ version: 1 }).success,
+      'and does not ask for one on update',
+    ).toBe(true);
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf("t('fleet.drivers.fields.licenseNumber')");
+    expect(at, 'the field still exists for create').toBeGreaterThan(-1);
+    expect(code.slice(Math.max(0, at - 200), at), 'behind the create branch').toContain(
+      'profile === null &&',
+    );
+  });
+
+  it('does not WRITE the number it no longer shows', () => {
+    // Comments stripped first: the payload says in prose WHY the field is absent, and naming it
+    // to explain its absence must not be what fails this.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf('await update.mutateAsync');
+    const body = code.slice(at, code.indexOf('toast.success', at));
+    expect(body, 'the update payload carries no licenceNumber').not.toContain('licenseNumber');
+    expect(body, 'but still carries what the form does show').toContain('licenseExpiresAt');
+  });
+
+  it('Save stays reachable on an edit, where the number is not on screen to fill in', () => {
+    // Requiring it would disable Save over a box the reader cannot see.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const at = code.indexOf('const complete =');
+    expect(at).toBeGreaterThan(-1);
+    const decl = code.slice(at, code.indexOf(';', at));
+    expect(decl, 'the number is only demanded while creating').toContain('profile !== null ||');
+    expect(decl, 'the expiry is always demanded').toContain("form.licenseExpiresAt !== ''");
     // «الوظيفة» and «منطقة العمل» are NOT offered any more (owner request), and the form must not
     // send them either — a field a form does not show must not be written by it, or saving here
     // would silently clear whatever was set on the screen that still owns them.
@@ -1077,20 +1132,45 @@ describe('editing a driver', () => {
     expect(section).toContain('fleet.drivers.licenseImage.view');
   });
 
-  it('displays the eight HR-owned facts, read-only, next to the editable ones', () => {
+  /**
+   * THE HR HALF IS GONE — «شيل موضوع الموارد البشريه دا ... لما ادوس على تعديل ان اعدل فى
+   * الموارد البشريه انا مش عاوز هنا».
+   *
+   * It displayed eight facts read-only, grouped by which HR screen owned each, with a link out
+   * per group. Careful, correct, and answering a question nobody asked on this screen.
+   */
+  it('shows no HR-owned facts at all — HR is edited in HR', () => {
     for (const key of [
-      'fleet.drivers.columns.driver',
       'fleet.drivers.columns.employeeCode',
       'fleet.drivers.columns.jobTitle',
       'fleet.drivers.columns.address',
       'fleet.drivers.columns.governorate',
-      'fleet.drivers.columns.phone',
       'fleet.drivers.columns.hiredAt',
       'fleet.drivers.columns.branch',
     ]) {
-      expect(source, `${key} shown`).toContain(key);
+      expect(source, `${key} is gone`).not.toContain(key);
     }
-    expect(source, 'and says why they cannot be edited').toContain('fleet.drivers.hrOwnedHint');
+    expect(source, 'and the block that held them').not.toContain('fleet.drivers.hrOwnedHint');
+    expect(source, 'and its links out').not.toContain('hrProfileHref');
+  });
+
+  /**
+   * The BRANCH especially. It cannot be an input here whatever the layout says: a branch moves
+   * by a personnel action carrying an effective date, a reason and a timeline entry, so a
+   * dropdown writing `branchId` would be a transfer with no record of itself.
+   */
+  it('offers no branch control, and writes no branchId', () => {
+    // Read with the prose stripped: the header explains WHY there is no branch here and names
+    // the field while doing it, and a guard that could not tell an explanation from a write
+    // would force the explanation to be deleted to stay green.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    expect(code).not.toContain('branchId');
+    expect(code, 'and asks HR for no branch list').not.toContain('useBranches');
+  });
+
+  it('keeps the ONE HR field the owner did ask for — the mobile', () => {
+    expect(source, 'the box').toContain('data-driver-phone');
+    expect(source, 'named').toContain('fleet.drivers.columns.phone');
   });
 
   it('sends ONLY the fields the backend contract accepts — no invented keys', () => {
@@ -1365,14 +1445,13 @@ describe('the HR facts delegate to HR instead of being edited in Fleet', () => {
     }
   });
 
-  it('gates each link on its own group’s permission, and on nothing else', () => {
-    // The dialog is a `Dialog` (a portal), unreachable in a suite with no jsdom — so the claim is
-    // made where it is decidable: the guard reads the permission from the table above, so the two
-    // cannot drift apart.
-    expect(source).toContain('mayDelegateTo(HR_DELEGATION.personal, can)');
-    expect(source).toContain('mayDelegateTo(HR_DELEGATION.employment, can)');
-    // No hardcoded permission strings that could diverge from the table — with ONE exception,
-    // below, which is a permission the form CHECKS rather than a link it gates.
+  it('the dialog no longer links out to HR at all — there is nothing left to link FROM', () => {
+    // The delegation table above still earns its keep: it is the module's statement of which HR
+    // screen owns which fact, and `hr-delegation.ts` and its rules stand. What is gone is this
+    // ONE dialog's use of it, because the read-only block those links hung off is gone.
+    expect(source, 'no links').not.toContain('mayDelegateTo');
+    expect(source, 'nor the table they read').not.toContain('HR_DELEGATION');
+    // And still no grant a Fleet role should not be asking for.
     expect(source).not.toContain("can('employee.manageActions')");
   });
 

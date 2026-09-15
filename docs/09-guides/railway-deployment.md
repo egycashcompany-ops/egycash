@@ -114,6 +114,12 @@ is updated rather than duplicated. A run that fails halfway is finished by runni
 They are built into `dist/` for this reason — the image installs with `--omit=dev`, so `tsx` is
 absent and the `npm run …` forms work only on a developer machine.
 
+> **Set `HR_PROVISION_MISSING_LOGINS=false` first.** Both commands boot the platform, and the boot
+> runs HR's login backfill — a login for every employed employee that has none, and a WhatsApp
+> message and an email to each carrying a setup link. It defaults to `true`, it happens before
+> either command reads a row, so a **dry run would send them too**, and nothing recalls a delivered
+> message. Both commands refuse to start while it is on. Turn it back on afterwards.
+
 ```bash
 # 1. The house vocabulary: workshops, work types, spare parts, mission types, insurers.
 #    Flags «صيانة» and «صيانة + إصلاح» as resetting the maintenance counter.
@@ -126,6 +132,12 @@ node apps/api/dist/fleet-vocabulary.cli.js --write
 node apps/api/dist/fleet-vehicles-import.cli.js --file ./cars.json --photos ./cars_license_photos
 node apps/api/dist/fleet-vehicles-import.cli.js --file ./cars.json --photos ./cars_license_photos --write
 ```
+
+The import refuses, before writing anything, when a row cannot be read; when a branch it names is
+not in `/system`; when a plate, chassis or motor number is already held by another vehicle; or when
+a name it would create is one character from one already in a catalog (`--allow-near-duplicates`
+says that was deliberate). It exits non-zero if any car was lost, so a script or a scheduler sees
+it rather than reading the last line.
 
 Afterwards, set each vehicle type's maintenance interval on `/fleet/settings`. The importer creates
 them with `0`, which is how the alarm engine says «no service distance» — so the maintenance alarm

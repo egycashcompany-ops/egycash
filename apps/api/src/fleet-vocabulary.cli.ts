@@ -23,6 +23,7 @@ import { bootPlatform } from './platform/kernel/bootstrap';
 import { moduleManifests } from './modules';
 import { env } from './infrastructure/config/env';
 import { userService } from './platform/users';
+import { assertLoginProvisioningDisabled } from './workforce-boot-guard';
 import { applyFleetVocabulary, planFleetVocabulary, type VocabularyPlan } from './fleet-vocabulary';
 
 const report = (plan: VocabularyPlan, wrote: boolean): void => {
@@ -51,11 +52,21 @@ const report = (plan: VocabularyPlan, wrote: boolean): void => {
   }
   logger.info(
     { changes: plan.changes.length, unchanged: plan.unchanged },
-    wrote ? 'fleet vocabulary applied' : 'fleet vocabulary dry run — nothing was written',
+    wrote
+      ? 'fleet vocabulary applied'
+      : 'fleet vocabulary dry run — no catalog row was written (the platform boot itself is idempotent)',
   );
 };
 
 const main = async (): Promise<void> => {
+  // BEFORE THE BOOT, because the boot is what sends the messages. This command provisions nothing
+  // itself, but `bootPlatform` runs HR's login backfill: a login for every employed employee that
+  // has none, and a WhatsApp message and an email to each with a setup link. That happens before
+  // this reads a single name, so the DRY RUN would send them too — and nothing recalls a delivered
+  // message. `import-workforce` and `reset-workforce` already guard on this; so must anything else
+  // that boots the platform from a shell. See `workforce-boot-guard.ts`.
+  assertLoginProvisioningDisabled('seed:fleet-vocabulary');
+
   const write = process.argv.includes('--write');
   await bootPlatform({ modules: moduleManifests });
 

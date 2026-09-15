@@ -31,6 +31,7 @@ import { moduleManifests } from './modules';
 import { env } from './infrastructure/config/env';
 import { userService } from './platform/users';
 import { type AuthContext } from './shared/types';
+import { assertLoginProvisioningDisabled } from './workforce-boot-guard';
 import { applyImport, parseCars, planImport, type ImportPlan } from './fleet-vehicles-import';
 
 const flag = (name: string): string | null => {
@@ -92,8 +93,6 @@ const report = (plan: ImportPlan, skippedDeleted: number): void => {
     if (names.length > 0) logger.info({ kind, names }, 'catalog entries that will be created');
   }
   for (const near of plan.nearMatches) {
-    // The loudest line in the report that is not an outright refusal: two spellings of one word
-    // split every filter that uses it, and nobody notices until a screen comes back half empty.
     logger.warn(
       { kind: near.kind, incoming: near.incoming, existing: near.existing },
       'about to create a name one hamza from one already there — decide which spelling the house uses before writing',
@@ -108,6 +107,13 @@ const report = (plan: ImportPlan, skippedDeleted: number): void => {
 };
 
 const main = async (): Promise<void> => {
+  // BEFORE ANYTHING, because `bootPlatform` below runs HR's login backfill: a login for every
+  // employed employee that has none, and a WhatsApp message and an email to each carrying a setup
+  // link. That happens before this command reads a row, so the DRY RUN would send them too, and
+  // nothing recalls a delivered message. See `workforce-boot-guard.ts` — the two workforce tools
+  // already guard on it, and anything else that boots the platform from a shell has to as well.
+  assertLoginProvisioningDisabled('import:vehicles');
+
   const file = flag('file');
   const photos = flag('photos');
   const write = process.argv.includes('--write');
@@ -115,6 +121,7 @@ const main = async (): Promise<void> => {
     throw new Error('usage: --file <cars.json> --photos <folder> [--write]');
   }
 
+  let failed = 0;
   const parsed = parseCars(JSON.parse(await readFile(file, 'utf8')));
   const photoNames = new Set(await readdir(photos));
 
@@ -127,38 +134,66 @@ const main = async (): Promise<void> => {
   if (parsed.rejected.length > 0) {
     logger.error({ rows: parsed.rejected }, 'rows that cannot be read — nothing was imported');
   }
+  if (plan.identifierClashes.length > 0) {
+    logger.error(
+      { clashes: plan.identifierClashes },
+      'these plate / chassis / motor numbers are already held by another vehicle — the database would reject them mid-run; fix the source rows first. Nothing was imported',
+    );
+  }
   if (plan.missingBranches.length > 0) {
     logger.error(
       { branches: plan.missingBranches },
       'these branches are not in the organisation — add them in /system first; nothing was imported',
     );
   }
-  const blocked = parsed.rejected.length > 0 || plan.missingBranches.length > 0;
+  // A NEAR-MATCH STOPS A WRITE, and warning was not enough. Catalogs have no delete route, so the
+  // duplicate «نقل اموال» beside «نقل أموال» is permanent the moment it is written, and it splits
+  // every filter that uses either. The dry run still shows it — this only refuses to make the
+  // decision on the operator's behalf. `--allow-near-duplicates` is how they say they have decided.
+  const acknowledged = process.argv.includes('--allow-near-duplicates');
+  const nearBlocks = write && plan.nearMatches.length > 0 && !acknowledged;
+  if (nearBlocks) {
+    logger.error(
+      { pairs: plan.nearMatches },
+      'refusing to write while a name is one character from one already in the catalog — fix the spelling in the source file, or pass --allow-near-duplicates if both really are separate things',
+    );
+  }
+  const blocked =
+    parsed.rejected.length > 0 ||
+    plan.missingBranches.length > 0 ||
+    plan.identifierClashes.length > 0 ||
+    nearBlocks;
 
   if (blocked) {
     logger.error('import refused');
   } else if (!write) {
-    logger.info('dry run — nothing was written. Re-run with --write to apply');
+    logger.info('dry run — no vehicle, catalog or file was written. Re-run with --write to apply');
   } else {
     const admin = await userService.findByEmail(env.SEED_ADMIN_EMAIL);
     if (admin === null) {
       throw new Error(`seed admin ${env.SEED_ADMIN_EMAIL} not found — run \`npm run seed\` first`);
     }
     const outcome = await applyImport(plan, photos, photoNames, importContext(String(admin._id)));
-    if (outcome.failures.length > 0) {
+    failed = outcome.failures.length;
+    const counts = { created: outcome.created, updated: outcome.updated, photos: outcome.photos };
+    if (failed > 0) {
       logger.error(
-        { count: outcome.failures.length, failures: outcome.failures },
+        { count: failed, failures: outcome.failures },
         'cars that did not import — re-running finishes them, since an existing car is an update',
       );
+      // NOT "complete". A run in which every car failed used to end on the same cheerful line as
+      // one that worked, and exit 0 with it — the single outcome where the operator is told the
+      // opposite of what happened.
+      logger.error(counts, 'vehicle import finished WITH FAILURES — see the list above');
+    } else {
+      logger.info(counts, 'vehicle import complete');
     }
-    logger.info(
-      { created: outcome.created, updated: outcome.updated, photos: outcome.photos },
-      'vehicle import complete',
-    );
   }
 
   await Promise.allSettled([disconnectMongo(), closeCache(), closeQueues()]);
-  process.exit(blocked ? 1 : 0);
+  // Non-zero for a refusal AND for a run that lost cars: an exit code is what a shell script, a
+  // scheduler or a person scrolling past the logs actually reads.
+  process.exit(blocked || failed > 0 ? 1 : 0);
 };
 
 main().catch((error: unknown) => {

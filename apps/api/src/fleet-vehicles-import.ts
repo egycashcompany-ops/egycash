@@ -165,6 +165,15 @@ export interface ImportPlan {
   nearMatches: { kind: FleetCatalogKind; incoming: string; existing: string }[];
   /** Branches named by the data that the organisation does not have. Blocks the run. */
   missingBranches: string[];
+  /**
+   * An identifier this data would bring in that ANOTHER vehicle already holds. Blocks the run.
+   *
+   * `code` is not the only unique index — `plateNumber`, `chassisNumber` and `motorNumber` each
+   * carry one too, partial on non-deleted rows. A collision on any of them is rejected by the
+   * database halfway through the loop, one car at a time, as an unreadable «Duplicate», leaving a
+   * run that is neither finished nor undone. Checked up front instead, where nothing is written.
+   */
+  identifierClashes: { code: string; field: string; value: string; heldBy: string }[];
   toCreate: string[];
   toUpdate: string[];
   /** Cars whose scan is named in the data but absent from the photo folder. */
@@ -250,9 +259,24 @@ export const planImport = async (
 
   const toCreate: string[] = [];
   const toUpdate: string[] = [];
+  const identifierClashes: { code: string; field: string; value: string; heldBy: string }[] = [];
   for (const car of cars) {
     const existing = await fleetVehicleRepository.findByCode(car.code);
     (existing === null ? toCreate : toUpdate).push(car.code);
+    // The three OTHER unique identifiers, each against the live registry. A row that is already
+    // this car's own is not a clash — that is what an update is — so the holder's code is compared
+    // rather than merely counted.
+    const fields: [string, string][] = [
+      ['plateNumber', car.plateNumber],
+      ['chassisNumber', car.chassisNumber],
+      ['motorNumber', car.motorNumber],
+    ];
+    for (const [field, value] of fields) {
+      const holder = await fleetVehicleRepository.findOneBy({ [field]: value });
+      if (holder !== null && holder.code !== car.code) {
+        identifierClashes.push({ code: car.code, field, value, heldBy: holder.code });
+      }
+    }
   }
 
   const missingPhotos: string[] = [];
@@ -268,6 +292,7 @@ export const planImport = async (
     newCatalog,
     nearMatches,
     missingBranches,
+    identifierClashes,
     toCreate,
     toUpdate,
     missingPhotos,
@@ -333,11 +358,10 @@ export const applyImport = async (
   const ensureCatalog = async (kind: FleetCatalogKind, name: string): Promise<string> => {
     const cached = catalogIds.get(key(kind, name));
     if (cached !== undefined) return cached;
-    const doc = await fleetCatalogItemService.ensure({
-      kind,
-      name: { ar: name, en: name },
-      countsForAlarm: false,
-    });
+    const doc = await fleetCatalogItemService.ensure(
+      { kind, name: { ar: name, en: name }, countsForAlarm: false },
+      by,
+    );
     catalogIds.set(key(kind, name), String(doc._id));
     return String(doc._id);
   };

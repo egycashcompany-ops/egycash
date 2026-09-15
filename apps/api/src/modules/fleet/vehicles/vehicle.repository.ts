@@ -14,6 +14,22 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return this.model.findOne({ code, isDeleted: false }).lean<FleetVehicleDoc>().exec();
   }
 
+  /**
+   * The live holder of one of FR-1's other unique identifiers — plate, chassis or motor number.
+   *
+   * All four carry a partial unique index over non-deleted rows, so a caller that checks only
+   * `code` before writing learns about the rest from a mid-write database rejection. This is what
+   * lets an importer ask the question up front, while nothing has been written yet.
+   */
+  async findOneBy(
+    where: Partial<Pick<FleetVehicleDoc, 'plateNumber' | 'chassisNumber' | 'motorNumber'>>,
+  ): Promise<FleetVehicleDoc | null> {
+    return this.model
+      .findOne({ ...where, isDeleted: false })
+      .lean<FleetVehicleDoc>()
+      .exec();
+  }
+
   async listVehicles(params: ListParams<FleetVehicleDoc>): Promise<Paginated<FleetVehicleDoc>> {
     return this.list({ ...params, sortableFields: ['code', 'createdAt', 'licenseExpiresAt'] });
   }

@@ -19,8 +19,13 @@
 //     that appears twice among the live rows. The registry's unique index would catch the
 //     duplicate halfway through; catching it here means nothing is written at all.
 //
-// A CLI AND NOT A BOOT STEP, deliberately: `server.ts` and `worker.ts` both boot the platform with
-// no leader election between them, so a boot-time import would race itself.
+// IT IS NO LONGER THE ONLY WAY IN. This said "a CLI and not a boot step, deliberately:
+// `server.ts` and `worker.ts` both boot the platform with no leader election between them, so a
+// boot-time import would race itself" — and the race was real, but the conclusion cost the company
+// the entire import: the pull request merged, nobody ran the command, and the registry stayed
+// empty. `modules/fleet/go-live/vehicles.ts` now runs this on boot, with `markOnce` as the leader
+// election the objection asked for. This command remains for applying the data early, for
+// dry-running it, and for finishing a boot run that stopped part-way.
 import { readFile, readdir } from 'node:fs/promises';
 import { logger } from './infrastructure/logging/logger';
 import { disconnectMongo } from './infrastructure/database/mongo';

@@ -13,6 +13,7 @@ import { moduleManifests } from './modules';
 import { syncNavigationCatalog } from './seed-navigation';
 import { syncApplicationSections } from './seed-application-sections';
 import { syncHrOnlyAccounts } from './hr-only-access';
+import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -27,6 +28,19 @@ const main = async (): Promise<void> => {
   // Re-assert the HR-only confinement AFTER boot's own role grants (the Leave module re-grants
   // `employee-self-service` on every start), so it cannot drift back open between seeds.
   await syncHrOnlyAccounts();
+
+  // The Fleet go-live import — 209 cars and their licence scans, once per database.
+  //
+  // HERE AND NOT IN THE MODULE SEED, because the seed runs inside `bootPlatform` and ten
+  // short-lived entrypoints call that: `seed.ts` and nine CLIs, each of which disconnects and
+  // exits the moment its own work is done. A background import started under one of those is
+  // killed part-written with its mark already claimed.
+  //
+  // DELIBERATELY NOT AWAITED, and placed immediately before `listen()` to make that visible:
+  // /health/ready must answer inside railway.json's 300s or the deploy is failed and retried, and
+  // 23MB of scans through the Files pipeline has no business sitting in front of it. The worker
+  // starts it too; `markOnce` decides which of them actually runs.
+  startVehicleGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

@@ -3,7 +3,9 @@
 // works="صيانة"), the roster's default mission type, and the violation types the legacy had
 // hardcoded in its views (§10-H7). Everything else is admin-entered.
 import { type FleetCatalogKind, type FleetViolationSide } from '@ecms/contracts';
+import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
+import { applyFleetVocabulary, planFleetVocabulary } from './go-live/vocabulary';
 import { ensureVehicleDocsCategory } from './vehicles/vehicle-files';
 import { ensureDriverDocsCategory } from './driver-profiles/driver-files';
 import { runFleetMigrations } from './fleet.migration';
@@ -72,5 +74,47 @@ export const seedFleet = async (): Promise<void> => {
   // are deliberately NOT seeded with values: the admin names them, and guessing a house's
   // operating groups or insurers would put fiction in a dropdown people then pick from. The
   // migration below is the ONLY thing that creates licenseClass items, and only from real data.
+  //
+  // …EXCEPT the insurers, which the house handed over by name and which therefore are not a guess.
+  // They arrive with the 167 names below.
+
+  // THE HOUSE'S OWN VOCABULARY — workshops, work types, spare parts, mission types, insurers.
+  //
+  // It is applied HERE, and that is the correction: the list shipped in #446 as a library behind
+  // `npm run seed:fleet-vocabulary`, so it reached a merged branch and never a screen. There is no
+  // difference in kind between these names and the driver catalogs above — both are lists the
+  // house named, both are ordinary catalog data an admin can rename or archive afterwards — so
+  // there is no reason for one to arrive with a deploy and the other to wait for a command.
+  //
+  // `by` is null: nobody pressed anything. The plan is computed first so the log says what it did
+  // rather than how many rows it looked at, and `create`-if-missing means the hundredth boot is a
+  // hundred index hits and no writes.
+  const vocabulary = await applyFleetVocabulary(await planFleetVocabulary(), null);
+  if (vocabulary.changes.length > 0) {
+    logger.info(
+      {
+        created: vocabulary.changes.filter((c) => c.action === 'create').length,
+        flagged: vocabulary.changes.filter((c) => c.action === 'flag').length,
+        unchanged: vocabulary.unchanged,
+      },
+      'fleet: house vocabulary applied',
+    );
+  }
+
   await runFleetMigrations();
+
+  // THE VEHICLE REGISTRY IS NOT STARTED HERE, and the reason is worth the paragraph.
+  //
+  // It was, in the first draft. The seed is where it belongs by symmetry — the names above arrive
+  // this way, and the owner asked for the cars to arrive «like the names». But the seed runs
+  // inside `bootPlatform`, and TEN short-lived entrypoints call `bootPlatform`: `seed.ts` and nine
+  // CLIs. Each ends by calling `disconnectMongo()` and `process.exit()` the moment its own work is
+  // done — so each would have started a 209-car import and then pulled the connection and the
+  // process out from under it, leaving the mark claimed and the registry half written. Nothing
+  // recovers that on its own: the mark says «done» and the next boot honours it.
+  //
+  // So the import is started by the two processes that STAY ALIVE — `server.ts` and `worker.ts`
+  // — through `startVehicleGoLive`, which the module exports for exactly that. `markOnce` still
+  // decides which of the two does it. Nothing about the owner's experience changes: it is still
+  // the deploy that carries the cars in, with nobody typing anything.
 };

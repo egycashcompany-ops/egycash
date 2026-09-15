@@ -24,6 +24,19 @@ export default defineConfig({
   platform: 'node',
   sourcemap: true,
   clean: true,
+  /**
+   * THE GO-LIVE DATA SHIPS WITH THE BUILD — `assets/fleet-go-live/` is copied into `dist/`.
+   *
+   * It is 209 cars and 56 licence scans, and this copy is the only way they reach the running
+   * machine: nobody uploads them, and the boot seed that imports them reads them from beside
+   * itself (`go-live/vehicles.ts` resolves `dist/fleet-go-live` first, then the source tree for
+   * `tsx`). Bundling would not do it — esbuild inlines what is imported, and 23MB of JPEG is read
+   * from disk by path, not imported.
+   *
+   * Drop this line and the boot logs «the vehicle data is not in this build» and imports nothing,
+   * which is the honest failure but still a failure.
+   */
+  publicDir: 'assets',
   // The contracts workspace package is compiled into the bundle so the runtime
   // image needs only the api's own node_modules.
   noExternal: ['@ecms/contracts'],

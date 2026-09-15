@@ -48,7 +48,7 @@ describe('a CLI that boots the platform cannot message the whole company by acci
 
 describe('the vehicle import refuses rather than half-finishes', () => {
   const CLI = read('fleet-vehicles-import.cli.ts');
-  const LIB = read('fleet-vehicles-import.ts');
+  const LIB = read('modules/fleet/go-live/vehicles-import.ts');
 
   it('checks ALL FOUR unique identifiers before writing, not just the code', () => {
     // FR-1 gives code, plate, chassis and motor a partial unique index each. Checking only `code`
@@ -91,8 +91,8 @@ describe('rows these scripts create carry an author', () => {
   it('passes the operator through to the catalog rows, beside the vehicles they belong to', () => {
     // A catalog entry written with `by: null` next to a fully-audited vehicle, in the same run, by
     // the same person, is a gap in exactly the trail an import most needs.
-    expect(read('fleet-vocabulary.ts')).toMatch(/ensure\([\s\S]{0,200}\bby,/);
-    expect(read('fleet-vehicles-import.ts')).toMatch(/ensure\([\s\S]{0,160}\bby,/);
+    expect(read('modules/fleet/go-live/vocabulary.ts')).toMatch(/ensure\([\s\S]{0,200}\bby,/);
+    expect(read('modules/fleet/go-live/vehicles-import.ts')).toMatch(/ensure\([\s\S]{0,160}\bby,/);
     // The BOOT seed still has no author, and `null` stays the honest record of that.
     const service = readFileSync(
       join(HERE, 'modules/fleet/catalogs/catalog-item.service.ts'),

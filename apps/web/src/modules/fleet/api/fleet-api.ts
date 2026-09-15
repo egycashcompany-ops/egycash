@@ -27,6 +27,7 @@ import {
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
+  type FleetGoLiveRunsDto,
   type FleetRosterDayDto,
   type FleetFixedRosterDto,
   type SaveFleetFixedRoster,
@@ -326,3 +327,10 @@ export const setRollupCollected = (body: SetRollupCollected): Promise<{ changed:
 export const setGrievance = (body: SetFleetGrievance): Promise<FleetGrievanceDto> =>
   put<FleetGrievanceDto>('/fleet/violations/grievance', body);
 export const deleteViolation = (id: string): Promise<void> => del<void>(`/fleet/violations/${id}`);
+
+/**
+ * What the boot-time go-live steps recorded — the vehicle import, the drivers' licence scans.
+ * Read-only: a run that needs starting, retrying or resetting is a code change, not a button.
+ */
+export const getFleetGoLiveRuns = (): Promise<FleetGoLiveRunsDto> =>
+  get<FleetGoLiveRunsDto>('/fleet/go-live');

@@ -165,6 +165,8 @@ export interface ImportPlan {
   nearMatches: { kind: FleetCatalogKind; incoming: string; existing: string }[];
   /** Branches named by the data that the organisation does not have. Blocks the run. */
   missingBranches: string[];
+  /** Branches the organisation has but has DEACTIVATED — `assertBranch` refuses them. Blocks the run. */
+  inactiveBranches: string[];
   /**
    * An identifier this data would bring in that ANOTHER vehicle already holds. Blocks the run.
    *
@@ -251,10 +253,21 @@ export const planImport = async (
   // decide. Inventing «BR-1» for «المهندسين» when the real branch already exists under the real
   // code would split the organisation in two — employees on one, a hundred cars on the other —
   // and that is a far harder thing to undo than adding seven rows by hand beforehand.
+  //
+  // AND MATCHED BY STATUS, NOT ONLY BY NAME. `findByName` answers for any live branch, active or
+  // not; `fleetVehicleService.create` and `update` then both refuse a branch whose status is not
+  // «active» (`assertBranch`) — the same rule the vehicle form's own branch dropdown applies. A
+  // plan that passed a deactivated branch here therefore claimed the run and then failed EVERY
+  // car of that branch inside the loop, after the claim, with nothing to say but «Validation
+  // failed». It is the one condition this planner reads from data the run did not write itself,
+  // and it is exactly the shape production showed twice. So an inactive branch is a refusal,
+  // before the claim, by name — the operator re-activates it in /system and the next boot imports.
   const missingBranches: string[] = [];
+  const inactiveBranches: string[] = [];
   for (const name of uniq(cars.map((c) => c.branch))) {
     const found = await branchRepository.findByName({ ar: name, en: name });
     if (found === null) missingBranches.push(name);
+    else if (found.status !== 'active') inactiveBranches.push(name);
   }
 
   const toCreate: string[] = [];
@@ -292,6 +305,7 @@ export const planImport = async (
     newCatalog,
     nearMatches,
     missingBranches,
+    inactiveBranches,
     identifierClashes,
     toCreate,
     toUpdate,
@@ -307,7 +321,30 @@ export interface ImportOutcome {
   failures: { code: string; reason: string }[];
 }
 
-const MIME: Record<string, string> = {
+/**
+ * What went wrong, in words somebody can act on. An `AppError` carries structured `details`
+ * (field + code + message); an import that recorded only `error.message` recorded «Validation
+ * failed» 209 times and nothing else.
+ */
+export const failureReason = (error: unknown): string => {
+  if (!(error instanceof Error)) return String(error);
+  const details = (error as { details?: unknown }).details;
+  if (Array.isArray(details) && details.length > 0) {
+    const parts = details
+      .map((d: unknown) => {
+        const detail = d as { field?: unknown; message?: unknown; code?: unknown };
+        return [detail.field, detail.message ?? detail.code]
+          .filter((v) => v !== undefined)
+          .join(': ');
+      })
+      .filter((text) => text !== '');
+    if (parts.length > 0) return `${error.message} — ${parts.join('; ')}`;
+  }
+  return error.message;
+};
+
+/** The image types the registries take, by extension — shared with the driver-photo step. */
+export const MIME: Record<string, string> = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
   '.png': 'image/png',
@@ -425,10 +462,10 @@ export const applyImport = async (
         outcome.photos += 1;
       }
     } catch (error) {
-      outcome.failures.push({
-        code: car.code,
-        reason: error instanceof Error ? error.message : String(error),
-      });
+      // The DETAIL, not only the message: a `ValidationError` says «Validation failed» and keeps
+      // the field and the reason in `details`, which is the only part anyone can act on — the
+      // first two production runs recorded the message and nobody could tell which check failed.
+      outcome.failures.push({ code: car.code, reason: failureReason(error) });
     }
   }
   return outcome;

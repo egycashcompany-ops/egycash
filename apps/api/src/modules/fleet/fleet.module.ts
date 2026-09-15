@@ -8,6 +8,7 @@ import { buildFleetVehicleTypesRouter } from './vehicle-types';
 import { buildFleetCatalogRouter } from './catalogs';
 import { buildFleetVehiclesRouter } from './vehicles';
 import { buildFleetDashboardRouter } from './dashboard/dashboard.routes';
+import { buildFleetGoLiveRouter } from './go-live/go-live.routes';
 import { vehicleFileAuthorizer } from './vehicles/vehicle-files';
 import { driverProfileFileAuthorizer } from './driver-profiles/driver-files';
 import { buildFleetDriversRouter } from './driver-profiles/driver-profile.routes';
@@ -281,6 +282,7 @@ export const fleetModule: ModuleManifest = {
   pages: fleetPages,
   routes: [
     { prefix: '/fleet/dashboard', router: buildFleetDashboardRouter() },
+    { prefix: '/fleet/go-live', router: buildFleetGoLiveRouter() },
     { prefix: '/fleet/vehicles', router: buildFleetVehiclesRouter() },
     { prefix: '/fleet/vehicle-types', router: buildFleetVehicleTypesRouter() },
     { prefix: '/fleet/catalog-items', router: buildFleetCatalogRouter() },

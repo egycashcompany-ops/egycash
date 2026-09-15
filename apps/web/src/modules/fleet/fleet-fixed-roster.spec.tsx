@@ -193,8 +193,8 @@ describe('the fixed-crew screen', () => {
     // nothing on it to explain the match. The box now says «ابحث بكود السيارة» and means it.
     //
     // Through the shared matcher, so this board reads `150 - 151` the way the filter bars do.
-    expect(SOURCE, 'the shared matcher, not a comparison of its own').toContain(
-      'matchesVehicleCode(row.code, search)',
+    expect(SOURCE, 'the shared rule module, not a comparison of its own').toContain(
+      'visibleFixedRows(draft, { term: search, mission, view })',
     );
     expect(SOURCE, 'and no plate is read to decide what to show').not.toContain('plateNumber');
     const byCode = tbody(render({ route: '/fleet/fixed-roster?q=150' }));
@@ -1469,15 +1469,34 @@ describe('the standing board wears the daily board’s bar', () => {
   });
 
   /**
-   * The chips are read-outs here and buttons there, and that difference is deliberate. The daily
-   * board's chips narrow by mission and by workshop state — axes it has. This board has neither,
-   * so a chip that looked pressable would promise something no press can do.
+   * The chips were read-outs here for one release, on the argument that this board had no axis
+   * for them to filter. «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات»: it has two —
+   * a car with a crew and one without — and the mission vocabulary, and the chips now filter on
+   * them exactly as the daily board's do. The behaviour is proved below, in «the counters filter
+   * the standing board»; this pins the shape.
    */
-  it('keeps the chips as read-outs, because this board has no axis for them to filter', () => {
+  it('renders the chips as the daily board’s buttons, announcing whether they are applied', () => {
     const at = CODE.indexOf('data-counter=');
-    const chip = CODE.slice(CODE.lastIndexOf('<', at), CODE.indexOf('>', at));
-    expect(chip, 'a span, not a button').toContain('<span');
-    expect(chip, 'and it promises no press').not.toContain('aria-pressed');
+    // The opening tag, up to its class list — `onClick={() => …}` carries a `>` of its own, so
+    // the tag cannot be cut at the first one.
+    const chip = CODE.slice(CODE.lastIndexOf('<', at), CODE.indexOf('className=', at));
+    expect(chip, 'a button, not a span').toContain('<button');
+    expect(chip, 'that says whether it is the one applied').toContain('aria-pressed={counter.active}');
+    expect(chip, 'and applies its own target').toContain('onClick={() => patch(counter.apply)}');
+  });
+
+  it('carries the daily board’s mission select, on the same catalog, at the same width', () => {
+    const strip = CODE.slice(
+      CODE.indexOf('className="flex flex-wrap items-center gap-1.5"'),
+      CODE.indexOf('<DataTable'),
+    );
+    expect(strip, 'the mission vocabulary, never workType').toContain('kind="missionType"');
+    expect(strip, 'the daily board’s «all missions» label').toContain("allLabel={t('fleet.roster.allMissions')}");
+    expect(strip, 'writes the one mission parameter').toContain('patch({ mission: id || null })');
+    const width = (code: string): string | undefined =>
+      /<div className="(w-\d+)">\s*<CatalogSelect\s+kind="missionType"/.exec(code)?.[1];
+    expect(width(CODE), 'the same box as the daily board').toBe(width(DAILY));
+    expect(width(CODE)).toBe('w-44');
   });
 
   it('moves Save out of the page header and onto the end of the strip', () => {
@@ -1493,8 +1512,10 @@ describe('the standing board wears the daily board’s bar', () => {
     expect(DAILY, 'the same hook on the twin').toContain('data-reset-filters="true"');
     const at = CODE.indexOf('data-reset-filters');
     expect(CODE.slice(Math.max(0, at - 400), at), 'gated on an active filter').toContain(
-      "search !== ''",
+      'filtered &&',
     );
+    // …and «an active filter» is any of the three, not the code search alone.
+    expect(CODE).toContain("const filtered = search !== '' || mission !== '' || view !== null;");
   });
 
   it('gives the car picker the same width the daily board gives it', () => {
@@ -1520,5 +1541,202 @@ describe('the standing board wears the daily board’s bar', () => {
       const mount = code.slice(code.indexOf('<VehicleCodeFilter'), code.indexOf('/>', code.indexOf('<VehicleCodeFilter')));
       expect(mount, `${name} board`).toContain('fullWidth');
     }
+  });
+});
+
+// ── the counters are FILTERS, as on the daily board ─────────────────────────
+//
+// «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات». This suite has no DOM, so a click
+// cannot be dispatched. What it can prove is both halves of the mechanism, the way the daily
+// board's spec proves them: that each chip is a real control carrying the right target
+// (`data-counter` plus the `aria-pressed` state), and that arriving at that target actually
+// narrows the board. The rule itself is exercised as a function in `lib/roster-view.spec.ts`.
+
+/** Render the board at a URL, so a chip's destination can be visited the way a click reaches it. */
+const at = (query: string, board: FleetFixedRosterDto = FILTERS_BOARD): string =>
+  render({ route: `/fleet/fixed-roster${query}`, qc: client(board) });
+
+/** Is this chip drawn as the one being applied? */
+const chipActive = (markup: string, key: string): boolean => {
+  const at_ = markup.indexOf(`data-counter="${key}"`);
+  if (at_ === -1) throw new Error(`no counter ${key}`);
+  const tag = markup.slice(markup.lastIndexOf('<button', at_), markup.indexOf('>', at_) + 1);
+  return tag.includes('aria-pressed="true"');
+};
+
+/**
+ * A board with every shape at once, so every chip has something to include AND something to
+ * exclude. A fixture where a filter happens to keep everything proves nothing.
+ *   150 — a driver in seat one, mission MT   → بطقم, MT
+ *   151 — nothing at all                     → بدون طقم
+ *   152 — mission MT, nobody in either seat  → بدون طقم, MT   (a mission is not a crew)
+ *   153 — a driver in seat TWO only          → بطقم           (either seat counts)
+ */
+const V3 = '650000000000000000000003';
+const V4 = '650000000000000000000004';
+const FILTERS_BOARD: FleetFixedRosterDto = {
+  rows: [
+    { ...row(V1, '150', E1), missionTypeId: MT },
+    row(V2, '151'),
+    { ...row(V3, '152'), missionTypeId: MT },
+    row(V4, '153', null, E2),
+  ],
+  drivers: [
+    { employeeId: E1, assignedVehicleId: V1 },
+    { employeeId: E2, assignedVehicleId: V4 },
+  ],
+};
+
+describe('the counters filter the standing board', () => {
+  it('renders each chip as a real button that says whether it is applied', () => {
+    // A tinted span with an onClick is not reachable by keyboard and announces nothing.
+    const markup = at('');
+    for (const key of ['total', 'crewed', 'uncrewed', MT]) {
+      const idx = markup.indexOf(`data-counter="${key}"`);
+      expect(idx, key).toBeGreaterThan(-1);
+      expect(markup.lastIndexOf('<button', idx), `${key} is a button`).toBeGreaterThan(
+        markup.lastIndexOf('<span', idx),
+      );
+    }
+  });
+
+  it('«إجمالي» shows every row, and is the state with no filter on', () => {
+    const body = tbody(at(''));
+    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
+    expect(chipActive(at(''), 'total'), 'إجمالي is the default').toBe(true);
+  });
+
+  it('«بطقم» shows only the cars somebody is on — in EITHER seat', () => {
+    const body = tbody(at('?view=crewed'));
+    expect(body).toContain('150');
+    expect(body, 'a second driver alone is a crew').toContain('153');
+    expect(body, 'nobody').not.toContain('151');
+    expect(body, 'a mission with nobody on it is not a crew').not.toContain('152');
+  });
+
+  it('«بدون طقم» shows only the cars nobody is on', () => {
+    const body = tbody(at('?view=uncrewed'));
+    expect(body).toContain('151');
+    expect(body, 'a mission is not a crew').toContain('152');
+    expect(body).not.toContain('150');
+    expect(body).not.toContain('153');
+  });
+
+  it('a MISSION chip narrows to that mission — through the dropdown’s own parameter', () => {
+    const body = tbody(at(`?mission=${MT}`));
+    expect(body).toContain('150');
+    expect(body).toContain('152');
+    expect(body).not.toContain('151');
+    expect(body).not.toContain('153');
+    // One axis, one parameter: the chip writes `mission`, so the select follows it.
+    expect(SOURCE, 'no second copy of mission filtering').not.toContain('view: item.id');
+  });
+
+  it('has NO workshop chip — a car in the workshop still has a standing crew', () => {
+    // The daily board's «صيانة» is a fact about a DAY. This board has none, and a chip that
+    // narrowed by it would be borrowing an axis the screen does not have.
+    const markup = at('');
+    expect(markup).not.toContain('data-counter="workshop"');
+    expect(markup).not.toContain('data-counter="assigned"');
+    expect(SOURCE).not.toContain("view: 'workshop'");
+  });
+
+  it('marks the applied chip and only that one', () => {
+    const crewed = at('?view=crewed');
+    expect(chipActive(crewed, 'crewed')).toBe(true);
+    expect(chipActive(crewed, 'total'), 'إجمالي steps aside').toBe(false);
+    expect(chipActive(crewed, 'uncrewed')).toBe(false);
+    expect(chipActive(crewed, MT)).toBe(false);
+
+    const mission = at(`?mission=${MT}`);
+    expect(chipActive(mission, MT)).toBe(true);
+    expect(chipActive(mission, 'total')).toBe(false);
+  });
+
+  it('keeps every chip’s own colour whether or not it is applied', () => {
+    const idle = at('');
+    const applied = at('?view=crewed');
+    const tone = (markup: string, key: string): string => {
+      const idx = markup.indexOf(`data-counter="${key}"`);
+      const tag = markup.slice(markup.lastIndexOf('<button', idx), markup.indexOf('>', idx) + 1);
+      return (/class="([^"]*)"/.exec(tag)?.[1] ?? '')
+        .replace(/ring-2 ring-offset-1|ring-0|dark:ring-offset-slate-900/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+    for (const key of ['total', 'crewed', 'uncrewed', MT]) {
+      expect(tone(idle, key), key).toBe(tone(applied, key));
+    }
+    const tones = ['total', 'crewed', 'uncrewed', MT].map((k) => tone(idle, k));
+    expect(new Set(tones).size, 'the four do not share a colour').toBe(tones.length);
+  });
+
+  it('combines with the code search and the mission — AND, never instead-of', () => {
+    // Uncrewed ∩ mission = 152 alone; adding a search that excludes it empties the board.
+    const both = tbody(at(`?view=uncrewed&mission=${MT}`));
+    expect(both).toContain('152');
+    expect(both, 'uncrewed without the mission').not.toContain('151');
+    expect(both, 'the mission with a crew').not.toContain('150');
+    expect(tbody(at(`?view=uncrewed&mission=${MT}&q=151`)), 'a contradiction shows nothing').not.toContain(
+      '152',
+    );
+  });
+
+  it('ignores a view it does not know instead of emptying the board', () => {
+    const body = tbody(at('?view=nonsense'));
+    for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
+    // …and the daily board's own two states are not this board's.
+    for (const code of ['150', '151', '152', '153']) expect(tbody(at('?view=workshop')), code).toContain(code);
+  });
+});
+
+describe('the counters count the BOARD, never the filtered rows', () => {
+  const shown = (markup: string, key: string): string => {
+    const idx = markup.indexOf(`data-counter="${key}"`);
+    const tag = markup.slice(idx, markup.indexOf('</button>', idx));
+    return tag.slice(tag.lastIndexOf('<span'), tag.lastIndexOf('</span>'));
+  };
+
+  it('reads the same under every filter', () => {
+    const unfiltered = at('');
+    const totals = ['total', 'crewed', 'uncrewed', MT].map((k) => shown(unfiltered, k));
+    for (const query of ['?view=crewed', '?view=uncrewed', `?mission=${MT}`, '?q=150']) {
+      expect(['total', 'crewed', 'uncrewed', MT].map((k) => shown(at(query), k)), query).toEqual(
+        totals,
+      );
+    }
+  });
+
+  it('counts the whole board even when the table shows one row', () => {
+    const markup = at('?q=153');
+    expect(tbody(markup), 'the table is narrowed').not.toContain('151');
+    expect(shown(markup, 'total'), 'إجمالي still counts four').toContain('٤');
+    expect(shown(markup, 'crewed'), 'بطقم still counts two').toContain('٢');
+    expect(shown(markup, 'uncrewed'), 'بدون طقم still counts two').toContain('٢');
+    expect(shown(markup, MT), 'the mission still counts two').toContain('٢');
+  });
+});
+
+describe('Reset, on the standing board', () => {
+  it('is offered for any of the three filters, and not otherwise', () => {
+    expect(at(''), 'nothing to undo').not.toContain('data-reset-filters');
+    for (const query of ['?q=150', `?mission=${MT}`, '?view=crewed', '?view=uncrewed']) {
+      expect(at(query), query).toContain('data-reset-filters');
+    }
+  });
+
+  it('clears q, mission and view together', () => {
+    expect(SOURCE).toContain('patch({ q: null, mission: null, view: null })');
+  });
+
+  it('brings every row back and returns «إجمالي» to the applied state', () => {
+    const cleared = at('');
+    for (const code of ['150', '151', '152', '153']) expect(tbody(cleared), code).toContain(code);
+    expect(chipActive(cleared, 'total')).toBe(true);
+    for (const key of ['crewed', 'uncrewed', MT]) expect(chipActive(cleared, key), key).toBe(false);
+  });
+
+  it('remembers all three, like the daily board', () => {
+    expect(SOURCE).toContain("const REMEMBERED_FILTERS = ['mission', 'q', 'view'] as const;");
   });
 });

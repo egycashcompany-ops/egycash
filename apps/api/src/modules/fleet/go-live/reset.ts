@@ -9,9 +9,14 @@
 //
 // Everything those eight screens show is deleted. Five things are not touched at all: the
 // violation TYPES (the catalog rows, as distinct from the violations filed against them), the
-// drivers registry, and the three driver catalogs. Two screens the owner did not name are not
-// touched either — the vehicles and the vehicle types — because a wipe reaches exactly as far as
-// it was told to and not one collection further.
+// drivers registry, and the three driver catalogs.
+//
+// THE VEHICLES WENT IN AT v2. v1 left them alone because they were not on the list — and then
+// the owner looked at `/fleet/maintenance-alarms`, which is a view over the vehicles, saw the
+// three hand-entered cars still sitting there, and said «امسح الداتا اللى هنا بالمره». So they
+// go too: the vehicles ARE the data on that board, and the go-live import (v3) puts the real
+// registry in their place on the same deploy. The vehicle TYPES stay — nobody named them, and
+// the import needs the ones it created.
 //
 // HARD DELETE, not soft. «خالص» means gone, and a soft-deleted row is still a row: it stays in
 // the collection, it counts against unique indexes, and some readers still find it. This is the
@@ -38,10 +43,17 @@ import { FleetDutyAssignmentModel } from '../roster/duty-assignment.model';
 import { FleetFixedCrewModel } from '../fixed-roster/fixed-crew.model';
 import { FleetAccidentModel } from '../accidents/accident.model';
 import { FleetGrievanceModel, FleetViolationModel } from '../violations/violation.model';
+import { FleetVehicleModel } from '../vehicles/vehicle.model';
 import { FleetSweepMarkModel, markOnce } from '../sweeps/sweep-mark.model';
 
-/** Versioned, like the import's: repeating the reset is a decision, never a side effect. */
-export const GO_LIVE_RESET_MARK = 'go-live:reset:v1';
+/**
+ * Versioned, like the import's: repeating the reset is a decision, never a side effect.
+ *
+ * v1 cleared the eight screens; v2 adds the vehicles. On a database v1 already ran on, v2 finds
+ * the eight collections empty and the catalogs holding only what the seed re-created — clearing
+ * those again and re-seeding them in the same boot is a no-op that costs a few milliseconds.
+ */
+export const GO_LIVE_RESET_MARK = 'go-live:reset:v2';
 
 /**
  * The catalog kinds the owner named as untouchable. Spelled out as the ALLOW list rather than
@@ -64,6 +76,8 @@ export interface ResetOutcome {
   violations: number;
   grievances: number;
   catalogItems: number;
+  /** v2: the registry itself — what `/fleet/maintenance-alarms` is a view over. */
+  vehicles: number;
 }
 
 /**
@@ -94,10 +108,11 @@ export const runGoLiveReset = async (): Promise<ResetOutcome | null> => {
     catalogItems: await gone(FleetCatalogItemModel, {
       kind: { $nin: [...PROTECTED_CATALOG_KINDS] },
     }),
+    vehicles: await gone(FleetVehicleModel),
   };
   logger.warn(
     outcome,
-    'fleet go-live: the eight screens were cleared — this ran once and will not run again',
+    'fleet go-live: the eight screens and the vehicle registry were cleared — this ran once and will not run again',
   );
   return outcome;
 };

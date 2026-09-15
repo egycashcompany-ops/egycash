@@ -48,7 +48,12 @@ import { env, isTest } from '../../../infrastructure/config/env';
 import { logger } from '../../../infrastructure/logging/logger';
 import { userService } from '../../../platform/users';
 import { type AuthContext } from '../../../shared/types';
-import { claimGoLiveRun, finishGoLiveRun } from './go-live-run.model';
+import {
+  claimGoLiveRun,
+  finishGoLiveRun,
+  recordGoLiveFailure,
+  recordGoLiveRefusal,
+} from './go-live-run.model';
 import { applyImport, parseCars, planImport } from './vehicles-import';
 
 /**
@@ -56,9 +61,11 @@ import { applyImport, parseCars, planImport } from './vehicles-import';
  * go-live reset cleared the catalogs the first run's cars pointed at — is applied by bumping it,
  * which is a deliberate, reviewable act and not something a redeploy does by accident.
  *
- * v1 is the run that was cut off in production; v2 is the one that finishes.
+ * v1 was cut off in production. v2 ran after the eight-screen reset and still wrote no car, for a
+ * reason nobody could read. v3 runs after the reset that clears the vehicles too, records what it
+ * finds on its own row, and is the one that finishes.
  */
-export const VEHICLE_GO_LIVE_MARK = 'go-live:vehicles:v2';
+export const VEHICLE_GO_LIVE_MARK = 'go-live:vehicles:v3';
 
 /**
  * How long a claim is honoured before another boot may take the job over. The whole import took
@@ -146,6 +153,7 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
       { rows: parsed.rejected },
       'fleet go-live: rows that cannot be read — nothing was imported and the run is NOT claimed, so a corrected build will import them',
     );
+    await recordGoLiveRefusal(VEHICLE_GO_LIVE_MARK, { reason: 'rejected-rows', rows: parsed.rejected.slice(0, 25) });
     return;
   }
 
@@ -158,15 +166,30 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
       { email: env.SEED_ADMIN_EMAIL },
       'fleet go-live: no seeded admin to author the import — run the seed first; nothing was imported and the run is NOT claimed',
     );
+    await recordGoLiveRefusal(VEHICLE_GO_LIVE_MARK, { reason: 'no-admin', email: env.SEED_ADMIN_EMAIL });
     return;
   }
 
   const plan = await planImport(parsed, photoNames);
-  if (plan.missingBranches.length > 0 || plan.identifierClashes.length > 0) {
+  if (
+    plan.missingBranches.length > 0 ||
+    plan.inactiveBranches.length > 0 ||
+    plan.identifierClashes.length > 0
+  ) {
     logger.error(
-      { branches: plan.missingBranches, clashes: plan.identifierClashes },
-      'fleet go-live: refused — add the missing branches in /system, or resolve the plate/chassis/motor numbers another vehicle already holds. Nothing was imported and the run is NOT claimed, so the next boot after the fix will import them',
+      {
+        missingBranches: plan.missingBranches,
+        inactiveBranches: plan.inactiveBranches,
+        clashes: plan.identifierClashes,
+      },
+      'fleet go-live: refused — add the missing branches in /system, re-activate the deactivated ones, or resolve the plate/chassis/motor numbers another vehicle already holds. Nothing was imported and the run is NOT claimed, so the next boot after the fix will import them',
     );
+    await recordGoLiveRefusal(VEHICLE_GO_LIVE_MARK, {
+      reason: 'plan',
+      missingBranches: plan.missingBranches,
+      inactiveBranches: plan.inactiveBranches,
+      identifierClashes: plan.identifierClashes.slice(0, 25),
+    });
     return;
   }
   if (plan.missingPhotos.length > 0) {
@@ -184,11 +207,30 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
     { cars: plan.cars.length, toCreate: plan.toCreate.length, toUpdate: plan.toUpdate.length },
     'fleet go-live: importing the vehicle registry',
   );
-  const outcome = await applyImport(plan, photoDir, photoNames, goLiveContext(String(admin._id)));
+  let outcome;
+  try {
+    outcome = await applyImport(plan, photoDir, photoNames, goLiveContext(String(admin._id)));
+  } catch (error) {
+    // Thrown OUTSIDE the per-car loop — the type or branch resolution before it. Written to the
+    // row for the same reason the per-car failures are, then rethrown so the boot's own catch logs
+    // it; the lease expires and the next boot retries.
+    await recordGoLiveFailure(VEHICLE_GO_LIVE_MARK, {
+      stage: 'before-cars',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
   const counts = { created: outcome.created, updated: outcome.updated, photos: outcome.photos };
   if (outcome.failures.length > 0) {
     // NOT finished. The lease is left to expire, so the next boot after it takes the job over and
-    // — every car already in being an update — completes exactly what this run did not.
+    // — every car already in being an update — completes exactly what this run did not. The
+    // reasons go on the row as well as the log: the first two production runs failed with nobody
+    // able to read either, and a row is one query away for anyone who can reach the database.
+    await recordGoLiveFailure(VEHICLE_GO_LIVE_MARK, {
+      ...counts,
+      failed: outcome.failures.length,
+      failures: outcome.failures.slice(0, 25),
+    });
     logger.error(
       { count: outcome.failures.length, failures: outcome.failures },
       'fleet go-live: vehicle import finished WITH FAILURES — the run is left unfinished and will be retried by the next boot once its lease expires',

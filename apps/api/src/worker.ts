@@ -9,15 +9,17 @@ import { bootPlatform } from './platform/kernel/bootstrap';
 import { schedulerService } from './platform/scheduler';
 import { moduleManifests } from './modules';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
+import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
   await bootPlatform({ modules: moduleManifests });
 
   // The Fleet go-live import — see `server.ts` for why it is started by the long-running processes
-  // and not by the module seed. Both start it and `markOnce` elects one; the worker is here so the
+  // and not by the module seed. Both start it and the lease elects one; the worker is here so the
   // cars still arrive on a deployment whose api happens to come up second, or not at all.
   startVehicleGoLive();
+  startDriverPhotosGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

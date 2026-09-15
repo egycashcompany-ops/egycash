@@ -20,6 +20,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { GoLiveNotice } from '../components/GoLiveNotice';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -481,6 +482,7 @@ export const VehiclesListPage = (): JSX.Element => {
           </Can>
         }
       />
+      <GoLiveNotice step="vehicles" />
 
       <div className="space-y-4">
         <FilterBar

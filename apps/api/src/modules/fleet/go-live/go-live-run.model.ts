@@ -85,6 +85,60 @@ export const claimGoLiveRun = async (key: string, leaseMs: number): Promise<bool
   }
 };
 
+/**
+ * Record a REFUSAL — a run that never started, and why — without claiming anything.
+ *
+ * A refusal is the condition an operator fixes and redeploys, so it must leave NO lease to wait
+ * out: the row is written with a lease that has already lapsed, which the next boot's claim takes
+ * over at once. It is the same upsert as the claim — a done row, or one somebody holds live, is
+ * left alone (E11000 → nothing written) — so writing the reason can never disturb a real run. It
+ * exists because the owner cannot read the server log: a refusal that lived only there was, for
+ * two deploys, indistinguishable from an import that never ran.
+ */
+export const recordGoLiveRefusal = async (
+  key: string,
+  outcome: Record<string, unknown>,
+): Promise<void> => {
+  await FleetGoLiveRunModel.createIndexes();
+  const now = new Date();
+  try {
+    await FleetGoLiveRunModel.findOneAndUpdate(
+      { key, status: 'running', leaseUntil: { $lt: now } },
+      {
+        $set: {
+          status: 'running',
+          leaseUntil: now,
+          startedAt: now,
+          outcome: { ...outcome, refused: true, refusedAt: now },
+        },
+        $setOnInsert: { finishedAt: null },
+      },
+      { upsert: true },
+    ).exec();
+  } catch (error) {
+    if (!isDuplicateKey(error)) throw error;
+  }
+};
+
+/**
+ * Record what a FAILED attempt found, on the row, without finishing it.
+ *
+ * The lease is left to expire so the next boot retries, exactly as before — but the reasons are
+ * written where somebody with database access can read them, because the owner cannot read the
+ * server log and the first two production runs failed with nobody ever seeing the text. Capped
+ * so a run that fails on every one of 209 cars does not store 209 stack traces on a row that is
+ * read once.
+ */
+export const recordGoLiveFailure = async (
+  key: string,
+  outcome: Record<string, unknown>,
+): Promise<void> => {
+  await FleetGoLiveRunModel.updateOne(
+    { key },
+    { $set: { outcome: { ...outcome, failedAt: new Date() } } },
+  ).exec();
+};
+
 /** Mark the job finished for good. No boot after this one will claim it again. */
 export const finishGoLiveRun = async (
   key: string,

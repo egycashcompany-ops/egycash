@@ -71,9 +71,10 @@ const plant = async (): Promise<void> => {
       kind, name: { ar: `محمي ${kind}`, en: `kept ${kind}` }, countsForAlarm: false, isActive: true, isDeleted: false,
     });
   }
-  // Two things NOT on the list at all, which must come through untouched.
+  // The drivers registry is protected by name and must come through untouched; the vehicle is
+  // the v2 addition and must NOT.
   await FleetDriverProfileModel.collection.insertOne({ employeeId: oid(), isActive: true, isDeleted: false });
-  await FleetVehicleModel.collection.insertOne({ code: 'KEEP-1', isDeleted: false, status: 'active' });
+  await FleetVehicleModel.collection.insertOne({ code: 'JUNK-1', isDeleted: false, status: 'active' });
 };
 
 const count = async (model: { countDocuments: (f?: object) => { exec: () => Promise<number> } }, f: object = {}) =>
@@ -120,6 +121,7 @@ describe('what the reset clears', () => {
       // The seven planted unprotected rows, AND the whole seeded vocabulary beside them — the
       // catalogs screen is on the list, and «امسحها خالص» does not stop at rows a test planted.
       catalogItems: seededUnprotected + 7,
+      vehicles: 1,
     });
     for (const model of [
       FleetOdometerLogModel, FleetMaintenanceVisitModel, FleetDutyAssignmentModel, FleetFixedCrewModel,
@@ -142,10 +144,11 @@ describe('what the reset spares', () => {
     }
   });
 
-  it('does not touch the drivers registry, and not the vehicles either', async () => {
-    // «السواقيين» is on the owner's list; the vehicles are simply not on the list of screens.
+  it('does not touch the drivers registry — and DOES clear the vehicles, since v2', async () => {
+    // «السواقيين» is on the owner's list. The vehicles were not, until the owner pointed at the
+    // maintenance-alarms board — which is nothing but the vehicles — and said clear that too.
     expect(await count(FleetDriverProfileModel)).toBe(1);
-    expect(await count(FleetVehicleModel)).toBe(1);
+    expect(await count(FleetVehicleModel)).toBe(0);
   });
 });
 

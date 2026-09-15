@@ -51,7 +51,6 @@ import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
-import { matchesVehicleCode } from '../lib/vehicle-code-match';
 import { FIXED_ROSTER_DRAFT_KEY, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
 import { useDraftBoard } from '../lib/useDraftBoard';
 import {
@@ -63,11 +62,19 @@ import {
   clearSlot,
   type CrewSlot,
 } from '../lib/fixed-roster-board';
-import { COUNTER_TONES, UNSAVED_ROW } from '../lib/roster-view';
+import {
+  COUNTER_TONES,
+  hasDriver,
+  missionTone,
+  readFixedView,
+  UNSAVED_ROW,
+  visibleFixedRows,
+  type FixedRosterView,
+} from '../lib/roster-view';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['q'] as const;
+const REMEMBERED_FILTERS = ['mission', 'q', 'view'] as const;
 
 /** The one thing a drag carries. Read on drop; nothing else is inferred from the event. */
 const DRAG_TYPE = 'application/x-ecms-driver';
@@ -440,6 +447,18 @@ export const FixedRosterPage = (): JSX.Element => {
   const mayPlan = can('fleetRoster.plan');
 
   const search = sp.get('q') ?? '';
+  const mission = sp.get('mission') ?? '';
+  /**
+   * Which STATE the board is narrowed to, if any — «بطقم» or «بدون طقم».
+   *
+   * Through `readFixedView`, so a hand-typed `?view=nonsense` shows the whole board rather than
+   * an empty one nobody can explain. The daily board's two states are not this board's: a car in
+   * the workshop still HAS a standing crew, so «صيانة» is not an axis here, and «تشغيل» — a
+   * mission OR a driver — is not either, because a standing crew is the two seats and nothing
+   * else. A mission is not a view on either board: the mission chips write the `mission`
+   * parameter the dropdown beside them owns, which is what keeps the two in step.
+   */
+  const view: FixedRosterView | null = readFixedView(sp.get('view'));
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
     for (const [key, val] of Object.entries(updates)) {
@@ -485,41 +504,6 @@ export const FixedRosterPage = (): JSX.Element => {
     [pending],
   );
 
-  /**
-   * THE BOARD'S TALLY AS CHIPS — «شاشه fleet/fixed-roster تكون زى /fleet/roster».
-   *
-   * This screen said the same thing in a sentence («٣ سيارة · ٠ بطقم») while its twin said it in
-   * a row of coloured chips, which is most of why the two did not look like one pair of screens.
-   * Same shape, same tones, same arithmetic-off-the-DRAFT: what is counted is what is on screen
-   * right now, not the server's last answer, so the numbers move as the reader crews cars.
-   *
-   * They are read-outs, NOT buttons, and they are deliberately not made into filters. The daily
-   * board's chips narrow by mission and by workshop state — axes that board actually has. This
-   * one has no such axis, and inventing a filter to make the two match would be matching the
-   * wrong thing. So: the tone and the shape, without an `aria-pressed` state that would promise
-   * a press does something.
-   */
-  const counters = useMemo(() => {
-    const crewed = draft.filter(
-      (row) => row.driver1EmployeeId !== null || row.driver2EmployeeId !== null,
-    ).length;
-    return [
-      { key: 'total', label: t('fleet.roster.counter.total'), value: draft.length, tone: COUNTER_TONES.total },
-      { key: 'crewed', label: t('fleet.fixedRoster.counter.crewed'), value: crewed, tone: COUNTER_TONES.assigned },
-      {
-        key: 'uncrewed',
-        label: t('fleet.fixedRoster.counter.uncrewed'),
-        value: draft.length - crewed,
-        tone: COUNTER_TONES.workshop,
-      },
-    ];
-  }, [draft, t]);
-
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-  /** The vehicle whose edit dialog is open, or null. The dialog holds its own draft. */
-  const [editing, setEditing] = useState<string | null>(null);
-
   // «نوع المهمة» is a reference to the fleet's own vocabulary — the SAME `missionType` catalog
   // the DAILY roster reads (أنواع المهمات), through the same cached hook, so the two boards
   // cannot drift into two lists. The id is what is stored; the name is resolved for display.
@@ -529,6 +513,75 @@ export const FixedRosterPage = (): JSX.Element => {
   // was offering «صيانة» as a car's standing mission. Corrected here; the rows written under the
   // old name are retired by `npm run fleet:fix-crew-mission`.
   const missionTypes = useFleetCatalog('missionType');
+
+  /**
+   * THE BOARD'S TALLY AS CHIPS, AND THE CHIPS AS FILTERS — «عاوز الطاقم الثابت الفلاتر بتاعته
+   * تكون زى تعيين السيارات».
+   *
+   * Same shape, same tones, same arithmetic-off-the-DRAFT as the daily board: what is counted is
+   * what is on screen right now, not the server's last answer, so the numbers move as the reader
+   * crews cars. The search, the mission and the view narrow the TABLE; these count the whole
+   * board — a tally that changed when you filtered it would be a tally of the filter.
+   *
+   * They were read-outs for one release, on the argument that this board had no axis to filter
+   * on. It has two — a car with a crew and a car without — and the same mission vocabulary the
+   * daily board narrows by, so the chips now do here exactly what they do there: «إجمالي»
+   * clears, «بطقم» / «بدون طقم» set the view, and each mission sets the dropdown's own parameter.
+   */
+  const counters = useMemo(() => {
+    const byMission = new Map<string, number>();
+    for (const row of draft) {
+      if (row.missionTypeId === null) continue;
+      byMission.set(row.missionTypeId, (byMission.get(row.missionTypeId) ?? 0) + 1);
+    }
+    const crewed = draft.filter(hasDriver).length;
+    return [
+      {
+        key: 'total',
+        label: t('fleet.roster.counter.total'),
+        value: draft.length,
+        tone: COUNTER_TONES.total,
+        // «إجمالي» is the absence of a filter, so applying it CLEARS both keys rather than
+        // setting a third value that would then have to mean "no filter".
+        apply: { mission: null, view: null },
+        active: mission === '' && view === null,
+      },
+      {
+        key: 'crewed',
+        label: t('fleet.fixedRoster.counter.crewed'),
+        value: crewed,
+        tone: COUNTER_TONES.assigned,
+        apply: { view: 'crewed' },
+        active: view === 'crewed',
+      },
+      {
+        key: 'uncrewed',
+        label: t('fleet.fixedRoster.counter.uncrewed'),
+        value: draft.length - crewed,
+        tone: COUNTER_TONES.workshop,
+        apply: { view: 'uncrewed' },
+        active: view === 'uncrewed',
+      },
+      ...(missionTypes.data?.items ?? [])
+        .filter((item) => item.isActive)
+        .map((item) => ({
+          key: item.id,
+          label: localized(item.name, locale),
+          value: byMission.get(item.id) ?? 0,
+          tone: missionTone(item.id),
+          // The chip drives the DROPDOWN's parameter, not one of its own: one axis, one filter,
+          // and the select beside it visibly follows.
+          apply: { mission: item.id },
+          active: mission === item.id,
+        })),
+    ];
+  }, [draft, missionTypes.data, locale, t, mission, view]);
+
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  /** The vehicle whose edit dialog is open, or null. The dialog holds its own draft. */
+  const [editing, setEditing] = useState<string | null>(null);
+
   const missionTypeName = (id: string | null): string | null => {
     if (id === null) return null;
     const item = missionTypes.data?.items.find((entry) => entry.id === id);
@@ -576,10 +629,21 @@ export const FixedRosterPage = (): JSX.Element => {
     [pool, searchIndex, driverSearch],
   );
 
-  // By CODE, through the shared matcher — the same parser and the same folding the daily board and
-  // every filter bar in the application read a code box with, so `150 - 151` names two cars here
-  // too. It used to match the plate as well, on a board whose cells print only the code.
-  const rows = draft.filter((row) => matchesVehicleCode(row.code, search));
+  /**
+   * What the table SHOWS — the draft, narrowed by code AND mission AND state, through the rule
+   * module the daily board reads. The code goes through the same parser every filter bar in the
+   * application reads a code box with, so `150 - 151` names two cars here too.
+   *
+   * DISPLAY ONLY. `draft`, the counters, the pool and what «حفظ» sends all read the whole board
+   * and never this — a filter is a way of looking at the board, not a way of editing it.
+   */
+  const rows = useMemo(
+    () => visibleFixedRows(draft, { term: search, mission, view }),
+    [draft, search, mission, view],
+  );
+  const filtered = search !== '' || mission !== '' || view !== null;
+  /** «إعادة ضبط» — every filter off in ONE update, the daily board's three keys. */
+  const resetFilters = (): void => patch({ q: null, mission: null, view: null });
   /** Every car this board reports on, as the picker's options — no request for what is on screen. */
   const codeOptions = useMemo(
     () => draft.map((row) => ({ value: row.code, label: row.code })),
@@ -856,7 +920,7 @@ export const FixedRosterPage = (): JSX.Element => {
               pair, and a reader moving between them was meeting two different bars. */}
           <div className="flex flex-wrap items-center gap-1.5">
             {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES, and the same one the daily roster
-                carries, at the same width — «تظبط ابعاد الفلاتر». `matchesVehicleCode` below
+                carries, at the same width — «تظبط ابعاد الفلاتر». `visibleFixedRows` above
                 already reads a list, so what narrows the rows is unchanged; the options come from
                 the draft, which is every car this board reports on. */}
             <VehicleCodeFilter
@@ -866,25 +930,51 @@ export const FixedRosterPage = (): JSX.Element => {
               options={codeOptions}
               onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
             />
+            {/* THE DAILY BOARD'S MISSION FILTER, at the daily board's width, on the same catalog
+                the mission column and the mission chips read. `mission` is ONE parameter: the
+                chip below writes it, this select shows it, and the table narrows on it. */}
+            <div className="w-44">
+              <CatalogSelect
+                kind="missionType"
+                value={mission}
+                onChange={(id) => patch({ mission: id || null })}
+                allLabel={t('fleet.roster.allMissions')}
+                ariaLabel={t('fleet.roster.fields.mission')}
+              />
+            </div>
 
+            {/* Each counter is a real <button>, as on the daily board: it narrows the table, so it
+                must be reachable by keyboard and announce its state, which a tinted <span> with an
+                onClick never does. `aria-pressed` is the announcement. The colour belongs to the
+                CATEGORY and stays put whether or not the chip is the one applied; the active state
+                is a ring drawn on top. */}
             {counters.map((counter) => (
-              <span
+              <button
                 key={counter.key}
+                type="button"
                 data-counter={counter.key}
-                className={`flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium ${counter.tone}`}
+                data-active={counter.active ? 'true' : undefined}
+                aria-pressed={counter.active}
+                onClick={() => patch(counter.apply)}
+                className={[
+                  'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+                  counter.tone,
+                  counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
+                ].join(' ')}
               >
                 <span className="truncate">{counter.label}</span>
                 <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
-              </span>
+              </button>
             ))}
 
             {/* Offered only when there is something to undo — the daily board's rule and its
-                button, down to the hue. */}
-            {search !== '' && (
+                button, down to the hue. Clears the three view filters together. */}
+            {filtered && (
               <button
                 type="button"
                 data-reset-filters="true"
-                onClick={() => patch({ q: null })}
+                onClick={resetFilters}
                 aria-label={t('common.filters.clear')}
                 title={t('common.filters.clear')}
                 className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"

@@ -79,11 +79,10 @@ const CODE_SELECTORS = [
 const CLIENT_SIDE_FILTERS = [
   {
     file: 'modules/fleet/lib/roster-view.ts',
-    what: 'the daily board’s `?q=` codes — written by the same picker the accidents board uses',
-  },
-  {
-    file: 'modules/fleet/pages/FixedRosterPage.tsx',
-    what: 'the fixed roster’s `?q=` codes — the same picker again',
+    // Both boards: `visibleRows` for the day, `visibleFixedRows` for the standing crews. The
+    // fixed roster used to filter inline on its page; since it took the daily board's bar it
+    // reads through this module too, so one entry covers the pair.
+    what: 'the daily and standing boards’ `?q=` codes — written by the same picker the accidents board uses',
   },
 ] as const;
 

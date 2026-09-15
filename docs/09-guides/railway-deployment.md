@@ -104,6 +104,33 @@ downloadable PDF is skipped.
 
 3. Open `https://<app-domain>` → log in with the seeded admin.
 
+## 4b. Fleet go-live imports (once, from the service shell)
+
+Both are **dry-run by default** — they read, resolve every name against the live database, print
+exactly what they would do, and write nothing. `--write` is the only thing that applies them, and
+both are **re-runnable**: a name already in a catalog is left alone, a car already in the registry
+is updated rather than duplicated. A run that fails halfway is finished by running it again.
+
+They are built into `dist/` for this reason — the image installs with `--omit=dev`, so `tsx` is
+absent and the `npm run …` forms work only on a developer machine.
+
+```bash
+# 1. The house vocabulary: workshops, work types, spare parts, mission types, insurers.
+#    Flags «صيانة» and «صيانة + إصلاح» as resetting the maintenance counter.
+node apps/api/dist/fleet-vocabulary.cli.js
+node apps/api/dist/fleet-vocabulary.cli.js --write
+
+# 2. The vehicles. Upload cars.json and the photo folder to the service first.
+#    REFUSES and names them if any branch in the data is missing from /system — add those first,
+#    under the company's own branch codes; the importer will not invent one.
+node apps/api/dist/fleet-vehicles-import.cli.js --file ./cars.json --photos ./cars_license_photos
+node apps/api/dist/fleet-vehicles-import.cli.js --file ./cars.json --photos ./cars_license_photos --write
+```
+
+Afterwards, set each vehicle type's maintenance interval on `/fleet/settings`. The importer creates
+them with `0`, which is how the alarm engine says «no service distance» — so the maintenance alarm
+stays silent for every imported car until the number is filled in.
+
 ## 5. Serving under a subpath — `https://egycash.com.eg/ecms`
 
 The whole app can live under a path prefix on the company domain while still running on

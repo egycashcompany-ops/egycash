@@ -12,7 +12,9 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FLEET_VOCABULARY, COUNTING_WORK_TYPES } from './vocabulary';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
-import { parseCars } from './vehicles-import';
+import { failureReason, MIME, parseCars } from './vehicles-import';
+import { DRIVER_PHOTOS_DIR, DRIVER_PHOTOS_GO_LIVE_MARK, planDriverPhotos } from './driver-photos';
+import { ValidationError } from '../../../shared/errors';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const API_ROOT = join(HERE, '..', '..', '..', '..');
@@ -69,12 +71,15 @@ describe('the boot seed is what applies the house vocabulary', () => {
 
 describe('the long-running processes are what import the vehicle registry', () => {
   const LONG_RUNNING = ['src/server.ts', 'src/worker.ts'];
+  /** Both go-live steps: the cars, and the drivers' licence scans, on the same terms. */
+  const STARTERS = ['startVehicleGoLive', 'startDriverPhotosGoLive'];
+  const cases = LONG_RUNNING.flatMap((path) => STARTERS.map((starter) => [path, starter]));
 
-  it.each(LONG_RUNNING)('%s starts it after booting', (path) => {
+  it.each(cases)('%s starts %s after booting', (path, starter) => {
     const source = code(path);
     const boot = source.indexOf('bootPlatform(');
-    const goLive = source.indexOf('startVehicleGoLive()');
-    expect(goLive, `${path} starts the import`).toBeGreaterThan(-1);
+    const goLive = source.indexOf(`${starter}()`);
+    expect(goLive, `${path} starts ${starter}`).toBeGreaterThan(-1);
     // After the boot, because the mark's whole guarantee is the `ux_key` unique index and
     // `migrateFleetIndexes` — inside the Fleet seed, inside `bootPlatform` — is what builds it.
     // `autoIndex` is off in production, so claiming the mark first lets both processes insert it,
@@ -82,11 +87,11 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(goLive, `${path} starts it after the boot`).toBeGreaterThan(boot);
   });
 
-  it.each(LONG_RUNNING)('%s does not await it', (path) => {
+  it.each(cases)('%s does not await %s', (path, starter) => {
     // `server.ts` listens only after everything above `listen()` has resolved, and railway.json
     // fails the deploy if /health/ready has not answered in 300s, then retries ten times. An
     // import held in front of the port would take the platform down with it.
-    expect(code(path)).not.toContain('await startVehicleGoLive()');
+    expect(code(path)).not.toContain(`await ${starter}()`);
   });
 
   it('NO short-lived entrypoint starts it — it would exit out from underneath the import', () => {
@@ -101,14 +106,15 @@ describe('the long-running processes are what import the vehicle registry', () =
       .filter((name) => code(join('src', name)).includes('bootPlatform('));
     expect(shortLived.length, 'the short-lived boot entrypoints are still there').toBeGreaterThan(0);
     for (const name of shortLived) {
-      expect(code(join('src', name)), `${name} must not start the go-live import`).not.toContain(
-        'startVehicleGoLive',
-      );
+      for (const starter of STARTERS) {
+        expect(code(join('src', name)), `${name} must not start ${starter}`).not.toContain(starter);
+      }
     }
   });
 
-  it('the module seed does not start it either', () => {
-    expect(code('src/modules/fleet/fleet.seed.ts')).not.toContain('startVehicleGoLive(');
+  it('the module seed does not start either of them', () => {
+    const seed = code('src/modules/fleet/fleet.seed.ts');
+    for (const starter of STARTERS) expect(seed).not.toContain(`${starter}(`);
   });
 
   it('every refusal is checked BEFORE the run is claimed, so a fix can be redeployed', () => {
@@ -121,6 +127,7 @@ describe('the long-running processes are what import the vehicle registry', () =
     for (const refusal of [
       'parsed.rejected.length > 0',
       'plan.missingBranches.length > 0',
+      'plan.inactiveBranches.length > 0',
       'admin === null',
       "dir === null",
     ]) {
@@ -129,27 +136,138 @@ describe('the long-running processes are what import the vehicle registry', () =
     }
   });
 
+  it('the driver scans refuse before their claim too, on their own conditions', () => {
+    const source = code('src/modules/fleet/go-live/driver-photos.ts');
+    const claim = source.indexOf('claimGoLiveRun(DRIVER_PHOTOS_GO_LIVE_MARK');
+    expect(claim).toBeGreaterThan(-1);
+    for (const refusal of [
+      'dir === null',
+      '!existsSync(photoDir)',
+      'admin === null',
+      'plan.notImages.length > 0 || plan.duplicates.length > 0',
+    ]) {
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
+    }
+  });
+
+  it('every refusal is WRITTEN, not only logged — the owner cannot read the log', () => {
+    // A refusal that lived only in the server log was, for two deploys, indistinguishable from
+    // an import that never ran. Each refusal now records itself on the run row, with a lease that
+    // has already lapsed, so the next boot after the fix still claims at once. The two «data not
+    // in this build» refusals are the exception: the build is the problem there, not the data.
+    const records = (source: string, mark: string, reason: string): boolean =>
+      new RegExp(`recordGoLiveRefusal\\(${mark},\\s*\\{\\s*reason: '${reason}'`).test(source);
+    const vehicles = code('src/modules/fleet/go-live/vehicles.ts');
+    for (const reason of ['rejected-rows', 'no-admin', 'plan']) {
+      expect(records(vehicles, 'VEHICLE_GO_LIVE_MARK', reason), `vehicles: ${reason}`).toBe(true);
+    }
+    const photos = code('src/modules/fleet/go-live/driver-photos.ts');
+    for (const reason of ['no-admin', 'plan']) {
+      expect(records(photos, 'DRIVER_PHOTOS_GO_LIVE_MARK', reason), `driver photos: ${reason}`).toBe(true);
+    }
+  });
+
   it('is skipped under test, or every integration suite imports 209 cars', () => {
     const source = code('src/modules/fleet/go-live/vehicles.ts');
     expect(source).toMatch(/startVehicleGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
+    const photos = code('src/modules/fleet/go-live/driver-photos.ts');
+    expect(photos).toMatch(/startDriverPhotosGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
   });
 
-  it('the run key is at v2 — v1 was the run production cut off, and must not be resumed', () => {
+  it('a car that fails records WHICH check failed, not «Validation failed»', () => {
+    // Production recorded the message 209 times. The field and the reason live in `details`.
+    const error = new ValidationError([
+      { field: 'body.branchId', code: 'UNKNOWN', message: 'branch not found or inactive' },
+    ]);
+    expect(failureReason(error)).toBe('Validation failed — body.branchId: branch not found or inactive');
+    expect(failureReason(new Error('plain'))).toBe('plain');
+    expect(failureReason('text')).toBe('text');
+    expect(code('src/modules/fleet/go-live/vehicles-import.ts')).toContain('reason: failureReason(error)');
+  });
+
+  it('a deactivated branch is refused by the PLANNER, by the same rule the service applies', () => {
+    // `findByName` matches any live branch; `assertBranch` demands `status === 'active'`. A plan
+    // that only asked the first question claimed the run and failed every car on the second.
+    const source = code('src/modules/fleet/go-live/vehicles-import.ts');
+    expect(source).toContain("else if (found.status !== 'active') inactiveBranches.push(name);");
+  });
+
+  it('the run key is at v3 — v1 was cut off, v2 wrote no car, and neither must be resumed', () => {
     // v1 claimed a once-only mark, created the vehicle types and licence classes, and was killed
-    // before the cars. Resuming v1 would find its mark and do nothing; v2 is a fresh claim.
-    expect(VEHICLE_GO_LIVE_MARK).toBe('go-live:vehicles:v2');
+    // before the cars. v2 ran after the eight-screen reset and still wrote no car, for a reason
+    // nobody could read. v3 runs after the reset that clears the vehicles too and records what it
+    // finds on its own row. Resuming either earlier key would find its mark and do nothing.
+    expect(VEHICLE_GO_LIVE_MARK).toBe('go-live:vehicles:v3');
   });
 
-  it('a run that FAILS is not marked done, so the next boot takes it over', () => {
+  it.each([
+    ['src/modules/fleet/go-live/vehicles.ts', "'fleet go-live: partial import'", 'VEHICLE_GO_LIVE_MARK'],
+    ['src/modules/fleet/go-live/driver-photos.ts', "'fleet go-live: partial driver scans'", 'DRIVER_PHOTOS_GO_LIVE_MARK'],
+  ])('%s: a run that FAILS is not marked done, so the next boot takes it over', (path, partial, mark) => {
     // The whole reason the mark became a lease. `finishGoLiveRun` must sit on the success path
     // only; a failure returns first and leaves the lease to expire.
-    const source = code('src/modules/fleet/go-live/vehicles.ts');
-    const failureReturn = source.indexOf("'fleet go-live: partial import'");
-    const finish = source.indexOf('finishGoLiveRun(VEHICLE_GO_LIVE_MARK');
+    const source = code(path);
+    const failureReturn = source.indexOf(partial);
+    const finish = source.indexOf(`finishGoLiveRun(${mark}`);
     expect(failureReturn).toBeGreaterThan(-1);
     expect(finish).toBeGreaterThan(failureReturn);
     const between = source.slice(failureReturn, finish);
     expect(between, 'the failure path returns before the run is finished').toContain('return;');
+    expect(source.slice(0, failureReturn), 'and the failure is written to the row first').toContain(
+      `recordGoLiveFailure(${mark}`,
+    );
+  });
+});
+
+describe('the driver licence scans — one per driver, by employee code', () => {
+  const employee = (code: string, status: 'active' | 'exited' = 'active') => ({
+    employeeId: `id-${code}`,
+    code,
+    fullNameAr: `سائق ${code}`,
+    status,
+    branchId: null,
+    departmentId: null,
+  });
+
+  it('is at v1, in its own folder beside the cars', () => {
+    expect(DRIVER_PHOTOS_GO_LIVE_MARK).toBe('go-live:driver-photos:v1');
+    expect(DRIVER_PHOTOS_DIR).toBe('driver-license-photos');
+  });
+
+  it('matches a file to a driving-seat employee by its stem, and by nothing else', () => {
+    const plan = planDriverPhotos(['0100026.jpg', '0100028.jpeg'], [employee('0100026'), employee('0100028')]);
+    expect(plan.matched.map((m) => [m.file, m.code, m.employee.employeeId])).toEqual([
+      ['0100026.jpg', '0100026', 'id-0100026'],
+      ['0100028.jpeg', '0100028', 'id-0100028'],
+    ]);
+    expect(plan.unmatched).toEqual([]);
+  });
+
+  it('reports a stem that is nobody’s code, and does not guess', () => {
+    const plan = planDriverPhotos(['0100026.jpg', '9999999.jpg'], [employee('0100026')]);
+    expect(plan.matched.map((m) => m.code)).toEqual(['0100026']);
+    expect(plan.unmatched).toEqual(['9999999.jpg']);
+  });
+
+  it('sets aside a driver who has left — a profile cannot be opened for them', () => {
+    const plan = planDriverPhotos(['0100026.jpg'], [employee('0100026', 'exited')]);
+    expect(plan.matched).toEqual([]);
+    expect(plan.exited).toEqual(['0100026.jpg']);
+  });
+
+  it('refuses a file that is not an image, and a code under two names', () => {
+    const plan = planDriverPhotos(
+      ['0100026.jpg', '0100026.png', 'notes.txt', '.DS_Store'],
+      [employee('0100026')],
+    );
+    expect(plan.notImages).toEqual(['.DS_Store', 'notes.txt']);
+    expect(plan.duplicates).toEqual(['0100026']);
+    expect(plan.matched.map((m) => m.file)).toEqual(['0100026.jpg']);
+  });
+
+  it('takes exactly the image types the registry takes', () => {
+    expect(Object.keys(MIME).sort()).toEqual(['.jpeg', '.jpg', '.png', '.webp']);
   });
 });
 
@@ -172,15 +290,16 @@ describe('the go-live reset runs first, once, and spares what it was told to', (
     for (const kind of ['violationType', 'driverJob', 'driverSpecialization', 'driverLicenseType']) {
       expect(source, `${kind} is protected`).toContain(`'${kind}'`);
     }
-    // The drivers registry, the vehicles and the vehicle types are not on the eight-screen list
-    // and must not be deleted from — the models must not even be imported here.
+    // The drivers registry is on the owner's protected list and the vehicle types were never
+    // named — neither model may even be imported here. The VEHICLES joined the list at v2
+    // («امسح الداتا fleet/maintenance-alarms اللى هنا بالمره» — that board is a view over them).
     expect(source).not.toContain('FleetDriverProfileModel');
-    expect(source).not.toContain('FleetVehicleModel');
     expect(source).not.toContain('FleetVehicleTypeModel');
+    expect(source).toContain('gone(FleetVehicleModel)');
   });
 
-  it('is versioned like the import, so repeating it is a decision', () => {
-    expect(code('src/modules/fleet/go-live/reset.ts')).toContain("'go-live:reset:v1'");
+  it('is at v2 — v1 spared the vehicles, and the owner asked for them too', () => {
+    expect(code('src/modules/fleet/go-live/reset.ts')).toContain("'go-live:reset:v2'");
   });
 });
 
@@ -212,6 +331,22 @@ describe('the data ships with the build', () => {
     const named = new Set(parsed.cars.map((car) => car.photo).filter((p): p is string => p !== null));
     // A scan nobody's row points at would be imported by nothing and noticed by no one.
     for (const photo of photos) expect(named.has(photo), `${photo} belongs to a car`).toBe(true);
+  });
+
+  it('all 41 driver scans are there, each named for an employee code, none twice', () => {
+    const dir = resolveGoLiveDataDir() as string;
+    const photoDir = join(dir, DRIVER_PHOTOS_DIR);
+    expect(existsSync(photoDir)).toBe(true);
+    const photos = readdirSync(photoDir);
+    expect(photos.length).toBe(41);
+    // `0100026` — branch `010`, employee `0026`: the company's own seven-digit code, and an
+    // image extension the registry takes. Anything else would be refused at boot.
+    for (const photo of photos) expect(photo, photo).toMatch(/^\d{7}\.(jpg|jpeg|png|webp)$/);
+    const stems = photos.map((photo) => photo.replace(/\.[^.]+$/, ''));
+    expect(new Set(stems).size, 'one scan per driver').toBe(photos.length);
+    const plan = planDriverPhotos(photos, []);
+    expect(plan.notImages).toEqual([]);
+    expect(plan.duplicates).toEqual([]);
   });
 
   it('resolves the data beside the bundle first, then the source tree', () => {

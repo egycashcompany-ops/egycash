@@ -25,6 +25,7 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { env } from '../../src/infrastructure/config/env';
 import { userService } from '../../src/platform/users';
 import { branchService } from '../../src/platform/organization';
+import { BranchModel } from '../../src/platform/organization/branches/branch.model';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
 import { FleetGoLiveRunModel } from '../../src/modules/fleet/go-live/go-live-run.model';
 import { runVehicleGoLive, VEHICLE_GO_LIVE_MARK } from '../../src/modules/fleet/go-live/vehicles';
@@ -105,25 +106,47 @@ afterAll(async () => {
   await replset?.stop();
 });
 
+/** A refusal's row: written, with its reasons, and with a lease that has ALREADY lapsed. */
+const expectRefused = async (reasons: Record<string, unknown>): Promise<void> => {
+  const doc = await run();
+  expect(doc, 'the refusal was written to the row').not.toBeNull();
+  expect(doc?.status, 'not done').toBe('running');
+  expect(doc?.outcome, 'with its reasons').toMatchObject({ refused: true, ...reasons });
+  expect((doc?.leaseUntil as Date).getTime(), 'and nothing to wait out').toBeLessThanOrEqual(Date.now());
+};
+
 describe('a refusal leaves the door open', () => {
-  it('refuses a branch the organisation does not have, and claims NOTHING', async () => {
+  it('refuses a branch the organisation does not have, imports nothing, and SAYS SO on its row', async () => {
     // The branch is not a Fleet fact — HR, Gold and every user's data scope point at the same
     // registry — so the import will not invent one. What matters here is the SECOND half: it also
     // does not mark itself done, because the missing branch is precisely the thing somebody goes
-    // and adds.
+    // and adds. And the third: the reason is on the row, where the screen can print it — a
+    // refusal that lived only in the log was, for two deploys, indistinguishable from nothing.
     await runVehicleGoLive(dataDir);
 
     expect(await imported(), 'no car was written').toBe(0);
-    expect(await run(), 'and the run is still unclaimed').toBeNull();
+    await expectRefused({ reason: 'plan', missingBranches: [BRANCH], inactiveBranches: [] });
   });
-});
 
-describe('the run that can proceed, proceeds once', () => {
-  it('imports the cars once the branch exists', async () => {
+  it('refuses a branch the organisation has DEACTIVATED — the check the service would fail on', async () => {
+    // THE PRODUCTION SHAPE. `findByName` matched the branch, the run was claimed, and every car
+    // then failed `assertBranch` inside the loop. The planner asks the service's question now.
     await branchService.create(
       { code: 'GOLIVE', name: { ar: BRANCH, en: BRANCH } },
       new Types.ObjectId().toString(),
     );
+    await BranchModel.updateOne({ code: 'GOLIVE' }, { $set: { status: 'inactive' } }).exec();
+
+    await runVehicleGoLive(dataDir);
+
+    expect(await imported(), 'no car was written').toBe(0);
+    await expectRefused({ reason: 'plan', missingBranches: [], inactiveBranches: [BRANCH] });
+  });
+});
+
+describe('the run that can proceed, proceeds once', () => {
+  it('imports the cars once the branch is active — over the refusal row, with no lease to wait out', async () => {
+    await BranchModel.updateOne({ code: 'GOLIVE' }, { $set: { status: 'active' } }).exec();
 
     await runVehicleGoLive(dataDir);
 

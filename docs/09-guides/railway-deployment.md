@@ -108,36 +108,49 @@ downloadable PDF is skipped.
 
 > **THE DEPLOY DOES THIS. There is normally nothing to run here.**
 >
-> Three go-live steps run by themselves, in this order, and each is versioned so that repeating
-> one is a code change somebody reviews, never a side effect of a redeploy:
+> Four go-live steps run by themselves, and each is versioned so that repeating one is a code
+> change somebody reviews, never a side effect of a redeploy:
 >
-> 1. **The reset** (`go-live/reset.ts`, `go-live:reset:v1`) — once per database, first thing in
+> 1. **The reset** (`go-live/reset.ts`, `go-live:reset:v2`) — once per database, first thing in
 >    the Fleet seed: clears the test data off `/fleet/odometer`, `/maintenance`,
->    `/maintenance-alarms`, `/roster`, `/fixed-roster`, `/accidents`, `/violations` and
->    `/catalogs`. Spared, untouched: violation **types**, the drivers registry, and the three
->    driver catalogs (job / specialization / licence). Not on the list, so not touched either: the
->    vehicles and the vehicle types.
+>    `/maintenance-alarms`, `/roster`, `/fixed-roster`, `/accidents`, `/violations`, `/catalogs`
+>    and — since v2 — the vehicle registry itself. Spared, untouched: violation **types**, the
+>    drivers registry, the three driver catalogs (job / specialization / licence) and the vehicle
+>    **types**.
 > 2. **The vocabulary** (167 names, Arabic + English) — every boot, create-if-missing, in the
 >    Fleet seed after the reset. Like the driver catalogs beside it.
 > 3. **The vehicle registry** (209 cars and their licence scans) — from data committed at
 >    `apps/api/assets/fleet-go-live/` and copied into `dist/` by the build, started after boot by
 >    whichever of `server.ts` / `worker.ts` claims it. The claim is a **lease**
->    (`fleet_go_live_runs`, key `go-live:vehicles:v2`): a run that finishes is `done` for good; a
+>    (`fleet_go_live_runs`, key `go-live:vehicles:v3`): a run that finishes is `done` for good; a
 >    run that is killed part-way leaves a lease that expires after 30 minutes, and the next boot
 >    after that takes it over and finishes it. Every car already in is an update, so a take-over
 >    is safe.
+> 4. **The drivers' licence scans** (`go-live/driver-photos.ts`, key `go-live:driver-photos:v1`)
+>    — one file per driver in `assets/fleet-go-live/driver-license-photos/`, named for the
+>    driver's **employee code** (`0100026.jpg` is employee `0100026`). Each is matched to a
+>    driving-seat employee by that code and attached to their profile, which is opened if the
+>    driver was not yet on file. A scan whose code is nobody's is listed on the run and skipped.
+>    Same lease as the cars; a take-over skips every scan that already landed.
 >
 > Deploy, wait, refresh.
 >
-> This section exists for the three cases the automatic path does not cover. Read the boot log
-> first — every one of them is named there.
+> **EVERY STEP WRITES WHAT HAPPENED WHERE YOU CAN SEE IT.** The vehicles screen and the drivers
+> screen print a notice — for whoever may create vehicles or manage drivers — whenever the step
+> for that screen refused to start, failed part-way, is still running, or finished with something
+> to note. It prints the step's own reasons verbatim (a branch name, a car code, a file name, the
+> validation detail), and disappears when the step finished cleanly. The same rows are readable at
+> `GET /api/v1/fleet/go-live`. Read that notice before this table; every case in it is named there.
 >
-> | the log says | what to do |
+> | the notice (or the log) says | what to do |
 > |---|---|
-> | «refused — add the missing branches in /system» | Add them under the company's own codes, exactly as the data spells them, then redeploy. The mark is **not** claimed, so the next boot imports everything. |
-> | «vehicle import finished WITH FAILURES» | The run is left **unfinished**. Its lease expires in 30 minutes and the next boot after that retries it — an existing car is an update, so the retry completes the job. To retry sooner, redeploy after the lease is up. The command below still works as a manual finisher. |
+> | «مرفوض، لم يبدأ» with **branches the system does not have** | Add them in /system under the company's own codes, exactly as the data spells them, then redeploy. Nothing is claimed, so the next boot imports everything. |
+> | «مرفوض، لم يبدأ» with **deactivated branches** | Re-activate them in /system (the branch list's «تفعيل»). This is the check every car fails inside the service (`assertBranch`); the planner now refuses on it before claiming. The next boot imports everything. |
+> | «مرفوض، لم يبدأ» with **numbers another vehicle already holds** | Resolve the plate / chassis / motor number on the vehicle named, then redeploy. |
+> | «فشل جزئيًا» with a list of failures | Each line is `code: reason`, with the validation field named. The run is left **unfinished**: its lease expires in 30 minutes and the next boot after that retries it — an existing car is an update, so the retry completes the job. Fix whatever the reasons name; to retry sooner, redeploy after the lease is up. |
+> | «تم، مع ملاحظات» on the drivers screen | Scans whose code is no current driving-seat employee's. Either the employee is missing from HR, or their job title does not require a driving test, or they have left. Fix the HR side; the scan is attached at the next key bump. |
 > | nothing at all, and the registry is empty | The build shipped without its assets, or the seeded admin is missing. Both are named in the log; fix and redeploy. |
-> | the dropdowns filled but the registry did not | The v1 shape: a run cut off between the types and the cars, under a mark that could not be retried. v2 is the lease above; it does not happen again. |
+> | the dropdowns filled but the registry did not | The v1 shape: a run cut off between the types and the cars, under a mark that could not be retried. Since v2 the claim is a lease; since v3 the reasons are on the row and on the screen. |
 >
 > Correcting the source data after a finished import is a deliberate act: bump
 > `VEHICLE_GO_LIVE_MARK` in `modules/fleet/go-live/vehicles.ts`. Repeating the reset likewise:

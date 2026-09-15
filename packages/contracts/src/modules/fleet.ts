@@ -2056,3 +2056,32 @@ export const FleetTemplates = {
   RosterPlanned: 'fleet.rosterPlanned',
 } as const;
 export type FleetTemplateKey = (typeof FleetTemplates)[keyof typeof FleetTemplates];
+
+// ── Go-live runs ──────────────────────────────────────────────────────────────
+//
+// The boot-time go-live steps (the vehicle registry, the drivers' licence scans) record what
+// they did — or why they refused, or what failed — on a row per step. This is that row, read-only,
+// for whoever may create vehicles or manage drivers: the owner cannot read the server log, and
+// two production imports failed with nobody able to say why.
+
+export type FleetGoLiveRunStatus = 'running' | 'done';
+
+export interface FleetGoLiveRunDto {
+  /** `go-live:vehicles:v3`, `go-live:driver-photos:v1` — versioned, see the api's `go-live/`. */
+  key: string;
+  status: FleetGoLiveRunStatus;
+  startedAt: string;
+  finishedAt: string | null;
+  /** While `running`: the instant after which another boot may take the job over. */
+  leaseUntil: string;
+  /**
+   * What the step reported. Free-form by design — counts on success (`created`, `attached`…),
+   * `refused: true` plus the reasons when the step would not start, `failed` plus `failures`
+   * when it started and could not finish. The screen prints it as it is.
+   */
+  outcome: Record<string, unknown> | null;
+}
+
+export interface FleetGoLiveRunsDto {
+  runs: FleetGoLiveRunDto[];
+}

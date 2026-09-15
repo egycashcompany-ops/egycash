@@ -14,6 +14,7 @@ import { syncNavigationCatalog } from './seed-navigation';
 import { syncApplicationSections } from './seed-application-sections';
 import { syncHrOnlyAccounts } from './hr-only-access';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
+import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -39,8 +40,10 @@ const main = async (): Promise<void> => {
   // DELIBERATELY NOT AWAITED, and placed immediately before `listen()` to make that visible:
   // /health/ready must answer inside railway.json's 300s or the deploy is failed and retried, and
   // 23MB of scans through the Files pipeline has no business sitting in front of it. The worker
-  // starts it too; `markOnce` decides which of them actually runs.
+  // starts it too; the lease in `go-live-run.model.ts` decides which of them actually runs.
   startVehicleGoLive();
+  // The drivers' licence scans, on the same terms — one per driver, named by employee code.
+  startDriverPhotosGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

@@ -21,7 +21,7 @@
 // which have no dropdown and belong to no vocabulary. They combine with AND, with each other and
 // with the code search: no filter cancels another, and a bar showing two active filters shows
 // their intersection.
-import { type FleetRosterRowDto } from '@ecms/contracts';
+import { type FleetFixedCrewRowDto, type FleetRosterRowDto } from '@ecms/contracts';
 import { matchesVehicleCode } from './vehicle-code-match';
 
 /** The two STATE views. A mission is not one of these — it travels as `mission=<id>`. */
@@ -43,6 +43,16 @@ export const carriesPlan = (row: FleetRosterRowDto): boolean =>
   row.missionTypeId !== null || row.driver1EmployeeId !== null || row.driver2EmployeeId !== null;
 
 /**
+ * The two seats, and nothing else — what `hasDriver` actually reads.
+ *
+ * Structural, because BOTH boards ask the question: the daily row and the standing row carry the
+ * same two seats and differ in everything around them (a date, a `planned` flag). One predicate
+ * for one fact, or the «crewed» chip on one screen and the «معيّنة» badge on the other drift into
+ * two definitions of «somebody is on this car».
+ */
+type Seated = Pick<FleetRosterRowDto, 'driver1EmployeeId' | 'driver2EmployeeId'>;
+
+/**
  * Does this row have a CREW? A driver in either seat, and nothing else counts.
  *
  * Deliberately NOT `carriesPlan`, and the difference is the whole reason both exist. `carriesPlan`
@@ -55,7 +65,7 @@ export const carriesPlan = (row: FleetRosterRowDto): boolean =>
  * counter agree by accident and drift apart the day either question changes — the same mistake
  * the «صيانة» state and the «نقل أموال (صيانة)» mission type are kept apart to avoid.
  */
-export const hasDriver = (row: FleetRosterRowDto): boolean =>
+export const hasDriver = (row: Seated): boolean =>
   row.driver1EmployeeId !== null || row.driver2EmployeeId !== null;
 
 /**
@@ -82,6 +92,48 @@ export const visibleRows = (
     if (mission !== '' && row.missionTypeId !== mission) return false;
     if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'assigned' && !carriesPlan(row)) return false;
+    return true;
+  });
+};
+
+// ── the STANDING board ─────────────────────────────────────────────────────
+//
+// «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات». The same bar, on the axes this
+// board actually has. It has no day, so it has no «صيانة» state of its own to filter on — the
+// workshop flag on a fixed crew is shown for context and a car in the workshop still HAS a
+// standing crew. What it has is exactly two states, «بطقم» and «بدون طقم», and the same mission
+// vocabulary the daily board reads. So: two views, one mission key, the same AND.
+
+/** The two STATE views of the standing board: a car with somebody on it, and a car with nobody. */
+export const FIXED_ROSTER_VIEWS = ['crewed', 'uncrewed'] as const;
+export type FixedRosterView = (typeof FIXED_ROSTER_VIEWS)[number];
+
+/** `view=` from the URL, or `null` for anything this board does not know — the daily rule. */
+export const readFixedView = (raw: string | null): FixedRosterView | null =>
+  raw !== null && (FIXED_ROSTER_VIEWS as readonly string[]).includes(raw)
+    ? (raw as FixedRosterView)
+    : null;
+
+/**
+ * The rows the STANDING board should show. `visibleRows`, on this board's rows and this board's
+ * two states — `hasDriver` is the crewed test, because a standing crew IS the two seats, and a
+ * mission with nobody in either seat is not a crew.
+ *
+ * Display only, like its twin: the draft, the counters, the pool and what «حفظ» sends all read
+ * the whole board.
+ */
+export const visibleFixedRows = (
+  rows: readonly FleetFixedCrewRowDto[],
+  filters: { term?: string; mission?: string; view?: FixedRosterView | null },
+): FleetFixedCrewRowDto[] => {
+  const term = filters.term ?? '';
+  const mission = filters.mission ?? '';
+  const view = filters.view ?? null;
+  return rows.filter((row) => {
+    if (!matchesVehicleCode(row.code, term)) return false;
+    if (mission !== '' && row.missionTypeId !== mission) return false;
+    if (view === 'crewed' && !hasDriver(row)) return false;
+    if (view === 'uncrewed' && hasDriver(row)) return false;
     return true;
   });
 };

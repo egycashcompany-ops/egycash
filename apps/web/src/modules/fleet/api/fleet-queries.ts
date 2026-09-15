@@ -676,3 +676,16 @@ export const useSetGrievance = () =>
   useViolationMutation((body: SetFleetGrievance) => api.setGrievance(body));
 export const useDeleteViolation = () =>
   useViolationMutation((id: string) => api.deleteViolation(id));
+
+/**
+ * The go-live run rows, for the notice on the vehicles and drivers screens. Asked only by a
+ * reader who could act on the answer — the endpoint refuses everyone else, and a 403 on every
+ * visit to the registry is noise a screen must not generate for itself.
+ */
+export const useFleetGoLiveRuns = (enabled: boolean) =>
+  useQuery({
+    queryKey: [MODULE, 'go-live'],
+    queryFn: api.getFleetGoLiveRuns,
+    staleTime: 30_000,
+    enabled,
+  });

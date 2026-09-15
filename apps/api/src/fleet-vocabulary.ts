@@ -5,10 +5,7 @@
 // same one `seed-demo.ts` makes, and for the same reason: a list this long is worth reading in a
 // test without booting a platform to do it.
 import { type FleetCatalogKind } from '@ecms/contracts';
-import {
-  fleetCatalogItemRepository,
-  fleetCatalogItemService,
-} from './modules/fleet/catalogs';
+import { fleetCatalogItemRepository, fleetCatalogItemService } from './modules/fleet/catalogs';
 
 /**
  * Which work types RESET the maintenance counter — «صيانة» and «صيانة + إصلاح», named by the owner.
@@ -276,17 +273,17 @@ export const applyFleetVocabulary = async (
 ): Promise<VocabularyPlan> => {
   for (const change of plan.changes) {
     if (change.action === 'create') {
-      await fleetCatalogItemService.ensure({
-        kind: change.kind,
-        name: { ar: change.name, en: change.name },
-        countsForAlarm: counts(change.kind, change.name),
-      });
+      await fleetCatalogItemService.ensure(
+        {
+          kind: change.kind,
+          name: { ar: change.name, en: change.name },
+          countsForAlarm: counts(change.kind, change.name),
+        },
+        by,
+      );
       continue;
     }
-    const existing = await fleetCatalogItemRepository.findByKindAndNameAr(
-      change.kind,
-      change.name,
-    );
+    const existing = await fleetCatalogItemRepository.findByKindAndNameAr(change.kind, change.name);
     if (existing === null) continue;
     await fleetCatalogItemService.update(
       String(existing._id),

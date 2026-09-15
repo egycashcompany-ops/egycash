@@ -52,8 +52,18 @@ class FleetCatalogItemService {
     return doc;
   }
 
-  /** Idempotent create-if-missing for the boot seed. */
-  async ensure(input: CreateFleetCatalogItem): Promise<FleetCatalogItemDoc> {
+  /**
+   * Idempotent create-if-missing for the boot seed, and for the go-live imports.
+   *
+   * `by` is optional because the BOOT has no author — nobody pressed anything — and `null` is the
+   * honest record of that. An operator-run import does have one, and passing it makes those rows
+   * attributable like every other row the same run writes; without it a catalog entry created
+   * beside a fully-audited vehicle carries no author at all.
+   */
+  async ensure(
+    input: CreateFleetCatalogItem,
+    by: string | null = null,
+  ): Promise<FleetCatalogItemDoc> {
     const existing = await fleetCatalogItemRepository.findByKindAndNameAr(
       input.kind,
       input.name.ar,
@@ -67,7 +77,7 @@ class FleetCatalogItemService {
         violationSide: input.violationSide ?? null,
         isActive: true,
       },
-      { by: null },
+      { by },
     );
   }
 

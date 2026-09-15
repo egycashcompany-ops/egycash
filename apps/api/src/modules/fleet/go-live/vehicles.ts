@@ -10,16 +10,23 @@
 //
 // THE RACE THE CLI WAS AVOIDING IS SOLVED, NOT IGNORED. `fleet-vehicles-import.cli.ts` said a
 // boot-time import "would race itself", because `server.ts` and `worker.ts` both boot the platform
-// with no leader election between them. `markOnce` IS the leader election: it inserts against a
-// unique index and returns true to exactly one caller, whichever process gets there first, even
-// when both arrive in the same millisecond. The losing process does nothing.
+// with no leader election between them. THE LEASE IS the leader election: `claimGoLiveRun` is one
+// upsert against a unique key and succeeds for exactly one caller, whichever process gets there
+// first, even when both arrive in the same millisecond. The losing process does nothing.
 //
-// IT RUNS ONCE PER DATABASE, FOREVER — and that is the difference between a seed and this. The
-// catalogs beside it are `ensure`d on every boot because re-creating a missing name is harmless.
-// A vehicle is not: `applyImport` UPDATES a car it finds by code, so a step that ran on every boot
-// would overwrite every correction an admin had made since, and restore every car they had
-// deleted, at the next restart. The mark makes the import a one-time event that a restart, a
-// rollback, a scale-up or a redeploy cannot repeat.
+// IT RUNS TO COMPLETION ONCE PER DATABASE — and that is the difference between a seed and this.
+// The catalogs beside it are `ensure`d on every boot because re-creating a missing name is
+// harmless. A vehicle is not: `applyImport` UPDATES a car it finds by code, so a step that ran on
+// every boot would overwrite every correction an admin had made since, and restore every car they
+// had deleted, at the next restart. A run that reached `done` is therefore never repeated by a
+// restart, a rollback, a scale-up or a redeploy.
+//
+// «TO COMPLETION» IS THE PART v1 GOT WRONG. It claimed a once-only mark and was cut off in
+// production between creating the vehicle types and creating the vehicles — and because the mark
+// read «done» from the moment it was claimed, no boot afterwards would touch it, and the owner has
+// no shell to finish it from. The claim is a LEASE now (`go-live-run.model.ts`): a run that dies
+// leaves a lease that expires, and the next boot after that takes the job over and finishes it.
+// The import is re-runnable by construction, so taking it over is safe.
 //
 // IT IS NOT ON THE BOOT'S CRITICAL PATH. `server.ts` calls `app.listen()` only after
 // `bootPlatform()` returns, and `railway.json` fails the deploy if `/health/ready` has not
@@ -41,14 +48,24 @@ import { env, isTest } from '../../../infrastructure/config/env';
 import { logger } from '../../../infrastructure/logging/logger';
 import { userService } from '../../../platform/users';
 import { type AuthContext } from '../../../shared/types';
-import { markOnce } from '../sweeps/sweep-mark.model';
+import { claimGoLiveRun, finishGoLiveRun } from './go-live-run.model';
 import { applyImport, parseCars, planImport } from './vehicles-import';
 
 /**
- * The idempotency key. Versioned, so a future correction to the source data can be applied by
- * bumping it — which is a deliberate, reviewable act, not something a redeploy does by accident.
+ * The run key. Versioned, so a correction to the source data — or, as here, a re-import after the
+ * go-live reset cleared the catalogs the first run's cars pointed at — is applied by bumping it,
+ * which is a deliberate, reviewable act and not something a redeploy does by accident.
+ *
+ * v1 is the run that was cut off in production; v2 is the one that finishes.
  */
-export const VEHICLE_GO_LIVE_MARK = 'go-live:vehicles:v1';
+export const VEHICLE_GO_LIVE_MARK = 'go-live:vehicles:v2';
+
+/**
+ * How long a claim is honoured before another boot may take the job over. The whole import took
+ * nine seconds on a fresh database; thirty minutes is «this process is certainly dead», not
+ * «this process is probably slow», so two live processes never both believe they hold it.
+ */
+export const VEHICLE_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
 
 /**
  * Where the committed data sits at run time.
@@ -103,14 +120,14 @@ const goLiveContext = (adminId: string): AuthContext => ({
  * Exported so a test can await the whole thing; the boot uses `startVehicleGoLive` below, which is
  * this without the waiting.
  *
- * EVERY REFUSAL HAPPENS BEFORE THE MARK IS CLAIMED. That ordering is the whole recovery story: a
- * run refused for a missing branch leaves the mark unclaimed, so adding the branch and redeploying
- * imports the cars. A run refused AFTER claiming would have locked the data out permanently, and
- * the refusals are exactly the conditions an operator is expected to go and fix.
+ * EVERY REFUSAL HAPPENS BEFORE THE RUN IS CLAIMED. That ordering is the whole recovery story: a
+ * run refused for a missing branch leaves the run unclaimed, so adding the branch and redeploying
+ * imports the cars at once, with no lease to wait out. The refusals are exactly the conditions an
+ * operator is expected to go and fix.
  */
 export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
   // The override exists for the tests, which drive this against a couple of cars in a temp folder
-  // rather than the real 209 — what is under test is the mark, the refusals and their ORDER, and
+  // rather than the real 209 — what is under test is the lease, the refusals and their ORDER, and
   // none of that is demonstrated better by a slower fixture.
   const dir = dataDir ?? resolveGoLiveDataDir();
   if (dir === null) {
@@ -127,7 +144,7 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
   if (parsed.rejected.length > 0) {
     logger.error(
       { rows: parsed.rejected },
-      'fleet go-live: rows that cannot be read — nothing was imported, and the mark is NOT set, so a corrected build will import them',
+      'fleet go-live: rows that cannot be read — nothing was imported and the run is NOT claimed, so a corrected build will import them',
     );
     return;
   }
@@ -139,7 +156,7 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
   if (admin === null) {
     logger.error(
       { email: env.SEED_ADMIN_EMAIL },
-      'fleet go-live: no seeded admin to author the import — run the seed first; nothing was imported and the mark is NOT set',
+      'fleet go-live: no seeded admin to author the import — run the seed first; nothing was imported and the run is NOT claimed',
     );
     return;
   }
@@ -148,7 +165,7 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
   if (plan.missingBranches.length > 0 || plan.identifierClashes.length > 0) {
     logger.error(
       { branches: plan.missingBranches, clashes: plan.identifierClashes },
-      'fleet go-live: refused — add the missing branches in /system, or resolve the plate/chassis/motor numbers another vehicle already holds. Nothing was imported and the mark is NOT set, so the next boot after the fix will import them',
+      'fleet go-live: refused — add the missing branches in /system, or resolve the plate/chassis/motor numbers another vehicle already holds. Nothing was imported and the run is NOT claimed, so the next boot after the fix will import them',
     );
     return;
   }
@@ -159,24 +176,28 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
     );
   }
 
-  // THE POINT OF NO RETURN. From here the data is going in, and no later boot will do this again.
-  if (!(await markOnce(VEHICLE_GO_LIVE_MARK))) return;
+  // THE CLAIM. Either this process holds the lease from here, or the job is done / somebody
+  // else's — and in both of those cases there is nothing for this boot to do.
+  if (!(await claimGoLiveRun(VEHICLE_GO_LIVE_MARK, VEHICLE_GO_LIVE_LEASE_MS))) return;
 
   logger.info(
     { cars: plan.cars.length, toCreate: plan.toCreate.length, toUpdate: plan.toUpdate.length },
-    'fleet go-live: importing the vehicle registry — this runs once and never again',
+    'fleet go-live: importing the vehicle registry',
   );
   const outcome = await applyImport(plan, photoDir, photoNames, goLiveContext(String(admin._id)));
   const counts = { created: outcome.created, updated: outcome.updated, photos: outcome.photos };
   if (outcome.failures.length > 0) {
+    // NOT finished. The lease is left to expire, so the next boot after it takes the job over and
+    // — every car already in being an update — completes exactly what this run did not.
     logger.error(
       { count: outcome.failures.length, failures: outcome.failures },
-      'fleet go-live: vehicle import finished WITH FAILURES — the mark is set, so these cars will NOT be retried by a later boot; finish them with `node apps/api/dist/fleet-vehicles-import.cli.js --write`',
+      'fleet go-live: vehicle import finished WITH FAILURES — the run is left unfinished and will be retried by the next boot once its lease expires',
     );
     logger.error(counts, 'fleet go-live: partial import');
     return;
   }
-  logger.info(counts, 'fleet go-live: vehicle registry imported');
+  await finishGoLiveRun(VEHICLE_GO_LIVE_MARK, counts);
+  logger.info(counts, 'fleet go-live: vehicle registry imported — done, and never again');
 };
 
 /**

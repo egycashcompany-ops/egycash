@@ -111,13 +111,13 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(code('src/modules/fleet/fleet.seed.ts')).not.toContain('startVehicleGoLive(');
   });
 
-  it('every refusal is checked BEFORE the mark is claimed, so a fix can be redeployed', () => {
+  it('every refusal is checked BEFORE the run is claimed, so a fix can be redeployed', () => {
     const source = code('src/modules/fleet/go-live/vehicles.ts');
-    const claim = source.indexOf('markOnce(VEHICLE_GO_LIVE_MARK)');
+    const claim = source.indexOf('claimGoLiveRun(VEHICLE_GO_LIVE_MARK');
     expect(claim).toBeGreaterThan(-1);
-    // A refusal after the claim locks the data out of the database permanently: the mark says
-    // «done», and the missing branch the run refused over is exactly the thing an operator goes
-    // and fixes. Each of these must sit above the claim.
+    // A refusal after the claim leaves a lease to wait out before the fix can take effect, and a
+    // refusal is exactly the condition an operator goes and fixes. Each of these must sit above
+    // the claim.
     for (const refusal of [
       'parsed.rejected.length > 0',
       'plan.missingBranches.length > 0',
@@ -134,8 +134,53 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(source).toMatch(/startVehicleGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
   });
 
-  it('the mark is versioned, so correcting the source data is a deliberate act', () => {
-    expect(VEHICLE_GO_LIVE_MARK).toBe('go-live:vehicles:v1');
+  it('the run key is at v2 — v1 was the run production cut off, and must not be resumed', () => {
+    // v1 claimed a once-only mark, created the vehicle types and licence classes, and was killed
+    // before the cars. Resuming v1 would find its mark and do nothing; v2 is a fresh claim.
+    expect(VEHICLE_GO_LIVE_MARK).toBe('go-live:vehicles:v2');
+  });
+
+  it('a run that FAILS is not marked done, so the next boot takes it over', () => {
+    // The whole reason the mark became a lease. `finishGoLiveRun` must sit on the success path
+    // only; a failure returns first and leaves the lease to expire.
+    const source = code('src/modules/fleet/go-live/vehicles.ts');
+    const failureReturn = source.indexOf("'fleet go-live: partial import'");
+    const finish = source.indexOf('finishGoLiveRun(VEHICLE_GO_LIVE_MARK');
+    expect(failureReturn).toBeGreaterThan(-1);
+    expect(finish).toBeGreaterThan(failureReturn);
+    const between = source.slice(failureReturn, finish);
+    expect(between, 'the failure path returns before the run is finished').toContain('return;');
+  });
+});
+
+describe('the go-live reset runs first, once, and spares what it was told to', () => {
+  const seed = code('src/modules/fleet/fleet.seed.ts');
+
+  it('fleet.seed.ts runs it before any catalog row is ensured', () => {
+    // The vocabulary is seeded into the same collection the reset clears. Run the reset after it
+    // and every boot would seed 167 names and then delete them.
+    const reset = seed.indexOf('await startGoLiveReset()');
+    const firstEnsure = seed.indexOf('fleetCatalogItemService.ensure(');
+    expect(reset).toBeGreaterThan(-1);
+    expect(firstEnsure).toBeGreaterThan(-1);
+    expect(reset).toBeLessThan(firstEnsure);
+  });
+
+  it('spares exactly the five things the owner named, and nothing it was not told to', () => {
+    const source = code('src/modules/fleet/go-live/reset.ts');
+    // «ما عدا أنواع المخالفات و السواقيين و وظيفة السائق و تخصص السائق ورخصة السائق».
+    for (const kind of ['violationType', 'driverJob', 'driverSpecialization', 'driverLicenseType']) {
+      expect(source, `${kind} is protected`).toContain(`'${kind}'`);
+    }
+    // The drivers registry, the vehicles and the vehicle types are not on the eight-screen list
+    // and must not be deleted from — the models must not even be imported here.
+    expect(source).not.toContain('FleetDriverProfileModel');
+    expect(source).not.toContain('FleetVehicleModel');
+    expect(source).not.toContain('FleetVehicleTypeModel');
+  });
+
+  it('is versioned like the import, so repeating it is a decision', () => {
+    expect(code('src/modules/fleet/go-live/reset.ts')).toContain("'go-live:reset:v1'");
   });
 });
 

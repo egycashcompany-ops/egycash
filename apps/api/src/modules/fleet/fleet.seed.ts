@@ -5,12 +5,21 @@
 import { type FleetCatalogKind, type FleetViolationSide } from '@ecms/contracts';
 import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
+import { startGoLiveReset } from './go-live/reset';
 import { applyFleetVocabulary, planFleetVocabulary } from './go-live/vocabulary';
 import { ensureVehicleDocsCategory } from './vehicles/vehicle-files';
 import { ensureDriverDocsCategory } from './driver-profiles/driver-files';
 import { runFleetMigrations } from './fleet.migration';
 
 export const seedFleet = async (): Promise<void> => {
+  // THE GO-LIVE RESET, FIRST. Once per database it clears the owner's test data off eight Fleet
+  // screens — see `go-live/reset.ts` for the list and for the five things it spares. It has to
+  // precede every catalog write below, because the vocabulary seeded further down lands in the
+  // same collection it clears, and a reset that ran after the seed would wipe what the seed had
+  // just written. Awaited, because it is the one go-live step that IS part of the boot: a few
+  // `deleteMany` calls, and a precondition of everything after it.
+  await startGoLiveReset();
+
   // The Files categories the licence images write into — before any upload can ask for one.
   await ensureVehicleDocsCategory();
   await ensureDriverDocsCategory();
@@ -114,7 +123,8 @@ export const seedFleet = async (): Promise<void> => {
   // recovers that on its own: the mark says «done» and the next boot honours it.
   //
   // So the import is started by the two processes that STAY ALIVE — `server.ts` and `worker.ts`
-  // — through `startVehicleGoLive`, which the module exports for exactly that. `markOnce` still
-  // decides which of the two does it. Nothing about the owner's experience changes: it is still
-  // the deploy that carries the cars in, with nobody typing anything.
+  // — through `startVehicleGoLive`, which the module exports for exactly that. The run's lease
+  // decides which of the two does it, and hands the job on if that one dies. Nothing about the
+  // owner's experience changes: it is still the deploy that carries the cars in, with nobody
+  // typing anything.
 };

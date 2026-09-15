@@ -34,6 +34,8 @@ let replset: MongoMemoryReplSet | undefined;
 let dataDir = '';
 
 const BRANCH = 'فرع الاختبار';
+/** How /system spells the same branch — one hamza off the data, as production's were. */
+const BRANCH_IN_SYSTEM = 'فرع الإختبار';
 
 /** Two cars in the handover's own shape — enough to prove the mark, which is what is under test. */
 const CARS = [
@@ -132,7 +134,7 @@ describe('a refusal leaves the door open', () => {
     // THE PRODUCTION SHAPE. `findByName` matched the branch, the run was claimed, and every car
     // then failed `assertBranch` inside the loop. The planner asks the service's question now.
     await branchService.create(
-      { code: 'GOLIVE', name: { ar: BRANCH, en: BRANCH } },
+      { code: 'GOLIVE', name: { ar: BRANCH_IN_SYSTEM, en: BRANCH_IN_SYSTEM } },
       new Types.ObjectId().toString(),
     );
     await BranchModel.updateOne({ code: 'GOLIVE' }, { $set: { status: 'inactive' } }).exec();
@@ -152,6 +154,12 @@ describe('the run that can proceed, proceeds once', () => {
 
     expect(await imported(), 'both cars landed').toBe(2);
     expect((await run())?.status, 'and the run marked itself done').toBe('done');
+    // …in the branch /system spells with a hamza the data does not have.
+    const branch = await BranchModel.findOne({ code: 'GOLIVE' }, { _id: 1 }).lean<{ _id: Types.ObjectId }>().exec();
+    expect(
+      await FleetVehicleModel.countDocuments({ code: { $in: ['GOLIVE-1', 'GOLIVE-2'] }, branchId: branch?._id }).exec(),
+      'matched by folded spelling',
+    ).toBe(2);
   });
 
   it('a second boot does not touch a car the company has since corrected', async () => {

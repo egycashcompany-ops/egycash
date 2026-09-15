@@ -97,12 +97,15 @@ describe('what the notice says', () => {
 
   it('prints a finished run that skipped somebody — the scans with no driver of that code', () => {
     const markup = render(
-      [run({ key: 'go-live:driver-photos:v1', status: 'done', outcome: { attached: 40, kept: 0, enrolled: 40, unmatched: ['0100999.jpg'], exited: [] } })],
+      [run({ key: 'go-live:driver-photos:v2', status: 'done', outcome: { attached: 40, kept: 0, enrolled: 40, unknownCodes: ['0100999.jpg'], notDrivers: ['0100998.jpg — موظف مكتب'], exited: [] } })],
       { step: 'driver-photos', permissions: ['fleetDriver.manage'] },
     );
     expect(markup).toContain('data-go-live-state="done"');
     expect(markup).toContain('صور رخص السائقين');
     expect(markup).toContain('0100999.jpg');
+    expect(markup, 'the two reasons, told apart').toContain('أضفهم في الموارد البشرية');
+    expect(markup).toContain('ليسوا في سجل السائقين');
+    expect(markup).toContain('0100998.jpg — موظف مكتب');
   });
 
   it('prints nothing at all when there is no row for the step', () => {

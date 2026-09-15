@@ -126,6 +126,19 @@ export const registerEmployeesByJobTitlesLookup = (lookup: EmployeesByJobTitlesL
   employeesByJobTitlesLookup = lookup;
 };
 
+/**
+ * By EMPLOYEE CODE — the identifier a person is known by outside the system (`0100026`), which is
+ * what a file named for a driver carries. Fail-closed like the id lookup: nothing registered,
+ * nobody found.
+ */
+type EmployeeByCodeLookup = (code: string) => Promise<DirectoryEmployee | null>;
+let employeeByCodeLookup: EmployeeByCodeLookup | null = null;
+export const registerEmployeeByCodeLookup = (lookup: EmployeeByCodeLookup): void => {
+  employeeByCodeLookup = lookup;
+};
+export const getDirectoryEmployeeByCode = async (code: string): Promise<DirectoryEmployee | null> =>
+  employeeByCodeLookup === null ? null : employeeByCodeLookup(code);
+
 export const getDirectoryEmployee = async (
   employeeId: string,
 ): Promise<DirectoryEmployee | null> =>

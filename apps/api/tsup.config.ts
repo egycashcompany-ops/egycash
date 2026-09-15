@@ -1,7 +1,24 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/server.ts', 'src/worker.ts', 'src/seed.ts'],
+  /**
+   * THE OPERATOR CLIs ARE BUILT TOO, and that is not a convenience — without it they do not exist
+   * on the deployed machine at all.
+   *
+   * The image installs with `--omit=dev`, so `tsx` is not there and `npm run import:vehicles`
+   * cannot run; the only things that exist are the files listed here. The go-live imports are run
+   * ONCE, from the service shell, exactly the way the deployment guide already runs the seed:
+   *
+   *   node apps/api/dist/fleet-vocabulary.cli.js --write
+   *   node apps/api/dist/fleet-vehicles-import.cli.js --file ./cars.json --photos ./photos --write
+   */
+  entry: [
+    'src/server.ts',
+    'src/worker.ts',
+    'src/seed.ts',
+    'src/fleet-vocabulary.cli.ts',
+    'src/fleet-vehicles-import.cli.ts',
+  ],
   format: ['esm'],
   target: 'node22',
   platform: 'node',

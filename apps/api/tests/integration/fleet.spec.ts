@@ -877,7 +877,9 @@ describe('the drivers registry’s three catalogs (الوظيفة / التخصص
   it('REFUSES a reference of the wrong kind — the dropdown is not the only guard', async () => {
     // The failure this prevents is silent: a `sparePart` id in `jobId` leaves a profile whose
     // grade column is a dash forever, with nothing anywhere saying why.
-    const sparePart = await mkDriverCatalogItem('sparePart', 'فلتر زيت');
+    // NOT «فلتر زيت»: it is one of the 132 house spare parts the boot seed now creates, and
+    // this case only needs SOME item of the wrong kind — any name that is free will do.
+    const sparePart = await mkDriverCatalogItem('sparePart', 'قطعة اختبار');
     const employeeId = await mkEmployee();
     const res = await request(app)
       .post('/api/v1/fleet/drivers')
@@ -6364,7 +6366,9 @@ describe('the vehicle registry references the catalogs and always has a branch',
   beforeAll(async () => {
     licenseClassId = await mkCatalogItem('licenseClass', 'الأولى', 'First');
     operationId = await mkCatalogItem('operation', 'تشغيل القاهرة', 'Cairo');
-    insuranceCompanyId = await mkCatalogItem('insuranceCompany', 'مصر للتأمين', 'Misr');
+    // NOT «مصر للتأمين»: that is one of the house's own insurers, seeded on boot since the
+    // vocabulary moved into `fleet.seed.ts`, and the catalog's duplicate guard answers 409.
+    insuranceCompanyId = await mkCatalogItem('insuranceCompany', 'تأمين الاختبار', 'Test insurer');
   });
 
   it('stores all three as references and returns them on the DTO', async () => {

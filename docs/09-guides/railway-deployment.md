@@ -104,7 +104,30 @@ downloadable PDF is skipped.
 
 3. Open `https://<app-domain>` → log in with the seeded admin.
 
-## 4b. Fleet go-live imports (once, from the service shell)
+## 4b. Fleet go-live imports
+
+> **THE DEPLOY DOES THIS. There is normally nothing to run here.**
+>
+> The house vocabulary (167 names) is applied by the Fleet boot seed on every deploy, like the
+> driver catalogs beside it. The vehicle registry (209 cars and their licence scans) is imported
+> **once per database** by whichever of `server.ts` / `worker.ts` gets there first, from data
+> committed at `apps/api/assets/fleet-go-live/` and copied into `dist/` by the build. Deploy, wait,
+> refresh.
+>
+> This section exists for the three cases the automatic path does not cover. Read the boot log
+> first — every one of them is named there.
+>
+> | the log says | what to do |
+> |---|---|
+> | «refused — add the missing branches in /system» | Add them under the company's own codes, exactly as the data spells them, then redeploy. The mark is **not** claimed, so the next boot imports everything. |
+> | «vehicle import finished WITH FAILURES» | The mark **is** claimed, so no later boot retries. Finish it with the command below — an existing car is an update, so a re-run completes the job. |
+> | nothing at all, and the registry is empty | The build shipped without its assets, or the seeded admin is missing. Both are named in the log; fix and redeploy. |
+>
+> Correcting the source data after a successful import is a deliberate act: bump
+> `VEHICLE_GO_LIVE_MARK` in `modules/fleet/go-live/vehicles.ts`. Nothing does it by accident.
+
+The commands below remain the manual path — for applying the data early, for dry-running it against
+the live database before a deploy, and for finishing a run that stopped part-way.
 
 Both are **dry-run by default** — they read, resolve every name against the live database, print
 exactly what they would do, and write nothing. `--write` is the only thing that applies them, and

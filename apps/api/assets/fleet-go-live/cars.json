@@ -1,0 +1,5219 @@
+[{
+  "_id": {
+    "$oid": "69282bee6d45d31087262125"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "61",
+  "plate_num": "ج ك ق 4719",
+  "chassis_num": "259836",
+  "motor_num": "1273343",
+  "joining_date": {
+    "$date": "2025-02-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-03T00:00:00.000Z"
+  },
+  "licens": "العجوزة ت",
+  "branch": "أكتوبر",
+  "deleted": 0,
+  "status": 1,
+  "department": "ملاكى",
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262126"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "62",
+  "plate_num": "ج ك ق 4721",
+  "chassis_num": "259771",
+  "motor_num": "1273384",
+  "joining_date": {
+    "$date": "2025-02-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-03T00:00:00.000Z"
+  },
+  "licens": "العجوزة ت",
+  "branch": "أكتوبر",
+  "deleted": 0,
+  "status": 1,
+  "department": "ملاكى",
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262127"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "63",
+  "plate_num": "ج ك ق 4716",
+  "chassis_num": "259866",
+  "motor_num": "1273346",
+  "joining_date": {
+    "$date": "2025-02-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-03T00:00:00.000Z"
+  },
+  "licens": "العجوزة ت",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262128"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "64",
+  "plate_num": "ج ك ق 4718",
+  "chassis_num": "259830",
+  "motor_num": "1273389",
+  "joining_date": {
+    "$date": "2025-02-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-05T00:00:00.000Z"
+  },
+  "licens": "العجوزة ت",
+  "branch": "بورسعيد",
+  "deleted": 0,
+  "status": 1,
+  "department": "ملاكى",
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262129"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "65",
+  "plate_num": "ج ك ق 5726",
+  "chassis_num": "259862",
+  "motor_num": "1273402",
+  "joining_date": {
+    "$date": "2025-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-22T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "أكتوبر",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726212a"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "66",
+  "plate_num": "ج ك ق 5729",
+  "chassis_num": "259856",
+  "motor_num": "1273393",
+  "joining_date": {
+    "$date": "2025-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-22T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "الشروق",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726212b"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "67",
+  "plate_num": "ج ك ق 5731",
+  "chassis_num": "259794",
+  "motor_num": "1273454",
+  "joining_date": {
+    "$date": "2025-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-22T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "بورسعيد",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726212c"
+  },
+  "car_type": "سوزوكى",
+  "car_code": "68",
+  "plate_num": "ج ك ق 5728",
+  "chassis_num": "259863",
+  "motor_num": "1273411",
+  "joining_date": {
+    "$date": "2025-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-22T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726212d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "150",
+  "plate_num": "ف ع 8344",
+  "chassis_num": "250541",
+  "motor_num": "301866",
+  "joining_date": {
+    "$date": "2020-10-12T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-04T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM81",
+  "issi": "965660",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/150.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726212e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "151",
+  "plate_num": "ف ع 9882",
+  "chassis_num": "250209",
+  "motor_num": "302901",
+  "joining_date": {
+    "$date": "2020-10-21T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-04T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDT95",
+  "issi": "965700",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": ""
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726212f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "152",
+  "plate_num": "ف ع 8355",
+  "chassis_num": "249142",
+  "motor_num": "299203",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-04T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHEG45",
+  "issi": "965658",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262130"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "153",
+  "plate_num": "ف ع 9883",
+  "chassis_num": "250207",
+  "motor_num": "302902",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-04T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM22",
+  "issi": "965661",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262131"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "154",
+  "plate_num": "ف ع 9886",
+  "chassis_num": "250798",
+  "motor_num": "299200",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR29",
+  "issi": "965496",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262132"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "155",
+  "plate_num": "ف ع8339",
+  "chassis_num": "250208",
+  "motor_num": "301862",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEMB",
+  "issi": "965659",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262133"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "156",
+  "plate_num": "ف ع 9881",
+  "chassis_num": "250546",
+  "motor_num": "302900",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-07T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPEE22",
+  "issi": "965662",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262134"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "157",
+  "plate_num": "ف ع 8336",
+  "chassis_num": "250545",
+  "motor_num": "303907",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM77",
+  "issi": "965702",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262135"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "158",
+  "plate_num": "ف ع 9885",
+  "chassis_num": "250542",
+  "motor_num": "301861",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-07T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDT94",
+  "issi": "965729",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262136"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "159",
+  "plate_num": "ف ع 8337",
+  "chassis_num": "250544",
+  "motor_num": "302903",
+  "joining_date": {
+    "$date": "2020-10-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-07T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAFGS39",
+  "issi": "965699",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262137"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "160",
+  "plate_num": "ف ع 9877",
+  "chassis_num": "250543",
+  "motor_num": "303908",
+  "joining_date": {
+    "$date": "2020-10-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM36",
+  "issi": "965730",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262138"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "161",
+  "plate_num": "ا ق 1185",
+  "chassis_num": "254456",
+  "motor_num": "307102",
+  "joining_date": {
+    "$date": "2020-11-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM37",
+  "issi": "965494",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262139"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "162",
+  "plate_num": "ا ق 1186",
+  "chassis_num": "257533",
+  "motor_num": "314038",
+  "joining_date": {
+    "$date": "2020-11-25T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-01T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM46",
+  "issi": "965493",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726213a"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "163",
+  "plate_num": "ا ق 1192",
+  "chassis_num": "257541",
+  "motor_num": "307790",
+  "joining_date": {
+    "$date": "2020-11-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-05T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR47",
+  "issi": "965490",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726213b"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "164",
+  "plate_num": "ا ق 1187",
+  "chassis_num": "257539",
+  "motor_num": "314749",
+  "joining_date": {
+    "$date": "2020-11-25T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-09T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFN49",
+  "issi": "965492",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726213c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "165",
+  "plate_num": "ا ق 1343",
+  "chassis_num": "250547",
+  "motor_num": "303906",
+  "joining_date": {
+    "$date": "2020-11-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-09T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM57",
+  "issi": "965498",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726213d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "166",
+  "plate_num": "ا ق 1189",
+  "chassis_num": "254458",
+  "motor_num": "290927",
+  "joining_date": {
+    "$date": "2021-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-10T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPED96",
+  "issi": "965495",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726213e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "167",
+  "plate_num": "ا ق 1712 ",
+  "chassis_num": "254733",
+  "motor_num": "307792",
+  "joining_date": {
+    "$date": "2020-11-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-01T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPEP19",
+  "issi": "965728",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726213f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "168",
+  "plate_num": "ا ق 1351",
+  "chassis_num": "253158",
+  "motor_num": "307100",
+  "joining_date": {
+    "$date": "2021-01-09T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-11-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM45",
+  "issi": "965499",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/168.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262140"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "169",
+  "plate_num": "ا ق 1323",
+  "chassis_num": "254734",
+  "motor_num": "307793",
+  "joining_date": {
+    "$date": "2020-11-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-10T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM13",
+  "issi": "965420",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262141"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "170",
+  "plate_num": "م ى 9493",
+  "chassis_num": "257887",
+  "motor_num": "314748",
+  "joining_date": {
+    "$date": "2022-03-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-04T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFA32",
+  "issi": "961479",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262142"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "171",
+  "plate_num": "ا ق 1613",
+  "chassis_num": "257538",
+  "motor_num": "313349",
+  "joining_date": {
+    "$date": "2020-11-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-09T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW2432",
+  "issi": "956735",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262143"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "172",
+  "plate_num": "ا ق 1341",
+  "chassis_num": "253813",
+  "motor_num": "301865",
+  "joining_date": {
+    "$date": "2020-11-25T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5820",
+  "issi": "956746",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262144"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "173",
+  "plate_num": "ا ق 3473",
+  "chassis_num": "257535",
+  "motor_num": "313348",
+  "joining_date": {
+    "$date": "2021-10-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-14T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM93",
+  "issi": "965701",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262145"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "174",
+  "plate_num": "ا ق 3463",
+  "chassis_num": "254459",
+  "motor_num": "307101",
+  "joining_date": {
+    "$date": "2021-10-10T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5661",
+  "issi": "957141",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262146"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "175",
+  "plate_num": "ا ق 3464",
+  "chassis_num": "257542",
+  "motor_num": "314037",
+  "joining_date": {
+    "$date": "2021-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0290",
+  "issi": "957146",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/175.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262147"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "176",
+  "plate_num": "ا ق 3474",
+  "chassis_num": "257543",
+  "motor_num": "314040",
+  "joining_date": {
+    "$date": "2021-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0265",
+  "issi": "957144",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/176.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262148"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "177",
+  "plate_num": "ا ق 3744",
+  "chassis_num": "253814",
+  "motor_num": "307098",
+  "joining_date": {
+    "$date": "2021-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-05T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0291",
+  "issi": "957143",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262149"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "178",
+  "plate_num": "ا ق 3739",
+  "chassis_num": "254735",
+  "motor_num": "307795",
+  "joining_date": {
+    "$date": "2021-11-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM01",
+  "issi": "965478",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726214a"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "179",
+  "plate_num": "ا ق 3753",
+  "chassis_num": "253816",
+  "motor_num": "307097",
+  "joining_date": {
+    "$date": "2021-03-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0292",
+  "issi": "957142",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726214b"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "180",
+  "plate_num": "م ى 9484",
+  "chassis_num": "254461",
+  "motor_num": "307796",
+  "joining_date": {
+    "$date": "2022-03-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-05T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFC85",
+  "issi": "961481",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726214c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "181",
+  "plate_num": "م ى 9489",
+  "chassis_num": "257536",
+  "motor_num": "307794",
+  "joining_date": {
+    "$date": "2022-04-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-27T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFF71",
+  "issi": "961480",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726214d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "182",
+  "plate_num": "م ى 9491",
+  "chassis_num": "253815",
+  "motor_num": "301864",
+  "joining_date": {
+    "$date": "2022-03-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-28T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR65",
+  "issi": "965497",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726214e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "183",
+  "plate_num": "م ى 9492",
+  "chassis_num": "256857",
+  "motor_num": "314041",
+  "joining_date": {
+    "$date": "2022-04-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFD07",
+  "issi": "961483",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726214f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "184",
+  "plate_num": "م ى 9495",
+  "chassis_num": "257537",
+  "motor_num": "314042",
+  "joining_date": {
+    "$date": "2022-04-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-10T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFE11",
+  "issi": "961484",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262150"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "185",
+  "plate_num": "ج ى 3253",
+  "chassis_num": "310625",
+  "motor_num": "367239",
+  "joining_date": {
+    "$date": "2022-06-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "licens": "برقاش م ",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX05",
+  "issi": "961734",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262151"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "186",
+  "plate_num": "ف ع 7782",
+  "chassis_num": "313994",
+  "motor_num": "370956",
+  "joining_date": {
+    "$date": "2022-08-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-29T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFB94",
+  "issi": "962081",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/186.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262152"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "187",
+  "plate_num": "ن ف 1318",
+  "chassis_num": "312987",
+  "motor_num": "369534",
+  "joining_date": {
+    "$date": "2022-05-15T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV50",
+  "issi": "961728",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262153"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "188",
+  "plate_num": "ن ف 1319",
+  "chassis_num": "313108",
+  "motor_num": "370237",
+  "joining_date": {
+    "$date": "2022-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFB85",
+  "issi": "961730",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262154"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "189",
+  "plate_num": "ن ف 1761",
+  "chassis_num": "3139950",
+  "motor_num": "371388",
+  "joining_date": {
+    "$date": "2022-05-15T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEW55",
+  "issi": "961735",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/189.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262155"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "190",
+  "plate_num": "ن ف 1757",
+  "chassis_num": "332369",
+  "motor_num": "392616",
+  "joining_date": {
+    "$date": "2022-05-15T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFK44",
+  "issi": "961736",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262156"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "191",
+  "plate_num": "ن ف 1317",
+  "chassis_num": "348726",
+  "motor_num": "411086",
+  "joining_date": {
+    "$date": "2022-05-15T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEW22",
+  "issi": "961729",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262157"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "192",
+  "plate_num": "م ى 7578",
+  "chassis_num": "313111",
+  "motor_num": "370955",
+  "joining_date": {
+    "$date": "2027-01-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-22T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEU69",
+  "issi": "963062",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/192.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262158"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "193",
+  "plate_num": "ن ف 1981",
+  "chassis_num": "312523",
+  "motor_num": "369541",
+  "joining_date": {
+    "$date": "2023-04-02T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-04T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEU03",
+  "issi": "963307",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262159"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "288",
+  "plate_num": "ك ى 6894",
+  "chassis_num": "368757",
+  "motor_num": "312172",
+  "joining_date": {
+    "$date": "2025-06-23T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM72",
+  "issi": "966451",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726215a"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "195",
+  "plate_num": "ا ق 1761",
+  "chassis_num": "333062",
+  "motor_num": "393003",
+  "joining_date": {
+    "$date": "2022-12-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-20T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEZ11",
+  "issi": "962503",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726215b"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "196",
+  "plate_num": "ن ف 1969",
+  "chassis_num": "348400",
+  "motor_num": "410131",
+  "joining_date": {
+    "$date": "2023-04-02T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEY92",
+  "issi": "963302",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726215c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "198",
+  "plate_num": "ن ف 1979",
+  "chassis_num": "332183",
+  "motor_num": "391487",
+  "joining_date": {
+    "$date": "2023-04-04T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEY07",
+  "issi": "963303",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726215d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "199",
+  "plate_num": "ا ق 1797",
+  "chassis_num": "331768",
+  "motor_num": "391485",
+  "joining_date": {
+    "$date": "2022-12-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDET65",
+  "issi": "962505",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726215e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "200",
+  "plate_num": "ا ق 1767",
+  "chassis_num": "348727",
+  "motor_num": "409612",
+  "joining_date": {
+    "$date": "2022-12-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-20T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX02",
+  "issi": "962504",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726215f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "201",
+  "plate_num": "ن ف 1959",
+  "chassis_num": "346475",
+  "motor_num": "408175",
+  "joining_date": {
+    "$date": "2023-04-02T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEY95",
+  "issi": "963304",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262160"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "202",
+  "plate_num": "ن ف 1971",
+  "chassis_num": "333063",
+  "motor_num": "392617",
+  "joining_date": {
+    "$date": "2023-04-02T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-19T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV29",
+  "issi": "963305",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262161"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "203",
+  "plate_num": "ف ع 7783",
+  "chassis_num": "312985",
+  "motor_num": "370240",
+  "joining_date": {
+    "$date": "2022-08-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEU20",
+  "issi": "962088",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/203.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262162"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "204",
+  "plate_num": "ج ى 3252",
+  "chassis_num": "312661",
+  "motor_num": "370239",
+  "joining_date": {
+    "$date": "2022-06-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م ",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDES77",
+  "issi": "961731",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262163"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "205",
+  "plate_num": "ا ق 1791",
+  "chassis_num": "312522",
+  "motor_num": "370242",
+  "joining_date": {
+    "$date": "2022-12-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-19T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEZ10",
+  "issi": "962502",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262164"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "206",
+  "plate_num": "ف ع 7759",
+  "chassis_num": "312982",
+  "motor_num": "369535",
+  "joining_date": {
+    "$date": "2022-08-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDES80",
+  "issi": "962085",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/206.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262165"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "207",
+  "plate_num": "ا ق 1787",
+  "chassis_num": "257886",
+  "motor_num": "314750",
+  "joining_date": {
+    "$date": "2022-12-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFC11",
+  "issi": "962537",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262166"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "208",
+  "plate_num": "ج ى 3272",
+  "chassis_num": "309819",
+  "motor_num": "366861",
+  "joining_date": {
+    "$date": "2022-06-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEW98",
+  "issi": "961737",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262167"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "209",
+  "plate_num": "ا ق 1781",
+  "chassis_num": "312986",
+  "motor_num": "369536",
+  "joining_date": {
+    "$date": "2022-12-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-18T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX01",
+  "issi": "962501",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/209.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262168"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "210",
+  "plate_num": "ج ى 3262",
+  "chassis_num": "310191",
+  "motor_num": "366104",
+  "joining_date": {
+    "$date": "2022-06-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-17T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEW03",
+  "issi": "961732",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262169"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "211",
+  "plate_num": "ج ى 3242",
+  "chassis_num": "309714",
+  "motor_num": "367235",
+  "joining_date": {
+    "$date": "2022-06-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-11T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEU99",
+  "issi": "961733",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726216a"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "212",
+  "plate_num": "م ى 7573",
+  "chassis_num": "312988",
+  "motor_num": "370243",
+  "joining_date": {
+    "$date": "2023-02-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX83",
+  "issi": "963063",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/212.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726216b"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "213",
+  "plate_num": "د ف 1959",
+  "chassis_num": "313109",
+  "motor_num": "370954",
+  "joining_date": {
+    "$date": "2023-02-12T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV39",
+  "issi": "963192",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/213.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726216c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "214",
+  "plate_num": "ف ع 7769",
+  "chassis_num": "312662",
+  "motor_num": "368758",
+  "joining_date": {
+    "$date": "2022-08-30T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-29T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "بورسعيد",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX59",
+  "issi": "962089",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/214.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726216d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "215",
+  "plate_num": "ف ع 7765",
+  "chassis_num": "257540",
+  "motor_num": "314043",
+  "joining_date": {
+    "$date": "2022-08-21T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX28",
+  "issi": "962087",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/215.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726216e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "216",
+  "plate_num": "ف ع 7768",
+  "chassis_num": "312663",
+  "motor_num": "370238",
+  "joining_date": {
+    "$date": "2022-08-21T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX42",
+  "issi": "962090",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/216.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726216f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "217",
+  "plate_num": "ف ع 7781",
+  "chassis_num": "312983",
+  "motor_num": "370241",
+  "joining_date": {
+    "$date": "2022-08-21T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-29T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFH23",
+  "issi": "962082",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/217.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262170"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "218",
+  "plate_num": "ف ع 7784",
+  "chassis_num": "312520",
+  "motor_num": "369058",
+  "joining_date": {
+    "$date": "2022-08-21T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-16T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFA51",
+  "issi": "962084",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/218.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262171"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "219",
+  "plate_num": "ف ع 7785",
+  "chassis_num": "312660",
+  "motor_num": "369084",
+  "joining_date": {
+    "$date": "2022-08-30T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDET70",
+  "issi": "962083",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/219.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262172"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "220",
+  "plate_num": "د ف 1951",
+  "chassis_num": "312171",
+  "motor_num": "368762",
+  "joining_date": {
+    "$date": "2023-12-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFC58",
+  "issi": "963193",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/220.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262173"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "222",
+  "plate_num": "د ف 1931",
+  "chassis_num": "254457",
+  "motor_num": "307791",
+  "joining_date": {
+    "$date": "2027-01-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEW14",
+  "issi": "963194",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/222.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262174"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "223",
+  "plate_num": "م ى 7574",
+  "chassis_num": "311390",
+  "motor_num": "368203",
+  "joining_date": {
+    "$date": "2023-02-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-22T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEX82",
+  "issi": "963060",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/223.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262175"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "224",
+  "plate_num": "ج ى 6165",
+  "chassis_num": "312375",
+  "motor_num": "368759",
+  "joining_date": {
+    "$date": "2023-08-20T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV92",
+  "issi": "963605",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/224.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262176"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "225",
+  "plate_num": "د ف 1939",
+  "chassis_num": "310624",
+  "motor_num": "368202",
+  "joining_date": {
+    "$date": "2023-02-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEP83",
+  "issi": "963195",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/225.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262177"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "226",
+  "plate_num": "د ف 1929",
+  "chassis_num": "254460",
+  "motor_num": "3077099",
+  "joining_date": {
+    "$date": "2023-02-07T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV18",
+  "issi": "963196",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/226.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262178"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "228",
+  "plate_num": "م ى 7579",
+  "chassis_num": "312981",
+  "motor_num": "370607",
+  "joining_date": {
+    "$date": "2023-02-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFG18",
+  "issi": "963059",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/228.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262179"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "230",
+  "plate_num": "ج ى 6167",
+  "chassis_num": "257534",
+  "motor_num": "314039",
+  "joining_date": {
+    "$date": "2023-08-20T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-29T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEC90",
+  "issi": "963603",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/230.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726217a"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "231",
+  "plate_num": "م ى 7576",
+  "chassis_num": "312521",
+  "motor_num": "370245",
+  "joining_date": {
+    "$date": "2023-02-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-01-22T00:00:00.000Z"
+  },
+  "licens": "برقاش م ",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFB01",
+  "issi": "963061",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726217b"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "232",
+  "plate_num": "ج ى 6164",
+  "chassis_num": "313107",
+  "motor_num": "370957",
+  "joining_date": {
+    "$date": "2023-08-20T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFC92",
+  "issi": "963602",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/232.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726217c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "233",
+  "plate_num": "ج ى 6163",
+  "chassis_num": "313110",
+  "motor_num": "370244",
+  "joining_date": {
+    "$date": "2023-08-20T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEU01",
+  "issi": "963604",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/233.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726217d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "234",
+  "plate_num": "ج ى 6168",
+  "chassis_num": "313996",
+  "motor_num": "371368",
+  "joining_date": {
+    "$date": "2023-08-20T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-28T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV76",
+  "issi": "963601",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/234.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726217e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "238",
+  "plate_num": "ا ق 5191",
+  "chassis_num": "424811",
+  "motor_num": "486528",
+  "joining_date": {
+    "$date": "2024-04-01T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFG15",
+  "issi": "961482",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726217f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "239",
+  "plate_num": "د ف 4643",
+  "chassis_num": "420973",
+  "motor_num": "477942",
+  "joining_date": {
+    "$date": "2023-12-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFA42",
+  "issi": "964106",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262180"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "240",
+  "plate_num": "د ف 4648",
+  "chassis_num": "420971",
+  "motor_num": "479293",
+  "joining_date": {
+    "$date": "2023-12-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEV45",
+  "issi": "964105",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262181"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "241",
+  "plate_num": "د ف 4645",
+  "chassis_num": "422193",
+  "motor_num": "479298",
+  "joining_date": {
+    "$date": "2023-12-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TZPEQ71",
+  "issi": "964109",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262182"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "242",
+  "plate_num": "د ف 4647",
+  "chassis_num": "422194",
+  "motor_num": "477953",
+  "joining_date": {
+    "$date": "2023-12-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-06T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TZPED78",
+  "issi": "964108",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262183"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "243",
+  "plate_num": "د ف 4649",
+  "chassis_num": "422195",
+  "motor_num": "479300",
+  "joining_date": {
+    "$date": "2023-12-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-24T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TZPEQ77",
+  "issi": "964110",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262184"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "244",
+  "plate_num": "ك ى 1475",
+  "chassis_num": "420972",
+  "motor_num": "479176",
+  "joining_date": {
+    "$date": "2024-10-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-26T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0140",
+  "issi": "956739",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262185"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "245",
+  "plate_num": "ى م 1336",
+  "chassis_num": "446325",
+  "motor_num": "486910",
+  "joining_date": {
+    "$date": "2024-02-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-05T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الشروق",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5600",
+  "issi": "956495",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/245.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262186"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "246",
+  "plate_num": "ى م 1337",
+  "chassis_num": "446321",
+  "motor_num": "487901",
+  "joining_date": {
+    "$date": "2024-02-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFE15",
+  "issi": "964104",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/246.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262187"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "247",
+  "plate_num": "ا ق 5212",
+  "chassis_num": "454574",
+  "motor_num": "354915",
+  "joining_date": {
+    "$date": "2024-04-01T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-06T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5828",
+  "issi": "957148",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/247.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262188"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "248",
+  "plate_num": "ى م 1339",
+  "chassis_num": "438321",
+  "motor_num": "480880",
+  "joining_date": {
+    "$date": "2024-02-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-28T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0142",
+  "issi": "956500",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/248.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262189"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "249",
+  "plate_num": "ا ق 5215",
+  "chassis_num": "438319",
+  "motor_num": "481753",
+  "joining_date": {
+    "$date": "2024-04-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-06T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW3528",
+  "issi": "957147",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726218a"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "250",
+  "plate_num": "ى م 1338",
+  "chassis_num": "446323",
+  "motor_num": "486918",
+  "joining_date": {
+    "$date": "2024-02-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-04T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0351",
+  "issi": "956506",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/250.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726218b"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "251",
+  "plate_num": "ى م 1344",
+  "chassis_num": "438318",
+  "motor_num": "481747",
+  "joining_date": {
+    "$date": "2024-02-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-01-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFB84",
+  "issi": "964107",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/251.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726218c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "252",
+  "plate_num": "ا ق 5195",
+  "chassis_num": "446320",
+  "motor_num": "487941",
+  "joining_date": {
+    "$date": "2024-04-01T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-03T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5605",
+  "issi": "956502",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726218d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "253",
+  "plate_num": "ا ق 5185",
+  "chassis_num": "453258",
+  "motor_num": "549146",
+  "joining_date": {
+    "$date": "2024-04-01T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0354",
+  "issi": "956505",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/253.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726218e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "254",
+  "plate_num": "ا ق 9932",
+  "chassis_num": "438728",
+  "motor_num": "481746",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "بورسعيد",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0281",
+  "issi": "956740",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726218f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "255",
+  "plate_num": "ا ق 9926",
+  "chassis_num": "446324",
+  "motor_num": "487913",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-07T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR57",
+  "issi": "965382",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262190"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "256",
+  "plate_num": "ا ق 9931",
+  "chassis_num": "450279",
+  "motor_num": "488122",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0352",
+  "issi": "956503",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262191"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "257",
+  "plate_num": "ا ق 9935",
+  "chassis_num": "450023",
+  "motor_num": "488108",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-18T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM03",
+  "issi": "965380",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262192"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "258",
+  "plate_num": "ا ق 9934",
+  "chassis_num": "453905",
+  "motor_num": "491047",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-17T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5665",
+  "issi": "956743",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262193"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "259",
+  "plate_num": "ا ق 9928",
+  "chassis_num": "446322",
+  "motor_num": "487949",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-11T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW2435",
+  "issi": "956742",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262194"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "260",
+  "plate_num": "ا ق 9927",
+  "chassis_num": "438320",
+  "motor_num": "481737",
+  "joining_date": {
+    "$date": "2024-05-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-11T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPED23",
+  "issi": "965381",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262195"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "265",
+  "plate_num": "ب ق 3234",
+  "chassis_num": "677540",
+  "motor_num": "2015119",
+  "joining_date": {
+    "$date": "2024-10-08T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-13T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0337",
+  "issi": "956738",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262196"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "266",
+  "plate_num": "ب ق 3231",
+  "chassis_num": "671112",
+  "motor_num": "2015126",
+  "joining_date": {
+    "$date": "2024-10-08T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-07T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5598",
+  "issi": "956496",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262197"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "267",
+  "plate_num": "ب ق 3235",
+  "chassis_num": "676916",
+  "motor_num": "2015110",
+  "joining_date": {
+    "$date": "2024-10-08T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-07T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5597",
+  "issi": "956497",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262198"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "268",
+  "plate_num": "ب ق 3236",
+  "chassis_num": "670462",
+  "motor_num": "2009151",
+  "joining_date": {
+    "$date": "2024-10-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TUQ1087",
+  "issi": "953912",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d31087262199"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "269",
+  "plate_num": "ب ق 3237",
+  "chassis_num": "675891",
+  "motor_num": "2015095",
+  "joining_date": {
+    "$date": "2024-10-08T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5822",
+  "issi": "956736",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726219a"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "270",
+  "plate_num": "ك ى 1793",
+  "chassis_num": "650947",
+  "motor_num": "960139",
+  "joining_date": {
+    "$date": "2024-12-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPED20",
+  "issi": "965379",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/270.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726219b"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "271",
+  "plate_num": "ك ى 1794",
+  "chassis_num": "675890",
+  "motor_num": "15108",
+  "joining_date": {
+    "$date": "2024-12-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-07T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR54",
+  "issi": "965383",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726219c"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "272",
+  "plate_num": "ك ى 5843",
+  "chassis_num": "336888",
+  "motor_num": "396059",
+  "joining_date": {
+    "$date": "2025-05-07T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-15T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPEE16",
+  "issi": "965408",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726219d"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "273",
+  "plate_num": "ك ى 5842",
+  "chassis_num": "310626",
+  "motor_num": "367241",
+  "joining_date": {
+    "$date": "2025-05-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-04-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الشروق",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHEG64",
+  "issi": "965403",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/273.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726219e"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "274",
+  "plate_num": "ك ى 5846",
+  "chassis_num": "337140",
+  "motor_num": "398560",
+  "joining_date": {
+    "$date": "2025-05-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-04-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR50",
+  "issi": "965405",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d3108726219f"
+  },
+  "car_type": "مرسيدس اسبرانتر 515",
+  "car_code": "275",
+  "plate_num": "ك ى 5841",
+  "chassis_num": "312989",
+  "motor_num": "370246",
+  "joining_date": {
+    "$date": "2025-05-07T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-04-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFM53",
+  "issi": "965406",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a0"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "276",
+  "plate_num": "ب ق 6118",
+  "chassis_num": "778867",
+  "motor_num": "2280789",
+  "joining_date": {
+    "$date": "2025-10-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-27T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966865",
+  "sn_motorola": "938TPY0393",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a1"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "277",
+  "plate_num": "ب ق 6144",
+  "chassis_num": "778865",
+  "motor_num": "2282406",
+  "joining_date": {
+    "$date": "2025-10-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-28T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966874",
+  "sn_motorola": "938TPY0512",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a2"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "278",
+  "plate_num": "ب ق 6133",
+  "chassis_num": "778866",
+  "motor_num": "2282411",
+  "joining_date": {
+    "$date": "2025-10-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-28T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "الشروق",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966869 ",
+  "sn_motorola": "938TSQ1887",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a3"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "279",
+  "plate_num": "ب ق 6119",
+  "chassis_num": "783213",
+  "motor_num": "2292384",
+  "joining_date": {
+    "$date": "2025-10-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-27T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966875 ",
+  "sn_motorola": "938TPY0255",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/279.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a4"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "280",
+  "plate_num": "ب ق 6122",
+  "chassis_num": "778868",
+  "motor_num": "2282410",
+  "joining_date": {
+    "$date": "2025-10-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-28T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966882",
+  "sn_motorola": "938TPY0519",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/280.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a5"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "281",
+  "plate_num": "ب ق 8628",
+  "chassis_num": "783210",
+  "motor_num": "2289381",
+  "expiry_date": {
+    "$date": "2026-09-10T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966884 ",
+  "joining_date": {
+    "$date": "2025-11-26T00:00:00.000Z"
+  },
+  "sn_motorola": "938TPYD0301",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a6"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "282",
+  "plate_num": "ب ق 8595",
+  "chassis_num": "783645",
+  "motor_num": "2296923",
+  "expiry_date": {
+    "$date": "2026-08-02T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966880 ",
+  "joining_date": {
+    "$date": "2025-11-26T00:00:00.000Z"
+  },
+  "sn_motorola": "938TSQ0815",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a7"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "283",
+  "plate_num": "ب ق 8616",
+  "chassis_num": "783211",
+  "motor_num": "2291340",
+  "expiry_date": {
+    "$date": "2026-12-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966873 ",
+  "joining_date": {
+    "$date": "2025-11-26T00:00:00.000Z"
+  },
+  "sn_motorola": "938TSQ1884",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/283.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a8"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "284",
+  "plate_num": "ب ق 8618",
+  "chassis_num": "778864",
+  "motor_num": "2274107",
+  "expiry_date": {
+    "$date": "2026-08-18T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966872 ",
+  "joining_date": {
+    "$date": "2025-11-26T00:00:00.000Z"
+  },
+  "sn_motorola": "938TPY0530",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621a9"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "285",
+  "plate_num": "ب ق 8598",
+  "chassis_num": "783212",
+  "motor_num": "2292385",
+  "expiry_date": {
+    "$date": "2026-08-18T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "__v": 0,
+  "issi": "966876",
+  "joining_date": {
+    "$date": "2025-11-26T00:00:00.000Z"
+  },
+  "sn_motorola": "938TPY0419",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621aa"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "500",
+  "plate_num": "ف ع 9884",
+  "chassis_num": "131177",
+  "motor_num": "1040839",
+  "joining_date": {
+    "$date": "2020-10-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-09T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0340",
+  "issi": "956499",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ab"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "501",
+  "plate_num": "م ى 9757",
+  "chassis_num": "180303",
+  "motor_num": "311011",
+  "joining_date": {
+    "$date": "2021-07-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-04T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0287",
+  "issi": "957145",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/501.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ac"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "502",
+  "plate_num": "م ى 9592",
+  "chassis_num": "182837",
+  "motor_num": "311937",
+  "joining_date": {
+    "$date": "2021-07-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU6000",
+  "issi": "957138",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/502.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ad"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "503",
+  "plate_num": "ا ق 3738",
+  "chassis_num": "182846",
+  "motor_num": "1284960",
+  "joining_date": {
+    "$date": "2021-01-04T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-24T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5998",
+  "issi": "956745",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ae"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "504",
+  "plate_num": "ا ق 3743",
+  "chassis_num": "182873",
+  "motor_num": "1284996",
+  "joining_date": {
+    "$date": "2021-01-04T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-24T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TUL3953",
+  "issi": "953913",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/504.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621af"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "505",
+  "plate_num": "ا ق 3747",
+  "chassis_num": "182817",
+  "motor_num": "1311697",
+  "joining_date": {
+    "$date": "2021-01-04T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-06T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0278",
+  "issi": "956744",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b0"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "506",
+  "plate_num": "م ى 9594",
+  "chassis_num": "181865",
+  "motor_num": "311546",
+  "joining_date": {
+    "$date": "2021-10-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW3529",
+  "issi": "957137",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/506.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b1"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "507",
+  "plate_num": "م ى 9749",
+  "chassis_num": "182851",
+  "motor_num": "284968",
+  "joining_date": {
+    "$date": "2021-05-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0266",
+  "issi": "957140",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/507.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b2"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "508",
+  "plate_num": "م ى 9593",
+  "chassis_num": "180977",
+  "motor_num": "311274",
+  "joining_date": {
+    "$date": "2021-05-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW3531",
+  "issi": "957139",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/508.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b3"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "509",
+  "plate_num": "ا ق 1612",
+  "chassis_num": "181330",
+  "motor_num": "1311356",
+  "joining_date": {
+    "$date": "2021-11-17T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFE69",
+  "issi": "960615",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b4"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "510",
+  "plate_num": "ا ق 1686",
+  "chassis_num": "181283",
+  "motor_num": "1311330",
+  "joining_date": {
+    "$date": "2021-11-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFC73",
+  "issi": "960614",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b5"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "511",
+  "plate_num": "ا ق 1696",
+  "chassis_num": "183253",
+  "motor_num": "1312299",
+  "joining_date": {
+    "$date": "2021-11-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-18T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "  938TXDFA69  ",
+  "issi": "960613",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b6"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "512",
+  "plate_num": "ا ق 1321",
+  "chassis_num": "182860",
+  "motor_num": "1284976",
+  "joining_date": {
+    "$date": "2021-01-09T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFG97",
+  "issi": "960610",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b7"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "513",
+  "plate_num": "ا ق 1595",
+  "chassis_num": "182841",
+  "motor_num": "1284955",
+  "joining_date": {
+    "$date": "2021-11-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-01T00:00:00.000Z"
+  },
+  "licens": "برقاش ت ",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFF99",
+  "issi": "960612",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b8"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "514",
+  "plate_num": "ا ق 1591",
+  "chassis_num": "181568",
+  "motor_num": "1311430",
+  "joining_date": {
+    "$date": "2021-11-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-20T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFE00",
+  "issi": "960611",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621b9"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "515",
+  "plate_num": "ن ف 2858",
+  "chassis_num": "182871",
+  "motor_num": "284991",
+  "joining_date": {
+    "$date": "2023-04-11T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-04-09T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDFA59",
+  "issi": "963306",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ba"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "516",
+  "plate_num": "ب ق 4364",
+  "chassis_num": "350025",
+  "motor_num": "468605",
+  "joining_date": {
+    "$date": "2024-11-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-11-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5821",
+  "issi": "956501",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621bb"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "517",
+  "plate_num": "ب ق 4383",
+  "chassis_num": "350109",
+  "motor_num": "468669",
+  "joining_date": {
+    "$date": "2024-11-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-11-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0137",
+  "issi": "956741",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621bc"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "518",
+  "plate_num": "ب ق 4373",
+  "chassis_num": "350605",
+  "motor_num": "469029",
+  "joining_date": {
+    "$date": "2024-11-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-11-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0145",
+  "issi": "956498",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621bd"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "519",
+  "plate_num": "ب ق 4374",
+  "chassis_num": "350113",
+  "motor_num": "468682",
+  "joining_date": {
+    "$date": "2024-11-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-11-16T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVW0148",
+  "issi": "956504",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621be"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "520",
+  "plate_num": "ب ق 4363",
+  "chassis_num": "350022",
+  "motor_num": "468597",
+  "joining_date": {
+    "$date": "2024-11-24T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TVU5826",
+  "issi": "956737",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621bf"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "521",
+  "plate_num": "ك ى 1795",
+  "chassis_num": "350079",
+  "motor_num": "468630",
+  "joining_date": {
+    "$date": "2024-12-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR44",
+  "issi": "965419",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c0"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "522",
+  "plate_num": "ك ى 1796",
+  "chassis_num": "350107",
+  "motor_num": "468654",
+  "joining_date": {
+    "$date": "2024-12-16T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDJ76",
+  "issi": "965477",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c1"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "523",
+  "plate_num": "ك ى 4671",
+  "chassis_num": "350028",
+  "motor_num": "468617",
+  "joining_date": {
+    "$date": "2025-03-09T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDU46",
+  "issi": "965407",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c2"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "524",
+  "plate_num": "ك ى 4659",
+  "chassis_num": "350589",
+  "motor_num": "469011",
+  "joining_date": {
+    "$date": "2025-03-09T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAHFL99",
+  "issi": "965402",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c3"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "525",
+  "plate_num": "ك ى 6731",
+  "chassis_num": "350118",
+  "motor_num": "468694",
+  "joining_date": {
+    "$date": "2025-05-25T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM58",
+  "issi": "962436",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c4"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "526",
+  "plate_num": "ك ى 6723",
+  "chassis_num": "350101",
+  "motor_num": "468643",
+  "joining_date": {
+    "$date": "2025-05-25T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM08",
+  "issi": "962435",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c5"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "527",
+  "plate_num": "ك ى 4658",
+  "chassis_num": "350574",
+  "motor_num": "468978",
+  "joining_date": {
+    "$date": "2025-03-09T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-08T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDR39",
+  "issi": "965404",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c6"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "528",
+  "plate_num": "ك ى 6724",
+  "chassis_num": "350630",
+  "motor_num": "468931",
+  "joining_date": {
+    "$date": "2025-05-25T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM86",
+  "issi": "962434",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c7"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "529",
+  "plate_num": "ك ى 6725",
+  "chassis_num": "350547",
+  "motor_num": "469043",
+  "joining_date": {
+    "$date": "2025-06-04T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPEP37",
+  "issi": "966450",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c8"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "800",
+  "plate_num": "ا ق 4822",
+  "chassis_num": "048085",
+  "motor_num": "68121",
+  "joining_date": {
+    "$date": "2024-04-03T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-04T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الأسكندرية",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TZPEP41",
+  "issi": "964111",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621c9"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "801",
+  "plate_num": "ا ق 4811",
+  "chassis_num": "048358",
+  "motor_num": "68525",
+  "joining_date": {
+    "$date": "2024-04-03T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-02T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TXDEW60",
+  "issi": "964103",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ca"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "802",
+  "plate_num": "ك ى 1476",
+  "chassis_num": "046466",
+  "motor_num": "606026",
+  "joining_date": {
+    "$date": "2024-10-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-26T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPED98",
+  "issi": "965491",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621cb"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "803",
+  "plate_num": "ك ى 1472",
+  "chassis_num": "047698",
+  "motor_num": "607545",
+  "joining_date": {
+    "$date": "2024-10-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-11-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPED32",
+  "issi": "965421",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/803.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621cc"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "804",
+  "plate_num": "ك ى 1473",
+  "chassis_num": "047390",
+  "motor_num": "607071",
+  "joining_date": {
+    "$date": "2024-10-27T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-26T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TATEM21",
+  "issi": "962433",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621cd"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "805",
+  "plate_num": "ك ى 6729",
+  "chassis_num": "049339",
+  "motor_num": "609780",
+  "joining_date": {
+    "$date": "2025-08-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPEP36",
+  "issi": "966453",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621ce"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "806",
+  "plate_num": "ك ى 6728",
+  "chassis_num": "043684",
+  "motor_num": "602416",
+  "joining_date": {
+    "$date": "2025-08-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-09-03T00:00:00.000Z"
+  },
+  "licens": "برقاش م ",
+  "branch": "أكتوبر",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "sn_motorola": "938TAPDT83",
+  "issi": "966452",
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621cf"
+  },
+  "car_type": "MG",
+  "car_code": "MG 1",
+  "plate_num": "ى ه 4491",
+  "chassis_num": "60233",
+  "motor_num": "2140448",
+  "joining_date": {
+    "$date": "2023-03-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-25T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d0"
+  },
+  "car_type": "MG",
+  "car_code": "MG 2",
+  "plate_num": "ى ه 4489",
+  "chassis_num": "60216",
+  "motor_num": "2140449",
+  "joining_date": {
+    "$date": "2023-03-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-03-25T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d1"
+  },
+  "car_type": "MG",
+  "car_code": "MG 3",
+  "plate_num": "ج ك ى 4856",
+  "chassis_num": "89433",
+  "motor_num": "280206",
+  "joining_date": {
+    "$date": "2025-04-28T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-04-27T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d2"
+  },
+  "car_type": "بيجو",
+  "car_code": "بيجو 5008",
+  "plate_num": "ى ن 9116",
+  "chassis_num": "2107",
+  "motor_num": "2207858",
+  "joining_date": {
+    "$date": "2021-04-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-18T00:00:00.000Z"
+  },
+  "licens": "العجوزة ت",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d3"
+  },
+  "car_type": "تويوتا هاى اس",
+  "car_code": "تويوتا 1",
+  "plate_num": "ن ف 1767",
+  "chassis_num": "106008408",
+  "motor_num": "8725000",
+  "joining_date": {
+    "$date": "2022-03-26T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "ميكروباص",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "مصر للتأمين",
+  "license_photo": "/uploads/cars_license_photos/تويوتا_1.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d4"
+  },
+  "car_type": "تويوتا هاى اس",
+  "car_code": "تويوتا 2",
+  "plate_num": " ج ى 3243",
+  "chassis_num": "6008939",
+  "motor_num": "740835",
+  "joining_date": {
+    "$date": "2022-04-13T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-11T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ميكروباص",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d5"
+  },
+  "car_type": "تويوتا",
+  "car_code": "فورتشنر 1",
+  "plate_num": "س ه 7884",
+  "chassis_num": "4202168",
+  "motor_num": "A660017",
+  "joining_date": {
+    "$date": "2021-08-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d6"
+  },
+  "car_type": "تويوتا",
+  "car_code": "فورتشنر 2 ",
+  "plate_num": "ى ى 2814",
+  "chassis_num": "4202113",
+  "motor_num": "A657807",
+  "joining_date": {
+    "$date": "2021-08-17T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-22T00:00:00.000Z"
+  },
+  "licens": "العجوزة ت",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d7"
+  },
+  "car_type": "تويوتا",
+  "car_code": "كوستر 1",
+  "plate_num": "ك ه 9486",
+  "chassis_num": "701054477",
+  "motor_num": "729222",
+  "joining_date": {
+    "$date": "2025-03-12T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-22T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أكتوبر",
+  "deleted": 0,
+  "status": 1,
+  "department": "ميكروباص",
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/كوستر_1.jpg"
+},
+{
+  "_id": {
+    "$oid": "69282bee6d45d310872621d8"
+  },
+  "car_type": "جيلى",
+  "car_code": "كولراى",
+  "plate_num": "ج ك ى 4857",
+  "chassis_num": "501205",
+  "motor_num": "3534",
+  "joining_date": {
+    "$date": "2025-04-28T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2027-04-27T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 0,
+  "status": 1,
+  "issi": "",
+  "sn_motorola": "",
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "694790aca38a757d619ba58f"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "531",
+  "plate_num": "ب ق 9918",
+  "chassis_num": "401560",
+  "motor_num": "521111",
+  "joining_date": {
+    "$date": "2026-01-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966864 ",
+  "sn_motorola": "938TSQ0768",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/531.jpg"
+},
+{
+  "_id": {
+    "$oid": "694790cfa38a757d619ba593"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "532",
+  "plate_num": "ب ق 9921",
+  "chassis_num": "401461",
+  "motor_num": "521087",
+  "joining_date": {
+    "$date": "2026-01-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966871",
+  "sn_motorola": "938TSQ0855",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/532.jpg"
+},
+{
+  "_id": {
+    "$oid": "694790fea38a757d619ba597"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "533",
+  "plate_num": "ب ق 9924",
+  "chassis_num": "401832",
+  "motor_num": "521384",
+  "joining_date": {
+    "$date": "2026-01-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-17T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966881",
+  "sn_motorola": "938TSQ2504",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/533.jpg"
+},
+{
+  "_id": {
+    "$oid": "69479127a38a757d619ba59d"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "534",
+  "plate_num": "ب ق 9923",
+  "chassis_num": "401835",
+  "motor_num": "521345",
+  "joining_date": {
+    "$date": "2026-01-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-06-11T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966868",
+  "sn_motorola": "938TSQ0748",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "694ceb4f5c9bc7b869a0ff4f"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "530",
+  "plate_num": "ج ق 1137",
+  "chassis_num": "401485",
+  "motor_num": "521195",
+  "joining_date": {
+    "$date": "2026-01-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966879",
+  "sn_motorola": "938TSQ1891",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/530.jpg"
+},
+{
+  "_id": {
+    "$oid": "694cebb05c9bc7b869a0ff56"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "286",
+  "plate_num": "ج ق 1134",
+  "chassis_num": "783646",
+  "motor_num": "2291339",
+  "joining_date": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966885",
+  "sn_motorola": "938TSQ0645",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "694cec1b5c9bc7b869a0ff5a"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "287",
+  "plate_num": "ج ق 1136",
+  "chassis_num": "779142",
+  "motor_num": "284266",
+  "joining_date": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-06-23T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "طنطا",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966862",
+  "sn_motorola": "938TSQ0995",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "694cec7a5c9bc7b869a0ff64"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "294",
+  "plate_num": "ج ق 1135",
+  "chassis_num": "778034",
+  "motor_num": "279351",
+  "joining_date": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-06-22T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "بورسعيد",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966861",
+  "sn_motorola": "938TPYD457",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "694ceca85c9bc7b869a0ff68"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "291",
+  "plate_num": "ج ق 1132",
+  "chassis_num": "779143",
+  "motor_num": "282405",
+  "joining_date": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966863",
+  "sn_motorola": "938TSQ0751",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/291.jpg"
+},
+{
+  "_id": {
+    "$oid": "694cecda5c9bc7b869a0ff6f"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "289",
+  "plate_num": "ج ق 1129",
+  "chassis_num": "779144",
+  "motor_num": "284268",
+  "joining_date": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-12-23T00:00:00.000Z"
+  },
+  "licens": "برقاش م",
+  "branch": "بورسعيد",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "966860",
+  "sn_motorola": "938TSQ0963",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين",
+  "license_photo": "/uploads/cars_license_photos/289.jpg"
+},
+{
+  "_id": {
+    "$oid": "6981bda36aa396a2b0381392"
+  },
+  "car_type": "تويوتا",
+  "car_code": "كوستر 2",
+  "plate_num": "ك ى 9187",
+  "chassis_num": "101047783",
+  "motor_num": "692393",
+  "joining_date": {
+    "$date": "2025-12-03T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-05T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "ميكروباص",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0ae9b9768a12c56de02266"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "299",
+  "plate_num": "ج ع أ 1531",
+  "chassis_num": "789820",
+  "motor_num": "314310",
+  "joining_date": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-16T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0ae9ea768a12c56de0226a"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "298",
+  "plate_num": "ج ع أ 1561",
+  "chassis_num": "789819",
+  "motor_num": "314308",
+  "joining_date": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-16T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0aea67768a12c56de0226e"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "295",
+  "plate_num": "ج ع أ 1541",
+  "chassis_num": "790475",
+  "motor_num": "315636",
+  "joining_date": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-17T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0aeaa9768a12c56de02272"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "297",
+  "plate_num": "ج ع أ 1545",
+  "chassis_num": "789822",
+  "motor_num": "314226",
+  "joining_date": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-17T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0aead4768a12c56de02276"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "296",
+  "plate_num": "ج ع أ 1535",
+  "chassis_num": "789821",
+  "motor_num": "311731",
+  "joining_date": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-17T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "الدلتا للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0dac91c8943ffd2e83d697"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "538",
+  "plate_num": "ج ع أ 1751",
+  "chassis_num": "401840",
+  "motor_num": "521370",
+  "joining_date": {
+    "$date": "2026-07-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0dacbdc8943ffd2e83d69b"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "535",
+  "plate_num": "ج ع أ 1731",
+  "chassis_num": "401746",
+  "motor_num": "521272",
+  "joining_date": {
+    "$date": "2026-07-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0daceec8943ffd2e83d69f"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "537",
+  "plate_num": "ج ع أ 1741",
+  "chassis_num": "401809",
+  "motor_num": "521396",
+  "joining_date": {
+    "$date": "2026-07-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0dad16c8943ffd2e83d6a3"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "539",
+  "plate_num": "ج ع أ 1747",
+  "chassis_num": "401562",
+  "motor_num": "521203",
+  "joining_date": {
+    "$date": "2026-07-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a0dad3bc8943ffd2e83d6a7"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "536",
+  "plate_num": "ج ع أ 1737",
+  "chassis_num": "401535",
+  "motor_num": "521169",
+  "joining_date": {
+    "$date": "2026-07-22T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "issi": "",
+  "sn_motorola": "",
+  "__v": 0,
+  "insurance_company": "مصر للتأمين"
+},
+{
+  "_id": {
+    "$oid": "6a5cd208f020e7bb081187e5"
+  },
+  "car_type": "مرسيدس اسيليو 915",
+  "car_code": "3333",
+  "plate_num": "255555555555555",
+  "chassis_num": "255555555555555555",
+  "motor_num": "2555555555555555",
+  "joining_date": {
+    "$date": "2026-07-19T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 1,
+  "status": 1,
+  "driver": "",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a5cd24ef020e7bb0811881e"
+  },
+  "car_type": "تويوتا",
+  "car_code": "3333",
+  "plate_num": "20000000",
+  "chassis_num": "20000000",
+  "motor_num": "200000000",
+  "joining_date": {
+    "$date": "2026-07-05T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-13T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 1,
+  "status": 1,
+  "driver": "",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a5ddad6482bfbad8a005dd0"
+  },
+  "car_type": "بيجو",
+  "car_code": "3333",
+  "plate_num": "33333",
+  "chassis_num": "3333333",
+  "motor_num": "333333",
+  "joining_date": {
+    "$date": "2026-07-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-30T00:00:00.000Z"
+  },
+  "licens": "العجوزة م",
+  "branch": "المهندسين",
+  "department": "ملاكى",
+  "deleted": 1,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "123",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a5ddafd482bfbad8a005ded"
+  },
+  "car_type": "بيجو",
+  "car_code": "3333",
+  "plate_num": "3333",
+  "chassis_num": "3333",
+  "motor_num": "3333",
+  "joining_date": {
+    "$date": "2026-07-14T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "ملاكى",
+  "deleted": 1,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "123",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cb612dd85ed4c97382f0"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "301",
+  "plate_num": "ج ع أ 8982",
+  "chassis_num": "793039",
+  "motor_num": "323604",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cc722dd85ed4c97382ff"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "300",
+  "plate_num": "ج ع أ 8981",
+  "chassis_num": "793038",
+  "motor_num": "317854",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cd1c2dd85ed4c973830e"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "304",
+  "plate_num": "ج ع أ 8984",
+  "chassis_num": "793037",
+  "motor_num": "325222",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "ATM",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cde02dd85ed4c973831d"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "302",
+  "plate_num": "ج ع أ 8987",
+  "chassis_num": "789818",
+  "motor_num": "315638",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cea02dd85ed4c9738364"
+  },
+  "car_type": "مرسيدس اسبرانتر 516",
+  "car_code": "303",
+  "plate_num": "ج ع أ 9121",
+  "chassis_num": "790476",
+  "motor_num": "314311",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-15T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "الشروق",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cee22dd85ed4c9738373"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "809",
+  "plate_num": "ج ع أ 8983",
+  "chassis_num": "044413",
+  "motor_num": "603274",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cf112dd85ed4c9738382"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "808",
+  "plate_num": "ج ع أ 8985",
+  "chassis_num": "044759",
+  "motor_num": "603749",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "أسيوط",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a69cf4d2dd85ed4c9738391"
+  },
+  "car_type": "تويوتا لاند كروزر",
+  "car_code": "807",
+  "plate_num": "ج ع أ 8986",
+  "chassis_num": "048424",
+  "motor_num": "608589",
+  "joining_date": {
+    "$date": "2026-07-29T00:00:00.000Z"
+  },
+  "expiry_date": {
+    "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "licens": "برقاش ت",
+  "branch": "المهندسين",
+  "department": "نقل اموال",
+  "deleted": 0,
+  "status": 1,
+  "driver": "",
+  "insurance_company": "الدلتا للتأمين",
+  "__v": 0
+}]

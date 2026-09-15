@@ -239,7 +239,9 @@ describe('the run that can proceed', () => {
       attached: 2,
       kept: 0,
       enrolled: 2,
-      unmatched: [`${office.code}.jpg`, '0109999.jpg'].sort(),
+      // Told apart: an employee who is not in a driving seat, and a code that is nobody's.
+      notDrivers: [`${office.code}.jpg — موظف مكتب`],
+      unknownCodes: ['0109999.jpg'],
       exited: [],
     });
   });

@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { FLEET_VOCABULARY, COUNTING_WORK_TYPES } from './vocabulary';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
-import { failureReason, MIME, parseCars } from './vehicles-import';
+import { failureReason, fold, MIME, parseCars } from './vehicles-import';
 import { DRIVER_PHOTOS_DIR, DRIVER_PHOTOS_GO_LIVE_MARK, planDriverPhotos } from './driver-photos';
 import { ValidationError } from '../../../shared/errors';
 
@@ -186,6 +186,24 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(code('src/modules/fleet/go-live/vehicles-import.ts')).toContain('reason: failureReason(error)');
   });
 
+  it('matches a branch by FOLDED spelling — «أسيوط» in the data is «اسيوط» in /system', () => {
+    // The production refusal: three of the seven branches were «missing» by one hamza each.
+    for (const [data, system] of [
+      ['أسيوط', 'اسيوط'],
+      ['الأسكندرية', 'الاسكندرية'],
+      ['أكتوبر', 'اكتوبر'],
+      ['المهندسين', 'المهندسين'],
+    ]) {
+      expect(fold(data as string), `${data} ~ ${system}`).toBe(fold(system as string));
+    }
+    expect(fold('طنطا'), 'and different names stay different').not.toBe(fold('بورسعيد'));
+    const source = code('src/modules/fleet/go-live/vehicles-import.ts');
+    expect(source, 'the planner and the writer share one resolver').toContain('await resolveBranches(');
+    expect(source, 'declared once').toContain('export const resolveBranches = async (');
+    expect(source.split('resolveBranches(').length - 1, 'used twice — plan and apply').toBe(2);
+    expect(source, 'no exact-only lookup is left').not.toContain('branchRepository.findByName(');
+  });
+
   it('a deactivated branch is refused by the PLANNER, by the same rule the service applies', () => {
     // `findByName` matches any live branch; `assertBranch` demands `status === 'active'`. A plan
     // that only asked the first question claimed the run and failed every car on the second.
@@ -230,8 +248,10 @@ describe('the driver licence scans — one per driver, by employee code', () => 
     departmentId: null,
   });
 
-  it('is at v1, in its own folder beside the cars', () => {
-    expect(DRIVER_PHOTOS_GO_LIVE_MARK).toBe('go-live:driver-photos:v1');
+  it('is at v2, in its own folder beside the cars', () => {
+    // v1 could not say why five scans were nobody's; v2 tells «no such employee» from «not a
+    // driving seat» and re-runs, keeping every scan already attached.
+    expect(DRIVER_PHOTOS_GO_LIVE_MARK).toBe('go-live:driver-photos:v2');
     expect(DRIVER_PHOTOS_DIR).toBe('driver-license-photos');
   });
 

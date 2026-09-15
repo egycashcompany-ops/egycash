@@ -29,7 +29,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { extname, join, parse } from 'node:path';
 import { env, isTest } from '../../../infrastructure/config/env';
 import { logger } from '../../../infrastructure/logging/logger';
-import { type DirectoryEmployee } from '../../../platform/directory';
+import { getDirectoryEmployeeByCode, type DirectoryEmployee } from '../../../platform/directory';
 import { userService } from '../../../platform/users';
 import { type AuthContext } from '../../../shared/types';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
@@ -45,7 +45,13 @@ import { resolveGoLiveDataDir } from './vehicles';
 import { MIME } from './vehicles-import';
 
 /** The run key — versioned like the vehicles', and for the same reason. */
-export const DRIVER_PHOTOS_GO_LIVE_MARK = 'go-live:driver-photos:v1';
+/**
+ * v1 attached 36 of 41 and could only say «no driving-seat employee has this code» about the
+ * other five. v2 says WHICH of two things that means — no such employee at all, or an employee
+ * whose job title does not require a driving test — and re-runs so the answer is on the screen.
+ * Every scan already attached is kept, not re-uploaded.
+ */
+export const DRIVER_PHOTOS_GO_LIVE_MARK = 'go-live:driver-photos:v2';
 
 /** The vehicles' lease. Forty-one scans take seconds; thirty minutes is «certainly dead». */
 export const DRIVER_PHOTOS_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -111,6 +117,25 @@ export interface DriverPhotoOutcome {
   enrolled: number;
   failures: { file: string; code: string; error: string }[];
 }
+
+/**
+ * The two reasons a scan can be nobody's, told apart — «add the employee» and «flag their job
+ * title as a driving seat» are different people's jobs. Asked of the directory by code, one file
+ * at a time; there are five of them, not five thousand.
+ */
+export const explainUnmatched = async (
+  unmatched: readonly string[],
+): Promise<{ unknownCodes: string[]; notDrivers: string[] }> => {
+  const unknownCodes: string[] = [];
+  const notDrivers: string[] = [];
+  for (const file of unmatched) {
+    const code = parse(file).name;
+    const employee = await getDirectoryEmployeeByCode(code);
+    if (employee === null) unknownCodes.push(file);
+    else notDrivers.push(`${file} — ${employee.fullNameAr}`);
+  }
+  return { unknownCodes, notDrivers };
+};
 
 /**
  * The privileged context the step acts as. `fleetDriver.manage` is the one the Files service asks
@@ -225,9 +250,10 @@ export const runDriverPhotosGoLive = async (dataDir?: string): Promise<void> => 
     });
     return;
   }
+  const explained = await explainUnmatched(plan.unmatched);
   if (plan.unmatched.length > 0 || plan.exited.length > 0) {
     logger.warn(
-      { unmatched: plan.unmatched, exited: plan.exited },
+      { ...explained, exited: plan.exited },
       'fleet go-live: these scans name no current driving-seat employee — they are skipped, and listed on the run',
     );
   }
@@ -245,7 +271,8 @@ export const runDriverPhotosGoLive = async (dataDir?: string): Promise<void> => 
     attached: outcome.attached,
     kept: outcome.kept,
     enrolled: outcome.enrolled,
-    unmatched: plan.unmatched,
+    unknownCodes: explained.unknownCodes,
+    notDrivers: explained.notDrivers,
     exited: plan.exited,
   };
   if (outcome.failures.length > 0) {

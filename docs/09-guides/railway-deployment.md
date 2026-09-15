@@ -126,7 +126,7 @@ downloadable PDF is skipped.
 >    run that is killed part-way leaves a lease that expires after 30 minutes, and the next boot
 >    after that takes it over and finishes it. Every car already in is an update, so a take-over
 >    is safe.
-> 4. **The drivers' licence scans** (`go-live/driver-photos.ts`, key `go-live:driver-photos:v1`)
+> 4. **The drivers' licence scans** (`go-live/driver-photos.ts`, key `go-live:driver-photos:v2`)
 >    — one file per driver in `assets/fleet-go-live/driver-license-photos/`, named for the
 >    driver's **employee code** (`0100026.jpg` is employee `0100026`). Each is matched to a
 >    driving-seat employee by that code and attached to their profile, which is opened if the
@@ -144,11 +144,11 @@ downloadable PDF is skipped.
 >
 > | the notice (or the log) says | what to do |
 > |---|---|
-> | «مرفوض، لم يبدأ» with **branches the system does not have** | Add them in /system under the company's own codes, exactly as the data spells them, then redeploy. Nothing is claimed, so the next boot imports everything. |
+> | «مرفوض، لم يبدأ» with **branches the system does not have** | Add them in /system under the company's own codes, then redeploy. Spelling is matched with the hamza, tashkeel and taa-marbuta folded («أسيوط» in the data finds «اسيوط» in /system), so only a genuinely absent branch is named here. Nothing is claimed, so the next boot imports everything. |
 > | «مرفوض، لم يبدأ» with **deactivated branches** | Re-activate them in /system (the branch list's «تفعيل»). This is the check every car fails inside the service (`assertBranch`); the planner now refuses on it before claiming. The next boot imports everything. |
 > | «مرفوض، لم يبدأ» with **numbers another vehicle already holds** | Resolve the plate / chassis / motor number on the vehicle named, then redeploy. |
 > | «فشل جزئيًا» with a list of failures | Each line is `code: reason`, with the validation field named. The run is left **unfinished**: its lease expires in 30 minutes and the next boot after that retries it — an existing car is an update, so the retry completes the job. Fix whatever the reasons name; to retry sooner, redeploy after the lease is up. |
-> | «تم، مع ملاحظات» on the drivers screen | Scans whose code is no current driving-seat employee's. Either the employee is missing from HR, or their job title does not require a driving test, or they have left. Fix the HR side; the scan is attached at the next key bump. |
+> | «تم، مع ملاحظات» on the drivers screen | Scans this step could not place, told apart: **no employee at all** with that code (add them in HR), **an employee whose job title does not require a driving test** (flag the title in /system — that is what puts them on the drivers registry), or one who has **left**. Fix the HR side; the scan is attached at the next key bump. |
 > | nothing at all, and the registry is empty | The build shipped without its assets, or the seeded admin is missing. Both are named in the log; fix and redeploy. |
 > | the dropdowns filled but the registry did not | The v1 shape: a run cut off between the types and the cars, under a mark that could not be retried. Since v2 the claim is a lease; since v3 the reasons are on the row and on the screen. |
 >

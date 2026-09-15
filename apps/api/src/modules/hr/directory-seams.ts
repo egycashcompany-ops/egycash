@@ -7,6 +7,7 @@
 import {
   registerAttendanceDayLookup,
   registerEmployeeBatchLookup,
+  registerEmployeeByCodeLookup,
   registerEmployeeLookup,
   registerEmployeesByDepartmentLookup,
   registerEmployeesByJobTitlesLookup,
@@ -58,6 +59,20 @@ export const registerHrDirectorySeams = (): void => {
       branchId: String(employee.branchId),
       departmentId: String(employee.departmentId),
     }));
+  });
+
+  // By code — «which employee is 0100026?» — for a consumer holding a file named for a person.
+  registerEmployeeByCodeLookup(async (code) => {
+    const employee = await employeeRepository.findByCodeSystem(code);
+    if (employee === null) return null;
+    return {
+      employeeId: String(employee._id),
+      code: employee.code,
+      fullNameAr: employee.personal.fullNameAr,
+      status: employee.status,
+      branchId: String(employee.branchId),
+      departmentId: String(employee.departmentId),
+    };
   });
 
   registerSelfEmployeeLookup(async (userId) => {

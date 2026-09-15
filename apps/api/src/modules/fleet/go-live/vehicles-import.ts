@@ -21,6 +21,7 @@ import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.reposi
 import { fleetVehicleTypeService } from '../vehicle-types/vehicle-type.service';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetVehicleService } from '../vehicles/vehicle.service';
+import { type BranchDoc } from '../../../platform/organization/branches/branch.model';
 import { branchRepository } from '../../../platform/organization/branches/branch.repository';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
@@ -167,6 +168,8 @@ export interface ImportPlan {
   missingBranches: string[];
   /** Branches the organisation has but has DEACTIVATED — `assertBranch` refuses them. Blocks the run. */
   inactiveBranches: string[];
+  /** Data spellings matched to a branch by the fold — «أسيوط» taken as «اسيوط». Reported. */
+  branchMatches: { incoming: string; existing: string }[];
   /**
    * An identifier this data would bring in that ANOTHER vehicle already holds. Blocks the run.
    *
@@ -194,7 +197,12 @@ const uniq = (values: readonly (string | null)[]): string[] => [
  * have used, and collapses whitespace. Two names with the same key are almost certainly the same
  * word; they are reported, not merged.
  */
-const fold = (name: string): string =>
+/**
+ * Arabic orthography folded flat: hamza forms to bare alef, tashkeel dropped, taa marbuta and
+ * alef maqsura normalised, whitespace collapsed. «أسيوط» and «اسيوط» fold to the same word.
+ * Exported for the branch matching below and its test.
+ */
+export const fold = (name: string): string =>
   name
     .replace(/[\u0622\u0623\u0625\u0671]/g, '\u0627')
     .replace(/[\u064B-\u065F\u0670]/g, '')
@@ -262,12 +270,20 @@ export const planImport = async (
   // failed». It is the one condition this planner reads from data the run did not write itself,
   // and it is exactly the shape production showed twice. So an inactive branch is a refusal,
   // before the claim, by name — the operator re-activates it in /system and the next boot imports.
+  //
+  // AND MATCHED BY FOLDED SPELLING. The company's own branch list says «اسيوط» and «الاسكندرية»;
+  // the legacy export says «أسيوط» and «الأسكندرية». Same branch, one hamza apart — and a
+  // refusal over that hamza sent the owner to «add the missing branches» that were in /system all
+  // along. Exact match first, then the fold (`fold` above); a match through the fold is REPORTED
+  // (`branchMatches`) so the log says which spelling was taken for which.
   const missingBranches: string[] = [];
   const inactiveBranches: string[] = [];
-  for (const name of uniq(cars.map((c) => c.branch))) {
-    const found = await branchRepository.findByName({ ar: name, en: name });
+  const branchMatches: { incoming: string; existing: string }[] = [];
+  const branches = await resolveBranches(uniq(cars.map((c) => c.branch)));
+  for (const [name, found] of branches) {
     if (found === null) missingBranches.push(name);
     else if (found.status !== 'active') inactiveBranches.push(name);
+    else if (found.name.ar !== name) branchMatches.push({ incoming: name, existing: found.name.ar });
   }
 
   const toCreate: string[] = [];
@@ -306,6 +322,7 @@ export const planImport = async (
     nearMatches,
     missingBranches,
     inactiveBranches,
+    branchMatches,
     identifierClashes,
     toCreate,
     toUpdate,
@@ -320,6 +337,27 @@ export interface ImportOutcome {
   photos: number;
   failures: { code: string; reason: string }[];
 }
+
+/**
+ * Every branch name the data uses, resolved against the LIVE branch list: an exact Arabic or
+ * English match first, then a match on the folded spelling. One read of the list for all names,
+ * and one resolver for the planner and the writer, so the two can never disagree about which
+ * branch a car goes to.
+ */
+export const resolveBranches = async (
+  names: readonly string[],
+): Promise<Map<string, BranchDoc | null>> => {
+  const live = await branchRepository.listAll();
+  const exact = new Map<string, BranchDoc>();
+  const folded = new Map<string, BranchDoc>();
+  for (const branch of live) {
+    for (const value of [branch.name.ar, branch.name.en]) {
+      if (!exact.has(value)) exact.set(value, branch);
+      if (!folded.has(fold(value))) folded.set(fold(value), branch);
+    }
+  }
+  return new Map(names.map((name) => [name, exact.get(name) ?? folded.get(fold(name)) ?? null]));
+};
 
 /**
  * What went wrong, in words somebody can act on. An `AppError` carries structured `details`
@@ -404,8 +442,7 @@ export const applyImport = async (
   };
 
   const branchIds = new Map<string, string>();
-  for (const name of uniq(plan.cars.map((c) => c.branch))) {
-    const found = await branchRepository.findByName({ ar: name, en: name });
+  for (const [name, found] of await resolveBranches(uniq(plan.cars.map((c) => c.branch)))) {
     if (found !== null) branchIds.set(name, String(found._id));
   }
 

@@ -31,7 +31,7 @@ export const runState = (run: FleetGoLiveRunDto): State => {
 
 /** Does a FINISHED run have anything worth a notice? Skipped drivers, skipped scans. */
 const finishedWithNotes = (run: FleetGoLiveRunDto): boolean =>
-  ['unmatched', 'exited'].some((key) => {
+  ['unmatched', 'unknownCodes', 'notDrivers', 'exited'].some((key) => {
     const value = run.outcome?.[key];
     return Array.isArray(value) && value.length > 0;
   });

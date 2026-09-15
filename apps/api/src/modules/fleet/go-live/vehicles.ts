@@ -192,6 +192,12 @@ export const runVehicleGoLive = async (dataDir?: string): Promise<void> => {
     });
     return;
   }
+  if (plan.branchMatches.length > 0) {
+    logger.info(
+      { branches: plan.branchMatches },
+      'fleet go-live: these branch names were matched by spelling — «أسيوط» in the data is «اسيوط» in /system',
+    );
+  }
   if (plan.missingPhotos.length > 0) {
     logger.warn(
       { codes: plan.missingPhotos },

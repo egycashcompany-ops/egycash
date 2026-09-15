@@ -108,11 +108,26 @@ downloadable PDF is skipped.
 
 > **THE DEPLOY DOES THIS. There is normally nothing to run here.**
 >
-> The house vocabulary (167 names) is applied by the Fleet boot seed on every deploy, like the
-> driver catalogs beside it. The vehicle registry (209 cars and their licence scans) is imported
-> **once per database** by whichever of `server.ts` / `worker.ts` gets there first, from data
-> committed at `apps/api/assets/fleet-go-live/` and copied into `dist/` by the build. Deploy, wait,
-> refresh.
+> Three go-live steps run by themselves, in this order, and each is versioned so that repeating
+> one is a code change somebody reviews, never a side effect of a redeploy:
+>
+> 1. **The reset** (`go-live/reset.ts`, `go-live:reset:v1`) — once per database, first thing in
+>    the Fleet seed: clears the test data off `/fleet/odometer`, `/maintenance`,
+>    `/maintenance-alarms`, `/roster`, `/fixed-roster`, `/accidents`, `/violations` and
+>    `/catalogs`. Spared, untouched: violation **types**, the drivers registry, and the three
+>    driver catalogs (job / specialization / licence). Not on the list, so not touched either: the
+>    vehicles and the vehicle types.
+> 2. **The vocabulary** (167 names, Arabic + English) — every boot, create-if-missing, in the
+>    Fleet seed after the reset. Like the driver catalogs beside it.
+> 3. **The vehicle registry** (209 cars and their licence scans) — from data committed at
+>    `apps/api/assets/fleet-go-live/` and copied into `dist/` by the build, started after boot by
+>    whichever of `server.ts` / `worker.ts` claims it. The claim is a **lease**
+>    (`fleet_go_live_runs`, key `go-live:vehicles:v2`): a run that finishes is `done` for good; a
+>    run that is killed part-way leaves a lease that expires after 30 minutes, and the next boot
+>    after that takes it over and finishes it. Every car already in is an update, so a take-over
+>    is safe.
+>
+> Deploy, wait, refresh.
 >
 > This section exists for the three cases the automatic path does not cover. Read the boot log
 > first — every one of them is named there.
@@ -120,11 +135,13 @@ downloadable PDF is skipped.
 > | the log says | what to do |
 > |---|---|
 > | «refused — add the missing branches in /system» | Add them under the company's own codes, exactly as the data spells them, then redeploy. The mark is **not** claimed, so the next boot imports everything. |
-> | «vehicle import finished WITH FAILURES» | The mark **is** claimed, so no later boot retries. Finish it with the command below — an existing car is an update, so a re-run completes the job. |
+> | «vehicle import finished WITH FAILURES» | The run is left **unfinished**. Its lease expires in 30 minutes and the next boot after that retries it — an existing car is an update, so the retry completes the job. To retry sooner, redeploy after the lease is up. The command below still works as a manual finisher. |
 > | nothing at all, and the registry is empty | The build shipped without its assets, or the seeded admin is missing. Both are named in the log; fix and redeploy. |
+> | the dropdowns filled but the registry did not | The v1 shape: a run cut off between the types and the cars, under a mark that could not be retried. v2 is the lease above; it does not happen again. |
 >
-> Correcting the source data after a successful import is a deliberate act: bump
-> `VEHICLE_GO_LIVE_MARK` in `modules/fleet/go-live/vehicles.ts`. Nothing does it by accident.
+> Correcting the source data after a finished import is a deliberate act: bump
+> `VEHICLE_GO_LIVE_MARK` in `modules/fleet/go-live/vehicles.ts`. Repeating the reset likewise:
+> `GO_LIVE_RESET_MARK` in `go-live/reset.ts`. Nothing does either by accident.
 
 The commands below remain the manual path — for applying the data early, for dry-running it against
 the live database before a deploy, and for finishing a run that stopped part-way.

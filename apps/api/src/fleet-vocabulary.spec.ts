@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { COUNTING_WORK_TYPES, FLEET_VOCABULARY } from './fleet-vocabulary';
 
 const list = (kind: string): readonly string[] =>
-  FLEET_VOCABULARY.find((entry) => entry.kind === kind)?.names ?? [];
+  (FLEET_VOCABULARY.find((entry) => entry.kind === kind)?.names ?? []).map((name) => name.ar);
 
 describe('the Fleet vocabulary the owner handed over', () => {
   it('covers the five catalogs it was given for, and nothing else', () => {
@@ -36,18 +36,32 @@ describe('the Fleet vocabulary the owner handed over', () => {
     // therefore two parts to it — two rows that look identical in the dropdown, and two halves of
     // every report that counts them. Several names arrived padded; this is what keeps them trimmed.
     for (const { kind, names } of FLEET_VOCABULARY) {
-      for (const name of names) {
-        expect(name, `${kind}: «${name}» is padded`).toBe(name.trim());
-        expect(name.length, `${kind}: empty name`).toBeGreaterThan(0);
-        expect(name, `${kind}: «${name}» has a double space`).not.toContain('  ');
+      for (const { ar, en } of names) {
+        for (const name of [ar, en]) {
+          expect(name, `${kind}: «${name}» is padded`).toBe(name.trim());
+          expect(name.length, `${kind}: empty name`).toBeGreaterThan(0);
+          expect(name, `${kind}: «${name}» has a double space`).not.toContain('  ');
+        }
       }
     }
   });
 
   it('repeats no name inside one catalog', () => {
     for (const { kind, names } of FLEET_VOCABULARY) {
-      const seen = new Set(names);
+      const seen = new Set(names.map((name) => name.ar));
       expect(seen.size, `${kind} has a repeat`).toBe(names.length);
+    }
+  });
+
+  it('gives every name an English that is not just the Arabic again', () => {
+    // «ضيفهم عربى وترجم الانجلش وانت بتضيف». The first cut stored the Arabic twice; a row whose
+    // English column reads Arabic is the exact thing this list now exists to prevent. The few
+    // names that ARE the same in both — MG, DVR, Bus Egypt — are Latin already, so the rule is
+    // «an English column with no Arabic letters in it».
+    for (const { kind, names } of FLEET_VOCABULARY) {
+      for (const { ar, en } of names) {
+        expect(en, `${kind}: «${ar}» has no English`).not.toMatch(/[\u0600-\u06FF]/);
+      }
     }
   });
 

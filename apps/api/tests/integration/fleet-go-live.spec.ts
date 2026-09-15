@@ -1,14 +1,18 @@
 // The vehicle go-live, against a real mongo — the three things the design rests on, in the order
 // an operator meets them.
 //
-//   1. A refusal leaves the mark UNCLAIMED, so the fix can simply be redeployed.
-//   2. The run that succeeds claims it.
+//   1. A refusal leaves the run UNCLAIMED, so the fix can simply be redeployed.
+//   2. The run that succeeds claims it, and finishes it.
 //   3. Every boot after that does nothing at all — including to a car an admin has since changed.
+//   4. A run that DIED — a lease that ran out with the job unfinished — is taken over and finished.
 //
 // (3) is the one worth a real database. `applyImport` UPDATES a car it finds by code, so a step
 // that ran on every boot would quietly restore every correction the company made, at the next
-// restart, forever. The only thing standing between that and their data is the mark, and a test
-// that asserted the mark row exists would prove nothing about whether anybody honours it.
+// restart, forever. The only thing standing between that and their data is the run's `done`, and
+// a test that asserted the row exists would prove nothing about whether anybody honours it.
+//
+// (4) is why the mark became a lease: v1 was cut off in production between the vehicle types and
+// the vehicles, and its once-only mark then kept every later boot away from the job.
 import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,7 +26,7 @@ import { env } from '../../src/infrastructure/config/env';
 import { userService } from '../../src/platform/users';
 import { branchService } from '../../src/platform/organization';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
-import { FleetSweepMarkModel } from '../../src/modules/fleet/sweeps/sweep-mark.model';
+import { FleetGoLiveRunModel } from '../../src/modules/fleet/go-live/go-live-run.model';
 import { runVehicleGoLive, VEHICLE_GO_LIVE_MARK } from '../../src/modules/fleet/go-live/vehicles';
 
 let replset: MongoMemoryReplSet | undefined;
@@ -68,8 +72,10 @@ const resolveMongoUri = async (): Promise<string> => {
   return replset.getUri();
 };
 
-const markCount = async (): Promise<number> =>
-  FleetSweepMarkModel.countDocuments({ key: VEHICLE_GO_LIVE_MARK }).exec();
+const run = async () =>
+  FleetGoLiveRunModel.findOne({ key: VEHICLE_GO_LIVE_MARK })
+    .lean<{ status: string; leaseUntil: Date; outcome: unknown } | null>()
+    .exec();
 
 const imported = async (): Promise<number> =>
   FleetVehicleModel.countDocuments({ code: { $in: ['GOLIVE-1', 'GOLIVE-2'] } }).exec();
@@ -108,7 +114,7 @@ describe('a refusal leaves the door open', () => {
     await runVehicleGoLive(dataDir);
 
     expect(await imported(), 'no car was written').toBe(0);
-    expect(await markCount(), 'and the mark is still free').toBe(0);
+    expect(await run(), 'and the run is still unclaimed').toBeNull();
   });
 });
 
@@ -122,7 +128,7 @@ describe('the run that can proceed, proceeds once', () => {
     await runVehicleGoLive(dataDir);
 
     expect(await imported(), 'both cars landed').toBe(2);
-    expect(await markCount(), 'and the run marked itself done').toBe(1);
+    expect((await run())?.status, 'and the run marked itself done').toBe('done');
   });
 
   it('a second boot does not touch a car the company has since corrected', async () => {
@@ -140,7 +146,7 @@ describe('the run that can proceed, proceeds once', () => {
       .exec();
     expect(car?.plateNumber, "the admin's correction survived the boot").toBe('ص ح ح 9999');
     expect(await imported(), 'and nothing was duplicated').toBe(2);
-    expect(await markCount(), 'the mark is still exactly one row').toBe(1);
+    expect((await run())?.status, 'still done').toBe('done');
   });
 
   it('writes nothing at all on a later boot — not even a version bump', async () => {
@@ -159,5 +165,38 @@ describe('the run that can proceed, proceeds once', () => {
       .lean<{ __v: number }>()
       .exec();
     expect(after?.__v, 'the row was not written again').toBe(before?.__v);
+  });
+});
+
+describe('a run that died is finished by the next boot', () => {
+  it('takes over an expired lease, re-runs, and only then marks done', async () => {
+    // Put the row back into the shape production was left in: claimed, unfinished, and its holder
+    // long gone. A car is removed underneath it, so «took over and re-ran» is observable.
+    await FleetGoLiveRunModel.updateOne(
+      { key: VEHICLE_GO_LIVE_MARK },
+      { $set: { status: 'running', leaseUntil: new Date(Date.now() - 60_000), finishedAt: null, outcome: null } },
+    ).exec();
+    await FleetVehicleModel.deleteOne({ code: 'GOLIVE-2' }).exec();
+    expect(await imported()).toBe(1);
+
+    await runVehicleGoLive(dataDir);
+
+    expect(await imported(), 'the missing car was put back by the take-over').toBe(2);
+    const doc = await run();
+    expect(doc?.status, 'and the take-over finished the job').toBe('done');
+    expect(doc?.outcome, 'with its counts on record').toMatchObject({ created: 1, updated: 1 });
+  });
+
+  it('does NOT take over a lease that is still live — somebody else has it', async () => {
+    await FleetGoLiveRunModel.updateOne(
+      { key: VEHICLE_GO_LIVE_MARK },
+      { $set: { status: 'running', leaseUntil: new Date(Date.now() + 60_000) } },
+    ).exec();
+    await FleetVehicleModel.deleteOne({ code: 'GOLIVE-2' }).exec();
+
+    await runVehicleGoLive(dataDir);
+
+    expect(await imported(), 'nothing was imported under a live lease').toBe(1);
+    expect((await run())?.status, 'and the lease is left as it was').toBe('running');
   });
 });

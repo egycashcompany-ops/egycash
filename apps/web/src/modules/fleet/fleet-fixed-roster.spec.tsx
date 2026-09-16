@@ -1742,7 +1742,11 @@ describe('Reset, on the standing board', () => {
     for (const key of ['crewed', 'uncrewed', MT]) expect(chipActive(cleared, key), key).toBe(false);
   });
 
-  it('remembers all three, like the daily board', () => {
-    expect(SOURCE).toContain("const REMEMBERED_FILTERS = ['mission', 'q', 'view'] as const;");
+  it('remembers all three, and the order the board is read in', () => {
+    // The fourth is `sort`: a reader who ordered this board by «الحالة» and came back to it is
+    // asking the same question they asked last time, exactly as their filters are.
+    expect(SOURCE).toContain(
+      "const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view'] as const;",
+    );
   });
 });

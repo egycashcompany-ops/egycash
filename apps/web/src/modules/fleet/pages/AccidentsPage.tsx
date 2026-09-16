@@ -225,6 +225,10 @@ export const AccidentsPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.vehicles.columns.code'),
+      // The car's CODE, joined in by the server before the page is cut: the register is paged, so
+      // ordering the rows in hand would sort one page and claim to have sorted the file.
+      sortable: true,
+      sortKey: 'vehicleCode',
       render: (r) => (
         <span className="font-mono text-xs" dir="ltr">
           {codeOf(r.vehicleId)}
@@ -255,18 +259,21 @@ export const AccidentsPage = (): JSX.Element => {
       key: 'amountCollected',
       header: t('fleet.accidents.fields.amountCollected'),
       align: 'end',
+      sortable: true,
       render: (r) => money(r.amountCollected),
     },
     {
       key: 'companyCost',
       header: t('fleet.accidents.fields.companyCost'),
       align: 'end',
+      sortable: true,
       render: (r) => money(r.companyCost),
     },
     {
       key: 'paidAmount',
       header: t('fleet.accidents.fields.paidAmount'),
       align: 'end',
+      sortable: true,
       render: (r) => money(r.paidAmount),
     },
     {
@@ -275,6 +282,10 @@ export const AccidentsPage = (): JSX.Element => {
       key: 'remaining',
       header: t('fleet.accidents.fields.remaining'),
       align: 'end',
+      // ORDERED BY THE SAME SUBTRACTION the cell prints. The figure is never stored, so the
+      // server computes it in the query — before the page is cut, because «مين لسه عليه أكتر»
+      // is a question about the whole file and not about the twenty-five rows in hand.
+      sortable: true,
       className: 'font-medium',
       render: (r) => money(fleetAccidentRemaining(r)),
     },

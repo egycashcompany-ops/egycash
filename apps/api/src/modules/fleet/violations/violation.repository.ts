@@ -1,6 +1,7 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
+import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 import {
   FleetGrievanceModel,
   FleetViolationModel,
@@ -50,7 +51,11 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
   async listViolations(
     params: ListParams<FleetViolationDoc>,
   ): Promise<Paginated<FleetViolationDoc>> {
-    return this.list({ ...params, sortableFields: ['year', 'date', 'createdAt'] });
+    return this.list({
+      ...params,
+      sortableFields: ['year', 'date', 'createdAt', VEHICLE_CODE_SORT.key],
+      sortDerived: [VEHICLE_CODE_SORT],
+    });
   }
 
   violationFilter(query: {

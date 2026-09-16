@@ -9,7 +9,7 @@
 // This file is the SHELL: the URL state both halves read, and the dialogs either can open. Every
 // figure and every rule lives below — in the panels, in the pure libs they call, and behind them
 // in the server, which refuses a type filed on the wrong side however the client asks.
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   splitVehicleCodeList,
@@ -18,6 +18,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { readList, writeList } from '../../../shared/lib/list-param';
+import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
 import { useAppSelector } from '../../../store';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -50,6 +51,7 @@ const REMEMBERED_FILTERS = [
   'dtype',
   'damt',
   'dset',
+  'dsort',
 ] as const;
 
 
@@ -62,6 +64,15 @@ export const ViolationsPage = (): JSX.Element => {
   // SEVERAL years, in the same `year` key — a comma-separated list, which is what the rollup
   // endpoint parses and what a saved one-year link still means.
   const years = readList(sp, 'year');
+  /**
+   * The DRIVERS ledger's order, in the address bar like every other filter on this screen.
+   *
+   * `dsort`, not `sort`: the two halves of this page are two boards, and one key would make the
+   * company half's arrows reorder the drivers' and the other way round. It opens on `date:desc`,
+   * the order the ledger has always arrived in.
+   */
+  const driverSortParam = sp.get('dsort');
+  const driverSorts = useMemo(() => readSorts(driverSortParam, 'date:desc'), [driverSortParam]);
   const codes = splitVehicleCodeList(sp.get('codes') ?? '');
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
@@ -146,6 +157,8 @@ export const ViolationsPage = (): JSX.Element => {
           onInspect={setInspecting}
         />
         <DriverViolationsPanel
+          sorts={driverSorts}
+          onSortChange={(by) => patch({ dsort: writeSorts(toggleSort(driverSorts, by)) })}
           vehicleCodes={driverCodes}
           driverEmployeeIds={driverEmployeeIds}
           typeIds={typeIds}

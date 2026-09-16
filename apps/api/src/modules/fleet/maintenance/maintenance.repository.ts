@@ -2,6 +2,7 @@ import { Types, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
+import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 
 export interface AlarmBaseline {
   vehicleId: string;
@@ -22,7 +23,14 @@ export interface AlarmBaseline {
 export type FleetMaintenanceVisitRow = FleetMaintenanceVisitDoc;
 
 /** Whitelist — unchanged, and an unknown field falls back to `createdAt` (API Standards §4). */
-const SORTABLE: readonly string[] = ['inDate', 'outDate', 'createdAt'];
+const SORTABLE: readonly string[] = [
+  'inDate',
+  'outDate',
+  'createdAt',
+  // «العداد عند الخدمة» — a stored figure, so ordering by it costs nothing extra.
+  'odometerAtService',
+  VEHICLE_CODE_SORT.key,
+];
 
 const oid = (id: string): Types.ObjectId => new Types.ObjectId(id);
 
@@ -173,7 +181,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     // is cut by the same filter the totals are counted from.
     const filter: FilterQuery<FleetMaintenanceVisitDoc> =
       driverFilter === null ? (params.filter ?? {}) : { $and: [params.filter ?? {}, driverFilter] };
-    return this.list({ ...params, filter, sortableFields: SORTABLE });
+    return this.list({ ...params, filter, sortableFields: SORTABLE, sortDerived: [VEHICLE_CODE_SORT] });
   }
 
   /**

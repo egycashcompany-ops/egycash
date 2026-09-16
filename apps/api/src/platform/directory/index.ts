@@ -20,6 +20,22 @@ export interface DirectoryEmployee {
   status: 'probation' | 'active' | 'onLeave' | 'suspended' | 'exited';
   branchId: string | null;
   departmentId: string | null;
+  /**
+   * THREE MORE HR FACTS, for the consumer that has to ORDER by them.
+   *
+   * «عاوز هنا يكون فيه سهم ... اسم السائق و كود الموظف و المحافظة رقم الموبايل تاريخ التعيين».
+   * Fleet's drivers registry is the org chart — it is built from this seam and paged in memory —
+   * so a column it can SHOW through HR's own endpoint is still a column it cannot ORDER by
+   * unless the fact travels with the roster. The name and the code already did; these three did
+   * not, and they are exactly the three the owner asked for arrows on.
+   *
+   * READ-ONLY and additive, like everything else here: the seam answers a question and grants
+   * nothing. `null` where HR has no answer — a driver with no address on file has no governorate,
+   * and an invented one would sort them among the Giza drivers.
+   */
+  phone: string | null;
+  governorate: string | null;
+  hiredAt: Date | null;
 }
 
 /**

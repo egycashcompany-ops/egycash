@@ -2,6 +2,38 @@ import { type FilterQuery, Types } from 'mongoose';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { type ListFleetVehiclesQuery, type Paginated } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
+import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
+
+/**
+ * «كود السيارة», as a sort key for the registers that REFERENCE a car.
+ *
+ * An odometer reading, a workshop visit, an accident file and a fine all store a `vehicleId`, and
+ * the reader orders them by the car's CODE — which lives on the vehicle. So the code is joined in
+ * before the page is cut (see `SortDerivedField`): sorting the fetched page instead would order
+ * twenty-five rows out of two thousand and call it the register's order.
+ *
+ * One declaration, shared, so the four registers cannot drift into four spellings of one column.
+ */
+export const VEHICLE_CODE_SORT = {
+  key: 'vehicleCode',
+  from: FleetVehicleModel.collection.name,
+  localField: 'vehicleId',
+  pick: 'code',
+} as const;
+
+/**
+ * «النوع» — the make, as a sort key for the registry itself.
+ *
+ * The vehicle stores a `typeId` and the column prints the type's NAME. Ordered by the ARABIC name,
+ * which is what this screen is read in; an English-only type falls back to nothing and sorts last,
+ * the same as any other missing value.
+ */
+export const VEHICLE_TYPE_NAME_SORT = {
+  key: 'typeName',
+  from: FleetVehicleTypeModel.collection.name,
+  localField: 'typeId',
+  pick: 'name.ar',
+} as const;
 
 class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   constructor() {
@@ -31,7 +63,11 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   async listVehicles(params: ListParams<FleetVehicleDoc>): Promise<Paginated<FleetVehicleDoc>> {
-    return this.list({ ...params, sortableFields: ['code', 'createdAt', 'licenseExpiresAt'] });
+    return this.list({
+      ...params,
+      sortableFields: ['code', 'createdAt', 'licenseExpiresAt', VEHICLE_TYPE_NAME_SORT.key],
+      sortDerived: [VEHICLE_TYPE_NAME_SORT],
+    });
   }
 
   /**

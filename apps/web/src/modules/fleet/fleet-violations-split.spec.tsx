@@ -229,8 +229,12 @@ const page = ({
         // The chunk the board asks for is a CONSTANT now — there is no «لكل صفحة» box on this
         // screen, because reaching the whole answer is «تحميل المزيد» rather than a page size.
         pageSize: MAX_PAGE_SIZE,
+        // The ORDER the ledger opens in, in both shapes: `sortBy`/`sortDir` are the platform's
+        // pagination contract and `sort` is the whole order, which is what a reader who clicks a
+        // second column adds to.
         sortBy: 'date',
         sortDir: 'desc',
+        sort: 'date:desc',
         paged: 'infinite',
       }),
       {

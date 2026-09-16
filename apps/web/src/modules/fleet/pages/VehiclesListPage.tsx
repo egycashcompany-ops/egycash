@@ -313,6 +313,11 @@ export const VehiclesListPage = (): JSX.Element => {
     {
       key: 'type',
       header: t('fleet.vehicles.columns.type'),
+      // «عاوز هنا يكون فيه سهم عشان ارتب العربيات على حسب النوع تصاعدى وتنازلى». The column shows a
+      // NAME and the row stores a `typeId`, so the server joins the name in before it cuts the
+      // page — `typeName`, which is what the sort parameter carries and what the table calls it.
+      sortable: true,
+      sortKey: 'typeName',
       render: (v) => dash(typeName.get(v.typeId)),
     },
     {

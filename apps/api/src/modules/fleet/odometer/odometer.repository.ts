@@ -2,6 +2,7 @@ import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetOdometerLogModel, type FleetOdometerLogDoc } from './odometer.model';
+import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 
 export interface LatestReading {
   vehicleId: string;
@@ -276,7 +277,11 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   }
 
   async listLogs(params: ListParams<FleetOdometerLogDoc>): Promise<Paginated<FleetOdometerLogDoc>> {
-    return this.list({ ...params, sortableFields: ['date', 'outReading', 'createdAt'] });
+    return this.list({
+      ...params,
+      sortableFields: ['date', 'outReading', 'createdAt', VEHICLE_CODE_SORT.key],
+      sortDerived: [VEHICLE_CODE_SORT],
+    });
   }
 
   /**

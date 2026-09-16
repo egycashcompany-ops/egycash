@@ -21,6 +21,15 @@ export interface Column<T> {
    */
   render: (row: T, index: number) => ReactNode;
   sortable?: boolean;
+  /**
+   * What the SERVER calls this column, when that is not what the table calls it.
+   *
+   * A column's `key` is a React key and a name for the cell; the sort parameter is an API field.
+   * Usually they are the same word and this stays unset. They part company where the column shows
+   * something DERIVED from what is stored — «النوع» renders a name and is ordered by `typeName`,
+   * which is joined in from the vehicle types — and then the screen must be able to say so.
+   */
+  sortKey?: string;
   align?: 'start' | 'center' | 'end';
   className?: string;
   headerClassName?: string;
@@ -255,7 +264,8 @@ export const DataTable = <T,>({
               </th>
             )}
             {columns.map((c) => {
-              const at = sorts.findIndex((entry) => entry.by === c.key);
+              const sortKey = c.sortKey ?? c.key;
+              const at = sorts.findIndex((entry) => entry.by === sortKey);
               const active = at !== -1;
               const dir = active ? sorts[at]?.dir : undefined;
               return (
@@ -274,7 +284,7 @@ export const DataTable = <T,>({
                   {c.sortable === true && onSortChange !== undefined ? (
                     <button
                       type="button"
-                      onClick={() => onSortChange(c.key)}
+                      onClick={() => onSortChange(sortKey)}
                       className={cn(
                         'inline-flex items-center gap-1 rounded hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:hover:text-slate-200',
                         active && 'text-slate-700 dark:text-slate-200',

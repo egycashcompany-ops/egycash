@@ -173,14 +173,31 @@ describe('the registry holds TWO columns at once', () => {
 });
 
 describe('every Fleet table is wired the same way', () => {
-  /** The pages that sort — each reads the order, toggles it, and sends it. */
+  /** The pages that sort — each reads the order, toggles it, and sends it or applies it. */
   const PAGES = readdirSync(join(HERE, 'pages'))
     .filter((name) => name.endsWith('.tsx'))
     .filter((name) => code(join('pages', name)).includes('onSortChange={changeSort}'));
 
+  /**
+   * The boards that hold EVERY row they report on, so they order them in hand.
+   *
+   * Not a shortcut and not an exception to the rule above — the rule is «the order the reader
+   * asked for is the order of the whole answer», and on these three the whole answer is already
+   * on the screen: the daily roster and the standing roster are a day's entire fleet, and the
+   * alarms board derives one row per vehicle with no paging at all. Sending `?sort=` to a server
+   * that pages none of them would be asking a question nobody is answering.
+   *
+   * Named rather than detected, because this is a CLAIM about each screen — «this board is
+   * whole» — and a new screen must be looked at rather than inherit the answer by accident.
+   */
+  const CLIENT_BOARDS = ['RosterPage.tsx', 'FixedRosterPage.tsx', 'MaintenanceAlarmsPage.tsx'];
+  const SERVER_PAGES = PAGES.filter((name) => !CLIENT_BOARDS.includes(name));
+
   it('finds every sorting page — the census is not empty', () => {
-    // Seven today: vehicles, drivers, maintenance, odometer, accidents, catalogs, attendance.
-    expect(PAGES.length).toBeGreaterThanOrEqual(7);
+    // Ten today: seven server-paged registers and the three whole boards.
+    expect(PAGES.length).toBeGreaterThanOrEqual(10);
+    expect(SERVER_PAGES.length).toBeGreaterThanOrEqual(7);
+    for (const board of CLIENT_BOARDS) expect(PAGES, board).toContain(board);
   });
 
   it.each(PAGES)('%s reads the whole order out of the URL', (name) => {
@@ -191,18 +208,33 @@ describe('every Fleet table is wired the same way', () => {
 
   it.each(PAGES)('%s ADDS a column on a click instead of replacing what is there', (name) => {
     const source = code(join('pages', name));
-    expect(source).toContain('patch({ sort: writeSorts(toggleSort(sorts, by)) }, false)');
+    // The paged registers keep their page number («, false»); the whole boards have no page to
+    // keep. Both call the same toggle, which is the part that must not be written twice.
+    expect(source).toContain('patch({ sort: writeSorts(toggleSort(sorts, by)) }');
     // The rule it replaced, spelled out so it cannot come back by hand: one column, flipped.
     expect(source, 'no second copy of the old single-column toggle').not.toContain(
       "const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';",
     );
   });
 
-  it.each(PAGES)('%s sends the order to the server, both shapes', (name) => {
+  it.each(SERVER_PAGES)('%s sends the order to the server, both shapes', (name) => {
     const source = code(join('pages', name));
     expect(source).toContain('...sortQuery(sorts)');
     expect(source, 'nothing still sends a single column by hand').not.toMatch(
       /sortBy: sort\.by/,
+    );
+  });
+
+  it.each(CLIENT_BOARDS)('%s orders the WHOLE board in hand, through the shared rule', (name) => {
+    const source = code(join('pages', name));
+    // One rule module, as on the server side: three copies of a comparator is three behaviours,
+    // and the one that matters most — a missing value sorts LAST either way round — is the one
+    // that would quietly differ.
+    expect(source).toContain("from '../lib/sort-rows'");
+    expect(source).toContain('sortRows(');
+    // And it does NOT ask the server for an order it does not page.
+    expect(source, 'nothing is sent to a server that pages none of it').not.toContain(
+      'sortQuery(sorts)',
     );
   });
 

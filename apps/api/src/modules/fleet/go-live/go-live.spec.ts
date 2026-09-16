@@ -246,6 +246,11 @@ describe('the driver licence scans — one per driver, by employee code', () => 
     status,
     branchId: null,
     departmentId: null,
+    // The three HR facts the drivers registry orders by. Nothing here reads them — the photo
+    // plan matches on the CODE — but the seam answers them, so the fake answers them too.
+    phone: null,
+    governorate: null,
+    hiredAt: null,
   });
 
   it('is at v2, in its own folder beside the cars', () => {

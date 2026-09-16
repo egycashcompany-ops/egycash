@@ -7,6 +7,7 @@ import {
   type ClientSession,
   type FilterQuery,
   type Model,
+  type PipelineStage,
   type UpdateQuery,
 } from 'mongoose';
 import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
@@ -50,7 +51,40 @@ export interface ListParams<T> {
   sorts?: readonly { by: string; dir: 'asc' | 'desc' }[];
   /** Whitelist — unknown sort fields fall back to createdAt (API Standards §4). */
   sortableFields?: readonly string[];
+  /**
+   * Sort keys that are NOT fields of this collection — they are joined in, or computed.
+   *
+   * «رتب العربيات على حسب النوع»: the registry stores a `typeId`, and what the reader orders by is
+   * the type's NAME, which lives in another collection. Sorting the fetched page by it would order
+   * twenty-five rows out of two hundred, so the join has to happen before the page is cut — which
+   * means an aggregation, and this is what asks for one.
+   *
+   * Declared per repository beside `sortableFields`, never taken from the query: a caller cannot
+   * name a collection, only a key the repository has already published.
+   */
+  sortDerived?: readonly SortDerivedField[];
   scope?: ScopeSelector;
+}
+
+/**
+ * One sort key that has to be derived before the page is cut.
+ *
+ * Either JOINED — `from`/`localField`/`pick` name another collection's field — or COMPUTED, where
+ * `expression` is an aggregation expression over this document («المتبقي», which is three stored
+ * figures and a subtraction). Exactly one of the two, and the key is a name of the repository's
+ * own choosing: it appears in `sortableFields` and nowhere in the stored document.
+ */
+export interface SortDerivedField {
+  /** The sortable key, as the screen asks for it — e.g. `vehicleCode`, `typeName`, `remaining`. */
+  key: string;
+  /** The collection to join, for a joined key. */
+  from?: string;
+  /** The reference field on THIS document — e.g. `vehicleId`. Joined against the other's `_id`. */
+  localField?: string;
+  /** The joined document's field to order by — e.g. `code`, or a dotted `name.ar`. */
+  pick?: string;
+  /** An aggregation expression, for a computed key. */
+  expression?: unknown;
 }
 
 interface WriteMeta {
@@ -253,14 +287,22 @@ export class BaseRepository<T extends BaseDocFields> {
           }
         : { [sortField]: sortDir, _id: sortDir };
 
+    // A key that has to be JOINED or COMPUTED cannot be sorted by `find().sort()` — the value is
+    // not in the document. Only then does this become an aggregation: every existing caller, and
+    // every screen ordering by a stored field, keeps the plain query and its indexes.
+    const derived = (params.sortDerived ?? []).filter((field) =>
+      Object.keys(sort).includes(field.key),
+    );
     const [items, totalItems] = await Promise.all([
-      this.model
-        .find(filter)
-        .sort(sort)
-        .skip((page - 1) * pageSize)
-        .limit(pageSize)
-        .lean<T[]>()
-        .exec(),
+      derived.length === 0
+        ? this.model
+            .find(filter)
+            .sort(sort)
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
+            .lean<T[]>()
+            .exec()
+        : this.aggregatePage(filter, sort, derived, page, pageSize),
       this.model.countDocuments(filter).exec(),
     ]);
 
@@ -273,6 +315,57 @@ export class BaseRepository<T extends BaseDocFields> {
         totalPages: Math.max(1, Math.ceil(totalItems / pageSize)),
       },
     };
+  }
+
+  /**
+   * One page, ordered by keys this collection does not store.
+   *
+   * The join happens BEFORE `$skip`/`$limit`, which is the whole point: joining the fetched page
+   * would order twenty-five rows out of two hundred and call it the registry's order. The count
+   * beside it is still `countDocuments` — a lookup adds no rows and removes none, so it cannot
+   * change how many there are.
+   *
+   * Every derived key is stripped again on the way out, so a caller reads exactly the documents
+   * `find()` would have handed it and no mapper has to learn about the sort.
+   */
+  private async aggregatePage(
+    filter: FilterQuery<T>,
+    sort: Record<string, 1 | -1>,
+    derived: readonly SortDerivedField[],
+    page: number,
+    pageSize: number,
+  ): Promise<T[]> {
+    const stages: PipelineStage[] = [{ $match: filter } as PipelineStage];
+    const added: Record<string, unknown> = {};
+    const strip: Record<string, 0> = {};
+    for (const field of derived) {
+      if (field.expression !== undefined) {
+        added[field.key] = field.expression;
+        strip[field.key] = 0;
+        continue;
+      }
+      // A joined key. `$first` because a reference resolves to at most one document, and a car
+      // that no longer exists leaves it null — which sorts last, the same way a missing value
+      // does everywhere else in this file.
+      const holder = `__sort_${field.key}`;
+      stages.push({
+        $lookup: {
+          from: field.from ?? '',
+          localField: field.localField ?? '',
+          foreignField: '_id',
+          as: holder,
+        },
+      });
+      added[field.key] = { $first: `$${holder}.${field.pick}` };
+      strip[holder] = 0;
+      strip[field.key] = 0;
+    }
+    stages.push({ $addFields: added });
+    stages.push({ $sort: sort });
+    stages.push({ $skip: (page - 1) * pageSize });
+    stages.push({ $limit: pageSize });
+    stages.push({ $project: strip });
+    return this.model.aggregate<T>(stages).exec();
   }
 
   async create(data: Partial<T>, meta: WriteMeta): Promise<T> {

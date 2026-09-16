@@ -42,6 +42,7 @@ import {
 import { SideLayer } from '../../../shared/ui/SideLayer';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { sortQuery, writeSorts, type TableSort } from '../lib/table-sort';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
@@ -85,6 +86,8 @@ export const DriverViolationsPanel = ({
   typeIds,
   amount,
   settled,
+  sorts,
+  onSortChange,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
@@ -102,6 +105,16 @@ export const DriverViolationsPanel = ({
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
+  /**
+   * The columns the ledger is read in, and what a click on a header means.
+   *
+   * Held by the PAGE, in its address bar, like every other filter on this screen — the panel is
+   * a view of a query, not the owner of one. The order travels to the SERVER: the board loads its
+   * pages cumulatively, so ordering the fines already fetched would sort what has been scrolled
+   * past and leave the rest in the old order.
+   */
+  sorts: readonly TableSort[];
+  onSortChange: (key: string) => void;
   onVehicleCodesChange: (next: string[]) => void;
   onDriverChange: (next: string | null) => void;
   onTypeChange: (next: string[]) => void;
@@ -210,8 +223,9 @@ export const DriverViolationsPanel = ({
       // constant here rather than a control. Kept at MAX_PAGE_SIZE so a fleet's whole year of
       // fines arrives in as few presses as the server allows.
       pageSize: MAX_PAGE_SIZE,
-      sortBy: 'date',
-      sortDir: 'desc' as const,
+      // The reader's order, both shapes — see `sortQuery`. `date:desc` is where the ledger opens,
+      // which is the order it has always arrived in.
+      ...sortQuery(sorts),
       ...(vehicleCodes.length === 0 ? {} : { vehicleCodes: vehicleCodes.join(',') }),
       // `driverEmployeeId`, singular, is the parameter's NAME — it takes a comma-separated list.
       // It used to be sent as `driverEmployeeIds`, which the strict query schema rejected, so every
@@ -221,7 +235,9 @@ export const DriverViolationsPanel = ({
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),
-    [vehicleCodes, driverEmployeeIds, typeIds, amount, settled],
+    // The ORDER as one string, not the array: a fresh array each render would rebuild
+    // the params — and the query key — on every keystroke elsewhere on the screen.
+    [vehicleCodes, driverEmployeeIds, typeIds, amount, settled, writeSorts(sorts)],
   );
   const list = useViolationsPages(params);
   // EVERY page fetched so far, in the order the server sorted them. This is what replaced the
@@ -257,11 +273,16 @@ export const DriverViolationsPanel = ({
     {
       key: 'date',
       header: t('fleet.violations.fields.date'),
+      sortable: true,
       render: (row) => formatDate(row.date, locale),
     },
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // The car's CODE, joined in by the SERVER before the page is cut — this board loads its
+      // fines in chunks, so ordering the chunk in hand would order what has been scrolled past.
+      sortable: true,
+      sortKey: 'vehicleCode',
       align: 'center',
       render: (row) => (
         <span className="font-mono text-xs" dir="ltr">
@@ -864,6 +885,8 @@ export const DriverViolationsPanel = ({
           loading={list.isLoading}
           error={list.isError ? list.error : undefined}
           onRetry={() => void list.refetch()}
+          sort={sorts}
+          onSortChange={onSortChange}
           dense
           // Collected is a STATE OF THE ROW, so the row carries it — the tick is where you change
           // it, the tint is how the board reads at a glance.

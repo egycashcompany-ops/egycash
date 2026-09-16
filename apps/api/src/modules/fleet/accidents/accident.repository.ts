@@ -6,6 +6,7 @@ import {
 } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetAccidentModel, type FleetAccidentDoc } from './accident.model';
+import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 
 /** What `$group` hands back for one filter scope; absent entirely when nothing matched. */
 interface TotalsRow {
@@ -17,13 +18,42 @@ interface TotalsRow {
 
 const NOTHING: TotalsRow = { count: 0, amountCollected: 0, companyCost: 0, paidAmount: 0 };
 
+/**
+ * «إجمالي المتبقي», as a sort key — DERIVED, exactly as `fleetAccidentRemaining` derives it.
+ *
+ * The figure is never stored: it is «المحصَّل + تكلفة الشركة − المدفوع», and the contract owns that
+ * formula because the column, the totals strip and the print sheet must all read it the same way.
+ * Ordering by it therefore has to compute it in the database, before the page is cut — the same
+ * arithmetic, spelled once more in the one language Mongo can sort by.
+ *
+ * The contract's rounding is deliberately NOT repeated: it exists so a display does not print
+ * `-0` or `0.30000000000000004`, and neither changes which of two files owes more.
+ */
+export const REMAINING_SORT = {
+  key: 'remaining',
+  expression: { $subtract: [{ $add: ['$amountCollected', '$companyCost'] }, '$paidAmount'] },
+} as const;
+
 class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
   constructor() {
     super(FleetAccidentModel, {});
   }
 
   async listAccidents(params: ListParams<FleetAccidentDoc>): Promise<Paginated<FleetAccidentDoc>> {
-    return this.list({ ...params, sortableFields: ['occurredAt', 'createdAt'] });
+    return this.list({
+      ...params,
+      sortableFields: [
+        'occurredAt',
+        'createdAt',
+        // The three stored figures, and the fourth the screen derives from them.
+        'amountCollected',
+        'companyCost',
+        'paidAmount',
+        REMAINING_SORT.key,
+        VEHICLE_CODE_SORT.key,
+      ],
+      sortDerived: [VEHICLE_CODE_SORT, REMAINING_SORT],
+    });
   }
 
   /**

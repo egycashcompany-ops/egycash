@@ -356,11 +356,18 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'driver',
       header: t('fleet.drivers.columns.driver'),
+      // THE FIVE HR COLUMNS ORDER THE WHOLE REGISTRY, not the page on screen. The registry is a
+      // join across the FR-11 line — who is a driver comes from the org chart, what Fleet knows
+      // about them comes from Fleet — so it is assembled and paged on the server, and these five
+      // facts now travel with the roster from the directory seam. The browser still SHOWS them
+      // from HR's own record; only the ranking is done where the whole list is.
+      sortable: true,
       render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.personal.fullNameAr} />,
     },
     {
       key: 'employeeCode',
       header: t('fleet.drivers.columns.employeeCode'),
+      sortable: true,
       // Plain, like the job title beside it. `font-mono text-xs` made the one column a reader
       // matches against a paper list the smallest and least legible thing on the row.
       render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.code} />,
@@ -397,6 +404,7 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'governorate',
       header: t('fleet.drivers.columns.governorate'),
+      sortable: true,
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}
@@ -409,6 +417,7 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'phone',
       header: t('fleet.drivers.columns.phone'),
+      sortable: true,
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}
@@ -420,6 +429,7 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'hiredAt',
       header: t('fleet.drivers.columns.hiredAt'),
+      sortable: true,
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}

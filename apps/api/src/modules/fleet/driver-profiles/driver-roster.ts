@@ -13,6 +13,28 @@ import { type ListFleetDriversQuery } from '@ecms/contracts';
 export interface DriverRosterRow<TProfile> {
   employeeId: string;
   profile: TProfile | null;
+  /**
+   * The HR half of the row, for the columns the registry ORDERS by.
+   *
+   * «عاوز هنا يكون فيه سهم ... اسم السائق و كود الموظف و المحافظة رقم الموبايل تاريخ التعيين».
+   * The screen SHOWS these through HR's own endpoint, one page at a time — which is fine for
+   * showing and useless for ordering: the registry is paged in memory here, so a column it cannot
+   * see at this point is a column whose arrow would order the fetched page and lie about the rest.
+   * They arrive with the roster, from the directory seam that already named the driver.
+   *
+   * Optional, so every existing caller and every test that builds a row by hand is unchanged;
+   * absent simply means there is nothing to order by, which sorts last like any missing value.
+   */
+  hr?: DriverHrFacts | undefined;
+}
+
+/** The five HR facts the registry can be ordered by — exactly the ones the seam answers. */
+export interface DriverHrFacts {
+  fullNameAr: string | null;
+  code: string | null;
+  governorate: string | null;
+  phone: string | null;
+  hiredAt: Date | null;
 }
 
 /** The profile fields the filters ask about — the shape, not the document. */
@@ -137,12 +159,53 @@ export const matchesFleetFilters = (
 };
 
 /**
+ * The columns the registry can be ordered by, and where each one's value comes from.
+ *
+ * TWO HALVES, because the row is a join across the FR-11 line: `licenseExpiresAt` and `createdAt`
+ * are Fleet's, and the five below are HR's, arriving with the roster from the directory seam. The
+ * KEY is what the browser puts in `?sort=`, so this table is also the list of arrows the screen
+ * is allowed to draw.
+ */
+const SORT_VALUE: Record<
+  string,
+  <TProfile extends DriverProfileFacts>(
+    row: DriverRosterRow<TProfile>,
+  ) => string | number | null
+> = {
+  // Fleet's own, both dates — read as a number so one comparison serves every column.
+  licenseExpiresAt: (row) => row.profile?.licenseExpiresAt?.getTime() ?? null,
+  createdAt: (row) => row.profile?.createdAt?.getTime() ?? null,
+  // HR's. A name and a governorate are WORDS, so they are compared as words — Arabic included,
+  // which `localeCompare` gets right and `<` does not.
+  driver: (row) => row.hr?.fullNameAr ?? null,
+  employeeCode: (row) => row.hr?.code ?? null,
+  governorate: (row) => row.hr?.governorate ?? null,
+  phone: (row) => row.hr?.phone ?? null,
+  hiredAt: (row) => row.hr?.hiredAt?.getTime() ?? null,
+};
+
+/** The columns a `?sort=` may name on this registry — the API's whitelist, published once. */
+export const DRIVER_SORTABLE_COLUMNS = Object.keys(SORT_VALUE);
+
+/** Two values of one column, in the order the reader asked for. `null` always sorts LAST. */
+const compareValues = (left: string | number | null, right: string | number | null): number => {
+  if (left === null && right === null) return 0;
+  // Not «smallest»: a driver whose licence was never recorded is not the most urgent, and a
+  // driver with no phone on file is not the first in the phone book. They are a different
+  // problem, and floating them to the top of either order would bury the real one.
+  if (left === null) return Number.POSITIVE_INFINITY;
+  if (right === null) return Number.NEGATIVE_INFINITY;
+  if (typeof left === 'number' && typeof right === 'number') return left - right;
+  return String(left).localeCompare(String(right), 'ar');
+};
+
+/**
  * The registry's order.
  *
- * A row with NO profile has nothing to sort by, and it sorts LAST in either direction rather than
- * being treated as the smallest value. Ascending by expiry means "soonest to lapse first", and a
- * driver whose licence was never recorded is not the most urgent — they are a different problem,
- * and putting them at the top would bury the real one.
+ * A row with NO profile has nothing FLEET can sort by, and it sorts LAST in either direction
+ * rather than being treated as the smallest value — but only for a FLEET column. Ordering by the
+ * driver's name is a question HR answers, and a driver nobody has recorded a licence for still
+ * has a name; sorting them last there would hide every new hire at the bottom of an alphabet.
  *
  * A profile that EXISTS but carries no expiry is the same problem wearing a different shape, and
  * gets the same answer. `?? 0` would have dated it to 1970 and floated it to the very top of the
@@ -165,26 +228,24 @@ export const sortDriverRows = <
    */
   sorts: readonly { by: string; dir: 'asc' | 'desc' }[] = [],
 ): TRow[] => {
-  const columns = (sorts.length > 0 ? sorts : [{ by: sortBy ?? '', dir: sortDir ?? 'desc' }]).map(
-    (entry) => ({
-      key: entry.by === 'licenseExpiresAt' ? ('licenseExpiresAt' as const) : ('createdAt' as const),
+  const columns = (sorts.length > 0 ? sorts : [{ by: sortBy ?? '', dir: sortDir ?? 'desc' }])
+    .map((entry) => ({
+      // A column this registry cannot answer falls back to `createdAt`, which is what the
+      // platform's own list contract does with an unknown `sortBy` — never a 400, and never a
+      // silently unsorted page.
+      value: SORT_VALUE[entry.by] ?? SORT_VALUE['createdAt'],
       dir: entry.dir === 'asc' ? 1 : -1,
-    }),
-  );
+    }));
   return [...rows].sort((a, b) => {
-    if (a.profile === null && b.profile === null) return a.employeeId.localeCompare(b.employeeId);
-    if (a.profile === null) return 1;
-    if (b.profile === null) return -1;
     // Column by column, in the order they were clicked; the first that separates the two rows
     // decides, and the employee id closes the tie so a page cannot reshuffle under a reader.
     for (const column of columns) {
-      const left = a.profile[column.key]?.getTime() ?? null;
-      const right = b.profile[column.key]?.getTime() ?? null;
-      // Same rule as a missing profile, one level down: no value sorts LAST either way round.
-      if (left === null && right === null) continue;
-      if (left === null) return 1;
-      if (right === null) return -1;
-      if (left !== right) return (left - right) * column.dir;
+      const verdict = compareValues(column.value?.(a) ?? null, column.value?.(b) ?? null);
+      // A missing value sorts last in BOTH directions, so its verdict is not turned round with
+      // the rest — which is why the infinities above carry the answer rather than a sign.
+      if (verdict === Number.POSITIVE_INFINITY) return 1;
+      if (verdict === Number.NEGATIVE_INFINITY) return -1;
+      if (verdict !== 0) return verdict * column.dir;
     }
     return a.employeeId.localeCompare(b.employeeId);
   });

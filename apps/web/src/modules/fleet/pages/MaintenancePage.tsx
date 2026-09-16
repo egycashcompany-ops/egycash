@@ -264,6 +264,9 @@ export const MaintenancePage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // The car's CODE, joined in by the server before the page is cut — see the odometer board.
+      sortable: true,
+      sortKey: 'vehicleCode',
       // A SERVER fact on the row. `null` only when the vehicle no longer exists at all — a
       // scrapped one keeps its code, so history stays readable.
       render: (visit) => (
@@ -352,6 +355,8 @@ export const MaintenancePage = (): JSX.Element => {
     {
       key: 'odometerAtService',
       header: t('fleet.maintenance.fields.odometerAtService'),
+      // A stored figure on the visit, so the whole register orders by it for free.
+      sortable: true,
       align: 'end',
       render: (visit) => formatNumber(visit.odometerAtService, locale),
     },

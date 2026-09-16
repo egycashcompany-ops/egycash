@@ -193,6 +193,11 @@ export const OdometerPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // Ordered by the car's CODE, which the server joins in from the registry before it cuts the
+      // page — the register is paged, so ordering the rows in hand would sort twenty-five
+      // readings out of thousands and call it the register's order.
+      sortable: true,
+      sortKey: 'vehicleCode',
       // A SERVER fact on the row, like every other number in this table. `null` only when the
       // vehicle no longer exists at all — a scrapped one keeps its code.
       render: (log) => (

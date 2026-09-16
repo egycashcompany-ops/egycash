@@ -48,6 +48,8 @@ import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/flee
 import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
+import { sortRows } from '../lib/sort-rows';
 import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
@@ -76,7 +78,14 @@ import {
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['mission', 'q', 'view'] as const;
+/** What one column of one row is worth — «الحالة» ranked, not spelled. See the daily board. */
+const fixedSortValue = (row: FleetFixedCrewRowDto, key: string): string | number | null => {
+  if (key === 'code') return row.code;
+  if (key === 'state') return row.inMaintenance ? 0 : hasDriver(row) ? 1 : 2;
+  return null;
+};
+
+const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view'] as const;
 
 /** The one thing a drag carries. Read on drop; nothing else is inferred from the event. */
 const DRAG_TYPE = 'application/x-ecms-driver';
@@ -456,6 +465,9 @@ export const FixedRosterPage = (): JSX.Element => {
   const missions = readList(sp, 'mission');
   /** The list as ONE value, so the memos below are not invalidated by a fresh array each render. */
   const missionsKey = missions.join(',');
+  /** The columns the board is read in, in the order they were clicked. */
+  const sortParam = sp.get('sort');
+  const sorts = useMemo(() => readSorts(sortParam, 'code:asc'), [sortParam]);
   /**
    * Which STATE the board is narrowed to, if any — «بطقم» or «بدون طقم».
    *
@@ -648,12 +660,25 @@ export const FixedRosterPage = (): JSX.Element => {
    * and never this — a filter is a way of looking at the board, not a way of editing it.
    */
   const rows = useMemo(
-    () => visibleFixedRows(draft, { term: search, missions, view }),
-    [draft, search, missionsKey, view],
+    // Narrowed first, then ordered, with the code closing every tie — which is the order this
+    // board arrives in, so a reader who has clicked nothing sees what they saw before.
+    () =>
+      sortRows(
+        visibleFixedRows(draft, { term: search, missions, view }),
+        sorts,
+        fixedSortValue,
+        (a, b) => a.code.localeCompare(b.code),
+      ),
+    [draft, search, missionsKey, view, sortParam],
   );
   const filtered = search !== '' || missions.length > 0 || view !== null;
   /** «إعادة ضبط» — every filter off in ONE update, the daily board's three keys. */
   const resetFilters = (): void => patch({ q: null, mission: null, view: null });
+
+  // Ascending, then descending, then out of the order altogether — the daily board's rule.
+  const changeSort = (by: string): void => {
+    patch({ sort: writeSorts(toggleSort(sorts, by)) });
+  };
   /** Every car this board reports on, as the picker's options — no request for what is on screen. */
   const codeOptions = useMemo(
     () => draft.map((row) => ({ value: row.code, label: row.code })),
@@ -753,6 +778,10 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // SORTED IN THE BROWSER, honestly: this board is every car that can carry a standing crew,
+      // never a page of them, so there is no second page for the arrow to be wrong about.
+      sortable: true,
+      sortKey: 'code',
       // The CODE alone, and it is also the only thing the box above searches. The plate sat under
       // it as a second line and cost every row the height of a line to say a thing this board
       // never asks: a fixed crew belongs to the vehicle, and the vehicle is identified here by its
@@ -781,6 +810,9 @@ export const FixedRosterPage = (): JSX.Element => {
     {
       key: 'state',
       header: t('fleet.vehicles.columns.status'),
+      // Grouped by what the badges SAY — the workshop, then the crewed cars, then the ones with
+      // nobody on them. The daily board ranks its own «الحالة» the same way.
+      sortable: true,
       render: (row) => (
         <span className="flex flex-wrap items-center gap-1">
           <InWorkshopBadge inWorkshop={row.inMaintenance} />
@@ -1031,6 +1063,8 @@ export const FixedRosterPage = (): JSX.Element => {
               loading={boardQuery.isPending}
               error={boardQuery.isError ? boardQuery.error : undefined}
               onRetry={() => void boardQuery.refetch()}
+              sort={sorts}
+              onSortChange={changeSort}
               empty={<EmptyState title={t('fleet.fixedRoster.noVehicles')} />}
             />
           </div>

@@ -48,6 +48,8 @@ import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
+import { sortRows } from '../lib/sort-rows';
 import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
@@ -79,7 +81,20 @@ import { useDraftBoard } from '../lib/useDraftBoard';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['mission', 'q', 'view'] as const;
+/**
+ * What one column of one row is worth, for the order the reader clicked.
+ *
+ * «الحالة» is ranked rather than spelled: the workshop is the loudest fact a row can carry, then
+ * a car somebody is on, then a car nobody has touched. Ranking them by the badges' SPELLING would
+ * be an order that means nothing.
+ */
+const rosterSortValue = (row: FleetRosterRowDto, key: string): string | number | null => {
+  if (key === 'code') return row.code;
+  if (key === 'state') return row.inMaintenance ? 0 : hasDriver(row) ? 1 : 2;
+  return null;
+};
+
+const REMEMBERED_FILTERS = ['mission', 'q', 'sort', 'view'] as const;
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
@@ -300,6 +315,12 @@ export const RosterPage = (): JSX.Element => {
    * stops a second copy of mission filtering existing at all.
    */
   const view: RosterView | null = readView(sp.get('view'));
+  /**
+   * The columns the board is read in, in the order they were clicked. `code:asc` is where it
+   * opens, which is the order the server already hands the day over in.
+   */
+  const sortParam = sp.get('sort');
+  const sorts = useMemo(() => readSorts(sortParam, 'code:asc'), [sortParam]);
   /** The list as ONE value, so the memos below are not invalidated by a fresh array each render. */
   const missionsKey = missions.join(',');
 
@@ -410,8 +431,16 @@ export const RosterPage = (): JSX.Element => {
    */
   const shown = editable ? draft : saved;
   const rows = useMemo(
-    () => visibleRows(shown, { term: search, missions, view }),
-    [shown, search, missionsKey, view],
+    // Narrowed first, then ordered. The code closes every tie, which is the order this board has
+    // always arrived in — so a reader who has clicked nothing sees exactly what they saw before.
+    () =>
+      sortRows(
+        visibleRows(shown, { term: search, missions, view }),
+        sorts,
+        rosterSortValue,
+        (a, b) => a.code.localeCompare(b.code),
+      ),
+    [shown, search, missionsKey, view, sortParam],
   );
 
   const filtered = search !== '' || missions.length > 0 || view !== null;
@@ -427,6 +456,12 @@ export const RosterPage = (): JSX.Element => {
    * reset that jumped the dispatcher back to today would throw away the day they navigated to.
    */
   const resetFilters = (): void => patch({ q: null, mission: null, view: null });
+
+  // Ascending, then descending, then out of the order altogether — and a column the table
+  // is NOT sorted by joins the end of it rather than replacing what is there.
+  const changeSort = (by: string): void => {
+    patch({ sort: writeSorts(toggleSort(sorts, by)) });
+  };
 
   /**
    * The header's tally, counted off the DRAFT — never a hardcoded vocabulary, and never the
@@ -618,6 +653,10 @@ export const RosterPage = (): JSX.Element => {
     {
       key: 'vehicle',
       header: t('fleet.odometer.columns.vehicle'),
+      // SORTED IN THE BROWSER, and honestly so: this board is the whole day's fleet, never a page
+      // of it, so there is no second page for the arrow to be wrong about.
+      sortable: true,
+      sortKey: 'code',
       // The CODE alone, and it is also the only thing the box above searches. The plate was a
       // second identifier under every row of a column the eye scans for one, and the code is what
       // this fleet dispatches by. It stays on the vehicle record and on the screens that are ABOUT
@@ -631,6 +670,11 @@ export const RosterPage = (): JSX.Element => {
     {
       key: 'state',
       header: t('fleet.vehicles.columns.status'),
+      // Grouped by what the two badges SAY, so «وريني اللي في الورشة مع بعض» is one click: the
+      // workshop first, then the cars somebody is on, then the ones nobody has touched yet. Not
+      // alphabetical — the words are badges, and ranking them by their spelling would put «معيّنة»
+      // and «في الورشة» in an order that means nothing.
+      sortable: true,
       /*
         TWO DIFFERENT STATEMENTS, and only one of them is about the assignment.
 
@@ -995,6 +1039,8 @@ export const RosterPage = (): JSX.Element => {
               loading={boardQuery.isPending || (board === undefined && !boardQuery.isError)}
               error={boardQuery.isError ? boardQuery.error : undefined}
               onRetry={() => void boardQuery.refetch()}
+              sort={sorts}
+              onSortChange={changeSort}
             />
           </div>
         </div>

@@ -5,6 +5,7 @@
 // OP-6 adds the SELF lookup — "which employee is this login?" — which the captain-mobile read
 // surface uses so a captain's identity comes from the token, never from a client-supplied id.
 import {
+  type DirectoryEmployee,
   registerAttendanceDayLookup,
   registerEmployeeBatchLookup,
   registerEmployeeByCodeLookup,
@@ -18,32 +19,57 @@ import { employeeRepository } from './employee-management/employees/employee.rep
 import { LeaveRequestModel } from './leave-management/leave-requests/leave-request.model';
 import { AttendanceDayModel } from './attendance/day-records/day-record.model';
 
+/**
+ * ONE employee, as the platform sees them — the shape every registration below hands back.
+ *
+ * It used to be written out five times, which is five places for the seam's shape to drift and
+ * five to edit when it grows. It grew (phone, governorate, hire date — the columns Fleet's
+ * drivers registry sorts by), so it is one function now.
+ *
+ * The ADDRESS follows the same precedence the screens use: the official address first, the
+ * current one behind it. Both may be absent, and then the governorate is `null` rather than a
+ * guess — a driver with no address on file is not from Cairo.
+ */
+const toDirectoryEmployee = (employee: {
+  _id: unknown;
+  code: string;
+  status: 'probation' | 'active' | 'onLeave' | 'suspended' | 'exited';
+  branchId: unknown;
+  departmentId: unknown;
+  hiredAt?: Date | null;
+  personal: {
+    fullNameAr: string;
+    contact?: { primaryPhone?: string | null } | null;
+    officialAddress?: { governorate?: string | null } | null;
+    currentAddress?: { governorate?: string | null } | null;
+  };
+}): DirectoryEmployee => {
+  const address = employee.personal.officialAddress ?? employee.personal.currentAddress ?? null;
+  return {
+    employeeId: String(employee._id),
+    code: employee.code,
+    fullNameAr: employee.personal.fullNameAr,
+    status: employee.status,
+    branchId: String(employee.branchId),
+    departmentId: String(employee.departmentId),
+    phone: employee.personal.contact?.primaryPhone ?? null,
+    governorate: address?.governorate ?? null,
+    hiredAt: employee.hiredAt ?? null,
+  };
+};
+
 export const registerHrDirectorySeams = (): void => {
   registerEmployeeLookup(async (employeeId) => {
     const employee = await employeeRepository.findById(employeeId);
     if (employee === null) return null;
-    return {
-      employeeId: String(employee._id),
-      code: employee.code,
-      fullNameAr: employee.personal.fullNameAr,
-      status: employee.status,
-      branchId: String(employee.branchId),
-      departmentId: String(employee.departmentId),
-    };
+    return toDirectoryEmployee(employee);
   });
 
   // The first LIST on this seam: "who is in this part of the company". Operations' crew roster is
   // the org chart rather than a list it keeps, so it has to be able to ask.
   registerEmployeesByDepartmentLookup(async (departmentIds) => {
     const employees = await employeeRepository.listByDepartmentsSystem(departmentIds);
-    return employees.map((employee) => ({
-      employeeId: String(employee._id),
-      code: employee.code,
-      fullNameAr: employee.personal.fullNameAr,
-      status: employee.status,
-      branchId: String(employee.branchId),
-      departmentId: String(employee.departmentId),
-    }));
+    return employees.map(toDirectoryEmployee);
   });
 
   // The same LIST question along the other axis: "who holds these seats". Fleet's drivers registry
@@ -51,41 +77,20 @@ export const registerHrDirectorySeams = (): void => {
   // rather than a list Fleet keeps and has to remember to update.
   registerEmployeesByJobTitlesLookup(async (jobTitleIds) => {
     const employees = await employeeRepository.listByJobTitlesSystem(jobTitleIds);
-    return employees.map((employee) => ({
-      employeeId: String(employee._id),
-      code: employee.code,
-      fullNameAr: employee.personal.fullNameAr,
-      status: employee.status,
-      branchId: String(employee.branchId),
-      departmentId: String(employee.departmentId),
-    }));
+    return employees.map(toDirectoryEmployee);
   });
 
   // By code — «which employee is 0100026?» — for a consumer holding a file named for a person.
   registerEmployeeByCodeLookup(async (code) => {
     const employee = await employeeRepository.findByCodeSystem(code);
     if (employee === null) return null;
-    return {
-      employeeId: String(employee._id),
-      code: employee.code,
-      fullNameAr: employee.personal.fullNameAr,
-      status: employee.status,
-      branchId: String(employee.branchId),
-      departmentId: String(employee.departmentId),
-    };
+    return toDirectoryEmployee(employee);
   });
 
   registerSelfEmployeeLookup(async (userId) => {
     const employee = await employeeRepository.findByUserIdSystem(userId);
     if (employee === null) return null;
-    return {
-      employeeId: String(employee._id),
-      code: employee.code,
-      fullNameAr: employee.personal.fullNameAr,
-      status: employee.status,
-      branchId: String(employee.branchId),
-      departmentId: String(employee.departmentId),
-    };
+    return toDirectoryEmployee(employee);
   });
 
   // B5 adds the ATTENDANCE-DAY lookup. Read-only and batch: the Operations crew board shows a
@@ -119,14 +124,7 @@ export const registerHrDirectorySeams = (): void => {
     return new Map(
       docs.map((employee) => [
         String(employee._id),
-        {
-          employeeId: String(employee._id),
-          code: employee.code,
-          fullNameAr: employee.personal.fullNameAr,
-          status: employee.status,
-          branchId: String(employee.branchId),
-          departmentId: String(employee.departmentId),
-        },
+        toDirectoryEmployee(employee),
       ]),
     );
   });

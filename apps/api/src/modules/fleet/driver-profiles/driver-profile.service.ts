@@ -169,6 +169,18 @@ class FleetDriverProfileService {
       employeeId: employee.employeeId,
       branchId: employee.branchId,
       profile: byEmployee.get(employee.employeeId) ?? null,
+      // The HR half, carried for the ORDER — «عاوز هنا يكون فيه سهم ... اسم السائق و كود الموظف و
+      // المحافظة رقم الموبايل تاريخ التعيين». The screen shows these through HR's own endpoint one
+      // page at a time, which cannot order a registry that is paged here; the seam already read
+      // them for this roster, so ordering by them costs no extra query. They stay OUT of the DTO:
+      // the browser reads HR's own record for what it prints, and this is only how rows are ranked.
+      hr: {
+        fullNameAr: employee.fullNameAr,
+        code: employee.code,
+        governorate: employee.governorate,
+        phone: employee.phone,
+        hiredAt: employee.hiredAt,
+      },
     }));
 
     rows = rows.filter((row) => matchesRosterBranch(row.branchId, query.branchId));

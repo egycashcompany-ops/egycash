@@ -23,14 +23,36 @@ import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
 import { AlarmBadge, RemainingKm, alarmRowTint } from '../components/AlarmBadge';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
+import { sortRows } from '../lib/sort-rows';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'level',
   'vehicleCodes',
+  'sort',
 ] as const;
 
 const LEVEL_ORDER = { red: 0, yellow: 1, none: 2 } as const;
+
+/**
+ * What one column of one alarm is worth, for the order the reader clicked.
+ *
+ * «المستوى» is ranked by TRIAGE, not by its name: red is more urgent than yellow, whatever the
+ * two words do in an alphabet. The two distances are numbers, and a car the projection refused to
+ * compute for answers `null` — which sorts last either way round, because «no figure» is not
+ * «zero kilometres left».
+ */
+const alarmSortValue = (alarm: FleetMaintenanceAlarmDto, key: string): string | number | null => {
+  if (key === 'code') return alarm.code;
+  if (key === 'level') return LEVEL_ORDER[alarm.level];
+  if (key === 'sinceServiceKm') return alarm.sinceServiceKm;
+  if (key === 'remainingKm') return alarm.remainingKm;
+  if (key === 'lastServiceAt') {
+    return alarm.lastServiceAt === null ? null : new Date(alarm.lastServiceAt).getTime();
+  }
+  return null;
+};
 
 /** A csv URL parameter as the list it stands for; an absent one is an empty list, never `['']`. */
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
@@ -45,6 +67,17 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   // exactly what it used to.
   const levels = csv(sp.get('level'));
   const vehicleCodes = csv(sp.get('vehicleCodes'));
+  /**
+   * The columns the board is read in, in the order they were clicked.
+   *
+   * SORTED IN THE BROWSER, and that is the honest place for it: this board derives one row per
+   * vehicle and holds every one of them — there is no second page for an arrow to be wrong about.
+   * The default is the triage order the screen has always opened in, written in the same format
+   * the address bar carries: level first, and `sortRows` is handed the remaining distance as the
+   * tiebreak, which is exactly the comparator this board used before it had arrows.
+   */
+  const sortParam = sp.get('sort');
+  const sorts = useMemo(() => readSorts(sortParam, 'level:asc'), [sortParam]);
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -60,16 +93,25 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     const all = alarmsQuery.data ?? [];
     // An empty filter is not a filter: it asks nothing and keeps every row. A non-empty one keeps
     // the rows matching ANY of its answers, and the two run in sequence, which is the AND.
-    return all
+    const shown = all
       .filter((alarm) => levels.length === 0 || levels.includes(alarm.level))
-      .filter((alarm) => vehicleCodes.length === 0 || vehicleCodes.includes(alarm.code))
-      .sort((a, b) =>
-        a.level === b.level
-          ? (a.remainingKm ?? Number.POSITIVE_INFINITY) -
-            (b.remainingKm ?? Number.POSITIVE_INFINITY)
-          : LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level],
-      );
-  }, [alarmsQuery.data, levels.join(','), vehicleCodes.join(',')]);
+      .filter((alarm) => vehicleCodes.length === 0 || vehicleCodes.includes(alarm.code));
+    // The remaining distance closes every tie, which is what keeps the default order identical to
+    // the triage order this board opened in before it had arrows: reddest first, then nearest due.
+    return sortRows(
+      shown,
+      sorts,
+      alarmSortValue,
+      (a, b) =>
+        (a.remainingKm ?? Number.POSITIVE_INFINITY) - (b.remainingKm ?? Number.POSITIVE_INFINITY),
+    );
+  }, [alarmsQuery.data, levels.join(','), vehicleCodes.join(','), sortParam]);
+
+  // Ascending, then descending, then out of the order altogether — and a column the table
+  // is NOT sorted by joins the end of it rather than replacing what is there.
+  const changeSort = (by: string): void => {
+    patch({ sort: writeSorts(toggleSort(sorts, by)) });
+  };
 
   // The cars the board is reporting on, as the picker's options — from the BOARD, never from a
   // second call to the registry: this screen already holds every active vehicle. The rule for
@@ -91,6 +133,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   const columns: Column<FleetMaintenanceAlarmDto>[] = [
     {
       key: 'code',
+      sortable: true,
       header: t('fleet.odometer.columns.vehicle'),
       render: (alarm) => (
         <span className="font-mono text-xs" dir="ltr">
@@ -100,6 +143,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     },
     {
       key: 'level',
+      sortable: true,
       header: t('fleet.alarms.columns.level'),
       render: (alarm) => (
         <AlarmBadge level={alarm.level} noAlarmReason={alarm.noAlarmReason} />
@@ -107,6 +151,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     },
     {
       key: 'sinceServiceKm',
+      sortable: true,
       header: t('fleet.alarms.columns.sinceService'),
       align: 'end',
       render: (alarm) =>
@@ -114,6 +159,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     },
     {
       key: 'remainingKm',
+      sortable: true,
       header: t('fleet.alarms.columns.remaining'),
       align: 'end',
       // Drawn by the shared cell, exactly as the maintenance screen draws it — the two print the
@@ -124,6 +170,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     },
     {
       key: 'lastServiceAt',
+      sortable: true,
       header: t('fleet.vehicle.lastService'),
       // A DATE column, so an absent date reads as one — the same dash the two figures beside it
       // use. It used to print a sentence, and that sentence was byte-identical to the reason the
@@ -195,6 +242,8 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
           loading={alarmsQuery.isPending}
           error={alarmsQuery.isError ? alarmsQuery.error : undefined}
           onRetry={() => void alarmsQuery.refetch()}
+          sort={sorts}
+          onSortChange={changeSort}
         />
       </div>
     </PageContainer>

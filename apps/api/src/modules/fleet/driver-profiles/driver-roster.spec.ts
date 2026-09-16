@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { Types } from 'mongoose';
 import {
+  DRIVER_SORTABLE_COLUMNS,
   matchesFleetFilters,
   matchesRosterBranch,
   sortDriverRows,
@@ -140,6 +141,137 @@ describe('the registry’s order', () => {
     const rows = [row('b', null), row('a', profile())];
     sortDriverRows(rows, 'createdAt', 'asc');
     expect(rows.map((r) => r.employeeId)).toEqual(['b', 'a']);
+  });
+});
+
+// ── the HR columns ─────────────────────────────────────────────────────────
+//
+// «عاوز هنا يكون فيه سهم ... اسم السائق و كود الموظف و المحافظة رقم الموبايل تاريخ التعيين».
+//
+// These five are HR's facts, and the registry is paged HERE — the roster comes from the org chart
+// and the profiles from Fleet, so the join and the page both happen in memory. That is what makes
+// ordering by them possible at all, and it is also why each one has to be proved: the browser
+// shows these columns from HR's own endpoint, one page at a time, so a column whose value never
+// reached this function would sort by nothing at all and look like it had worked.
+
+describe('the registry’s order, on the columns HR owns', () => {
+  const hrRow = (
+    employeeId: string,
+    hr: Partial<{
+      fullNameAr: string | null;
+      code: string | null;
+      governorate: string | null;
+      phone: string | null;
+      hiredAt: Date | null;
+    }> = {},
+  ) => ({
+    employeeId,
+    profile: profile(),
+    hr: {
+      fullNameAr: null,
+      code: null,
+      governorate: null,
+      phone: null,
+      hiredAt: null,
+      ...hr,
+    },
+  });
+
+  const order = (rows: ReturnType<typeof hrRow>[], by: string, dir: 'asc' | 'desc'): string[] =>
+    sortDriverRows(rows, undefined, undefined, [{ by, dir }]).map((r) => r.employeeId);
+
+  it('orders the names as WORDS, not as code points', () => {
+    // `'أحمد' < 'محمد'` is true of an Arabic alphabet and false of a naive `<`, and this is the
+    // column a reader scans down looking for somebody.
+    const rows = [
+      hrRow('m', { fullNameAr: 'محمد حاتم' }),
+      hrRow('a', { fullNameAr: 'أحمد سعيد' }),
+      hrRow('s', { fullNameAr: 'سعيد علي' }),
+    ];
+    expect(order(rows, 'driver', 'asc')).toEqual(['a', 's', 'm']);
+    expect(order(rows, 'driver', 'desc')).toEqual(['m', 's', 'a']);
+  });
+
+  it('orders by employee code, by governorate and by phone', () => {
+    const rows = [
+      hrRow('b', { code: '0200010', governorate: 'الجيزة', phone: '0102' }),
+      hrRow('a', { code: '0100026', governorate: 'أسيوط', phone: '0101' }),
+    ];
+    expect(order(rows, 'employeeCode', 'asc')).toEqual(['a', 'b']);
+    expect(order(rows, 'governorate', 'asc')).toEqual(['a', 'b']);
+    expect(order(rows, 'phone', 'desc')).toEqual(['b', 'a']);
+  });
+
+  it('orders by hire date as a DATE — oldest first ascending', () => {
+    const rows = [
+      hrRow('new', { hiredAt: new Date('2026-01-01') }),
+      hrRow('old', { hiredAt: new Date('2019-05-01') }),
+    ];
+    expect(order(rows, 'hiredAt', 'asc')).toEqual(['old', 'new']);
+    expect(order(rows, 'hiredAt', 'desc')).toEqual(['new', 'old']);
+  });
+
+  it('sorts a driver HR has no answer for LAST, in both directions', () => {
+    // A driver with no phone on file is not the first in the phone book, and not the last either
+    // — they are a row with nothing to order by, and it belongs at the end whichever way the
+    // arrow points. The same rule a missing licence expiry already follows.
+    const rows = [
+      hrRow('none', { phone: null }),
+      hrRow('a', { phone: '0101' }),
+      hrRow('b', { phone: '0102' }),
+    ];
+    expect(order(rows, 'phone', 'asc')).toEqual(['a', 'b', 'none']);
+    expect(order(rows, 'phone', 'desc')).toEqual(['b', 'a', 'none']);
+  });
+
+  it('still shows a driver with NO fleet profile when the column is HR’s', () => {
+    // The old rule sorted a profile-less driver last whatever the column was. That is right for
+    // «انتهاء الترخيص» and wrong for «اسم السائق»: a new hire nobody has recorded a licence for
+    // still has a name, and burying every one of them at the bottom of an alphabet would hide
+    // exactly the drivers somebody is looking for.
+    const rows = [
+      { employeeId: 'z', profile: null, hr: { fullNameAr: 'أحمد', code: null, governorate: null, phone: null, hiredAt: null } },
+      hrRow('a', { fullNameAr: 'محمد' }),
+    ];
+    expect(sortDriverRows(rows, undefined, undefined, [{ by: 'driver', dir: 'asc' }]).map((r) => r.employeeId)).toEqual([
+      'z',
+      'a',
+    ]);
+  });
+
+  it('lets a SECOND column break the first one’s ties', () => {
+    const rows = [
+      hrRow('b', { governorate: 'الجيزة', code: '0200' }),
+      hrRow('a', { governorate: 'الجيزة', code: '0100' }),
+    ];
+    expect(
+      order(rows, 'governorate', 'asc'),
+      'the tie is closed by the employee id, deterministically',
+    ).toEqual(['a', 'b']);
+    expect(
+      sortDriverRows(rows, undefined, undefined, [
+        { by: 'governorate', dir: 'asc' },
+        { by: 'employeeCode', dir: 'desc' },
+      ]).map((r) => r.employeeId),
+    ).toEqual(['b', 'a']);
+  });
+
+  it('publishes exactly the columns a `?sort=` may name', () => {
+    // The whitelist IS the list of arrows the screen is allowed to draw; anything else falls back
+    // to `createdAt` rather than answering 400 or leaving the page unsorted.
+    expect(DRIVER_SORTABLE_COLUMNS.sort()).toEqual([
+      'createdAt',
+      'driver',
+      'employeeCode',
+      'governorate',
+      'hiredAt',
+      'licenseExpiresAt',
+      'phone',
+    ]);
+    expect(order([hrRow('b'), hrRow('a')], 'nonsense', 'asc'), 'no crash, no 400').toEqual([
+      'a',
+      'b',
+    ]);
   });
 });
 

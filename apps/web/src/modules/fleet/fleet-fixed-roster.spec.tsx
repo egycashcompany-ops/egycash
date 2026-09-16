@@ -1447,11 +1447,36 @@ describe('the standing board wears the daily board’s bar', () => {
     expect(CODE, 'no FilterBar left').not.toContain('<FilterBar');
     expect(CODE, 'nor its import').not.toContain("from '../../../shared/ui/FilterBar'");
     expect(CODE, 'the strip the daily board uses').toContain(
-      'className="flex flex-wrap items-center gap-1.5"',
+      'className="mb-4 flex flex-wrap items-center gap-1.5"',
     );
     expect(DAILY, 'which is the same strip').toContain(
-      'flex flex-wrap items-center gap-1.5',
+      'mb-4 flex flex-wrap items-center gap-1.5',
     );
+  });
+
+  it('gives the strip the WHOLE PAGE, above the grid — as the daily board does', () => {
+    // «فلاتر الطقم الثابت زى تعيين السيارات ... على نفس الصف كله». Having the daily board's
+    // controls was never the whole of that: they sat inside the board's own grid column, four
+    // fifths of the page, so the row the daily board fits on one line wrapped onto two or three
+    // here. Same controls, less room, different screen.
+    //
+    // Proved by POSITION in the source, which is the only thing a suite with no layout engine can
+    // read honestly: the strip must open before the grid does, not inside the column the grid
+    // opens. Both boards, so neither can drift back on its own.
+    for (const [name, source] of [
+      ['fixed', CODE],
+      ['daily', DAILY],
+    ] as const) {
+      const strip = source.indexOf('mb-4 flex flex-wrap items-center gap-1.5');
+      const grid = source.indexOf('grid min-h-0 flex-1 gap-6');
+      expect(strip, `${name}: the strip is there`).toBeGreaterThan(-1);
+      expect(grid, `${name}: the grid is there`).toBeGreaterThan(-1);
+      expect(strip, `${name}: the strip is ABOVE the grid`).toBeLessThan(grid);
+    }
+    expect(
+      CODE.indexOf('xl:col-span-4'),
+      'and the board’s own column opens after it, not around it',
+    ).toBeGreaterThan(CODE.indexOf('mb-4 flex flex-wrap items-center gap-1.5'));
   });
 
   it('says its tally in the daily board’s chips, not in a sentence', () => {
@@ -1487,7 +1512,7 @@ describe('the standing board wears the daily board’s bar', () => {
 
   it('carries the daily board’s mission select, on the same catalog, at the same width', () => {
     const strip = CODE.slice(
-      CODE.indexOf('className="flex flex-wrap items-center gap-1.5"'),
+      CODE.indexOf('className="mb-4 flex flex-wrap items-center gap-1.5"'),
       CODE.indexOf('<DataTable'),
     );
     expect(strip, 'the mission vocabulary, never workType').toContain('kind="missionType"');
@@ -1507,7 +1532,7 @@ describe('the standing board wears the daily board’s bar', () => {
 
   it('moves Save out of the page header and onto the end of the strip', () => {
     expect(CODE, 'the header carries no actions now').not.toMatch(/actions=\{\s*mayPlan/);
-    const strip = CODE.slice(CODE.indexOf('className="flex flex-wrap items-center gap-1.5"'));
+    const strip = CODE.slice(CODE.indexOf('className="mb-4 flex flex-wrap items-center gap-1.5"'));
     const end = strip.indexOf('<DataTable');
     expect(strip.slice(0, end), 'pinned to the far edge like the daily board').toContain('ms-auto');
     expect(strip.slice(0, end), 'and it saves').toContain("t('common.save')");

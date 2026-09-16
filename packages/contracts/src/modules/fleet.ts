@@ -151,7 +151,67 @@ export const UpdateFleetCatalogItemSchema = z
   .strict();
 export type UpdateFleetCatalogItem = z.infer<typeof UpdateFleetCatalogItemSchema>;
 
+// ── Sorting by SEVERAL columns at once (Fleet tables) ───────────────────────
+//
+// «لو دوس على انتهاء الترخيص هيلغى اللى كنت عامله فى الكود ... انا عاوز اقدر اعمل الاتنين مع بعض».
+// A registry of two hundred cars is read by more than one question at a time — the licences that
+// lapse first, and within a day, by car code — and a sort that can only hold one column answers
+// half of it and throws the other half away on the next click.
+//
+// ONE STRING, `code:asc,licenseExpiresAt:desc`, in the order the reader clicked. It is the same
+// string the browser already keeps in `?sort=`, so the address bar, the request and the server's
+// `.sort()` all say the same thing, and a link somebody sends a colleague carries the whole order
+// rather than its first column.
+//
+// `sortBy` / `sortDir` stay exactly as they were, and every screen still sends them: they are the
+// platform's pagination contract, every other module uses them, and a Fleet request that reached
+// an older API would still come back sorted by the reader's FIRST column instead of by nothing.
+
+/** As many columns as a table has room to show a precedence badge for. */
+export const FLEET_SORT_MAX = 4;
+
+export interface FleetSortEntry {
+  by: string;
+  dir: 'asc' | 'desc';
+}
+
+/** A field name, as the wire may spell it — `code`, `name.ar`. Nothing exotic reaches a query. */
+const SORT_FIELD = /^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$/;
+
+/** The `sort=` parameter itself. Bounded, because it is a string a stranger can type. */
+export const fleetSortQuery = () => z.string().trim().max(200).optional();
+
+/**
+ * `code:asc,licenseExpiresAt:desc` → the columns, in order.
+ *
+ * FORGIVING, because this comes off an address bar a person can edit: junk entries are dropped
+ * rather than failing the request, a missing direction reads as ascending, a column named twice
+ * keeps its first place, and the list is capped. What survives is still checked against the
+ * collection's own sortable fields on the way to the database — this only decides what is
+ * well-formed, never what is allowed.
+ */
+export const parseFleetSort = (raw: string | null | undefined): FleetSortEntry[] => {
+  if (raw === null || raw === undefined) return [];
+  const entries: FleetSortEntry[] = [];
+  const seen = new Set<string>();
+  for (const piece of raw.split(',')) {
+    const [field, direction] = piece.trim().split(':');
+    const by = (field ?? '').trim();
+    if (by === '' || !SORT_FIELD.test(by) || seen.has(by)) continue;
+    seen.add(by);
+    entries.push({ by, dir: direction?.trim() === 'desc' ? 'desc' : 'asc' });
+    if (entries.length === FLEET_SORT_MAX) break;
+  }
+  return entries;
+};
+
+/** The columns, back into one parameter. Empty → `null`: nothing to put in the address bar. */
+export const formatFleetSort = (entries: readonly FleetSortEntry[]): string | null =>
+  entries.length === 0 ? null : entries.map((entry) => `${entry.by}:${entry.dir}`).join(',');
+
 export const ListFleetCatalogQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   kind: FleetCatalogKindSchema.optional(),
   /** Narrows `violationType` to one half's own list — the company form, or the drivers' bar. */
   violationSide: FleetViolationSideSchema.optional(),
@@ -376,6 +436,8 @@ export const vehicleCodeSearchQuery = (term: string): { code?: string } => {
 };
 
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   status: FleetVehicleStatusSchema.optional(),
   /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). */
   typeId: objectId().optional(),
@@ -537,6 +599,8 @@ export interface FleetDriverRowDto {
 }
 
 export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   /**
    * «الفرع» — filtered HERE, on the roster Fleet already holds.
    *
@@ -633,6 +697,8 @@ export const UpdateFleetUnavailabilitySchema = z
 export type UpdateFleetUnavailability = z.infer<typeof UpdateFleetUnavailabilitySchema>;
 
 export const ListFleetUnavailabilityQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   employeeId: objectId().optional(),
   /** Rows whose [from, to] covers this date. */
   coversDate: z.coerce.date().optional(),
@@ -771,6 +837,8 @@ export const FleetOdometerBracketQuerySchema = z
 export type FleetOdometerBracketQuery = z.infer<typeof FleetOdometerBracketQuerySchema>;
 
 export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
   /**
@@ -1034,6 +1102,8 @@ export const UpdateFleetMaintenanceSchema = z
 export type UpdateFleetMaintenance = z.infer<typeof UpdateFleetMaintenanceSchema>;
 
 export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   vehicleId: objectId().optional(),
   /**
    * «حالة الصيانة» — the visit's ONE state: `true` = in the workshop (`outDate` null), `false` =
@@ -1460,7 +1530,11 @@ const accidentFilters = {
   to: z.coerce.date().optional(),
 };
 
-export const ListFleetAccidentsQuerySchema = PaginationQuerySchema.extend(accidentFilters).strict();
+export const ListFleetAccidentsQuerySchema = PaginationQuerySchema.extend({
+  ...accidentFilters,
+  /** Several columns at once — see `parseFleetSort`. */
+  sort: fleetSortQuery(),
+}).strict();
 export type ListFleetAccidentsQuery = z.infer<typeof ListFleetAccidentsQuerySchema>;
 
 /**
@@ -1656,6 +1730,8 @@ export interface FleetGrievanceDto {
 }
 
 export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   kind: FleetViolationKindSchema.optional(),
   /**
    * The cars named EXACTLY, ORed — resolved to ids, as on accidents: a violation stores its

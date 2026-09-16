@@ -6,6 +6,7 @@
 // `.grievanceApplied` only: edits and deletes are audited facts, not announcements.
 import {
   FleetEvents,
+  parseFleetSort,
   type FleetViolationKind,
   type FleetViolationRollupDto,
   type FleetViolationSide,
@@ -299,6 +300,9 @@ class FleetViolationService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
     });
   }
 

@@ -25,6 +25,7 @@ import {
   useVehicleTypes,
 } from '../api/fleet-queries';
 import { useEmployeeName } from './EmployeeName';
+import { ZoomableImage } from './ZoomableImage';
 import { vehicleTodayFrom, type VehicleToday } from './vehicle-today';
 
 /** What the file picker offers and what the server's category accepts — kept in step deliberately. */
@@ -186,6 +187,8 @@ export const DriverLicenseImagePreviewDialog = ({
       <Dialog
         open={open}
         onClose={onClose}
+        // The widest the shell offers — this is a DOCUMENT being read, not a form being filled.
+        size="xl"
         title={t('fleet.drivers.licenseImage.previewTitle')}
         description={
           driver === null
@@ -228,11 +231,7 @@ export const DriverLicenseImagePreviewDialog = ({
           </p>
         )}
         {url !== null && (
-          <img
-            src={url}
-            alt={t('fleet.drivers.licenseImage.previewTitle')}
-            className="mx-auto max-h-[60vh] w-auto max-w-full rounded-lg border border-slate-200 object-contain dark:border-slate-800"
-          />
+          <ZoomableImage src={url} alt={t('fleet.drivers.licenseImage.previewTitle')} />
         )}
       </Dialog>
 
@@ -590,6 +589,7 @@ export const StagedDriverLicenseImage = ({
       <Dialog
         open={previewing}
         onClose={() => setPreviewing(false)}
+        size="xl"
         title={t('fleet.drivers.licenseImage.previewTitle')}
         description={file.name}
         footer={
@@ -599,11 +599,7 @@ export const StagedDriverLicenseImage = ({
         }
       >
         {url !== null && (
-          <img
-            src={url}
-            alt={t('fleet.drivers.licenseImage.previewTitle')}
-            className="mx-auto max-h-[60vh] w-auto max-w-full rounded-lg border border-slate-200 object-contain dark:border-slate-800"
-          />
+          <ZoomableImage src={url} alt={t('fleet.drivers.licenseImage.previewTitle')} />
         )}
       </Dialog>
     </span>

@@ -1,5 +1,6 @@
 // Fleet catalog admin (design §2.10). Configuration, not domain facts: audited, no events.
 import {
+  parseFleetSort,
   type CreateFleetCatalogItem,
   type ListFleetCatalogQuery,
   type Paginated,
@@ -92,6 +93,9 @@ class FleetCatalogItemService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
       sortableFields: ['createdAt', 'kind', 'name.ar'],
     });
   }

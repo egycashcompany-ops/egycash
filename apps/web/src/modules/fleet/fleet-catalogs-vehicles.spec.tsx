@@ -428,6 +428,7 @@ describe('the registry table renders the frozen column order', () => {
         pageSize: 25,
         sortBy: 'code',
         sortDir: 'asc',
+        sort: 'code:asc',
         search: undefined,
         status: undefined,
         typeId: undefined,

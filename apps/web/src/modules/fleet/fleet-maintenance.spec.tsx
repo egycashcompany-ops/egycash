@@ -98,6 +98,7 @@ const BASE_PARAMS = {
   pageSize: 25,
   sortBy: 'inDate',
   sortDir: 'desc',
+  sort: 'inDate:desc',
   from: undefined,
   to: undefined,
   outFrom: undefined,

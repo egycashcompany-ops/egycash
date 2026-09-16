@@ -2,6 +2,7 @@
 // committed, per the FL-2/FL-3 discipline and owner FL-4 point 6.
 import {
   FleetEvents,
+  parseFleetSort,
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
   type ListFleetMaintenanceQuery,
@@ -405,6 +406,9 @@ class FleetMaintenanceService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
     });
     const codes = await fleetVehicleRepository.codesByIds([
       ...new Set(page.items.map((item) => String(item.vehicleId))),

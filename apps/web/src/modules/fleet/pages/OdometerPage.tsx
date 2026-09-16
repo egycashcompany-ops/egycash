@@ -41,6 +41,7 @@ import { odometerRange, widerRange } from '../lib/odometer-range';
 import { EmployeeName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
+import { readSorts, sortQuery, toggleSort, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -70,11 +71,13 @@ export const OdometerPage = (): JSX.Element => {
   const alerts = (sp.get('alerts') ?? '').split(',').filter((a) => a !== '');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'date:desc').split(':');
-  const sort = { by: sortByRaw ?? 'date', dir: sortDirRaw === 'asc' ? 'asc' : 'desc' } as {
-    by: string;
-    dir: 'asc' | 'desc';
-  };
+  /**
+   * The columns this table is sorted by, in the order the reader clicked them —
+   * «انا عاوز اقدر اعمل الاتنين مع بعض». One parameter carries the whole order; `date:desc`
+   * is where the screen starts when the reader has not said otherwise.
+   */
+  const sortParam = sp.get('sort');
+  const sorts = useMemo(() => readSorts(sortParam, 'date:desc'), [sortParam]);
   const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
@@ -86,9 +89,10 @@ export const OdometerPage = (): JSX.Element => {
     if (resetPage && !('page' in updates)) next.delete('page');
     setSp(next);
   };
+  // Ascending, then descending, then out of the order altogether — and a column the table
+  // is NOT sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
-    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
-    patch({ sort: `${by}:${dir}` }, false);
+    patch({ sort: writeSorts(toggleSort(sorts, by)) }, false);
   };
   // The defaulted month is not an "active filter": it is where the page starts, so the reset
   // affordance stays off until the reader has actually narrowed something.
@@ -112,8 +116,7 @@ export const OdometerPage = (): JSX.Element => {
     () => ({
       page,
       pageSize,
-      sortBy: sort.by,
-      sortDir: sort.dir,
+      ...sortQuery(sorts),
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       from: from || undefined,
       to: to || undefined,
@@ -457,7 +460,7 @@ export const OdometerPage = (): JSX.Element => {
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
-          sort={sort}
+          sort={sorts}
           onSortChange={changeSort}
           {...(monthIsTheReason ? { empty: emptyMonth } : {})}
         />

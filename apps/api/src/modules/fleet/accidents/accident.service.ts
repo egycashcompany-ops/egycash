@@ -5,6 +5,7 @@
 // historical paperwork about the day it happened, not a new operational fact about the car.
 import {
   FleetEvents,
+  parseFleetSort,
   type CreateFleetAccident,
   type FleetAccidentSummaryQuery,
   type FleetAccidentTotalsDto,
@@ -131,6 +132,9 @@ class FleetAccidentService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
     });
   }
 

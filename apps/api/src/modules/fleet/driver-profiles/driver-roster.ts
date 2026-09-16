@@ -148,19 +148,34 @@ export const sortDriverRows = <
   rows: readonly TRow[],
   sortBy: string | undefined,
   sortDir: 'asc' | 'desc' | undefined,
+  /**
+   * The rest of the reader's order, when they have clicked more than one column — the registry's
+   * half of «انا عاوز اقدر اعمل الاتنين مع بعض». Omitted, the first two arguments are the whole
+   * order, which is what every caller before the tables could hold two columns passed.
+   */
+  sorts: readonly { by: string; dir: 'asc' | 'desc' }[] = [],
 ): TRow[] => {
-  const dir = sortDir === 'asc' ? 1 : -1;
-  const key = sortBy === 'licenseExpiresAt' ? 'licenseExpiresAt' : 'createdAt';
+  const columns = (sorts.length > 0 ? sorts : [{ by: sortBy ?? '', dir: sortDir ?? 'desc' }]).map(
+    (entry) => ({
+      key: entry.by === 'licenseExpiresAt' ? ('licenseExpiresAt' as const) : ('createdAt' as const),
+      dir: entry.dir === 'asc' ? 1 : -1,
+    }),
+  );
   return [...rows].sort((a, b) => {
     if (a.profile === null && b.profile === null) return a.employeeId.localeCompare(b.employeeId);
     if (a.profile === null) return 1;
     if (b.profile === null) return -1;
-    const left = a.profile[key]?.getTime() ?? null;
-    const right = b.profile[key]?.getTime() ?? null;
-    // Same rule as a missing profile, one level down: no value sorts LAST either way round.
-    if (left === null && right === null) return a.employeeId.localeCompare(b.employeeId);
-    if (left === null) return 1;
-    if (right === null) return -1;
-    return left === right ? a.employeeId.localeCompare(b.employeeId) : (left - right) * dir;
+    // Column by column, in the order they were clicked; the first that separates the two rows
+    // decides, and the employee id closes the tie so a page cannot reshuffle under a reader.
+    for (const column of columns) {
+      const left = a.profile[column.key]?.getTime() ?? null;
+      const right = b.profile[column.key]?.getTime() ?? null;
+      // Same rule as a missing profile, one level down: no value sorts LAST either way round.
+      if (left === null && right === null) continue;
+      if (left === null) return 1;
+      if (right === null) return -1;
+      if (left !== right) return (left - right) * column.dir;
+    }
+    return a.employeeId.localeCompare(b.employeeId);
   });
 };

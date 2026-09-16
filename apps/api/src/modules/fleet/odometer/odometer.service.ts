@@ -8,6 +8,7 @@
 // the transaction has committed.
 import {
   FleetEvents,
+  parseFleetSort,
   type CorrectFleetOdometer,
   type ListFleetOdometerQuery,
   type Paginated,
@@ -275,6 +276,9 @@ class FleetOdometerService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
     });
     // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
     // many vehicles the registry holds.

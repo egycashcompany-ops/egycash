@@ -182,7 +182,13 @@ const maintenanceWithVisits = (a: FleetMaintenanceAlarmDto, count: number): stri
     updatedAt: '2026-06-01T00:00:00.000Z',
   }));
   qc.setQueryData(
-    listKey('fleet', 'maintenance', { page: 1, pageSize: 25, sortBy: 'inDate', sortDir: 'desc' }),
+    listKey('fleet', 'maintenance', {
+      page: 1,
+      pageSize: 25,
+      sortBy: 'inDate',
+      sortDir: 'desc',
+      sort: 'inDate:desc',
+    }),
     { items, meta: { page: 1, pageSize: 25, totalItems: count, totalPages: 1 } },
   );
   return draw(<MaintenancePage />, '/fleet/maintenance', qc);
@@ -214,6 +220,7 @@ const odometerWithLogs = (a: FleetMaintenanceAlarmDto, count: number): string =>
       pageSize: 25,
       sortBy: 'date',
       sortDir: 'desc',
+      sort: 'date:desc',
       vehicleCodes: undefined,
       from: MONTH.from,
       to: MONTH.to,

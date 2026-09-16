@@ -3,6 +3,7 @@
 import {
   FleetEvents,
   FleetSettingKeys,
+  parseFleetSort,
   type ChangeFleetVehicleStatus,
   type CreateFleetVehicle,
   type FleetCatalogKind,
@@ -239,6 +240,9 @@ class FleetVehicleService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
       scope,
     });
   }

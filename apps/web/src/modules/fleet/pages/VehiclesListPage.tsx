@@ -239,6 +239,56 @@ export const VehiclesListPage = (): JSX.Element => {
 
   const dash = (value: string | undefined): string => value ?? '—';
 
+  /**
+   * TWO SHEETS, one builder — «لو هدوس على زرار طباعه الرخصه يبقى الصوره و الكود العربيه والنوع
+   * والفرع لكن لو هطبع من زرار الاجراءت يبقى كل تفاصيل العربيه».
+   *
+   * They are two different documents because they answer two different questions. The one that
+   * leaves with a licence names the car just well enough to say WHOSE licence this is — the code,
+   * the make and the branch it belongs to, over the scan itself. The registry record is the car's
+   * whole file, and the scan rides along at the end of it.
+   *
+   * `licenceCard` is therefore not a shorter version of the record: it is the SCAN's sheet, and
+   * the three rows are its caption. Both go through the one builder, so they print in one
+   * typeface, one direction and one page shape.
+   */
+  const licenceCard = async (vehicle: FleetVehicleDto): Promise<void> => {
+    const make = dash(typeName.get(vehicle.typeId));
+    try {
+      await printLicenceRecord({
+        locale,
+        title: t('fleet.vehicles.licenseImage.previewTitle'),
+        subtitle: t('fleet.vehicles.licenseImage.previewSubtitle', { code: vehicle.code, make }),
+        // Exactly the three the owner named, in the order they named them. No expiry, no plate,
+        // no chassis: those are the record's, and a licence sheet carrying them is the record.
+        rows: [
+          { label: t('fleet.vehicles.columns.code'), value: vehicle.code },
+          { label: t('fleet.vehicles.columns.type'), value: make },
+          {
+            label: t('fleet.vehicles.columns.branch'),
+            value: dash(vehicle.branchId === null ? undefined : branchName.get(vehicle.branchId)),
+          },
+        ],
+        // The button that opens this sheet is only drawn on a car that HAS a scan (see the
+        // licence cell), so the section is never the empty heading the builder guards against.
+        licenseImage:
+          vehicle.licenseImage === null
+            ? null
+            : {
+                fetch: () => fetchVehicleLicenseImage(vehicle.id),
+                heading: t('fleet.vehicles.licenseImage.previewTitle'),
+                caption: t('fleet.vehicles.licenseImage.previewSubtitle', {
+                  code: vehicle.code,
+                  make,
+                }),
+              },
+      });
+    } catch {
+      toast.error(t('fleet.vehicles.print.failed'));
+    }
+  };
+
+  /** The car's WHOLE file — every column the registry holds, and the scan at the end of it. */
   const print = async (vehicle: FleetVehicleDto): Promise<void> => {
     const make = dash(typeName.get(vehicle.typeId));
     try {
@@ -414,7 +464,7 @@ export const VehiclesListPage = (): JSX.Element => {
         <VehicleLicenseImageCell
           vehicle={v}
           onPreview={setPreviewing}
-          onPrint={(vehicle) => void print(vehicle)}
+          onPrint={(vehicle) => void licenceCard(vehicle)}
         />
       ),
     },

@@ -277,12 +277,46 @@ describe('printing a licence from the column the licence is in', () => {
   });
 
   it('is the PAGE’s print, not a second copy of it', () => {
-    // One sheet, two doors: the cell takes a callback and the page hands it the same `print` the
-    // actions column calls. A cell that built its own sheet would drift from the other one the
-    // first time a column was added to either.
+    // The cell takes a callback and prints nothing itself. A cell that built its own sheet would
+    // drift from the page's the first time a row was added to either.
     const cell = code('components/VehicleLicenseImage.tsx');
     expect(cell, 'the cell prints nothing itself').not.toContain('printLicenceRecord');
     expect(cell).toContain('onPrint?: (vehicle: FleetVehicleDto) => void;');
-    expect(code('pages/VehiclesListPage.tsx')).toContain('onPrint={(vehicle) => void print(vehicle)}');
+    expect(code('pages/VehiclesListPage.tsx')).toContain(
+      'onPrint={(vehicle) => void licenceCard(vehicle)}',
+    );
+  });
+
+  it('prints the SCAN’s own sheet, not the car’s whole file', () => {
+    // «لو هدوس على زرار طباعه الرخصه يبقى الصوره و الكود العربيه والنوع والفرع لكن لو هطبع من زرار
+    // الاجراءت يبقى كل تفاصيل العربيه». Two questions, two documents: the sheet that leaves with a
+    // licence names the car just well enough to say whose licence it is.
+    const page = code('pages/VehiclesListPage.tsx');
+    const card = page.slice(
+      page.indexOf('const licenceCard = async'),
+      page.indexOf('const print = async'),
+    );
+    expect(card, 'the card is its own function').not.toBe('');
+    for (const column of ['code', 'type', 'branch']) {
+      expect(card, `names the ${column}`).toContain(`t('fleet.vehicles.columns.${column}')`);
+    }
+    // …and NOTHING else. These are the record's, and a licence sheet carrying them is the record.
+    for (const column of ['plate', 'chassis', 'motor', 'joinedAt', 'license', 'insurance']) {
+      expect(card, `leaves the ${column} to the record`).not.toContain(
+        `t('fleet.vehicles.columns.${column}')`,
+      );
+    }
+    expect(card, 'and it carries the scan').toContain('fetchVehicleLicenseImage(vehicle.id)');
+  });
+
+  it('keeps the ACTIONS column printing the whole record', () => {
+    const page = code('pages/VehiclesListPage.tsx');
+    const record = page.slice(page.indexOf('const print = async'), page.indexOf('const columns'));
+    for (const column of ['type', 'code', 'plate', 'chassis', 'motor', 'branch', 'status']) {
+      expect(record, `the record still names the ${column}`).toContain(
+        `t('fleet.vehicles.columns.${column}')`,
+      );
+    }
+    expect(page, 'and the actions button calls it').toContain('onClick={() => void print(v)}');
   });
 });

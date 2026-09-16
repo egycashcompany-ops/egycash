@@ -102,7 +102,7 @@ export const runOdometerGoLive = async (dataDir?: string): Promise<void> => {
   }
 
   const parsed = parseCarsLog(JSON.parse(await readFile(file, 'utf8')));
-  const drivers = await resolveDrivers(parsed.rows);
+  const drivers = await resolveDrivers(parsed.rows.flatMap((row) => [row.driver, row.driver2]));
   const plan = planOdometerImport(parsed.rows, await fleetVehicleRepository.codeIndex(), drivers.ids);
   const notes = {
     skippedDeleted: parsed.skippedDeleted,

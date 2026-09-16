@@ -1,4 +1,4 @@
-import { Types, type FilterQuery } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
@@ -56,6 +56,43 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       .findOne({ vehicleId: new Types.ObjectId(vehicleId), outDate: null, isDeleted: false })
       .lean<FleetMaintenanceVisitDoc>()
       .exec();
+  }
+
+  /** How a visit is told from another for the go-live import: the car, the day in, the workshop, the work. */
+  rowKey(inDate: Date, workshopId: string, workTypeId: string): string {
+    return `${inDate.toISOString()}|${workshopId}|${workTypeId}`;
+  }
+
+  /**
+   * Every live visit's key for one vehicle — what the go-live import checks before writing, so a
+   * run taken over after a lapsed lease skips the visits the first attempt already wrote.
+   */
+  async existingKeys(vehicleId: string): Promise<Set<string>> {
+    const rows = await this.model
+      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .select({ inDate: 1, workshopId: 1, workTypeId: 1 })
+      .lean<{ inDate: Date; workshopId: Types.ObjectId; workTypeId: Types.ObjectId }[]>()
+      .exec();
+    return new Set(
+      rows.map((row) => this.rowKey(row.inDate, String(row.workshopId), String(row.workTypeId))),
+    );
+  }
+
+  /**
+   * Several visits in ONE insert — the go-live import's write, one call per vehicle. Stamps
+   * `createdBy`/`updatedBy` exactly as `create` does; ordered, so a failure names the first visit
+   * that could not be written and leaves the ones before it for the take-over to find.
+   */
+  async createMany(
+    rows: readonly Partial<FleetMaintenanceVisitDoc>[],
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<FleetMaintenanceVisitDoc[]> {
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    const docs = await FleetMaintenanceVisitModel.create(
+      rows.map((row) => ({ ...row, createdBy: by, updatedBy: by })),
+      { session: meta.session ?? null, ordered: true },
+    );
+    return docs.map((doc) => doc.toObject() as FleetMaintenanceVisitDoc);
   }
 
   /**

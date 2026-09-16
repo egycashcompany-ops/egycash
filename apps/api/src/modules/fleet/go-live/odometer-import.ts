@@ -179,17 +179,20 @@ export interface DriverResolution {
  * Who the book's driver names are, asked ONCE of the directory for every distinct spelling.
  *
  * Distinct spellings, not rows: the book has 20,000 rows and 600 spellings, and HR's answer for
- * a spelling does not change between two rows that carry it.
+ * a spelling does not change between two rows that carry it. `isNobody` is the book's own rule
+ * for a name that means «no driver» — this book's two spellings by default; the workshop book
+ * has more of them.
  */
-export const resolveDrivers = async (rows: readonly ParsedLogRow[]): Promise<DriverResolution> => {
+export const resolveDrivers = async (
+  spellings: readonly (string | null)[],
+  isNobody: (name: string) => boolean = isPlaceholderDriver,
+): Promise<DriverResolution> => {
   const names = new Set<string>();
   const placeholders = new Set<string>();
-  for (const row of rows) {
-    for (const name of [row.driver, row.driver2]) {
-      if (name === null) continue;
-      if (isPlaceholderDriver(name)) placeholders.add(name);
-      else names.add(name);
-    }
+  for (const name of spellings) {
+    if (name === null) continue;
+    if (isNobody(name)) placeholders.add(name);
+    else names.add(name);
   }
   const asked = [...names].sort();
   const answers = await findDirectoryEmployeesByNames(asked);

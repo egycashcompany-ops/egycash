@@ -16,6 +16,8 @@ import { failureReason, fold, MIME, parseCars } from './vehicles-import';
 import { DRIVER_PHOTOS_DIR, DRIVER_PHOTOS_GO_LIVE_MARK, planDriverPhotos } from './driver-photos';
 import { CARS_LOG_FILE, ODOMETER_GO_LIVE_MARK } from './odometer';
 import { parseCarsLog } from './odometer-import';
+import { CAR_MAINTENANCE_FILE, MAINTENANCE_GO_LIVE_MARK } from './maintenance';
+import { parseVisits } from './maintenance-import';
 import { ValidationError } from '../../../shared/errors';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -74,7 +76,7 @@ describe('the boot seed is what applies the house vocabulary', () => {
 describe('the long-running processes are what import the vehicle registry', () => {
   const LONG_RUNNING = ['src/server.ts', 'src/worker.ts'];
   /** Every go-live step: the cars, the drivers' licence scans, the odometer book — on the same terms. */
-  const STARTERS = ['startVehicleGoLive', 'startDriverPhotosGoLive', 'startOdometerGoLive'];
+  const STARTERS = ['startVehicleGoLive', 'startDriverPhotosGoLive', 'startOdometerGoLive', 'startMaintenanceGoLive'];
   const cases = LONG_RUNNING.flatMap((path) => STARTERS.map((starter) => [path, starter]));
 
   it.each(cases)('%s starts %s after booting', (path, starter) => {
@@ -166,6 +168,18 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(source).toContain("FleetGoLiveRunModel.exists({ key: VEHICLE_GO_LIVE_MARK, status: 'done' })");
   });
 
+  it('the workshop book refuses before its claim too — and waits for the cars AND the readings', () => {
+    const source = code('src/modules/fleet/go-live/maintenance.ts');
+    const claim = source.indexOf('claimGoLiveRun(MAINTENANCE_GO_LIVE_MARK');
+    expect(claim).toBeGreaterThan(-1);
+    for (const refusal of ['dir === null', '!existsSync(file)', 'priorDone < 2', 'admin === null']) {
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
+    }
+    // A third of the visits take their counter from the odometer book, so both go first.
+    expect(source).toContain('key: { $in: [VEHICLE_GO_LIVE_MARK, ODOMETER_GO_LIVE_MARK] }');
+  });
+
   it('every refusal is WRITTEN, not only logged — the owner cannot read the log', () => {
     // A refusal that lived only in the server log was, for two deploys, indistinguishable from
     // an import that never ran. Each refusal now records itself on the run row, with a lease that
@@ -185,6 +199,10 @@ describe('the long-running processes are what import the vehicle registry', () =
     for (const reason of ['vehicles-not-done', 'no-admin']) {
       expect(records(odometer, 'ODOMETER_GO_LIVE_MARK', reason), `odometer: ${reason}`).toBe(true);
     }
+    const maintenance = code('src/modules/fleet/go-live/maintenance.ts');
+    for (const reason of ['prior-steps-not-done', 'no-admin']) {
+      expect(records(maintenance, 'MAINTENANCE_GO_LIVE_MARK', reason), `maintenance: ${reason}`).toBe(true);
+    }
   });
 
   it('is skipped under test, or every integration suite imports 209 cars', () => {
@@ -194,6 +212,8 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(photos).toMatch(/startDriverPhotosGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
     const odometer = code('src/modules/fleet/go-live/odometer.ts');
     expect(odometer).toMatch(/startOdometerGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
+    const maintenance = code('src/modules/fleet/go-live/maintenance.ts');
+    expect(maintenance).toMatch(/startMaintenanceGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
   });
 
   it('a car that fails records WHICH check failed, not «Validation failed»', () => {
@@ -244,6 +264,7 @@ describe('the long-running processes are what import the vehicle registry', () =
     ['src/modules/fleet/go-live/vehicles.ts', "'fleet go-live: partial import'", 'VEHICLE_GO_LIVE_MARK'],
     ['src/modules/fleet/go-live/driver-photos.ts', "'fleet go-live: partial driver scans'", 'DRIVER_PHOTOS_GO_LIVE_MARK'],
     ['src/modules/fleet/go-live/odometer.ts', "'fleet go-live: partial odometer import'", 'ODOMETER_GO_LIVE_MARK'],
+    ['src/modules/fleet/go-live/maintenance.ts', "'fleet go-live: partial workshop import'", 'MAINTENANCE_GO_LIVE_MARK'],
   ])('%s: a run that FAILS is not marked done, so the next boot takes it over', (path, partial, mark) => {
     // The whole reason the mark became a lease. `finishGoLiveRun` must sit on the success path
     // only; a failure returns first and leaves the lease to expire.
@@ -380,6 +401,26 @@ describe('the data ships with the build', () => {
     const unknown = [...new Set(parsed.rows.filter((row) => !codes.has(row.code)).map((row) => row.code))].sort();
     expect(unknown).toEqual(['194', 'تويوتا1']);
     expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v1');
+  });
+
+  it('the workshop book is there: 1,938 rows, 133 deleted, four unreadable, six rows on cars the registry lacks', () => {
+    const dir = resolveGoLiveDataDir() as string;
+    const parsed = parseVisits(JSON.parse(readFileSync(join(dir, CAR_MAINTENANCE_FILE), 'utf8')));
+    expect(parsed.visits.length + parsed.skippedDeleted + parsed.rejected.length).toBe(1938);
+    expect(parsed.skippedDeleted).toBe(133);
+    // Two rows with no car, two whose out-date is not a date. Reported by the run, not fixed here.
+    expect(parsed.rejected.map((r) => r.reason).sort()).toEqual([
+      '171 2025-04-06: the out-date «6/4/20205» cannot be read',
+      '517 2025-08-06: the out-date «011/08/2025» cannot be read',
+      'no car code',
+      'no car code',
+    ]);
+    const cars = parseCars(JSON.parse(readFileSync(join(dir, 'cars.json'), 'utf8')));
+    const codes = new Set(cars.cars.map((car) => car.code));
+    const unknown = parsed.visits.filter((v) => !codes.has(v.code));
+    expect(unknown.length, 'six rows').toBe(6);
+    expect(new Set(unknown.map((v) => v.code)).size, 'on five codes').toBe(5);
+    expect(MAINTENANCE_GO_LIVE_MARK).toBe('go-live:maintenance:v1');
   });
 
   it('all 56 licence scans are there, and every one is named for a car in the data', () => {

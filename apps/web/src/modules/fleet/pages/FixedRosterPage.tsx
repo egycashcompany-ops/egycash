@@ -958,6 +958,109 @@ export const FixedRosterPage = (): JSX.Element => {
         ]}
       />
 
+      {/* THE DAILY BOARD'S STRIP, in the daily board's PLACE.
+
+          «فلاتر الطقم الثابت زى تعيين السيارات ... على نفس الصف كله». It already held the right
+          controls; what it did not have was the daily board's ROOM. It sat inside the board's own
+          grid column — four fifths of the page — so the eleven controls the daily board fits on
+          one row wrapped onto two or three here. Above the grid it has the whole width, and the
+          two screens read as the pair they are.
+
+          Not the shared `FilterBar`, on either screen: that bar writes its own reset and its own
+          active-filter count, which is a good bar and the wrong one HERE — a reader moving
+          between the two roster screens was meeting two different ones. */}
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES, and the same one the daily roster
+            carries, at the same width — «تظبط ابعاد الفلاتر». `visibleFixedRows` above
+            already reads a list, so what narrows the rows is unchanged; the options come from
+            the draft, which is every car this board reports on. */}
+        <VehicleCodeFilter
+          className="w-56 shrink-0"
+          fullWidth
+          value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
+          options={codeOptions}
+          onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
+        />
+        {/* THE DAILY BOARD'S MISSION FILTER, at the daily board's width, on the same catalog
+            the mission column and the mission chips read. `mission` is ONE parameter: the
+            chip below writes it, this select shows it, and the table narrows on it. */}
+        <div className="w-44">
+          <CatalogMultiSelect
+            kind="missionType"
+            value={missions}
+            onChange={(ids) => patch({ mission: writeList(ids) })}
+            label={t('fleet.roster.allMissions')}
+            className="w-full"
+            fullWidth
+          />
+        </div>
+
+        {/* Each counter is a real <button>, as on the daily board: it narrows the table, so it
+            must be reachable by keyboard and announce its state, which a tinted <span> with an
+            onClick never does. `aria-pressed` is the announcement. The colour belongs to the
+            CATEGORY and stays put whether or not the chip is the one applied; the active state
+            is a ring drawn on top. */}
+        {counters.map((counter) => (
+          <button
+            key={counter.key}
+            type="button"
+            data-counter={counter.key}
+            data-active={counter.active ? 'true' : undefined}
+            aria-pressed={counter.active}
+            onClick={() => patch(counter.apply)}
+            className={[
+              'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+              counter.tone,
+              counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
+            ].join(' ')}
+          >
+            <span className="truncate">{counter.label}</span>
+            <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
+          </button>
+        ))}
+
+        {/* Offered only when there is something to undo — the daily board's rule and its
+            button, down to the hue. Clears the three view filters together. */}
+        {filtered && (
+          <button
+            type="button"
+            data-reset-filters="true"
+            onClick={resetFilters}
+            aria-label={t('common.filters.clear')}
+            title={t('common.filters.clear')}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"
+          >
+            <ResetIcon className="h-3.5 w-3.5" />
+            {t('common.filters.clear')}
+          </button>
+        )}
+
+        {/* «حفظ» at the END of the strip, where the daily board keeps it — not in the page
+            header. It belongs beside the tally that says what the board currently IS, and
+            `ms-auto` pins it to the far edge whatever the chips add up to. */}
+        {mayPlan && (
+          <div className="ms-auto flex items-center gap-2">
+            {dirty && (
+              <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
+                {t('fleet.fixedRoster.unsaved')}
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={!dirty || save.isPending}
+              onClick={discard}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => void commit()}>
+              {t('common.save')}
+            </Button>
+          </div>
+        )}
+      </div>
+
       {/* THE BOARD IS EXACTLY THE SCREEN, and the page itself never scrolls. The shell hands the
           page its height (`PageContainer fullHeight`), this grid takes it (`min-h-0 flex-1`), and
           the two regions scroll INSIDE themselves — the table in its own box, the pool in its own
@@ -971,105 +1074,6 @@ export const FixedRosterPage = (): JSX.Element => {
             inside the table, which is where the scrolling belongs. `min-h-0` is the same rule in
             the other axis, and is what keeps the table's height off the grid row. */}
         <div className="flex min-h-0 min-w-0 flex-col gap-4 xl:col-span-4">
-          {/* THE DAILY BOARD'S STRIP, not the shared `FilterBar` — «شاشه fleet/fixed-roster تكون
-              زى /fleet/roster». One row holding what narrows the board, what the board adds up
-              to, and what saves it, wrapping rather than scrolling so it stays honest at 390px.
-
-              The shared `FilterBar` it replaced writes its own reset and its own active-filter
-              count, which is a good bar and the wrong one HERE: the two roster screens are a
-              pair, and a reader moving between them was meeting two different bars. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES, and the same one the daily roster
-                carries, at the same width — «تظبط ابعاد الفلاتر». `visibleFixedRows` above
-                already reads a list, so what narrows the rows is unchanged; the options come from
-                the draft, which is every car this board reports on. */}
-            <VehicleCodeFilter
-              className="w-56 shrink-0"
-              fullWidth
-              value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
-              options={codeOptions}
-              onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
-            />
-            {/* THE DAILY BOARD'S MISSION FILTER, at the daily board's width, on the same catalog
-                the mission column and the mission chips read. `mission` is ONE parameter: the
-                chip below writes it, this select shows it, and the table narrows on it. */}
-            <div className="w-44">
-              <CatalogMultiSelect
-                kind="missionType"
-                value={missions}
-                onChange={(ids) => patch({ mission: writeList(ids) })}
-                label={t('fleet.roster.allMissions')}
-                className="w-full"
-                fullWidth
-              />
-            </div>
-
-            {/* Each counter is a real <button>, as on the daily board: it narrows the table, so it
-                must be reachable by keyboard and announce its state, which a tinted <span> with an
-                onClick never does. `aria-pressed` is the announcement. The colour belongs to the
-                CATEGORY and stays put whether or not the chip is the one applied; the active state
-                is a ring drawn on top. */}
-            {counters.map((counter) => (
-              <button
-                key={counter.key}
-                type="button"
-                data-counter={counter.key}
-                data-active={counter.active ? 'true' : undefined}
-                aria-pressed={counter.active}
-                onClick={() => patch(counter.apply)}
-                className={[
-                  'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
-                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
-                  counter.tone,
-                  counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
-                ].join(' ')}
-              >
-                <span className="truncate">{counter.label}</span>
-                <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
-              </button>
-            ))}
-
-            {/* Offered only when there is something to undo — the daily board's rule and its
-                button, down to the hue. Clears the three view filters together. */}
-            {filtered && (
-              <button
-                type="button"
-                data-reset-filters="true"
-                onClick={resetFilters}
-                aria-label={t('common.filters.clear')}
-                title={t('common.filters.clear')}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"
-              >
-                <ResetIcon className="h-3.5 w-3.5" />
-                {t('common.filters.clear')}
-              </button>
-            )}
-
-            {/* «حفظ» at the END of the strip, where the daily board keeps it — not in the page
-                header. It belongs beside the tally that says what the board currently IS, and
-                `ms-auto` pins it to the far edge whatever the chips add up to. */}
-            {mayPlan && (
-              <div className="ms-auto flex items-center gap-2">
-                {dirty && (
-                  <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
-                    {t('fleet.fixedRoster.unsaved')}
-                  </span>
-                )}
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  disabled={!dirty || save.isPending}
-                  onClick={discard}
-                >
-                  {t('common.cancel')}
-                </Button>
-                <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => void commit()}>
-                  {t('common.save')}
-                </Button>
-              </div>
-            )}
-          </div>
-
           <div className="min-h-0 flex-1 overflow-y-auto">
             <DataTable
               columns={columns}

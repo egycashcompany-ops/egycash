@@ -22,6 +22,7 @@ import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
+import { alarmSortsFor } from '../maintenance/alarm-sort';
 import { fleetOdometerRepository } from './odometer.repository';
 import { type FleetOdometerLogDoc } from './odometer.model';
 
@@ -270,6 +271,7 @@ class FleetOdometerService {
         vehicleIds === undefined ? byLevel : vehicleIds.filter((id) => byLevel.includes(id));
     }
 
+    const sorts = parseFleetSort(query.sort);
     const page = await fleetOdometerRepository.listLogs({
       filter: fleetOdometerRepository.logFilter({ ...query, vehicleIds }),
       page: query.page,
@@ -278,7 +280,12 @@ class FleetOdometerService {
       sortDir: query.sortDir,
       // …and the rest of the reader's order behind it. `sortBy` stays the first column
       // so nothing that only speaks the pagination contract is left sorting by nothing.
-      sorts: parseFleetSort(query.sort),
+      sorts,
+      // «فارق عداد الصيانة» is a figure about the CAR, not about the reading — so it is computed
+      // for the fleet and handed to the query as something it can order by. Only when the reader
+      // has actually asked for it: on every other request this is an empty list and the register
+      // stays the plain, indexed query it was.
+      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
     });
     // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
     // many vehicles the registry holds.

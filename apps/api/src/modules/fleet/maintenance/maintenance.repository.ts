@@ -3,6 +3,7 @@ import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { driverNameSorts } from '../fleet-sort-keys';
 
 export interface AlarmBaseline {
   vehicleId: string;
@@ -23,13 +24,13 @@ export interface AlarmBaseline {
 export type FleetMaintenanceVisitRow = FleetMaintenanceVisitDoc;
 
 /** Whitelist — unchanged, and an unknown field falls back to `createdAt` (API Standards §4). */
+/** The visit's OWN columns. The joined and computed keys are added per request — see below. */
 const SORTABLE: readonly string[] = [
   'inDate',
   'outDate',
   'createdAt',
   // «العداد عند الخدمة» — a stored figure, so ordering by it costs nothing extra.
   'odometerAtService',
-  VEHICLE_CODE_SORT.key,
 ];
 
 const oid = (id: string): Types.ObjectId => new Types.ObjectId(id);
@@ -181,7 +182,23 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     // is cut by the same filter the totals are counted from.
     const filter: FilterQuery<FleetMaintenanceVisitDoc> =
       driverFilter === null ? (params.filter ?? {}) : { $and: [params.filter ?? {}, driverFilter] };
-    return this.list({ ...params, filter, sortableFields: SORTABLE, sortDerived: [VEHICLE_CODE_SORT] });
+    // The keys published beyond the visit's own columns — the car's code, the entry and exit
+    // drivers' names, and whichever per-vehicle figure the reader asked for. See the odometer
+    // register for why the two are declared together.
+    const derived = [
+      VEHICLE_CODE_SORT,
+      ...driverNameSorts([
+        ['driverInName', 'driverInEmployeeId'],
+        ['driverOutName', 'driverOutEmployeeId'],
+      ]),
+      ...(params.sortDerived ?? []),
+    ];
+    return this.list({
+      ...params,
+      filter,
+      sortableFields: [...SORTABLE, ...derived.map((entry) => entry.key)],
+      sortDerived: derived,
+    });
   }
 
   /**

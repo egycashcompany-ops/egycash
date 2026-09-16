@@ -17,6 +17,7 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { alarmSortsFor } from './alarm-sort';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import {
   fleetMaintenanceRepository,
@@ -396,6 +397,7 @@ class FleetMaintenanceService {
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
     const vehicleIds = await this.vehicleScope(query);
+    const sorts = parseFleetSort(query.sort);
     const page = await fleetMaintenanceRepository.listVisits({
       filter: fleetMaintenanceRepository.visitFilter({
         ...query,
@@ -408,7 +410,11 @@ class FleetMaintenanceService {
       sortDir: query.sortDir,
       // …and the rest of the reader's order behind it. `sortBy` stays the first column
       // so nothing that only speaks the pagination contract is left sorting by nothing.
-      sorts: parseFleetSort(query.sort),
+      sorts,
+      // «منذ الخدمة» and «المتبقي» are figures about the CAR, not about the visit — computed for
+      // the fleet and handed to the query as something it can order by, and only when the reader
+      // has asked for one. See the odometer register, which does the same with the same helper.
+      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
     });
     const codes = await fleetVehicleRepository.codesByIds([
       ...new Set(page.items.map((item) => String(item.vehicleId))),

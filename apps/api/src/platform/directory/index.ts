@@ -143,6 +143,35 @@ export const registerEmployeesByJobTitlesLookup = (lookup: EmployeesByJobTitlesL
 };
 
 /**
+ * WHERE AN EMPLOYEE'S NAME IS STORED — not the name itself, the place.
+ *
+ * Every other entry on this seam answers a question. This one answers «where do I look?», and it
+ * exists because ORDERING is not a question that can be answered a row at a time: a register of
+ * workshop visits or odometer readings is paged by the database, so «رتب بإسم السائق» has to
+ * become part of the query that cuts the page. A name fetched afterwards can label the twenty-five
+ * rows in hand; it cannot decide which twenty-five they are.
+ *
+ * So HR declares the join and a consumer performs it — the same inversion the rest of this file
+ * uses, one level lower. Fleet never spells `hr_employees` and never imports HR; it asks the
+ * platform where names live and hands the answer to its own sort machinery.
+ *
+ * Nothing registered means the join cannot be built, and the consumer's «اسم السائق» column simply
+ * does not order — the fail-closed posture every lookup above takes, applied to a sort key.
+ */
+export interface DirectoryNameSource {
+  /** The collection holding employees, as the database names it. */
+  collection: string;
+  /** The dotted path to the Arabic full name — what every Fleet screen prints. */
+  nameField: string;
+}
+
+let nameSource: DirectoryNameSource | null = null;
+export const registerDirectoryNameSource = (source: DirectoryNameSource): void => {
+  nameSource = source;
+};
+export const getDirectoryNameSource = (): DirectoryNameSource | null => nameSource;
+
+/**
  * By EMPLOYEE CODE — the identifier a person is known by outside the system (`0100026`), which is
  * what a file named for a driver carries. Fail-closed like the id lookup: nothing registered,
  * nobody found.

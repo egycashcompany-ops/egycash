@@ -275,48 +275,44 @@ export const MaintenancePage = (): JSX.Element => {
         </span>
       ),
     },
+    // TWO COLUMNS, ONE PER LEG — «تفصل الصباحى عن المسائى كل واحد فى عمود», the same split the
+    // odometer register just took. The grid printed both drivers in one cell, one above the other,
+    // which reads perfectly well and cannot be ORDERED: a cell holding two people has no single
+    // value for «رتب بإسم السائق» to point at. Each leg is now its own column with its own arrow,
+    // and the arrow orders the whole register — the name is joined in by the server before the
+    // page is cut.
+    //
+    // The tones are the ones the shared cell used: the entry driver in the danger tone, the exit
+    // driver in the success tone. Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`:
+    // those are the custody employees, they belong to the audit trail, and this grid never showed
+    // them. An open visit has no exit driver yet, and that is a dash.
     {
-      key: 'driver',
-      header: t('fleet.odometer.columns.driver'),
-      // The two DRIVERS the visit recorded: who brought the car in, above who drove it away.
-      // The tone tells the two apart at a glance — the entry driver in the danger tone, the exit
-      // driver in the success tone the design system already spends on `Badge` variant `success`.
-      // The colour belongs to the LINE, never to the cell: a closed visit prints one of each.
-      //
-      // Deliberately NOT `takenInByEmployeeId` / `takenOutByEmployeeId`: those are the custody
-      // employees who performed the check-in and check-out, they belong to the audit trail, and
-      // they are not shown in this grid at all.
-      //
-      // Each line is conditional. An open visit has no exit driver yet, and a visit written
-      // before these fields existed has neither — which renders as a dash, never as `null`.
-      // Keyed by ROLE, not by employee: one person may well drive the car both ways.
-      render: (visit) => {
-        const lines: { role: string; id: string; tone: string }[] = [];
-        if (visit.driverInEmployeeId !== null) {
-          lines.push({
-            role: 'in',
-            id: visit.driverInEmployeeId,
-            tone: 'text-red-700 dark:text-red-300',
-          });
-        }
-        if (visit.driverOutEmployeeId !== null) {
-          lines.push({
-            role: 'out',
-            id: visit.driverOutEmployeeId,
-            tone: 'text-emerald-700 dark:text-emerald-300',
-          });
-        }
-        if (lines.length === 0) return dash;
-        return (
-          <span className="flex flex-col gap-0.5">
-            {lines.map(({ role, id, tone }) => (
-              <span key={role} className={tone}>
-                <EmployeeName employeeId={id} />
-              </span>
-            ))}
+      key: 'driverIn',
+      header: t('fleet.maintenance.fields.driverIn'),
+      sortable: true,
+      sortKey: 'driverInName',
+      render: (visit) =>
+        visit.driverInEmployeeId === null ? (
+          dash
+        ) : (
+          <span className="text-red-700 dark:text-red-300">
+            <EmployeeName employeeId={visit.driverInEmployeeId} />
           </span>
-        );
-      },
+        ),
+    },
+    {
+      key: 'driverOut',
+      header: t('fleet.maintenance.fields.driverOut'),
+      sortable: true,
+      sortKey: 'driverOutName',
+      render: (visit) =>
+        visit.driverOutEmployeeId === null ? (
+          dash
+        ) : (
+          <span className="text-emerald-700 dark:text-emerald-300">
+            <EmployeeName employeeId={visit.driverOutEmployeeId} />
+          </span>
+        ),
     },
     {
       key: 'workshop',
@@ -362,6 +358,10 @@ export const MaintenancePage = (): JSX.Element => {
     },
     {
       key: 'sinceServiceKm',
+      // A figure about the CAR, computed for the fleet and handed to the query — see
+      // `alarm-sort.ts`; a car the projection cannot answer for sorts with the other blanks.
+      sortable: true,
+      sortKey: 'alarmSinceService',
       header: t('fleet.alarms.columns.sinceService'),
       align: 'end',
       render: (visit) => {
@@ -376,6 +376,10 @@ export const MaintenancePage = (): JSX.Element => {
     },
     {
       key: 'remainingKm',
+      // A figure about the CAR, computed for the fleet and handed to the query — see
+      // `alarm-sort.ts`; a car the projection cannot answer for sorts with the other blanks.
+      sortable: true,
+      sortKey: 'alarmRemaining',
       header: t('fleet.alarms.columns.remaining'),
       align: 'end',
       render: (visit) => {

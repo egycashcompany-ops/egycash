@@ -241,7 +241,14 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.inDate',
   'fleet.maintenance.fields.outDate',
   'fleet.odometer.columns.vehicle',
-  'fleet.odometer.columns.driver',
+  // ONE COLUMN PER LEG — «تفصل الصباحى عن المسائى كل واحد فى عمود».
+  //
+  // A REVERSAL, said out loud: the two drivers shared a cell, entry above exit, and read perfectly
+  // well that way. What a shared cell cannot do is take an arrow — two people in one cell have no
+  // single value for «رتب بإسم السائق» to order a register by — and that is what the owner asked
+  // for next. The odometer grid was split at the same time and for the same reason.
+  'fleet.maintenance.fields.driverIn',
+  'fleet.maintenance.fields.driverOut',
   'fleet.maintenance.fields.workshop',
   'fleet.maintenance.fields.workType',
   'fleet.maintenance.fields.spareParts',
@@ -317,14 +324,14 @@ describe('the maintenance table', () => {
     expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
   });
 
-  it('names the DRIVER who brought the car in — in red', () => {
+  it('names the DRIVER who brought the car in — in red, in its own column', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const markup = render({ qc });
     expect(cells(markup)[3]).toContain('سائق الصباح');
     expect(tone(tbody(markup), 'سائق الصباح')).toContain('text-red-700');
   });
 
-  it('stacks the exit driver — in GREEN — under the red entry driver once the car has left', () => {
+  it('puts the exit driver — in GREEN — in the column BESIDE the red entry driver', () => {
     const qc = client([
       visit({
         outDate: '2026-09-03T00:00:00.000Z',
@@ -333,15 +340,11 @@ describe('the maintenance table', () => {
       }),
     ]);
     const markup = render({ qc });
-    const cell = cells(markup)[3] as string;
-    const inAt = cell.indexOf('سائق الصباح');
-    const outAt = cell.indexOf('سائق المساء');
-    expect(inAt, 'the entry driver is named').toBeGreaterThan(-1);
-    expect(outAt, 'the exit driver is named').toBeGreaterThan(-1);
-    expect(inAt, 'entry above exit').toBeLessThan(outAt);
-    // The two ends are told apart by TONE, and the tone belongs to the LINE, not to the cell:
-    // in red, out green. Asserting each is NOT the other's colour is what makes this test fail
-    // if the cell ever paints both names with one class again.
+    expect(cells(markup)[3], 'the entry driver’s own column').toContain('سائق الصباح');
+    expect(cells(markup)[4], 'the exit driver’s own column').toContain('سائق المساء');
+    // The two legs are still told apart by TONE as well as by position — a reader scanning down
+    // one column should not have to read the header to know which end of the visit it is.
+    // Asserting each is NOT the other's colour is what fails if one class ever paints both.
     const body = tbody(markup);
     expect(tone(body, 'سائق الصباح'), 'the entry driver is red').toContain('text-red-700');
     expect(tone(body, 'سائق الصباح'), 'and not green').not.toContain('text-emerald-700');
@@ -349,16 +352,24 @@ describe('the maintenance table', () => {
     expect(tone(body, 'سائق المساء'), 'and not red').not.toContain('text-red-700');
   });
 
-  it('shows only the entry driver while the car is still in the workshop', () => {
-    const qc = client([visit({ driverInEmployeeId: 'd1' })]);
-    const cell = cells(render({ qc }))[3] as string;
-    expect(cell).toContain('سائق الصباح');
-    expect(cell, 'nobody has driven it away yet').not.toContain('سائق المساء');
+  it('orders the WHOLE register by either leg’s name — not the page in hand', () => {
+    // The point of the split: each column asks the server for the name it is joined against, so
+    // the arrow orders every visit the filter matches rather than the twenty-five in hand.
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toContain("sortKey: 'driverInName'");
+    expect(source).toContain("sortKey: 'driverOutName'");
   });
 
-  it('dashes the driver cell for a visit written before the driver fields existed', () => {
+  it('shows no exit driver while the car is still in the workshop', () => {
+    const qc = client([visit({ driverInEmployeeId: 'd1' })]);
+    expect(cells(render({ qc }))[3]).toContain('سائق الصباح');
+    expect(cells(render({ qc }))[4], 'nobody has driven it away yet').toBe('—');
+  });
+
+  it('dashes BOTH driver cells for a visit written before the driver fields existed', () => {
     const body = tbody(render());
     expect(cells(render())[3]).toBe('—');
+    expect(cells(render())[4]).toBe('—');
     expect(body).not.toContain('null');
     expect(body).not.toContain('undefined');
   });
@@ -386,7 +397,8 @@ describe('the maintenance table', () => {
 
   it('shows catalog spare parts by NAME, and still shows an old visit’s free text', () => {
     const qc = client([visit({ sparePartIds: [PART_ID], spareParts: ['بوجيهات'] })]);
-    const partsCell = cells(render({ qc }))[6] as string;
+    // Column 7, not 6: the driver cell became two when the legs were split.
+    const partsCell = cells(render({ qc }))[7] as string;
     expect(partsCell, 'the catalog name, not the id').toContain('فلتر زيت');
     expect(partsCell).not.toContain(PART_ID);
     // The words an older visit recorded are the only record of what was fitted on it.

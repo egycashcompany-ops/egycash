@@ -18,6 +18,10 @@ import { CARS_LOG_FILE, ODOMETER_GO_LIVE_MARK } from './odometer';
 import { parseCarsLog } from './odometer-import';
 import { CAR_MAINTENANCE_FILE, MAINTENANCE_GO_LIVE_MARK } from './maintenance';
 import { parseVisits } from './maintenance-import';
+import { CAR_VIOLATIONS_FILE, VIOLATIONS_GO_LIVE_MARK } from './violations';
+import { parseViolations } from './violations-import';
+import { ACCIDENTS_GO_LIVE_MARK, FLEET_ACCIDENT_FILE } from './accidents';
+import { parseAccidents } from './accidents-import';
 import { ValidationError } from '../../../shared/errors';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -76,7 +80,14 @@ describe('the boot seed is what applies the house vocabulary', () => {
 describe('the long-running processes are what import the vehicle registry', () => {
   const LONG_RUNNING = ['src/server.ts', 'src/worker.ts'];
   /** Every go-live step: the cars, the drivers' licence scans, the odometer book — on the same terms. */
-  const STARTERS = ['startVehicleGoLive', 'startDriverPhotosGoLive', 'startOdometerGoLive', 'startMaintenanceGoLive'];
+  const STARTERS = [
+    'startVehicleGoLive',
+    'startDriverPhotosGoLive',
+    'startOdometerGoLive',
+    'startMaintenanceGoLive',
+    'startViolationsGoLive',
+    'startAccidentsGoLive',
+  ];
   const cases = LONG_RUNNING.flatMap((path) => STARTERS.map((starter) => [path, starter]));
 
   it.each(cases)('%s starts %s after booting', (path, starter) => {
@@ -180,6 +191,19 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(source).toContain('key: { $in: [VEHICLE_GO_LIVE_MARK, ODOMETER_GO_LIVE_MARK] }');
   });
 
+  it.each([
+    ['violations', 'VIOLATIONS_GO_LIVE_MARK'],
+    ['accidents', 'ACCIDENTS_GO_LIVE_MARK'],
+  ])('the %s book refuses before its claim too, and waits for the cars', (step, mark) => {
+    const source = code(`src/modules/fleet/go-live/${step}.ts`);
+    const claim = source.indexOf(`claimGoLiveRun(${mark}`);
+    expect(claim).toBeGreaterThan(-1);
+    for (const refusal of ['dir === null', '!existsSync(file)', 'vehiclesDone === null', 'admin === null']) {
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
+      expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
+    }
+  });
+
   it('every refusal is WRITTEN, not only logged — the owner cannot read the log', () => {
     // A refusal that lived only in the server log was, for two deploys, indistinguishable from
     // an import that never ran. Each refusal now records itself on the run row, with a lease that
@@ -203,6 +227,12 @@ describe('the long-running processes are what import the vehicle registry', () =
     for (const reason of ['prior-steps-not-done', 'no-admin']) {
       expect(records(maintenance, 'MAINTENANCE_GO_LIVE_MARK', reason), `maintenance: ${reason}`).toBe(true);
     }
+    for (const [step, mark] of [['violations', 'VIOLATIONS_GO_LIVE_MARK'], ['accidents', 'ACCIDENTS_GO_LIVE_MARK']]) {
+      const source = code(`src/modules/fleet/go-live/${step}.ts`);
+      for (const reason of ['vehicles-not-done', 'no-admin']) {
+        expect(records(source, mark as string, reason), `${step}: ${reason}`).toBe(true);
+      }
+    }
   });
 
   it('is skipped under test, or every integration suite imports 209 cars', () => {
@@ -214,6 +244,8 @@ describe('the long-running processes are what import the vehicle registry', () =
     expect(odometer).toMatch(/startOdometerGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
     const maintenance = code('src/modules/fleet/go-live/maintenance.ts');
     expect(maintenance).toMatch(/startMaintenanceGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
+    expect(code('src/modules/fleet/go-live/violations.ts')).toMatch(/startViolationsGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
+    expect(code('src/modules/fleet/go-live/accidents.ts')).toMatch(/startAccidentsGoLive\s*=\s*\(\):\s*void\s*=>\s*\{\s*\n\s*if \(isTest\) return;/);
   });
 
   it('a car that fails records WHICH check failed, not «Validation failed»', () => {
@@ -265,6 +297,8 @@ describe('the long-running processes are what import the vehicle registry', () =
     ['src/modules/fleet/go-live/driver-photos.ts', "'fleet go-live: partial driver scans'", 'DRIVER_PHOTOS_GO_LIVE_MARK'],
     ['src/modules/fleet/go-live/odometer.ts', "'fleet go-live: partial odometer import'", 'ODOMETER_GO_LIVE_MARK'],
     ['src/modules/fleet/go-live/maintenance.ts', "'fleet go-live: partial workshop import'", 'MAINTENANCE_GO_LIVE_MARK'],
+    ['src/modules/fleet/go-live/violations.ts', "'fleet go-live: partial violations import'", 'VIOLATIONS_GO_LIVE_MARK'],
+    ['src/modules/fleet/go-live/accidents.ts', "'fleet go-live: partial accidents import'", 'ACCIDENTS_GO_LIVE_MARK'],
   ])('%s: a run that FAILS is not marked done, so the next boot takes it over', (path, partial, mark) => {
     // The whole reason the mark became a lease. `finishGoLiveRun` must sit on the success path
     // only; a failure returns first and leaves the lease to expire.
@@ -421,6 +455,25 @@ describe('the data ships with the build', () => {
     expect(unknown.length, 'six rows').toBe(6);
     expect(new Set(unknown.map((v) => v.code)).size, 'on five codes').toBe(5);
     expect(MAINTENANCE_GO_LIVE_MARK).toBe('go-live:maintenance:v1');
+  });
+
+  it('the violations book is there: 1,023 rows, 86 deleted, 425 statement rows and 512 fines, every one readable', () => {
+    const dir = resolveGoLiveDataDir() as string;
+    const parsed = parseViolations(JSON.parse(readFileSync(join(dir, CAR_VIOLATIONS_FILE), 'utf8')));
+    expect(parsed.company.length + parsed.driver.length + parsed.skippedDeleted).toBe(1023);
+    expect(parsed.rejected).toEqual([]);
+    expect(parsed.company.length).toBe(425);
+    expect(parsed.driver.length).toBe(512);
+    expect(VIOLATIONS_GO_LIVE_MARK).toBe('go-live:violations:v1');
+  });
+
+  it('the accidents book is there: 196 files, 12 deleted, every one readable, 25 without a date', () => {
+    const dir = resolveGoLiveDataDir() as string;
+    const parsed = parseAccidents(JSON.parse(readFileSync(join(dir, FLEET_ACCIDENT_FILE), 'utf8')));
+    expect(parsed.accidents.length + parsed.skippedDeleted).toBe(196);
+    expect(parsed.rejected).toEqual([]);
+    expect(parsed.accidents.filter((a) => a.occurredAt === null).length).toBe(25);
+    expect(ACCIDENTS_GO_LIVE_MARK).toBe('go-live:accidents:v1');
   });
 
   it('all 56 licence scans are there, and every one is named for a car in the data', () => {

@@ -1,4 +1,4 @@
-import { Types, type FilterQuery, type PipelineStage } from 'mongoose';
+import { Types, type ClientSession, type FilterQuery, type PipelineStage } from 'mongoose';
 import {
   fleetAccidentRemaining,
   type FleetAccidentTotalsDto,
@@ -37,6 +37,44 @@ export const REMAINING_SORT = {
 class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
   constructor() {
     super(FleetAccidentModel, {});
+  }
+
+  /**
+   * How many live files of each shape one vehicle already holds — the go-live import's check
+   * before writing, counted rather than set for the reason the violations give: two identical
+   * files on one day are two files.
+   */
+  async existingKeyCounts(
+    vehicleId: string,
+    keyOf: (row: FleetAccidentDoc) => string,
+  ): Promise<Map<string, number>> {
+    const rows = await this.model
+      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .lean<FleetAccidentDoc[]>()
+      .exec();
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = keyOf(row);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  /**
+   * Several files in ONE insert — the go-live import's write, one call per vehicle. Stamps
+   * `createdBy`/`updatedBy` exactly as `create` does; ordered, so a failure names the first file
+   * that could not be written and leaves the ones before it for the take-over to find.
+   */
+  async createMany(
+    rows: readonly Partial<FleetAccidentDoc>[],
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<FleetAccidentDoc[]> {
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    const docs = await FleetAccidentModel.create(
+      rows.map((row) => ({ ...row, createdBy: by, updatedBy: by })),
+      { session: meta.session ?? null, ordered: true },
+    );
+    return docs.map((doc) => doc.toObject() as FleetAccidentDoc);
   }
 
   async listAccidents(params: ListParams<FleetAccidentDoc>): Promise<Paginated<FleetAccidentDoc>> {

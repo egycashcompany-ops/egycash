@@ -12,6 +12,8 @@ import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
 import { startMaintenanceGoLive } from './modules/fleet/go-live/maintenance';
+import { startViolationsGoLive } from './modules/fleet/go-live/violations';
+import { startAccidentsGoLive } from './modules/fleet/go-live/accidents';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
@@ -24,6 +26,8 @@ const main = async (): Promise<void> => {
   startDriverPhotosGoLive();
   startOdometerGoLive();
   startMaintenanceGoLive();
+  startViolationsGoLive();
+  startAccidentsGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

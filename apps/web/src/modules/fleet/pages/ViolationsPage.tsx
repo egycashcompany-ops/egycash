@@ -26,6 +26,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { type Locale } from '@ecms/contracts';
 import { useDeleteViolation } from '../api/fleet-queries';
 import { CompanyViolationsPanel } from '../components/CompanyViolationsPanel';
+import { GoLiveNotice } from '../components/GoLiveNotice';
 import { DriverViolationsPanel } from '../components/DriverViolationsPanel';
 import { CompanyViolationsDetailLayer } from '../components/CompanyViolationsDetailLayer';
 import {
@@ -146,6 +147,7 @@ export const ViolationsPage = (): JSX.Element => {
           scrolls its own board instead. Comparing the company's total to the drivers' is the whole
           reason these sit side by side, and a page-level scrollbar takes one of them off screen at
           exactly the moment a reader is looking from one to the other. */}
+      <GoLiveNotice step="violations" />
       <div
         data-violations-split="true"
         className="grid min-h-0 min-w-0 flex-1 gap-4 2xl:grid-cols-2"

@@ -171,6 +171,15 @@ describe('what the notice says', () => {
     expect(markup).toContain('223 2024-10-13');
   });
 
+  it.each([
+    ['violations', 'استيراد دفتر المخالفات', { imported: 925, unknownTypes: ['274 2025: —'], zeroCount: ['508 2025'] }, ['274 2025: —', 'تُركت']],
+    ['accidents', 'استيراد دفتر الحوادث', { imported: 154, noDate: ['202: محمد مهدى'], amountNotes: ['279 2026-02-15: amountCollected: من عبدالرحمن'] }, ['202: محمد مهدى', 'من عبدالرحمن']],
+  ] as const)('prints a finished %s import with what it could not place', (step, title, outcome, expected) => {
+    const markup = render([run({ key: `go-live:${step}:v1`, status: 'done', outcome: { ...outcome } })], { step });
+    expect(markup).toContain(title);
+    for (const text of expected) expect(markup).toContain(text);
+  });
+
   it('a finished run that reports only counts says nothing — whatever the step', () => {
     expect(
       render([run({ key: 'go-live:odometer:v1', status: 'done', outcome: { vehicles: 170, imported: 18734, unknownCars: [], unmatchedDrivers: [] } })], { step: 'odometer' }),

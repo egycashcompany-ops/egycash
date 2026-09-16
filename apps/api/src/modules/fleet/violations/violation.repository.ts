@@ -48,6 +48,28 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     return docs.map((doc) => doc.toObject() as FleetViolationDoc);
   }
 
+  /**
+   * How many live rows of each SHAPE one vehicle already holds — the go-live import's check
+   * before writing. A count per key rather than a set, because the old statement legitimately
+   * holds two identical rows for one car (two «رسوم خدمة» entries of the same value in one
+   * year), and a set would let a take-over write the second one twice.
+   */
+  async existingKeyCounts(
+    vehicleId: string,
+    keyOf: (row: FleetViolationDoc) => string,
+  ): Promise<Map<string, number>> {
+    const rows = await this.model
+      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .lean<FleetViolationDoc[]>()
+      .exec();
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const key = keyOf(row);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }
+
   async listViolations(
     params: ListParams<FleetViolationDoc>,
   ): Promise<Paginated<FleetViolationDoc>> {

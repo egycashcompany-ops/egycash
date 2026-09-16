@@ -46,6 +46,39 @@ export const writeSorts = (sorts: readonly TableSort[]): string | null => format
  * click that silently did nothing would be the worse of the two. No table in Fleet has enough
  * sortable columns to reach it today.
  */
+/**
+ * WHAT A CLICK MEANS WHEN THE READER HAS NOT ORDERED THE TABLE YET.
+ *
+ * «النوع بدوس عليه بيحدد الكود برضو وانا مجتش جمبه». Every screen opens on an order of its own —
+ * the registry on the code, the drivers on when they were recorded, the workshop on the check-in
+ * date. That order is the SCREEN's, not the reader's, and `toggleSort` could not tell the two
+ * apart: a first click on «النوع» was read as a SECOND column added behind «الكود», so the code
+ * still decided, the make only broke its ties, and both columns lit up.
+ *
+ * On the screens whose default is a column nobody can see — «تاريخ الإضافة» on the drivers
+ * registry, the check-in date on the workshop — it was worse than confusing: the click marked the
+ * column, sent the order, and changed nothing at all, because the invisible default went first.
+ *
+ * So the first click REPLACES the default rather than joining it:
+ *   • the column the default already names keeps its place and turns round, which is what its
+ *     arrow on the screen promises;
+ *   • any other column becomes the whole order, ascending, and the default lets go.
+ *
+ * Every click after that is `toggleSort` exactly as before — «انا عاوز اقدر اعمل الاتنين مع بعض»
+ * is about the reader's own columns, and they are the ones that pile up.
+ */
+export const clickSort = (raw: string | null, fallback: string, key: string): TableSort[] => {
+  const chosen = parseFleetSort(raw);
+  if (chosen.length > 0) return toggleSort(chosen, key);
+  const inDefault = parseFleetSort(fallback).find((entry) => entry.by === key);
+  if (inDefault === undefined) return [{ by: key, dir: 'asc' }];
+  // TURNED ROUND, never dropped. `toggleSort` would take a descending column straight out of the
+  // order, which is right for a column the reader put there and wrong for one the screen did:
+  // taking it out lands back on the default, so a click on «التاريخ» of an untouched workshop
+  // board would have left the board exactly as it was.
+  return [{ by: key, dir: inDefault.dir === 'asc' ? 'desc' : 'asc' }];
+};
+
 export const toggleSort = (sorts: readonly TableSort[], key: string): TableSort[] => {
   const at = sorts.findIndex((entry) => entry.by === key);
   const added: TableSort = { by: key, dir: 'asc' };

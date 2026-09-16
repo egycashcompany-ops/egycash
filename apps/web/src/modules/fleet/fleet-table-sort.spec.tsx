@@ -203,14 +203,33 @@ describe('every Fleet table is wired the same way', () => {
   it.each(PAGES)('%s reads the whole order out of the URL', (name) => {
     const source = code(join('pages', name));
     expect(source).toContain("const sortParam = sp.get('sort');");
-    expect(source).toMatch(/const sorts = useMemo\(\(\) => readSorts\(sortParam, '[^']+'\), \[sortParam\]\);/);
+    expect(source).toContain(
+      'const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);',
+    );
   });
 
-  it.each(PAGES)('%s ADDS a column on a click instead of replacing what is there', (name) => {
+  it.each(PAGES)('%s names its default order ONCE, where both readers of it can see', (name) => {
+    // The screen is DRAWN in its default and a first click REPLACES it, so the two must be the
+    // same string. Spelled twice, they drift — and the drift is invisible: the table would open
+    // in one order and a click would turn a different one round.
     const source = code(join('pages', name));
-    // The paged registers keep their page number («, false»); the whole boards have no page to
-    // keep. Both call the same toggle, which is the part that must not be written twice.
-    expect(source).toContain('patch({ sort: writeSorts(toggleSort(sorts, by)) }');
+    expect(source).toMatch(/const DEFAULT_SORT = '[^']+';/);
+    expect(
+      source.match(/DEFAULT_SORT/g)?.length,
+      'declared once, read by the memo and by the click',
+    ).toBe(3);
+  });
+
+  it.each(PAGES)('%s sends a click through the one rule, default and all', (name) => {
+    const source = code(join('pages', name));
+    // `clickSort`, not `toggleSort`: the difference is whether the screen's own default is read
+    // as something the READER asked for. Joined, a first click on «النوع» left «الكود» deciding
+    // and both columns marked — «وانا مجتش جمبه». The paged registers keep their page number
+    // («, false»); the whole boards have no page to keep.
+    expect(source).toContain('patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }');
+    expect(source, 'nothing toggles against the default any more').not.toContain(
+      'toggleSort(sorts, by)',
+    );
     // The rule it replaced, spelled out so it cannot come back by hand: one column, flipped.
     expect(source, 'no second copy of the old single-column toggle').not.toContain(
       "const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';",

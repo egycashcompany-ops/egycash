@@ -48,7 +48,7 @@ import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/flee
 import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
-import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
+import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
 import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
 import { DriverChip } from '../components/DriverChip';
@@ -449,6 +449,14 @@ const CrewSlotCell = ({
   );
 };
 
+/**
+ * The order this screen opens in, before the reader has asked for one.
+ *
+ * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
+ * first click REPLACES it rather than joining it — see `clickSort`.
+ */
+const DEFAULT_SORT = 'code:asc';
+
 export const FixedRosterPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -467,7 +475,7 @@ export const FixedRosterPage = (): JSX.Element => {
   const missionsKey = missions.join(',');
   /** The columns the board is read in, in the order they were clicked. */
   const sortParam = sp.get('sort');
-  const sorts = useMemo(() => readSorts(sortParam, 'code:asc'), [sortParam]);
+  const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);
   /**
    * Which STATE the board is narrowed to, if any — «بطقم» or «بدون طقم».
    *
@@ -565,6 +573,16 @@ export const FixedRosterPage = (): JSX.Element => {
         // setting a third value that would then have to mean "no filter".
         apply: { mission: null, view: null },
         active: missions.length === 0 && view === null,
+      },
+      {
+        // «صيانة», the daily board's own counter, in the daily board's position and tone — the
+        // board already draws this badge on every row it applies to.
+        key: 'workshop',
+        label: t('fleet.roster.counter.workshop'),
+        value: draft.filter((row) => row.inMaintenance).length,
+        tone: COUNTER_TONES.workshop,
+        apply: { view: 'workshop' },
+        active: view === 'workshop',
       },
       {
         key: 'crewed',
@@ -677,7 +695,7 @@ export const FixedRosterPage = (): JSX.Element => {
 
   // Ascending, then descending, then out of the order altogether — the daily board's rule.
   const changeSort = (by: string): void => {
-    patch({ sort: writeSorts(toggleSort(sorts, by)) });
+    patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) });
   };
   /** Every car this board reports on, as the picker's options — no request for what is on screen. */
   const codeOptions = useMemo(

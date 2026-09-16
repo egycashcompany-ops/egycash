@@ -23,7 +23,7 @@ import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
 import { AlarmBadge, RemainingKm, alarmRowTint } from '../components/AlarmBadge';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
-import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
+import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
 
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
@@ -57,6 +57,14 @@ const alarmSortValue = (alarm: FleetMaintenanceAlarmDto, key: string): string | 
 /** A csv URL parameter as the list it stands for; an absent one is an empty list, never `['']`. */
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
+/**
+ * The order this screen opens in, before the reader has asked for one.
+ *
+ * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
+ * first click REPLACES it rather than joining it — see `clickSort`.
+ */
+const DEFAULT_SORT = 'level:asc';
+
 export const MaintenanceAlarmsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -77,7 +85,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
    * tiebreak, which is exactly the comparator this board used before it had arrows.
    */
   const sortParam = sp.get('sort');
-  const sorts = useMemo(() => readSorts(sortParam, 'level:asc'), [sortParam]);
+  const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -110,7 +118,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   // Ascending, then descending, then out of the order altogether — and a column the table
   // is NOT sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
-    patch({ sort: writeSorts(toggleSort(sorts, by)) });
+    patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) });
   };
 
   // The cars the board is reporting on, as the picker's options — from the BOARD, never from a

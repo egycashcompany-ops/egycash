@@ -5,7 +5,14 @@
 // could only hold ONE answer, so every new question threw away the last one.
 import { describe, expect, it } from 'vitest';
 import { FLEET_SORT_MAX } from '@ecms/contracts';
-import { readSorts, sortQuery, toggleSort, writeSorts, type TableSort } from './table-sort';
+import {
+  clickSort,
+  readSorts,
+  sortQuery,
+  toggleSort,
+  writeSorts,
+  type TableSort,
+} from './table-sort';
 
 /** The order as a reader would describe it: «code ascending, then expiry descending». */
 const said = (sorts: readonly TableSort[]): string[] => sorts.map((s) => `${s.by}:${s.dir}`);
@@ -129,5 +136,61 @@ describe('what the request carries', () => {
       sortBy: 'occurredAt',
       sortDir: 'desc',
     });
+  });
+});
+
+// ── the FIRST click, against the screen's own default ───────────────────────
+//
+// «النوع بدوس عليه بيحدد الكود برضو وانا مجتش جمبه». A screen opens on an order it chose for
+// itself; the reader did not click it, and a click on something else must not be read as «and
+// also». What makes this worth its own rule is that `toggleSort` cannot see the difference — it
+// is handed a list either way.
+
+describe('the first click, when the reader has ordered nothing yet', () => {
+  it('REPLACES the screen’s default instead of joining it', () => {
+    // The registry opens on the code. Clicking «النوع» is a new question, not a refinement of a
+    // question nobody asked: the code lets go, and only the make is marked.
+    expect(said(clickSort(null, 'code:asc', 'typeName'))).toEqual(['typeName:asc']);
+  });
+
+  it('turns the default’s own column round, which is what its arrow promises', () => {
+    // «الكود» is drawn ascending on an untouched registry, so a click on it must flip it — not
+    // add an ascending code to an ascending code.
+    expect(said(clickSort(null, 'code:asc', 'code'))).toEqual(['code:desc']);
+    expect(said(clickSort(null, 'date:desc', 'date'))).toEqual(['date:asc']);
+  });
+
+  it('frees a table whose default is a column the reader cannot even see', () => {
+    // The drivers registry opens on «تاريخ الإضافة» and the workshop on the check-in date. Joined
+    // rather than replaced, the invisible column decided and the clicked one only broke its ties
+    // — a click that marked a column, sent an order, and changed nothing on the screen.
+    expect(said(clickSort(null, 'createdAt:desc', 'driver'))).toEqual(['driver:asc']);
+    expect(said(clickSort(null, 'inDate:desc', 'vehicleCode'))).toEqual(['vehicleCode:asc']);
+  });
+
+  it('keeps piling columns up once the reader HAS ordered something', () => {
+    // The multi-column behaviour is about the reader's own columns, and it is untouched.
+    expect(said(clickSort('typeName:asc', 'code:asc', 'code'))).toEqual([
+      'typeName:asc',
+      'code:asc',
+    ]);
+    expect(said(clickSort('typeName:asc,code:asc', 'code:asc', 'typeName'))).toEqual([
+      'typeName:desc',
+      'code:asc',
+    ]);
+  });
+
+  it('lets the reader empty the order and start again from the default', () => {
+    // Third click drops the column; with nothing left the screen is back on its own default, and
+    // the NEXT click is a first click again rather than an append to an empty list.
+    const emptied = clickSort('typeName:desc', 'code:asc', 'typeName');
+    expect(said(emptied)).toEqual([]);
+    expect(said(clickSort(writeSorts(emptied), 'code:asc', 'licenseExpiresAt'))).toEqual([
+      'licenseExpiresAt:asc',
+    ]);
+  });
+
+  it('reads a hand-edited parameter as no order at all, not as a broken one', () => {
+    expect(said(clickSort('@@@', 'code:asc', 'typeName'))).toEqual(['typeName:asc']);
   });
 });

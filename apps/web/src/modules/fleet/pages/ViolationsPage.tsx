@@ -18,7 +18,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { readList, writeList } from '../../../shared/lib/list-param';
-import { readSorts, toggleSort, writeSorts } from '../lib/table-sort';
+import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { useAppSelector } from '../../../store';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -55,6 +55,12 @@ const REMEMBERED_FILTERS = [
 ] as const;
 
 
+/**
+ * The order the DRIVERS ledger opens in. Named because it is used twice and the two must
+ * agree: the board is drawn in it, and a first click replaces it — see `clickSort`.
+ */
+const DRIVER_DEFAULT_SORT = 'date:desc';
+
 export const ViolationsPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -72,7 +78,7 @@ export const ViolationsPage = (): JSX.Element => {
    * the order the ledger has always arrived in.
    */
   const driverSortParam = sp.get('dsort');
-  const driverSorts = useMemo(() => readSorts(driverSortParam, 'date:desc'), [driverSortParam]);
+  const driverSorts = useMemo(() => readSorts(driverSortParam, DRIVER_DEFAULT_SORT), [driverSortParam]);
   const codes = splitVehicleCodeList(sp.get('codes') ?? '');
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
@@ -158,7 +164,7 @@ export const ViolationsPage = (): JSX.Element => {
         />
         <DriverViolationsPanel
           sorts={driverSorts}
-          onSortChange={(by) => patch({ dsort: writeSorts(toggleSort(driverSorts, by)) })}
+          onSortChange={(by) => patch({ dsort: writeSorts(clickSort(driverSortParam, DRIVER_DEFAULT_SORT, by)) })}
           vehicleCodes={driverCodes}
           driverEmployeeIds={driverEmployeeIds}
           typeIds={typeIds}

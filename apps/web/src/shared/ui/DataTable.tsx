@@ -144,6 +144,25 @@ export const DataTable = <T,>({
   const toggleRow = selection?.toggleRow;
   const toggleAll = selection?.toggleAll;
   const colCount = columns.length + (isSelectable ? 1 : 0);
+
+  /**
+   * HOW NARROW THE TABLE MAY GET BEFORE ITS WRAPPER SCROLLS — by how many columns it has.
+   *
+   * It was a flat `min-w-[40rem]`, chosen when no table in the app carried more than about six
+   * columns. The Fleet registers now carry thirteen: below the floor the browser stops scrolling
+   * and starts SQUEEZING, so every column shrinks to fit and a driver's name, a date and a
+   * six-digit reading each wrap onto two or three lines. The grid is still all there and is no
+   * longer readable — «ظبط عرض الجداول بعد الأعمدة الجديدة».
+   *
+   * A floor PER COLUMN instead: ~7.5rem is a date, a three-word Arabic name or a reading plus the
+   * cell's own gutters, which is what these columns actually hold. The old 40rem stays as the
+   * minimum, so every table of five columns or fewer is exactly as wide as it was today and only
+   * the ones that outgrew the wrapper start using it.
+   *
+   * Inline rather than a class because Tailwind cannot build a class name from a count, and the
+   * alternative — a handful of fixed buckets — would be the same arithmetic with worse rounding.
+   */
+  const minTableWidth = Math.max(40, colCount * 7.5);
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selected.has(rowKey(r)));
 
@@ -241,7 +260,7 @@ export const DataTable = <T,>({
           'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
       )}
     >
-      <table className="w-full min-w-[40rem] border-collapse">
+      <table className="w-full border-collapse" style={{ minWidth: `${minTableWidth}rem` }}>
         <thead>
           <tr
             className={cn(

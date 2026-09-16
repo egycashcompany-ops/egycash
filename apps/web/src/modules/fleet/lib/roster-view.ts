@@ -114,14 +114,28 @@ export const visibleRows = (
 
 // ── the STANDING board ─────────────────────────────────────────────────────
 //
-// «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات». The same bar, on the axes this
-// board actually has. It has no day, so it has no «صيانة» state of its own to filter on — the
-// workshop flag on a fixed crew is shown for context and a car in the workshop still HAS a
-// standing crew. What it has is exactly two states, «بطقم» and «بدون طقم», and the same mission
-// vocabulary the daily board reads. So: two views, one mission key, the same AND.
+// «عاوز الطاقم الثابت الفلاتر بتاعته تكون زى تعيين السيارات». The same bar, and now the same
+// three questions as well: «صيانة» was the one the standing board could not be asked, although it
+// draws the workshop badge on every row — said once and left out of the filters is the shape of
+// bug this instruction keeps catching. It means something narrower here than on the daily board:
+// there the workshop REFUSES the assignment, while a car in the workshop still has a standing
+// crew, so this is a way of looking rather than a verdict. Beside it are the two states only this
+// board has, «بطقم» and «بدون طقم», and the same mission vocabulary. Three views, one mission key,
+// the same AND.
 
-/** The two STATE views of the standing board: a car with somebody on it, and a car with nobody. */
-export const FIXED_ROSTER_VIEWS = ['crewed', 'uncrewed'] as const;
+/**
+ * The STATE views of the standing board — «خلى الفلاتر بتاعت الطقم الثابت زى تعيين السيارات».
+ *
+ * «صيانة» is here because the board already SHOWS it: every row carries the workshop badge, from
+ * the same `inMaintenance` the daily board reads. A screen that can say a car is in the workshop
+ * and cannot be asked «show me those» is the one filter the two boards did not share.
+ *
+ * What it does NOT mean on this board is what it means on the daily one. There, the workshop
+ * refuses the assignment; here a car in the workshop still HAS a standing crew, and the filter is
+ * a way of looking rather than a verdict — which is exactly why it is a view and not a state the
+ * rows are sorted into.
+ */
+export const FIXED_ROSTER_VIEWS = ['workshop', 'crewed', 'uncrewed'] as const;
 export type FixedRosterView = (typeof FIXED_ROSTER_VIEWS)[number];
 
 /** `view=` from the URL, or `null` for anything this board does not know — the daily rule. */
@@ -132,7 +146,7 @@ export const readFixedView = (raw: string | null): FixedRosterView | null =>
 
 /**
  * The rows the STANDING board should show. `visibleRows`, on this board's rows and this board's
- * two states — `hasDriver` is the crewed test, because a standing crew IS the two seats, and a
+ * three states — `hasDriver` is the crewed test, because a standing crew IS the two seats, and a
  * mission with nobody in either seat is not a crew.
  *
  * Display only, like its twin: the draft, the counters, the pool and what «حفظ» sends all read
@@ -147,6 +161,7 @@ export const visibleFixedRows = (
   return rows.filter((row) => {
     if (!matchesVehicleCode(row.code, term)) return false;
     if (!matchesMission(row.missionTypeId, filters.missions)) return false;
+    if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'crewed' && !hasDriver(row)) return false;
     if (view === 'uncrewed' && hasDriver(row)) return false;
     return true;

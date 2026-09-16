@@ -6,7 +6,10 @@ import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface FleetMaintenanceVisitDoc extends BaseDocFields {
-  vehicleId: Types.ObjectId;
+  /** `null` ONLY on a visit from the old book for a car the registry never had — see the odometer log. */
+  vehicleId: Types.ObjectId | null;
+  /** The old book's car code, set only where `vehicleId` is null. */
+  vehicleCode: string | null;
   inDate: Date;
   outDate: Date | null;
   workshopId: Types.ObjectId;
@@ -29,6 +32,9 @@ export interface FleetMaintenanceVisitDoc extends BaseDocFields {
   driverInEmployeeId: Types.ObjectId | null;
   /** Who drove it OUT. Null while open, and on visits predating the field. */
   driverOutEmployeeId: Types.ObjectId | null;
+  /** The drivers' NAMES as the old book wrote them, where HR has no employee — see the odometer log. */
+  driverInName: string | null;
+  driverOutName: string | null;
   takenInByEmployeeId: Types.ObjectId | null;
   takenOutByEmployeeId: Types.ObjectId | null;
   notes: string | null;
@@ -36,7 +42,8 @@ export interface FleetMaintenanceVisitDoc extends BaseDocFields {
 
 const maintenanceSchema = new Schema<FleetMaintenanceVisitDoc>(
   {
-    vehicleId: { type: Schema.Types.ObjectId, required: true },
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
+    vehicleCode: { type: String, default: null },
     inDate: { type: Date, required: true },
     outDate: { type: Date, default: null },
     workshopId: { type: Schema.Types.ObjectId, required: true },
@@ -47,6 +54,8 @@ const maintenanceSchema = new Schema<FleetMaintenanceVisitDoc>(
     exitOdometer: { type: Number, default: null, min: 0 },
     driverInEmployeeId: { type: Schema.Types.ObjectId, default: null },
     driverOutEmployeeId: { type: Schema.Types.ObjectId, default: null },
+    driverInName: { type: String, default: null },
+    driverOutName: { type: String, default: null },
     takenInByEmployeeId: { type: Schema.Types.ObjectId, default: null },
     takenOutByEmployeeId: { type: Schema.Types.ObjectId, default: null },
     notes: { type: String, default: null },
@@ -56,14 +65,17 @@ const maintenanceSchema = new Schema<FleetMaintenanceVisitDoc>(
 );
 
 // FR-4 — nothing in the domain wants a car in two workshops (the legacy allowed it by accident).
+// Among rows that HAVE a vehicle — a visit kept from the old book for a car the registry never
+// had is not the car being in two workshops; see the odometer's `ux_open_period`.
 maintenanceSchema.index(
   { vehicleId: 1 },
   {
     unique: true,
     name: 'ux_open_visit',
-    partialFilterExpression: { isDeleted: false, outDate: null },
+    partialFilterExpression: { isDeleted: false, outDate: null, vehicleId: { $type: 'objectId' } },
   },
 );
+maintenanceSchema.index({ vehicleCode: 1, inDate: -1 }, { name: 'ix_code_in', sparse: true });
 maintenanceSchema.index({ vehicleId: 1, outDate: -1 }, { name: 'ix_vehicle_out' });
 maintenanceSchema.index({ workTypeId: 1, outDate: -1 }, { name: 'ix_worktype_out' });
 

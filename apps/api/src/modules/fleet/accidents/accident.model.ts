@@ -6,8 +6,12 @@ import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shar
 import { FLEET_ACCIDENT_STATUSES, type FleetAccidentStatus } from '@ecms/contracts';
 
 export interface FleetAccidentDoc extends BaseDocFields {
-  vehicleId: Types.ObjectId;
-  occurredAt: Date;
+  /** `null` ONLY on a file from the old book for a car the registry never had — see the odometer log. */
+  vehicleId: Types.ObjectId | null;
+  /** The old book's car code, set only where `vehicleId` is null. */
+  vehicleCode: string | null;
+  /** `null` ONLY on a file from the old book that recorded no date; every new file has one. */
+  occurredAt: Date | null;
   culprit: string;
   culpritEmployeeId: Types.ObjectId | null;
   statement: string;
@@ -20,8 +24,9 @@ export interface FleetAccidentDoc extends BaseDocFields {
 
 const accidentSchema = new Schema<FleetAccidentDoc>(
   {
-    vehicleId: { type: Schema.Types.ObjectId, required: true },
-    occurredAt: { type: Date, required: true },
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
+    vehicleCode: { type: String, default: null },
+    occurredAt: { type: Date, default: null },
     culprit: { type: String, required: true },
     culpritEmployeeId: { type: Schema.Types.ObjectId, default: null },
     statement: { type: String, required: true },

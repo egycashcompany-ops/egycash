@@ -204,7 +204,7 @@ export const ViolationsPage = (): JSX.Element => {
         onClose={() => setEditing(null)}
         violation={editing?.kind === 'driver' ? editing : null}
       />
-      {grieving !== null && (
+      {grieving !== null && grieving.vehicleId !== null && (
         <GrievanceDialog
           open
           onClose={() => setGrieving(null)}

@@ -34,15 +34,20 @@
 // is not a date (2) are skipped and listed: which of the two dates is wrong is not a question an
 // import may answer. `exitOdometer` did not exist in the old system and stays empty.
 //
-// DRIVERS ARE NAMES, as in the odometer book — with more spellings for «nobody»: a dash, dots,
-// zeros, and «ونش» (the tow truck) and «جراج» (the garage), none of which is an employee.
+// DRIVERS ARE NAMES, as in the odometer book, and kept as text where HR has no employee for the
+// spelling — with more spellings for «nobody»: a dash, dots, zeros, and «ونش» (the tow truck)
+// and «جراج» (the garage), none of which is an employee. CARS THE REGISTRY NEVER HAD keep their
+// visits too, by the book's code (`book-ref.ts`); a visit on such a car has no chain to take a
+// counter from, so where the book has none the counter is written as 0 and the visit listed —
+// nothing measures from a car that does not exist.
 import { Types } from 'mongoose';
 import { type FleetCatalogKind } from '@ecms/contracts';
 import { fleetCatalogItemRepository, fleetCatalogItemService } from '../catalogs';
 import { fleetMaintenanceRepository } from '../maintenance/maintenance.repository';
 import { type FleetMaintenanceVisitDoc } from '../maintenance/maintenance.model';
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
-import { day, isPlaceholderDriver } from './odometer-import';
+import { day, driverRef, isPlaceholderDriver, type DriverRef } from './odometer-import';
+import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
 import { failureReason, fold } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
@@ -183,19 +188,20 @@ export const isNobodyInWorkshop = (name: string): boolean =>
 export const UNSPECIFIED = { ar: 'غير محدد', en: 'Unspecified' };
 
 export interface PlannedVisit extends ParsedVisit {
-  driver1Id: string | null;
-  driver2Id: string | null;
+  driverIn: DriverRef;
+  driverOut: DriverRef;
 }
 
 export interface VehicleVisits {
   code: string;
-  vehicleId: string;
+  /** The registry's car, or the book's code alone for a car the registry never had. */
+  ref: BookRef;
   visits: PlannedVisit[];
 }
 
 export interface MaintenancePlan {
   vehicles: VehicleVisits[];
-  /** Codes the registry does not have, with how many rows the book holds for each. */
+  /** Codes the registry does not have — their visits are KEPT by code — with how many rows each. */
   unknownCars: string[];
   /** Visits that left before they arrived — «code in-date → out-date» — skipped. */
   outBeforeIn: string[];
@@ -206,7 +212,7 @@ export interface MaintenancePlan {
 }
 
 /**
- * Turn the ledger into visits per vehicle. Pure: the registry and the drivers are handed in as
+ * Turn the ledger into visits per car. Pure: the registry and the drivers are handed in as
  * maps, so the rule can be tested on rows alone. The catalog is resolved at write time, because
  * resolving it may ADD to it.
  */
@@ -214,6 +220,7 @@ export const planMaintenanceImport = (
   visits: readonly ParsedVisit[],
   vehicleIdByCode: ReadonlyMap<string, string>,
   driverIdByName: ReadonlyMap<string, string>,
+  isNobody: (name: string) => boolean = isNobodyInWorkshop,
 ): MaintenancePlan => {
   const plan: MaintenancePlan = {
     vehicles: [],
@@ -230,14 +237,9 @@ export const planMaintenanceImport = (
   };
   const byCode = new Map<string, PlannedVisit[]>();
   const unknown = new Map<string, number>();
-  const driver = (name: string | null): string | null =>
-    name === null ? null : (driverIdByName.get(name) ?? null);
 
   for (const visit of visits) {
-    if (!vehicleIdByCode.has(visit.code)) {
-      unknown.set(visit.code, (unknown.get(visit.code) ?? 0) + 1);
-      continue;
-    }
+    if (!vehicleIdByCode.has(visit.code)) unknown.set(visit.code, (unknown.get(visit.code) ?? 0) + 1);
     if (visit.outDate !== null && visit.outDate < visit.inDate) {
       plan.outBeforeIn.push(`${visit.code} ${day(visit.inDate)} → ${day(visit.outDate)}`);
       continue;
@@ -248,14 +250,18 @@ export const planMaintenanceImport = (
     if (visit.workType === null) plan.blanks.workType += 1;
     for (const part of visit.parts) remember('sparePart', part);
     const list = byCode.get(visit.code) ?? [];
-    list.push({ ...visit, driver1Id: driver(visit.driver), driver2Id: driver(visit.driver2) });
+    list.push({
+      ...visit,
+      driverIn: driverRef(visit.driver, driverIdByName, isNobody),
+      driverOut: driverRef(visit.driver2, driverIdByName, isNobody),
+    });
     byCode.set(visit.code, list);
   }
   plan.unknownCars = [...unknown].sort().map(([code, count]) => `${code} (${count})`);
   for (const [code, list] of [...byCode].sort(([a], [b]) => a.localeCompare(b))) {
     plan.vehicles.push({
       code,
-      vehicleId: vehicleIdByCode.get(code) as string,
+      ref: bookRefOf(code, vehicleIdByCode),
       visits: [...list].sort((a, b) => a.inDate.getTime() - b.inDate.getTime() || a.id.localeCompare(b.id)),
     });
   }
@@ -306,10 +312,14 @@ export interface MaintenanceImportOutcome {
   imported: number;
   /** Visits a take-over found already written — the same car, day in, workshop and work. */
   alreadyThere: number;
+  /** Visits already written whose driver was empty and now carries the book's name. */
+  namesFilled: number;
   /** Visits whose counter came from the odometer book rather than this one. */
   counterFromOdometer: number;
-  /** Visits with no counter anywhere — «code in-date» — skipped. */
+  /** Visits with no counter anywhere on a car the registry has — «code in-date» — skipped. */
   noCounter: string[];
+  /** Visits on a car the registry never had, with no counter in the book — written as 0 and listed. */
+  counterUnknown: string[];
   /** Visits that are still open in the book, for a car that is already in a workshop today. */
   openConflicts: string[];
   /** Catalog rows this run added, by kind. */
@@ -323,7 +333,8 @@ export interface MaintenanceImportOutcome {
  *
  * IDEMPOTENT PER VISIT: a visit is «the same» as one already written when it is the same car,
  * the same day in, the same workshop and the same work — and such a visit is counted and not
- * written again.
+ * written again, but a driver's NAME is filled into it where an earlier run left the driver
+ * empty, which is the one repair a later run makes.
  */
 export const applyMaintenanceImport = async (
   plan: MaintenancePlan,
@@ -332,8 +343,10 @@ export const applyMaintenanceImport = async (
   const outcome: MaintenanceImportOutcome = {
     imported: 0,
     alreadyThere: 0,
+    namesFilled: 0,
     counterFromOdometer: 0,
     noCounter: [],
+    counterUnknown: [],
     openConflicts: [],
     catalogCreated: [],
     failures: [],
@@ -353,32 +366,54 @@ export const applyMaintenanceImport = async (
 
   for (const vehicle of plan.vehicles) {
     try {
-      const existing = await fleetMaintenanceRepository.existingKeys(vehicle.vehicleId);
-      const open = await fleetMaintenanceRepository.findOpen(vehicle.vehicleId);
+      const existing = await fleetMaintenanceRepository.existingByKey(vehicle.ref);
+      const vehicleId = vehicle.ref.vehicleId;
+      const open = vehicleId === null ? null : await fleetMaintenanceRepository.findOpen(vehicleId);
       const docs: Partial<FleetMaintenanceVisitDoc>[] = [];
       for (const visit of vehicle.visits) {
         const workshopId = id('workshop', visit.workshop);
         const workTypeId = id('workType', visit.workType);
-        if (existing.has(fleetMaintenanceRepository.rowKey(visit.inDate, workshopId, workTypeId))) {
+        const written = existing
+          .get(fleetMaintenanceRepository.rowKey(visit.inDate, workshopId, workTypeId))
+          ?.shift();
+        if (written !== undefined) {
           outcome.alreadyThere += 1;
+          const names: { driverInName?: string; driverOutName?: string } = {};
+          if (visit.driverIn.name !== null && written.driverInEmployeeId == null && !written.driverInName) {
+            names.driverInName = visit.driverIn.name;
+          }
+          if (visit.driverOut.name !== null && written.driverOutEmployeeId == null && !written.driverOutName) {
+            names.driverOutName = visit.driverOut.name;
+          }
+          if (Object.keys(names).length > 0) {
+            await fleetMaintenanceRepository.setDriverNames(written._id, names);
+            outcome.namesFilled += 1;
+          }
           continue;
         }
         let odometerAtService = visit.counter;
         if (odometerAtService === null) {
-          const bounds = await fleetOdometerRepository.chainBounds(vehicle.vehicleId, visit.inDate);
-          odometerAtService = bounds.lower?.reading ?? bounds.upper?.reading ?? null;
-          if (odometerAtService === null) {
-            outcome.noCounter.push(`${vehicle.code} ${day(visit.inDate)}`);
-            continue;
+          if (vehicleId === null) {
+            // No car, no chain, nothing to measure: the visit is kept, the counter is 0, the
+            // file says which.
+            odometerAtService = 0;
+            outcome.counterUnknown.push(`${vehicle.code} ${day(visit.inDate)}`);
+          } else {
+            const bounds = await fleetOdometerRepository.chainBounds(vehicleId, visit.inDate);
+            odometerAtService = bounds.lower?.reading ?? bounds.upper?.reading ?? null;
+            if (odometerAtService === null) {
+              outcome.noCounter.push(`${vehicle.code} ${day(visit.inDate)}`);
+              continue;
+            }
+            outcome.counterFromOdometer += 1;
           }
-          outcome.counterFromOdometer += 1;
         }
         if (visit.outDate === null && open !== null) {
           outcome.openConflicts.push(`${vehicle.code} ${day(visit.inDate)}`);
           continue;
         }
         docs.push({
-          vehicleId: new Types.ObjectId(vehicle.vehicleId),
+          ...bookRefFields(vehicle.ref),
           inDate: visit.inDate,
           outDate: visit.outDate,
           workshopId: new Types.ObjectId(workshopId),
@@ -387,8 +422,10 @@ export const applyMaintenanceImport = async (
           sparePartIds: visit.parts.map((part) => new Types.ObjectId(catalog.sparePart.ids.get(fold(part)) as string)),
           odometerAtService,
           exitOdometer: null,
-          driverInEmployeeId: visit.driver1Id === null ? null : new Types.ObjectId(visit.driver1Id),
-          driverOutEmployeeId: visit.driver2Id === null ? null : new Types.ObjectId(visit.driver2Id),
+          driverInEmployeeId: visit.driverIn.id === null ? null : new Types.ObjectId(visit.driverIn.id),
+          driverOutEmployeeId: visit.driverOut.id === null ? null : new Types.ObjectId(visit.driverOut.id),
+          driverInName: visit.driverIn.name,
+          driverOutName: visit.driverOut.name,
           takenInByEmployeeId: null,
           takenOutByEmployeeId: null,
           notes: visit.notes,

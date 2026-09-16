@@ -434,7 +434,7 @@ describe('the data ships with the build', () => {
     const codes = new Set(cars.cars.map((car) => car.code));
     const unknown = [...new Set(parsed.rows.filter((row) => !codes.has(row.code)).map((row) => row.code))].sort();
     expect(unknown).toEqual(['194', 'تويوتا1']);
-    expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v1');
+    expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v2');
   });
 
   it('the workshop book is there: 1,938 rows, 133 deleted, four unreadable, six rows on cars the registry lacks', () => {
@@ -454,7 +454,7 @@ describe('the data ships with the build', () => {
     const unknown = parsed.visits.filter((v) => !codes.has(v.code));
     expect(unknown.length, 'six rows').toBe(6);
     expect(new Set(unknown.map((v) => v.code)).size, 'on five codes').toBe(5);
-    expect(MAINTENANCE_GO_LIVE_MARK).toBe('go-live:maintenance:v1');
+    expect(MAINTENANCE_GO_LIVE_MARK).toBe('go-live:maintenance:v2');
   });
 
   it('the violations book is there: 1,023 rows, 86 deleted, 425 statement rows and 512 fines, every one readable', () => {
@@ -464,7 +464,7 @@ describe('the data ships with the build', () => {
     expect(parsed.rejected).toEqual([]);
     expect(parsed.company.length).toBe(425);
     expect(parsed.driver.length).toBe(512);
-    expect(VIOLATIONS_GO_LIVE_MARK).toBe('go-live:violations:v1');
+    expect(VIOLATIONS_GO_LIVE_MARK).toBe('go-live:violations:v2');
   });
 
   it('the accidents book is there: 196 files, 12 deleted, every one readable, 25 without a date', () => {
@@ -473,7 +473,7 @@ describe('the data ships with the build', () => {
     expect(parsed.accidents.length + parsed.skippedDeleted).toBe(196);
     expect(parsed.rejected).toEqual([]);
     expect(parsed.accidents.filter((a) => a.occurredAt === null).length).toBe(25);
-    expect(ACCIDENTS_GO_LIVE_MARK).toBe('go-live:accidents:v1');
+    expect(ACCIDENTS_GO_LIVE_MARK).toBe('go-live:accidents:v2');
   });
 
   it('all 56 licence scans are there, and every one is named for a car in the data', () => {

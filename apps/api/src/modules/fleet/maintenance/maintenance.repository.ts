@@ -3,6 +3,8 @@ import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetMaintenanceVisitModel, type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { byVehicleOrBookCode } from '../odometer/odometer.repository';
+import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 import { driverNameSorts } from '../fleet-sort-keys';
 
 export interface AlarmBaseline {
@@ -64,18 +66,26 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
   }
 
   /**
-   * Every live visit's key for one vehicle — what the go-live import checks before writing, so a
-   * run taken over after a lapsed lease skips the visits the first attempt already wrote.
+   * Every live visit for one car — by registry id, or by the old book's code for a car the
+   * registry never had — grouped by key: what the go-live import checks before writing, and what
+   * it fills a driver's NAME into where an earlier run left the driver empty.
    */
-  async existingKeys(vehicleId: string): Promise<Set<string>> {
+  async existingByKey(ref: BookRef): Promise<Map<string, FleetMaintenanceVisitDoc[]>> {
     const rows = await this.model
-      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
-      .select({ inDate: 1, workshopId: 1, workTypeId: 1 })
-      .lean<{ inDate: Date; workshopId: Types.ObjectId; workTypeId: Types.ObjectId }[]>()
+      .find(bookRefFilter<FleetMaintenanceVisitDoc>(ref))
+      .lean<FleetMaintenanceVisitDoc[]>()
       .exec();
-    return new Set(
-      rows.map((row) => this.rowKey(row.inDate, String(row.workshopId), String(row.workTypeId))),
+    return groupByKey(rows, (row) =>
+      this.rowKey(row.inDate, String(row.workshopId), String(row.workTypeId)),
     );
+  }
+
+  /** The go-live import's one repair on a visit already written: a driver's name, where it had none. */
+  async setDriverNames(
+    id: Types.ObjectId,
+    names: { driverInName?: string; driverOutName?: string },
+  ): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: names }).exec();
   }
 
   /**
@@ -251,6 +261,8 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
   visitFilter(query: {
     vehicleId?: string | undefined;
     vehicleIds?: readonly string[] | undefined;
+    /** The typed codes, for rows kept from the old book on a car the registry never had. */
+    vehicleCodes?: readonly string[] | undefined;
     open?: boolean | undefined;
     workshopId?: string | undefined;
     workshopIds?: readonly string[] | undefined;
@@ -268,7 +280,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     const clauses: FilterQuery<FleetMaintenanceVisitDoc>[] = [];
     if (query.vehicleId !== undefined) clauses.push({ vehicleId: oid(query.vehicleId) });
     if (query.vehicleIds !== undefined) {
-      clauses.push({ vehicleId: { $in: query.vehicleIds.map(oid) } });
+      clauses.push(byVehicleOrBookCode(query.vehicleIds, query.vehicleCodes));
     }
     if (query.open !== undefined) {
       clauses.push(query.open ? { outDate: null } : { outDate: { $ne: null } });

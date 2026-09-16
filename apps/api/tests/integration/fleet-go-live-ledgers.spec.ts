@@ -141,12 +141,12 @@ const typeName = async (id: Types.ObjectId): Promise<string> => {
 const violationsOf = async (code: string) =>
   FleetViolationModel.find({ vehicleId: await vehicleId(code), isDeleted: false })
     .sort({ kind: -1, date: 1, amount: 1 })
-    .lean<{ kind: string; violationTypeId: Types.ObjectId; amount: number; year: number | null; count: number | null; unitValue: number | null; date: Date | null; driverEmployeeId: Types.ObjectId | null; collected: boolean; createdBy: Types.ObjectId | null }[]>()
+    .lean<{ kind: string; violationTypeId: Types.ObjectId; amount: number; year: number | null; count: number | null; unitValue: number | null; date: Date | null; driverEmployeeId: Types.ObjectId | null; driverName: string | null; collected: boolean; createdBy: Types.ObjectId | null }[]>()
     .exec();
 
 const accidentsOf = async (code: string) =>
   FleetAccidentModel.find({ vehicleId: await vehicleId(code), isDeleted: false })
-    .lean<{ culprit: string; culpritEmployeeId: Types.ObjectId | null; statement: string; companyCost: number; amountCollected: number; paidAmount: number; status: string; notes: string | null }[]>()
+    .lean<{ occurredAt: Date | null; culprit: string; culpritEmployeeId: Types.ObjectId | null; statement: string; companyCost: number; amountCollected: number; paidAmount: number; status: string; notes: string | null }[]>()
     .exec();
 
 let adminId = '';
@@ -217,10 +217,12 @@ describe('the violations book', () => {
     const doc = await run(VIOLATIONS_GO_LIVE_MARK);
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
-      vehicles: 1,
-      imported: 6,
+      vehicles: 2,
+      imported: 7,
       alreadyThere: 0,
+      namesFilled: 0,
       grievancesWritten: 1,
+      grievancesUnplaced: [],
       grievancesKept: [],
       skippedDeleted: 1,
       rejected: [],
@@ -248,7 +250,10 @@ describe('the violations book', () => {
     ]);
     expect(await typeName(fines[0]!.violationTypeId), '«ت», written out').toBe('تليفون');
     expect(String(fines[1]!.driverEmployeeId), 'the driver, by name').toBe(String(driverId));
-    expect(fines[2]!.driverEmployeeId, 'a name HR does not have — the fine still lands').toBeNull();
+    expect(fines[2]!.driverEmployeeId, 'a name HR does not have — no employee').toBeNull();
+    expect(fines[2]!.driverName, '…and the name kept on the fine, as text').toBe('سائق مجهول');
+    // The car the registry never had: its row is kept, by the book's code and no vehicle.
+    expect(await FleetViolationModel.countDocuments({ vehicleId: null, vehicleCode: 'كوستر', isDeleted: false }).exec()).toBe(1);
     expect(String(rows[0]!.createdBy), 'authored by the seeded admin').toBe(adminId);
 
     const grievance = await FleetGrievanceModel.findOne({ vehicleId: await vehicleId('LG-1'), year: 2025 }).lean<{ totalBeforeGrievance: number }>().exec();
@@ -272,7 +277,7 @@ describe('the violations book', () => {
     expect(await FleetViolationModel.countDocuments({}).exec()).toBe(before);
     const doc = await run(VIOLATIONS_GO_LIVE_MARK);
     expect(doc?.status).toBe('done');
-    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 5, grievancesWritten: 0 });
+    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 6, grievancesWritten: 0 });
     expect(await FleetGrievanceModel.countDocuments({}).exec(), 'the grievance figure, once').toBe(1);
   });
 });
@@ -284,8 +289,8 @@ describe('the accidents book', () => {
     const doc = await run(ACCIDENTS_GO_LIVE_MARK);
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
-      vehicles: 2,
-      imported: 2,
+      vehicles: 3,
+      imported: 4,
       alreadyThere: 0,
       skippedDeleted: 1,
       rejected: [],
@@ -297,11 +302,16 @@ describe('the accidents book', () => {
       unmatchedCulprits: ['سائق تاكسي'],
     });
 
-    const [closed] = await accidentsOf('LG-1');
+    const lg1 = await accidentsOf('LG-1');
+    // The file with no date is KEPT — with none — beside the dated one.
+    expect(lg1.map((a) => a.occurredAt?.toISOString().slice(0, 10) ?? null).sort()).toEqual(['2025-02-01', null].sort());
+    const closed = lg1.find((a) => a.occurredAt !== null);
     expect(closed).toMatchObject({ culprit: 'احمد جمال', statement: 'فنوس امامى', companyCost: 0, amountCollected: 1400, paidAmount: 1400, status: 'closed', notes: 'تم الاصلاح' });
     expect(String(closed!.culpritEmployeeId), 'two of three names, matched as a prefix').toBe(String(driverId));
     const [open] = await accidentsOf('LG-2');
     expect(open).toMatchObject({ culprit: 'سائق تاكسي', culpritEmployeeId: null, statement: NOT_STATED, amountCollected: 4650, paidAmount: 0, status: 'open', notes: null });
+    // The car the registry never had: its file is kept, by the book's code and no vehicle.
+    expect(await FleetAccidentModel.countDocuments({ vehicleId: null, vehicleCode: 'تويوتا1', isDeleted: false }).exec()).toBe(1);
   });
 
   it('a later boot writes nothing at all', async () => {

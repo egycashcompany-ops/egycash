@@ -39,8 +39,14 @@ import {
 } from './odometer-import';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 
-/** The run key — versioned like the vehicles', and for the same reason. */
-export const ODOMETER_GO_LIVE_MARK = 'go-live:odometer:v1';
+/**
+ * The run key — versioned like the vehicles', and for the same reason.
+ *
+ * v1 left out the rows of cars the registry never had, and left the driver empty where HR did
+ * not know the spelling. v2 keeps both — the code and the name as text — and, over a database v1
+ * already ran on, writes only the rows v1 skipped and fills the names into the rows it wrote.
+ */
+export const ODOMETER_GO_LIVE_MARK = 'go-live:odometer:v2';
 
 /**
  * The vehicles' lease. Twenty thousand rows in 191 inserts is well under a minute; thirty
@@ -136,6 +142,7 @@ export const runOdometerGoLive = async (dataDir?: string): Promise<void> => {
     vehicles: plan.vehicles.length,
     imported: outcome.imported,
     alreadyThere: outcome.alreadyThere,
+    namesFilled: outcome.namesFilled,
     closedByExisting: outcome.closedByExisting,
     openConflicts: outcome.openConflicts,
     ...notes,

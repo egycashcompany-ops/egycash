@@ -30,8 +30,11 @@ import {
 import { resolveDrivers } from './odometer-import';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 
-/** The run key — versioned like the vehicles', and for the same reason. */
-export const ACCIDENTS_GO_LIVE_MARK = 'go-live:accidents:v1';
+/**
+ * The run key — versioned like the vehicles', and for the same reason. v2 keeps the files of
+ * cars the registry never had and the files with no date, as the other books' v2 keep theirs.
+ */
+export const ACCIDENTS_GO_LIVE_MARK = 'go-live:accidents:v2';
 
 /** The vehicles' lease. Two hundred files is seconds. */
 export const ACCIDENTS_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -102,7 +105,7 @@ export const runAccidentsGoLive = async (dataDir?: string): Promise<void> => {
   if (parsed.rejected.length > 0 || plan.unknownCars.length > 0 || plan.noDate.length > 0) {
     logger.warn(
       { rejected: parsed.rejected, unknownCars: plan.unknownCars, noDate: plan.noDate },
-      'fleet go-live: files of the accidents book that name no car or no date — skipped, and listed on the run',
+      'fleet go-live: files of the accidents book that name no car the registry has, or no date — kept by the book\'s code, or with no date, and listed on the run',
     );
   }
 

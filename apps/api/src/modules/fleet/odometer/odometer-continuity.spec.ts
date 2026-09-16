@@ -26,7 +26,13 @@ describe('the odometer collection constrains OPEN periods, not readings', () => 
     // the second day's recording would collide. The partial filter is the whole difference.
     const [fields, options] = byName('ux_open_period') as IndexSpec;
     expect(fields).toEqual({ vehicleId: 1 });
-    expect(options?.partialFilterExpression).toEqual({ isDeleted: false, inReading: null });
+    // …and to rows that HAVE a vehicle: a reading kept from the old book for a car the registry
+    // never had is on no chain, and two such cars must not collide on the one value `null`.
+    expect(options?.partialFilterExpression).toEqual({
+      isDeleted: false,
+      inReading: null,
+      vehicleId: { $type: 'objectId' },
+    });
   });
 
   it('constrains nothing about the DATE — a vehicle may run on any number of days', () => {

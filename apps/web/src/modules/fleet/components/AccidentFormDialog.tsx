@@ -46,7 +46,7 @@ export const AccidentFormDialog = ({
   useEffect(() => {
     if (!open) return;
     setVehicleId(accident?.vehicleId ?? initialVehicleId);
-    setOccurredAt(accident === null ? '' : accident.occurredAt.slice(0, 10));
+    setOccurredAt(accident?.occurredAt?.slice(0, 10) ?? '');
     setCulprit(accident?.culprit ?? '');
     setCulpritEmployeeId(accident?.culpritEmployeeId ?? '');
     setStatement(accident?.statement ?? '');
@@ -121,7 +121,7 @@ export const AccidentFormDialog = ({
       // Send only what changed, plus the version the edit was made against.
       const body: UpdateFleetAccident = { version: accident.version };
       if (vehicleId !== accident.vehicleId) body.vehicleId = vehicleId;
-      if (occurredAt !== accident.occurredAt.slice(0, 10)) body.occurredAt = new Date(occurredAt);
+      if (occurredAt !== (accident.occurredAt?.slice(0, 10) ?? '')) body.occurredAt = new Date(occurredAt);
       if (culprit.trim() !== accident.culprit) body.culprit = culprit.trim();
       // `null` when it was cleared or typed over — «it turned out to be a third party» has to be
       // an edit somebody can make, so untouched and cleared are kept apart.

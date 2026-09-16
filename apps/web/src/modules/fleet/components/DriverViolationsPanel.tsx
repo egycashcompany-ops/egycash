@@ -50,7 +50,7 @@ import { violationTypeColour } from '../lib/violation-type-colour';
 import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
-import { EmployeeName } from './EmployeeName';
+import { DriverName } from './EmployeeName';
 import {
   cardLabel,
   entryCards,
@@ -286,15 +286,14 @@ export const DriverViolationsPanel = ({
       align: 'center',
       render: (row) => (
         <span className="font-mono text-xs" dir="ltr">
-          {codeOf.get(row.vehicleId) ?? '—'}
+          {row.vehicleCode ?? (row.vehicleId === null ? '—' : (codeOf.get(row.vehicleId) ?? '—'))}
         </span>
       ),
     },
     {
       key: 'driver',
       header: t('fleet.violations.fields.driver'),
-      render: (row) =>
-        row.driverEmployeeId === null ? '—' : <EmployeeName employeeId={row.driverEmployeeId} />,
+      render: (row) => <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />,
     },
     {
       key: 'type',
@@ -390,8 +389,8 @@ export const DriverViolationsPanel = ({
   const exportRows = (): string[][] =>
     rows.map((row) => [
       row.date === null ? '' : row.date.slice(0, 10),
-      codeOf.get(row.vehicleId) ?? '',
-      row.driverEmployeeId ?? '',
+      row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? '')),
+      row.driverEmployeeId ?? row.driverName ?? '',
       typeName.get(row.violationTypeId) ?? '',
       String(row.amount),
       row.collected ? t('common.yes') : t('common.no'),

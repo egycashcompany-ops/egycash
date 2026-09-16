@@ -25,19 +25,21 @@
 // and the figure is written once.
 //
 // WHAT IS NOT WRITTEN, and listed instead: a statement row with a count of zero (eight of them,
-// all blank), a row whose type is blank or not in the catalog on that side — the violation types
-// are the one catalog the owner asked to keep as it is («ما عدا أنواع المخالفات»), so nothing
-// is added to it here — and a row on a car the registry does not have.
+// all blank), and a row whose type is blank or not in the catalog on that side — the violation
+// types are the one catalog the owner asked to keep as it is («ما عدا أنواع المخالفات»), so
+// nothing is added to it here. A row on a car the registry never had IS written, by the book's
+// code (`book-ref.ts`); its grievance figure, keyed on a vehicle, cannot be and is listed.
 //
-// DRIVERS ARE NAMES, as in the other books, with the same answer: matched, or reported and the
-// fine written without a driver. A fine is history; it is not less a fine for HR not knowing the
-// spelling.
+// DRIVERS ARE NAMES, as in the other books, with the same answer: matched, or the NAME KEPT ON
+// THE ROW AS TEXT and listed for HR. A fine is history; it is not less a fine for HR not knowing
+// the spelling.
 import { Types } from 'mongoose';
 import { type FleetViolationSide } from '@ecms/contracts';
 import { fleetCatalogItemRepository } from '../catalogs';
 import { fleetGrievanceRepository, fleetViolationRepository } from '../violations/violation.repository';
 import { type FleetViolationDoc } from '../violations/violation.model';
-import { day } from './odometer-import';
+import { day, driverRef, isPlaceholderDriver } from './odometer-import';
+import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
 import { failureReason, fold } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
@@ -216,9 +218,12 @@ export interface PlannedGrievance {
 }
 
 export interface ViolationsPlan {
-  vehicles: { code: string; vehicleId: string; rows: PlannedViolation[] }[];
+  vehicles: { code: string; ref: BookRef; rows: PlannedViolation[] }[];
   grievances: PlannedGrievance[];
+  /** Codes the registry does not have — their rows are KEPT by code — with how many rows each. */
   unknownCars: string[];
+  /** Grievance figures on such a car — «code year: figure» — which need a vehicle and are not written. */
+  grievancesUnplaced: string[];
   /** Statement rows with a count of zero — nothing to file. */
   zeroCount: string[];
   /** Rows whose type is blank, or not in the catalog on that side — «code year/date: type». */
@@ -231,25 +236,27 @@ export interface ViolationsPlan {
 export const violationKey = (doc: Pick<FleetViolationDoc, 'kind' | 'violationTypeId' | 'year' | 'count' | 'unitValue' | 'date' | 'amount' | 'driverEmployeeId'>): string =>
   doc.kind === 'vehicle'
     ? `v|${doc.year}|${String(doc.violationTypeId)}|${doc.count}|${doc.unitValue}`
-    : `d|${doc.date?.toISOString() ?? ''}|${String(doc.violationTypeId)}|${doc.amount}|${doc.driverEmployeeId === null ? '' : String(doc.driverEmployeeId)}`;
+    : `d|${doc.date?.toISOString() ?? ''}|${String(doc.violationTypeId)}|${doc.amount}|${doc.driverEmployeeId == null ? '' : String(doc.driverEmployeeId)}`;
 
 /** Money to the piastre: `1 × 117.85` must come out as `117.85`, not `117.85000000000001`. */
 const egp = (value: number): number => Math.round(value * 100) / 100;
 
 /**
- * Turn both shapes into rows per vehicle, plus the grievance figures. Pure: the registry, the
- * types and the drivers are handed in as maps, so the rule can be tested on rows alone.
+ * Turn both shapes into rows per car, plus the grievance figures. Pure: the registry, the types
+ * and the drivers are handed in as maps, so the rule can be tested on rows alone.
  */
 export const planViolationsImport = (
   parsed: ParseViolationsResult,
   vehicleIdByCode: ReadonlyMap<string, string>,
   types: ViolationTypeIndex,
   driverIdByName: ReadonlyMap<string, string>,
+  isNobody: (name: string) => boolean = isPlaceholderDriver,
 ): ViolationsPlan => {
   const plan: ViolationsPlan = {
     vehicles: [],
     grievances: [],
     unknownCars: [],
+    grievancesUnplaced: [],
     zeroCount: [],
     unknownTypes: [],
     grievanceConflicts: [],
@@ -266,13 +273,12 @@ export const planViolationsImport = (
     const found = types.byName.get(fold(name));
     return found !== undefined && found.side === side ? found.id : null;
   };
+  const noteUnknown = (code: string): void => {
+    if (!vehicleIdByCode.has(code)) unknown.set(code, (unknown.get(code) ?? 0) + 1);
+  };
 
   for (const row of parsed.company) {
-    const vehicleId = vehicleIdByCode.get(row.code);
-    if (vehicleId === undefined) {
-      unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
-      continue;
-    }
+    noteUnknown(row.code);
     if (row.count === 0) {
       plan.zeroCount.push(`${row.code} ${row.year}`);
       continue;
@@ -282,9 +288,10 @@ export const planViolationsImport = (
       plan.unknownTypes.push(`${row.code} ${row.year}: ${row.type ?? '—'}`);
       continue;
     }
+    const ref = bookRefOf(row.code, vehicleIdByCode);
     const doc: Partial<FleetViolationDoc> = {
       kind: 'vehicle',
-      vehicleId: new Types.ObjectId(vehicleId),
+      ...bookRefFields(ref),
       violationTypeId: new Types.ObjectId(typeId),
       amount: egp(row.count * row.unitValue),
       year: row.year,
@@ -292,14 +299,19 @@ export const planViolationsImport = (
       unitValue: row.unitValue,
       date: null,
       driverEmployeeId: null,
+      driverName: null,
       collected: row.collected,
     };
     push(row.code, { doc, key: violationKey(doc as FleetViolationDoc) });
     if (row.grievance > 0) {
-      const key = `${vehicleId}|${row.year}`;
+      if (ref.vehicleId === null) {
+        plan.grievancesUnplaced.push(`${row.code} ${row.year}: ${row.grievance}`);
+        continue;
+      }
+      const key = `${ref.vehicleId}|${row.year}`;
       const existing = grievances.get(key);
       if (existing === undefined) {
-        grievances.set(key, { vehicleId, code: row.code, year: row.year, totalBeforeGrievance: row.grievance });
+        grievances.set(key, { vehicleId: ref.vehicleId, code: row.code, year: row.year, totalBeforeGrievance: row.grievance });
       } else if (existing.totalBeforeGrievance !== row.grievance) {
         plan.grievanceConflicts.push(`${row.code} ${row.year}: ${existing.totalBeforeGrievance} / ${row.grievance}`);
       }
@@ -307,28 +319,25 @@ export const planViolationsImport = (
   }
 
   for (const row of parsed.driver) {
-    const vehicleId = vehicleIdByCode.get(row.code);
-    if (vehicleId === undefined) {
-      unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
-      continue;
-    }
+    noteUnknown(row.code);
     const typeName = DRIVER_TYPE_ALIASES[row.type] ?? row.type;
     const typeId = typeName === '' ? null : typeOn(typeName, 'driver');
     if (typeId === null) {
       plan.unknownTypes.push(`${row.code} ${day(row.date)}: ${row.type === '' ? '—' : row.type}`);
       continue;
     }
-    const driverId = row.driver === null ? null : (driverIdByName.get(row.driver) ?? null);
+    const driver = driverRef(row.driver, driverIdByName, isNobody);
     const doc: Partial<FleetViolationDoc> = {
       kind: 'driver',
-      vehicleId: new Types.ObjectId(vehicleId),
+      ...bookRefFields(bookRefOf(row.code, vehicleIdByCode)),
       violationTypeId: new Types.ObjectId(typeId),
       amount: egp(row.amount),
       year: null,
       count: null,
       unitValue: null,
       date: row.date,
-      driverEmployeeId: driverId === null ? null : new Types.ObjectId(driverId),
+      driverEmployeeId: driver.id === null ? null : new Types.ObjectId(driver.id),
+      driverName: driver.name,
       collected: row.collected,
     };
     push(row.code, { doc, key: violationKey(doc as FleetViolationDoc) });
@@ -337,7 +346,7 @@ export const planViolationsImport = (
   plan.unknownCars = [...unknown].sort().map(([code, count]) => `${code} (${count})`);
   plan.grievances = [...grievances.values()];
   for (const [code, rows] of [...byCode].sort(([a], [b]) => a.localeCompare(b))) {
-    plan.vehicles.push({ code, vehicleId: vehicleIdByCode.get(code) as string, rows });
+    plan.vehicles.push({ code, ref: bookRefOf(code, vehicleIdByCode), rows });
   }
   return plan;
 };
@@ -345,6 +354,8 @@ export const planViolationsImport = (
 export interface ViolationsImportOutcome {
   imported: number;
   alreadyThere: number;
+  /** Fines already written whose driver was empty and now carries the book's name. */
+  namesFilled: number;
   grievancesWritten: number;
   /** A (vehicle, year) that already had a DIFFERENT grievance figure on the new screen — kept. */
   grievancesKept: string[];
@@ -354,7 +365,8 @@ export interface ViolationsImportOutcome {
 /**
  * Write every car's rows and the grievance figures. Idempotent per row AS A MULTISET: a car that
  * already holds N rows of a shape gets only the rows beyond N, so a take-over neither duplicates
- * a row nor drops the second of two identical, legitimate ones.
+ * a row nor drops the second of two identical, legitimate ones — and a fine already written gets
+ * the driver's NAME filled in where an earlier run left the driver empty.
  */
 export const applyViolationsImport = async (
   plan: ViolationsPlan,
@@ -363,19 +375,24 @@ export const applyViolationsImport = async (
   const outcome: ViolationsImportOutcome = {
     imported: 0,
     alreadyThere: 0,
+    namesFilled: 0,
     grievancesWritten: 0,
     grievancesKept: [],
     failures: [],
   };
   for (const vehicle of plan.vehicles) {
     try {
-      const existing = await fleetViolationRepository.existingKeyCounts(vehicle.vehicleId, violationKey);
+      const existing = await fleetViolationRepository.existingByKey(vehicle.ref, violationKey);
       const docs: Partial<FleetViolationDoc>[] = [];
       for (const row of vehicle.rows) {
-        const have = existing.get(row.key) ?? 0;
-        if (have > 0) {
-          existing.set(row.key, have - 1);
+        const written = existing.get(row.key)?.shift();
+        if (written !== undefined) {
           outcome.alreadyThere += 1;
+          const name = row.doc.driverName ?? null;
+          if (name !== null && written.driverEmployeeId == null && !written.driverName) {
+            await fleetViolationRepository.setDriverName(written._id, name);
+            outcome.namesFilled += 1;
+          }
           continue;
         }
         docs.push(row.doc);

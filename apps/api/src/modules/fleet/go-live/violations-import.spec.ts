@@ -113,7 +113,7 @@ describe('turning the book into rows', () => {
     expect(plan.vehicles[0]!.rows).toHaveLength(2);
   });
 
-  it('skips and names: a count of zero, a blank type, a type on the wrong side, a car the registry lacks', () => {
+  it('skips and names: a count of zero, a blank type, a type on the wrong side — and KEEPS a car the registry lacks, by code', () => {
     const plan = planViolationsImport(
       parseViolations([
         company({ num: '0', amount: '0' }),
@@ -129,7 +129,14 @@ describe('turning the book into rows', () => {
     expect(plan.zeroCount).toEqual(['175 2025']);
     expect(plan.unknownTypes).toEqual(['175 2025: —', '175 2025: سرعة', '175 2025-03-06: رسوم خدمة']);
     expect(plan.unknownCars).toEqual(['كوستر (1)']);
-    expect(plan.vehicles).toEqual([]);
+    expect(plan.vehicles.map((v) => [v.code, v.ref, v.rows.length])).toEqual([['كوستر', { vehicleId: null, vehicleCode: 'كوستر' }, 1]]);
+    expect(plan.vehicles[0]!.rows[0]!.doc).toMatchObject({ vehicleId: null, vehicleCode: 'كوستر', year: 2025 });
+  });
+
+  it('a grievance figure on a car the registry lacks has no vehicle to hang on — listed, not written', () => {
+    const plan = planViolationsImport(parseViolations([company({ car_code: 'كوستر', total_before_grievance: '5000' })]), REGISTRY, TYPES, new Map());
+    expect(plan.grievances).toEqual([]);
+    expect(plan.grievancesUnplaced).toEqual(['كوستر 2025: 5000']);
   });
 
   it('writes the grievance figure ONCE per (vehicle, year), and reports a year stamped with two', () => {
@@ -151,9 +158,9 @@ describe('turning the book into rows', () => {
     expect(plan.grievanceConflicts).toEqual(['175 2025: 100 / 200']);
   });
 
-  it('a fine whose driver HR does not know is still a fine — written without a driver', () => {
+  it('a fine whose driver HR does not know is still a fine — the name kept as text', () => {
     const plan = planViolationsImport(parseViolations([driver({ driver: 'سائق مجهول' })]), REGISTRY, TYPES, new Map());
-    expect(plan.vehicles[0]!.rows[0]!.doc.driverEmployeeId).toBeNull();
+    expect(plan.vehicles[0]!.rows[0]!.doc).toMatchObject({ driverEmployeeId: null, driverName: 'سائق مجهول' });
   });
 });
 

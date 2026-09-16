@@ -76,6 +76,8 @@ const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   km: 250,
   driver1EmployeeId: null,
   driver2EmployeeId: null,
+  driver1Name: null,
+  driver2Name: null,
   notes: 'رحلة الصباح',
   version: 0,
   createdAt: '2026-08-18T00:00:00.000Z',
@@ -327,6 +329,16 @@ describe('the odometer table', () => {
       render({ qc: client([log({ driver1EmployeeId: null, driver2EmployeeId: null })]) }),
     );
     expect(neither).not.toContain('null');
+  });
+
+  it('prints the book’s NAME in the driver column where HR has no employee — kept as text, marked as such', () => {
+    // «عاوز يتحفظ كداتا زى ما يكون سواق كان موجود ومشى»: a row from the old odometer book whose
+    // driver HR does not know carries the spelling, and the column shows it in the employee's place.
+    const markup = tbody(
+      render({ qc: client([log({ driver1EmployeeId: null, driver1Name: 'سائق غير موجود', driver2EmployeeId: null, driver2Name: null })]) }),
+    );
+    expect(markup).toContain('سائق غير موجود');
+    expect(markup).toContain('data-legacy-name="true"');
   });
 
   it('keeps an unbreakable note inside its column instead of widening the table', () => {

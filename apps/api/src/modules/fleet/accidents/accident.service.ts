@@ -21,12 +21,13 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetAccidentRepository } from './accident.repository';
+import { vehicleIdOf } from '../fleet.mappers';
 import { type FleetAccidentDoc } from './accident.model';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'accident', entityId: id });
 
 const snapshot = (doc: FleetAccidentDoc) => ({
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   occurredAt: doc.occurredAt,
   culprit: doc.culprit,
   culpritEmployeeId: doc.culpritEmployeeId === null ? null : String(doc.culpritEmployeeId),
@@ -40,7 +41,7 @@ const snapshot = (doc: FleetAccidentDoc) => ({
 
 const eventPayload = (doc: FleetAccidentDoc, code: string) => ({
   accidentId: String(doc._id),
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   code,
   companyCost: doc.companyCost,
   amountCollected: doc.amountCollected,
@@ -85,6 +86,7 @@ class FleetAccidentService {
     return fleetAccidentRepository.accidentFilter({
       vehicleId: query.vehicleId,
       vehicleIds: await this.vehicleScope(query),
+      vehicleCodes: query.vehicleCodes,
       culprit: query.culprit,
       culpritEmployeeId: query.culpritEmployeeId,
       status: query.status,
@@ -204,10 +206,14 @@ class FleetAccidentService {
       action: 'statusChange',
       changes: [{ field: 'status', old: before.status, new: updated.status }],
     });
-    const vehicle = await fleetVehicleRepository.getById(String(updated.vehicleId));
+    // A file kept from the old book for a car the registry never had names its car itself.
+    const code =
+      updated.vehicleId == null
+        ? (updated.vehicleCode ?? '')
+        : (await fleetVehicleRepository.getById(String(updated.vehicleId))).code;
     await emit(
       input.status === 'closed' ? FleetEvents.AccidentClosed : FleetEvents.AccidentReopened,
-      eventPayload(updated, vehicle.code),
+      eventPayload(updated, code),
     );
     return updated;
   }

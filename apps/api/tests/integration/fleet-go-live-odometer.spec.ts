@@ -100,7 +100,7 @@ const vehicleId = async (code: string): Promise<Types.ObjectId> => {
 const chainOf = async (code: string) =>
   FleetOdometerLogModel.find({ vehicleId: await vehicleId(code), isDeleted: false })
     .sort({ date: 1 })
-    .lean<{ date: Date; outReading: number; inReading: number | null; km: number | null; driver1EmployeeId: Types.ObjectId | null; notes: string | null; createdBy: Types.ObjectId | null }[]>()
+    .lean<{ _id: Types.ObjectId; date: Date; outReading: number; inReading: number | null; km: number | null; driver1EmployeeId: Types.ObjectId | null; driver1Name: string | null; notes: string | null; createdBy: Types.ObjectId | null }[]>()
     .exec();
 
 let adminId = '';
@@ -180,9 +180,10 @@ describe('the run that can proceed', () => {
     const doc = await run();
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
-      vehicles: 3,
-      imported: 5,
+      vehicles: 4,
+      imported: 6,
       alreadyThere: 0,
+      namesFilled: 0,
       skippedDeleted: 1,
       rejected: [],
       unknownCars: ['تويوتا1 (1)'],
@@ -206,7 +207,14 @@ describe('the run that can proceed', () => {
     ]);
     expect(String(chain[0]?.driver1EmployeeId), 'the full name, an exited employee still').toBe(String(employeeIds.full));
     expect(chain[1]?.driver1EmployeeId, '«احتياطى» is nobody').toBeNull();
-    expect(chain[2]?.driver1EmployeeId, 'a name HR does not have is nobody, and the row still landed').toBeNull();
+    expect(chain[2]?.driver1EmployeeId, 'a name HR does not have is no employee').toBeNull();
+    expect(chain[2]?.driver1Name, '…but the name is KEPT on the row, as text').toBe('سائق غير موجود');
+    expect(chain[0]?.driver1Name, 'never beside an employee').toBeNull();
+    // The car the registry never had: its row is kept, by the book's code and no vehicle.
+    const orphan = await FleetOdometerLogModel.find({ vehicleId: null, vehicleCode: 'تويوتا1', isDeleted: false })
+      .lean<{ outReading: number; inReading: number | null }[]>()
+      .exec();
+    expect(orphan.map((row) => [row.outReading, row.inReading])).toEqual([[1, 2]]);
     expect(String(chain[3]?.driver1EmployeeId), 'two of four names, matched as a prefix').toBe(String(employeeIds.short));
     expect(chain[3]?.notes).toBe('اسوان');
     expect(String(chain[0]?.createdBy), 'authored by the seeded admin').toBe(adminId);
@@ -245,7 +253,22 @@ describe('a run that died is finished by the next boot, without writing a row tw
     expect((await chainOf('ODO-1')).map((row) => row.outReading)).toEqual([1000, 1050, 1100, 1150]);
     const doc = await run();
     expect(doc?.status).toBe('done');
-    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 4 });
+    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 5 });
+  });
+
+  it('fills the book’s name into a row an earlier run wrote with the driver empty — and nothing else', async () => {
+    // The shape v1 left behind: the row is there, HR did not know the spelling, the driver is empty.
+    const [, , third] = await chainOf('ODO-1');
+    await FleetOdometerLogModel.updateOne({ _id: third!._id }, { $set: { driver1Name: null } }).exec();
+    await FleetGoLiveRunModel.updateOne(
+      { key: ODOMETER_GO_LIVE_MARK },
+      { $set: { status: 'running', leaseUntil: new Date(Date.now() - 60_000), finishedAt: null, outcome: null } },
+    ).exec();
+
+    await runOdometerGoLive(dataDir);
+
+    expect((await chainOf('ODO-1'))[2]?.driver1Name).toBe('سائق غير موجود');
+    expect((await run())?.outcome).toMatchObject({ imported: 0, alreadyThere: 6, namesFilled: 1 });
   });
 
   it('does NOT take over a lease that is still live', async () => {

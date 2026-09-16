@@ -19,7 +19,8 @@ export interface GrievanceFigure {
  * The pair is the key, not the vehicle: a car's 2025 and its 2026 are two rows on the board and
  * summing them into one would report a fleet's whole history as this year's bill.
  */
-const keyOf = (vehicleId: string, year: number): string => `${vehicleId}:${year}`;
+const keyOf = (vehicleId: string | null, code: string | null, year: number): string =>
+  `${vehicleId ?? `code:${code ?? ''}`}:${year}`;
 
 /**
  * Does this (vehicle, year) still hold anything to show?
@@ -44,9 +45,15 @@ export const assembleRollups = (
   codes: ReadonlyMap<string, string>,
 ): FleetViolationRollupDto[] => {
   const byVehicle = new Map<string, FleetViolationRollupDto>();
-  const blank = (vehicleId: string, year: number): FleetViolationRollupDto => ({
+  // A group with no vehicle — rows kept from the old book on a car the registry never had — is
+  // named by the code the book wrote, which travels with the sums.
+  const blank = (
+    vehicleId: string | null,
+    bookCode: string | null,
+    year: number,
+  ): FleetViolationRollupDto => ({
     vehicleId,
-    code: codes.get(vehicleId) ?? vehicleId,
+    code: vehicleId === null ? (bookCode ?? '—') : (codes.get(vehicleId) ?? vehicleId),
     year,
     vehicleCount: 0,
     vehicleAmount: 0,
@@ -60,8 +67,8 @@ export const assembleRollups = (
   });
 
   for (const sum of sums) {
-    byVehicle.set(keyOf(sum.vehicleId, sum.year), {
-      ...blank(sum.vehicleId, sum.year),
+    byVehicle.set(keyOf(sum.vehicleId, sum.vehicleCode, sum.year), {
+      ...blank(sum.vehicleId, sum.vehicleCode, sum.year),
       vehicleCount: sum.vehicleCount,
       vehicleAmount: sum.vehicleAmount,
       driverCount: sum.driverCount,
@@ -73,8 +80,8 @@ export const assembleRollups = (
     });
   }
   for (const grievance of grievances) {
-    const key = keyOf(grievance.vehicleId, grievance.year);
-    const row = byVehicle.get(key) ?? blank(grievance.vehicleId, grievance.year);
+    const key = keyOf(grievance.vehicleId, null, grievance.year);
+    const row = byVehicle.get(key) ?? blank(grievance.vehicleId, null, grievance.year);
     row.totalBeforeGrievance = grievance.totalBeforeGrievance;
     byVehicle.set(key, row);
   }

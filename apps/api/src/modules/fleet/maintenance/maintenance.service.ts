@@ -24,6 +24,7 @@ import {
   type FleetMaintenanceVisitRow,
 } from './maintenance.repository';
 import { type FleetMaintenanceVisitDoc } from './maintenance.model';
+import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 
 /**
  * A page of visits plus the registry codes for exactly the vehicles ON that page — one lookup,
@@ -51,7 +52,7 @@ const entityRef = (id: string) => ({
 });
 
 const snapshot = (doc: FleetMaintenanceVisitDoc) => ({
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   inDate: doc.inDate,
   outDate: doc.outDate,
   workshopId: String(doc.workshopId),
@@ -67,7 +68,7 @@ const snapshot = (doc: FleetMaintenanceVisitDoc) => ({
 
 const eventPayload = (doc: FleetMaintenanceVisitDoc, code: string) => ({
   visitId: String(doc._id),
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   code,
   workshopId: String(doc.workshopId),
   workTypeId: String(doc.workTypeId),
@@ -149,9 +150,22 @@ class FleetMaintenanceService {
    * Both drivers are stored on the document now, so nothing else needs resolving.
    */
   private async withJoins(doc: FleetMaintenanceVisitDoc): Promise<MaintenanceVisitWithJoins> {
-    const vehicleId = String(doc.vehicleId);
+    const vehicleId = vehicleIdOf(doc);
+    // A visit kept from the old book for a car the registry never had names its car itself.
+    if (vehicleId === null) return { doc, vehicleCode: doc.vehicleCode ?? null };
     const codes = await fleetVehicleRepository.codesByIds([vehicleId]);
     return { doc, vehicleCode: codes.get(vehicleId) ?? null };
+  }
+
+  /**
+   * The car's code for an event about an existing visit — from the registry, or from the old
+   * book for a visit whose car the registry never had. Only `checkIn` may refuse a car; a visit
+   * already on file is history whatever became of its car.
+   */
+  private async codeOf(doc: FleetMaintenanceVisitDoc): Promise<string> {
+    const vehicleId = vehicleIdOf(doc);
+    if (vehicleId === null) return doc.vehicleCode ?? '';
+    return (await fleetVehicleRepository.getById(vehicleId)).code;
   }
 
   async checkIn(input: CheckInFleetMaintenance, by: string): Promise<MaintenanceVisitWithJoins> {
@@ -249,13 +263,13 @@ class FleetMaintenanceService {
       },
       { by, version: input.version },
     );
-    const vehicle = await fleetVehicleRepository.getById(String(before.vehicleId));
+    const code = await this.codeOf(before);
     await auditService.record({
       entityRef: entityRef(id),
       action: 'checkOut',
       changes: [{ field: 'outDate', old: null, new: updated.outDate }],
     });
-    await emit(FleetEvents.MaintenanceCheckedOut, eventPayload(updated, vehicle.code));
+    await emit(FleetEvents.MaintenanceCheckedOut, eventPayload(updated, code));
     return this.withJoins(updated);
   }
 
@@ -263,7 +277,12 @@ class FleetMaintenanceService {
   async reopen(id: string, version: number, by: string): Promise<MaintenanceVisitWithJoins> {
     const before = await fleetMaintenanceRepository.getById(id);
     if (before.outDate === null) throw new ConflictError('this visit is already open');
-    const open = await fleetMaintenanceRepository.findOpen(String(before.vehicleId));
+    // A visit from the old book for a car the registry never had is on no car's timeline, so
+    // there is no «already open» to collide with.
+    const open =
+      before.vehicleId == null
+        ? null
+        : await fleetMaintenanceRepository.findOpen(String(before.vehicleId));
     if (open !== null) {
       throw new ConflictError('the vehicle already has an open visit (FR-4)');
     }
@@ -275,13 +294,13 @@ class FleetMaintenanceService {
       { outDate: null, exitOdometer: null, driverOutEmployeeId: null, takenOutByEmployeeId: null },
       { by, version },
     );
-    const vehicle = await fleetVehicleRepository.getById(String(before.vehicleId));
+    const code = await this.codeOf(before);
     await auditService.record({
       entityRef: entityRef(id),
       action: 'reopen',
       changes: [{ field: 'outDate', old: before.outDate, new: null }],
     });
-    await emit(FleetEvents.MaintenanceReopened, eventPayload(updated, vehicle.code));
+    await emit(FleetEvents.MaintenanceReopened, eventPayload(updated, code));
     return this.withJoins(updated);
   }
 
@@ -416,9 +435,7 @@ class FleetMaintenanceService {
       // has asked for one. See the odometer register, which does the same with the same helper.
       sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
     });
-    const codes = await fleetVehicleRepository.codesByIds([
-      ...new Set(page.items.map((item) => String(item.vehicleId))),
-    ]);
+    const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
     return { ...page, codes };
   }
 }

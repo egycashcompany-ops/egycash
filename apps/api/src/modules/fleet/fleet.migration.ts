@@ -15,6 +15,8 @@ import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { FleetCatalogItemModel } from './catalogs/catalog-item.model';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
 import { FleetDriverProfileModel } from './driver-profiles/driver-profile.model';
+import { FleetOdometerLogModel } from './odometer/odometer.model';
+import { FleetMaintenanceVisitModel } from './maintenance/maintenance.model';
 import {
   FIXED_CREW_VEHICLE_INDEX_KEY,
   FIXED_CREW_VEHICLE_INDEX_OPTIONS,
@@ -276,6 +278,49 @@ export const migrateFixedCrewIndex = async (): Promise<{
   }
 };
 
+/**
+ * Retire the earlier shape of the two «one open row per vehicle» indexes, so the builder below
+ * can rebuild them scoped to rows that HAVE a vehicle.
+ *
+ * The old books hold readings and visits for cars the registry never had, and the owner wants
+ * them kept — «احنا بنبقى محتاجين الداتا دى نرجع ليها» — so those rows carry the book's code and
+ * no `vehicleId`. Under the earlier filter every such open row shared the one key `null`, and the
+ * second car's open tail could not be written. The schemas now add `vehicleId: {$type: 'objectId'}`
+ * to the partial filter; the builder skips an index that is already present BY NAME, so the
+ * one built under the old filter is dropped here first, and only it: an index whose filter
+ * already names the vehicle is left alone, which is what makes a second boot a no-op.
+ *
+ * Nothing here writes a document, and a failure is logged and swallowed like every other index
+ * step: the service's own pre-checks keep holding meanwhile.
+ */
+export const retireOpenRowIndexes = async (): Promise<{ dropped: string[] }> => {
+  const dropped: string[] = [];
+  for (const [model, name] of [
+    [FleetOdometerLogModel, 'ux_open_period'],
+    [FleetMaintenanceVisitModel, 'ux_open_visit'],
+  ] as const) {
+    try {
+      const existing = await model.collection
+        .listIndexes()
+        .toArray()
+        .catch(() => [] as { name?: string; partialFilterExpression?: Record<string, unknown> }[]);
+      const index = existing.find((entry) => entry.name === name) as
+        | { partialFilterExpression?: Record<string, unknown> }
+        | undefined;
+      if (index === undefined) continue;
+      if (index.partialFilterExpression?.['vehicleId'] !== undefined) continue;
+      await model.collection.dropIndex(name);
+      dropped.push(`${model.collection.name}.${name}`);
+    } catch (error) {
+      logger.warn({ err: error, index: name }, 'fleet: open-row index not retired');
+    }
+  }
+  if (dropped.length > 0) {
+    logger.info({ dropped }, 'fleet: open-row indexes retired — rebuilt below, scoped to real vehicles');
+  }
+  return { dropped };
+};
+
 export const runFleetMigrations = async (): Promise<void> => {
   await migrateVehicleLicenseClasses();
   await migrateViolationTypeSides();
@@ -283,6 +328,8 @@ export const runFleetMigrations = async (): Promise<void> => {
   await migrateDriverSpecializations();
   await reportBranchlessVehicles();
   await migrateFixedCrewIndex();
+  // The two open-row uniques, in their earlier shape, go before the builder can put them back.
+  await retireOpenRowIndexes();
   // Every OTHER index the Fleet schemas declare — the deploy step ADR-005 promises and the
   // repository did not have. `migrateFixedCrewIndex` above stays as it is: it is referenced by
   // name in its own tests and carries the duplicate-reporting rationale this step generalises.

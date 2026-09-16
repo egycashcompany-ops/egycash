@@ -729,7 +729,12 @@ export type FleetAlarmLevel = z.infer<typeof FleetAlarmLevelSchema>;
 
 export interface FleetOdometerLogDto {
   id: string;
-  vehicleId: string;
+  /**
+   * `null` for a reading brought across from the old book on a car the registry never had —
+   * «194», «تويوتا1». The row is kept because the company refers back to it; the car is not
+   * invented. `vehicleCode` then carries the code the book wrote.
+   */
+  vehicleId: string | null;
   /**
    * The registry's code for that vehicle, resolved SERVER-side for the row.
    *
@@ -740,7 +745,7 @@ export interface FleetOdometerLogDto {
    * row rather than asking the client to join for it.
    *
    * `null` only when the vehicle no longer exists at all — a soft-deleted one keeps its code, so
-   * history stays readable.
+   * history stays readable. For a row with no `vehicleId` it is the code the old book wrote.
    */
   vehicleCode: string | null;
   date: string;
@@ -751,6 +756,13 @@ export interface FleetOdometerLogDto {
   km: number | null;
   driver1EmployeeId: string | null;
   driver2EmployeeId: string | null;
+  /**
+   * The driver's NAME as the old book wrote it, kept only where HR has no employee for the
+   * spelling — a driver who was there and has gone, or a name typed differently. Shown in the
+   * driver column in place of the employee; never set on a row that has an employee.
+   */
+  driver1Name: string | null;
+  driver2Name: string | null;
   notes: string | null;
   version: number;
   createdAt: string;
@@ -958,15 +970,20 @@ export interface FleetMaintenanceAlarmDto {
 
 export interface FleetMaintenanceVisitDto {
   id: string;
-  vehicleId: string;
+  /** `null` for a visit from the old book on a car the registry never had — see the odometer log. */
+  vehicleId: string | null;
   /**
    * The registry's code for that vehicle, resolved SERVER-side for the row — the same reason the
    * odometer log carries one: a client cannot resolve a code for a car outside the page of the
    * registry it happens to hold, so every car past that page would print a dash.
    *
    * `null` only when the vehicle no longer exists at all; a soft-deleted one keeps its code.
+   * For a row with no `vehicleId` it is the code the old book wrote.
    */
   vehicleCode: string | null;
+  /** The drivers' NAMES as the old book wrote them, where HR has no employee — see the odometer log. */
+  driverInName: string | null;
+  driverOutName: string | null;
   /**
    * The DRIVER the vehicle came in with, chosen explicitly at check-in and STORED on the visit.
    *
@@ -1446,8 +1463,12 @@ export type FleetAccidentStatus = z.infer<typeof FleetAccidentStatusSchema>;
 
 export interface FleetAccidentDto {
   id: string;
-  vehicleId: string;
-  occurredAt: string;
+  /** `null` for a file from the old book on a car the registry never had — see the odometer log. */
+  vehicleId: string | null;
+  /** The registry's code, resolved server-side; the old book's code for a row with no `vehicleId`. */
+  vehicleCode: string | null;
+  /** `null` only on a file from the old book that recorded no date. Nothing else may leave it out. */
+  occurredAt: string | null;
   culprit: string;
   /** The DRIVER at fault, when it was one of ours. `null` for a third party. */
   culpritEmployeeId: string | null;
@@ -1609,7 +1630,10 @@ export type FleetViolationKind = z.infer<typeof FleetViolationKindSchema>;
 export interface FleetViolationDto {
   id: string;
   kind: FleetViolationKind;
-  vehicleId: string;
+  /** `null` for a row from the old book on a car the registry never had — see the odometer log. */
+  vehicleId: string | null;
+  /** The registry's code, resolved server-side; the old book's code for a row with no `vehicleId`. */
+  vehicleCode: string | null;
   violationTypeId: string;
   /** SERVER-computed for `vehicle` rows (count × unitValue); entered for `driver` rows. */
   amount: number;
@@ -1620,6 +1644,8 @@ export interface FleetViolationDto {
   /** driver shape */
   date: string | null;
   driverEmployeeId: string | null;
+  /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
+  driverName: string | null;
   /**
    * Has this fine's money actually been taken in?
    *
@@ -1817,7 +1843,8 @@ export type FleetViolationRollupQuery = z.infer<typeof FleetViolationRollupQuery
 
 /** Annual rollup per (vehicle, year) — derived at query time (§2.9). */
 export interface FleetViolationRollupDto {
-  vehicleId: string;
+  /** `null` for a (code, year) whose rows came from the old book on a car the registry never had. */
+  vehicleId: string | null;
   code: string;
   year: number;
   vehicleCount: number;

@@ -13,14 +13,19 @@ import {
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
-import { toGrievanceDto, toViolationDto } from '../fleet.mappers';
+import { toGrievanceDto, toViolationDto, vehicleIdsOf } from '../fleet.mappers';
+import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetViolationService } from './violation.service';
 
 type IdParam = { id: string };
 
 export const listViolations = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetViolationsQuery>(req);
-  okPage(res, await fleetViolationService.list(query), toViolationDto);
+  // The codes for the cars ON this page, in one read — a row kept from the old book for a car
+  // the registry never had carries its own code and needs no lookup.
+  const page = await fleetViolationService.list(query);
+  const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
+  okPage(res, page, (doc) => toViolationDto(doc, codes.get(String(doc.vehicleId)) ?? null));
 };
 
 export const getViolationRollup = async (req: Request, res: Response): Promise<void> => {
@@ -43,7 +48,7 @@ export const recordDriverViolation = async (req: Request, res: Response): Promis
 export const recordDriverViolations = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<RecordFleetDriverViolations>(req);
   const docs = await fleetViolationService.recordDriverBatch(body, authContext(req).userId);
-  created(res, docs.map(toViolationDto));
+  created(res, docs.map((doc) => toViolationDto(doc)));
 };
 
 export const setRollupCollected = async (req: Request, res: Response): Promise<void> => {

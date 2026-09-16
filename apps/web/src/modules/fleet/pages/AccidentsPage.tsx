@@ -155,8 +155,13 @@ export const AccidentsPage = (): JSX.Element => {
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
-  const codeOf = (vehicleId: string): string =>
-    vehiclesQuery.data?.items.find((v) => v.id === vehicleId)?.code ?? vehicleId.slice(-8);
+  // The row's own code first — the server resolves it, and a file kept from the old book for a
+  // car the registry never had carries the book's code and no vehicle at all.
+  const codeOf = (r: { vehicleId: string | null; vehicleCode: string | null }): string =>
+    r.vehicleCode ??
+    (r.vehicleId === null
+      ? '—'
+      : (vehiclesQuery.data?.items.find((v) => v.id === r.vehicleId)?.code ?? r.vehicleId.slice(-8)));
 
   const [recordOpen, setRecordOpen] = useState(false);
   const [editing, setEditing] = useState<FleetAccidentDto | null>(null);
@@ -240,7 +245,7 @@ export const AccidentsPage = (): JSX.Element => {
       sortKey: 'vehicleCode',
       render: (r) => (
         <span className="font-mono text-xs" dir="ltr">
-          {codeOf(r.vehicleId)}
+          {codeOf(r)}
           {/*
             The row's state, for anyone the colour does not reach. With the Status column gone the
             open/closed fact is carried by the tint and by the direction of the action button —
@@ -553,9 +558,9 @@ export const AccidentsPage = (): JSX.Element => {
         onClose={() => setFlipping(null)}
         title={
           flipping?.status === 'open'
-            ? t('fleet.accidents.closeTitle', { code: codeOf(flipping.vehicleId) })
+            ? t('fleet.accidents.closeTitle', { code: codeOf(flipping) })
             : t('fleet.accidents.reopenTitle', {
-                code: flipping === null ? '' : codeOf(flipping.vehicleId),
+                code: flipping === null ? '' : codeOf(flipping),
               })
         }
         footer={

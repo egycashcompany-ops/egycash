@@ -62,7 +62,7 @@ import {
   useReopenMaintenance,
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
-import { EmployeeName } from '../components/EmployeeName';
+import { DriverName } from '../components/EmployeeName';
 import { GoLiveNotice } from '../components/GoLiveNotice';
 import { RemainingKm } from '../components/AlarmBadge';
 import {
@@ -301,11 +301,11 @@ export const MaintenancePage = (): JSX.Element => {
       sortable: true,
       sortKey: 'driverInName',
       render: (visit) =>
-        visit.driverInEmployeeId === null ? (
+        visit.driverInEmployeeId === null && !visit.driverInName ? (
           dash
         ) : (
           <span className="text-red-700 dark:text-red-300">
-            <EmployeeName employeeId={visit.driverInEmployeeId} />
+            <DriverName employeeId={visit.driverInEmployeeId} name={visit.driverInName} />
           </span>
         ),
     },
@@ -315,11 +315,11 @@ export const MaintenancePage = (): JSX.Element => {
       sortable: true,
       sortKey: 'driverOutName',
       render: (visit) =>
-        visit.driverOutEmployeeId === null ? (
+        visit.driverOutEmployeeId === null && !visit.driverOutName ? (
           dash
         ) : (
           <span className="text-emerald-700 dark:text-emerald-300">
-            <EmployeeName employeeId={visit.driverOutEmployeeId} />
+            <DriverName employeeId={visit.driverOutEmployeeId} name={visit.driverOutName} />
           </span>
         ),
     },
@@ -374,7 +374,7 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.alarms.columns.sinceService'),
       align: 'end',
       render: (visit) => {
-        const alarm = alarmByVehicle.get(visit.vehicleId);
+        const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
         if (alarm === undefined || alarm.sinceServiceKm === null) return dash;
         return (
           <span className="tabular-nums">
@@ -392,7 +392,7 @@ export const MaintenancePage = (): JSX.Element => {
       header: t('fleet.alarms.columns.remaining'),
       align: 'end',
       render: (visit) => {
-        const alarm = alarmByVehicle.get(visit.vehicleId);
+        const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
         if (alarm === undefined) return dash;
         // A negative remainder is OVERDUE, and says so — see `RemainingKm`.
         return (

@@ -4,6 +4,7 @@ import { BaseRepository, type ListParams } from '../../../shared/base/base.repos
 import { FleetOdometerLogModel, type FleetOdometerLogDoc } from './odometer.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 import { driverNameSorts } from '../fleet-sort-keys';
+import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 
 export interface LatestReading {
   vehicleId: string;
@@ -30,6 +31,20 @@ export interface ChainBound {
  */
 const NEWEST_FIRST = { outReading: -1, _id: -1 } as const;
 
+/**
+ * «One of these cars»: by registry id, or — for a row kept from the old book on a car the
+ * registry never had — by the code the book wrote. Shared by every register that keeps such rows.
+ * An empty id list with no codes still narrows to NOTHING, as the callers' comments promise.
+ */
+export const byVehicleOrBookCode = <T>(
+  vehicleIds: readonly string[],
+  vehicleCodes: readonly string[] | undefined,
+): FilterQuery<T> => {
+  const ids = { vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) } };
+  if (vehicleCodes === undefined || vehicleCodes.length === 0) return ids as FilterQuery<T>;
+  return { $or: [ids, { vehicleCode: { $in: [...vehicleCodes] } }] } as FilterQuery<T>;
+};
+
 class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   constructor() {
     super(FleetOdometerLogModel, {});
@@ -49,16 +64,25 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   }
 
   /**
-   * Every live row's key for one vehicle — what the go-live import checks before writing, so a
-   * run taken over after a lapsed lease skips the rows the first attempt already wrote.
+   * Every live row for one car — by registry id, or by the old book's code for a car the registry
+   * never had — grouped by key: what the go-live import checks before writing, so a run taken
+   * over after a lapsed lease skips the rows the first attempt already wrote, and what it fills
+   * a driver's NAME into where an earlier run left the driver empty.
    */
-  async existingKeys(vehicleId: string): Promise<Set<string>> {
+  async existingByKey(ref: BookRef): Promise<Map<string, FleetOdometerLogDoc[]>> {
     const rows = await this.model
-      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
-      .select({ date: 1, outReading: 1 })
-      .lean<{ date: Date; outReading: number }[]>()
+      .find(bookRefFilter<FleetOdometerLogDoc>(ref))
+      .lean<FleetOdometerLogDoc[]>()
       .exec();
-    return new Set(rows.map((row) => this.rowKey(row.date, row.outReading)));
+    return groupByKey(rows, (row) => this.rowKey(row.date, row.outReading));
+  }
+
+  /** The go-live import's one repair on a row already written: the driver's name, where it had none. */
+  async setDriverNames(
+    id: Types.ObjectId,
+    names: { driver1Name?: string; driver2Name?: string },
+  ): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: names }).exec();
   }
 
   /**
@@ -346,6 +370,13 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   logFilter(query: {
     vehicleId?: string | undefined;
     vehicleIds?: readonly string[] | undefined;
+    /**
+     * The codes the reader typed, as typed — matched against the code a row kept from the old
+     * book carries when its car is not in the registry, so «كوستر» finds its readings too. Only
+     * the service knows whether the ids were narrowed by something else (an alarm level) that
+     * such a row cannot satisfy, so it passes these only when they may stand on their own.
+     */
+    vehicleCodes?: readonly string[] | undefined;
     driverEmployeeIds?: readonly string[] | undefined;
     from?: Date | undefined;
     to?: Date | undefined;
@@ -355,7 +386,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       clauses.push({ vehicleId: new Types.ObjectId(query.vehicleId) });
     }
     if (query.vehicleIds !== undefined) {
-      clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
+      clauses.push(byVehicleOrBookCode(query.vehicleIds, query.vehicleCodes));
     }
     if (query.driverEmployeeIds !== undefined) {
       // EITHER slot. "Which days did this person drive?" is one question, and answering it only

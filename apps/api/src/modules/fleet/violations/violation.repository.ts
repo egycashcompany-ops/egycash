@@ -100,16 +100,21 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     return clauses.length === 0 ? {} : { $and: clauses };
   }
 
+  /**
+   * SEVERAL years at once, ORed — «اى فلتر ف الحركه زياده عن اتنين اختار ما بينهم».
+   *
+   * One clause per year rather than a range, because the two shapes answer «which year am I in?»
+   * differently and only the per-year clause can ask both: a statement row stores the year, a
+   * driver row implies it through its event date. The years a reader ticks need not be adjacent
+   * either — «٢٠٢٤ و٢٠٢٦» is a perfectly ordinary comparison — so a `$gte`/`$lt` span would
+   * quietly widen the question to include the year between them.
+   */
+  private static yearsClause(years: readonly number[]): FilterQuery<FleetViolationDoc> {
+    return { $or: violationYearBranches(years) };
+  }
+
   private static yearClause(year: number): FilterQuery<FleetViolationDoc> {
-    return {
-      $or: [
-        { kind: 'vehicle', year },
-        {
-          kind: 'driver',
-          date: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) },
-        },
-      ],
-    };
+    return { $or: violationYearBranches([year]) };
   }
 
   /**
@@ -136,10 +141,17 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     return result.modifiedCount;
   }
 
-  async yearSums(year: number | undefined, vehicleId?: string): Promise<ViolationYearSums[]> {
+  async yearSums(
+    years: readonly number[] | undefined,
+    vehicleId?: string,
+  ): Promise<ViolationYearSums[]> {
     const match: FilterQuery<FleetViolationDoc> = {
       isDeleted: false,
-      ...(year === undefined ? {} : FleetViolationRepository.yearClause(year)),
+      // No years asked for means EVERY year — the board is read as a history, and «all of them»
+      // is the answer an empty filter gives, not an empty `$or` that would match nothing.
+      ...(years === undefined || years.length === 0
+        ? {}
+        : FleetViolationRepository.yearsClause(years)),
     };
     if (vehicleId !== undefined) match['vehicleId'] = new Types.ObjectId(vehicleId);
     const rows = await this.model.aggregate<{
@@ -244,15 +256,45 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
       .exec();
   }
 
-  async forYear(year: number | undefined, vehicleId?: string): Promise<FleetGrievanceDoc[]> {
+  /** The grievances of SEVERAL years, ORed — the rollup's other half, narrowed the same way. */
+  async forYears(
+    years: readonly number[] | undefined,
+    vehicleId?: string,
+  ): Promise<FleetGrievanceDoc[]> {
     const filter: FilterQuery<FleetGrievanceDoc> = {
       isDeleted: false,
-      ...(year === undefined ? {} : { year }),
+      // Nothing ticked is every year, exactly as it is for the sums beside it.
+      ...(years === undefined || years.length === 0 ? {} : { year: { $in: [...years] } }),
     };
     if (vehicleId !== undefined) filter.vehicleId = new Types.ObjectId(vehicleId);
     return this.model.find(filter).lean<FleetGrievanceDoc[]>().exec();
   }
 }
+
+/**
+ * The `$or` branches that mean «this row belongs to one of these years».
+ *
+ * TWO BRANCHES PER YEAR, because the collection holds two shapes and they answer «which year?»
+ * differently: a vehicle statement row STORES the year, a driver event row implies it through its
+ * date. A single date range would miss every statement row; a single `year` equality would miss
+ * every driver row.
+ *
+ * One branch pair PER YEAR rather than one widened range, because the years a reader ticks need
+ * not be adjacent — «٢٠٢٤ و٢٠٢٦» is an ordinary comparison, and a `$gte`/`$lt` span across it
+ * would silently include the year between them.
+ *
+ * Exported for its own test: it is pure, and it is where a multi-year filter goes wrong quietly.
+ */
+export const violationYearBranches = (
+  years: readonly number[],
+): FilterQuery<FleetViolationDoc>[] =>
+  years.flatMap((year) => [
+    { kind: 'vehicle', year } as FilterQuery<FleetViolationDoc>,
+    {
+      kind: 'driver',
+      date: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) },
+    } as FilterQuery<FleetViolationDoc>,
+  ]);
 
 export const fleetViolationRepository = new FleetViolationRepository();
 export const fleetGrievanceRepository = new FleetGrievanceRepository();

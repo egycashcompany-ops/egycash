@@ -757,11 +757,16 @@ describe('the filter bar', () => {
     expect(html, 'address box').toContain('value="جامعة"');
     expect(html, 'phone box').toContain('value="0100"');
     expect(html, 'governorate box').toContain('value="الجيزة"');
-    // A `<select>` renders its choice as the selected option, not as a value attribute.
-    expect(html, 'الوظيفة').toContain('<option value="cj1" selected=""');
-    expect(html, 'الفرع').toContain('<option value="b1" selected=""');
-    expect(html, 'التخصص').toContain('<option value="cs1" selected=""');
-    expect(html, 'الرخصة').toContain('<option value="cl1" selected=""');
+    // THE FOUR REFERENCE FILTERS ARE MULTI-SELECTS NOW, so a chosen value is not a selected
+    // `<option>` — it is the NAME the trigger prints. Which is the stronger assertion of the two:
+    // the trigger can only print «سائق صراف الى» if the control was given the catalog's items and
+    // found `cj1` among them, where a selected option proved only that the id came back out of
+    // the URL. A control handed the wrong list prints the raw id, which the last line refuses.
+    expect(html, 'الوظيفة').toContain(CATALOG.job.ar);
+    expect(html, 'التخصص').toContain(CATALOG.specialization.ar);
+    expect(html, 'الرخصة').toContain(CATALOG.licenseType.ar);
+    expect(html, 'no raw id is shown where a name belongs').not.toMatch(/>\s*cj1\s*</);
+    // «صورة الرخصة» has exactly TWO answers, so it stays a single select — see the page.
     expect(html, 'صورة الرخصة').toContain('<option value="with" selected=""');
     // And the picked driver is NAMED on its trigger, not counted — a chip nobody can read is a
     // filter you have to open to understand.
@@ -769,9 +774,26 @@ describe('the filter bar', () => {
   });
 
   it('offers the three catalog filters the CATALOG\u2019s values, never a list of its own', () => {
-    const html = bar(render(<DriversListPage />));
+    // A multi-select's list lives behind its trigger, and this suite has no DOM to open it with.
+    // What it CAN read is the trigger of a filter that is already set: it names the choice, and
+    // it can only name it from the options it was handed. So each filter is set from the URL and
+    // the catalog's own word for that id has to appear — and the id itself must not, which is
+    // what a control given an empty or foreign list prints instead.
+    const html = bar(
+      render(<DriversListPage />, {
+        route: '/fleet/drivers?job=cj1&spec=cs1&lic=cl1',
+        client: seededClient([driver()], {
+          jobId: ['cj1'],
+          specializationId: ['cs1'],
+          licenseTypeId: ['cl1'],
+        }),
+      }),
+    );
     for (const item of [CATALOG.job, CATALOG.specialization, CATALOG.licenseType]) {
-      expect(html, `${item.ar} is offered`).toContain(`<option value="${item.id}">${item.ar}`);
+      expect(html, `${item.ar} is offered`).toContain(item.ar);
+      expect(html, `${item.id} is named, not printed`).not.toMatch(
+        new RegExp(`>\\s*${item.id}\\s*<`),
+      );
     }
   });
 
@@ -806,8 +828,13 @@ describe('the filter bar', () => {
         },
       ]),
     );
-    const html = bar(render(<DriversListPage />, { client: qc }));
-    expect(html).toContain('<option value="cj-new">سائق مدرّب');
+    // Chosen from the URL, because a multi-select shows its list only once opened and this suite
+    // has no DOM. The trigger names it — which it can only do from the options it was handed, so
+    // the brand-new catalog row reaching the filter is exactly what this proves.
+    const html = bar(
+      render(<DriversListPage />, { route: '/fleet/drivers?job=cj-new', client: qc }),
+    );
+    expect(html).toContain('سائق مدرّب');
   });
 
   it('sends every filter to the SERVER — none is applied to the fetched page', () => {
@@ -816,7 +843,7 @@ describe('the filter bar', () => {
     // holds a DIFFERENT driver, and that is the one the table shows.
     const client = seededClient([driver()]);
     client.setQueryData(
-      listKey('fleet', 'drivers', driverParams({ specializationId: 'cs1' })),
+      listKey('fleet', 'drivers', driverParams({ specializationId: ['cs1'] })),
       page([row(driver({ id: 'd9', licenseExpiresAt: '2032-05-01T00:00:00.000Z' }))]),
     );
     const unfiltered = render(<DriversListPage />, { client });
@@ -836,9 +863,11 @@ describe('the filter bar', () => {
       employeeIds: 'eeeeeeeeeeeeeeeeeeeeeeee',
     });
     expect(parsed.branchId).toEqual(['aaaaaaaaaaaaaaaaaaaaaaaa']);
-    expect(parsed.jobId).toBe('bbbbbbbbbbbbbbbbbbbbbbbb');
-    expect(parsed.specializationId).toBe('cccccccccccccccccccccccc');
-    expect(parsed.licenseTypeId).toBe('dddddddddddddddddddddddd');
+    // The three catalog references take a LIST now — one ticked value is a one-element list, so
+    // every link written before the multi-select still parses to exactly what it always meant.
+    expect(parsed.jobId).toEqual(['bbbbbbbbbbbbbbbbbbbbbbbb']);
+    expect(parsed.specializationId).toEqual(['cccccccccccccccccccccccc']);
+    expect(parsed.licenseTypeId).toEqual(['dddddddddddddddddddddddd']);
     expect(parsed.hasLicenseImage).toBe(true);
     expect(parsed.employeeIds).toEqual(['eeeeeeeeeeeeeeeeeeeeeeee']);
   });
@@ -866,16 +895,19 @@ describe('«الرخصة» means the licence class', () => {
   });
 
   it('the FILTER offers the same catalog, and sends an id — never a typed number', () => {
-    const html = render(<DriversListPage />);
+    const html = render(<DriversListPage />, {
+      route: '/fleet/drivers?lic=' + CATALOG.licenseType.id,
+      client: seededClient([driver()], { licenseTypeId: [CATALOG.licenseType.id] }),
+    });
     const barHtml = html.slice(html.indexOf('flex flex-wrap'), html.indexOf('<table'));
-    expect(barHtml, 'the class is picked, not typed').toContain(
-      `<option value="${CATALOG.licenseType.id}">${CATALOG.licenseType.ar}`,
-    );
+    // The CATALOG's word for the picked class, on the filter's trigger: the control can only
+    // print it by having been given the catalog and found the id in it.
+    expect(barHtml, 'the class is picked, not typed').toContain(CATALOG.licenseType.ar);
     // And the fleet list has no parameter for a typed licence class — only the id.
     expect(
       ListFleetDriversQuerySchema.parse({ licenseTypeId: '64b1f0dddddddddddddddd01' })
         .licenseTypeId,
-    ).toBe('64b1f0dddddddddddddddd01');
+    ).toEqual(['64b1f0dddddddddddddddd01']);
     expect(() => ListFleetDriversQuerySchema.parse({ licenseType: 'اولى' })).toThrow();
   });
 
@@ -914,11 +946,11 @@ describe('the branch filter', () => {
   const twoBranches = (): QueryClient => {
     const client = seededClient([driver()]);
     client.setQueryData(
-      listKey('fleet', 'drivers', driverParams({ branchId: 'b1' })),
+      listKey('fleet', 'drivers', driverParams({ branchId: ['b1'] })),
       page([row(driver({ id: 'd7', licenseExpiresAt: '2029-05-01T00:00:00.000Z' }))]),
     );
     client.setQueryData(
-      listKey('fleet', 'drivers', driverParams({ branchId: 'b2' })),
+      listKey('fleet', 'drivers', driverParams({ branchId: ['b2'] })),
       page([row(driver({ id: 'd8', licenseExpiresAt: '2030-05-01T00:00:00.000Z' }))]),
     );
     return client;
@@ -966,7 +998,7 @@ describe('the branch filter', () => {
     // filter at all and the screen showed a banner instead of a branch. A fleet parameter has no
     // page to overflow, so even an enormous branch simply answers.
     const client = seededClient([driver()]);
-    client.setQueryData(listKey('fleet', 'drivers', driverParams({ branchId: 'b1' })), {
+    client.setQueryData(listKey('fleet', 'drivers', driverParams({ branchId: ['b1'] })), {
       items: [row(driver({ id: 'd7', licenseExpiresAt: '2029-05-01T00:00:00.000Z' }))],
       meta: { page: 1, pageSize: 25, totalItems: 4_000, totalPages: 160 },
     });

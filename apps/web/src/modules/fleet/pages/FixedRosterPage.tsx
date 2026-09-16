@@ -47,6 +47,8 @@ import { vehicleColour } from '../lib/vehicle-colour';
 import { useFixedRoster, useSaveFixedRoster, useFleetCatalog } from '../api/fleet-queries';
 import { useEmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { CatalogSelect } from '../components/CatalogSelect';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
@@ -447,7 +449,13 @@ export const FixedRosterPage = (): JSX.Element => {
   const mayPlan = can('fleetRoster.plan');
 
   const search = sp.get('q') ?? '';
-  const mission = sp.get('mission') ?? '';
+  /**
+   * SEVERAL missions at once — the daily board's rule, on the board that copies it. The key is
+   * still `mission`, now a comma-separated list, so a saved link narrows to what it always did.
+   */
+  const missions = readList(sp, 'mission');
+  /** The list as ONE value, so the memos below are not invalidated by a fresh array each render. */
+  const missionsKey = missions.join(',');
   /**
    * Which STATE the board is narrowed to, if any — «بطقم» or «بدون طقم».
    *
@@ -544,7 +552,7 @@ export const FixedRosterPage = (): JSX.Element => {
         // «إجمالي» is the absence of a filter, so applying it CLEARS both keys rather than
         // setting a third value that would then have to mean "no filter".
         apply: { mission: null, view: null },
-        active: mission === '' && view === null,
+        active: missions.length === 0 && view === null,
       },
       {
         key: 'crewed',
@@ -571,11 +579,13 @@ export const FixedRosterPage = (): JSX.Element => {
           tone: missionTone(item.id),
           // The chip drives the DROPDOWN's parameter, not one of its own: one axis, one filter,
           // and the select beside it visibly follows.
-          apply: { mission: item.id },
-          active: mission === item.id,
+          // TOGGLED in and out, the same as the dropdown's checkboxes: the chip and the select
+          // are one filter, so a click has to mean the same thing in both.
+          apply: { mission: writeList(toggleValue(missions, item.id)) },
+          active: missions.includes(item.id),
         })),
     ];
-  }, [draft, missionTypes.data, locale, t, mission, view]);
+  }, [draft, missionTypes.data, locale, t, missionsKey, view]);
 
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -638,10 +648,10 @@ export const FixedRosterPage = (): JSX.Element => {
    * and never this — a filter is a way of looking at the board, not a way of editing it.
    */
   const rows = useMemo(
-    () => visibleFixedRows(draft, { term: search, mission, view }),
-    [draft, search, mission, view],
+    () => visibleFixedRows(draft, { term: search, missions, view }),
+    [draft, search, missionsKey, view],
   );
-  const filtered = search !== '' || mission !== '' || view !== null;
+  const filtered = search !== '' || missions.length > 0 || view !== null;
   /** «إعادة ضبط» — every filter off in ONE update, the daily board's three keys. */
   const resetFilters = (): void => patch({ q: null, mission: null, view: null });
   /** Every car this board reports on, as the picker's options — no request for what is on screen. */
@@ -934,12 +944,13 @@ export const FixedRosterPage = (): JSX.Element => {
                 the mission column and the mission chips read. `mission` is ONE parameter: the
                 chip below writes it, this select shows it, and the table narrows on it. */}
             <div className="w-44">
-              <CatalogSelect
+              <CatalogMultiSelect
                 kind="missionType"
-                value={mission}
-                onChange={(id) => patch({ mission: id || null })}
-                allLabel={t('fleet.roster.allMissions')}
-                ariaLabel={t('fleet.roster.fields.mission')}
+                value={missions}
+                onChange={(ids) => patch({ mission: writeList(ids) })}
+                label={t('fleet.roster.allMissions')}
+                className="w-full"
+                fullWidth
               />
             </div>
 

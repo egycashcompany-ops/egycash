@@ -438,9 +438,17 @@ export const vehicleCodeSearchQuery = (term: string): { code?: string } => {
 export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
   sort: fleetSortQuery(),
-  status: FleetVehicleStatusSchema.optional(),
-  /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). */
-  typeId: objectId().optional(),
+  /**
+   * SEVERAL STATUSES AT ONCE, ORed — «اى فلتر ف الحركه زياده عن اتنين اختار ما بينهم».
+   *
+   * «المتاحة والمتوقفة، من غير المكهّنة» is one question about the fleet, and a single-value
+   * parameter made the reader ask it twice and add the two pages up by hand. The list shape is
+   * the platform's own (`listQuery` — a comma-separated string or a repeated parameter), so a
+   * link carrying one status still means exactly one status and every saved link keeps working.
+   */
+  status: listQuery(FleetVehicleStatusSchema),
+  /** The vehicle TYPE is the make/model the registry knows (اختر الماركة). Several, ORed. */
+  typeId: listQuery(objectId()),
   branchId: listQuery(objectId()),
   /** Substring match across code/plate/chassis/motor at once. */
   search: z.string().trim().min(1).max(100).optional(),
@@ -468,9 +476,12 @@ export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   plateNumber: identifierFilter(),
   chassisNumber: identifierFilter(),
   motorNumber: identifierFilter(),
-  licenseClassId: objectId().optional(),
-  operationId: objectId().optional(),
-  insuranceCompanyId: objectId().optional(),
+  // The three catalog references, each taking SEVERAL ids ORed within itself and ANDed with the
+  // others: «فئة الرخصة: أ أو ب» narrows to two classes, and asking it beside «التشغيل» still
+  // means both questions at once.
+  licenseClassId: listQuery(objectId()),
+  operationId: listQuery(objectId()),
+  insuranceCompanyId: listQuery(objectId()),
   licenseExpiresBefore: z.coerce.date().optional(),
 }).strict();
 export type ListFleetVehiclesQuery = z.infer<typeof ListFleetVehiclesQuerySchema>;
@@ -615,12 +626,14 @@ export const ListFleetDriversQuerySchema = PaginationQuerySchema.extend({
    * matched against the rows in hand. No page limit is involved, because no page is fetched.
    */
   branchId: listQuery(objectId()),
-  /** «الوظيفة» — a `driverJob` catalog id. */
-  jobId: objectId().optional(),
-  /** «التخصص» — a `driverSpecialization` catalog id. */
-  specializationId: objectId().optional(),
-  /** «الرخصة» — a `driverLicenseType` catalog id. */
-  licenseTypeId: objectId().optional(),
+  // The three catalog references, each SEVERAL ids ORed within itself — «سائق أ أو سائق ب» is one
+  // question about the registry, and the single-value parameter made it two.
+  /** «الوظيفة» — `driverJob` catalog ids. */
+  jobId: listQuery(objectId()),
+  /** «التخصص» — `driverSpecialization` catalog ids. */
+  specializationId: listQuery(objectId()),
+  /** «الرخصة» — `driverLicenseType` catalog ids. */
+  licenseTypeId: listQuery(objectId()),
   /** LEGACY, for the rows still classified by the enum. No screen sends it. */
   specialization: FleetDriverSpecializationSchema.optional(),
   isActive: booleanQuery().optional(),
@@ -1788,7 +1801,15 @@ export const FleetViolationRollupQuerySchema = z
      * only answer about a single year forced the screen either to hide the past or to ask once
      * per year and stitch the answers together.
      */
-    year: z.coerce.number().int().min(2000).max(2100).optional(),
+    /**
+     * SEVERAL years, ORed — «اى فلتر ف الحركه زياده عن اتنين اختار ما بينهم».
+     *
+     * The board compares years («٢٠٢٥ جنب ٢٠٢٦»), and one year at a time made the comparison a
+     * thing the reader held in their head between two loads. Capped well under the platform's
+     * default: a fleet's whole history is a handful of years, and a longer list is a filter that
+     * has stopped narrowing anything.
+     */
+    year: listQuery(z.coerce.number().int().min(2000).max(2100), 20),
     vehicleId: objectId().optional(),
   })
   .strict();

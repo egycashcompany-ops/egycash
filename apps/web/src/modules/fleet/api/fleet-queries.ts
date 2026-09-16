@@ -638,10 +638,16 @@ export const useViolationsPages = (params: Omit<FleetListParams, 'page'>) =>
   });
 
 /** `year` omitted = every year, one row per (vehicle, year). */
-export const useViolationRollup = (year?: number, vehicleId?: string, enabled = true) =>
+export const useViolationRollup = (
+  years?: readonly number[],
+  vehicleId?: string,
+  enabled = true,
+) =>
   useQuery({
-    queryKey: [MODULE, 'violations', 'rollup', { year, vehicleId }],
-    queryFn: () => api.violationRollup(year, vehicleId),
+    // The years are part of the KEY as a string: a fresh array each render would mint a new key
+    // every time and the board would refetch on every keystroke elsewhere on the screen.
+    queryKey: [MODULE, 'violations', 'rollup', { year: (years ?? []).join(','), vehicleId }],
+    queryFn: () => api.violationRollup(years, vehicleId),
     placeholderData: (prev) => prev,
     enabled,
   });

@@ -12,7 +12,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
 import { ZoomableImage } from './ZoomableImage';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import {
@@ -200,9 +200,24 @@ const actionButton =
 export const VehicleLicenseImageCell = ({
   vehicle,
   onPreview,
+  onPrint,
 }: {
   vehicle: FleetVehicleDto;
   onPreview: (vehicle: FleetVehicleDto) => void;
+  /**
+   * PRINT THIS CAR'S LICENCE RECORD — «عاوز اضيف زرار الطباعه هنا للعربيه فى خانة صوره الرخصه».
+   *
+   * The registry already prints, from the actions column at the far end of a fourteen-column row.
+   * The reader who wants a licence printed is looking at the licence: they have just opened the
+   * scan, or they are scanning down this column for the cars that have one. Asking them to travel
+   * to the other end of the row for the same action is what the request is about.
+   *
+   * The page keeps the printing — it holds the catalog names the sheet is made of — so this is a
+   * callback rather than a second copy of `printLicenceRecord`, and the button and the one in the
+   * actions column produce exactly the same sheet. Optional, so the other callers of this cell
+   * (the vehicle's own page) are unchanged and do not grow a control they did not ask for.
+   */
+  onPrint?: (vehicle: FleetVehicleDto) => void;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -260,6 +275,18 @@ export const VehicleLicenseImageCell = ({
       >
         <EyeIcon className="h-4 w-4" />
       </button>
+      {onPrint !== undefined && (
+        <button
+          type="button"
+          data-vehicle-license-print={vehicle.id}
+          className={actionButton}
+          aria-label={t('fleet.vehicles.print.action')}
+          title={t('fleet.vehicles.print.action')}
+          onClick={() => onPrint(vehicle)}
+        >
+          <PrinterIcon className="h-4 w-4" />
+        </button>
+      )}
       {mayDelete && (
         <button
           type="button"

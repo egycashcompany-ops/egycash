@@ -47,6 +47,8 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { readList, writeList } from '../../../shared/lib/list-param';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { EditIcon, EyeIcon, UploadIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
@@ -58,7 +60,7 @@ import {
   useDrivingJobTitles,
 } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
-import { CatalogSelect } from '../components/CatalogSelect';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
 import { DriverFormDialog } from '../components/DriverFormDialog';
 import {
@@ -177,10 +179,15 @@ export const DriversListPage = (): JSX.Element => {
 
   // Fleet's own half of the bar — every one of these travels to `/fleet/drivers`.
   const pickedDrivers = idList(sp.get('drv'));
-  const job = sp.get('job') ?? '';
-  const branch = sp.get('branch') ?? '';
-  const specialization = sp.get('spec') ?? '';
-  const licenseType = sp.get('lic') ?? '';
+  // The four reference filters take SEVERAL answers each — «اى فلتر ف الحركه زياده عن اتنين اختار
+  // ما بينهم اعملى multi selection». A comma-separated list in the address bar, which is what the
+  // API's own `listQuery` parses, so a link carrying one id still means exactly that one id.
+  const jobs = readList(sp, 'job');
+  const branchIds = readList(sp, 'branch');
+  const specializations = readList(sp, 'spec');
+  const licenseTypes = readList(sp, 'lic');
+  // TWO ANSWERS, so it stays a single select: with «بصورة» and «بدون» a multi-select can only
+  // say what one of them already says, or say both — which is the unfiltered registry.
   const image = sp.get('img') ?? '';
   // The HR half — every one of these travels to HR's endpoint, never to Fleet's.
   const hrFilter: DriverHrFilter = {
@@ -242,10 +249,10 @@ export const DriversListPage = (): JSX.Element => {
   const mayFilterByHr = can('employee.view');
   const hasActiveFilters =
     pickedDrivers.length > 0 ||
-    job !== '' ||
-    branch !== '' ||
-    specialization !== '' ||
-    licenseType !== '' ||
+    jobs.length > 0 ||
+    branchIds.length > 0 ||
+    specializations.length > 0 ||
+    licenseTypes.length > 0 ||
     image !== '' ||
     Object.values(hrFilter).some((value) => value !== '');
 
@@ -256,10 +263,10 @@ export const DriversListPage = (): JSX.Element => {
       page,
       pageSize,
       ...sortQuery(sorts),
-      jobId: job || undefined,
-      branchId: branch || undefined,
-      specializationId: specialization || undefined,
-      licenseTypeId: licenseType || undefined,
+      jobId: jobs.length === 0 ? undefined : jobs,
+      branchId: branchIds.length === 0 ? undefined : branchIds,
+      specializationId: specializations.length === 0 ? undefined : specializations,
+      licenseTypeId: licenseTypes.length === 0 ? undefined : licenseTypes,
       hasLicenseImage: image === '' ? undefined : image === 'with',
       // `undefined` when nobody has been named. When somebody HAS the array is always sent,
       // including when it is empty: an empty `$in` is "these two questions agree on nobody", and
@@ -652,40 +659,40 @@ export const DriversListPage = (): JSX.Element => {
           )}
           <FilterField
             label={t('fleet.drivers.columns.jobTitle')}
-            active={job !== ''}
+            active={jobs.length > 0}
             className={CELL}
             density={TIGHT}
           >
-            <CatalogSelect
+            <CatalogMultiSelect
               kind="driverJob"
-              value={job}
-              onChange={(id) => patch({ job: id || null })}
-              allLabel={t('common.filters.all')}
-              ariaLabel={t('fleet.drivers.columns.jobTitle')}
+              value={jobs}
+              onChange={(ids) => patch({ job: writeList(ids) })}
+              label={t('fleet.drivers.columns.jobTitle')}
+              placeholder={t('common.filters.all')}
               className="w-full"
+              fullWidth
               density={TIGHT}
             />
           </FilterField>
           {can('branch.view') && (
             <FilterField
               label={t('fleet.drivers.columns.branch')}
-              active={branch !== ''}
+              active={branchIds.length > 0}
               className={CELL}
               density={TIGHT}
             >
-              <Select
-                aria-label={t('fleet.drivers.columns.branch')}
-                value={branch}
-                onChange={(e) => patch({ branch: e.target.value || null })}
+              <MultiSelect
+                label={t('fleet.drivers.columns.branch')}
+                placeholder={t('common.filters.all')}
+                options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+                value={branchIds}
+                onChange={(ids) => patch({ branch: writeList(ids) })}
+                showSelectedValues
+                chips
                 density={TIGHT}
-              >
-                <option value="">{t('common.filters.all')}</option>
-                {branches.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {localized(b.name, locale)}
-                  </option>
-                ))}
-              </Select>
+                fullWidth
+                className="w-full"
+              />
             </FilterField>
           )}
           {mayFilterByHr && (
@@ -736,33 +743,35 @@ export const DriversListPage = (): JSX.Element => {
           )}
           <FilterField
             label={t('fleet.drivers.columns.specialization')}
-            active={specialization !== ''}
+            active={specializations.length > 0}
             className={CELL}
             density={TIGHT}
           >
-            <CatalogSelect
+            <CatalogMultiSelect
               kind="driverSpecialization"
-              value={specialization}
-              onChange={(id) => patch({ spec: id || null })}
-              allLabel={t('common.filters.all')}
-              ariaLabel={t('fleet.drivers.columns.specialization')}
+              value={specializations}
+              onChange={(ids) => patch({ spec: writeList(ids) })}
+              label={t('fleet.drivers.columns.specialization')}
+              placeholder={t('common.filters.all')}
               className="w-full"
+              fullWidth
               density={TIGHT}
             />
           </FilterField>
           <FilterField
             label={t('fleet.drivers.columns.licenseType')}
-            active={licenseType !== ''}
+            active={licenseTypes.length > 0}
             className={CELL}
             density={TIGHT}
           >
-            <CatalogSelect
+            <CatalogMultiSelect
               kind="driverLicenseType"
-              value={licenseType}
-              onChange={(id) => patch({ lic: id || null })}
-              allLabel={t('common.filters.all')}
-              ariaLabel={t('fleet.drivers.columns.licenseType')}
+              value={licenseTypes}
+              onChange={(ids) => patch({ lic: writeList(ids) })}
+              label={t('fleet.drivers.columns.licenseType')}
+              placeholder={t('common.filters.all')}
               className="w-full"
+              fullWidth
               density={TIGHT}
             />
           </FilterField>

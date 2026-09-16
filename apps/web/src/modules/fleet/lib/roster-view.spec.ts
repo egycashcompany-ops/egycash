@@ -83,7 +83,7 @@ describe('carriesPlan — what «تشغيل» has always counted', () => {
 describe('one filter at a time', () => {
   it('«إجمالي» — no filter shows the whole day', () => {
     expect(codes(visibleRows(DAY, {}))).toEqual(['150', '151', '152', '153', '154', '155']);
-    expect(codes(visibleRows(DAY, { term: '', mission: '', view: null }))).toHaveLength(6);
+    expect(codes(visibleRows(DAY, { term: '', missions: [], view: null }))).toHaveLength(6);
   });
 
   it('«صيانة» — only the cars the workshop holds', () => {
@@ -95,8 +95,8 @@ describe('one filter at a time', () => {
   });
 
   it('a mission chip — only that mission', () => {
-    expect(codes(visibleRows(DAY, { mission: MISSION_A }))).toEqual(['152', '154']);
-    expect(codes(visibleRows(DAY, { mission: MISSION_B }))).toEqual(['155']);
+    expect(codes(visibleRows(DAY, { missions: [MISSION_A] }))).toEqual(['152', '154']);
+    expect(codes(visibleRows(DAY, { missions: [MISSION_B] }))).toEqual(['155']);
   });
 
   it('the code search — code or plate', () => {
@@ -109,32 +109,32 @@ describe('one filter at a time', () => {
     // is a category; «صيانة» is a state. Filtering by one must never return the other's rows.
     const missionNamedSiyana = MISSION_B;
     expect(codes(visibleRows(DAY, { view: 'workshop' }))).not.toContain('155');
-    expect(codes(visibleRows(DAY, { mission: missionNamedSiyana }))).not.toContain('151');
+    expect(codes(visibleRows(DAY, { missions: [missionNamedSiyana] }))).not.toContain('151');
   });
 });
 
 describe('filters combine with AND — none cancels another', () => {
   it('«صيانة» + a mission is their INTERSECTION', () => {
-    expect(codes(visibleRows(DAY, { view: 'workshop', mission: MISSION_A }))).toEqual(['154']);
+    expect(codes(visibleRows(DAY, { view: 'workshop', missions: [MISSION_A] }))).toEqual(['154']);
     // …and not either one alone.
     expect(codes(visibleRows(DAY, { view: 'workshop' }))).toHaveLength(2);
-    expect(codes(visibleRows(DAY, { mission: MISSION_A }))).toHaveLength(2);
+    expect(codes(visibleRows(DAY, { missions: [MISSION_A] }))).toHaveLength(2);
   });
 
   it('«تشغيل» + a mission is their intersection too', () => {
-    expect(codes(visibleRows(DAY, { view: 'assigned', mission: MISSION_B }))).toEqual(['155']);
+    expect(codes(visibleRows(DAY, { view: 'assigned', missions: [MISSION_B] }))).toEqual(['155']);
   });
 
   it('a contradictory pair finds NOTHING rather than falling back to one of them', () => {
     // Mission B's car is not in the workshop. The honest answer is an empty board.
-    expect(codes(visibleRows(DAY, { view: 'workshop', mission: MISSION_B }))).toEqual([]);
+    expect(codes(visibleRows(DAY, { view: 'workshop', missions: [MISSION_B] }))).toEqual([]);
   });
 
   it('the search narrows on top of both', () => {
-    expect(codes(visibleRows(DAY, { view: 'workshop', mission: MISSION_A, term: '154' }))).toEqual([
+    expect(codes(visibleRows(DAY, { view: 'workshop', missions: [MISSION_A], term: '154' }))).toEqual([
       '154',
     ]);
-    expect(codes(visibleRows(DAY, { view: 'workshop', mission: MISSION_A, term: '150' }))).toEqual(
+    expect(codes(visibleRows(DAY, { view: 'workshop', missions: [MISSION_A], term: '150' }))).toEqual(
       [],
     );
   });
@@ -143,8 +143,8 @@ describe('filters combine with AND — none cancels another', () => {
     for (const filters of [
       { view: 'workshop' as const },
       { view: 'assigned' as const },
-      { mission: MISSION_A },
-      { view: 'assigned' as const, mission: MISSION_A, term: '15' },
+      { missions: [MISSION_A] },
+      { view: 'assigned' as const, missions: [MISSION_A], term: '15' },
     ]) {
       const shown = visibleRows(DAY, filters);
       expect(
@@ -156,7 +156,7 @@ describe('filters combine with AND — none cancels another', () => {
 
   it('leaves the day it was handed untouched — filtering is a view, not an edit', () => {
     const before = JSON.stringify(DAY);
-    visibleRows(DAY, { view: 'workshop', mission: MISSION_A, term: '1' });
+    visibleRows(DAY, { view: 'workshop', missions: [MISSION_A], term: '1' });
     expect(JSON.stringify(DAY)).toBe(before);
   });
 });
@@ -329,7 +329,7 @@ describe('the standing board, one filter at a time', () => {
   });
 
   it('a mission chip — only that mission, crewed or not', () => {
-    expect(fixedCodes(visibleFixedRows(STANDING, { mission: MISSION_A }))).toEqual(['150', '152']);
+    expect(fixedCodes(visibleFixedRows(STANDING, { missions: [MISSION_A] }))).toEqual(['150', '152']);
   });
 
   it('the code search — through the shared code parser, so a list works', () => {
@@ -346,26 +346,26 @@ describe('the standing board, one filter at a time', () => {
 
 describe('the standing board’s filters combine with AND', () => {
   it('«بدون طقم» + a mission is their intersection', () => {
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'uncrewed', mission: MISSION_A }))).toEqual(['152']);
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'uncrewed', missions: [MISSION_A] }))).toEqual(['152']);
   });
 
   it('«بطقم» + a mission is their intersection too', () => {
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed', mission: MISSION_A }))).toEqual(['150']);
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed', missions: [MISSION_A] }))).toEqual(['150']);
   });
 
   it('a contradictory pair finds NOTHING rather than falling back to one of them', () => {
     // Mission B's only car is crewed.
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'uncrewed', mission: MISSION_B }))).toEqual([]);
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'uncrewed', missions: [MISSION_B] }))).toEqual([]);
   });
 
   it('the search narrows on top of both', () => {
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed', mission: MISSION_A, term: '150' }))).toEqual(['150']);
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed', mission: MISSION_A, term: '151' }))).toEqual([]);
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed', missions: [MISSION_A], term: '150' }))).toEqual(['150']);
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed', missions: [MISSION_A], term: '151' }))).toEqual([]);
   });
 
   it('leaves the board it was handed untouched', () => {
     const before = JSON.stringify(STANDING);
-    visibleFixedRows(STANDING, { view: 'crewed', mission: MISSION_A, term: '1' });
+    visibleFixedRows(STANDING, { view: 'crewed', missions: [MISSION_A], term: '1' });
     expect(JSON.stringify(STANDING)).toBe(before);
   });
 });

@@ -297,10 +297,17 @@ export const deleteAccident = (id: string): Promise<void> => del<void>(`/fleet/a
 export const listViolations = (params: FleetListParams): Promise<Paginated<FleetViolationDto>> =>
   getPage<FleetViolationDto>(`/fleet/violations${buildQuery(params)}`);
 export const violationRollup = (
-  year: number | undefined,
+  /** SEVERAL years, ORed — one comma-separated `year` parameter, which is what the API parses. */
+  years: readonly number[] | undefined,
   vehicleId?: string,
 ): Promise<FleetViolationRollupDto[]> =>
-  get<FleetViolationRollupDto[]>(`/fleet/violations/rollup${buildQuery({ year, vehicleId })}`);
+  get<FleetViolationRollupDto[]>(
+    `/fleet/violations/rollup${buildQuery({
+      // Comma-separated, which is the shape `listQuery` parses on the other side.
+      year: years === undefined ? undefined : years.map(String),
+      vehicleId,
+    })}`,
+  );
 export const recordVehicleViolation = (
   body: RecordFleetVehicleViolation,
 ): Promise<FleetViolationDto> => post<FleetViolationDto>('/fleet/violations/vehicle', body);

@@ -17,6 +17,7 @@ import {
   type FleetViolationRollupDto,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { readList, writeList } from '../../../shared/lib/list-param';
 import { useAppSelector } from '../../../store';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -58,7 +59,9 @@ export const ViolationsPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const year = sp.get('year') ?? '';
+  // SEVERAL years, in the same `year` key — a comma-separated list, which is what the rollup
+  // endpoint parses and what a saved one-year link still means.
+  const years = readList(sp, 'year');
   const codes = splitVehicleCodeList(sp.get('codes') ?? '');
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
@@ -131,11 +134,11 @@ export const ViolationsPage = (): JSX.Element => {
         className="grid min-h-0 min-w-0 flex-1 gap-4 2xl:grid-cols-2"
       >
         <CompanyViolationsPanel
-          year={year}
+          years={years}
           vehicleCodes={codes}
           settled={companySettled}
           onSettledChange={(next) => patch({ cset: next })}
-          onYearChange={(next) => patch({ year: next })}
+          onYearsChange={(next) => patch({ year: writeList(next) })}
           onVehicleCodesChange={(next) =>
             patch({ codes: next.length === 0 ? null : next.join(',') })
           }

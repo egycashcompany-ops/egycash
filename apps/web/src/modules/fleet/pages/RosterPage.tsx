@@ -47,6 +47,8 @@ import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { readList, toggleValue, writeList } from '../../../shared/lib/list-param';
 import { DriverChip } from '../components/DriverChip';
 import { DriverSlotPicker } from '../components/DriverSlotPicker';
 import {
@@ -283,7 +285,12 @@ export const RosterPage = (): JSX.Element => {
   /** Today and after: a plan. Before today: a record, shown whole and changed by nothing. */
   const editable = date >= floor;
   const search = sp.get('q') ?? '';
-  const mission = sp.get('mission') ?? '';
+  /**
+   * SEVERAL missions at once — «اى فلتر ف الحركه زياده عن اتنين اختار ما بينهم اعملى multi
+   * selection». The key is the same `mission` it has always been, now carrying a comma-separated
+   * list, so a link somebody saved with one mission on it still narrows to exactly that mission.
+   */
+  const missions = readList(sp, 'mission');
   /**
    * Which STATE the board is narrowed to, if any — «صيانة» or «تشغيل».
    *
@@ -293,6 +300,8 @@ export const RosterPage = (): JSX.Element => {
    * stops a second copy of mission filtering existing at all.
    */
   const view: RosterView | null = readView(sp.get('view'));
+  /** The list as ONE value, so the memos below are not invalidated by a fresh array each render. */
+  const missionsKey = missions.join(',');
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -401,11 +410,11 @@ export const RosterPage = (): JSX.Element => {
    */
   const shown = editable ? draft : saved;
   const rows = useMemo(
-    () => visibleRows(shown, { term: search, mission, view }),
-    [shown, search, mission, view],
+    () => visibleRows(shown, { term: search, missions, view }),
+    [shown, search, missionsKey, view],
   );
 
-  const filtered = search !== '' || mission !== '' || view !== null;
+  const filtered = search !== '' || missions.length > 0 || view !== null;
   /** Every car the board reports on, as the picker's options — no request for what is on screen. */
   const codeOptions = useMemo(
     () => shown.map((row) => ({ value: row.code, label: row.code })),
@@ -443,7 +452,7 @@ export const RosterPage = (): JSX.Element => {
         // «إجمالي» is the absence of a filter, so applying it CLEARS both keys rather than
         // setting a third value that would then have to mean "no filter".
         apply: { mission: null, view: null },
-        active: mission === '' && view === null,
+        active: missions.length === 0 && view === null,
       },
       {
         key: 'workshop',
@@ -469,12 +478,14 @@ export const RosterPage = (): JSX.Element => {
           value: byMission.get(item.id) ?? 0,
           tone: missionTone(item.id),
           // The chip drives the DROPDOWN's parameter, not one of its own: one axis, one filter,
-          // and the select beside it visibly follows.
-          apply: { mission: item.id },
-          active: mission === item.id,
+          // and the select beside it visibly follows. A click TOGGLES this mission in or out of
+          // the list rather than replacing it, which is the same rule the dropdown's checkboxes
+          // follow — the two controls are one filter and must agree about what a click means.
+          apply: { mission: writeList(toggleValue(missions, item.id)) },
+          active: missions.includes(item.id),
         })),
     ];
-  }, [shown, missionTypes.data, locale, t, mission, view]);
+  }, [shown, missionTypes.data, locale, t, missionsKey, view]);
 
   // The pool is DERIVED from the draft, never the server's list rendered raw: everyone the draft
   // seats leaves it the instant the drop lands, and comes back the instant a slot is cleared —
@@ -845,12 +856,13 @@ export const RosterPage = (): JSX.Element => {
             onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
           />
         <div className="w-44">
-          <CatalogSelect
+          <CatalogMultiSelect
             kind="missionType"
-            value={mission}
-            onChange={(id) => patch({ mission: id || null })}
-            allLabel={t('fleet.roster.allMissions')}
-            ariaLabel={t('fleet.roster.fields.mission')}
+            value={missions}
+            onChange={(ids) => patch({ mission: writeList(ids) })}
+            label={t('fleet.roster.allMissions')}
+            className="w-full"
+            fullWidth
           />
         </div>
         {/*

@@ -34,9 +34,19 @@ export interface DriverProfileFacts {
 const contains = (haystack: string | null, needle: string): boolean =>
   haystack !== null && haystack.toLowerCase().includes(needle.toLowerCase());
 
-/** An ObjectId, a string, or nothing — compared the one way that works for all three. */
-const sameRef = (stored: unknown, wanted: string): boolean =>
-  stored != null && String(stored) === wanted;
+/**
+ * Is the driver's reference one of the ones asked for?
+ *
+ * An ObjectId, a string, or nothing on the stored side — compared the one way that works for all
+ * three. SEVERAL on the wanted side, ORed: «سائق أ أو سائق ب» is one question about the registry,
+ * and asking it a grade at a time is what «اى فلتر ف الحركه زياده عن اتنين ... multi selection»
+ * is about. One wanted value behaves exactly as the old equality did.
+ *
+ * Nothing stored is a MISS however many are asked for, for the reason the whole block below gives:
+ * a driver nobody has classified is not a grade-A driver.
+ */
+const sameRef = (stored: unknown, wanted: readonly string[]): boolean =>
+  stored != null && wanted.includes(String(stored));
 
 /**
  * Is this driver in one of the branches asked for?

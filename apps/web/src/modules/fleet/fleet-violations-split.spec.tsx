@@ -205,7 +205,9 @@ const page = ({
         'fleet',
         'violations',
         'rollup',
-        { year: year === undefined ? undefined : Number(year), vehicleId: undefined },
+        // The YEARS, as the one string the key carries — several years are one question and one
+        // cache entry, and a fresh array each render would otherwise mint a new key every time.
+        { year: year === undefined ? '' : year, vehicleId: undefined },
       ],
       rollup,
     );

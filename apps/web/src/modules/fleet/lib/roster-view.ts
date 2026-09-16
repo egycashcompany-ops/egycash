@@ -80,16 +80,32 @@ export const hasDriver = (row: Seated): boolean =>
  * the WHOLE day and never this result — a filter is a way of looking at the board, not a way of
  * editing it, and a save that only wrote the visible rows would silently drop the rest.
  */
+/**
+ * Is this car's mission one of the ones asked for?
+ *
+ * SEVERAL, ORed — «اى فلتر ف الحركه زياده عن اتنين اختار ما بينهم اعملى multi selection». The
+ * mission vocabulary is a catalog with as many entries as the company files, so «نقل أموال أو
+ * توزيع» is an ordinary question about a day and one chip at a time made it two readings of the
+ * board. Nothing asked for is EVERY car, including one carrying no mission at all; asked for and
+ * missionless is a miss, which is what «أرني مأموريات النقل» means.
+ */
+export const matchesMission = (
+  missionTypeId: string | null,
+  missions: readonly string[] | undefined,
+): boolean => {
+  if (missions === undefined || missions.length === 0) return true;
+  return missionTypeId !== null && missions.includes(missionTypeId);
+};
+
 export const visibleRows = (
   rows: readonly FleetRosterRowDto[],
-  filters: { term?: string; mission?: string; view?: RosterView | null },
+  filters: { term?: string; missions?: readonly string[]; view?: RosterView | null },
 ): FleetRosterRowDto[] => {
   const term = filters.term ?? '';
-  const mission = filters.mission ?? '';
   const view = filters.view ?? null;
   return rows.filter((row) => {
     if (!matchesVehicleCode(row.code, term)) return false;
-    if (mission !== '' && row.missionTypeId !== mission) return false;
+    if (!matchesMission(row.missionTypeId, filters.missions)) return false;
     if (view === 'workshop' && !row.inMaintenance) return false;
     if (view === 'assigned' && !carriesPlan(row)) return false;
     return true;
@@ -124,14 +140,13 @@ export const readFixedView = (raw: string | null): FixedRosterView | null =>
  */
 export const visibleFixedRows = (
   rows: readonly FleetFixedCrewRowDto[],
-  filters: { term?: string; mission?: string; view?: FixedRosterView | null },
+  filters: { term?: string; missions?: readonly string[]; view?: FixedRosterView | null },
 ): FleetFixedCrewRowDto[] => {
   const term = filters.term ?? '';
-  const mission = filters.mission ?? '';
   const view = filters.view ?? null;
   return rows.filter((row) => {
     if (!matchesVehicleCode(row.code, term)) return false;
-    if (mission !== '' && row.missionTypeId !== mission) return false;
+    if (!matchesMission(row.missionTypeId, filters.missions)) return false;
     if (view === 'crewed' && !hasDriver(row)) return false;
     if (view === 'uncrewed' && hasDriver(row)) return false;
     return true;

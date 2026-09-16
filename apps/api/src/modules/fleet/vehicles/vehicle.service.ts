@@ -12,7 +12,7 @@ import {
   type Paginated,
   type UpdateFleetVehicle,
 } from '@ecms/contracts';
-import { Types, type FilterQuery } from 'mongoose';
+import { Types } from 'mongoose';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
@@ -26,8 +26,7 @@ import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.reposi
 import { fleetMaintenanceRepository } from '../maintenance/maintenance.repository';
 import {
   fleetVehicleRepository,
-  vehicleIdentifierFilter,
-  vehicleSearchFilter,
+  vehicleListFilter,
 } from './vehicle.repository';
 import { resolveVehicleDocsCategoryId } from './vehicle-files';
 import { canTransitionVehicle, isVehicleWritable } from './vehicle-status';
@@ -200,40 +199,9 @@ class FleetVehicleService {
     query: ListFleetVehiclesQuery,
     scope: ScopeSelector,
   ): Promise<Paginated<FleetVehicleDoc>> {
-    const clauses: FilterQuery<FleetVehicleDoc>[] = [];
-    if (query.status !== undefined) clauses.push({ status: query.status });
-    if (query.typeId !== undefined) clauses.push({ typeId: new Types.ObjectId(query.typeId) });
-    if (query.branchId !== undefined) {
-      clauses.push({ branchId: { $in: query.branchId.map((id) => new Types.ObjectId(id)) } });
-    }
-    // The three catalog filters, each an exact reference match.
-    for (const [value, field] of [
-      [query.licenseClassId, 'licenseClassId'],
-      [query.operationId, 'operationId'],
-      [query.insuranceCompanyId, 'insuranceCompanyId'],
-    ] as const) {
-      if (value !== undefined) clauses.push({ [field]: new Types.ObjectId(value) });
-    }
-    // The vehicle-code picker: the cars named EXACTLY, ORed. Exact where `search` is substring,
-    // because a checkbox can only mean the code it ticks. A code no car carries leaves an empty
-    // `$in`, which matches nothing — the honest answer to a pick the registry does not have.
-    if (query.vehicleCodes !== undefined) {
-      clauses.push({ code: { $in: [...query.vehicleCodes] } });
-    }
-    // Per-identifier narrowing, ANDed with everything else — see `vehicleIdentifierFilter`.
-    for (const [value, field] of [
-      [query.code, 'code'],
-      [query.plateNumber, 'plateNumber'],
-      [query.chassisNumber, 'chassisNumber'],
-      [query.motorNumber, 'motorNumber'],
-    ] as const) {
-      if (value !== undefined) clauses.push(vehicleIdentifierFilter(field, value));
-    }
-    if (query.licenseExpiresBefore !== undefined) {
-      clauses.push({ licenseExpiresAt: { $lte: query.licenseExpiresBefore } });
-    }
-    if (query.search !== undefined) clauses.push(vehicleSearchFilter(query.search));
-    const filter = clauses.length === 0 ? {} : { $and: clauses };
+    // Every control on the bar, built in one pure place — `vehicleListFilter`, where the rule
+    // about what each filter MEANS lives beside its own test.
+    const filter = vehicleListFilter(query);
     return fleetVehicleRepository.listVehicles({
       filter,
       page: query.page,

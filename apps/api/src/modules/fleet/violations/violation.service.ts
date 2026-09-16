@@ -434,10 +434,13 @@ class FleetViolationService {
 
   /** §2.9 — the annual rollup, fully derived at query time: sums + grievances + codes merged. */
   /** Omit `year` for the whole history — one row per (vehicle, year). */
-  async rollup(year: number | undefined, vehicleId?: string): Promise<FleetViolationRollupDto[]> {
+  async rollup(
+    years: readonly number[] | undefined,
+    vehicleId?: string,
+  ): Promise<FleetViolationRollupDto[]> {
     const [sums, grievances] = await Promise.all([
-      fleetViolationRepository.yearSums(year, vehicleId),
-      fleetGrievanceRepository.forYear(year, vehicleId),
+      fleetViolationRepository.yearSums(years, vehicleId),
+      fleetGrievanceRepository.forYears(years, vehicleId),
     ]);
     const ids = [
       ...new Set([...sums.map((s) => s.vehicleId), ...grievances.map((g) => String(g.vehicleId))]),

@@ -194,7 +194,7 @@ describe('the fixed-crew screen', () => {
     //
     // Through the shared matcher, so this board reads `150 - 151` the way the filter bars do.
     expect(SOURCE, 'the shared rule module, not a comparison of its own').toContain(
-      'visibleFixedRows(draft, { term: search, mission, view })',
+      'visibleFixedRows(draft, { term: search, missions, view })',
     );
     expect(SOURCE, 'and no plate is read to decide what to show').not.toContain('plateNumber');
     const byCode = tbody(render({ route: '/fleet/fixed-roster?q=150' }));
@@ -1491,10 +1491,16 @@ describe('the standing board wears the daily board’s bar', () => {
       CODE.indexOf('<DataTable'),
     );
     expect(strip, 'the mission vocabulary, never workType').toContain('kind="missionType"');
-    expect(strip, 'the daily board’s «all missions» label').toContain("allLabel={t('fleet.roster.allMissions')}");
-    expect(strip, 'writes the one mission parameter').toContain('patch({ mission: id || null })');
+    expect(strip, 'the daily board’s «all missions» label').toContain(
+      "label={t('fleet.roster.allMissions')}",
+    );
+    // SEVERAL missions at once, as on the daily board — one parameter carrying a list, written
+    // through the shared `writeList` so the chips beside it and this control cannot disagree.
+    expect(strip, 'writes the one mission parameter').toContain(
+      'patch({ mission: writeList(ids) })',
+    );
     const width = (code: string): string | undefined =>
-      /<div className="(w-\d+)">\s*<CatalogSelect\s+kind="missionType"/.exec(code)?.[1];
+      /<div className="(w-\d+)">\s*<CatalogMultiSelect\s+kind="missionType"/.exec(code)?.[1];
     expect(width(CODE), 'the same box as the daily board').toBe(width(DAILY));
     expect(width(CODE)).toBe('w-44');
   });
@@ -1515,7 +1521,7 @@ describe('the standing board wears the daily board’s bar', () => {
       'filtered &&',
     );
     // …and «an active filter» is any of the three, not the code search alone.
-    expect(CODE).toContain("const filtered = search !== '' || mission !== '' || view !== null;");
+    expect(CODE).toContain("const filtered = search !== '' || missions.length > 0 || view !== null;");
   });
 
   it('gives the car picker the same width the daily board gives it', () => {

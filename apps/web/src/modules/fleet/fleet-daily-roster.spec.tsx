@@ -709,7 +709,7 @@ describe('a filter never reaches what is SAVED', () => {
     // saved` — so this is the same claim it always was, now written where a past day can also be
     // read from the same expression.
     expect(SOURCE, 'one filtered list, used for the table').toContain(
-      'visibleRows(shown, { term: search, mission, view })',
+      'visibleRows(shown, { term: search, missions, view })',
     );
     expect(SOURCE, 'and the draft is what an editable day shows').toContain(
       'const shown = editable ? draft : saved',
@@ -1103,7 +1103,7 @@ describe('the day’s counters', () => {
       'shown.filter(carriesPlan).length',
     );
     expect(block, 'the memo depends on what the day shows').toContain(
-      '[shown, missionTypes.data, locale, t, mission, view]',
+      '[shown, missionTypes.data, locale, t, missionsKey, view]',
     );
   });
 

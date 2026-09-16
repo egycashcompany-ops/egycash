@@ -157,35 +157,35 @@ describe('«الوظيفة / التخصص / الرخصة» — the catalog refer
   });
 
   it('matches the driver whose profile points at the item asked for', () => {
-    expect(matchesFleetFilters(classified, { jobId: String(JOB) })).toBe(true);
-    expect(matchesFleetFilters(classified, { specializationId: String(SPEC) })).toBe(true);
-    expect(matchesFleetFilters(classified, { licenseTypeId: String(LICENCE) })).toBe(true);
+    expect(matchesFleetFilters(classified, { jobId: [String(JOB)] })).toBe(true);
+    expect(matchesFleetFilters(classified, { specializationId: [String(SPEC)] })).toBe(true);
+    expect(matchesFleetFilters(classified, { licenseTypeId: [String(LICENCE)] })).toBe(true);
   });
 
   it('compares an ObjectId to the string the query carries — the shapes really differ', () => {
     // The stored value is a BSON ObjectId and the query parameter is a 24-character string, so a
     // `===` here would match nothing at all while looking perfectly reasonable.
     expect(String(JOB)).not.toBe(JOB);
-    expect(matchesFleetFilters(classified, { jobId: String(JOB) })).toBe(true);
+    expect(matchesFleetFilters(classified, { jobId: [String(JOB)] })).toBe(true);
   });
 
   it('misses a driver pointed at a DIFFERENT item', () => {
-    expect(matchesFleetFilters(classified, { jobId: String(new Types.ObjectId()) })).toBe(false);
+    expect(matchesFleetFilters(classified, { jobId: [String(new Types.ObjectId())] })).toBe(false);
   });
 
   it('misses a driver nobody has classified — «grade A» is not a question about them', () => {
     // The same rule the whole file is about, one level down: an unclassified driver is not a
     // grade-A driver, and counting them as one would inflate every grade the house filters by.
     const unclassified = profile({ jobId: null, specializationId: null, licenseTypeId: null });
-    expect(matchesFleetFilters(unclassified, { jobId: String(JOB) })).toBe(false);
-    expect(matchesFleetFilters(unclassified, { specializationId: String(SPEC) })).toBe(false);
-    expect(matchesFleetFilters(unclassified, { licenseTypeId: String(LICENCE) })).toBe(false);
+    expect(matchesFleetFilters(unclassified, { jobId: [String(JOB)] })).toBe(false);
+    expect(matchesFleetFilters(unclassified, { specializationId: [String(SPEC)] })).toBe(false);
+    expect(matchesFleetFilters(unclassified, { licenseTypeId: [String(LICENCE)] })).toBe(false);
   });
 
   it('misses a profile written before the field existed, where the key is simply ABSENT', () => {
     const legacy = profile();
     expect(legacy.jobId).toBeUndefined();
-    expect(matchesFleetFilters(legacy, { jobId: String(JOB) })).toBe(false);
+    expect(matchesFleetFilters(legacy, { jobId: [String(JOB)] })).toBe(false);
   });
 
   it('shows an unclassified driver on an unfiltered registry, as before', () => {
@@ -193,8 +193,22 @@ describe('«الوظيفة / التخصص / الرخصة» — the catalog refer
   });
 
   it('ANDs with the other filters rather than replacing them', () => {
-    expect(matchesFleetFilters(classified, { jobId: String(JOB), isActive: false })).toBe(false);
-    expect(matchesFleetFilters(classified, { jobId: String(JOB), area: 'المعادي' })).toBe(true);
+    expect(matchesFleetFilters(classified, { jobId: [String(JOB)], isActive: false })).toBe(false);
+    expect(matchesFleetFilters(classified, { jobId: [String(JOB)], area: 'المعادي' })).toBe(true);
+  });
+
+  it('takes SEVERAL grades at once, and ORs them — «سائق أ أو سائق ب»', () => {
+    // The whole point of the multi-select: one question about the registry, answered once.
+    const other = new Types.ObjectId();
+    expect(matchesFleetFilters(classified, { jobId: [String(other), String(JOB)] })).toBe(true);
+    expect(matchesFleetFilters(classified, { jobId: [String(other)] })).toBe(false);
+    expect(
+      matchesFleetFilters(classified, {
+        specializationId: [String(SPEC), String(other)],
+        licenseTypeId: [String(LICENCE)],
+      }),
+      'each reference ORs inside itself and ANDs with the others',
+    ).toBe(true);
   });
 });
 

@@ -1,6 +1,6 @@
 import { type FilterQuery, Types } from 'mongoose';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
-import { type Paginated } from '@ecms/contracts';
+import { type ListFleetVehiclesQuery, type Paginated } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
 
 class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
@@ -130,5 +130,68 @@ export const vehicleIdentifierFilter = (
   field: 'code' | 'plateNumber' | 'chassisNumber' | 'motorNumber',
   term: string,
 ): FilterQuery<FleetVehicleDoc> => ({ [field]: escaped(term) }) as FilterQuery<FleetVehicleDoc>;
+
+/**
+ * THE WHOLE REGISTRY FILTER, as one pure function — every control on the bar, in one place.
+ *
+ * Pure so it can be read and tested without a database: what a filter MEANS is a decision, and
+ * the decisions here are the ones that are easy to get quietly wrong — «several makes» has to OR
+ * inside itself and AND with «several classes», and «nothing ticked» has to mean no filter at
+ * all rather than an empty `$in` that matches no car in the fleet.
+ *
+ * SEVERAL VALUES PER REFERENCE FILTER — «اى فلتر ف الحركه زياده عن اتنين اختار ما بينهم اعملى
+ * multi selection». One ticked value is a one-element `$in`, which is the same query the old
+ * equality was, so every link saved before the multi-select answers exactly as it did.
+ */
+export const vehicleListFilter = (
+  query: Pick<
+    ListFleetVehiclesQuery,
+    | 'status'
+    | 'typeId'
+    | 'branchId'
+    | 'licenseClassId'
+    | 'operationId'
+    | 'insuranceCompanyId'
+    | 'vehicleCodes'
+    | 'code'
+    | 'plateNumber'
+    | 'chassisNumber'
+    | 'motorNumber'
+    | 'licenseExpiresBefore'
+    | 'search'
+  >,
+): FilterQuery<FleetVehicleDoc> => {
+  const clauses: FilterQuery<FleetVehicleDoc>[] = [];
+  // The status is a word, the other five are ids — same shape, different cast.
+  if (query.status !== undefined) clauses.push({ status: { $in: [...query.status] } });
+  for (const [values, field] of [
+    [query.typeId, 'typeId'],
+    [query.branchId, 'branchId'],
+    [query.licenseClassId, 'licenseClassId'],
+    [query.operationId, 'operationId'],
+    [query.insuranceCompanyId, 'insuranceCompanyId'],
+  ] as const) {
+    if (values === undefined) continue;
+    clauses.push({ [field]: { $in: values.map((id) => new Types.ObjectId(id)) } });
+  }
+  // The vehicle-code picker: the cars named EXACTLY, ORed. Exact where `search` is substring,
+  // because a checkbox can only mean the code it ticks. A code no car carries leaves an empty
+  // `$in`, which matches nothing — the honest answer to a pick the registry does not have.
+  if (query.vehicleCodes !== undefined) clauses.push({ code: { $in: [...query.vehicleCodes] } });
+  // Per-identifier narrowing, ANDed with everything else — see `vehicleIdentifierFilter`.
+  for (const [value, field] of [
+    [query.code, 'code'],
+    [query.plateNumber, 'plateNumber'],
+    [query.chassisNumber, 'chassisNumber'],
+    [query.motorNumber, 'motorNumber'],
+  ] as const) {
+    if (value !== undefined) clauses.push(vehicleIdentifierFilter(field, value));
+  }
+  if (query.licenseExpiresBefore !== undefined) {
+    clauses.push({ licenseExpiresAt: { $lte: query.licenseExpiresBefore } });
+  }
+  if (query.search !== undefined) clauses.push(vehicleSearchFilter(query.search));
+  return clauses.length === 0 ? {} : { $and: clauses };
+};
 
 export const fleetVehicleRepository = new FleetVehicleRepository();

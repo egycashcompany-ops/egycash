@@ -44,6 +44,7 @@ import { CatalogSelect } from './CatalogSelect';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { toCsv, exportFilename } from '../lib/violations-export';
 import { printViolations } from '../lib/violations-print';
@@ -84,22 +85,27 @@ const TIGHT = 'tight' as const;
 const CELL = 'flex-1 basis-0 min-w-[6rem]';
 
 export const CompanyViolationsPanel = ({
-  year,
+  years,
   vehicleCodes,
   settled,
-  onYearChange,
+  onYearsChange,
   onSettledChange,
   onVehicleCodesChange,
   onClear,
   onInspect,
 }: {
-  /** '' = every year. The board is read as a history, so no year is a real answer. */
-  year: string;
+  /**
+   * The years being looked at. EMPTY = every year: the board is read as a history, so no year is
+   * a real answer — and SEVERAL is an ordinary question, «٢٠٢٥ جنب ٢٠٢٦», which one year at a
+   * time made into two readings of the board («اى فلتر ف الحركه زياده عن اتنين ... multi
+   * selection»).
+   */
+  years: readonly string[];
   vehicleCodes: string[];
   /** '' = both, 'true' = fully settled, 'false' = anything still outstanding. */
   settled: string;
   onSettledChange: (next: string | null) => void;
-  onYearChange: (next: string | null) => void;
+  onYearsChange: (next: string[]) => void;
   onVehicleCodesChange: (next: string[]) => void;
   /**
    * Clear this half in ONE write.
@@ -116,10 +122,11 @@ export const CompanyViolationsPanel = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const mayRecord = can('fleetViolation.record');
-  const hasActiveFilters = year !== '' || vehicleCodes.length > 0 || settled !== '';
+  const hasActiveFilters = years.length > 0 || vehicleCodes.length > 0 || settled !== '';
 
   const thisYear = new Date().getFullYear();
-  const years = useMemo(
+  /** The years this screen OFFERS — the filter's options and the form's, not what is chosen. */
+  const offeredYears = useMemo(
     () => Array.from({ length: YEAR_SPAN }, (_, i) => thisYear - i),
     [thisYear],
   );
@@ -134,7 +141,11 @@ export const CompanyViolationsPanel = ({
   // a single vehicle, and pretending otherwise would silently show the first of a multi-select.
   const soleVehicleId = vehicleCodes.length === 1 ? idOf.get(vehicleCodes[0] as string) : undefined;
 
-  const rollup = useViolationRollup(year === '' ? undefined : Number(year), soleVehicleId);
+  const yearNumbers = useMemo(() => years.map((y) => Number(y)), [years.join(',')]);
+  const rollup = useViolationRollup(
+    yearNumbers.length === 0 ? undefined : yearNumbers,
+    soleVehicleId,
+  );
   // «الحالة», applied IN HAND. The rollup arrives whole — that is what lets this half count its
   // own groups — so narrowing it here asks the server nothing extra and keeps the totals below
   // agreeing with the rows above, which a server-side page could not promise.
@@ -194,7 +205,10 @@ export const CompanyViolationsPanel = ({
     [rows],
   );
 
-  const scope = `${year === '' ? t('fleet.violations.allYears') : year}${
+  // What the export and the print sheet SAY they cover. Several years read as «٢٠٢٤، ٢٠٢٥» —
+  // the same words the trigger shows — so a printed sheet names exactly the filter it was made
+  // under rather than the first year of it.
+  const scope = `${years.length === 0 ? t('fleet.violations.allYears') : years.join('، ')}${
     vehicleCodes.length === 0 ? '' : ` · ${vehicleCodes.join(', ')}`
   }`;
   const exportRows = (): string[][] =>
@@ -356,7 +370,7 @@ export const CompanyViolationsPanel = ({
                 onChange={(e) => setFormYear(e.target.value)}
                 density="tight"
               >
-                {years.map((y) => (
+                {offeredYears.map((y) => (
                   <option key={y} value={String(y)}>
                     {y}
                   </option>
@@ -542,24 +556,26 @@ export const CompanyViolationsPanel = ({
       >
         <FilterField
           label={t('fleet.violations.fields.year')}
-          active={year !== ''}
+          active={years.length > 0}
           className={CELL}
           density={TIGHT}
         >
-          <Select
-            aria-label={t('fleet.violations.fields.year')}
-            data-company-filter="year"
-            value={year}
-            onChange={(e) => onYearChange(e.target.value === '' ? null : e.target.value)}
+          {/* SEVERAL years at once. Comparing two years is the commonest thing asked of this
+              ledger, and a one-answer dropdown made the comparison something the reader held in
+              their head between two loads. */}
+          <MultiSelect
+            label={t('fleet.violations.fields.year')}
+            placeholder={t('common.filters.all')}
+            options={offeredYears.map((y) => ({ value: String(y), label: String(y) }))}
+            value={years}
+            onChange={onYearsChange}
+            showSelectedValues
+            chips
+            searchThreshold={0}
             density={TIGHT}
-          >
-            <option value="">{t('common.filters.all')}</option>
-            {years.map((y) => (
-              <option key={y} value={String(y)}>
-                {y}
-              </option>
-            ))}
-          </Select>
+            fullWidth
+            className="w-full"
+          />
         </FilterField>
         <FilterField
           label={t('fleet.violations.columns.settledState')}

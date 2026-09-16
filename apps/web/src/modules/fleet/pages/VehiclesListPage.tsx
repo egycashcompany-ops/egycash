@@ -29,7 +29,8 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Input, Select } from '../../../shared/ui/form';
+import { Input } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   EditIcon,
@@ -52,7 +53,7 @@ import {
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
-import { CatalogSelect } from '../components/CatalogSelect';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import {
   LicenseImagePreviewDialog,
   VehicleLicenseImageCell,
@@ -95,15 +96,19 @@ export const VehiclesListPage = (): JSX.Element => {
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
-  const status = sp.get('status') ?? '';
-  const typeId = sp.get('type') ?? '';
+  // EVERY dropdown on this bar takes SEVERAL answers — «اى فلتر ف الحركه زياده عن اتنين اختار ما
+  // بينهم اعملى multi selection». Each is a comma-separated list in the address bar, which is the
+  // shape the API's own `listQuery` parses, so what the reader sees in the URL is what the server
+  // receives and a link carrying one value still means exactly that one value.
+  const statuses = readList(sp, 'status');
+  const typeIds = readList(sp, 'type');
   const vehicleCodes = splitVehicleCodeList(sp.get('vehicleCodes') ?? '');
   const plate = sp.get('plate') ?? '';
   const chassis = sp.get('chassis') ?? '';
   const motor = sp.get('motor') ?? '';
-  const licenseClassId = sp.get('licenseClass') ?? '';
-  const operationId = sp.get('operation') ?? '';
-  const insuranceCompanyId = sp.get('insurance') ?? '';
+  const licenseClassIds = readList(sp, 'licenseClass');
+  const operationIds = readList(sp, 'operation');
+  const insuranceCompanyIds = readList(sp, 'insurance');
   const branchIds = readList(sp, 'branch');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -157,15 +162,15 @@ export const VehiclesListPage = (): JSX.Element => {
     patch({ sort: writeSorts(toggleSort(sorts, by)) }, false);
   };
   const hasActiveFilters =
-    status !== '' ||
-    typeId !== '' ||
+    statuses.length > 0 ||
+    typeIds.length > 0 ||
     vehicleCodes.length > 0 ||
     plate !== '' ||
     chassis !== '' ||
     motor !== '' ||
-    licenseClassId !== '' ||
-    operationId !== '' ||
-    insuranceCompanyId !== '' ||
+    licenseClassIds.length > 0 ||
+    operationIds.length > 0 ||
+    insuranceCompanyIds.length > 0 ||
     branchIds.length > 0;
 
   const params = useMemo(
@@ -173,15 +178,15 @@ export const VehiclesListPage = (): JSX.Element => {
       page,
       pageSize,
       ...sortQuery(sorts),
-      status: status || undefined,
-      typeId: typeId || undefined,
+      status: statuses.length === 0 ? undefined : statuses,
+      typeId: typeIds.length === 0 ? undefined : typeIds,
       vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
       plateNumber: plate || undefined,
       chassisNumber: chassis || undefined,
       motorNumber: motor || undefined,
-      licenseClassId: licenseClassId || undefined,
-      operationId: operationId || undefined,
-      insuranceCompanyId: insuranceCompanyId || undefined,
+      licenseClassId: licenseClassIds.length === 0 ? undefined : licenseClassIds,
+      operationId: operationIds.length === 0 ? undefined : operationIds,
+      insuranceCompanyId: insuranceCompanyIds.length === 0 ? undefined : insuranceCompanyIds,
       branchId: branchIds.length === 0 ? undefined : branchIds,
     }),
     [paramsKey],
@@ -389,7 +394,16 @@ export const VehiclesListPage = (): JSX.Element => {
       key: 'licenseImage',
       header: t('fleet.vehicles.columns.licenseImage'),
       align: 'center',
-      render: (v) => <VehicleLicenseImageCell vehicle={v} onPreview={setPreviewing} />,
+      // PRINT SITS BESIDE THE SCAN as well as in the actions column — «عاوز اضيف زرار الطباعه
+      // هنا للعربيه فى خانة صوره الرخصه». The same sheet either way: the page owns the printing
+      // and both buttons call it, so there is one print and two doors to it.
+      render: (v) => (
+        <VehicleLicenseImageCell
+          vehicle={v}
+          onPreview={setPreviewing}
+          onPrint={(vehicle) => void print(vehicle)}
+        />
+      ),
     },
     // Owner UI decision (FW-4): no whole-row navigation — an explicit View action instead. It
     // avoids accidental navigation, matches the other ECMS modules, and leaves row selection
@@ -562,58 +576,59 @@ export const VehiclesListPage = (): JSX.Element => {
               dir="ltr"
             />
           </div>
-          {/* The dropdowns: make, then the three catalog references, then branch and status. */}
-          <Select
-            aria-label={t('fleet.vehicles.filters.make')}
-            value={typeId}
-            onChange={(e) => patch({ type: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.vehicles.filters.make')}</option>
-            {(types.data?.items ?? []).map((type) => (
-              <option key={type.id} value={type.id}>
-                {localized(type.name, locale)}
-              </option>
-            ))}
-          </Select>
-          <CatalogSelect
+          {/* The dropdowns: make, then the three catalog references, then branch and status —
+              EVERY ONE of them multi-valued. «الفئة أ أو ب» and «المتاحة والمتوقفة» are single
+              questions about the fleet, and a one-answer control made the reader ask each of them
+              twice and add the two counts up by hand. Branch has taken several since it was
+              written; the other five now read the same way. */}
+          <MultiSelect
+            className="shrink-0"
+            showSelectedValues
+            chips
+            label={t('fleet.vehicles.filters.make')}
+            options={(types.data?.items ?? []).map((type) => ({
+              value: type.id,
+              label: localized(type.name, locale),
+            }))}
+            value={typeIds}
+            onChange={(ids) => patch({ type: writeList(ids) })}
+          />
+          <CatalogMultiSelect
             kind="licenseClass"
-            value={licenseClassId}
-            onChange={(id) => patch({ licenseClass: id || null })}
-            allLabel={t('fleet.vehicles.filters.licenseClass')}
-            ariaLabel={t('fleet.vehicles.filters.licenseClass')}
+            value={licenseClassIds}
+            onChange={(ids) => patch({ licenseClass: writeList(ids) })}
+            label={t('fleet.vehicles.filters.licenseClass')}
           />
           <BranchFilterSelect
             value={branchIds}
             onChange={(ids) => patch({ branch: writeList(ids) })}
           />
-          <CatalogSelect
+          <CatalogMultiSelect
             kind="operation"
-            value={operationId}
-            onChange={(id) => patch({ operation: id || null })}
-            allLabel={t('fleet.vehicles.filters.operation')}
-            ariaLabel={t('fleet.vehicles.filters.operation')}
+            value={operationIds}
+            onChange={(ids) => patch({ operation: writeList(ids) })}
+            label={t('fleet.vehicles.filters.operation')}
           />
-          <CatalogSelect
+          <CatalogMultiSelect
             kind="insuranceCompany"
-            value={insuranceCompanyId}
-            onChange={(id) => patch({ insurance: id || null })}
-            allLabel={t('fleet.vehicles.filters.insurance')}
-            ariaLabel={t('fleet.vehicles.filters.insurance')}
+            value={insuranceCompanyIds}
+            onChange={(ids) => patch({ insurance: writeList(ids) })}
+            label={t('fleet.vehicles.filters.insurance')}
           />
-          <Select
-            aria-label={t('fleet.vehicles.columns.status')}
-            value={status}
-            onChange={(e) => patch({ status: e.target.value || null })}
-            className="w-auto"
-          >
-            <option value="">{t('fleet.vehicles.allStatuses')}</option>
-            {(['active', 'outOfService', 'disposed'] as const).map((s) => (
-              <option key={s} value={s}>
-                {t(`fleet.vehicles.status.${s}`)}
-              </option>
-            ))}
-          </Select>
+          {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
+              («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
+              multi-select can only say what a single one already said. */}
+          <MultiSelect
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.vehicles.columns.status')}
+            options={(['active', 'outOfService', 'disposed'] as const).map((value) => ({
+              value,
+              label: t(`fleet.vehicles.status.${value}`),
+            }))}
+            value={statuses}
+            onChange={(next) => patch({ status: writeList(next) })}
+          />
           {/* HOW MANY CARS THE FILTER MATCHES — «حط جمب الفلاتر عدد العربيات».
               
               It reads the SERVER's `totalItems`, never `rows.length`. The rows in hand are one

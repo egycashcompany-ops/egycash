@@ -16,6 +16,7 @@ import { syncHrOnlyAccounts } from './hr-only-access';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
+import { startMaintenanceGoLive } from './modules/fleet/go-live/maintenance';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -47,6 +48,8 @@ const main = async (): Promise<void> => {
   startDriverPhotosGoLive();
   // The odometer book — twenty thousand legacy readings, once the cars are in.
   startOdometerGoLive();
+  // The workshop book — 1,800 visits, once the cars and the readings are in.
+  startMaintenanceGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

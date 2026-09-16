@@ -145,6 +145,32 @@ describe('what the notice says', () => {
     expect(markup, 'an empty list is not a line').not.toContain('لم يُمكن وصل');
   });
 
+  it('prints a finished workshop import — the catalog rows it added and the visits it could not place', () => {
+    const markup = render(
+      [
+        run({
+          key: 'go-live:maintenance:v1',
+          status: 'done',
+          outcome: {
+            vehicles: 180,
+            imported: 1780,
+            counterFromOdometer: 600,
+            noCounter: ['223 2024-10-13'],
+            outBeforeIn: ['161 2025-01-13 → 2025-01-11'],
+            catalogCreated: ['workshop: تويوتا 2', 'workshop: غير محدد'],
+            unmatchedDrivers: [],
+          },
+        }),
+      ],
+      { step: 'maintenance' },
+    );
+    expect(markup).toContain('استيراد دفتر الورشة');
+    expect(markup).toContain('بنود أُضيفت للكتالوج');
+    expect(markup).toContain('workshop: تويوتا 2');
+    expect(markup).toContain('161 2025-01-13 → 2025-01-11');
+    expect(markup).toContain('223 2024-10-13');
+  });
+
   it('a finished run that reports only counts says nothing — whatever the step', () => {
     expect(
       render([run({ key: 'go-live:odometer:v1', status: 'done', outcome: { vehicles: 170, imported: 18734, unknownCars: [], unmatchedDrivers: [] } })], { step: 'odometer' }),

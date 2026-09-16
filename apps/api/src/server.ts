@@ -17,6 +17,8 @@ import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
 import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
 import { startMaintenanceGoLive } from './modules/fleet/go-live/maintenance';
+import { startViolationsGoLive } from './modules/fleet/go-live/violations';
+import { startAccidentsGoLive } from './modules/fleet/go-live/accidents';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -50,6 +52,9 @@ const main = async (): Promise<void> => {
   startOdometerGoLive();
   // The workshop book — 1,800 visits, once the cars and the readings are in.
   startMaintenanceGoLive();
+  // The violations and accidents books — on the same terms, once the cars are in.
+  startViolationsGoLive();
+  startAccidentsGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

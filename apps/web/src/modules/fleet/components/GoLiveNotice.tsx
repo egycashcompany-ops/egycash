@@ -16,7 +16,13 @@ import { useCan } from '../../../platform/rbac/Can';
 import { AlertIcon } from '../../../shared/ui/icons';
 import { useFleetGoLiveRuns } from '../api/fleet-queries';
 
-export type GoLiveStep = 'vehicles' | 'driver-photos' | 'odometer' | 'maintenance';
+export type GoLiveStep =
+  | 'vehicles'
+  | 'driver-photos'
+  | 'odometer'
+  | 'maintenance'
+  | 'violations'
+  | 'accidents';
 
 /** The keys the notice never prints as a line — they are the state, shown as the title. */
 const STATE_KEYS = new Set(['refused', 'refusedAt', 'failedAt']);

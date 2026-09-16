@@ -52,6 +52,7 @@ import {
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
+import { GoLiveNotice } from '../components/GoLiveNotice';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
@@ -386,6 +387,8 @@ export const AccidentsPage = (): JSX.Element => {
           </Can>
         }
       />
+
+      <GoLiveNotice step="accidents" />
 
       <div className="space-y-4">
         {/*

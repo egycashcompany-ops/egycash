@@ -1,0 +1,5938 @@
+[{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8e4"
+  },
+  "date_accident": {
+    "$date": "2025-12-11T00:00:00.000Z"
+  },
+  "car_code": "150",
+  "culprit": "ابراهيم رزق السيد جابر",
+  "statement": "كسر زجاج",
+  "company_account": "1500",
+  "amount_collected": "500",
+  "notes": "ملاحظات",
+  "paid": "2000",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "__v": 1,
+  "deleted_date": {
+    "$date": "2025-12-31T13:24:01.727Z"
+  },
+  "deleted_user": "pola"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8e5"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "193",
+  "culprit": "محمد مهدى",
+  "statement": "فنوس امامى",
+  "amount_collected": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "",
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T08:58:09.215Z"
+    }
+  ],
+  "notes": "تم الاصلاح",
+  "paid": "1400"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8e6"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "275",
+  "culprit": "محمد رفت",
+  "statement": "فنوس خلفى",
+  "company_account": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "amount_collected": "500",
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-01T09:53:11.331Z"
+    }
+  ],
+  "notes": "",
+  "paid": "500"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8e7"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "220",
+  "culprit": "اسلام الصاوى",
+  "statement": "فنوس خلفى",
+  "amount_collected": "300",
+  "paid": "500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "200",
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T12:15:39.950Z"
+    }
+  ],
+  "notes": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8e8"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "215",
+  "culprit": "عماد صابر",
+  "statement": "فنوس امامى",
+  "company_account": "800",
+  "amount_collected": "1000",
+  "paid": "1800",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8e9"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "265",
+  "culprit": "ابراهيم عبدالعزيز",
+  "statement": "فنوس خلفى",
+  "company_account": "500",
+  "paid": "500",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8ea"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "177",
+  "culprit": "احمد غريب",
+  "statement": "فنوس خلفى",
+  "company_account": "200",
+  "amount_collected": "1000",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8eb"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "تويوتا 2",
+  "culprit": "احمد مجدى",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8ec"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "تويوتا1",
+  "culprit": "احمد فرج",
+  "statement": "خبطه",
+  "company_account": "2540",
+  "amount_collected": "960",
+  "paid": "3500",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8ed"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "161",
+  "culprit": "محمود زكى",
+  "statement": "فنوس خلفى",
+  "amount_collected": "1100",
+  "paid": "1100",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8ee"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "157",
+  "culprit": "اشرف سامى",
+  "statement": "فنوس خلفى",
+  "amount_collected": "1000",
+  "paid": "1000",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8ef"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "160",
+  "culprit": "صبرى يوسف",
+  "statement": "مفتاح",
+  "amount_collected": "100",
+  "paid": "100",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "0",
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-24T11:49:12.238Z"
+    }
+  ],
+  "notes": "تم الاصلاح"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f0"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "267",
+  "culprit": "اسلام صابر",
+  "statement": "غماز",
+  "amount_collected": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "0",
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-04T11:01:06.502Z"
+    }
+  ],
+  "notes": "اتبعت اسكندريه"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f1"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "252",
+  "culprit": "محمد صلاح",
+  "statement": "فنوس خلفى",
+  "company_account": "1200",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f2"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "265",
+  "culprit": "عمرو احمد",
+  "statement": "خبطه",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f3"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "266",
+  "culprit": "عمرو محسن",
+  "statement": "خبطه",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f4"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "155",
+  "culprit": "رضا عشور",
+  "statement": "خبطه",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f5"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "186",
+  "culprit": "محمد فرج",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f6"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "271",
+  "culprit": "ابراهيم عبدالعزيز",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f7"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "161",
+  "culprit": "حمدى الصاوى",
+  "statement": "فنوس خلفى",
+  "amount_collected": "1400",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f8"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "268",
+  "culprit": "محمد عبدالكريم",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8f9"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "213",
+  "culprit": "ابو بكر ربيع",
+  "statement": "فنوس خلفى",
+  "company_account": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8fa"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "276",
+  "culprit": "اسلام الصاوى",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8fb"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "214",
+  "culprit": "محمد رشدى",
+  "statement": "فنوس خلفى",
+  "company_account": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8fc"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "266",
+  "culprit": "مروان",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8fd"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "168",
+  "culprit": "مصطفى شهاب",
+  "statement": "فنوس خلفى",
+  "amount_collected": "500",
+  "paid": "500",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8fe"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "166",
+  "culprit": "يوسف السيد",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c8ff"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "267",
+  "culprit": "اسلام صابر/غماز",
+  "statement": "فنوس خلفى",
+  "amount_collected": "200",
+  "paid": "200",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c900"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "267",
+  "culprit": "اسلام صابر",
+  "statement": "فنوس خلفى",
+  "amount_collected": "700",
+  "paid": "700",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c901"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "275",
+  "culprit": "محمد رشدى",
+  "statement": "جنط",
+  "company_account": "1000",
+  "paid": "1000",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c902"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "268",
+  "culprit": "كريم جاد",
+  "statement": "جنط",
+  "company_account": "250",
+  "paid": "250",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c903"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "152",
+  "culprit": "اشرف نصحى",
+  "statement": "مرايا",
+  "company_account": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c904"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "تويوتا1",
+  "culprit": "ادهم",
+  "statement": "فنوس خلفى",
+  "amount_collected": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c905"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "174",
+  "culprit": "على اليمنى",
+  "statement": "مرايا",
+  "amount_collected": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c906"
+  },
+  "date_accident": {
+    "$date": "2025-02-01T00:00:00.000Z"
+  },
+  "car_code": "193",
+  "culprit": "اشرف نصحى",
+  "statement": "فنوس خلفى",
+  "company_account": "300",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c907"
+  },
+  "car_code": "202",
+  "culprit": "محمودعبدالمجيد",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c908"
+  },
+  "car_code": "177",
+  "culprit": "احمد غريب",
+  "statement": "فنوس خلفى",
+  "company_account": "300",
+  "amount_collected": "1100",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c909"
+  },
+  "car_code": "207",
+  "culprit": "ياسرشوقى",
+  "statement": "خبطه",
+  "amount_collected": "1500",
+  "paid": "1500",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c90a"
+  },
+  "car_code": "267",
+  "culprit": "اسلام صابر",
+  "statement": "فنوس خلفى",
+  "amount_collected": "900",
+  "paid": "900",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c90b"
+  },
+  "car_code": "207",
+  "culprit": "محمود نزيه",
+  "statement": "خبطه",
+  "amount_collected": "1400",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c90c"
+  },
+  "car_code": "تويوتا1",
+  "culprit": "على اليمنى",
+  "statement": "فنوس خلفى",
+  "company_account": "900",
+  "amount_collected": "900",
+  "paid": "1800",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c90d"
+  },
+  "car_code": "220",
+  "culprit": "احمد شبل",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c90e"
+  },
+  "car_code": "218",
+  "culprit": "مصطفى جمال",
+  "statement": "خبطه",
+  "company_account": "800",
+  "amount_collected": "2000",
+  "paid": "2800",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 2,
+  "date_accident": {
+    "$date": "2026-05-13T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-13T08:26:08.399Z"
+    },
+    {
+      "$date": "2026-05-13T08:39:42.265Z"
+    }
+  ],
+  "notes": "تم الاصلاح"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c90f"
+  },
+  "car_code": "515",
+  "culprit": "محمود سليمان",
+  "statement": "فنوس خلفى",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c910"
+  },
+  "car_code": "520",
+  "culprit": "احمد جمعه",
+  "statement": "فنوس اشاره",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c911"
+  },
+  "car_code": "158",
+  "culprit": "اشرف نصحى",
+  "statement": "فنوس خلفى+غماز",
+  "company_account": "1100",
+  "amount_collected": "500",
+  "paid": "1600",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c912"
+  },
+  "car_code": "268",
+  "culprit": "احمد عبدربه",
+  "statement": "جنط",
+  "company_account": "350",
+  "paid": "350",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c913"
+  },
+  "car_code": "151",
+  "culprit": "احمد السيد",
+  "statement": "فنوس خلفى",
+  "amount_collected": "1000",
+  "paid": "1000",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-01-25T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-25T11:28:20.414Z"
+    },
+    {
+      "$date": "2026-05-25T11:28:50.717Z"
+    }
+  ],
+  "notes": "تم الاصلاح"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c914"
+  },
+  "car_code": "156",
+  "culprit": "احمد شبل+وليد",
+  "statement": "خبطه",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c915"
+  },
+  "car_code": "231",
+  "culprit": "محمد جمال عبدالعظيم",
+  "statement": "حادس",
+  "company_account": "137910",
+  "paid": "137910",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c916"
+  },
+  "car_code": "اسبير",
+  "culprit": "اشرف نصحى",
+  "statement": "3 مرايا",
+  "company_account": "600",
+  "paid": "600",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c917"
+  },
+  "car_code": "510",
+  "culprit": "اسلام سمير",
+  "statement": "خبطه",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 2,
+  "amount_collected": "240",
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-02-01T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-03T13:10:28.167Z"
+    },
+    {
+      "$date": "2026-05-05T08:08:02.878Z"
+    }
+  ],
+  "notes": "سددتم",
+  "paid": "240"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c918"
+  },
+  "car_code": "165",
+  "culprit": "ادهم محمد",
+  "statement": "خبطه",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c919"
+  },
+  "car_code": "165",
+  "culprit": "وضاح",
+  "statement": "غماز",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "amount_collected": "0",
+  "company_account": "0",
+  "date_accident": {
+    "$date": {
+      "$numberLong": "-61338902400000"
+    }
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-21T05:48:04.264Z"
+    }
+  ],
+  "notes": "تم الاصلاح فى التوكيل",
+  "paid": "0"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c91a"
+  },
+  "car_code": "بجو",
+  "culprit": "عمرو عبدالحميد",
+  "statement": "تيل +طنبيرخلفى",
+  "company_account": "7450",
+  "amount_collected": "200",
+  "paid": "200",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c91b"
+  },
+  "car_code": "بجو",
+  "culprit": "عمرو عبدالحميد",
+  "statement": "مسمار عجل",
+  "company_account": "900",
+  "paid": "7450",
+  "finsh_status_color": "1",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c91c"
+  },
+  "car_code": "154",
+  "culprit": "فنوس اسبير",
+  "statement": "فنوس خلفى",
+  "company_account": "500",
+  "paid": "900",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "amount_collected": "400",
+  "date_accident": {
+    "$date": "2026-05-10T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-10T12:46:16.900Z"
+    }
+  ],
+  "notes": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c91d"
+  },
+  "car_code": "164",
+  "culprit": "محمد مهدى فنوس",
+  "statement": "فنوس خلفى",
+  "company_account": "100",
+  "paid": "500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "amount_collected": "400",
+  "date_accident": {
+    "$date": "2026-05-10T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-10T12:47:47.918Z"
+    }
+  ],
+  "notes": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c91e"
+  },
+  "car_code": "170",
+  "culprit": "هشام عادل",
+  "amount_collected": "200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-19T07:26:52.058Z"
+    },
+    {
+      "$date": "2026-08-19T07:27:34.038Z"
+    },
+    {
+      "$date": "2026-08-19T07:29:04.177Z"
+    }
+  ],
+  "notes": "لصالح 160",
+  "paid": "200",
+  "statement": "0"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c91f"
+  },
+  "car_code": "165",
+  "culprit": "كريم جاد",
+  "amount_collected": "280",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-19T07:17:49.145Z"
+    },
+    {
+      "$date": "2026-08-19T07:18:47.586Z"
+    }
+  ],
+  "notes": "لصالح 160",
+  "paid": "280",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c920"
+  },
+  "car_code": "196",
+  "culprit": "احمدممدوح",
+  "amount_collected": "300",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c921"
+  },
+  "car_code": "176",
+  "culprit": "محمد جمال",
+  "amount_collected": "30",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c922"
+  },
+  "car_code": "245",
+  "culprit": "باسم",
+  "amount_collected": "1000",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-01-22T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-22T09:02:12.255Z"
+    },
+    {
+      "$date": "2026-01-22T13:41:49.162Z"
+    },
+    {
+      "$date": "2026-01-22T13:46:39.104Z"
+    }
+  ],
+  "notes": "0",
+  "paid": "0",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c923"
+  },
+  "car_code": "161",
+  "culprit": "حمدى الصاور",
+  "amount_collected": "200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-19T07:20:13.753Z"
+    },
+    {
+      "$date": "2026-08-19T07:20:59.662Z"
+    }
+  ],
+  "notes": "لصالح 160",
+  "paid": "200",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c924"
+  },
+  "car_code": "192",
+  "culprit": "احمد سلامه",
+  "amount_collected": "800",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-08-24T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-24T11:34:01.481Z"
+    }
+  ],
+  "notes": "فنوس اسبير",
+  "paid": "1200",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c925"
+  },
+  "car_code": "217",
+  "culprit": "محمد نبيل",
+  "amount_collected": "450",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c926"
+  },
+  "car_code": "275",
+  "culprit": "محمد رأفت",
+  "amount_collected": "1000",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 8,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-01-22T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-22T09:10:00.894Z"
+    },
+    {
+      "$date": "2026-01-22T11:43:07.070Z"
+    },
+    {
+      "$date": "2026-01-22T13:42:10.280Z"
+    },
+    {
+      "$date": "2026-01-22T13:47:03.076Z"
+    },
+    {
+      "$date": "2026-03-18T09:29:02.346Z"
+    },
+    {
+      "$date": "2026-03-18T09:58:17.634Z"
+    },
+    {
+      "$date": "2026-06-25T08:55:12.197Z"
+    },
+    {
+      "$date": "2026-07-01T09:50:12.180Z"
+    }
+  ],
+  "notes": "",
+  "paid": "0",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c927"
+  },
+  "car_code": "182",
+  "culprit": "احمد هشام",
+  "amount_collected": "1000",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-02-01T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-01T14:08:59.592Z"
+    },
+    {
+      "$date": "2026-02-01T14:09:28.308Z"
+    }
+  ],
+  "notes": "مرور",
+  "paid": "1000",
+  "statement": "",
+  "deleted_date": {
+    "$date": "2026-02-01T14:09:56.222Z"
+  },
+  "deleted_user": "pola"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c928"
+  },
+  "car_code": "206",
+  "culprit": "على الدونى",
+  "amount_collected": "250",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c929"
+  },
+  "car_code": "231",
+  "culprit": "احمد حسن",
+  "amount_collected": "1200",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2025-11-20T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-11T10:53:26.194Z"
+    },
+    {
+      "$date": "2026-01-11T12:46:31.703Z"
+    }
+  ],
+  "notes": "فنوس اسبير",
+  "paid": "1200",
+  "statement": "",
+  "deleted_date": {
+    "$date": "2026-01-11T13:14:35.135Z"
+  },
+  "deleted_user": "pola"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c92a"
+  },
+  "car_code": "179",
+  "culprit": "هانى سرحان",
+  "amount_collected": "100",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c92b"
+  },
+  "car_code": "516",
+  "culprit": "خالد مندى",
+  "amount_collected": "500",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c92c"
+  },
+  "car_code": "218",
+  "culprit": "علاء ناصر",
+  "amount_collected": "200",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 7,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-04-01T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-01T09:13:26.185Z"
+    },
+    {
+      "$date": "2026-04-01T09:14:33.267Z"
+    },
+    {
+      "$date": "2026-04-01T09:17:54.231Z"
+    },
+    {
+      "$date": "2026-05-04T12:01:27.818Z"
+    },
+    {
+      "$date": "2026-05-13T13:20:53.317Z"
+    },
+    {
+      "$date": "2026-05-25T12:12:44.279Z"
+    },
+    {
+      "$date": "2026-08-30T07:41:22.349Z"
+    }
+  ],
+  "notes": " غسيل 253 محمد عبدالله",
+  "paid": "100",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c92d"
+  },
+  "car_code": "174",
+  "culprit": "البرديسى",
+  "amount_collected": "300",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "",
+  "date_accident": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-13T11:55:49.206Z"
+    }
+  ],
+  "notes": "",
+  "paid": "300",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c92e"
+  },
+  "car_code": "157",
+  "culprit": "البنهاوى",
+  "amount_collected": "250",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-07-09T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-09T08:55:21.043Z"
+    },
+    {
+      "$date": "2026-07-09T08:56:02.574Z"
+    },
+    {
+      "$date": "2026-07-22T12:04:11.004Z"
+    }
+  ],
+  "notes": "محمد عبدالله كود 260 غسيل",
+  "paid": "150",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c92f"
+  },
+  "car_code": "219",
+  "culprit": "الحسينى",
+  "amount_collected": "400",
+  "finsh_status_color": "0",
+  "deleted": 0
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c930"
+  },
+  "car_code": "207",
+  "culprit": "محمود نزيه",
+  "amount_collected": "450",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 5,
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2025-12-31T12:41:53.397Z"
+    },
+    {
+      "$date": "2026-01-13T10:30:08.507Z"
+    },
+    {
+      "$date": "2026-01-13T10:31:41.195Z"
+    },
+    {
+      "$date": "2026-01-13T10:32:03.606Z"
+    }
+  ],
+  "company_account": "2250",
+  "date_accident": {
+    "$date": "2025-12-31T00:00:00.000Z"
+  },
+  "notes": "",
+  "paid": "2700",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c931"
+  },
+  "car_code": "162",
+  "culprit": "محمد حسن",
+  "amount_collected": "700",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 1,
+  "company_account": "",
+  "date_accident": {
+    "$date": "2026-05-10T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-10T12:17:04.755Z"
+    }
+  ],
+  "notes": "",
+  "paid": "700",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c932"
+  },
+  "car_code": "تويوتا2",
+  "culprit": "على الدونى",
+  "amount_collected": "1500",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-01-22T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-22T09:00:35.842Z"
+    },
+    {
+      "$date": "2026-01-22T13:39:39.843Z"
+    },
+    {
+      "$date": "2026-01-22T13:47:30.044Z"
+    }
+  ],
+  "notes": "",
+  "paid": "0",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c933"
+  },
+  "car_code": "267",
+  "culprit": "اسلام صابر",
+  "amount_collected": "0290",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 9,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-01-12T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-13T11:50:22.227Z"
+    },
+    {
+      "$date": "2026-01-13T11:51:01.255Z"
+    },
+    {
+      "$date": "2026-01-21T06:31:32.122Z"
+    },
+    {
+      "$date": "2026-01-22T13:42:57.303Z"
+    },
+    {
+      "$date": "2026-01-22T13:49:40.509Z"
+    },
+    {
+      "$date": "2026-01-26T10:57:30.071Z"
+    },
+    {
+      "$date": "2026-02-03T13:18:10.232Z"
+    },
+    {
+      "$date": "2026-02-11T14:15:16.302Z"
+    },
+    {
+      "$date": "2026-05-25T10:04:22.508Z"
+    }
+  ],
+  "notes": "اسكندريه+ 400 سدد",
+  "paid": "290",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c934"
+  },
+  "car_code": "178",
+  "culprit": "ايهاب شوقى",
+  "amount_collected": "300",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-03-04T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-04T10:36:16.409Z"
+    },
+    {
+      "$date": "2026-03-04T10:41:03.095Z"
+    }
+  ],
+  "notes": "فنوس كبير+فبر",
+  "paid": "300",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c935"
+  },
+  "car_code": "158",
+  "amount_collected": "600",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 6,
+  "company_account": "0",
+  "culprit": "محمد عبدالحميد فاضل",
+  "date_accident": {
+    "$date": "2026-03-31T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "pola",
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-31T06:44:14.153Z"
+    },
+    {
+      "$date": "2026-03-31T06:51:08.717Z"
+    },
+    {
+      "$date": "2026-03-31T08:04:08.075Z"
+    },
+    {
+      "$date": "2026-03-31T08:04:29.769Z"
+    },
+    {
+      "$date": "2026-04-20T06:44:35.808Z"
+    },
+    {
+      "$date": "2026-04-20T06:49:36.878Z"
+    }
+  ],
+  "notes": "",
+  "paid": "0",
+  "statement": "اكصدام خبطه"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c936"
+  },
+  "car_code": "266",
+  "culprit": "طارق محمد",
+  "amount_collected": "500",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-08-09T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "naser"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-09T09:06:28.827Z"
+    },
+    {
+      "$date": "2026-08-16T06:50:18.984Z"
+    },
+    {
+      "$date": "2026-09-14T11:31:43.076Z"
+    }
+  ],
+  "notes": "  سدد",
+  "paid": "500",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c937"
+  },
+  "car_code": "220",
+  "culprit": "سعيد فوزى",
+  "amount_collected": "700",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-01-03T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-11T12:49:50.299Z"
+    },
+    {
+      "$date": "2026-01-11T12:50:54.419Z"
+    },
+    {
+      "$date": "2026-01-11T12:51:19.406Z"
+    }
+  ],
+  "notes": "",
+  "paid": "700",
+  "statement": "",
+  "deleted_date": {
+    "$date": "2026-01-11T12:52:22.218Z"
+  },
+  "deleted_user": "pola"
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c938"
+  },
+  "car_code": "202",
+  "culprit": "محمود صلاح",
+  "amount_collected": "2400",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 2,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-07-28T00:00:00.000Z"
+  },
+  "edited_by": [
+    "ashraf noshy",
+    "ashraf noshy"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-28T08:39:55.908Z"
+    },
+    {
+      "$date": "2026-07-29T05:56:32.723Z"
+    }
+  ],
+  "notes": "",
+  "paid": "0",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c939"
+  },
+  "car_code": "156",
+  "culprit": "محمد الجبالى",
+  "amount_collected": "1300",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2025-12-23T00:00:00.000Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2025-12-23T10:33:11.090Z"
+    },
+    {
+      "$date": "2025-12-23T10:34:07.133Z"
+    },
+    {
+      "$date": "2025-12-23T10:34:53.964Z"
+    }
+  ],
+  "notes": "",
+  "paid": "0",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a5ef6dc567fe78509c93a"
+  },
+  "car_code": "164",
+  "culprit": "فهد محمد",
+  "amount_collected": "500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "__v": 3,
+  "company_account": "0",
+  "date_accident": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-19T07:16:13.538Z"
+    },
+    {
+      "$date": "2026-08-19T07:16:36.471Z"
+    },
+    {
+      "$date": "2026-08-19T07:41:21.077Z"
+    }
+  ],
+  "notes": "لصالح 160",
+  "paid": "500",
+  "statement": ""
+},
+{
+  "_id": {
+    "$oid": "694a6685fbb8c6753a9f701b"
+  },
+  "date_accident": {
+    "$date": "2025-12-21T00:00:00.000Z"
+  },
+  "car_code": "151",
+  "culprit": "محمد سيد مصطفى السباعى",
+  "statement": "مريا 2+غماز",
+  "company_account": "",
+  "amount_collected": "2000",
+  "notes": "",
+  "paid": "2000",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "pola",
+  "deleted_date": {
+    "$date": "2026-01-11T13:08:30.171Z"
+  },
+  "__v": 2,
+  "edited_by": [],
+  "edited_date": []
+},
+{
+  "_id": {
+    "$oid": "69551d589f0f94219dc6ec11"
+  },
+  "date_accident": {
+    "$date": "2025-12-31T00:00:00.000Z"
+  },
+  "car_code": "274",
+  "culprit": "الحسين محمد احمد عبدالحليم",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "400",
+  "notes": "",
+  "paid": "400",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "salah ali",
+  "deleted_date": {
+    "$date": "2026-01-19T11:00:31.345Z"
+  },
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2025-12-31T12:55:52.605Z"
+  },
+  "edited_by": [
+    "pola",
+    "mark",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "mark",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-13T13:53:43.106Z"
+    },
+    {
+      "$date": "2026-01-13T13:56:06.308Z"
+    },
+    {
+      "$date": "2026-01-13T13:57:15.013Z"
+    },
+    {
+      "$date": "2026-01-13T13:57:30.120Z"
+    },
+    {
+      "$date": "2026-01-13T13:57:42.790Z"
+    },
+    {
+      "$date": "2026-01-13T13:58:05.747Z"
+    },
+    {
+      "$date": "2026-01-13T13:59:36.911Z"
+    },
+    {
+      "$date": "2026-01-13T13:59:58.062Z"
+    },
+    {
+      "$date": "2026-01-13T14:00:17.008Z"
+    },
+    {
+      "$date": "2026-01-13T14:00:32.959Z"
+    },
+    {
+      "$date": "2026-01-13T14:00:48.826Z"
+    },
+    {
+      "$date": "2026-01-13T14:11:29.300Z"
+    },
+    {
+      "$date": "2026-01-13T14:11:41.311Z"
+    },
+    {
+      "$date": "2026-01-13T14:12:24.663Z"
+    },
+    {
+      "$date": "2026-01-13T14:17:12.664Z"
+    },
+    {
+      "$date": "2026-01-13T14:17:22.612Z"
+    },
+    {
+      "$date": "2026-01-13T14:17:33.130Z"
+    },
+    {
+      "$date": "2026-01-13T14:18:32.263Z"
+    },
+    {
+      "$date": "2026-01-13T14:18:46.696Z"
+    },
+    {
+      "$date": "2026-01-13T14:19:00.129Z"
+    },
+    {
+      "$date": "2026-01-13T14:19:09.281Z"
+    },
+    {
+      "$date": "2026-01-13T14:19:22.316Z"
+    },
+    {
+      "$date": "2026-01-13T14:19:34.479Z"
+    },
+    {
+      "$date": "2026-01-13T14:23:24.514Z"
+    },
+    {
+      "$date": "2026-01-13T14:23:24.527Z"
+    },
+    {
+      "$date": "2026-01-13T14:23:58.720Z"
+    },
+    {
+      "$date": "2026-01-13T14:27:59.201Z"
+    },
+    {
+      "$date": "2026-01-13T14:30:28.389Z"
+    },
+    {
+      "$date": "2026-01-13T14:31:06.281Z"
+    },
+    {
+      "$date": "2026-01-13T14:31:32.651Z"
+    },
+    {
+      "$date": "2026-01-13T14:32:34.994Z"
+    },
+    {
+      "$date": "2026-01-13T14:33:12.163Z"
+    }
+  ],
+  "__v": 32
+},
+{
+  "_id": {
+    "$oid": "695a3499a87b35fd8cb8b615"
+  },
+  "date_accident": {
+    "$date": "2026-01-02T00:00:00.000Z"
+  },
+  "car_code": "222",
+  "culprit": "معتزبالله احمد انور فؤاد",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "250",
+  "notes": "",
+  "paid": "250",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "pola",
+  "deleted_date": {
+    "$date": "2026-01-11T13:10:54.863Z"
+  },
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-04T09:36:25.441Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-11T11:41:25.136Z"
+    },
+    {
+      "$date": "2026-01-11T11:42:38.940Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "695a59bfa87b35fd8cb8bb79"
+  },
+  "date_accident": {
+    "$date": "2026-01-04T00:00:00.000Z"
+  },
+  "car_code": "251",
+  "culprit": "احمد اسامه على احمدالكيكى",
+  "statement": "فنوس كبير",
+  "company_account": "0",
+  "amount_collected": "1400",
+  "notes": "تم الاصلاح",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-04T12:14:55.635Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-04T12:34:19.876Z"
+    },
+    {
+      "$date": "2026-02-16T07:49:35.627Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "695a6e4ea87b35fd8cb8c4e1"
+  },
+  "date_accident": {
+    "$date": "2026-01-04T00:00:00.000Z"
+  },
+  "car_code": "528",
+  "culprit": "اسلام صابر احمد حسين",
+  "statement": "مريا",
+  "company_account": "",
+  "amount_collected": "240",
+  "notes": "اصلاح مريا",
+  "paid": "240",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-04T13:42:38.446Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-04T13:44:11.265Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "695bc4e925952a0de9caa01e"
+  },
+  "date_accident": {
+    "$date": "2026-01-04T00:00:00.000Z"
+  },
+  "car_code": "166",
+  "culprit": "اسلام صابر احمد حسين",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-05T14:04:25.234Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-13T13:01:49.752Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "695d281a25952a0de9cab169"
+  },
+  "date_accident": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "car_code": "260",
+  "culprit": "عبد الرؤف احمد عبد المنعم على",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "10000",
+  "notes": "",
+  "paid": "10000",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "pola",
+  "deleted_date": {
+    "$date": "2026-01-11T11:12:34.037Z"
+  },
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-06T15:19:54.267Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-06T15:23:05.052Z"
+    },
+    {
+      "$date": "2026-01-11T11:11:01.153Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "695d284025952a0de9cab16f"
+  },
+  "date_accident": {
+    "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "car_code": "527",
+  "culprit": "اسلام صابر احمد حسين",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "1500",
+  "notes": "501/500 شغل",
+  "paid": "1500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-06T15:20:32.380Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-06T15:25:19.660Z"
+    },
+    {
+      "$date": "2026-01-11T11:43:20.354Z"
+    },
+    {
+      "$date": "2026-01-22T09:01:11.403Z"
+    },
+    {
+      "$date": "2026-01-22T13:40:59.257Z"
+    },
+    {
+      "$date": "2026-01-26T13:49:09.198Z"
+    },
+    {
+      "$date": "2026-01-26T13:49:55.475Z"
+    },
+    {
+      "$date": "2026-01-26T13:55:36.258Z"
+    },
+    {
+      "$date": "2026-07-01T12:42:09.311Z"
+    }
+  ],
+  "__v": 8
+},
+{
+  "_id": {
+    "$oid": "696377de54423ddc3fbdf67a"
+  },
+  "date_accident": {
+    "$date": "2026-01-11T00:00:00.000Z"
+  },
+  "car_code": "231",
+  "culprit": "صبرى يوسف",
+  "statement": "فنوس",
+  "company_account": "",
+  "amount_collected": "",
+  "notes": "",
+  "paid": "",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "pola",
+  "deleted_date": {
+    "$date": "2026-01-11T10:18:40.026Z"
+  },
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-11T10:13:50.921Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6963875054423ddc3fbdfa5c"
+  },
+  "date_accident": {
+    "$date": "2026-01-08T00:00:00.000Z"
+  },
+  "car_code": "260",
+  "culprit": "عبد الرؤف احمد عبد المنعم على",
+  "statement": "2000 ونش 282",
+  "company_account": "0",
+  "amount_collected": "10000",
+  "notes": "/2000 عبدالستارللملاكى+ 3 فنوس خلفى 2 اسبير 1 كود175   م محمد2500",
+  "paid": "7650",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-11T11:19:44.019Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "ashraf noshy"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-02T16:15:21.243Z"
+    },
+    {
+      "$date": "2026-02-02T16:16:10.383Z"
+    },
+    {
+      "$date": "2026-02-03T05:24:13.409Z"
+    },
+    {
+      "$date": "2026-02-08T10:54:58.020Z"
+    },
+    {
+      "$date": "2026-02-08T10:55:41.527Z"
+    },
+    {
+      "$date": "2026-02-10T09:59:22.537Z"
+    },
+    {
+      "$date": "2026-02-11T14:02:25.904Z"
+    },
+    {
+      "$date": "2026-03-03T09:37:14.067Z"
+    },
+    {
+      "$date": "2026-03-03T10:04:51.510Z"
+    },
+    {
+      "$date": "2026-03-18T09:22:50.408Z"
+    },
+    {
+      "$date": "2026-05-10T12:42:15.757Z"
+    },
+    {
+      "$date": "2026-05-12T09:50:19.590Z"
+    },
+    {
+      "$date": "2026-05-12T09:50:24.697Z"
+    },
+    {
+      "$date": "2026-05-12T09:51:03.740Z"
+    },
+    {
+      "$date": "2026-05-12T10:08:14.571Z"
+    },
+    {
+      "$date": "2026-06-07T08:24:11.411Z"
+    },
+    {
+      "$date": "2026-06-07T08:38:36.321Z"
+    },
+    {
+      "$date": "2026-06-23T08:11:32.513Z"
+    },
+    {
+      "$date": "2026-06-25T08:53:27.551Z"
+    },
+    {
+      "$date": "2026-07-01T09:02:44.961Z"
+    },
+    {
+      "$date": "2026-07-01T09:05:14.585Z"
+    },
+    {
+      "$date": "2026-07-29T06:58:42.252Z"
+    }
+  ],
+  "__v": 22
+},
+{
+  "_id": {
+    "$oid": "69639d2e54423ddc3fbe066d"
+  },
+  "date_accident": {
+    "$date": "2026-01-11T00:00:00.000Z"
+  },
+  "car_code": "220",
+  "culprit": "سعيد فوزى احمد عبدالرحمن",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "700",
+  "notes": "",
+  "paid": "700",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-11T12:53:02.135Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-31T08:06:33.713Z"
+    },
+    {
+      "$date": "2026-03-31T08:52:26.228Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6963a11454423ddc3fbe0728"
+  },
+  "date_accident": {
+    "$date": "2026-01-11T00:00:00.000Z"
+  },
+  "car_code": "151",
+  "culprit": "محمد سيد مصطفى السباعى",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "2000",
+  "notes": "اسبير",
+  "paid": "1200",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-11T13:09:40.807Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-19T09:51:57.342Z"
+    },
+    {
+      "$date": "2026-01-19T09:52:16.369Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6963a17554423ddc3fbe0733"
+  },
+  "date_accident": {
+    "$date": "2026-01-11T00:00:00.000Z"
+  },
+  "car_code": "222",
+  "culprit": "معتزبالله احمد انور فؤاد",
+  "statement": "",
+  "company_account": "",
+  "amount_collected": "250",
+  "notes": "",
+  "paid": "",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-11T13:11:17.002Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6963a54054423ddc3fbe079f"
+  },
+  "date_accident": {
+    "$date": "2026-01-11T00:00:00.000Z"
+  },
+  "car_code": "231",
+  "culprit": "محمد جمال عبدالعظيم قاسم",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "1700",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-11T13:27:28.910Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-13T10:23:50.368Z"
+    },
+    {
+      "$date": "2026-01-13T10:24:45.183Z"
+    },
+    {
+      "$date": "2026-01-13T10:25:50.293Z"
+    },
+    {
+      "$date": "2026-01-13T10:26:05.273Z"
+    },
+    {
+      "$date": "2026-01-13T10:26:40.030Z"
+    },
+    {
+      "$date": "2026-01-21T06:30:58.569Z"
+    },
+    {
+      "$date": "2026-01-22T13:41:15.556Z"
+    },
+    {
+      "$date": "2026-01-22T13:43:38.020Z"
+    },
+    {
+      "$date": "2026-01-22T13:43:56.700Z"
+    },
+    {
+      "$date": "2026-01-22T13:45:16.517Z"
+    },
+    {
+      "$date": "2026-04-08T14:11:45.193Z"
+    },
+    {
+      "$date": "2026-05-05T08:09:59.122Z"
+    }
+  ],
+  "__v": 12
+},
+{
+  "_id": {
+    "$oid": "69661e18c54b9de36e717cb1"
+  },
+  "date_accident": {
+    "$date": "2026-01-13T00:00:00.000Z"
+  },
+  "car_code": "243",
+  "culprit": "احمد حسن",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "200",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-13T10:27:36.564Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-13T11:53:22.951Z"
+    },
+    {
+      "$date": "2026-01-13T13:46:07.149Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "696e0f8ff6b207dd6c43fa8a"
+  },
+  "date_accident": {
+    "$date": "2026-01-19T00:00:00.000Z"
+  },
+  "car_code": "274",
+  "culprit": "الحسين محمد احمد عبدالحليم",
+  "statement": "",
+  "company_account": "0",
+  "amount_collected": "400",
+  "notes": "تم الاصلاح سايق احمد محمد على+تحصيل من عميد ايهاب 2025",
+  "paid": "2350",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-01-19T11:03:43.509Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-09T07:39:44.575Z"
+    },
+    {
+      "$date": "2026-08-09T07:57:09.824Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69722c5e0b1aa09196a42c8f"
+  },
+  "date_accident": {
+    "$date": "2026-01-22T00:00:00.000Z"
+  },
+  "car_code": "525",
+  "culprit": "رضا محمد على النوبى",
+  "statement": "مريا",
+  "company_account": "",
+  "amount_collected": "240",
+  "notes": "صبرى",
+  "paid": "240",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-22T13:55:42.743Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-10T07:30:38.996Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69722d420b1aa09196a42c9b"
+  },
+  "date_accident": {
+    "$date": "2026-01-22T00:00:00.000Z"
+  },
+  "car_code": "اسيلو",
+  "culprit": "ياسر عبدالنبى",
+  "statement": "5 مريا",
+  "company_account": "1200",
+  "amount_collected": "0",
+  "notes": "اسبير",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-22T13:59:30.114Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-01-22T14:00:49.919Z"
+    },
+    {
+      "$date": "2026-01-22T14:05:39.787Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6976ed580b1aa09196a43e5b"
+  },
+  "date_accident": {
+    "$date": "2026-01-26T00:00:00.000Z"
+  },
+  "car_code": "168",
+  "culprit": "بشوى",
+  "statement": "",
+  "company_account": "",
+  "amount_collected": "1500",
+  "notes": "",
+  "paid": "",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-26T04:28:08.746Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6977481e0b1aa09196a44207"
+  },
+  "date_accident": {
+    "$date": "2026-01-26T00:00:00.000Z"
+  },
+  "car_code": "511",
+  "culprit": "اشرف نصحى",
+  "statement": "",
+  "company_account": "240",
+  "amount_collected": "0",
+  "notes": "",
+  "paid": "240",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-26T10:55:26.329Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-24T13:33:29.565Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6978c16f0b1aa09196a44db7"
+  },
+  "date_accident": {
+    "$date": "2026-01-26T00:00:00.000Z"
+  },
+  "car_code": "506",
+  "culprit": "محمد رشدى+محمد ابراهيم",
+  "statement": "فنوس شمال",
+  "company_account": "700",
+  "amount_collected": "400",
+  "notes": "تم الاصلاح",
+  "paid": "700",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-01-27T13:45:19.556Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali",
+    "salah ali",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T12:56:25.005Z"
+    },
+    {
+      "$date": "2026-02-11T12:56:52.460Z"
+    },
+    {
+      "$date": "2026-02-11T12:57:30.345Z"
+    },
+    {
+      "$date": "2026-02-11T12:58:14.426Z"
+    },
+    {
+      "$date": "2026-02-15T11:30:15.285Z"
+    },
+    {
+      "$date": "2026-03-05T07:04:35.682Z"
+    },
+    {
+      "$date": "2026-03-12T08:09:25.991Z"
+    },
+    {
+      "$date": "2026-03-12T08:18:27.611Z"
+    },
+    {
+      "$date": "2026-03-12T08:19:10.323Z"
+    },
+    {
+      "$date": "2026-03-12T08:20:11.824Z"
+    },
+    {
+      "$date": "2026-03-12T08:21:00.924Z"
+    },
+    {
+      "$date": "2026-03-12T08:21:48.201Z"
+    },
+    {
+      "$date": "2026-03-26T12:04:47.917Z"
+    },
+    {
+      "$date": "2026-03-26T12:05:42.666Z"
+    },
+    {
+      "$date": "2026-03-30T13:20:00.761Z"
+    },
+    {
+      "$date": "2026-03-30T13:20:04.732Z"
+    },
+    {
+      "$date": "2026-03-30T13:20:56.002Z"
+    },
+    {
+      "$date": "2026-05-10T12:20:45.098Z"
+    },
+    {
+      "$date": "2026-07-01T09:59:19.668Z"
+    },
+    {
+      "$date": "2026-07-01T12:55:12.313Z"
+    },
+    {
+      "$date": "2026-07-01T12:57:17.894Z"
+    }
+  ],
+  "__v": 21
+},
+{
+  "_id": {
+    "$oid": "697f5ef30b1aa09196a45a47"
+  },
+  "date_accident": {
+    "$date": "2026-02-01T00:00:00.000Z"
+  },
+  "car_code": "182",
+  "culprit": "احمد هشام يوسف احسان توكل",
+  "statement": "",
+  "company_account": "",
+  "amount_collected": "1000",
+  "notes": "مرور",
+  "paid": "100",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-01T14:10:59.058Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69803b2d0b1aa09196a45e38"
+  },
+  "date_accident": {
+    "$date": "2026-02-02T00:00:00.000Z"
+  },
+  "car_code": "175",
+  "culprit": "عصام محمد فؤاد باشا",
+  "statement": "فنوس شمال خلفى",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "من المحصلات 1200",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-02T05:50:37.573Z"
+  },
+  "edited_by": [
+    "pola",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-23T06:19:23.889Z"
+    },
+    {
+      "$date": "2026-03-03T10:39:22.650Z"
+    },
+    {
+      "$date": "2026-03-03T10:42:24.488Z"
+    },
+    {
+      "$date": "2026-05-17T08:32:42.133Z"
+    },
+    {
+      "$date": "2026-06-21T05:44:44.043Z"
+    },
+    {
+      "$date": "2026-07-20T10:20:18.943Z"
+    },
+    {
+      "$date": "2026-07-20T11:55:27.850Z"
+    }
+  ],
+  "__v": 7
+},
+{
+  "_id": {
+    "$oid": "6981c5000b1aa09196a4658f"
+  },
+  "date_accident": {
+    "$date": "2026-02-03T00:00:00.000Z"
+  },
+  "car_code": "تويوتا 1",
+  "culprit": "اشرف نصحى",
+  "statement": "",
+  "company_account": "500",
+  "amount_collected": "0",
+  "notes": "كلكس",
+  "paid": "400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-03T09:50:56.239Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-03T09:52:44.056Z"
+    },
+    {
+      "$date": "2026-02-03T12:21:20.809Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6981e0450b1aa09196a465a1"
+  },
+  "date_accident": {
+    "$date": "2026-02-03T00:00:00.000Z"
+  },
+  "car_code": "523",
+  "culprit": "محمد عبدالرحمن احمد العاصى",
+  "statement": "مريا",
+  "company_account": "0",
+  "amount_collected": "240",
+  "notes": "سدد",
+  "paid": "240",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-03T11:47:17.829Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-03T11:47:53.767Z"
+    },
+    {
+      "$date": "2026-02-10T10:02:17.787Z"
+    },
+    {
+      "$date": "2026-02-11T12:00:20.293Z"
+    },
+    {
+      "$date": "2026-02-11T12:13:49.225Z"
+    },
+    {
+      "$date": "2026-02-15T06:06:13.277Z"
+    }
+  ],
+  "__v": 5
+},
+{
+  "_id": {
+    "$oid": "698458410b1aa09196a46a4d"
+  },
+  "date_accident": {
+    "$date": "2026-02-05T00:00:00.000Z"
+  },
+  "car_code": "كوستر 2",
+  "culprit": "احمد فوزى عثمان عبد الحى عامر",
+  "statement": "السوق المحلى صيانه اول مره+تنظيف دورة تبريد+ضبط الانوار+تشحيم",
+  "company_account": "7820",
+  "amount_collected": "0",
+  "notes": "اوسيم",
+  "paid": "7820",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-05T08:43:45.889Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-05T08:45:04.998Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "698881f20b1aa09196a47102"
+  },
+  "date_accident": {
+    "$date": "2026-02-08T00:00:00.000Z"
+  },
+  "car_code": "277",
+  "culprit": "سعودى مصباح",
+  "statement": "غماز",
+  "company_account": "0",
+  "amount_collected": "200",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-08T12:30:42.098Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-08T12:31:49.504Z"
+    },
+    {
+      "$date": "2026-02-11T08:49:20.917Z"
+    },
+    {
+      "$date": "2026-02-11T12:13:05.591Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "698adf250b1aa09196a47604"
+  },
+  "date_accident": {
+    "$date": "2026-02-10T00:00:00.000Z"
+  },
+  "car_code": "508",
+  "culprit": "مصطفى هارون",
+  "statement": "مريا",
+  "company_account": "0",
+  "amount_collected": "240",
+  "notes": "تم الاصلاح",
+  "paid": "240",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-10T07:32:53.596Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-10T07:34:02.571Z"
+    },
+    {
+      "$date": "2026-02-11T12:14:38.909Z"
+    },
+    {
+      "$date": "2026-02-16T13:43:30.533Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "698ae0f30b1aa09196a47610"
+  },
+  "date_accident": {
+    "$date": "2026-02-10T00:00:00.000Z"
+  },
+  "car_code": "214",
+  "culprit": "محمد عبد الله محمد عبد المحسن",
+  "statement": "ترصيص",
+  "company_account": "400",
+  "amount_collected": "0",
+  "notes": "تم الاصلاح",
+  "paid": "400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-10T07:40:35.037Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T08:55:30.683Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "698c734e0b1aa09196a47c35"
+  },
+  "date_accident": {
+    "$date": "2026-02-11T00:00:00.000Z"
+  },
+  "car_code": "513",
+  "culprit": "عبدالروؤف احمد",
+  "statement": "فنوس امامى شمال",
+  "company_account": "0",
+  "amount_collected": "400",
+  "notes": "تم الاصلاح",
+  "paid": "400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-11T12:17:18.432Z"
+  },
+  "edited_by": [
+    "pola",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T12:17:52.045Z"
+    },
+    {
+      "$date": "2026-03-02T07:47:34.183Z"
+    },
+    {
+      "$date": "2026-05-10T12:49:40.801Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "698c741f0b1aa09196a47c41"
+  },
+  "date_accident": {
+    "$date": "2026-02-11T00:00:00.000Z"
+  },
+  "car_code": "512",
+  "culprit": "اسلام ايمن محمود كامل شوقى",
+  "statement": "فنوس امامى يمين",
+  "company_account": "400",
+  "amount_collected": "0",
+  "notes": "0منتظر",
+  "paid": "400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-11T12:20:47.882Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T12:21:21.174Z"
+    },
+    {
+      "$date": "2026-02-11T12:49:27.933Z"
+    },
+    {
+      "$date": "2026-02-12T11:52:40.813Z"
+    },
+    {
+      "$date": "2026-02-15T11:27:37.877Z"
+    },
+    {
+      "$date": "2026-03-02T11:15:06.556Z"
+    },
+    {
+      "$date": "2026-03-02T11:15:45.462Z"
+    },
+    {
+      "$date": "2026-03-25T08:12:47.530Z"
+    }
+  ],
+  "__v": 7
+},
+{
+  "_id": {
+    "$oid": "698c8bde0b1aa09196a47ce7"
+  },
+  "date_accident": {
+    "$date": "2026-02-02T00:00:00.000Z"
+  },
+  "car_code": "بيجو",
+  "culprit": "عمرو عبد الحميد عبد العليم الاحول",
+  "statement": "اصلاح الفرامل",
+  "company_account": "1900",
+  "amount_collected": "0",
+  "notes": "تم الاصلاح",
+  "paid": "1900",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-11T14:02:06.246Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-11T14:03:30.190Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "698daabcc3d9c0ff13c78727"
+  },
+  "date_accident": {
+    "$date": "2026-02-02T00:00:00.000Z"
+  },
+  "car_code": "255",
+  "culprit": "طارق محمد عبدالمجيد على",
+  "statement": "فرد كوتش 22 الف",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر 750",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-02-12T10:26:04.226Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-05T07:08:34.083Z"
+    },
+    {
+      "$date": "2026-05-17T07:34:50.363Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "698dab07c3d9c0ff13c7872d"
+  },
+  "date_accident": {
+    "$date": "2026-02-11T00:00:00.000Z"
+  },
+  "car_code": "248",
+  "culprit": "محمد جمال عبد الغفار محمد",
+  "statement": "فردة كوتش 12 الف",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر 1000",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-02-12T10:27:19.412Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-05T07:07:14.166Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "699160aac3d9c0ff13c788fe"
+  },
+  "date_accident": {
+    "$date": "2026-02-15T00:00:00.000Z"
+  },
+  "car_code": "تويوتا 1",
+  "culprit": "معتزبالله احمد انور فؤاد",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "تم الاصلاح بمعرفه السائق",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-02-15T05:59:06.651Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-15T06:00:04.292Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69916487c3d9c0ff13c7893e"
+  },
+  "date_accident": {
+    "$date": "2026-02-15T00:00:00.000Z"
+  },
+  "car_code": "273",
+  "culprit": "مصطفى على عبد المنجى مصطفى ريحان",
+  "statement": "خبطه",
+  "company_account": "",
+  "amount_collected": "0",
+  "notes": "تم الاصلاح بمعرفه السائق",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-02-15T06:15:35.922Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69916d81c3d9c0ff13c78976"
+  },
+  "date_accident": {
+    "$date": "2026-02-15T00:00:00.000Z"
+  },
+  "car_code": "151",
+  "culprit": "محمد سيد مصطفى السباعى",
+  "statement": "خبطه باب السائق",
+  "company_account": "0",
+  "amount_collected": "400",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-02-15T06:53:53.108Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-06T09:05:33.259Z"
+    },
+    {
+      "$date": "2026-04-27T07:23:49.277Z"
+    },
+    {
+      "$date": "2026-06-08T12:40:46.147Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "69917537c3d9c0ff13c7897c"
+  },
+  "date_accident": {
+    "$date": "2026-02-15T00:00:00.000Z"
+  },
+  "car_code": "279",
+  "culprit": "احمد محمود محمد كردوش",
+  "statement": "خبطه من الخلف",
+  "company_account": "0",
+  "amount_collected": "4650 من عبدالرحمن",
+  "notes": " 50000للعميد ايهاب",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-02-15T07:26:47.464Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "ashraf noshy",
+    "ashraf noshy",
+    "naser",
+    "naser",
+    "naser"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-15T07:29:16.136Z"
+    },
+    {
+      "$date": "2026-03-11T07:42:42.967Z"
+    },
+    {
+      "$date": "2026-03-11T07:42:57.648Z"
+    },
+    {
+      "$date": "2026-09-16T07:05:30.351Z"
+    },
+    {
+      "$date": "2026-09-16T07:05:31.222Z"
+    },
+    {
+      "$date": "2026-09-16T07:07:12.332Z"
+    }
+  ],
+  "__v": 6
+},
+{
+  "_id": {
+    "$oid": "6992bb9a92ebcd82deb012f7"
+  },
+  "date_accident": {
+    "$date": "2026-02-16T00:00:00.000Z"
+  },
+  "car_code": "507",
+  "culprit": "محمد جمال عبد الغفار محمد",
+  "statement": "فنوس +سامى",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر الاصلاح",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-16T06:39:22.326Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-05T07:05:41.348Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "699435f092ebcd82deb0144a"
+  },
+  "date_accident": {
+    "$date": "2026-02-17T00:00:00.000Z"
+  },
+  "car_code": "156",
+  "culprit": "احمد ابراهيم",
+  "statement": "2 مساحة مطر +تعديل",
+  "company_account": "150",
+  "amount_collected": "0",
+  "notes": "",
+  "paid": "150",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-17T09:33:36.528Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-10T12:47:04.369Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "699bef801d097a831a479a3e"
+  },
+  "date_accident": {
+    "$date": "2026-02-23T00:00:00.000Z"
+  },
+  "car_code": "178",
+  "culprit": "شريف قاسم",
+  "statement": "فنوس امامى شمال",
+  "company_account": "0",
+  "amount_collected": "1500",
+  "notes": "فنوس+فبر",
+  "paid": "1500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-23T06:11:12.765Z"
+  },
+  "edited_by": [
+    "pola",
+    "pola",
+    "pola",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-02-23T06:15:30.627Z"
+    },
+    {
+      "$date": "2026-02-23T06:15:49.193Z"
+    },
+    {
+      "$date": "2026-02-24T10:32:42.476Z"
+    },
+    {
+      "$date": "2026-03-04T10:33:20.493Z"
+    },
+    {
+      "$date": "2026-03-04T10:41:35.587Z"
+    }
+  ],
+  "__v": 5
+},
+{
+  "_id": {
+    "$oid": "699d79bb1d097a831a479c4e"
+  },
+  "date_accident": {
+    "$date": "2026-02-24T00:00:00.000Z"
+  },
+  "car_code": "219",
+  "culprit": "محمد مهدى",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "300",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-02-24T10:13:15.818Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-05T07:46:15.093Z"
+    },
+    {
+      "$date": "2026-04-07T13:18:21.418Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69a43e4ac3d9c0ff13c80132"
+  },
+  "date_accident": {
+    "$date": "2026-03-01T00:00:00.000Z"
+  },
+  "car_code": "220",
+  "culprit": "شريف محمد قاسم حسين",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "500",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-01T13:25:30.129Z"
+  },
+  "edited_by": [
+    "pola",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-27T05:34:25.595Z"
+    },
+    {
+      "$date": "2026-05-04T12:00:04.215Z"
+    },
+    {
+      "$date": "2026-05-04T12:00:33.901Z"
+    },
+    {
+      "$date": "2026-05-18T12:46:54.338Z"
+    },
+    {
+      "$date": "2026-05-18T12:48:07.006Z"
+    },
+    {
+      "$date": "2026-07-01T09:00:00.246Z"
+    }
+  ],
+  "__v": 6
+},
+{
+  "_id": {
+    "$oid": "69a6a238c3d9c0ff13c813f2"
+  },
+  "date_accident": {
+    "$date": "2026-03-03T00:00:00.000Z"
+  },
+  "car_code": "تويوتا 2",
+  "culprit": "مصطفى عثمان محمود عثمان",
+  "statement": "فنوس خلفى ",
+  "company_account": "0",
+  "amount_collected": "500",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-03T08:56:24.320Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "ashraf noshy",
+    "salah ali",
+    "pola",
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-03T12:46:45.601Z"
+    },
+    {
+      "$date": "2026-03-11T08:34:30.383Z"
+    },
+    {
+      "$date": "2026-03-18T09:18:00.662Z"
+    },
+    {
+      "$date": "2026-03-24T07:24:52.587Z"
+    },
+    {
+      "$date": "2026-03-24T07:25:54.940Z"
+    }
+  ],
+  "__v": 5
+},
+{
+  "_id": {
+    "$oid": "69a6a33ac3d9c0ff13c813fa"
+  },
+  "date_accident": {
+    "$date": "2026-03-03T00:00:00.000Z"
+  },
+  "car_code": "534",
+  "culprit": "محمود الفنان",
+  "statement": "غسيل احمد عبدربه",
+  "company_account": "0",
+  "amount_collected": "100",
+  "notes": "سدد",
+  "paid": "100",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "salah ali",
+  "deleted_date": {
+    "$date": "2026-04-02T09:06:24.765Z"
+  },
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-03T09:00:42.946Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-03T09:01:42.097Z"
+    },
+    {
+      "$date": "2026-03-15T11:47:04.453Z"
+    },
+    {
+      "$date": "2026-03-17T13:06:36.143Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "69a8188ec3d9c0ff13c81b71"
+  },
+  "date_accident": {
+    "$date": "2026-03-01T00:00:00.000Z"
+  },
+  "car_code": "273",
+  "culprit": "عماد صابر عبد الفتاح عطيه",
+  "statement": "فبره مكسوره",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-04T11:33:34.685Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69a91b4cc3d9c0ff13c82001"
+  },
+  "date_accident": {
+    "$date": "2026-03-05T00:00:00.000Z"
+  },
+  "car_code": "507",
+  "culprit": "محمد السيد عباس محمد",
+  "statement": "مرايا",
+  "company_account": "0",
+  "amount_collected": "225",
+  "notes": "سدد 225 م عبدالله",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-05T05:57:32.529Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-15T10:14:34.103Z"
+    },
+    {
+      "$date": "2026-04-02T09:01:51.805Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69ae7059c3d9c0ff13c84693"
+  },
+  "date_accident": {
+    "$date": "2026-03-09T00:00:00.000Z"
+  },
+  "car_code": "150",
+  "culprit": "محمود محمد فهمى محمود",
+  "statement": "فنوس شمال امامى",
+  "company_account": "0",
+  "amount_collected": "1500",
+  "notes": "سدد تم الاصلاح",
+  "paid": "1500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-09T07:01:45.972Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-24T08:47:36.233Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69b66a20ef2fd07d68dcef8c"
+  },
+  "date_accident": {
+    "$date": "2026-03-15T00:00:00.000Z"
+  },
+  "car_code": "804",
+  "culprit": "اشرف نصحى",
+  "statement": "طفية حريق etm",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "0",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-15T08:13:20.303Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-07T08:25:35.541Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69b80ac7ef2fd07d68dcff72"
+  },
+  "date_accident": {
+    "$date": "2026-03-16T00:00:00.000Z"
+  },
+  "car_code": "282",
+  "culprit": "محمد فاروق",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر الاصلاح",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-16T13:51:03.223Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69b91d49ef2fd07d68dd0979"
+  },
+  "date_accident": {
+    "$date": "2026-03-17T00:00:00.000Z"
+  },
+  "car_code": "277",
+  "culprit": "محمود الجندى",
+  "statement": "فنوس شمال خلفى",
+  "company_account": "0",
+  "amount_collected": "300",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-17T09:22:17.624Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69ba4c7eef2fd07d68dd0b8d"
+  },
+  "date_accident": {
+    "$date": "2026-03-18T00:00:00.000Z"
+  },
+  "car_code": "178",
+  "culprit": "احمد ناصر عبدالمنعم",
+  "statement": "ظهر مريا شمتال",
+  "company_account": "0",
+  "amount_collected": "2000",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-18T06:55:58.012Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-03-18T07:08:25.021Z"
+    },
+    {
+      "$date": "2026-03-18T09:58:43.066Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69c23dd994374546379f6063"
+  },
+  "date_accident": {
+    "$date": "2026-03-24T00:00:00.000Z"
+  },
+  "car_code": "164",
+  "culprit": "كريم صابر",
+  "statement": "اكصدام",
+  "company_account": "",
+  "amount_collected": "500",
+  "notes": "سدد",
+  "paid": "500",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-03-24T07:31:37.050Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-07T13:20:26.524Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69c23e1a94374546379f6069"
+  },
+  "date_accident": {
+    "$date": "2026-03-24T00:00:00.000Z"
+  },
+  "car_code": "162",
+  "culprit": "بسام حسن عبد العزيز حسن حنفى",
+  "statement": "شرخ فنوس خلفى شمال",
+  "company_account": "0",
+  "amount_collected": "300",
+  "notes": "",
+  "paid": "300",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-03-24T07:32:42.066Z"
+  },
+  "edited_by": [
+    "pola",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-07T13:20:38.706Z"
+    },
+    {
+      "$date": "2026-04-28T10:23:25.496Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69ca2b58ef2fd07d68dd5f7c"
+  },
+  "date_accident": {
+    "$date": "2026-03-30T00:00:00.000Z"
+  },
+  "car_code": "510",
+  "culprit": "احمد منجد شبل على",
+  "statement": "خبطه فى الرمب",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر الاصلاح اشرف 250",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-03-30T07:50:48.536Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "ashraf noshy"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-06T09:04:17.592Z"
+    },
+    {
+      "$date": "2026-04-19T09:46:25.482Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69cb9c7c91754621a8a66e9a"
+  },
+  "date_accident": {
+    "$date": "2026-03-31T00:00:00.000Z"
+  },
+  "car_code": "274",
+  "culprit": "سمير مصطفى",
+  "statement": "خبطه فى باب جرار",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": " 400منتظر الاصلاح",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-03-31T10:05:48.182Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-11T10:49:50.814Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69d213795482d6a6e1dd5cf5"
+  },
+  "date_accident": {
+    "$date": "2026-04-05T00:00:00.000Z"
+  },
+  "car_code": "199",
+  "culprit": "ايهاب نبيل عبد الحميد السيد",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "تم الاصلاح على حساب السائق",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-04-05T07:47:05.917Z"
+  },
+  "edited_by": [
+    "pola"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-27T07:25:15.231Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69d265015482d6a6e1dd5f00"
+  },
+  "date_accident": {
+    "$date": "2026-04-05T00:00:00.000Z"
+  },
+  "car_code": "214",
+  "culprit": "عمرو محسن على قناوى+ رضا النوبى",
+  "statement": "مفتاح عجل",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "تم احضار مفتاح",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-04-05T13:34:57.113Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-05T13:35:53.471Z"
+    },
+    {
+      "$date": "2026-05-04T11:55:13.792Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "69d26e6b5482d6a6e1dd5f12"
+  },
+  "date_accident": {
+    "$date": "2026-04-05T00:00:00.000Z"
+  },
+  "car_code": "287",
+  "culprit": "محمد ابراهيم السيد عبده",
+  "statement": "نقص 2 مفتاح خزنه+ تحرك العربه المخزنه بدون ازن",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "تم الاضلاح",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-04-05T14:15:07.892Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-13T09:53:12.474Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69d376b35ac193dab59981df"
+  },
+  "date_accident": {
+    "$date": "2026-04-05T00:00:00.000Z"
+  },
+  "car_code": "282",
+  "culprit": "عماد صابر عبد الفتاح عطيه",
+  "statement": "خبطه فى الباب الشمال",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر الاصلاح عماد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-04-06T09:02:43.671Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69d638e4fdba450bf5bbb314"
+  },
+  "date_accident": {
+    "$date": "2026-04-08T00:00:00.000Z"
+  },
+  "car_code": "516",
+  "culprit": "محمد جمال + مروان احمد",
+  "statement": "فردة كوتش  4000 كياو متر",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-04-08T11:15:48.296Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69ddf08b66ccdb04993a979f"
+  },
+  "date_accident": {
+    "$date": "2026-04-14T00:00:00.000Z"
+  },
+  "car_code": "207",
+  "culprit": "مروان مصطفى رشاد عبدالمعطى",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "450",
+  "notes": "0",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-04-14T07:45:15.886Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69e0c4215ac9cff53523b85c"
+  },
+  "date_accident": {
+    "$date": "2026-04-16T00:00:00.000Z"
+  },
+  "car_code": "515",
+  "culprit": "محمود بهنساوى فرغلى محمود",
+  "statement": "مريا",
+  "company_account": "0",
+  "amount_collected": "250",
+  "notes": "سدد",
+  "paid": "250",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-04-16T11:12:33.626Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69e4a3e08a086e49d2697653"
+  },
+  "date_accident": {
+    "$date": "2026-04-19T00:00:00.000Z"
+  },
+  "car_code": "510",
+  "culprit": "على ابراهيم",
+  "statement": "مريا",
+  "company_account": "0",
+  "amount_collected": "300",
+  "notes": "سدد تم",
+  "paid": "300",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "ashraf noshy",
+  "added_date": {
+    "$date": "2026-04-19T09:44:00.154Z"
+  },
+  "edited_by": [
+    "ashraf noshy",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-19T09:45:31.335Z"
+    },
+    {
+      "$date": "2026-05-05T07:34:00.708Z"
+    },
+    {
+      "$date": "2026-05-05T08:06:46.659Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "69f03acfd15da6d2e6be57b9"
+  },
+  "date_accident": {
+    "$date": "2026-04-28T00:00:00.000Z"
+  },
+  "car_code": "258",
+  "culprit": "تهامى",
+  "statement": "فبره",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "pola",
+  "deleted_date": {
+    "$date": "2026-04-28T04:51:44.836Z"
+  },
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-04-28T04:42:55.174Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "69f03cd4d15da6d2e6be57bf"
+  },
+  "date_accident": {
+    "$date": "2026-04-28T00:00:00.000Z"
+  },
+  "car_code": "258",
+  "culprit": "تهامى + رضا النوبى",
+  "statement": "فبره",
+  "company_account": "0",
+  "amount_collected": "300",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "pola",
+  "added_date": {
+    "$date": "2026-04-28T04:51:32.486Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-04-29T06:13:39.810Z"
+    },
+    {
+      "$date": "2026-05-04T10:43:06.306Z"
+    },
+    {
+      "$date": "2026-05-04T12:02:03.221Z"
+    },
+    {
+      "$date": "2026-05-11T10:52:41.975Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "69f730016ab06c21a7d0b227"
+  },
+  "date_accident": {
+    "$date": "2026-05-03T00:00:00.000Z"
+  },
+  "car_code": "258",
+  "culprit": "رضا النوبى+سعودى",
+  "statement": "كف مريا",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "تم الاصلاح",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-03T11:22:41.047Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-11T10:54:56.878Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "69fb0877b8ea70eee17b6f9e"
+  },
+  "date_accident": {
+    "$date": "2026-05-06T00:00:00.000Z"
+  },
+  "car_code": "232",
+  "culprit": "احمد حسن",
+  "statement": "فنوس شمال خلفى",
+  "company_account": "0",
+  "amount_collected": "1500",
+  "notes": " سدد تم الاصلاح",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-06T09:23:03.266Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-06T09:23:47.190Z"
+    },
+    {
+      "$date": "2026-05-24T08:53:21.739Z"
+    },
+    {
+      "$date": "2026-08-19T07:02:55.400Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "69fb2548b8ea70eee17b7142"
+  },
+  "date_accident": {
+    "$date": "2026-05-06T00:00:00.000Z"
+  },
+  "car_code": "504",
+  "culprit": "محمد رفئت",
+  "statement": "فنوس اشاره شمال",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "0",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-06T11:26:00.153Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a004cf4768a12c56ddfd022"
+  },
+  "date_accident": {
+    "$date": "2026-05-10T00:00:00.000Z"
+  },
+  "car_code": "505",
+  "culprit": "طلعت جابر حسين بحيرى",
+  "statement": "خبطه من الخلق",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر م عبدالله",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-10T09:16:36.551Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a01b418768a12c56ddfe7f4"
+  },
+  "date_accident": {
+    "$date": "2026-05-11T00:00:00.000Z"
+  },
+  "car_code": "158",
+  "culprit": "كريم صابر السيد على",
+  "statement": "2 كف مريا",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر 150",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-11T10:48:56.445Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-11T10:49:36.179Z"
+    },
+    {
+      "$date": "2026-05-25T10:15:21.824Z"
+    },
+    {
+      "$date": "2026-06-08T12:41:57.713Z"
+    },
+    {
+      "$date": "2026-06-08T12:42:23.807Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "6a046436768a12c56ddffc85"
+  },
+  "date_accident": {
+    "$date": "2026-05-13T00:00:00.000Z"
+  },
+  "car_code": "802",
+  "culprit": "محمد ابراهيم /مشرف اكتوبر",
+  "statement": "عسيل ",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "من المحصلات",
+  "paid": "150",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-13T11:44:54.054Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-13T11:45:29.652Z"
+    },
+    {
+      "$date": "2026-05-13T11:47:06.899Z"
+    },
+    {
+      "$date": "2026-05-13T13:11:21.221Z"
+    },
+    {
+      "$date": "2026-05-25T12:34:19.197Z"
+    },
+    {
+      "$date": "2026-08-30T07:26:16.434Z"
+    },
+    {
+      "$date": "2026-08-30T07:26:58.399Z"
+    },
+    {
+      "$date": "2026-08-30T07:27:43.677Z"
+    },
+    {
+      "$date": "2026-08-30T07:28:11.966Z"
+    }
+  ],
+  "__v": 8
+},
+{
+  "_id": {
+    "$oid": "6a0584e2768a12c56de00286"
+  },
+  "date_accident": {
+    "$date": "2026-05-14T00:00:00.000Z"
+  },
+  "car_code": "512",
+  "culprit": "عمرو عبد الحميد عبد العليم الاحول",
+  "statement": "فنوس شمال+نزيه+ايمن على/خبطه",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "0منتظر",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-14T08:16:34.733Z"
+  },
+  "edited_by": [
+    "ashraf noshy"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-29T06:55:16.901Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a0986a0768a12c56de01045"
+  },
+  "date_accident": {
+    "$date": "2026-05-14T00:00:00.000Z"
+  },
+  "car_code": "534",
+  "culprit": "سامى سرحان عبد المجيد عبد الرحمن",
+  "statement": "خبطه فى وصال",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر اصلاح مصنع",
+  "paid": "0",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-17T09:13:04.169Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a0aa468768a12c56de013f4"
+  },
+  "date_accident": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "car_code": "526",
+  "culprit": "عماد حمدى فهيم عبد الرسول",
+  "statement": "ظفر شمال فقد",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر م عبدالله",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-18T05:32:24.511Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-18T12:35:14.354Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a0acad5768a12c56de021c2"
+  },
+  "date_accident": {
+    "$date": "2026-05-18T00:00:00.000Z"
+  },
+  "car_code": "150",
+  "culprit": "وضاح",
+  "statement": "فنوس امامى شمال",
+  "company_account": "0",
+  "amount_collected": "1400",
+  "notes": "",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-18T08:16:21.243Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-05-24T08:48:31.463Z"
+    },
+    {
+      "$date": "2026-05-24T08:50:57.230Z"
+    },
+    {
+      "$date": "2026-05-24T08:52:18.382Z"
+    },
+    {
+      "$date": "2026-06-07T08:26:11.714Z"
+    },
+    {
+      "$date": "2026-06-11T12:17:17.777Z"
+    },
+    {
+      "$date": "2026-07-01T09:09:20.573Z"
+    },
+    {
+      "$date": "2026-08-19T07:06:54.296Z"
+    }
+  ],
+  "__v": 7
+},
+{
+  "_id": {
+    "$oid": "6a142dd620d205284876ab28"
+  },
+  "date_accident": {
+    "$date": "2026-05-25T00:00:00.000Z"
+  },
+  "car_code": "283",
+  "culprit": "محمد عبدالرحمن احمد العاصى",
+  "statement": "فنوس خلفى شمال",
+  "company_account": "0",
+  "amount_collected": "1400",
+  "notes": "اصلاح تم",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-25T11:09:10.944Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-15T06:03:44.291Z"
+    },
+    {
+      "$date": "2026-08-04T08:19:11.666Z"
+    },
+    {
+      "$date": "2026-08-19T07:06:43.117Z"
+    },
+    {
+      "$date": "2026-08-24T11:24:21.496Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "6a14307b20d205284876ab3e"
+  },
+  "date_accident": {
+    "$date": "2026-05-25T00:00:00.000Z"
+  },
+  "car_code": "151",
+  "culprit": "مصطفى محمود شهاب الدين محمد",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "3000",
+  "notes": "اشرف للاصلاح200منتظر",
+  "paid": "3000",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-05-25T11:20:27.405Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-04T07:11:00.465Z"
+    },
+    {
+      "$date": "2026-06-04T07:11:37.029Z"
+    },
+    {
+      "$date": "2026-06-07T08:22:53.008Z"
+    },
+    {
+      "$date": "2026-06-11T12:15:25.308Z"
+    },
+    {
+      "$date": "2026-07-06T12:33:08.653Z"
+    },
+    {
+      "$date": "2026-07-06T12:33:59.934Z"
+    },
+    {
+      "$date": "2026-08-16T12:33:27.220Z"
+    },
+    {
+      "$date": "2026-08-16T12:34:13.756Z"
+    },
+    {
+      "$date": "2026-08-18T11:42:53.073Z"
+    }
+  ],
+  "__v": 9
+},
+{
+  "_id": {
+    "$oid": "6a1d684520d205284876cc5d"
+  },
+  "date_accident": {
+    "$date": "2026-06-01T00:00:00.000Z"
+  },
+  "car_code": "278",
+  "culprit": "محمود محمد احمد إبراهيم",
+  "statement": "خبطه فى باب القائد",
+  "company_account": "0",
+  "amount_collected": "1000",
+  "notes": "0",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-01T11:08:53.574Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a25064dbd930c051c4bcffb"
+  },
+  "date_accident": {
+    "$date": "2026-06-07T00:00:00.000Z"
+  },
+  "car_code": "156",
+  "culprit": "محمد سيد مصطفى السباعى",
+  "statement": "خبطه باب الخلفى",
+  "company_account": "0",
+  "amount_collected": "1000",
+  "notes": "سدد",
+  "paid": "500",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-07T05:49:01.835Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-07T05:58:44.435Z"
+    },
+    {
+      "$date": "2026-07-01T12:33:25.831Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6a2528f2bd930c051c4bd200"
+  },
+  "date_accident": {
+    "$date": "2026-06-07T00:00:00.000Z"
+  },
+  "car_code": "251",
+  "culprit": "محمود ابراهيم محمود",
+  "statement": "فنوس امامى",
+  "company_account": "0",
+  "amount_collected": "1400",
+  "notes": "سدد للاصلاح تم الاصلاح",
+  "paid": "1400",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-07T08:16:50.734Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-07T08:17:17.600Z"
+    },
+    {
+      "$date": "2026-06-07T08:22:27.899Z"
+    },
+    {
+      "$date": "2026-08-19T07:08:30.722Z"
+    },
+    {
+      "$date": "2026-08-24T11:26:44.199Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "6a26a7e8bd930c051c4beafa"
+  },
+  "date_accident": {
+    "$date": "2026-06-08T00:00:00.000Z"
+  },
+  "car_code": "804",
+  "culprit": "اشرف نصحى",
+  "statement": "مريا",
+  "company_account": "350",
+  "amount_collected": "0",
+  "notes": "منتظر البيان",
+  "paid": "350",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-08T11:30:48.060Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-08T11:31:38.808Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a2fb8ff78975c0e8c21ed7f"
+  },
+  "date_accident": {
+    "$date": "2026-06-15T00:00:00.000Z"
+  },
+  "car_code": "282",
+  "culprit": "مصطفى كمال عبد المحسن حمزه",
+  "statement": "فبره",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر الاصلاح",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-15T08:34:07.303Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a37762d78975c0e8c220369"
+  },
+  "date_accident": {
+    "$date": "2026-06-16T00:00:00.000Z"
+  },
+  "car_code": "175",
+  "culprit": "سامح جمال الدين احمد فوزى الطويل",
+  "statement": "تيش",
+  "company_account": "0",
+  "amount_collected": "1000",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 1,
+  "deleted_user": "salah ali",
+  "deleted_date": {
+    "$date": "2026-06-21T05:44:12.099Z"
+  },
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-21T05:27:09.159Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a37763178975c0e8c22036f"
+  },
+  "date_accident": {
+    "$date": "2026-06-16T00:00:00.000Z"
+  },
+  "car_code": "175",
+  "culprit": "سامح جمال الدين احمد فوزى الطويل",
+  "statement": "تيش",
+  "company_account": "0",
+  "amount_collected": "1000",
+  "notes": "سدد",
+  "paid": "1000",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-21T05:27:13.202Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-20T11:56:08.815Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a37766178975c0e8c220375"
+  },
+  "date_accident": {
+    "$date": "2026-06-21T00:00:00.000Z"
+  },
+  "car_code": "154",
+  "culprit": "كريم حسن محمد سليمان",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "500",
+  "notes": "0",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-21T05:28:01.927Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a3776dd78975c0e8c22037b"
+  },
+  "date_accident": {
+    "$date": "2026-06-21T00:00:00.000Z"
+  },
+  "car_code": "165",
+  "culprit": "ادهم محمد عبد المنعم ابراهيم",
+  "statement": "خبطه  ",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-21T05:30:05.879Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a37770c78975c0e8c220381"
+  },
+  "date_accident": {
+    "$date": "2026-06-21T00:00:00.000Z"
+  },
+  "car_code": "177",
+  "culprit": "احمد غريب ابراهيم عبد الرحمن",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "100",
+  "notes": "احمد ابراهيم",
+  "paid": "100",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-21T05:30:52.352Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-26T11:50:23.641Z"
+    },
+    {
+      "$date": "2026-08-26T10:09:44.909Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6a3a273678975c0e8c2227d3"
+  },
+  "date_accident": {
+    "$date": "2026-06-23T00:00:00.000Z"
+  },
+  "car_code": "168",
+  "culprit": "رمضان عبدالجواد",
+  "statement": "0",
+  "company_account": "0",
+  "amount_collected": "2000",
+  "notes": "سدد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-06-23T06:27:02.838Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-06-23T08:13:27.613Z"
+    },
+    {
+      "$date": "2026-06-24T06:02:33.086Z"
+    },
+    {
+      "$date": "2026-08-02T13:09:54.142Z"
+    },
+    {
+      "$date": "2026-08-19T07:25:54.869Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "6a4cfd1f35120085ca2dcb25"
+  },
+  "date_accident": {
+    "$date": "2026-07-07T00:00:00.000Z"
+  },
+  "car_code": "176",
+  "culprit": "عادل محمود فاروق زكى",
+  "statement": "فنوس شمال خلفى",
+  "company_account": "0",
+  "amount_collected": "600",
+  "notes": "تم الاصلاح",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-07-07T13:20:31.955Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-20T08:06:13.036Z"
+    },
+    {
+      "$date": "2026-08-24T11:30:50.386Z"
+    },
+    {
+      "$date": "2026-08-24T11:31:36.539Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "6a4dec2135120085ca2dcbe3"
+  },
+  "date_accident": {
+    "$date": "2026-07-08T00:00:00.000Z"
+  },
+  "car_code": "167",
+  "culprit": "عبدالباسط احمد محمد معوض",
+  "statement": "فنوس شمال خلفى",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر 500",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-07-08T06:20:17.019Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a5890c4cdd7806ad0814ade"
+  },
+  "date_accident": {
+    "$date": "2026-07-16T00:00:00.000Z"
+  },
+  "car_code": "274",
+  "culprit": "تهامي عبد الصمد السيد محمود درويش",
+  "statement": "فرده كوتش شمال+الاهمال",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": " 27 الف كيلو متر+ احمد فرج ",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-07-16T08:05:24.694Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-16T08:17:33.594Z"
+    },
+    {
+      "$date": "2026-07-20T10:58:57.314Z"
+    },
+    {
+      "$date": "2026-07-22T11:20:40.001Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "6a6884012dd85ed4c973777b"
+  },
+  "date_accident": {
+    "$date": "2026-07-28T00:00:00.000Z"
+  },
+  "car_code": "218",
+  "culprit": "سعيد امام محمد جمعه عبد العال",
+  "statement": "كوتش02000 كيلو متر",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "اصلاح فرده رقعه كبيره خلفى",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "ashraf noshy",
+  "added_date": {
+    "$date": "2026-07-28T10:27:13.068Z"
+  },
+  "edited_by": [
+    "ashraf noshy",
+    "ashraf noshy",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-07-29T07:19:19.241Z"
+    },
+    {
+      "$date": "2026-07-29T07:19:51.245Z"
+    },
+    {
+      "$date": "2026-08-02T05:46:23.541Z"
+    }
+  ],
+  "__v": 3
+},
+{
+  "_id": {
+    "$oid": "6a6efb31220af001debe0ae6"
+  },
+  "date_accident": {
+    "$date": "2026-08-02T00:00:00.000Z"
+  },
+  "car_code": "251",
+  "culprit": "احمد حسن",
+  "statement": "فنوس خلفى يمين",
+  "company_account": "0",
+  "amount_collected": "1500",
+  "notes": "تم الاصلاح",
+  "paid": "1500",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-02T08:09:21.227Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "naser",
+    "naser"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-09T07:37:12.076Z"
+    },
+    {
+      "$date": "2026-08-24T11:28:42.775Z"
+    },
+    {
+      "$date": "2026-09-14T11:10:52.356Z"
+    },
+    {
+      "$date": "2026-09-14T11:11:38.825Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "6a7190b1220af001debe1aee"
+  },
+  "date_accident": {
+    "$date": "2026-08-04T00:00:00.000Z"
+  },
+  "car_code": "260",
+  "culprit": "احمد محمد فرج عبد الجواد",
+  "statement": "فردة كوتش",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "5 اسبير فونيس",
+  "paid": "3900",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-04T07:11:45.121Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-09-01T11:05:43.332Z"
+    },
+    {
+      "$date": "2026-09-01T11:08:40.533Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6a7197a2220af001debe1bc3"
+  },
+  "date_accident": {
+    "$date": "2026-08-04T00:00:00.000Z"
+  },
+  "car_code": "524",
+  "culprit": "احمد سعيد فتحى",
+  "statement": "مريا شمال",
+  "company_account": "0",
+  "amount_collected": "100",
+  "notes": "350منتظر احمد سعيد",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-04T07:41:22.669Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-06T07:26:13.624Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a747398220af001debe381e"
+  },
+  "date_accident": {
+    "$date": "2026-08-06T00:00:00.000Z"
+  },
+  "car_code": "162",
+  "culprit": "محمد رجب سيد احمد السيد",
+  "statement": "كفر مريا",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-06T11:44:24.676Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a7473e4220af001debe3824"
+  },
+  "date_accident": {
+    "$date": "2026-08-06T00:00:00.000Z"
+  },
+  "car_code": "280",
+  "culprit": "محمد رشدى محمود محمد",
+  "statement": "مريا يمين كامله",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر + جمعه",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-06T11:45:40.185Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-06T11:46:31.703Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a786058220af001debe4a43"
+  },
+  "date_accident": {
+    "$date": "2026-08-09T00:00:00.000Z"
+  },
+  "car_code": "63",
+  "culprit": "اشرف نصحى",
+  "statement": "خبطه فى باب جرار",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر الاصلاح",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-09T11:11:20.443Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a7d5a8c1d0c4cbbbff8497a"
+  },
+  "date_accident": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "car_code": "301",
+  "culprit": "طارق محمد عبدالمجيد على",
+  "statement": "حكه فى الباب الشمال",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-13T05:47:56.345Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a7dbb3d1d0c4cbbbff85245"
+  },
+  "date_accident": {
+    "$date": "2026-08-13T00:00:00.000Z"
+  },
+  "car_code": "232",
+  "culprit": "احمد حسن",
+  "statement": "فنوس خلفى يمين",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "من الواردتم الاصلاح",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-13T12:40:29.148Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-19T07:03:25.667Z"
+    },
+    {
+      "$date": "2026-08-24T11:25:33.836Z"
+    }
+  ],
+  "__v": 2
+},
+{
+  "_id": {
+    "$oid": "6a8554e497ddad125adb5e55"
+  },
+  "date_accident": {
+    "$date": "2026-08-18T00:00:00.000Z"
+  },
+  "car_code": "232",
+  "culprit": "احمد حسن",
+  "statement": "اصلاح فنوس من المحصلات",
+  "company_account": "",
+  "amount_collected": "",
+  "notes": "",
+  "paid": "",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-19T07:01:56.078Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6a8556cd97ddad125adb5e89"
+  },
+  "date_accident": {
+    "$date": "2026-08-19T00:00:00.000Z"
+  },
+  "car_code": "160",
+  "culprit": "اشرف نصحى",
+  "statement": "فنوس خلفى",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "من المحصلات",
+  "paid": "1200",
+  "finsh_status_color": "1",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-19T07:10:05.713Z"
+  },
+  "edited_by": [
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-19T07:10:44.644Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6a86eaba97ddad125adb6c1b"
+  },
+  "date_accident": {
+    "$date": "2026-08-20T00:00:00.000Z"
+  },
+  "car_code": "207",
+  "culprit": "مروان مصطفى رشاد عبدالمعطى",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "3000",
+  "notes": "3000 مع اشرف نصحيى تم الاصلاح2500",
+  "paid": "3000",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-20T11:53:30.692Z"
+  },
+  "edited_by": [
+    "salah ali",
+    "salah ali",
+    "salah ali",
+    "salah ali"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-08-20T11:54:02.601Z"
+    },
+    {
+      "$date": "2026-08-20T11:54:27.433Z"
+    },
+    {
+      "$date": "2026-08-20T11:56:45.144Z"
+    },
+    {
+      "$date": "2026-08-30T07:39:53.984Z"
+    }
+  ],
+  "__v": 4
+},
+{
+  "_id": {
+    "$oid": "6a8d624797ddad125adb9784"
+  },
+  "date_accident": {
+    "$date": "2026-08-24T00:00:00.000Z"
+  },
+  "car_code": "175",
+  "culprit": "عصام محمد فؤاد باشا",
+  "statement": "خبطه فى الشمال",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "0",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "salah ali",
+  "added_date": {
+    "$date": "2026-08-25T09:37:11.884Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6aa655df9b4450de756c84a4"
+  },
+  "date_accident": {
+    "$date": "2026-09-13T00:00:00.000Z"
+  },
+  "car_code": "174",
+  "culprit": "اشرف نصحى",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "500 مع اشرف",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "naser",
+  "added_date": {
+    "$date": "2026-09-13T07:50:55.824Z"
+  },
+  "edited_by": [
+    "naser"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-09-14T11:12:07.623Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6aa6563e9b4450de756c84aa"
+  },
+  "date_accident": {
+    "$date": "2026-09-13T00:00:00.000Z"
+  },
+  "car_code": "186",
+  "culprit": "اشرف نصحى",
+  "statement": "خبطه",
+  "company_account": "0",
+  "amount_collected": "11200",
+  "notes": "24 مسمار مع اشرف الباقى",
+  "paid": "3600",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "naser",
+  "added_date": {
+    "$date": "2026-09-13T07:52:30.549Z"
+  },
+  "edited_by": [
+    "naser"
+  ],
+  "edited_date": [
+    {
+      "$date": "2026-09-13T07:53:43.731Z"
+    }
+  ],
+  "__v": 1
+},
+{
+  "_id": {
+    "$oid": "6aa8f0809b4450de756c9336"
+  },
+  "date_accident": {
+    "$date": "2026-09-15T00:00:00.000Z"
+  },
+  "car_code": "300",
+  "culprit": "محمد عبدالوهاب+احمد على",
+  "statement": "فبرة مريا يمين",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": "منتظر ",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "naser",
+  "added_date": {
+    "$date": "2026-09-15T07:15:12.522Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "6aaa47c09b4450de756c99fc"
+  },
+  "date_accident": {
+    "$date": "2026-09-16T00:00:00.000Z"
+  },
+  "car_code": "297",
+  "culprit": "محمد عبد الوهاب محمد عب+احمد محمد علىد العليم",
+  "statement": "خبطه فى الاقصدام",
+  "company_account": "0",
+  "amount_collected": "0",
+  "notes": " منتظر محمد عبدالله",
+  "paid": "0",
+  "finsh_status_color": "0",
+  "deleted": 0,
+  "deleted_user": "",
+  "deleted_date": null,
+  "added_by": "naser",
+  "added_date": {
+    "$date": "2026-09-16T07:39:44.037Z"
+  },
+  "edited_by": null,
+  "edited_date": null,
+  "__v": 0
+}]

@@ -15,6 +15,7 @@ import { syncApplicationSections } from './seed-application-sections';
 import { syncHrOnlyAccounts } from './hr-only-access';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
+import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -44,6 +45,8 @@ const main = async (): Promise<void> => {
   startVehicleGoLive();
   // The drivers' licence scans, on the same terms — one per driver, named by employee code.
   startDriverPhotosGoLive();
+  // The odometer book — twenty thousand legacy readings, once the cars are in.
+  startOdometerGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

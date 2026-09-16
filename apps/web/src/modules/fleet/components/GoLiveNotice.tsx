@@ -16,7 +16,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { AlertIcon } from '../../../shared/ui/icons';
 import { useFleetGoLiveRuns } from '../api/fleet-queries';
 
-export type GoLiveStep = 'vehicles' | 'driver-photos';
+export type GoLiveStep = 'vehicles' | 'driver-photos' | 'odometer';
 
 /** The keys the notice never prints as a line — they are the state, shown as the title. */
 const STATE_KEYS = new Set(['refused', 'refusedAt', 'failedAt']);
@@ -29,12 +29,13 @@ export const runState = (run: FleetGoLiveRunDto): State => {
   return run.status === 'done' ? 'done' : 'running';
 };
 
-/** Does a FINISHED run have anything worth a notice? Skipped drivers, skipped scans. */
+/**
+ * Does a FINISHED run have anything worth a notice? Any LIST the step left non-empty — skipped
+ * drivers, skipped scans, the odometer book's unmatched names and unknown cars. A run that
+ * reports only counts said nothing anybody has to act on.
+ */
 const finishedWithNotes = (run: FleetGoLiveRunDto): boolean =>
-  ['unmatched', 'unknownCodes', 'notDrivers', 'exited'].some((key) => {
-    const value = run.outcome?.[key];
-    return Array.isArray(value) && value.length > 0;
-  });
+  Object.values(run.outcome ?? {}).some((value) => Array.isArray(value) && value.length > 0);
 
 /**
  * The run this screen is about: the HIGHEST version of its step. `go-live:vehicles:v3` outranks

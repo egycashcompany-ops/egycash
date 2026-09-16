@@ -184,6 +184,37 @@ export const registerEmployeeByCodeLookup = (lookup: EmployeeByCodeLookup): void
 export const getDirectoryEmployeeByCode = async (code: string): Promise<DirectoryEmployee | null> =>
   employeeByCodeLookup === null ? null : employeeByCodeLookup(code);
 
+/**
+ * By NAME — the only join a legacy export has.
+ *
+ * The old fleet system wrote a driver on every odometer row and every workshop visit as a NAME:
+ * «مصطفى عثمان محمود عثمان», typed by whoever kept the book, sometimes two of four names,
+ * sometimes with a hamza the HR file spells without. Bringing those rows across means asking
+ * «which employee is this?» of a spelling, and HR is the one who may answer: how a name is
+ * normalised and what counts as the same person are HR's rules, kept next to its search.
+ *
+ * The answer is CANDIDATES, not a verdict. One is a match; none is «add them in HR»; several is
+ * an ambiguity the consumer must report rather than pick from — a reading credited to the wrong
+ * driver is a mistake with somebody's name on it. Every employee HR knows is a candidate, exited
+ * ones included: a reading taken last year by a driver who has since left is still their reading.
+ *
+ * Keyed by the name AS ASKED, so a consumer holding a list of spellings gets one answer each.
+ * Fail-closed like every lookup here: no HR, no candidates.
+ */
+type EmployeesByNamesLookup = (
+  names: readonly string[],
+) => Promise<Map<string, DirectoryEmployee[]>>;
+let employeesByNamesLookup: EmployeesByNamesLookup | null = null;
+export const registerEmployeesByNamesLookup = (lookup: EmployeesByNamesLookup): void => {
+  employeesByNamesLookup = lookup;
+};
+export const findDirectoryEmployeesByNames = async (
+  names: readonly string[],
+): Promise<Map<string, DirectoryEmployee[]>> =>
+  employeesByNamesLookup === null || names.length === 0
+    ? new Map()
+    : employeesByNamesLookup([...names]);
+
 export const getDirectoryEmployee = async (
   employeeId: string,
 ): Promise<DirectoryEmployee | null> =>

@@ -10,6 +10,7 @@ import { schedulerService } from './platform/scheduler';
 import { moduleManifests } from './modules';
 import { startVehicleGoLive } from './modules/fleet/go-live/vehicles';
 import { startDriverPhotosGoLive } from './modules/fleet/go-live/driver-photos';
+import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
@@ -20,6 +21,7 @@ const main = async (): Promise<void> => {
   // cars still arrive on a deployment whose api happens to come up second, or not at all.
   startVehicleGoLive();
   startDriverPhotosGoLive();
+  startOdometerGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

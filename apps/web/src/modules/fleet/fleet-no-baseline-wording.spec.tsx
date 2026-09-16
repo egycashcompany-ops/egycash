@@ -91,7 +91,13 @@ const client = (): QueryClient => {
 const maintenanceMarkup = (): string => {
   const qc = client();
   qc.setQueryData(
-    listKey('fleet', 'maintenance', { page: 1, pageSize: 25, sortBy: 'inDate', sortDir: 'desc' }),
+    listKey('fleet', 'maintenance', {
+      page: 1,
+      pageSize: 25,
+      sortBy: 'inDate',
+      sortDir: 'desc',
+      sort: 'inDate:desc',
+    }),
     {
       items: [
         {

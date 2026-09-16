@@ -155,6 +155,7 @@ const maintenance = (alarms: FleetMaintenanceAlarmDto[] = [ALARM], visits = [vis
       pageSize: 25,
       sortBy: 'inDate',
       sortDir: 'desc',
+      sort: 'inDate:desc',
     }),
     { items: visits, meta: { page: 1, pageSize: 25, totalItems: visits.length, totalPages: 1 } },
   );
@@ -259,6 +260,7 @@ describe('the three screens agree about one vehicle', () => {
         pageSize: 25,
         sortBy: 'date',
         sortDir: 'desc',
+        sort: 'date:desc',
         vehicleCodes: undefined,
         from: MONTH.from,
         to: MONTH.to,

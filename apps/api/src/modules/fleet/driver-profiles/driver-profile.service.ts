@@ -4,6 +4,7 @@
 // No domain events: the frozen surface (§8) has none for profiles; enrollment is configuration.
 import {
   FleetEvents,
+  parseFleetSort,
   type CreateFleetDriverProfile,
   type FleetCatalogKind,
   type ListFleetDriversQuery,
@@ -182,7 +183,7 @@ class FleetDriverProfileService {
     // licence was never recorded, and answering it with them would be a false positive.
     rows = rows.filter((row) => matchesFleetFilters(row.profile, query));
 
-    const sorted = sortDriverRows(rows, query.sortBy, query.sortDir);
+    const sorted = sortDriverRows(rows, query.sortBy, query.sortDir, parseFleetSort(query.sort));
     const page = query.page;
     const pageSize = query.pageSize;
     return {
@@ -239,6 +240,9 @@ class FleetDriverProfileService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
     });
   }
 

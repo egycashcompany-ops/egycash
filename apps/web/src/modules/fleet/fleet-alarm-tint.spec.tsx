@@ -225,7 +225,13 @@ const alarmsBoard = (alarms: FleetMaintenanceAlarmDto[]): string =>
 const maintenance = (alarms: FleetMaintenanceAlarmDto[], visits: FleetMaintenanceVisitDto[]): string => {
   const qc = client(alarms);
   qc.setQueryData(
-    listKey('fleet', 'maintenance', { page: 1, pageSize: 25, sortBy: 'inDate', sortDir: 'desc' }),
+    listKey('fleet', 'maintenance', {
+      page: 1,
+      pageSize: 25,
+      sortBy: 'inDate',
+      sortDir: 'desc',
+      sort: 'inDate:desc',
+    }),
     { items: visits, meta: { page: 1, pageSize: 25, totalItems: visits.length, totalPages: 1 } },
   );
   return draw(<MaintenancePage />, '/fleet/maintenance', qc);
@@ -239,6 +245,7 @@ const odometer = (alarms: FleetMaintenanceAlarmDto[], logs: FleetOdometerLogDto[
       pageSize: 25,
       sortBy: 'date',
       sortDir: 'desc',
+      sort: 'date:desc',
       vehicleCodes: undefined,
       from: MONTH.from,
       to: MONTH.to,

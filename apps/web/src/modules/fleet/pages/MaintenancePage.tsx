@@ -69,6 +69,7 @@ import {
   CheckOutDialog,
   MaintenanceEditDialog,
 } from '../components/MaintenanceDialogs';
+import { readSorts, sortQuery, toggleSort, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -111,11 +112,13 @@ export const MaintenancePage = (): JSX.Element => {
   const state = sp.get('state') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'inDate:desc').split(':');
-  const sort = { by: sortByRaw ?? 'inDate', dir: sortDirRaw === 'asc' ? 'asc' : 'desc' } as {
-    by: string;
-    dir: 'asc' | 'desc';
-  };
+  /**
+   * The columns this table is sorted by, in the order the reader clicked them —
+   * «انا عاوز اقدر اعمل الاتنين مع بعض». One parameter carries the whole order; `inDate:desc`
+   * is where the screen starts when the reader has not said otherwise.
+   */
+  const sortParam = sp.get('sort');
+  const sorts = useMemo(() => readSorts(sortParam, 'inDate:desc'), [sortParam]);
   const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
@@ -127,9 +130,10 @@ export const MaintenancePage = (): JSX.Element => {
     if (resetPage && !('page' in updates)) next.delete('page');
     setSp(next);
   };
+  // Ascending, then descending, then out of the order altogether — and a column the table
+  // is NOT sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
-    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
-    patch({ sort: `${by}:${dir}` }, false);
+    patch({ sort: writeSorts(toggleSort(sorts, by)) }, false);
   };
   const hasActiveFilters =
     from !== '' ||
@@ -153,8 +157,7 @@ export const MaintenancePage = (): JSX.Element => {
     () => ({
       page,
       pageSize,
-      sortBy: sort.by,
-      sortDir: sort.dir,
+      ...sortQuery(sorts),
       from: from || undefined,
       outFrom: outFrom || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
@@ -599,7 +602,7 @@ export const MaintenancePage = (): JSX.Element => {
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
-          sort={sort}
+          sort={sorts}
           onSortChange={changeSort}
           // A closed visit reads green across the whole row. The colour is a SECOND signal only:
           // the exit cell says «خرجت من الورشة» in words, so the state survives a reader who

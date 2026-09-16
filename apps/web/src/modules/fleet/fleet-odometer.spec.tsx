@@ -115,6 +115,7 @@ const ODOMETER_KEY = (over: Record<string, unknown> = {}) =>
     pageSize: 25,
     sortBy: 'date',
     sortDir: 'desc',
+    sort: 'date:desc',
     vehicleCodes: undefined,
     from: MONTH.from,
     to: MONTH.to,

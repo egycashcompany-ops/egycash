@@ -59,6 +59,7 @@ import {
 } from '../components/VehicleLicenseImage';
 import { printLicenceRecord } from '../components/vehicle-print';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
+import { readSorts, sortQuery, toggleSort, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -106,11 +107,13 @@ export const VehiclesListPage = (): JSX.Element => {
   const branchIds = readList(sp, 'branch');
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'code:asc').split(':');
-  const sort = { by: sortByRaw ?? 'code', dir: sortDirRaw === 'desc' ? 'desc' : 'asc' } as {
-    by: string;
-    dir: 'asc' | 'desc';
-  };
+  /**
+   * The columns this table is sorted by, in the order the reader clicked them —
+   * «انا عاوز اقدر اعمل الاتنين مع بعض». One parameter carries the whole order; `code:asc`
+   * is where the screen starts when the reader has not said otherwise.
+   */
+  const sortParam = sp.get('sort');
+  const sorts = useMemo(() => readSorts(sortParam, 'code:asc'), [sortParam]);
   const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
@@ -148,9 +151,10 @@ export const VehiclesListPage = (): JSX.Element => {
     // re-running there would fight the very rewrite this just made.
   }, [legacyCode, legacyLookup.isSuccess, legacyNamesAVehicle]);
 
+  // Ascending, then descending, then out of the order altogether — and a column the table
+  // is NOT sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
-    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
-    patch({ sort: `${by}:${dir}` }, false);
+    patch({ sort: writeSorts(toggleSort(sorts, by)) }, false);
   };
   const hasActiveFilters =
     status !== '' ||
@@ -168,8 +172,7 @@ export const VehiclesListPage = (): JSX.Element => {
     () => ({
       page,
       pageSize,
-      sortBy: sort.by,
-      sortDir: sort.dir,
+      ...sortQuery(sorts),
       status: status || undefined,
       typeId: typeId || undefined,
       vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
@@ -630,7 +633,7 @@ export const VehiclesListPage = (): JSX.Element => {
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
-          sort={sort}
+          sort={sorts}
           onSortChange={changeSort}
           empty={undefined}
         />

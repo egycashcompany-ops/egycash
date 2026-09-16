@@ -3,6 +3,7 @@
 // correction (update) is audited but publishes nothing — it adjusts a fact, it is not a new one.
 import {
   FleetEvents,
+  parseFleetSort,
   type CreateFleetUnavailability,
   type ListFleetUnavailabilityQuery,
   type Paginated,
@@ -91,6 +92,9 @@ class FleetUnavailabilityService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts: parseFleetSort(query.sort),
     });
   }
 

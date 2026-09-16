@@ -13,6 +13,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EyeIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { ZoomableImage } from './ZoomableImage';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import {
   useDeleteVehicleLicenseImage,
@@ -138,6 +139,9 @@ export const LicenseImagePreviewDialog = ({
       <Dialog
         open={open}
         onClose={onClose}
+        // The widest the shell offers, because this is a DOCUMENT being read, not a form being
+        // filled: at `md` the scan sat in a 32rem box with a plate number three pixels tall.
+        size="xl"
         title={t('fleet.vehicles.licenseImage.previewTitle')}
         description={
           vehicle === null
@@ -169,11 +173,7 @@ export const LicenseImagePreviewDialog = ({
           </p>
         )}
         {url !== null && (
-          <img
-            src={url}
-            alt={t('fleet.vehicles.licenseImage.previewTitle')}
-            className="mx-auto max-h-[60vh] w-auto max-w-full rounded-lg border border-slate-200 object-contain dark:border-slate-800"
-          />
+          <ZoomableImage src={url} alt={t('fleet.vehicles.licenseImage.previewTitle')} />
         )}
       </Dialog>
 

@@ -43,7 +43,17 @@ export interface DataTableProps<T> {
   error?: unknown;
   onRetry?: () => void;
   empty?: ReactNode;
-  sort?: SortState;
+  /**
+   * What the table is sorted by. ONE column, or SEVERAL in precedence order — «انا عاوز اقدر
+   * اعمل الاتنين مع بعض»: a registry is read by more than one question at a time, and a header
+   * that can only hold one answer throws the last one away on every click.
+   *
+   * An array is rendered with a small ordinal beside each arrow, so the reader can see that the
+   * table is on «code, then expiry» rather than guessing from two identical arrows. Passing a
+   * single object is exactly what it always was: no badge, no change. What a CLICK does — replace
+   * or add — is the caller's rule, not this table's (Fleet's lives in `lib/table-sort`).
+   */
+  sort?: SortState | readonly SortState[];
   onSortChange?: (key: string) => void;
   onRowClick?: (row: T) => void;
   /**
@@ -112,6 +122,9 @@ export const DataTable = <T,>({
   rowClassName,
   textScale = 'compact',
 }: DataTableProps<T>): JSX.Element => {
+  // One shape inside, whichever shape came in: the single-column callers (every module but Fleet)
+  // and the multi-column ones read the same way from here down.
+  const sorts: readonly SortState[] = sort === undefined ? [] : Array.isArray(sort) ? sort : [sort];
   const roomy = textScale === 'comfortable';
   const cellPadding = dense ? 'px-3 py-2' : roomy ? 'px-4 py-3.5' : 'px-4 py-3';
   const cellText = roomy ? 'text-base' : 'text-sm';
@@ -242,7 +255,9 @@ export const DataTable = <T,>({
               </th>
             )}
             {columns.map((c) => {
-              const active = sort?.by === c.key;
+              const at = sorts.findIndex((entry) => entry.by === c.key);
+              const active = at !== -1;
+              const dir = active ? sorts[at]?.dir : undefined;
               return (
                 <th
                   key={c.key}
@@ -270,9 +285,20 @@ export const DataTable = <T,>({
                         className={cn(
                           'h-3.5 w-3.5 transition-transform',
                           active ? 'opacity-100' : 'opacity-30',
-                          active && sort?.dir === 'asc' && 'rotate-180',
+                          active && dir === 'asc' && 'rotate-180',
                         )}
                       />
+                      {/* WHICH column decides first, when more than one does. Plain digits: this
+                          is an ordinal marker on a control, read beside an arrow rather than in a
+                          sentence, and the table is shared by every module and holds no locale. */}
+                      {active && sorts.length > 1 && (
+                        <span
+                          data-sort-order={at + 1}
+                          className="rounded-sm bg-slate-200 px-1 text-[0.625rem] font-bold leading-4 text-slate-600 dark:bg-slate-700 dark:text-slate-200"
+                        >
+                          {at + 1}
+                        </span>
+                      )}
                     </button>
                   ) : (
                     c.header

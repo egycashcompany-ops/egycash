@@ -105,6 +105,8 @@ const listParams = (over: Record<string, unknown> = {}) => ({
   pageSize: 25,
   sortBy: 'occurredAt',
   sortDir: 'desc',
+  // The whole order the reader clicked, beside the first column of it — see `lib/table-sort`.
+  sort: 'occurredAt:desc',
   ...over,
 });
 

@@ -3873,6 +3873,12 @@ const en: Record<string, string> = {
   'fleet.fixedRoster.counter.uncrewed': 'No crew',
   'fleet.roster.allMissions': 'All missions',
   // The go-live notice — what the boot-time import recorded, printed where the data should be.
+  // The licence scan's own zoom — the browser's enlarges the page, this enlarges the picture.
+  'fleet.licenseImage.zoomIn': 'Zoom in',
+  'fleet.licenseImage.zoomOut': 'Zoom out',
+  'fleet.licenseImage.zoomReset': 'Fit to the frame',
+  'fleet.licenseImage.zoomLevel': '{{value}}%',
+  'fleet.licenseImage.zoomHint': 'Scroll or double-click to zoom · drag to move',
   'fleet.goLive.step.vehicles': 'Vehicle import',
   'fleet.goLive.step.driver-photos': 'Driver licence scans',
   'fleet.goLive.state.refused': 'refused, did not start',
@@ -10383,6 +10389,12 @@ const ar: Record<string, string> = {
   'fleet.fixedRoster.counter.uncrewed': 'بلا طقم',
   'fleet.roster.allMissions': 'كل المهمات',
   // إشعار بدء التشغيل — ما سجّله الاستيراد عند الإقلاع، مطبوعًا حيث كان ينبغي أن تظهر البيانات.
+  // زوم الصورة نفسها — زوم المتصفح يكبّر الصفحة، وهذا يكبّر الرخصة.
+  'fleet.licenseImage.zoomIn': 'تكبير',
+  'fleet.licenseImage.zoomOut': 'تصغير',
+  'fleet.licenseImage.zoomReset': 'ملء الإطار',
+  'fleet.licenseImage.zoomLevel': '{{value}}٪',
+  'fleet.licenseImage.zoomHint': 'بعجلة الماوس أو بضغطتين للتكبير · اسحب للتحريك',
   'fleet.goLive.step.vehicles': 'استيراد السيارات',
   'fleet.goLive.step.driver-photos': 'صور رخص السائقين',
   'fleet.goLive.state.refused': 'مرفوض، لم يبدأ',

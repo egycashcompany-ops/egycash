@@ -223,6 +223,13 @@ export const PlusIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** The counterpart of `PlusIcon`, for a pair of zoom controls that must read as one pair. */
+export const MinusIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <line x1="5" y1="12" x2="19" y2="12" />
+  </Base>
+);
+
 export const DownloadIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />

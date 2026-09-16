@@ -39,6 +39,15 @@ export interface ListParams<T> {
   pageSize: number;
   sortBy?: string | undefined;
   sortDir?: 'asc' | 'desc' | undefined;
+  /**
+   * SEVERAL columns, in precedence order — «انا عاوز اقدر اعمل الاتنين مع بعض»: the licences that
+   * lapse first AND, within a day, the car code. Opt-in and additive: a caller that passes only
+   * `sortBy`/`sortDir` sorts exactly as it always did, which is every caller outside Fleet.
+   *
+   * Filtered through `sortableFields` one entry at a time, so an unknown column is dropped
+   * without taking the known ones down with it.
+   */
+  sorts?: readonly { by: string; dir: 'asc' | 'desc' }[];
   /** Whitelist — unknown sort fields fall back to createdAt (API Standards §4). */
   sortableFields?: readonly string[];
   scope?: ScopeSelector;
@@ -226,16 +235,28 @@ export class BaseRepository<T extends BaseDocFields> {
     const page = Math.max(1, params.page);
     const filter = this.baseFilter(params.scope, params.filter);
 
+    const allowed = params.sortableFields ?? [];
     const sortField =
-      params.sortBy !== undefined && (params.sortableFields ?? []).includes(params.sortBy)
-        ? params.sortBy
-        : 'createdAt';
+      params.sortBy !== undefined && allowed.includes(params.sortBy) ? params.sortBy : 'createdAt';
     const sortDir = params.sortDir === 'asc' ? 1 : -1;
+    // The multi-column order when there is one, the single field otherwise. `_id` closes either:
+    // without a tiebreaker two rows equal on every sorted column can swap places between one page
+    // and the next, which shows a reader the same row twice and hides another entirely.
+    const requested = (params.sorts ?? []).filter((entry) => allowed.includes(entry.by));
+    const sort: Record<string, 1 | -1> =
+      requested.length > 0
+        ? {
+            ...Object.fromEntries(
+              requested.map((entry) => [entry.by, entry.dir === 'asc' ? 1 : -1] as const),
+            ),
+            _id: requested[requested.length - 1]?.dir === 'asc' ? 1 : -1,
+          }
+        : { [sortField]: sortDir, _id: sortDir };
 
     const [items, totalItems] = await Promise.all([
       this.model
         .find(filter)
-        .sort({ [sortField]: sortDir, _id: sortDir })
+        .sort(sort)
         .skip((page - 1) * pageSize)
         .limit(pageSize)
         .lean<T[]>()

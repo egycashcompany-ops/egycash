@@ -71,16 +71,45 @@ export const buildVehiclePrintHtml = (
 <title>${escapeHtml(doc.title)}</title>
 <style>
   @page { margin: 16mm; }
-  body { font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; color: #0f172a; }
+  /*
+   * ONE PAGE, ALWAYS — «عاوز لما اجى اطبع صوره الرخصه تكون فى صفحه واحده مع الجدول».
+   *
+   * The scan used to sit under the table with a fixed ceiling (150mm) and a rule not to break
+   * inside itself, so whenever the table took the top half of the page the whole section had
+   * nowhere to go but page two — with the scan alone on it, small, in a corner. The layout is
+   * now a column the height of the printable page: the title and the table take what they need
+   * and the image section takes WHAT IS LEFT, shrinking the scan to fit it. The page can no
+   * longer overflow, so there is nothing left for a page break to decide.
+   *
+   * The full-height html/body pair is what makes «what is left» measurable in print: without
+   * it the body is as tall as its content and there is no remainder to hand the image. (No
+   * backticks in this comment — it lives inside a template literal.)
+   */
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Tahoma, sans-serif; color: #0f172a;
+    display: flex; flex-direction: column; box-sizing: border-box;
+  }
   h1 { font-size: 18px; margin: 0 0 4px; }
   .subtitle { font-size: 13px; color: #475569; margin: 0 0 16px; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th, td { border: 1px solid #cbd5e1; padding: 6px 10px; text-align: ${rtl ? 'right' : 'left'}; }
   th { width: 34%; background: #f1f5f9; font-weight: 600; }
-  .image { margin-top: 20px; page-break-inside: avoid; }
+  .image {
+    margin-top: 20px;
+    /* The remainder of the page, and never more: min-height 0 lets a flex child shrink
+       below its content, which is the whole mechanism. */
+    flex: 1 1 auto; min-height: 0;
+    display: flex; flex-direction: column;
+  }
   .image h2 { font-size: 15px; margin: 0 0 4px; }
   .caption { font-size: 12px; color: #475569; margin: 0 0 8px; }
-  .image img { max-width: 100%; max-height: 150mm; border: 1px solid #cbd5e1; }
+  .image img {
+    /* Fill the rest of the section, keeping the scan's own proportions. No border: the box is
+       the whole width and the scan seldom is, so a border drew a frame around blank paper. */
+    flex: 1 1 auto; min-height: 0; width: 100%;
+    object-fit: contain; object-position: top ${rtl ? 'right' : 'left'};
+  }
 </style>
 </head>
 <body>

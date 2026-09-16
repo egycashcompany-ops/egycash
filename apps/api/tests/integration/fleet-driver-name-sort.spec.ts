@@ -63,17 +63,23 @@ const plant = async (): Promise<void> => {
       isDeleted: false,
     })),
   );
+  // ONE OPEN PERIOD PER CAR, which is a real invariant and a unique index («ux_open_period»):
+  // a reading closes the previous period and opens the next, so only the LAST one has no closing
+  // reading. `inReading` of entry k is identically `outReading` of entry k+1, and `km` is the
+  // difference — the chain FR-2 keeps, written out here rather than approximated, because a
+  // fixture that violates the collection's own rules is not a fixture of anything.
   const reading = (
     at: string,
     outReading: number,
+    inReading: number | null,
     driver1: Types.ObjectId,
     driver2: Types.ObjectId | null,
   ) => ({
     vehicleId: VEHICLE,
     date: day(at),
     outReading,
-    inReading: null,
-    km: null,
+    inReading,
+    km: inReading === null ? null : inReading - outReading,
     driver1EmployeeId: driver1,
     driver2EmployeeId: driver2,
     notes: null,
@@ -81,9 +87,9 @@ const plant = async (): Promise<void> => {
     createdAt: day(at),
   });
   await FleetOdometerLogModel.collection.insertMany([
-    reading('2026-01-01', 1000, AHMED, YOUSSEF),
-    reading('2026-01-02', 2000, YOUSSEF, AHMED),
-    reading('2026-01-03', 3000, MOHAMED, null),
+    reading('2026-01-01', 1000, 2000, AHMED, YOUSSEF),
+    reading('2026-01-02', 2000, 3000, YOUSSEF, AHMED),
+    reading('2026-01-03', 3000, null, MOHAMED, null),
   ]);
 };
 

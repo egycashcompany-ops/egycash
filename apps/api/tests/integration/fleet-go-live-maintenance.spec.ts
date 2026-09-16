@@ -206,11 +206,13 @@ describe('the run that can proceed', () => {
     const doc = await run();
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
-      vehicles: 3,
-      imported: 4,
+      vehicles: 4,
+      imported: 5,
       alreadyThere: 0,
+      namesFilled: 0,
       counterFromOdometer: 1,
       noCounter: ['WS-2 2025-01-13'],
+      counterUnknown: [],
       openConflicts: ['WS-3 2025-06-01'],
       catalogCreated: ['workshop: تويوتا 2', 'workshop: غير محدد'],
       skippedDeleted: 1,
@@ -240,6 +242,8 @@ describe('the run that can proceed', () => {
     expect(String(visits[0]!.createdBy), 'authored by the seeded admin').toBe(adminId);
     expect((await visitsOf('WS-2')).length, 'no counter anywhere, left before it arrived — neither written').toBe(0);
     expect((await visitsOf('WS-3')).length, 'the new screen’s visit, and nothing invented beside it').toBe(1);
+    // The car the registry never had: its visit is kept, by the book's code and no vehicle.
+    expect(await FleetMaintenanceVisitModel.countDocuments({ vehicleId: null, vehicleCode: 'بجو', odometerAtService: 1 }).exec()).toBe(1);
   });
 
   it('a later boot writes nothing at all', async () => {
@@ -264,7 +268,7 @@ describe('a run that died is finished by the next boot, without writing a visit 
     expect((await visitsOf('WS-1')).map((v) => v.odometerAtService)).toEqual([6000, 5000, 7000, 8000]);
     const doc = await run();
     expect(doc?.status).toBe('done');
-    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 3, catalogCreated: [] });
+    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 4, catalogCreated: [] });
     expect(await FleetCatalogItemModel.countDocuments({ kind: 'workshop', 'name.ar': 'تويوتا 2' }).exec()).toBe(1);
   });
 });

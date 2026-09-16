@@ -107,7 +107,7 @@ describe('turning the ledger into a chain', () => {
       new Map(),
     );
     expect(plan.vehicles).toHaveLength(1);
-    expect(plan.vehicles[0]?.vehicleId).toBe('v150');
+    expect(plan.vehicles[0]?.ref).toEqual({ vehicleId: 'v150' });
     expect(plan.vehicles[0]?.rows.map((r) => [r.out, r.in])).toEqual([[100, 150], [150, 200], [200, 260]]);
   });
 
@@ -163,14 +163,19 @@ describe('turning the ledger into a chain', () => {
     expect(plan.vehicles[0]?.rows).toHaveLength(1);
   });
 
-  it('a car the registry does not have is reported with its row count, and its rows are not written', () => {
+  it('a car the registry does not have KEEPS its rows, by the book’s code, and is listed with its row count', () => {
     const plan = planOdometerImport(
-      [row({ id: 'a', code: 'تويوتا1' }), row({ id: 'b', code: 'تويوتا1' }), row({ id: 'c', code: '194' }), row({ id: 'd' })],
+      [row({ id: 'a', code: 'تويوتا1' }), row({ id: 'b', code: 'تويوتا1', date: new Date('2025-11-26T00:00:00.000Z'), out: 150, in: null }), row({ id: 'c', code: '194' }), row({ id: 'd' })],
       REGISTRY,
       new Map(),
     );
     expect(plan.unknownCars).toEqual(['194 (1)', 'تويوتا1 (2)']);
-    expect(plan.vehicles.map((v) => v.code)).toEqual(['150']);
+    expect(plan.vehicles.map((v) => [v.code, v.ref])).toEqual([
+      ['150', { vehicleId: 'v150' }],
+      ['194', { vehicleId: null, vehicleCode: '194' }],
+      ['تويوتا1', { vehicleId: null, vehicleCode: 'تويوتا1' }],
+    ]);
+    expect(plan.vehicles[2]?.rows.map((r) => [r.out, r.in]), 'the book’s own chain, closed by the next row like any other').toEqual([[100, 150], [150, null]]);
   });
 
   it('puts the matched driver’s id on the row, and nothing for a name with no id', () => {
@@ -179,8 +184,13 @@ describe('turning the ledger into a chain', () => {
       REGISTRY,
       new Map([['مصطفى عثمان محمود عثمان', 'emp-1']]),
     );
-    expect(plan.vehicles[0]?.rows[0]?.driver1).toBe('emp-1');
-    expect(plan.vehicles[0]?.rows[0]?.driver2).toBeNull();
+    expect(plan.vehicles[0]?.rows[0]?.driver1).toEqual({ id: 'emp-1', name: null });
+    expect(plan.vehicles[0]?.rows[0]?.driver2, '«احتياطى» is nobody').toEqual({ id: null, name: null });
+  });
+
+  it('keeps a name HR does not know AS TEXT on the row — a driver who was there and has gone', () => {
+    const plan = planOdometerImport([row({ id: 'a', driver: 'سائق غير موجود' })], REGISTRY, new Map());
+    expect(plan.vehicles[0]?.rows[0]?.driver1).toEqual({ id: null, name: 'سائق غير موجود' });
   });
 
   it('names a row by car and day', () => {

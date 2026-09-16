@@ -97,7 +97,7 @@ describe('turning the book into files', () => {
     expect(plan.statementFilled).toBe(1);
   });
 
-  it('skips and names a file with no date, and a car the registry lacks', () => {
+  it('KEEPS a file with no date, and one on a car the registry lacks — and names both', () => {
     const plan = planAccidentsImport(
       parseAccidents([legacy({ date_accident: null }), legacy({ _id: 'x', car_code: 'تويوتا1' })]).accidents,
       REGISTRY,
@@ -105,7 +105,12 @@ describe('turning the book into files', () => {
     );
     expect(plan.noDate).toEqual(['193: محمد مهدى']);
     expect(plan.unknownCars).toEqual(['تويوتا1 (1)']);
-    expect(plan.vehicles).toEqual([]);
+    expect(plan.vehicles.map((v) => [v.code, v.ref, v.rows.length])).toEqual([
+      ['193', { vehicleId: V193 }, 1],
+      ['تويوتا1', { vehicleId: null, vehicleCode: 'تويوتا1' }, 1],
+    ]);
+    expect(plan.vehicles[0]!.rows[0]!.doc.occurredAt).toBeNull();
+    expect(plan.vehicles[1]!.rows[0]!.doc).toMatchObject({ vehicleId: null, vehicleCode: 'تويوتا1' });
   });
 
   it('lists the words written after an amount, by car and day', () => {
@@ -116,5 +121,6 @@ describe('turning the book into files', () => {
   it('tells a file from another by when, who and the three figures — never the status', () => {
     const doc = { occurredAt: new Date('2025-02-01T00:00:00.000Z'), culprit: 'محمد مهدى', companyCost: 0, amountCollected: 1400, paidAmount: 1400 };
     expect(accidentKey(doc as FleetAccidentDoc)).toBe('2025-02-01T00:00:00.000Z|محمد مهدى|0|1400|1400');
+    expect(accidentKey({ ...doc, occurredAt: null } as FleetAccidentDoc), 'a file with no date').toBe('|محمد مهدى|0|1400|1400');
   });
 });

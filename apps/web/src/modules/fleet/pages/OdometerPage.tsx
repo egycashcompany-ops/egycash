@@ -39,7 +39,7 @@ import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { odometerRange, widerRange } from '../lib/odometer-range';
-import { EmployeeName } from '../components/EmployeeName';
+import { DriverName } from '../components/EmployeeName';
 import { RecordOdometerDialog } from '../components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from '../components/CorrectOdometerDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
@@ -231,11 +231,11 @@ export const OdometerPage = (): JSX.Element => {
       sortable: true,
       sortKey: 'driver1Name',
       render: (log) =>
-        log.driver1EmployeeId === null ? (
+        log.driver1EmployeeId === null && !log.driver1Name ? (
           '—'
         ) : (
           <span className="text-amber-700 dark:text-amber-300">
-            <EmployeeName employeeId={log.driver1EmployeeId} />
+            <DriverName employeeId={log.driver1EmployeeId} name={log.driver1Name} />
           </span>
         ),
     },
@@ -245,11 +245,11 @@ export const OdometerPage = (): JSX.Element => {
       sortable: true,
       sortKey: 'driver2Name',
       render: (log) =>
-        log.driver2EmployeeId === null ? (
+        log.driver2EmployeeId === null && !log.driver2Name ? (
           '—'
         ) : (
           <span className="text-indigo-700 dark:text-indigo-300">
-            <EmployeeName employeeId={log.driver2EmployeeId} />
+            <DriverName employeeId={log.driver2EmployeeId} name={log.driver2Name} />
           </span>
         ),
     },
@@ -296,7 +296,7 @@ export const OdometerPage = (): JSX.Element => {
       sortable: true,
       sortKey: 'alarmSinceService',
       render: (log) => {
-        const alarm = alarmByVehicle.get(log.vehicleId);
+        const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
         // No rule, no service on file, or a vehicle that has left the registry: say nothing
         // rather than print a distance the projection deliberately refused to compute.
         // A DISTANCE column, and only that. The reason an alarm is unavailable is a fact about the

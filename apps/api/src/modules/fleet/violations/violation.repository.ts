@@ -2,6 +2,8 @@ import { Types, type ClientSession, type FilterQuery } from 'mongoose';
 import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { byVehicleOrBookCode } from '../odometer/odometer.repository';
+import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 import {
   FleetGrievanceModel,
   FleetViolationModel,
@@ -11,7 +13,9 @@ import {
 
 /** Per-vehicle sums for one year — the aggregate half of the FR-9 rollup. */
 export interface ViolationYearSums {
-  vehicleId: string;
+  /** `null` for rows kept from the old book on a car the registry never had — `vehicleCode` names it. */
+  vehicleId: string | null;
+  vehicleCode: string | null;
   /** The year the row belongs to: a statement row's own, a driver row's from its date. */
   year: number;
   vehicleCount: number;
@@ -54,20 +58,20 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
    * holds two identical rows for one car (two «رسوم خدمة» entries of the same value in one
    * year), and a set would let a take-over write the second one twice.
    */
-  async existingKeyCounts(
-    vehicleId: string,
+  async existingByKey(
+    ref: BookRef,
     keyOf: (row: FleetViolationDoc) => string,
-  ): Promise<Map<string, number>> {
+  ): Promise<Map<string, FleetViolationDoc[]>> {
     const rows = await this.model
-      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .find(bookRefFilter<FleetViolationDoc>(ref))
       .lean<FleetViolationDoc[]>()
       .exec();
-    const counts = new Map<string, number>();
-    for (const row of rows) {
-      const key = keyOf(row);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return counts;
+    return groupByKey(rows, keyOf);
+  }
+
+  /** The go-live import's one repair on a fine already written: the driver's name, where it had none. */
+  async setDriverName(id: Types.ObjectId, driverName: string): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: { driverName } }).exec();
   }
 
   async listViolations(
@@ -89,6 +93,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
      * NOTHING; it is never dropped, or an impossible search would return every violation.
      */
     vehicleIds?: readonly string[] | undefined;
+    /** The typed codes, for rows kept from the old book on a car the registry never had. */
+    vehicleCodes?: readonly string[] | undefined;
     /** Several drivers, ORed. `[]` narrows to nothing, exactly as `vehicleIds` does. */
     driverEmployeeId?: readonly string[] | undefined;
     /** The EXACT filed amount. `0` is a real answer, so this is checked against `undefined`. */
@@ -105,7 +111,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       clauses.push({ vehicleId: new Types.ObjectId(query.vehicleId) });
     }
     if (query.vehicleIds !== undefined) {
-      clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
+      clauses.push(byVehicleOrBookCode(query.vehicleIds, query.vehicleCodes));
     }
     if (query.driverEmployeeId !== undefined) {
       clauses.push({
@@ -182,7 +188,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     };
     if (vehicleId !== undefined) match['vehicleId'] = new Types.ObjectId(vehicleId);
     const rows = await this.model.aggregate<{
-      _id: { vehicleId: Types.ObjectId; year: number };
+      _id: { vehicleId: Types.ObjectId | null; vehicleCode: string | null; year: number };
       vehicleCount: number;
       vehicleAmount: number;
       driverCount: number;
@@ -198,6 +204,9 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
           // UTC, the same boundary `yearClause` filters on, so narrowing and grouping agree.
           _id: {
             vehicleId: '$vehicleId',
+            // The old book's code, for rows whose car the registry never had — so two such cars
+            // are two groups and not one group keyed on the value `null`.
+            vehicleCode: { $ifNull: ['$vehicleCode', null] },
             year: { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
           },
           // WHAT IS STILL OWED, not what was ever fined. A row that has been ticked as collected
@@ -259,7 +268,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       },
     ]);
     return rows.map((row) => ({
-      vehicleId: String(row._id.vehicleId),
+      vehicleId: row._id.vehicleId == null ? null : String(row._id.vehicleId),
+      vehicleCode: row._id.vehicleCode ?? null,
       year: row._id.year,
       vehicleCount: row.vehicleCount,
       vehicleAmount: row.vehicleAmount,

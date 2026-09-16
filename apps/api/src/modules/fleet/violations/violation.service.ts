@@ -32,6 +32,7 @@ import { drivingSeatEmployeeIds } from '../driver-profiles/driving-seat-roster';
 import { fleetGrievanceRepository, fleetViolationRepository } from './violation.repository';
 import { assembleRollups } from './violation-rollup';
 import { type FleetGrievanceDoc, type FleetViolationDoc } from './violation.model';
+import { vehicleIdOf } from '../fleet.mappers';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'violation', entityId: id });
 const grievanceRef = (id: string) => ({
@@ -45,7 +46,7 @@ const invalid = (field: string, message: string): ValidationError =>
 
 const snapshot = (doc: FleetViolationDoc) => ({
   kind: doc.kind,
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   violationTypeId: String(doc.violationTypeId),
   amount: doc.amount,
   year: doc.year,
@@ -59,7 +60,7 @@ const snapshot = (doc: FleetViolationDoc) => ({
 const recordedPayload = (doc: FleetViolationDoc) => ({
   violationId: String(doc._id),
   kind: doc.kind,
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
   year: doc.year,
   amount: doc.amount,
@@ -442,8 +443,12 @@ class FleetViolationService {
       fleetViolationRepository.yearSums(years, vehicleId),
       fleetGrievanceRepository.forYears(years, vehicleId),
     ]);
+    // Cars the registry has; a (code, year) kept from the old book carries its code itself.
     const ids = [
-      ...new Set([...sums.map((s) => s.vehicleId), ...grievances.map((g) => String(g.vehicleId))]),
+      ...new Set([
+        ...sums.flatMap((s) => (s.vehicleId === null ? [] : [s.vehicleId])),
+        ...grievances.map((g) => String(g.vehicleId)),
+      ]),
     ];
     const codes = new Map<string, string>();
     for (const id of ids) {

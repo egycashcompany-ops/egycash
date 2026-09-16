@@ -115,8 +115,9 @@ describe('turning the ledger into visits', () => {
     expect(plan.vehicles.map((v) => v.code)).toEqual(['161', '223']);
     const car = plan.vehicles[1];
     expect(car?.visits.map((v) => v.id)).toEqual(['a', 'b']);
-    expect(car?.visits[1]?.driver1Id).toBe('emp-1');
-    expect(car?.visits[0]?.driver2Id, 'a name with no id is nobody, and the visit still lands').toBeNull();
+    expect(car?.visits[1]?.driverIn).toEqual({ id: 'emp-1', name: null });
+    expect(car?.visits[0]?.driverOut, 'a name HR does not know is kept as text').toEqual({ id: null, name: 'محمد عبدالله' });
+    expect(car?.visits[0]?.driverIn, 'nothing written is nobody').toEqual({ id: null, name: null });
   });
 
   it('skips a visit that left before it arrived, and names it', () => {
@@ -129,9 +130,10 @@ describe('turning the ledger into visits', () => {
     expect(plan.vehicles).toEqual([]);
   });
 
-  it('a car the registry does not have is reported with its row count', () => {
+  it('a car the registry does not have KEEPS its visits, by the book’s code, and is listed with its row count', () => {
     const plan = planMaintenanceImport([visit({ code: 'بجو' }), visit({ id: 'x', code: 'بجو' })], REGISTRY, new Map());
     expect(plan.unknownCars).toEqual(['بجو (2)']);
+    expect(plan.vehicles.map((v) => [v.code, v.ref, v.visits.length])).toEqual([['بجو', { vehicleId: null, vehicleCode: 'بجو' }, 2]]);
   });
 
   it('collects the book’s own words for the catalog, distinct, in order of first use', () => {

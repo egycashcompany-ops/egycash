@@ -269,6 +269,9 @@ export const CompanyViolationsPanel = ({
   const collectGroup = useSetRollupCollected();
   /** A group is settled only when EVERY row in it is, so the tick asks for the state it is not in. */
   const toggleYear = async (row: FleetViolationRollupDto): Promise<void> => {
+    // A group from the old book on a car the registry never had has no vehicle to tick by; it is
+    // read-only on the board, as its rows are.
+    if (row.vehicleId === null) return;
     try {
       await collectGroup.mutateAsync({
         vehicleId: row.vehicleId,
@@ -638,7 +641,7 @@ export const CompanyViolationsPanel = ({
                 // One tbody per (vehicle, year): the group is the unit, and the browser keeps its
                 // four lines together when the board is printed or scrolled.
                 <tbody
-                  key={`${row.vehicleId}:${row.year}`}
+                  key={`${row.vehicleId ?? `code:${row.code}`}:${row.year}`}
                   data-rollup-group={`${row.code}:${row.year}`}
                   data-rollup-settled={
                     row.rowCount > 0 && row.collectedCount === row.rowCount ? 'true' : undefined

@@ -7,6 +7,8 @@ import {
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetAccidentModel, type FleetAccidentDoc } from './accident.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { byVehicleOrBookCode } from '../odometer/odometer.repository';
+import { bookRefFilter, groupByKey, type BookRef } from '../go-live/book-ref';
 
 /** What `$group` hands back for one filter scope; absent entirely when nothing matched. */
 interface TotalsRow {
@@ -44,20 +46,15 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
    * before writing, counted rather than set for the reason the violations give: two identical
    * files on one day are two files.
    */
-  async existingKeyCounts(
-    vehicleId: string,
+  async existingByKey(
+    ref: BookRef,
     keyOf: (row: FleetAccidentDoc) => string,
-  ): Promise<Map<string, number>> {
+  ): Promise<Map<string, FleetAccidentDoc[]>> {
     const rows = await this.model
-      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .find(bookRefFilter<FleetAccidentDoc>(ref))
       .lean<FleetAccidentDoc[]>()
       .exec();
-    const counts = new Map<string, number>();
-    for (const row of rows) {
-      const key = keyOf(row);
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-    }
-    return counts;
+    return groupByKey(rows, keyOf);
   }
 
   /**
@@ -148,6 +145,8 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
   accidentFilter(query: {
     vehicleId?: string | undefined;
     vehicleIds?: readonly string[] | undefined;
+    /** The typed codes, for files kept from the old book on a car the registry never had. */
+    vehicleCodes?: readonly string[] | undefined;
     culprit?: string | undefined;
     /** Which drivers, ORed. `[]` narrows to nothing, as every id list on this module does. */
     culpritEmployeeId?: readonly string[] | undefined;
@@ -160,7 +159,7 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
       clauses.push({ vehicleId: new Types.ObjectId(query.vehicleId) });
     }
     if (query.vehicleIds !== undefined) {
-      clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
+      clauses.push(byVehicleOrBookCode(query.vehicleIds, query.vehicleCodes));
     }
     // Escaped, so `.` and `*` are the characters the reader typed rather than a pattern they did
     // not write — a search box is not a regex console, and an unescaped `.*` would match all.

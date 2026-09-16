@@ -39,8 +39,11 @@ import { ODOMETER_GO_LIVE_MARK } from './odometer';
 import { resolveDrivers } from './odometer-import';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 
-/** The run key — versioned like the vehicles', and for the same reason. */
-export const MAINTENANCE_GO_LIVE_MARK = 'go-live:maintenance:v1';
+/**
+ * The run key — versioned like the vehicles', and for the same reason. v2 keeps the visits of
+ * cars the registry never had and the drivers' names HR does not know, as the odometer's v2 does.
+ */
+export const MAINTENANCE_GO_LIVE_MARK = 'go-live:maintenance:v2';
 
 /** The vehicles' lease. 1,800 visits with a counter look-up apiece is well under a minute. */
 export const MAINTENANCE_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -134,8 +137,10 @@ export const runMaintenanceGoLive = async (dataDir?: string): Promise<void> => {
     vehicles: plan.vehicles.length,
     imported: outcome.imported,
     alreadyThere: outcome.alreadyThere,
+    namesFilled: outcome.namesFilled,
     counterFromOdometer: outcome.counterFromOdometer,
     noCounter: outcome.noCounter,
+    counterUnknown: outcome.counterUnknown,
     openConflicts: outcome.openConflicts,
     catalogCreated: outcome.catalogCreated,
     ...notes,

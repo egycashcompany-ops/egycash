@@ -1,5 +1,6 @@
 // Doc → DTO mapping for the FL-2 entities. `inWorkshop` is computed by the caller (FR-12) and
 // passed in — the mapper never invents a derived fact.
+import { type Types } from 'mongoose';
 import {
   type FleetAccidentDto,
   type FleetCatalogItemDto,
@@ -138,29 +139,52 @@ export const toUnavailabilityDto = (doc: FleetUnavailabilityDoc): FleetDriverUna
  * `vehicleCode` is passed in rather than looked up here: a mapper runs once per row and a lookup
  * per row would be a query per row. The caller resolves the whole page's codes in one go.
  */
+/**
+ * The id of a row's vehicle, or nothing — a row kept from the old book for a car the registry
+ * never had has none, and `String(null)` would hand the registry the word «null» to look up.
+ */
+export const vehicleIdOf = (doc: { vehicleId: Types.ObjectId | null }): string | null =>
+  doc.vehicleId == null ? null : String(doc.vehicleId);
+
+/** The DISTINCT vehicle ids on a page, nulls left out — what one `codesByIds` call is asked for. */
+export const vehicleIdsOf = (docs: readonly { vehicleId: Types.ObjectId | null }[]): string[] => [
+  ...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)]))),
+];
+
+/** The code the registry answered, or — for a row with no vehicle — the one the old book wrote. */
+const codeOr = (doc: { vehicleCode?: string | null }, resolved: string | null): string | null =>
+  resolved ?? doc.vehicleCode ?? null;
+
 export const toOdometerLogDto = (
   doc: FleetOdometerLogDoc,
   vehicleCode: string | null,
 ): FleetOdometerLogDto => ({
   id: String(doc._id),
-  vehicleId: String(doc.vehicleId),
-  vehicleCode,
+  vehicleId: vehicleIdOf(doc),
+  vehicleCode: codeOr(doc, vehicleCode),
   date: iso(doc.date),
   outReading: doc.outReading,
   inReading: doc.inReading,
   km: doc.km,
   driver1EmployeeId: doc.driver1EmployeeId === null ? null : String(doc.driver1EmployeeId),
   driver2EmployeeId: doc.driver2EmployeeId === null ? null : String(doc.driver2EmployeeId),
+  // `?? null`: rows written before the field existed carry nothing at all.
+  driver1Name: doc.driver1Name ?? null,
+  driver2Name: doc.driver2Name ?? null,
   notes: doc.notes,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
 });
 
-export const toAccidentDto = (doc: FleetAccidentDoc): FleetAccidentDto => ({
+export const toAccidentDto = (
+  doc: FleetAccidentDoc,
+  vehicleCode: string | null = null,
+): FleetAccidentDto => ({
   id: String(doc._id),
-  vehicleId: String(doc.vehicleId),
-  occurredAt: iso(doc.occurredAt),
+  vehicleId: vehicleIdOf(doc),
+  vehicleCode: codeOr(doc, vehicleCode),
+  occurredAt: doc.occurredAt == null ? null : iso(doc.occurredAt),
   culprit: doc.culprit,
   culpritEmployeeId: doc.culpritEmployeeId === null ? null : String(doc.culpritEmployeeId),
   statement: doc.statement,
@@ -174,10 +198,14 @@ export const toAccidentDto = (doc: FleetAccidentDoc): FleetAccidentDto => ({
   updatedAt: iso(doc.updatedAt),
 });
 
-export const toViolationDto = (doc: FleetViolationDoc): FleetViolationDto => ({
+export const toViolationDto = (
+  doc: FleetViolationDoc,
+  vehicleCode: string | null = null,
+): FleetViolationDto => ({
   id: String(doc._id),
   kind: doc.kind,
-  vehicleId: String(doc.vehicleId),
+  vehicleId: vehicleIdOf(doc),
+  vehicleCode: codeOr(doc, vehicleCode),
   violationTypeId: String(doc.violationTypeId),
   amount: doc.amount,
   year: doc.year,
@@ -185,6 +213,7 @@ export const toViolationDto = (doc: FleetViolationDoc): FleetViolationDto => ({
   unitValue: doc.unitValue,
   date: doc.date === null ? null : iso(doc.date),
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
+  driverName: doc.driverName ?? null,
   collected: doc.collected,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
@@ -214,8 +243,8 @@ export const toMaintenanceVisitDto = (
   joins: MaintenanceVisitJoins,
 ): FleetMaintenanceVisitDto => ({
   id: String(doc._id),
-  vehicleId: String(doc.vehicleId),
-  vehicleCode: joins.vehicleCode,
+  vehicleId: vehicleIdOf(doc),
+  vehicleCode: codeOr(doc, joins.vehicleCode),
   inDate: iso(doc.inDate),
   outDate: doc.outDate === null ? null : iso(doc.outDate),
   workshopId: String(doc.workshopId),
@@ -228,6 +257,8 @@ export const toMaintenanceVisitDto = (
   // Stored drivers, read the same forgiving way — old visits carry neither key.
   driverInEmployeeId: doc.driverInEmployeeId == null ? null : String(doc.driverInEmployeeId),
   driverOutEmployeeId: doc.driverOutEmployeeId == null ? null : String(doc.driverOutEmployeeId),
+  driverInName: doc.driverInName ?? null,
+  driverOutName: doc.driverOutName ?? null,
   takenInByEmployeeId: doc.takenInByEmployeeId === null ? null : String(doc.takenInByEmployeeId),
   takenOutByEmployeeId: doc.takenOutByEmployeeId === null ? null : String(doc.takenOutByEmployeeId),
   notes: doc.notes,

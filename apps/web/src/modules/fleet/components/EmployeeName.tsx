@@ -59,6 +59,32 @@ export const EmployeeName = ({ employeeId }: { employeeId: string }): JSX.Elemen
 };
 
 /**
+ * A DRIVER cell on a fleet row: the employee HR knows, or — where the row came from the old
+ * books and HR has no employee for the spelling — the name as the book wrote it, kept as text.
+ *
+ * «عاوز يتحفظ كداتا زى ما يكون سواق كان موجود ومشى». The text name is set on such rows and on
+ * nothing else, so a name here without an employee is exactly that case; it prints in the same
+ * place, muted, with a title saying where it came from, and never pretends to be a link to HR.
+ */
+export const DriverName = ({
+  employeeId,
+  name,
+}: {
+  employeeId: string | null;
+  name: string | null | undefined;
+}): JSX.Element | string => {
+  if (employeeId !== null) return <EmployeeName employeeId={employeeId} />;
+  if (name != null && name !== '') {
+    return (
+      <span className="text-slate-600 dark:text-slate-300" data-legacy-name="true" title={name}>
+        {name}
+      </span>
+    );
+  }
+  return '—';
+};
+
+/**
  * The same records, for a WHOLE list at once — what a search over the pool needs.
  *
  * `useEmployeeRecord` is a hook, so a list cannot call it in a loop. `useQueries` can, and it

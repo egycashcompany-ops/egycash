@@ -10,7 +10,10 @@ import { FLEET_VIOLATION_KINDS, type FleetViolationKind } from '@ecms/contracts'
 
 export interface FleetViolationDoc extends BaseDocFields {
   kind: FleetViolationKind;
-  vehicleId: Types.ObjectId;
+  /** `null` ONLY on a row from the old book for a car the registry never had — see the odometer log. */
+  vehicleId: Types.ObjectId | null;
+  /** The old book's car code, set only where `vehicleId` is null. */
+  vehicleCode: string | null;
   violationTypeId: Types.ObjectId;
   amount: number;
   /** vehicle shape */
@@ -20,6 +23,8 @@ export interface FleetViolationDoc extends BaseDocFields {
   /** driver shape */
   date: Date | null;
   driverEmployeeId: Types.ObjectId | null;
+  /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
+  driverName: string | null;
   /** The money is in. Set by a person, never derived — see the DTO for why it is its own fact. */
   collected: boolean;
 }
@@ -27,7 +32,8 @@ export interface FleetViolationDoc extends BaseDocFields {
 const violationSchema = new Schema<FleetViolationDoc>(
   {
     kind: { type: String, enum: FLEET_VIOLATION_KINDS, required: true },
-    vehicleId: { type: Schema.Types.ObjectId, required: true },
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
+    vehicleCode: { type: String, default: null },
     violationTypeId: { type: Schema.Types.ObjectId, required: true },
     amount: { type: Number, required: true, min: 0 },
     year: { type: Number, default: null },
@@ -35,6 +41,7 @@ const violationSchema = new Schema<FleetViolationDoc>(
     unitValue: { type: Number, default: null },
     date: { type: Date, default: null },
     driverEmployeeId: { type: Schema.Types.ObjectId, default: null },
+    driverName: { type: String, default: null },
     collected: { type: Boolean, required: true, default: false },
     ...baseFields,
   },

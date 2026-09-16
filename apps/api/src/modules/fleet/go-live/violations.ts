@@ -30,8 +30,11 @@ import {
   planViolationsImport,
 } from './violations-import';
 
-/** The run key — versioned like the vehicles', and for the same reason. */
-export const VIOLATIONS_GO_LIVE_MARK = 'go-live:violations:v1';
+/**
+ * The run key — versioned like the vehicles', and for the same reason. v2 keeps the rows of cars
+ * the registry never had and the drivers' names HR does not know, as the odometer's v2 does.
+ */
+export const VIOLATIONS_GO_LIVE_MARK = 'go-live:violations:v2';
 
 /** The vehicles' lease. A thousand rows in a hundred inserts is seconds. */
 export const VIOLATIONS_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -95,6 +98,7 @@ export const runViolationsGoLive = async (dataDir?: string): Promise<void> => {
     skippedDeleted: parsed.skippedDeleted,
     rejected: parsed.rejected.slice(0, REPORT_CAP),
     unknownCars: plan.unknownCars,
+    grievancesUnplaced: plan.grievancesUnplaced,
     zeroCount: plan.zeroCount,
     unknownTypes: plan.unknownTypes,
     grievanceConflicts: plan.grievanceConflicts,
@@ -122,6 +126,7 @@ export const runViolationsGoLive = async (dataDir?: string): Promise<void> => {
     vehicles: plan.vehicles.length,
     imported: outcome.imported,
     alreadyThere: outcome.alreadyThere,
+    namesFilled: outcome.namesFilled,
     grievancesWritten: outcome.grievancesWritten,
     grievancesKept: outcome.grievancesKept,
     ...notes,

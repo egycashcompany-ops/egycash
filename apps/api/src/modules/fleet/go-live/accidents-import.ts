@@ -18,9 +18,10 @@
 // resolves to when it does. So the name travels as written, and the id is filled in where HR
 // knows the spelling; nothing is skipped or reported for a name that is nobody's.
 //
-// WHAT CANNOT BE PLACED, and is listed: a file with NO DATE (24 of them, and the book recorded
-// no other date for them) — `occurredAt` is required, and a date invented here would put the
-// accident in a month it did not happen in. A file on a car the registry does not have.
+// WHAT IS KEPT WITHOUT A FACT THE SCREEN NORMALLY HAS, and listed: a file with NO DATE (the book
+// recorded no other date for it) is written with none — a date invented here would put the
+// accident in a month it did not happen in, and leaving the file out would lose it. A file on a
+// car the registry never had is written by the book's code (`book-ref.ts`).
 //
 // WHAT IS FILLED IN, and counted: a blank statement is written as «غير مذكور» — the model
 // requires one, and «not stated» is the truth of it; a blank amount is 0. An amount with words
@@ -30,6 +31,7 @@ import { Types } from 'mongoose';
 import { fleetAccidentRepository } from '../accidents/accident.repository';
 import { type FleetAccidentDoc } from '../accidents/accident.model';
 import { day } from './odometer-import';
+import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
 import { failureReason } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
@@ -175,9 +177,10 @@ export interface PlannedAccident {
 }
 
 export interface AccidentsPlan {
-  vehicles: { code: string; vehicleId: string; rows: PlannedAccident[] }[];
+  vehicles: { code: string; ref: BookRef; rows: PlannedAccident[] }[];
+  /** Codes the registry does not have — their files are KEPT by code — with how many rows each. */
   unknownCars: string[];
-  /** Files with no date — «code: culprit» — skipped. */
+  /** Files with no date — «code: culprit» — kept, with none. */
   noDate: string[];
   /** Files written with «غير مذكور» for a statement the book left blank. */
   statementFilled: number;
@@ -191,9 +194,9 @@ export interface AccidentsPlan {
 export const accidentKey = (
   doc: Pick<FleetAccidentDoc, 'occurredAt' | 'culprit' | 'companyCost' | 'amountCollected' | 'paidAmount'>,
 ): string =>
-  `${doc.occurredAt.toISOString()}|${doc.culprit}|${doc.companyCost}|${doc.amountCollected}|${doc.paidAmount}`;
+  `${doc.occurredAt == null ? '' : doc.occurredAt.toISOString()}|${doc.culprit}|${doc.companyCost}|${doc.amountCollected}|${doc.paidAmount}`;
 
-/** Turn the ledger into files per vehicle. Pure. */
+/** Turn the ledger into files per car. Pure. */
 export const planAccidentsImport = (
   accidents: readonly ParsedAccident[],
   vehicleIdByCode: ReadonlyMap<string, string>,
@@ -210,23 +213,17 @@ export const planAccidentsImport = (
   const byCode = new Map<string, PlannedAccident[]>();
   const unknown = new Map<string, number>();
   for (const row of accidents) {
-    const vehicleId = vehicleIdByCode.get(row.code);
-    if (vehicleId === undefined) {
-      unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
-      continue;
-    }
-    if (row.occurredAt === null) {
-      plan.noDate.push(`${row.code}: ${row.culprit}`);
-      continue;
-    }
+    if (!vehicleIdByCode.has(row.code)) unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
+    if (row.occurredAt === null) plan.noDate.push(`${row.code}: ${row.culprit}`);
     if (row.statement === null) plan.statementFilled += 1;
     for (const amount of [row.companyCost, row.amountCollected, row.paidAmount]) {
       if (amount === null) plan.blankAmounts += 1;
     }
-    for (const note of row.amountNotes) plan.amountNotes.push(`${row.code} ${day(row.occurredAt)}: ${note}`);
+    const when = row.occurredAt === null ? '—' : day(row.occurredAt);
+    for (const note of row.amountNotes) plan.amountNotes.push(`${row.code} ${when}: ${note}`);
     const culpritId = culpritIdByName.get(row.culprit) ?? null;
     const doc: Partial<FleetAccidentDoc> = {
-      vehicleId: new Types.ObjectId(vehicleId),
+      ...bookRefFields(bookRefOf(row.code, vehicleIdByCode)),
       occurredAt: row.occurredAt,
       culprit: row.culprit,
       culpritEmployeeId: culpritId === null ? null : new Types.ObjectId(culpritId),
@@ -245,8 +242,11 @@ export const planAccidentsImport = (
   for (const [code, rows] of [...byCode].sort(([a], [b]) => a.localeCompare(b))) {
     plan.vehicles.push({
       code,
-      vehicleId: vehicleIdByCode.get(code) as string,
-      rows: [...rows].sort((a, b) => (a.doc.occurredAt as Date).getTime() - (b.doc.occurredAt as Date).getTime()),
+      ref: bookRefOf(code, vehicleIdByCode),
+      // Dated files in order; the undated ones first, as the oldest — nothing is known to be before them.
+      rows: [...rows].sort(
+        (a, b) => (a.doc.occurredAt?.getTime() ?? 0) - (b.doc.occurredAt?.getTime() ?? 0),
+      ),
     });
   }
   return plan;
@@ -269,12 +269,10 @@ export const applyAccidentsImport = async (
   const outcome: AccidentsImportOutcome = { imported: 0, alreadyThere: 0, failures: [] };
   for (const vehicle of plan.vehicles) {
     try {
-      const existing = await fleetAccidentRepository.existingKeyCounts(vehicle.vehicleId, accidentKey);
+      const existing = await fleetAccidentRepository.existingByKey(vehicle.ref, accidentKey);
       const docs: Partial<FleetAccidentDoc>[] = [];
       for (const row of vehicle.rows) {
-        const have = existing.get(row.key) ?? 0;
-        if (have > 0) {
-          existing.set(row.key, have - 1);
+        if (existing.get(row.key)?.shift() !== undefined) {
           outcome.alreadyThere += 1;
           continue;
         }

@@ -34,11 +34,17 @@
 // DRIVERS ARE NAMES. The book wrote the driver as a spelling, and «احتياطى» (a reserve, nobody in
 // particular) and «التوكيل» (the car was at the dealer) as the driver's name when there was none.
 // Those two are read as «no driver». Every other spelling is asked of the directory, which
-// answers with HR's candidates: one is the driver, none is reported by name so HR can add them,
-// several is reported as an ambiguity rather than guessed — and the row is imported either way,
-// with the driver left empty. A reading is a fact about the car; the driver is a label on it.
+// answers with HR's candidates: one is the driver; none, or several, and the NAME IS KEPT ON THE
+// ROW AS TEXT — «عاوز يتحفظ كداتا زى ما يكون سواق كان موجود ومشى» — shown in the driver column
+// in the employee's place, and listed on the run so HR can add the person if they are still
+// here. A reading is a fact about the car; the driver is a label on it, and the label is kept.
+//
+// CARS THE REGISTRY NEVER HAD — «194», «تويوتا1» — keep their rows too, carrying the book's code
+// and no vehicle (`book-ref.ts`): the row is data the company refers back to; the car is not
+// invented. Such rows are on no chain: nothing closes them and nothing measures from them.
 import { Types } from 'mongoose';
 import { findDirectoryEmployeesByNames } from '../../../platform/directory';
+import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
 import { type FleetOdometerLogDoc } from '../odometer/odometer.model';
 import { failureReason, fold } from './vehicles-import';
@@ -211,25 +217,45 @@ export const resolveDrivers = async (
   return resolution;
 };
 
+/**
+ * What a book's driver spelling becomes on the row: the employee HR knows by that spelling, or
+ * the spelling itself kept as text, or nothing at all for the book's words for «nobody».
+ */
+export interface DriverRef {
+  id: string | null;
+  name: string | null;
+}
+
+export const driverRef = (
+  name: string | null,
+  driverIdByName: ReadonlyMap<string, string>,
+  isNobody: (name: string) => boolean,
+): DriverRef => {
+  if (name === null || isNobody(name)) return { id: null, name: null };
+  const id = driverIdByName.get(name);
+  return id === undefined ? { id: null, name } : { id, name: null };
+};
+
 /** One row of a vehicle's chain, as it will be written. */
 export interface ChainRow {
   date: Date;
   out: number;
   in: number | null;
-  driver1: string | null;
-  driver2: string | null;
+  driver1: DriverRef;
+  driver2: DriverRef;
   notes: string | null;
 }
 
 export interface VehicleChain {
   code: string;
-  vehicleId: string;
+  /** The registry's car, or the book's code alone for a car the registry never had. */
+  ref: BookRef;
   rows: ChainRow[];
 }
 
 export interface OdometerPlan {
   vehicles: VehicleChain[];
-  /** Codes the registry does not have, with how many rows the book holds for each. */
+  /** Codes the registry does not have — their rows are KEPT by code — with how many rows each. */
   unknownCars: string[];
   /** Rows without an opening reading: how many, and which («code date»). */
   noOutReading: number;
@@ -243,13 +269,14 @@ export interface OdometerPlan {
 export const day = (date: Date): string => date.toISOString().slice(0, 10);
 
 /**
- * Turn the ledger into one chain per vehicle. Pure: the registry and the directory are handed in
- * as maps, so the rule can be tested on rows alone.
+ * Turn the ledger into one chain per car. Pure: the registry and the directory are handed in as
+ * maps, so the rule can be tested on rows alone.
  */
 export const planOdometerImport = (
   rows: readonly ParsedLogRow[],
   vehicleIdByCode: ReadonlyMap<string, string>,
   driverIdByName: ReadonlyMap<string, string>,
+  isNobody: (name: string) => boolean = isPlaceholderDriver,
 ): OdometerPlan => {
   const plan: OdometerPlan = {
     vehicles: [],
@@ -262,10 +289,7 @@ export const planOdometerImport = (
   const byCode = new Map<string, ParsedLogRow[]>();
   const unknown = new Map<string, number>();
   for (const row of rows) {
-    if (!vehicleIdByCode.has(row.code)) {
-      unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
-      continue;
-    }
+    if (!vehicleIdByCode.has(row.code)) unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
     if (row.out === null) {
       plan.noOutReading += 1;
       plan.noOutReadingRows.push(`${row.code} ${day(row.date)}`);
@@ -276,9 +300,6 @@ export const planOdometerImport = (
     byCode.set(row.code, list);
   }
   plan.unknownCars = [...unknown].sort().map(([code, count]) => `${code} (${count})`);
-
-  const driver = (name: string | null): string | null =>
-    name === null ? null : (driverIdByName.get(name) ?? null);
 
   for (const [code, list] of [...byCode].sort(([a], [b]) => a.localeCompare(b))) {
     // Date first, then the reading: two rows on one day are the morning and the evening, and the
@@ -305,12 +326,12 @@ export const planOdometerImport = (
         date: row.date,
         out,
         in: inReading,
-        driver1: driver(row.driver),
-        driver2: driver(row.driver2),
+        driver1: driverRef(row.driver, driverIdByName, isNobody),
+        driver2: driverRef(row.driver2, driverIdByName, isNobody),
         notes: row.notes,
       };
     });
-    plan.vehicles.push({ code, vehicleId: vehicleIdByCode.get(code) as string, rows: chain });
+    plan.vehicles.push({ code, ref: bookRefOf(code, vehicleIdByCode), rows: chain });
   }
   return plan;
 };
@@ -319,6 +340,8 @@ export interface OdometerImportOutcome {
   imported: number;
   /** Rows a take-over found already written — the same car, day and opening reading. */
   alreadyThere: number;
+  /** Rows already written whose driver was empty and now carries the book's name. */
+  namesFilled: number;
   /** Open tails closed against a reading the company had already recorded after the book ends. */
   closedByExisting: number;
   /** Cars whose open tail could not be written because the car already has an open period. */
@@ -332,14 +355,16 @@ export interface OdometerImportOutcome {
  *
  * IDEMPOTENT PER ROW, which is what makes the lease's take-over safe here: a row is «the same»
  * as one already written when it is the same car, the same day and the same opening reading,
- * and such a row is counted and not written again.
+ * and such a row is counted and not written again — but a driver's NAME is filled into it where
+ * an earlier run left the driver empty, which is the one repair a later run makes.
  *
  * THE OPEN TAIL IS THE ONE PLACE THE BOOK MEETS WHAT THE COMPANY HAS TYPED SINCE. The model
  * allows one open period per car. If the car already has one — readings recorded on the new
  * screen after the book stopped — the book's last row is closed against the earliest of those,
  * which is the reading the model says it hands on to; and if that earliest reading is dated
  * before the book's last row, or below it, the two histories cannot be joined without inventing
- * a number, so the tail is left out and the car is reported.
+ * a number, so the tail is left out and the car is reported. A car the registry never had has no
+ * chain to meet: its rows are written as the book had them.
  */
 export const applyOdometerImport = async (
   plan: OdometerPlan,
@@ -348,19 +373,34 @@ export const applyOdometerImport = async (
   const outcome: OdometerImportOutcome = {
     imported: 0,
     alreadyThere: 0,
+    namesFilled: 0,
     closedByExisting: 0,
     openConflicts: [],
     failures: [],
   };
   for (const vehicle of plan.vehicles) {
     try {
-      const existing = await fleetOdometerRepository.existingKeys(vehicle.vehicleId);
-      const open = await fleetOdometerRepository.findOpen(vehicle.vehicleId);
-      const head = open === null ? null : await fleetOdometerRepository.findChainHead(vehicle.vehicleId);
+      const existing = await fleetOdometerRepository.existingByKey(vehicle.ref);
+      const registered = vehicle.ref.vehicleId !== null;
+      const open = registered ? await fleetOdometerRepository.findOpen(vehicle.ref.vehicleId as string) : null;
+      const head =
+        open === null ? null : await fleetOdometerRepository.findChainHead(vehicle.ref.vehicleId as string);
       const docs: Partial<FleetOdometerLogDoc>[] = [];
       for (const row of vehicle.rows) {
-        if (existing.has(fleetOdometerRepository.rowKey(row.date, row.out))) {
+        const written = existing.get(fleetOdometerRepository.rowKey(row.date, row.out))?.shift();
+        if (written !== undefined) {
           outcome.alreadyThere += 1;
+          const names: { driver1Name?: string; driver2Name?: string } = {};
+          if (row.driver1.name !== null && written.driver1EmployeeId == null && !written.driver1Name) {
+            names.driver1Name = row.driver1.name;
+          }
+          if (row.driver2.name !== null && written.driver2EmployeeId == null && !written.driver2Name) {
+            names.driver2Name = row.driver2.name;
+          }
+          if (Object.keys(names).length > 0) {
+            await fleetOdometerRepository.setDriverNames(written._id, names);
+            outcome.namesFilled += 1;
+          }
           continue;
         }
         let inReading = row.in;
@@ -374,13 +414,15 @@ export const applyOdometerImport = async (
           }
         }
         docs.push({
-          vehicleId: new Types.ObjectId(vehicle.vehicleId),
+          ...bookRefFields(vehicle.ref),
           date: row.date,
           outReading: row.out,
           inReading,
           km: inReading === null ? null : inReading - row.out,
-          driver1EmployeeId: row.driver1 === null ? null : new Types.ObjectId(row.driver1),
-          driver2EmployeeId: row.driver2 === null ? null : new Types.ObjectId(row.driver2),
+          driver1EmployeeId: row.driver1.id === null ? null : new Types.ObjectId(row.driver1.id),
+          driver2EmployeeId: row.driver2.id === null ? null : new Types.ObjectId(row.driver2.id),
+          driver1Name: row.driver1.name,
+          driver2Name: row.driver2.name,
           notes: row.notes,
         });
       }

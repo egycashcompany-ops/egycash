@@ -12,6 +12,7 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
       [
         {
           vehicleId: 'v1',
+          vehicleCode: null,
           year: 2026,
           vehicleCount: 5,
           vehicleAmount: 500,
@@ -47,6 +48,7 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
       [
         {
           vehicleId: 'v1',
+          vehicleCode: null,
           year: 2026,
           vehicleCount: 3,
           vehicleAmount: 300,
@@ -76,6 +78,7 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
       [
         {
           vehicleId: 'v2',
+          vehicleCode: null,
           year: 2026,
           vehicleCount: 1,
           vehicleAmount: 10,
@@ -86,6 +89,7 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
         },
         {
           vehicleId: 'v1',
+          vehicleCode: null,
           year: 2026,
           vehicleCount: 1,
           vehicleAmount: 10,
@@ -108,6 +112,7 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
       [
         {
           vehicleId: 'v1',
+          vehicleCode: null,
           year: 2025,
           vehicleCount: 2,
           vehicleAmount: 200,
@@ -118,6 +123,7 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
         },
         {
           vehicleId: 'v1',
+          vehicleCode: null,
           year: 2026,
           vehicleCount: 5,
           vehicleAmount: 500,
@@ -157,6 +163,7 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   >[0] => [
     {
       vehicleId: 'v1',
+      vehicleCode: null,
       year: 2025,
       vehicleCount: 0,
       vehicleAmount: 0,
@@ -198,6 +205,7 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
       [
         {
           vehicleId: 'v1',
+          vehicleCode: null,
           year: 2026,
           vehicleCount: 2,
           vehicleAmount: 1000,

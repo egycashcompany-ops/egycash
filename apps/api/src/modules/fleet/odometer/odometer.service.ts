@@ -24,6 +24,7 @@ import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { alarmSortsFor } from '../maintenance/alarm-sort';
 import { fleetOdometerRepository } from './odometer.repository';
+import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'odometerLog', entityId: id });
@@ -273,7 +274,13 @@ class FleetOdometerService {
 
     const sorts = parseFleetSort(query.sort);
     const page = await fleetOdometerRepository.listLogs({
-      filter: fleetOdometerRepository.logFilter({ ...query, vehicleIds }),
+      filter: fleetOdometerRepository.logFilter({
+        ...query,
+        vehicleIds,
+        // The typed codes may stand on their own only when nothing else narrowed the ids: a
+        // reading kept from the old book on a car the registry never had has no alarm level.
+        vehicleCodes: query.alerts === undefined ? query.vehicleCodes : undefined,
+      }),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,
@@ -289,9 +296,7 @@ class FleetOdometerService {
     });
     // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
     // many vehicles the registry holds.
-    const codes = await fleetVehicleRepository.codesByIds([
-      ...new Set(page.items.map((item) => String(item.vehicleId))),
-    ]);
+    const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
     return { ...page, codes };
   }
 
@@ -305,7 +310,7 @@ class FleetOdometerService {
   async correct(id: string, input: CorrectFleetOdometer, by: string): Promise<OdometerLogWithCode> {
     const changedFields: { field: string; old: string | null; new: string | null }[] = [];
 
-    const { updated, vehicleId } = await unitOfWork(async (session) => {
+    const { updated, vehicleId, bookCode } = await unitOfWork(async (session) => {
       const entry = await fleetOdometerRepository.getById(id);
       const { prev, next } = await fleetOdometerRepository.findNeighbors(entry, session);
 
@@ -386,7 +391,7 @@ class FleetOdometerService {
           { by, version: next.__v, session },
         );
       }
-      return { updated: updatedEntry, vehicleId: String(entry.vehicleId) };
+      return { updated: updatedEntry, vehicleId: vehicleIdOf(entry), bookCode: entry.vehicleCode };
     });
 
     await auditService.record({
@@ -406,6 +411,8 @@ class FleetOdometerService {
         new: change.new,
       });
     }
+    // A reading kept from the old book for a car the registry never had names its car itself.
+    if (vehicleId === null) return { doc: updated, vehicleCode: bookCode };
     return {
       doc: updated,
       vehicleCode: (await fleetVehicleRepository.codesByIds([vehicleId])).get(vehicleId) ?? null,

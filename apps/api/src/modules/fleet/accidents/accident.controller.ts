@@ -9,14 +9,19 @@ import {
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
-import { toAccidentDto } from '../fleet.mappers';
+import { toAccidentDto, vehicleIdsOf } from '../fleet.mappers';
+import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetAccidentService } from './accident.service';
 
 type IdParam = { id: string };
 
 export const listAccidents = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetAccidentsQuery>(req);
-  okPage(res, await fleetAccidentService.list(query), toAccidentDto);
+  // The codes for the cars ON this page, in one read — a file kept from the old book for a car
+  // the registry never had carries its own code and needs no lookup.
+  const page = await fleetAccidentService.list(query);
+  const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
+  okPage(res, page, (doc) => toAccidentDto(doc, codes.get(String(doc.vehicleId)) ?? null));
 };
 
 export const accidentSummary = async (req: Request, res: Response): Promise<void> => {

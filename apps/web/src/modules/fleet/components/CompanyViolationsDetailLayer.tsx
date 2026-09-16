@@ -30,7 +30,7 @@ import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, EditIcon, TrashIcon } from '../../../shared/ui/icons';
-import { EmployeeName } from './EmployeeName';
+import { DriverName } from './EmployeeName';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useFleetCatalog, useSetViolationCollected, useViolations } from '../api/fleet-queries';
@@ -57,7 +57,8 @@ export const CompanyViolationsDetailLayer = ({
     open
       ? {
           kind: 'vehicle',
-          vehicleId: row.vehicleId,
+          // A group from the old book on a car the registry never had is asked for by its code.
+          ...(row.vehicleId === null ? { vehicleCodes: row.code } : { vehicleId: row.vehicleId }),
           year: String(row.year),
           pageSize: MAX_PAGE_SIZE,
           sortBy: 'createdAt',
@@ -71,7 +72,8 @@ export const CompanyViolationsDetailLayer = ({
     open
       ? {
           kind: 'driver',
-          vehicleId: row.vehicleId,
+          // A group from the old book on a car the registry never had is asked for by its code.
+          ...(row.vehicleId === null ? { vehicleCodes: row.code } : { vehicleId: row.vehicleId }),
           year: String(row.year),
           pageSize: MAX_PAGE_SIZE,
           sortBy: 'date',
@@ -196,7 +198,7 @@ export const CompanyViolationsDetailLayer = ({
       key: 'driver',
       header: t('fleet.violations.fields.driver'),
       render: (v) =>
-        v.driverEmployeeId === null ? '—' : <EmployeeName employeeId={v.driverEmployeeId} />,
+        <DriverName employeeId={v.driverEmployeeId} name={v.driverName} />,
     },
     {
       key: 'type',

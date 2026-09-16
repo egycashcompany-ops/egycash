@@ -66,6 +66,8 @@ const visit = (o: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisit
   vehicleCode: '150',
   driverInEmployeeId: null,
   driverOutEmployeeId: null,
+  driverInName: null,
+  driverOutName: null,
   inDate: '2026-09-01T00:00:00.000Z',
   outDate: null,
   workshopId: WORKSHOP_ID,

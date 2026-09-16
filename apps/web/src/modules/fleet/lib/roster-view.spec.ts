@@ -337,10 +337,20 @@ describe('the standing board, one filter at a time', () => {
     expect(fixedCodes(visibleFixedRows(STANDING, { term: '150 - 151' }))).toEqual(['150', '151']);
   });
 
-  it('the workshop is NOT an axis here — a car in the workshop still has its crew', () => {
-    // The daily board's «صيانة» is a fact about a day. Nothing here reads `inMaintenance`.
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'crewed' }))).toContain('154');
-    expect(FIXED_ROSTER_VIEWS).toEqual(['crewed', 'uncrewed']);
+  it('«صيانة» narrows to the cars the workshop holds, WITHOUT taking their crew away', () => {
+    // A REVERSAL, at the owner's word: «خلى الفلاتر بتاعت الطقم الثابت زى تعيين السيارات». This
+    // axis was deliberately absent — the daily «صيانة» is a fact about a DAY and this board has
+    // none — and what that missed is that the board draws the badge on every row it applies to.
+    //
+    // The two questions stay different, which is the whole of this test: 154 is in the workshop
+    // AND crewed, so it answers both «صيانة» and «بطقم». On the daily board the workshop refuses
+    // the assignment; here it only says where the car is.
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: 'workshop' }))).toEqual(['154']);
+    expect(
+      fixedCodes(visibleFixedRows(STANDING, { view: 'crewed' })),
+      'and it is still a crewed car',
+    ).toContain('154');
+    expect(FIXED_ROSTER_VIEWS).toEqual(['workshop', 'crewed', 'uncrewed']);
   });
 });
 
@@ -376,11 +386,16 @@ describe('readFixedView — the URL is user-writable', () => {
     expect(readFixedView('uncrewed')).toBe('uncrewed');
   });
 
-  it('answers null for anything else — INCLUDING the daily board’s own two states', () => {
-    // A link copied from the daily board must not empty the standing one.
-    for (const raw of [null, '', 'nonsense', 'total', 'CREWED', 'workshop', 'assigned']) {
+  it('answers null for anything else — including the daily board’s «تشغيل»', () => {
+    // A link copied from the daily board must not empty the standing one. «صيانة» is now a state
+    // BOTH boards have, so it is no longer in this list; «تشغيل» — a mission OR a driver — is
+    // still the daily board's alone, because a mission with nobody on it is not a crew.
+    for (const raw of [null, '', 'nonsense', 'total', 'CREWED', 'assigned']) {
       expect(readFixedView(raw), String(raw)).toBeNull();
     }
-    expect(fixedCodes(visibleFixedRows(STANDING, { view: readFixedView('workshop') }))).toHaveLength(6);
+    expect(fixedCodes(visibleFixedRows(STANDING, { view: readFixedView('assigned') }))).toHaveLength(
+      6,
+    );
+    expect(readFixedView('workshop'), 'and the one they share is read').toBe('workshop');
   });
 });

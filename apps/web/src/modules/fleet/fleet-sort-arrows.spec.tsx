@@ -185,10 +185,10 @@ describe('the three WHOLE boards order what they already hold', () => {
     // The alarms board opened on «reddest first, then nearest due» before it had arrows, and it
     // still does: the level is the default order and the remaining distance is the tiebreak.
     const alarms = code('pages/MaintenanceAlarmsPage.tsx');
-    expect(alarms).toContain("readSorts(sortParam, 'level:asc')");
+    expect(alarms).toContain("const DEFAULT_SORT = 'level:asc';");
     expect(alarms).toContain('(a.remainingKm ?? Number.POSITIVE_INFINITY)');
     for (const path of ['pages/RosterPage.tsx', 'pages/FixedRosterPage.tsx']) {
-      expect(code(path), path).toContain("readSorts(sortParam, 'code:asc')");
+      expect(code(path), path).toContain("const DEFAULT_SORT = 'code:asc';");
     }
   });
 });

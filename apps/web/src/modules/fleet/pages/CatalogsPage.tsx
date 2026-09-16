@@ -22,7 +22,7 @@ import { Select } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { useCatalogItems } from '../api/fleet-queries';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
-import { readSorts, sortQuery, toggleSort, writeSorts } from '../lib/table-sort';
+import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -36,6 +36,14 @@ const DEFAULT_PAGE_SIZE = 25;
 
 const isKind = (value: string | null): value is FleetCatalogKind =>
   (FLEET_CATALOG_KINDS as readonly string[]).includes(value ?? '');
+
+/**
+ * The order this screen opens in, before the reader has asked for one.
+ *
+ * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
+ * first click REPLACES it rather than joining it — see `clickSort`.
+ */
+const DEFAULT_SORT = 'name.ar:asc';
 
 export const CatalogsPage = (): JSX.Element => {
   const t = useT();
@@ -54,7 +62,7 @@ export const CatalogsPage = (): JSX.Element => {
    * is where the screen starts when the reader has not said otherwise.
    */
   const sortParam = sp.get('sort');
-  const sorts = useMemo(() => readSorts(sortParam, 'name.ar:asc'), [sortParam]);
+  const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);
   const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
@@ -69,7 +77,7 @@ export const CatalogsPage = (): JSX.Element => {
   // Ascending, then descending, then out of the order altogether — and a column the table
   // is NOT sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
-    patch({ sort: writeSorts(toggleSort(sorts, by)) }, false);
+    patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
 
   const params = useMemo(

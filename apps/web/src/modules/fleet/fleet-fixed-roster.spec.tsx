@@ -1582,7 +1582,9 @@ const V3 = '650000000000000000000003';
 const V4 = '650000000000000000000004';
 const FILTERS_BOARD: FleetFixedRosterDto = {
   rows: [
-    { ...row(V1, '150', E1), missionTypeId: MT },
+    // 150 is also the car the workshop is holding — crewed AND in the workshop, which is exactly
+    // the combination «صيانة» must not be allowed to confuse with «بدون طقم».
+    { ...row(V1, '150', E1), missionTypeId: MT, inMaintenance: true },
     row(V2, '151'),
     { ...row(V3, '152'), missionTypeId: MT },
     row(V4, '153', null, E2),
@@ -1597,7 +1599,7 @@ describe('the counters filter the standing board', () => {
   it('renders each chip as a real button that says whether it is applied', () => {
     // A tinted span with an onClick is not reachable by keyboard and announces nothing.
     const markup = at('');
-    for (const key of ['total', 'crewed', 'uncrewed', MT]) {
+    for (const key of ['total', 'workshop', 'crewed', 'uncrewed', MT]) {
       const idx = markup.indexOf(`data-counter="${key}"`);
       expect(idx, key).toBeGreaterThan(-1);
       expect(markup.lastIndexOf('<button', idx), `${key} is a button`).toBeGreaterThan(
@@ -1638,13 +1640,26 @@ describe('the counters filter the standing board', () => {
     expect(SOURCE, 'no second copy of mission filtering').not.toContain('view: item.id');
   });
 
-  it('has NO workshop chip — a car in the workshop still has a standing crew', () => {
-    // The daily board's «صيانة» is a fact about a DAY. This board has none, and a chip that
-    // narrowed by it would be borrowing an axis the screen does not have.
-    const markup = at('');
-    expect(markup).not.toContain('data-counter="workshop"');
-    expect(markup).not.toContain('data-counter="assigned"');
-    expect(SOURCE).not.toContain("view: 'workshop'");
+  it('«صيانة» shows the cars the workshop is holding — the daily board’s own chip', () => {
+    // A REVERSAL, at the owner's word: «خلى الفلاتر بتاعت الطقم الثابت زى تعيين السيارات». This
+    // chip used to be deliberately absent, on the reasoning that the daily «صيانة» is a fact
+    // about a DAY and this board has none. What that missed is that the board already DRAWS the
+    // badge on every row it applies to — it could say a car was in the workshop and could not be
+    // asked to show them, which is the one filter the two screens did not share.
+    //
+    // It still means something narrower here: the workshop refuses an assignment on the daily
+    // board, while a car in the workshop keeps its standing crew. So this narrows the view, and
+    // «بطقم» below still counts that car — the two questions are about different things.
+    const body = tbody(at('?view=workshop'));
+    expect(body, 'the car the workshop holds').toContain('150');
+    for (const code of ['151', '152', '153']) expect(body, code).not.toContain(code);
+    expect(chipActive(at('?view=workshop'), 'workshop')).toBe(true);
+  });
+
+  it('does NOT borrow the daily board’s «تشغيل» — that one counts a mission as a plan', () => {
+    // «تشغيل» is «a mission OR a driver», which is not a crew. This board's own «بطقم» asks the
+    // narrower question and is the right one here.
+    expect(at('')).not.toContain('data-counter="assigned"');
   });
 
   it('marks the applied chip and only that one', () => {
@@ -1670,7 +1685,7 @@ describe('the counters filter the standing board', () => {
         .replace(/\s+/g, ' ')
         .trim();
     };
-    for (const key of ['total', 'crewed', 'uncrewed', MT]) {
+    for (const key of ['total', 'workshop', 'crewed', 'uncrewed', MT]) {
       expect(tone(idle, key), key).toBe(tone(applied, key));
     }
     const tones = ['total', 'crewed', 'uncrewed', MT].map((k) => tone(idle, k));
@@ -1691,8 +1706,10 @@ describe('the counters filter the standing board', () => {
   it('ignores a view it does not know instead of emptying the board', () => {
     const body = tbody(at('?view=nonsense'));
     for (const code of ['150', '151', '152', '153']) expect(body, code).toContain(code);
-    // …and the daily board's own two states are not this board's.
-    for (const code of ['150', '151', '152', '153']) expect(tbody(at('?view=workshop')), code).toContain(code);
+    // …and «تشغيل», which this board does not have, is one of the ones it does not know.
+    for (const code of ['150', '151', '152', '153']) {
+      expect(tbody(at('?view=assigned')), code).toContain(code);
+    }
   });
 });
 

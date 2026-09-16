@@ -136,6 +136,20 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
     return rows.map((row) => row._id);
   }
 
+  /**
+   * Every vehicle's code → id, in one read — the go-live imports' join, which brings twenty
+   * thousand legacy rows across by the car code each one names. Deleted cars included, for the
+   * reason `idsByCodes` gives: their history is still their history.
+   */
+  async codeIndex(): Promise<Map<string, string>> {
+    const rows = await this.model
+      .find({})
+      .select({ code: 1 })
+      .lean<{ _id: Types.ObjectId; code: string }[]>()
+      .exec();
+    return new Map(rows.map((row) => [row.code, String(row._id)]));
+  }
+
   async idsByCodes(codes: readonly string[]): Promise<string[]> {
     if (codes.length === 0) return [];
     const rows = await this.model

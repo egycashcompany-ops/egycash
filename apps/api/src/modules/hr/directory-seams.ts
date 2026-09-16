@@ -13,11 +13,13 @@ import {
   registerEmployeeLookup,
   registerEmployeesByDepartmentLookup,
   registerEmployeesByJobTitlesLookup,
+  registerEmployeesByNamesLookup,
   registerLeaveLookup,
   registerSelfEmployeeLookup,
 } from '../../platform/directory';
 import { employeeRepository } from './employee-management/employees/employee.repository';
 import { EmployeeModel } from './employee-management/employees/employee.model';
+import { matchEmployeesByName } from './employee-management/employees/employee-name-match';
 import { LeaveRequestModel } from './leave-management/leave-requests/leave-request.model';
 import { AttendanceDayModel } from './attendance/day-records/day-record.model';
 
@@ -87,6 +89,24 @@ export const registerHrDirectorySeams = (): void => {
     const employee = await employeeRepository.findByCodeSystem(code);
     if (employee === null) return null;
     return toDirectoryEmployee(employee);
+  });
+
+  // By NAME — «which employee is «مصطفى عثمان محمود عثمان»?» — for the go-live step bringing the
+  // old fleet book across, where a driver is a spelling and nothing else. HR's rule
+  // (`employee-name-match.ts`) answers with candidates; the consumer takes one, reports none or
+  // several. Any status: a driver who has left still drove last year.
+  registerEmployeesByNamesLookup(async (names) => {
+    const employees = await employeeRepository.listAllForNameMatchSystem();
+    const matched = matchEmployeesByName(
+      names,
+      employees.map((employee) => ({ name: employee.personal.fullNameAr, employee })),
+    );
+    return new Map(
+      [...matched].map(([name, candidates]) => [
+        name,
+        candidates.map((candidate) => toDirectoryEmployee(candidate.employee)),
+      ]),
+    );
   });
 
   registerSelfEmployeeLookup(async (userId) => {

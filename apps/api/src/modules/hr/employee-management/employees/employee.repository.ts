@@ -316,6 +316,21 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .exec();
   }
 
+  /**
+   * EVERYONE on file, any status, for a caller that has to match by NAME.
+   *
+   * The directory's by-names lookup folds Arabic in memory (`employee-name-match.ts`), because
+   * the rule — spaces dropped, a prefix admitted — is not one expression the database can index.
+   * So the whole file is read once and matched once; it is a few hundred rows and the caller is a
+   * go-live step that runs once per database, not a screen somebody pages.
+   *
+   * Exited employees INCLUDED, unlike every other `System` list here: a reading taken last year
+   * by a driver who has since left is still that driver's reading. Soft-deleted rows are not.
+   */
+  async listAllForNameMatchSystem(): Promise<EmployeeDoc[]> {
+    return this.model.find({ isDeleted: false }).lean<EmployeeDoc[]>().exec();
+  }
+
   async listByDepartmentsSystem(departmentIds: readonly string[]): Promise<EmployeeDoc[]> {
     if (departmentIds.length === 0) return [];
     return this.model

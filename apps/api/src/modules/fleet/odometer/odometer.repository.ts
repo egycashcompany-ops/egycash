@@ -43,6 +43,43 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       .exec();
   }
 
+  /** How a row is told from another for the go-live import: the car, the day, the opening reading. */
+  rowKey(date: Date, outReading: number): string {
+    return `${date.toISOString()}|${outReading}`;
+  }
+
+  /**
+   * Every live row's key for one vehicle — what the go-live import checks before writing, so a
+   * run taken over after a lapsed lease skips the rows the first attempt already wrote.
+   */
+  async existingKeys(vehicleId: string): Promise<Set<string>> {
+    const rows = await this.model
+      .find({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .select({ date: 1, outReading: 1 })
+      .lean<{ date: Date; outReading: number }[]>()
+      .exec();
+    return new Set(rows.map((row) => this.rowKey(row.date, row.outReading)));
+  }
+
+  /**
+   * Several rows in ONE insert — the go-live import's write, one call per vehicle rather than
+   * one per reading. Stamps `createdBy`/`updatedBy` exactly as `create` does, so a row written
+   * here is indistinguishable from one recorded on the screen. Ordered, so a failure names the
+   * first row that could not be written and leaves the rows before it in place for the take-over
+   * to find.
+   */
+  async createMany(
+    rows: readonly Partial<FleetOdometerLogDoc>[],
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<FleetOdometerLogDoc[]> {
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    const docs = await FleetOdometerLogModel.create(
+      rows.map((row) => ({ ...row, createdBy: by, updatedBy: by })),
+      { session: meta.session ?? null, ordered: true },
+    );
+    return docs.map((doc) => doc.toObject() as FleetOdometerLogDoc);
+  }
+
   async findLatest(
     vehicleId: string,
     session?: ClientSession,

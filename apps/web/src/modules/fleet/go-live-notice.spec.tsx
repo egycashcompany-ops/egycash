@@ -108,6 +108,49 @@ describe('what the notice says', () => {
     expect(markup).toContain('0100998.jpg — موظف مكتب');
   });
 
+  it('prints a finished odometer import with the names HR does not have, and the cars the registry does not', () => {
+    const markup = render(
+      [
+        run({
+          key: 'go-live:odometer:v1',
+          status: 'done',
+          outcome: {
+            vehicles: 170,
+            imported: 18734,
+            alreadyThere: 0,
+            closedByExisting: 0,
+            openConflicts: [],
+            skippedDeleted: 747,
+            rejected: [{ id: '6963899b54423ddc3fbdfba3', reason: '176: the date cannot be read' }],
+            unknownCars: ['194 (1)', 'تويوتا1 (2)'],
+            noOutReading: 837,
+            noOutReadingRows: ['150 2025-11-25'],
+            closedByNext: 360,
+            badInReading: 32,
+            unmatchedDrivers: ['محمد محمود', 'عمرو عنتر على على'],
+            ambiguousDrivers: ['محمد احمد — 0100026, 0100027'],
+            placeholders: ['احتياطى', 'التوكيل'],
+          },
+        }),
+      ],
+      { step: 'odometer' },
+    );
+    expect(markup).toContain('data-go-live-state="done"');
+    expect(markup).toContain('استيراد دفتر العداد');
+    expect(markup, 'a count, in words').toContain('قراءات أُضيفت');
+    expect(markup, 'the names, verbatim, for HR').toContain('أضفهم هناك');
+    expect(markup).toContain('عمرو عنتر على على');
+    expect(markup).toContain('محمد احمد — 0100026, 0100027');
+    expect(markup).toContain('تويوتا1 (2)');
+    expect(markup, 'an empty list is not a line').not.toContain('لم يُمكن وصل');
+  });
+
+  it('a finished run that reports only counts says nothing — whatever the step', () => {
+    expect(
+      render([run({ key: 'go-live:odometer:v1', status: 'done', outcome: { vehicles: 170, imported: 18734, unknownCars: [], unmatchedDrivers: [] } })], { step: 'odometer' }),
+    ).toBe('');
+  });
+
   it('prints nothing at all when there is no row for the step', () => {
     expect(render([run({ key: 'go-live:driver-photos:v1' })], { step: 'vehicles' })).toBe('');
   });

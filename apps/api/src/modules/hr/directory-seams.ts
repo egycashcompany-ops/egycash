@@ -7,6 +7,7 @@
 import {
   type DirectoryEmployee,
   registerAttendanceDayLookup,
+  registerDirectoryNameSource,
   registerEmployeeBatchLookup,
   registerEmployeeByCodeLookup,
   registerEmployeeLookup,
@@ -16,6 +17,7 @@ import {
   registerSelfEmployeeLookup,
 } from '../../platform/directory';
 import { employeeRepository } from './employee-management/employees/employee.repository';
+import { EmployeeModel } from './employee-management/employees/employee.model';
 import { LeaveRequestModel } from './leave-management/leave-requests/leave-request.model';
 import { AttendanceDayModel } from './attendance/day-records/day-record.model';
 
@@ -127,6 +129,14 @@ export const registerHrDirectorySeams = (): void => {
         toDirectoryEmployee(employee),
       ]),
     );
+  });
+
+  // WHERE the names live, for a consumer that has to ORDER by one. HR declares the join; Fleet
+  // performs it through the platform, never spelling this collection itself — see
+  // `DirectoryNameSource`. The Arabic name, because that is the one every screen prints.
+  registerDirectoryNameSource({
+    collection: EmployeeModel.collection.name,
+    nameField: 'personal.fullNameAr',
   });
 
   registerLeaveLookup(async (employeeId, date) => {

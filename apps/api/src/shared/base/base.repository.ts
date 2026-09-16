@@ -361,7 +361,27 @@ export class BaseRepository<T extends BaseDocFields> {
       strip[field.key] = 0;
     }
     stages.push({ $addFields: added });
-    stages.push({ $sort: sort });
+    // A DERIVED VALUE THAT IS MISSING SORTS LAST, whichever way the arrow points — the same rule
+    // the drivers registry and the whole-board screens follow, and the one Mongo does NOT: it
+    // orders null before every value, so ascending by «اسم السائق» would open on every reading
+    // nobody drove home rather than on أحمد.
+    //
+    // A companion flag per derived key, sorted ASCENDING in front of the key itself, is what
+    // turns that round without touching the key's own direction. It needs its own `$addFields`
+    // stage: within one stage a field cannot read another field the same stage is adding.
+    const flags: Record<string, unknown> = {};
+    const ordered: Record<string, 1 | -1> = {};
+    for (const [field, direction] of Object.entries(sort)) {
+      if (derived.some((entry) => entry.key === field)) {
+        const flag = `__missing_${field}`;
+        flags[flag] = { $cond: [{ $eq: [{ $ifNull: [`$${field}`, null] }, null] }, 1, 0] };
+        strip[flag] = 0;
+        ordered[flag] = 1;
+      }
+      ordered[field] = direction;
+    }
+    if (Object.keys(flags).length > 0) stages.push({ $addFields: flags });
+    stages.push({ $sort: ordered });
     stages.push({ $skip: (page - 1) * pageSize });
     stages.push({ $limit: pageSize });
     stages.push({ $project: strip });

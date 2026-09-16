@@ -204,10 +204,17 @@ const firstCells = (markup: string): string[] =>
 
 const REQUIRED_COLUMNS = [
   // «شيل التسلسل من شاشه fleet/odometer» — the serial column is gone, so the table opens on the
-  // date. Nothing else about the grid moved.
+  // date.
   'fleet.odometer.fields.date',
   'fleet.odometer.columns.vehicle',
-  'fleet.odometer.columns.driver',
+  // ONE COLUMN PER SHIFT — «تفصل الصباحى عن المسائى كل واحد فى عمود».
+  //
+  // A REVERSAL, and worth saying so: the two used to share a cell, on the owner's own earlier
+  // instruction that this grid read like the maintenance one. What the shared cell could not do
+  // is take an arrow — a cell holding two people has no single value to order a register by —
+  // and that is what the owner asked for next. Both screens are split now, both for that reason.
+  'fleet.odometer.columns.driver1',
+  'fleet.odometer.columns.driver2',
   'fleet.odometer.columns.outReading',
   'fleet.odometer.columns.inReading',
   'fleet.odometer.columns.km',
@@ -286,37 +293,39 @@ describe('the odometer table', () => {
    * still told apart, by a caption on each line rather than by a header. Two columns would give
    * the eleventh column of an eleven-column grid to a fact that fits on one line.
    */
-  it('prints both drivers in ONE «اسم السائق» column, as the maintenance grid does', () => {
+  it('gives each SHIFT its own column, named by the shift', () => {
+    // The two shared a cell until «تفصل الصباحى عن المسائى كل واحد فى عمود». The cell named each
+    // line's shift in a caption, because colour alone would have been a riddle; a column carries
+    // that name in its header instead, which is where a reader looks for it.
     const head = thead(render());
-    expect(head, 'one driver column').toContain(t('fleet.odometer.columns.driver'));
-    expect(head, 'not a column per shift').not.toContain(t('fleet.odometer.columns.driver1'));
-    expect(head, 'not a column per shift').not.toContain(t('fleet.odometer.columns.driver2'));
-  });
-
-  it('names the SHIFT on each line, so colour is never the only thing saying which is which', () => {
-    const body = tbody(
-      render({ qc: client([log({ driver1EmployeeId: 'e1', driver2EmployeeId: 'e2' })]) }),
-    );
-    expect(t('fleet.odometer.driverShift.morning')).toBe('صباحى');
-    expect(t('fleet.odometer.driverShift.evening')).toBe('مسائى');
-    expect(body, 'the morning line says so').toContain(t('fleet.odometer.driverShift.morning'));
-    expect(body, 'and the evening line says so').toContain(
-      t('fleet.odometer.driverShift.evening'),
+    expect(head, 'the morning column').toContain(t('fleet.odometer.columns.driver1'));
+    expect(head, 'the evening column').toContain(t('fleet.odometer.columns.driver2'));
+    expect(head, 'and no merged column left behind').not.toContain(
+      `>${t('fleet.odometer.columns.driver')}<`,
     );
   });
 
-  it('prints only the shifts the row actually recorded — never a line saying «null»', () => {
+  it('orders the WHOLE register by either shift’s name — not the page in hand', () => {
+    // The point of the split. Each column asks the server for the name it is joined against, so
+    // the arrow orders every reading the filter matches; sorting the fetched page would order
+    // twenty-five readings out of thousands.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source).toContain("sortKey: 'driver1Name'");
+    expect(source).toContain("sortKey: 'driver2Name'");
+  });
+
+  it('prints only the shifts the row actually recorded — never a cell saying «null»', () => {
     const oneDriver = tbody(
       render({ qc: client([log({ driver1EmployeeId: 'e1', driver2EmployeeId: null })]) }),
     );
-    expect(oneDriver).toContain(t('fleet.odometer.driverShift.morning'));
-    expect(oneDriver, 'no evening line on a day one person drove').not.toContain(
-      t('fleet.odometer.driverShift.evening'),
-    );
+    // Nothing seeds HR here, so a recorded driver renders as the id's tail — which is exactly the
+    // point: SOMETHING is drawn for the shift that was recorded, and the dash is what is drawn for
+    // the one that was not.
+    expect(oneDriver, 'the morning shift is filled').toContain('e1');
+    expect(oneDriver, 'and the empty evening is a dash').toContain('—');
     const neither = tbody(
       render({ qc: client([log({ driver1EmployeeId: null, driver2EmployeeId: null })]) }),
     );
-    expect(neither).not.toContain(t('fleet.odometer.driverShift.morning'));
     expect(neither).not.toContain('null');
   });
 

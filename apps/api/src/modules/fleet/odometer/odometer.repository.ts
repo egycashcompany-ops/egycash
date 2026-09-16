@@ -3,6 +3,7 @@ import { type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { FleetOdometerLogModel, type FleetOdometerLogDoc } from './odometer.model';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
+import { driverNameSorts } from '../fleet-sort-keys';
 
 export interface LatestReading {
   vehicleId: string;
@@ -277,10 +278,23 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   }
 
   async listLogs(params: ListParams<FleetOdometerLogDoc>): Promise<Paginated<FleetOdometerLogDoc>> {
+    // The keys this register publishes beyond its own stored columns: the car's code, the two
+    // shift drivers' names — «تفصل الصباحى عن المسائى كل واحد فى عمود» — and whichever per-vehicle
+    // maintenance figure the reader actually asked for, which the service computes and hands down.
+    // Each one is a key AND its derivation, declared together so a published column cannot end up
+    // with nothing to sort by: `sortableFields` is built FROM the list.
+    const derived = [
+      VEHICLE_CODE_SORT,
+      ...driverNameSorts([
+        ['driver1Name', 'driver1EmployeeId'],
+        ['driver2Name', 'driver2EmployeeId'],
+      ]),
+      ...(params.sortDerived ?? []),
+    ];
     return this.list({
       ...params,
-      sortableFields: ['date', 'outReading', 'createdAt', VEHICLE_CODE_SORT.key],
-      sortDerived: [VEHICLE_CODE_SORT],
+      sortableFields: ['date', 'outReading', 'createdAt', ...derived.map((entry) => entry.key)],
+      sortDerived: derived,
     });
   }
 

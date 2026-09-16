@@ -206,57 +206,43 @@ export const OdometerPage = (): JSX.Element => {
         </span>
       ),
     },
+    // TWO COLUMNS, ONE PER SHIFT — «تفصل الصباحى عن المسائى كل واحد فى عمود».
+    //
+    // They were one cell with two captioned lines, which fitted the grid's eleven columns onto a
+    // screen and cost nothing a reader could name. What it did cost is an ORDER: a cell holding
+    // two people has no single value, so «رتب بإسم السائق» had no column to point at. Split, each
+    // shift is its own question and takes its own arrow — and the arrow orders the whole register,
+    // because the name is joined in by the server before the page is cut (`driverNameSorts`).
+    //
+    // The tones stay what they were, one per shift, so the two columns still read as the pair they
+    // were when they shared a cell. An empty shift is a dash, never a blank.
     {
-      key: 'driver',
-      header: t('fleet.odometer.columns.driver'),
-      // ONE COLUMN, TWO LINES — «اسم السائق في الجدول يكون زى شاشه الmaintanance», and the two
-      // shifts kept as they were, «يفضل عمودين (صباحى/مسائى) زى دلوقتى».
-      //
-      // Those two asks only look like they disagree. The maintenance grid already prints TWO
-      // drivers for one visit — who brought the car in, above who drove it away — in a single
-      // «اسم السائق» cell, each line in its own tone. Applying that shape here keeps the morning
-      // and the evening driver just as distinguishable as two columns made them while giving the
-      // table back a whole column of width, on a grid that carries eleven of them.
-      //
-      // Where it does NOT copy maintenance is the caption. There, order and colour are enough:
-      // the entry driver is always above the exit driver, and the tones are the danger/success
-      // pair the design system already spends on that meaning. Morning and evening have no such
-      // convention to lean on, so each line names its shift — colour alone would be a riddle in a
-      // column that used to say «صباحي» and «مسائي» in its headers.
-      //
-      // Each line is conditional. A day driven by one person has one line, and a row from before
-      // these fields existed has none — which renders as a dash, never as `null`. Keyed by SHIFT,
-      // not by employee: the same person may well drive both.
-      render: (log) => {
-        const lines: { shift: string; id: string; label: string; tone: string }[] = [];
-        if (log.driver1EmployeeId !== null) {
-          lines.push({
-            shift: 'morning',
-            id: log.driver1EmployeeId,
-            label: t('fleet.odometer.driverShift.morning'),
-            tone: 'text-amber-700 dark:text-amber-300',
-          });
-        }
-        if (log.driver2EmployeeId !== null) {
-          lines.push({
-            shift: 'evening',
-            id: log.driver2EmployeeId,
-            label: t('fleet.odometer.driverShift.evening'),
-            tone: 'text-indigo-700 dark:text-indigo-300',
-          });
-        }
-        if (lines.length === 0) return '—';
-        return (
-          <span className="flex flex-col gap-0.5">
-            {lines.map(({ shift, id, label, tone }) => (
-              <span key={shift} className={tone}>
-                <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>{' '}
-                <EmployeeName employeeId={id} />
-              </span>
-            ))}
+      key: 'driver1',
+      header: t('fleet.odometer.columns.driver1'),
+      sortable: true,
+      sortKey: 'driver1Name',
+      render: (log) =>
+        log.driver1EmployeeId === null ? (
+          '—'
+        ) : (
+          <span className="text-amber-700 dark:text-amber-300">
+            <EmployeeName employeeId={log.driver1EmployeeId} />
           </span>
-        );
-      },
+        ),
+    },
+    {
+      key: 'driver2',
+      header: t('fleet.odometer.columns.driver2'),
+      sortable: true,
+      sortKey: 'driver2Name',
+      render: (log) =>
+        log.driver2EmployeeId === null ? (
+          '—'
+        ) : (
+          <span className="text-indigo-700 dark:text-indigo-300">
+            <EmployeeName employeeId={log.driver2EmployeeId} />
+          </span>
+        ),
     },
     {
       key: 'outReading',
@@ -296,6 +282,10 @@ export const OdometerPage = (): JSX.Element => {
     {
       key: 'maintenance',
       header: t('fleet.odometer.columns.sinceService'),
+      // Ordered by the CAR's figure, computed for the fleet and handed to the query — see
+      // `alarm-sort.ts`. A car the projection has no answer for sorts with the other blanks.
+      sortable: true,
+      sortKey: 'alarmSinceService',
       render: (log) => {
         const alarm = alarmByVehicle.get(log.vehicleId);
         // No rule, no service on file, or a vehicle that has left the registry: say nothing

@@ -115,6 +115,34 @@ describe('the registers that REFERENCE a car order by its code', () => {
   it('orders the drivers’ fines by date as well as by car', () => {
     arrowed('components/DriverViolationsPanel.tsx', ['date']);
   });
+
+  it('gives each SHIFT and each LEG its own column, and its own arrow', () => {
+    // «تفصل الصباحى عن المسائى كل واحد فى عمود». The split is what makes the arrow possible: two
+    // people in one cell have no single value to order a register by. Each column joins against
+    // its OWN reference — a second column pointed at the first driver would order by the first
+    // driver and look perfectly plausible.
+    const odometer = code('pages/OdometerPage.tsx');
+    expect(column(odometer, 'driver1')).toContain("sortKey: 'driver1Name'");
+    expect(column(odometer, 'driver2')).toContain("sortKey: 'driver2Name'");
+    expect(odometer, 'and the merged cell is gone').not.toContain(
+      "key: 'driver',\n      header: t('fleet.odometer.columns.driver')",
+    );
+    const maintenance = code('pages/MaintenancePage.tsx');
+    expect(column(maintenance, 'driverIn')).toContain("sortKey: 'driverInName'");
+    expect(column(maintenance, 'driverOut')).toContain("sortKey: 'driverOutName'");
+  });
+
+  it('orders the two registers by the CAR’s maintenance figures', () => {
+    // «فارق عداد الصيانة» on the odometer board, «منذ الخدمة» and «المتبقي» on the maintenance
+    // one. All three are facts about the VEHICLE, so all three ask for the keys the projection
+    // builds — never for the DTO field the cell happens to read.
+    expect(column(code('pages/OdometerPage.tsx'), 'maintenance')).toContain(
+      "sortKey: 'alarmSinceService'",
+    );
+    const maintenance = code('pages/MaintenancePage.tsx');
+    expect(column(maintenance, 'sinceServiceKm')).toContain("sortKey: 'alarmSinceService'");
+    expect(column(maintenance, 'remainingKm')).toContain("sortKey: 'alarmRemaining'");
+  });
 });
 
 describe('the three WHOLE boards order what they already hold', () => {

@@ -13,11 +13,13 @@
 //      round hits the national-id guard and fails.
 //   3. WHAT MUST NOT BE IMPORTED AT ALL. Rows that contradict each other, or that lack what the
 //      registry requires, become report lines rather than guesses.
+import { rowReasons } from './reasons';
 import { formatEmployeeNumber } from '../modules/hr/employee-management/employees/employee-number';
 import {
   type EducationLevel,
   type EmployeeExitType,
   type InsuranceStatus,
+  type LocalizedString,
   type MilitaryStatus,
   type WeaponLicenseType,
 } from '@ecms/contracts';
@@ -107,7 +109,8 @@ export interface Rejection {
   sheet: 'master' | 'resignation';
   rowNumber: number;
   code: string | null;
-  reason: string;
+  /** Bilingual — the screen is Arabic and a reason in English on it is not a reason. */
+  reason: LocalizedString;
 }
 
 export interface ImportPlan {
@@ -186,9 +189,7 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
           sheet: row.sheet,
           rowNumber: row.rowNumber,
           code: row.code,
-          reason: `conflicting duplicate rows for one employment (same hire date${
-            duplicate.sameExit ? ' and exit date' : ''
-          }) — needs a human decision before import`,
+          reason: rowReasons.duplicatePeriod(duplicate.sameExit),
         });
       }
       continue;
@@ -204,7 +205,7 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
         sheet: current.sheet,
         rowNumber: current.rowNumber,
         code,
-        reason: `employee code "${code}" is not <3-digit branch><4-digit number>`,
+        reason: rowReasons.badCodeShape(code),
       });
       continue;
     }
@@ -230,30 +231,30 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
  * through with a null, because an employee with no recorded address is a real employee and refusing
  * them would lose a person to preserve a column.
  */
-const unusableReason = (row: SourceRow): string | null => {
-  if (row.code === null) return 'no employee code';
-  if (row.fullNameAr === null) return 'no Arabic name';
-  if (row.hiredAt === null) return 'no hiring date';
-  if (row.branchName === null) return 'no site (الموقع)';
-  if (row.departmentName === null) return 'no department (الإدارة)';
-  if (row.jobTitleName === null) return 'no job title (الوظيفة)';
+const unusableReason = (row: SourceRow): LocalizedString | null => {
+  if (row.code === null) return rowReasons.noCode();
+  if (row.fullNameAr === null) return rowReasons.noArabicName();
+  if (row.hiredAt === null) return rowReasons.noHireDate();
+  if (row.branchName === null) return rowReasons.noSite();
+  if (row.departmentName === null) return rowReasons.noDepartment();
+  if (row.jobTitleName === null) return rowReasons.noJobTitle();
   if (row.sheet === 'resignation') {
-    if (row.exit === null || row.exit.effectiveDate === null) return 'no exit date';
+    if (row.exit === null || row.exit.effectiveDate === null) return rowReasons.noExitDate();
     if (row.exit.type === null) {
       // Two different problems, and they need different fixes — six go-live rows carry an exit DATE
       // with no reason beside it, which is a cell to fill in rather than a word to teach the
       // importer. There is no `unknown` exit type to fall back on, and inventing `resignation`
       // would put a reason on somebody's file that nobody recorded.
       return row.exit.reason === null
-        ? 'exit reason is blank — fill it in and re-run'
-        : `exit reason "${row.exit.reason}" is not one of the recognised reasons`;
+        ? rowReasons.exitReasonBlank()
+        : rowReasons.exitReasonUnknown(row.exit.reason);
     }
     // Two rows in the go-live sheet end before they begin (`0200810` hired 2024-10-23 and exited
     // 2024-08-27; `0501484` hired 2025-02-19 and exited 2024-01-05). One of the two dates is wrong
     // and nothing here can tell which, so the row goes to a human rather than into an employment
     // period that runs backwards.
     if (row.exit.effectiveDate.getTime() < row.hiredAt.getTime()) {
-      return 'exit date is before the hiring date — one of the two is wrong';
+      return rowReasons.exitBeforeHire();
     }
   }
   return null;

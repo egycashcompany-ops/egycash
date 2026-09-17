@@ -19,7 +19,8 @@ import {
   sectionCatalogService,
   sectionService,
 } from '../platform/organization';
-import { MAX_PAGE_SIZE } from '@ecms/contracts';
+import { MAX_PAGE_SIZE, type LocalizedString, type RosterOrgSubject } from '@ecms/contracts';
+import { orgNotes } from './reasons';
 import { orgKey } from './vocabulary';
 
 /** `المهندسين` → `010`, from the prefixes the workbook's own employee codes carry. */
@@ -74,8 +75,9 @@ export interface OrgResolution {
 }
 
 export interface OrgProblem {
-  what: string;
-  detail: string;
+  what: RosterOrgSubject;
+  /** Bilingual — see `reasons.ts`. The English is unchanged; only what the screen shows is. */
+  detail: LocalizedString;
 }
 
 /**
@@ -184,7 +186,7 @@ export class OrgResolver {
 
     const code = this.branchCodes.get(key);
     if (code === undefined) {
-      this.note('branch', `site "${name}" has no employee-code prefix of its own — cannot place it`);
+      this.note('branch', orgNotes.siteHasNoCode(name));
       return null;
     }
 
@@ -235,10 +237,7 @@ export class OrgResolver {
     if (match.mismatch !== null) {
       this.note(
         'branch',
-        `"${match.mismatch.name}" already exists with code ${match.mismatch.existingCode}, but the ` +
-          `sheet places it at ${code}. The existing branch is used as it is and its code is NOT ` +
-          'changed; employee codes come from the sheet either way. Correct the branch code by hand ' +
-          'if the sheet is right.',
+        orgNotes.branchCodeMismatch(match.mismatch.name, match.mismatch.existingCode, code),
       );
     }
     return match.id;
@@ -462,8 +461,10 @@ export class OrgResolver {
     };
   }
 
-  private note(what: string, detail: string): void {
-    if (this.problems.some((p) => p.detail === detail)) return;
+  private note(what: RosterOrgSubject, detail: LocalizedString): void {
+    // Deduplicated on the English half: it is the stable one, and a note repeated per person for
+    // the same branch would fill the screen with one sentence.
+    if (this.problems.some((p) => p.detail.en === detail.en)) return;
     this.problems.push({ what, detail });
   }
 }

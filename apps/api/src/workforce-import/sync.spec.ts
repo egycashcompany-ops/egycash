@@ -244,7 +244,7 @@ describe('the National ID, which is an identity and not a field', () => {
     const { changes, refused } = diffPerson(existing, blankRow({ nationalId: '29902011601475' }), placement);
     expect(changes.map((c) => c.path)).not.toContain('personal.nationalId');
     expect(refused).toHaveLength(1);
-    expect(refused[0]?.reason).toContain('already holds a different National ID');
+    expect(refused[0]?.reason.en).toContain('already holds a different National ID');
   });
 
   it('says nothing at all when it matches', () => {

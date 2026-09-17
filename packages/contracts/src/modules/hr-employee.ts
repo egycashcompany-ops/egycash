@@ -18,6 +18,7 @@ import {
   AddressSchema,
   LocaleSchema,
   LocalizedStringSchema,
+  type LocalizedString,
   PaginationQuerySchema,
   PhoneNumberSchema,
   type Address,
@@ -907,13 +908,46 @@ export interface EmployeeSettlementDto {
 
 // ── Workforce roster import (the upload button on the employees list) ────────
 
+/**
+ * ONE VALUE IN THE PREVIEW, typed so the screen can render it in the reader's language.
+ *
+ * The preview used to carry `from`/`to` as strings, and three things went wrong with that at once:
+ * an ObjectId was shown where a department name belongs; a whole insurance block collapsed to its
+ * first field, so nine wages read as `0`; and `bachelor` was shown in English on an Arabic screen.
+ * A string cannot say what it is, so the screen could not know how to show it. This can:
+ *
+ *   · `text` — a number, a date, a phone, a name as typed. Shown as-is.
+ *   · `named` — an org entity (branch, department, section, job title), by its bilingual name.
+ *     `isNew` marks one the file would CREATE; the preview says so instead of showing a token.
+ *   · `enum` — a closed vocabulary the UI already labels (`bachelor`, `notInsured`, `personal`).
+ *     `family` names which label table applies; the value is the token, never a translation.
+ *   · `absent` — nothing on record, the «—» of the table.
+ */
+export type RosterValueDto =
+  | { kind: 'text'; text: string }
+  | { kind: 'named'; name: LocalizedString; isNew: boolean }
+  | { kind: 'enum'; family: RosterEnumFamily; value: string }
+  | { kind: 'absent' };
+
+/** The label tables the UI holds. Closed: a family the screen cannot label is a build error. */
+export const ROSTER_ENUM_FAMILIES = [
+  'educationLevel',
+  'insuranceStatus',
+  'weaponLicenseType',
+  'maritalStatus',
+  'militaryStatus',
+  'employeeStatus',
+  'exitType',
+] as const;
+export type RosterEnumFamily = (typeof ROSTER_ENUM_FAMILIES)[number];
+
 /** One field an uploaded roster would change, in the reader's terms rather than the schema's. */
 export interface RosterFieldChangeDto {
   /** The dotted document path, e.g. `personal.contact.primaryPhone`. Labelled by the UI. */
   path: string;
   /** What the record reads as now, and what the file would make it. Never a whole address. */
-  from: string;
-  to: string;
+  from: RosterValueDto;
+  to: RosterValueDto;
 }
 
 export interface RosterPersonUpdateDto {
@@ -926,17 +960,26 @@ export interface RosterPersonUpdateDto {
 export interface RosterRefusedChangeDto {
   code: string;
   path: string;
-  from: string;
-  to: string;
-  reason: string;
+  from: RosterValueDto;
+  to: RosterValueDto;
+  /** Bilingual, chosen by the reader's locale: an Arabic screen never shows an English reason. */
+  reason: LocalizedString;
 }
 
+/** Which workbook sheet a row came from. Closed, so the UI labels it instead of echoing it. */
+export const ROSTER_SHEETS = ['master', 'resignation'] as const;
+export type RosterSheet = (typeof ROSTER_SHEETS)[number];
+
 export interface RosterRejectedRowDto {
-  sheet: string;
+  sheet: RosterSheet;
   rowNumber: number;
   code: string | null;
-  reason: string;
+  reason: LocalizedString;
 }
+
+/** What part of the org structure a note is about. Closed, labelled by the UI. */
+export const ROSTER_ORG_SUBJECTS = ['branch', 'department', 'section', 'jobTitle'] as const;
+export type RosterOrgSubject = (typeof ROSTER_ORG_SUBJECTS)[number];
 
 /**
  * What an upload did, or — in preview — what it would do.
@@ -992,5 +1035,5 @@ export interface RosterImportReportDto {
   exits: RosterExitDto[];
   refused: RosterRefusedChangeDto[];
   rejected: RosterRejectedRowDto[];
-  orgProblems: { what: string; detail: string }[];
+  orgProblems: { what: RosterOrgSubject; detail: LocalizedString }[];
 }

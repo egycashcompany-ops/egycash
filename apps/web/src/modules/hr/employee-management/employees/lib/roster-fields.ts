@@ -22,6 +22,19 @@ const FIELD_KEYS: Record<string, string> = {
   'personal.currentAddress': 'employees.roster.field.address',
   'personal.military': 'employees.roster.field.military',
   'personal.education': 'employees.roster.field.education',
+  // The blocks the preview now shows FIELD BY FIELD (see the API's `present.ts`): a level that
+  // stayed `bachelor` is not a change, and the row must be able to say what did change.
+  'personal.education.level': 'employees.roster.field.educationLevel',
+  'personal.education.institution': 'employees.roster.field.educationInstitution',
+  'personal.education.specialization': 'employees.roster.field.educationSpecialization',
+  'personal.education.graduationYear': 'employees.roster.field.educationYear',
+  'personal.military.status': 'employees.roster.field.militaryStatus',
+  'personal.military.certificateRef': 'employees.roster.field.militaryCertificate',
+  'personal.military.completedAt': 'employees.roster.field.militaryCompletedAt',
+  'officer.weaponLicense.type': 'employees.roster.field.weaponLicenseType',
+  'officer.weaponLicense.expiry': 'employees.roster.field.weaponLicenseExpiry',
+  // Refused-change paths that are not document fields.
+  status: 'employees.roster.field.status',
   'personal.drivingLicenses': 'employees.roster.field.drivingLicense',
   'insurance.insuranceNumber': 'employees.roster.field.insuranceNumber',
   'insurance.occupation': 'employees.roster.field.occupation',

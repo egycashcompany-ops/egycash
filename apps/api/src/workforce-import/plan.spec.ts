@@ -208,8 +208,8 @@ describe('refusal — rows that cannot become anything true', () => {
     ]);
     expect(people).toHaveLength(0);
     expect(rejected).toHaveLength(2); // the whole person is held back, not an arbitrary half
-    expect(rejected[0]?.reason).toContain('conflicting duplicate rows');
-    expect(rejected[0]?.reason).toContain('exit date');
+    expect(rejected[0]?.reason.en).toContain('conflicting duplicate rows');
+    expect(rejected[0]?.reason.en).toContain('exit date');
   });
 
   it('still refuses when only the hire dates match — one period cannot start twice', () => {
@@ -240,7 +240,7 @@ describe('refusal — rows that cannot become anything true', () => {
   ])('rejects a row with %s', (reason, over) => {
     const { rejected } = buildPlan([row({ sheet: 'master', rowNumber: 4, ...over })]);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0]?.reason).toBe(reason);
+    expect(rejected[0]?.reason.en).toBe(reason);
   });
 
   /** Six go-live rows carry an exit date with no reason. That is a cell to fill in, not a
@@ -252,7 +252,7 @@ describe('refusal — rows that cannot become anything true', () => {
         exit: { type: null, effectiveDate: new Date('2024-03-31T00:00:00.000Z'), reason: null, note: null },
       }),
     ]);
-    expect(blank.rejected[0]?.reason).toBe('exit reason is blank — fill it in and re-run');
+    expect(blank.rejected[0]?.reason.en).toBe('exit reason is blank — fill it in and re-run');
   });
 
   it('rejects an exit row whose reason could not be mapped, naming the reason', () => {
@@ -262,7 +262,7 @@ describe('refusal — rows that cannot become anything true', () => {
         exit: { type: null, effectiveDate: new Date(), reason: 'سبب غريب', note: null },
       }),
     ]);
-    expect(rejected[0]?.reason).toContain('سبب غريب');
+    expect(rejected[0]?.reason.en).toContain('سبب غريب');
   });
 
   /**
@@ -292,7 +292,7 @@ describe('refusal — rows that cannot become anything true', () => {
     ]);
     expect(people).toHaveLength(0);
     expect(rejected).toHaveLength(2);
-    expect(rejected[0]?.reason).toContain('conflicting duplicate rows');
+    expect(rejected[0]?.reason.en).toContain('conflicting duplicate rows');
   });
 
   /** Two go-live rows end before they begin. One of the two dates is wrong and nothing can say which. */
@@ -311,12 +311,12 @@ describe('refusal — rows that cannot become anything true', () => {
       }),
     ]);
     expect(rejected).toHaveLength(1);
-    expect(rejected[0]?.reason).toContain('before the hiring date');
+    expect(rejected[0]?.reason.en).toContain('before the hiring date');
   });
 
   it('rejects a code that is not the company shape', () => {
     const { rejected } = buildPlan([row({ sheet: 'master', rowNumber: 6, code: 'ABC' })]);
-    expect(rejected[0]?.reason).toContain('not <3-digit branch><4-digit number>');
+    expect(rejected[0]?.reason.en).toContain('not <3-digit branch><4-digit number>');
   });
 
   /**

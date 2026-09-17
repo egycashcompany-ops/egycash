@@ -24,6 +24,12 @@ import {
   type ImportAction,
   type ImportReport,
 } from '../../../../workforce-import/run';
+import {
+  loadOrgNames,
+  presentChange,
+  presentValue,
+  type OrgNames,
+} from '../../../../workforce-import/present';
 
 /** Excel only. A 3,000-row roster is well under this; the cap is against a mistake, not a size. */
 export const ROSTER_MAX_MB = 20;
@@ -42,7 +48,12 @@ const requestedActions = (raw: unknown): Set<ImportAction> => {
   return new Set(ALL_IMPORT_ACTIONS.filter((a) => names.includes(a)));
 };
 
-const toDto = (report: ImportReport): RosterImportReportDto => ({
+/**
+ * The report, made readable. `present.ts` is where a write becomes something a person can approve:
+ * blocks expanded to fields, ids swapped for names, closed vocabularies tagged for the screen to
+ * label in its own language. The org names are read ONCE here, not once per change.
+ */
+const toDto = (report: ImportReport, names: OrgNames): RosterImportReportDto => ({
   mode: report.applied.length > 0 ? 'applied' : 'preview',
   applied: report.applied,
   counts: {
@@ -64,12 +75,26 @@ const toDto = (report: ImportReport): RosterImportReportDto => ({
     report.counts.updated > UPDATE_SAMPLE ||
     report.counts.imported > UPDATE_SAMPLE ||
     report.counts.exits > UPDATE_SAMPLE,
-  updates: report.updates,
+  updates: report.updates.map((u) => ({
+    code: u.code,
+    name: u.name,
+    changes: u.changes.flatMap((c) =>
+      presentChange({ path: c.path, from: c.from, to: c.to, value: c.value }, c.stored, names),
+    ),
+  })),
   additions: report.additions,
   exits: report.exits,
-  refused: report.refused,
+  // A refusal's two values are the diff's strings (a National ID, a status token); the enum path
+  // is the only one that needs the label table, and `presentValue` picks it by path.
+  refused: report.refused.map((r) => ({
+    code: r.code,
+    path: r.path,
+    from: presentValue(r.path, r.from, names),
+    to: presentValue(r.path, r.to, names),
+    reason: r.reason,
+  })),
   rejected: report.rejected.map((r) => ({
-    sheet: String(r.sheet),
+    sheet: r.sheet,
     rowNumber: r.rowNumber,
     code: r.code,
     reason: r.reason,
@@ -95,5 +120,5 @@ export const importEmployeeRoster = async (req: Request, res: Response): Promise
     const message = error instanceof Error ? error.message : String(error);
     throw new AppError(ErrorCodes.VALIDATION_FAILED, 422, message);
   }
-  ok(res, toDto(report));
+  ok(res, toDto(report, await loadOrgNames(ctx.userId)));
 };

@@ -9,8 +9,15 @@
 // agreed to. Nothing is held on the server between them.
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { type RosterImportAction, type RosterImportReportDto } from '@ecms/contracts';
+import {
+  type Locale,
+  type RosterImportAction,
+  type RosterImportReportDto,
+} from '@ecms/contracts';
+import { useAppSelector } from '../../../../../store';
+import { localized } from '../../../../../shared/lib/format';
 import { useT } from '../../../../../platform/localization/useT';
+import { RosterValue } from '../lib/roster-value';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Button } from '../../../../../shared/ui/Button';
 import { FileUpload } from '../../../../../shared/ui/FileUpload';
@@ -111,6 +118,7 @@ export const RosterImportDialog = ({
   onApplied: () => void;
 }): JSX.Element => {
   const t = useT();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<RosterImportReportDto | null>(null);
   const [selected, setSelected] = useState<RosterImportAction[]>([...DEFAULT_ACTIONS]);
@@ -312,8 +320,12 @@ export const RosterImportDialog = ({
                             </td>
                             <td className="p-2">{u.name}</td>
                             <td className="p-2 text-slate-500">{rosterFieldLabel(t, c.path)}</td>
-                            <td className="p-2 text-slate-400 line-through">{c.from}</td>
-                            <td className="p-2 font-medium">{c.to}</td>
+                            <td className="p-2 text-slate-400 line-through">
+                              <RosterValue value={c.from} t={t} locale={locale} />
+                            </td>
+                            <td className="p-2 font-medium">
+                              <RosterValue value={c.to} t={t} locale={locale} />
+                            </td>
                           </tr>
                         )),
                       )}
@@ -372,7 +384,7 @@ export const RosterImportDialog = ({
                       <span className="font-mono" dir="ltr">
                         {r.code}
                       </span>{' '}
-                      — {rosterFieldLabel(t, r.path)}: {r.reason}
+                      — {rosterFieldLabel(t, r.path)}: {localized(r.reason, locale)}
                     </li>
                   ))}
                 </ul>
@@ -384,8 +396,9 @@ export const RosterImportDialog = ({
                 <ul className="max-h-40 space-y-1 overflow-auto text-xs text-rose-700 dark:text-rose-300">
                   {report.rejected.map((r) => (
                     <li key={`${r.sheet}:${r.rowNumber}`}>
-                      {r.sheet} · {t('employees.roster.row')} {r.rowNumber}
-                      {r.code === null ? '' : ` · ${r.code}`} — {r.reason}
+                      {t(`employees.roster.sheet.${r.sheet}`)} · {t('employees.roster.row')}{' '}
+                      {r.rowNumber}
+                      {r.code === null ? '' : ` · ${r.code}`} — {localized(r.reason, locale)}
                     </li>
                   ))}
                 </ul>
@@ -396,8 +409,8 @@ export const RosterImportDialog = ({
               <Section title={t('employees.roster.orgProblemsTitle')}>
                 <ul className="space-y-1 text-xs text-amber-800 dark:text-amber-200">
                   {report.orgProblems.map((p) => (
-                    <li key={p.what}>
-                      {p.what} — {p.detail}
+                    <li key={`${p.what}:${p.detail.en}`}>
+                      {t(`employees.roster.orgWhat.${p.what}`)} — {localized(p.detail, locale)}
                     </li>
                   ))}
                 </ul>

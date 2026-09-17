@@ -9,7 +9,8 @@
 // Pure, and separate from the run, so the interesting half — which fields move, which are refused,
 // and what counts as "the same value" — is checked without a database.
 import { type Types } from 'mongoose';
-import { type MaritalStatus } from '@ecms/contracts';
+import { refusalReasons } from './reasons';
+import { type LocalizedString, type MaritalStatus } from '@ecms/contracts';
 import { normalizeArabic } from '../modules/hr/shared/arabic';
 import { maritalStatus } from './vocabulary';
 import { type SourceRow } from './plan';
@@ -29,7 +30,8 @@ export interface RefusedChange {
   path: string;
   from: string;
   to: string;
-  reason: string;
+  /** Bilingual — see `reasons.ts`. */
+  reason: LocalizedString;
 }
 
 export interface PersonDiff {
@@ -262,7 +264,7 @@ export const diffPerson = (
         path: 'personal.nationalId',
         from: held,
         to: row.nationalId,
-        reason: 'the record already holds a different National ID — re-identifying a person is not an import edit',
+        reason: refusalReasons.nationalIdDiffers(),
       });
     }
   }

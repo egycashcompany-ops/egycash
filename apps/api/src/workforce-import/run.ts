@@ -19,7 +19,8 @@ import { Types } from 'mongoose';
 import { type AuthContext } from '../shared/types';
 import { readWorkbook, type WorkbookSource } from './read-workbook';
 import { buildPlan, type PersonPlan, type Rejection, type SourceRow } from './plan';
-import { OrgResolver, deriveBranchCodes } from './org';
+import { personReasons, refusalReasons } from './reasons';
+import { OrgResolver, deriveBranchCodes, type OrgProblem } from './org';
 import { maritalStatus } from './vocabulary';
 import {
   diffPerson,
@@ -28,8 +29,9 @@ import {
   type ExistingEmployee,
   type FieldChange,
   type RefusedChange,
+  readPath,
 } from './sync';
-import { type EmployeeExitType, type MaritalStatus } from '@ecms/contracts';
+import { type EmployeeExitType, type LocalizedString, type MaritalStatus } from '@ecms/contracts';
 
 /**
  * The kinds of write an upload can make, each of which the operator agrees to separately.
@@ -48,7 +50,12 @@ export const ALL_IMPORT_ACTIONS: readonly ImportAction[] = ['added', 'updated', 
 export interface PersonUpdate {
   code: string;
   name: string;
-  changes: { path: string; from: string; to: string }[];
+  /**
+   * The write, plus the value it replaces. `from`/`to` are the diff's own strings and are kept for
+   * the CLI; the screen is given `stored` and `value` instead and shows them through `present.ts`,
+   * because a write's shape is not a readable one — see that file.
+   */
+  changes: { path: string; from: string; to: string; value: unknown; stored: unknown }[];
 }
 
 /** Somebody the file says has left, who the registry still has on the books. */
@@ -85,7 +92,15 @@ export interface ImportReport {
     jobTitlesCreated: number;
   };
   /** Rows that were not imported, each with the reason and the row a human can go and open. */
-  rejected: (Rejection | { sheet: string; rowNumber: number; code: string | null; reason: string })[];
+  rejected: (
+    | Rejection
+    | {
+        sheet: 'master' | 'resignation';
+        rowNumber: number;
+        code: string | null;
+        reason: LocalizedString;
+      }
+  )[];
   /** Who would change and how. Capped for the report; `counts.updated` is the real total. */
   updates: PersonUpdate[];
   /**
@@ -100,8 +115,8 @@ export interface ImportReport {
   /** Leavers whose exit the file would record. */
   exits: PersonExit[];
   /** Changes the file asks for that this importer will not make, each with its reason. */
-  refused: { code: string; path: string; from: string; to: string; reason: string }[];
-  orgProblems: { what: string; detail: string }[];
+  refused: { code: string; path: string; from: string; to: string; reason: LocalizedString }[];
+  orgProblems: OrgProblem[];
   ambiguousSites: { site: string; counts: Record<string, number> }[];
 }
 
@@ -175,7 +190,13 @@ export const runImport = async (opts: {
           if (updates.length < UPDATE_SAMPLE) {
             updates.push({
               ...named(person),
-              changes: outcome.changes.map((c) => ({ path: c.path, from: c.from, to: c.to })),
+              changes: outcome.changes.map((c) => ({
+                path: c.path,
+                from: c.from,
+                to: c.to,
+                value: c.value,
+                stored: readPath(outcome.existing, c.path),
+              })),
             });
           }
           break;
@@ -202,7 +223,9 @@ export const runImport = async (opts: {
       // One bad person must not end the run: 2,638 imported plus a named failure beats an
       // exception with 2,639 unknown outcomes behind it.
       failed += 1;
-      const reason = error instanceof Error ? error.message : String(error);
+      const reason = personReasons.unexpected(
+        error instanceof Error ? error.message : String(error),
+      );
       rejected.push({
         sheet: person.current.sheet,
         rowNumber: person.current.rowNumber,
@@ -258,14 +281,19 @@ export const runImport = async (opts: {
 type Outcome =
   | { kind: 'added'; refused?: RefusedChange[] }
   | { kind: 'unchanged'; refused: RefusedChange[] }
-  | { kind: 'updated'; changes: FieldChange[]; refused: RefusedChange[] }
+  | {
+      kind: 'updated';
+      changes: FieldChange[];
+      refused: RefusedChange[];
+      existing: ExistingEmployee;
+    }
   | {
       kind: 'exited';
       changes: FieldChange[];
       refused: RefusedChange[];
       exit: { type: EmployeeExitType; effectiveDate: Date; reason: string | null };
     }
-  | { kind: 'failed'; reason: string; refused?: RefusedChange[] };
+  | { kind: 'failed'; reason: LocalizedString; refused?: RefusedChange[] };
 
 /**
  * The context the import acts as — the seed admin, so every audited write is attributable to a
@@ -312,9 +340,7 @@ const importPerson = async (
   if (existing !== null && existing.isDeleted === true) {
     return {
       kind: 'failed',
-      reason:
-        `code ${person.code} is held by a DELETED employee record, which still occupies it in the ` +
-        'unique index. Restore that record or purge it, then re-run.',
+      reason: personReasons.codeHeldByDeleted(person.code),
     };
   }
 
@@ -322,7 +348,7 @@ const importPerson = async (
   if (org === null) {
     return {
       kind: 'failed',
-      reason: `could not place this person in the organization (site/department/job title)`,
+      reason: personReasons.couldNotPlace(),
     };
   }
 
@@ -435,9 +461,7 @@ const updatePerson = async (
           path: 'status',
           from: 'exited',
           to: 'active',
-          reason:
-            'the file lists this person as serving but the registry has them exited — bringing ' +
-            'somebody back is a Rehire, which records a decision an upload cannot make',
+          reason: refusalReasons.rehireNeedsDecision(),
         },
       ],
     };
@@ -470,7 +494,7 @@ const updatePerson = async (
     await writeChanges(existing, person, diff.changes, opts.actorId);
     await auditImportedUpdate(String(existing._id), person.code, diff.changes, opts.actorId);
   }
-  return { kind: 'updated', changes: diff.changes, refused: diff.refused };
+  return { kind: 'updated', changes: diff.changes, refused: diff.refused, existing };
 };
 
 /**

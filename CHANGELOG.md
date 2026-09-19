@@ -32,6 +32,20 @@ its entry here in the same PR.
   phase the system administrator does the granting; a department manager granting within his own
   department is the next.
 
+- **A manager can hand out, per site, the permissions they hold there.** (ADR-032, Phase 3 of the
+  permissions model — the server side; the screen is the next change.) «مدير عام الحركة» holds his
+  keys in every site; he may now give «مدير الحركة» in المهندسين everything there and, in أكتوبر, two
+  screens view-only — two independent lists, one per site, each saying nothing about the other. The
+  rule is the one the whole model obeys, read per site: nobody hands out what they do not hold **in
+  that site**, a key already on the list that the writer could not grant stays, and removing is
+  always allowed. One new key, `delegation.manage`, which is itself delegable — so the general
+  manager can let a site manager staff his own team.
+
+  Underneath, a grant's reach is now recorded **per permission key** rather than as one union across
+  the holder's grants. Without that, «الحضور في أكتوبر، عرض بس» would have ridden «الموظفين»'s two
+  sites. Nothing changes for an account whose grants all reach the same places, which is every
+  account before this change.
+
 - **Every screen now reads a grant's reach, not only the ones that go through the shared filter.**
   Phase 1 taught the grant to reach several sites; the ordinary lists honoured it at once, because
   they all ask one repository filter. Seven reads did not, because they aggregate or join and had

@@ -33,6 +33,13 @@ export interface AuthContext {
    * granted a wider reach behaves any differently.
    */
   reach?: { branchIds: string[]; departmentIds: string[] };
+  /**
+   * The same, PER PERMISSION KEY — because each site's table is its own (ADR-032). A person may
+   * hold «الموظفين» in two sites and «الحضور» in one, and a single union would let the narrower key
+   * ride the wider one's reach. A key with no entry reaches the home unit only. Absent altogether
+   * on a snapshot cached before it existed, in which case the union above answers, as it did.
+   */
+  keyReach?: Record<string, { branchIds: string[]; departmentIds: string[] }>;
   permissionVersion: number;
   /** Holds a protected system role or any break-glass permission (Review R13). */
   isPrivileged: boolean;
@@ -95,11 +102,35 @@ export interface ScopeSelector {
  * branch-placed caller sees their own branch whatever the switcher says, and department/section
  * grants are finer still, so widening them to a branch would be the one thing this must never do.
  */
+const NO_REACH: { branchIds: string[]; departmentIds: string[] } = { branchIds: [], departmentIds: [] };
+
+/**
+ * Where ONE permission key reaches: its own entry when the snapshot records reach per key, else the
+ * union across grants (a snapshot from before per-key reach existed), else nothing beyond home.
+ */
+export const reachOfKey = (
+  ctx: AuthContext,
+  permissionKey: string,
+): { branchIds: string[]; departmentIds: string[] } =>
+  ctx.keyReach === undefined ? (ctx.reach ?? NO_REACH) : (ctx.keyReach[permissionKey] ?? NO_REACH);
+
+/**
+ * Whether the caller holds `permissionKey` in `branchId`: organization-wide, or at branch level or
+ * wider in a site the key reaches (the home site when it reaches nowhere else).
+ */
+export const keyReachesBranch = (ctx: AuthContext, permissionKey: string, branchId: string): boolean => {
+  const held = ctx.permissions[permissionKey];
+  if (held === undefined || held === 'own' || held === 'section') return false;
+  if (held === 'organization') return true;
+  const reach = reachOfKey(ctx, permissionKey).branchIds;
+  return reach.length > 0 ? reach.includes(branchId) : ctx.branchId === branchId;
+};
+
 export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSelector => {
   const scope = ctx.permissions[permissionKey] ?? 'own';
   const active = ctx.activeBranchId ?? null;
-  const reach = ctx.reach;
-  const reachesBranches = reach !== undefined && reach.branchIds.length > 0;
+  const reach = reachOfKey(ctx, permissionKey);
+  const reachesBranches = reach.branchIds.length > 0;
   if (scope === 'organization' && active !== null) {
     return {
       scope: 'branch',
@@ -122,7 +153,7 @@ export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSel
       branchIds: chosen,
     };
   }
-  if (scope === 'department' && reach !== undefined && reach.departmentIds.length > 0) {
+  if (scope === 'department' && reach.departmentIds.length > 0) {
     return {
       scope,
       userId: ctx.userId,

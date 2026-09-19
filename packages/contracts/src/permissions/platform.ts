@@ -229,6 +229,27 @@ export const notificationTemplatePermissions = declarePermissions(
   'platform.notification-templates',
 );
 
+/**
+ * Delegation (ADR-032). One key, deliberately a special action rather than a resource with a
+ * vocabulary: the holder may hand out, to the people they reach, any permission they themselves
+ * hold at that site — and only that. Which keys, which people and which sites are decided by the
+ * holder's own grants at the moment of delegating, never by this key. The key is itself
+ * delegable, which is how «مدير عام الحركة» lets «مدير الحركة» in one site staff his own team.
+ */
+export const delegationPermissions = declarePermissions(
+  P,
+  'delegation',
+  { en: 'delegation', ar: 'توزيع الصلاحيات' },
+  [],
+  [
+    {
+      action: 'manage',
+      name: { en: "Delegate one's own permissions, per site", ar: 'يوزّع صلاحياته لفريقه، لكل فرع' },
+    },
+  ],
+  'platform.delegation',
+);
+
 export const platformPermissions: PermissionDef[] = [
   ...userPermissions,
   ...rolePermissions,
@@ -248,6 +269,7 @@ export const platformPermissions: PermissionDef[] = [
   ...filePermissions,
   ...fileCategoryPermissions,
   ...notificationTemplatePermissions,
+  ...delegationPermissions,
 ];
 
 /**
@@ -377,6 +399,13 @@ export const platformPages: PageDef[] = [
     name: { en: 'Activity log', ar: 'سجل النشاط' },
     route: '/system/activity',
     sortOrder: 150,
+  },
+  {
+    id: 'platform.delegation',
+    moduleId: 'platform',
+    name: { en: 'Permissions (delegation)', ar: 'الصلاحيات' },
+    // Not a screen of its own: the tab on a colleague's profile, reached from a manager's team.
+    sortOrder: 25,
   },
 ];
 

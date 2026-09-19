@@ -60,6 +60,8 @@ export const ErrorCodes = {
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
   FILE_TOO_LARGE: 'FILE_TOO_LARGE',
   FILE_BLOCKED: 'FILE_BLOCKED',
+  /** A scanner is registered and has not answered for this file yet — the bytes are withheld. */
+  FILE_SCAN_PENDING: 'FILE_SCAN_PENDING',
   FILE_SIGNATURE_INVALID: 'FILE_SIGNATURE_INVALID',
   FILE_CATEGORY_INACTIVE: 'FILE_CATEGORY_INACTIVE',
 

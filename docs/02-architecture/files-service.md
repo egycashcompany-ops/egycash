@@ -75,7 +75,9 @@ Base: `/api/v1/platform/files` · standard envelope, pagination, error codes.
 
 ¹ Download authorization is **visibility-aware**: `private` requires `file.download`
 (denials audited); `public` allows any authenticated user. Files blocked by the virus
-scanner are not downloadable (`FILE_BLOCKED`).
+scanner are not downloadable (`FILE_BLOCKED`), and neither is a file the registered scanner has
+not answered for yet (`FILE_SCAN_PENDING`) — only `unscanned`, the state of a deployment with no
+scanner, passes without a verdict.
 
 **Entity-derived authorization (ADR-023).** A module may register a `FileEntityAuthorizer` for its
 entity types in its manifest; the service then asks that module — on every read and write path, not
@@ -141,7 +143,7 @@ the **worker** on the `files` queue — the service owns the seam, not the imple
 
 | Extension point | Processor id | Completion event | Arrives with |
 | --- | --- | --- | --- |
-| Virus scanning | `virusScan` | `platform.file.virusScanCompleted` (also sets `scanStatus`: `clean`/`blocked`) | integrations capability |
+| Virus scanning | `virusScan` | `platform.file.virusScanCompleted` (also sets `scanStatus`: `clean`/`blocked`) | **shipped**: ClamAV over `INSTREAM` (`virus-scan.processor.ts`), registered when `CLAMAV_HOST` is set; `pending` files are withheld (`FILE_SCAN_PENDING`) and rescanned by `platform.files.rescanPending` |
 | OCR | `ocr` | `platform.file.ocrCompleted` | AI/OCR capability (ADR-014) |
 | Thumbnails | `thumbnail` | `platform.file.thumbnailCreated` | notifications/UI capability |
 

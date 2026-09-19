@@ -11,6 +11,38 @@ its entry here in the same PR.
 
 ### Added
 
+- **Security: the five controls the security document described and the code did not have.** The
+  review that scored the platform against its own document found six gaps; SSO stays planned, the
+  other five are now real.
+  - **Virus scanning.** The `virusScan` extension point has a scanner behind it: ClamAV over its
+    `INSTREAM` socket protocol (`infrastructure/antivirus/clamd.ts`), registered when `CLAMAV_HOST`
+    is set and scanning every upload in the worker. A file the daemon has not answered for is
+    `pending` and **withheld from every download path** (`FILE_SCAN_PENDING`) rather than served on
+    trust; a hit is `blocked`; a scan that could not run leaves the file `pending` — never `clean` —
+    and `platform.files.rescanPending` asks again every fifteen minutes. `docker compose --profile
+    antivirus up` runs the daemon locally. Without `CLAMAV_HOST` nothing changes.
+  - **One door for outbound HTTP** ([ADR-032](docs/03-decisions/ADR-032-outbound-http-one-door.md)).
+    Every request the api makes leaves through `infrastructure/http/outbound.ts`: the configured
+    base URLs are pinned, the SaaS hosts the code names are listed, everything else must be on
+    `OUTBOUND_HTTP_ALLOWLIST` and resolve to a public address — including after a redirect, which
+    is followed by hand and judged per hop. A guard spec fails CI on a bare `fetch` anywhere else.
+    Web Push endpoints a browser registers must be public HTTPS.
+  - **Break-glass use pages at once.** `authorize()` writes a `breakGlassUsed` audit row when a
+    break-glass key was the authority a request passed on, and raises the `breakGlassUsed` security
+    signal from the request itself, which the notifications service delivers as a critical alert.
+    The hourly sweep is the net under it. One alert per person per hour; every use keeps its row.
+  - **Secret scanning in CI.** `scripts/check-secrets.mjs` reads every tracked file before `npm ci`
+    and fails the run on a credential shape — private key, cloud and API keys, a connection string
+    carrying a password, a JWT, a tracked `.env` or key file. False positives are allowlisted by
+    fingerprint, with a reason. `.github/dependabot.yml` opens weekly grouped dependency updates.
+  - **The dependency gate blocks high as well as critical, and an outage is no longer a pass.**
+    `scripts/dependency-audit.mjs` replaces the shell step: three attempts at the registry, then
+    red — unless a reviewer recorded a dated `outage` waiver. Advisories are waived by id with a
+    reason and an expiry that fails the run once past, as feature flags do. Widening the gate found
+    eight highs on the day: three fixed in the lockfile (multer, fast-xml-parser, socket.io-parser,
+    brace-expansion); the five behind two major bumps (nodemailer 6→10, puppeteer-core 24→25) are
+    waived until 2026-10-31 with the reasoning in `scripts/dependency-audit.waivers.json`.
+
 - **The import preview says which of the people it is adding are leavers.** Two thirds of the
   workbook is the Resignation sheet, so most of the people an upload adds join the registry already
   exited — a record of somebody who worked here, not a colleague starting on Monday. Listing them

@@ -72,6 +72,16 @@ class FileRepository extends BaseRepository<FileDoc> {
   async setScanStatus(id: Types.ObjectId, scanStatus: string): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: { scanStatus } }).exec();
   }
+
+  /** Live files whose scan has been `pending` since before `uploadedBefore`, oldest first. */
+  async listPendingScans(uploadedBefore: Date, limit: number): Promise<FileDoc[]> {
+    return this.model
+      .find({ scanStatus: 'pending', isDeleted: false, uploadedAt: { $lte: uploadedBefore } })
+      .sort({ uploadedAt: 1 })
+      .limit(limit)
+      .lean<FileDoc[]>()
+      .exec();
+  }
 }
 
 export const fileRepository = new FileRepository();

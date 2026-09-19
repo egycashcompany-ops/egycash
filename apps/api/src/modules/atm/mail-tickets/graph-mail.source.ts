@@ -9,6 +9,7 @@
 // platform secret store when a sealed ref is configured, so a deployment never has to put it in
 // plaintext env — but plaintext env still works, because that is what the legacy had and a
 // migration that demands a secret-store rollout first is a migration that does not happen.
+import { outboundFetch } from '../../../infrastructure/http/outbound';
 import { logger } from '../../../infrastructure/logging/logger';
 import { env } from '../../../infrastructure/config/env';
 import { getSecretStore } from '../../../platform/secrets';
@@ -93,7 +94,7 @@ class GraphMailSource implements AtmMailSource {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
     try {
-      const response = await fetch(url, { ...init, headers, signal: controller.signal });
+      const response = await outboundFetch(url, { ...init, headers, signal: controller.signal });
       if (!response.ok) {
         // A 401 means the cached token went stale early; drop it so the next call re-authenticates.
         if (response.status === 401) this.token = null;

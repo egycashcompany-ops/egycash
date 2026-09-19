@@ -3,8 +3,16 @@
 // `fetch` is stubbed, so these test the transport CONTRACT — auth header, base-URL joining, retry
 // on transport/5xx, no retry on 4xx, and health never throwing — without a live n8n. That is the
 // whole point of the client: the network policy lives in one tested place.
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { setOutboundPolicyForTests } from '../../../../infrastructure/http/outbound';
 import { N8nClient, N8nRequestError } from './n8n.client';
+
+// The outbound policy pins what the environment configured; this spec configured nothing, so it
+// pins the fake instance itself. The policy has its own spec.
+beforeAll(() =>
+  setOutboundPolicyForTests({ allowHosts: [], pinnedHosts: ['n8n.example'], allowPrivate: false }),
+);
+afterAll(() => setOutboundPolicyForTests(null));
 
 const okResponse = (body: unknown = { ok: true }, status = 200): Response =>
   ({

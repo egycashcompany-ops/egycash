@@ -3,6 +3,7 @@
 // `twilio`, or `disabled` (default — keeps dev/CI hermetic: logs a warning and reports
 // not-delivered). Message bodies are never logged (they carry temporary passwords).
 import { env } from '../config/env';
+import { outboundFetch } from '../http/outbound';
 import { logger } from '../logging/logger';
 
 export interface WhatsAppSendResult {
@@ -21,19 +22,22 @@ export const toE164 = (phone: string): string | null => {
 };
 
 const sendViaMeta = async (toPhone: string, body: string): Promise<WhatsAppSendResult> => {
-  const res = await fetch(`https://graph.facebook.com/v20.0/${env.WHATSAPP_ACCOUNT_ID}/messages`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${env.WHATSAPP_API_TOKEN}`,
-      'Content-Type': 'application/json',
+  const res = await outboundFetch(
+    `https://graph.facebook.com/v20.0/${env.WHATSAPP_ACCOUNT_ID}/messages`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${env.WHATSAPP_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: toPhone.replace('+', ''),
+        type: 'text',
+        text: { body },
+      }),
     },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: toPhone.replace('+', ''),
-      type: 'text',
-      text: { body },
-    }),
-  });
+  );
   if (!res.ok) return { ok: false, detail: `meta responded ${String(res.status)}` };
   return { ok: true, detail: null };
 };
@@ -46,14 +50,17 @@ const sendViaTwilio = async (toPhone: string, body: string): Promise<WhatsAppSen
     To: `whatsapp:${toPhone}`,
     Body: body,
   });
-  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${auth}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
+  const res = await outboundFetch(
+    `https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: form.toString(),
     },
-    body: form.toString(),
-  });
+  );
   if (!res.ok) return { ok: false, detail: `twilio responded ${String(res.status)}` };
   return { ok: true, detail: null };
 };

@@ -47,8 +47,14 @@ const COMPLETION_EVENTS: Record<string, string> = {
   thumbnail: PlatformEvents.ThumbnailCreated,
 };
 
-const runProcessors = async (file: FileDoc): Promise<void> => {
+/**
+ * Runs the registered processors over a file — all of them, or only the ids in `only`. The rescan
+ * sweep passes `['virusScan']`: a file the scanner never answered for needs its scan again, not a
+ * second thumbnail and a second `ThumbnailCreated` event.
+ */
+const runProcessors = async (file: FileDoc, only?: readonly string[]): Promise<void> => {
   for (const processor of processors.values()) {
+    if (only !== undefined && !only.includes(processor.id)) continue;
     let outcome: FileProcessorResult;
     try {
       outcome = await processor.handler(file);
@@ -89,10 +95,10 @@ const runProcessors = async (file: FileDoc): Promise<void> => {
 
 export const registerFileJobHandlers = (): void => {
   registerJobHandler('files', FILE_PROCESS_JOB, async (data) => {
-    const { fileId } = data as { fileId: string };
+    const { fileId, only } = data as { fileId: string; only?: string[] };
     const file = await fileRepository.findAnyById(fileId);
     if (file === null || file.isDeleted) return; // deleted before processing — nothing to do
-    await runProcessors(file);
+    await runProcessors(file, only);
   });
 };
 
@@ -100,4 +106,24 @@ export const registerFileJobHandlers = (): void => {
 export const enqueueFileProcessing = async (fileId: Types.ObjectId): Promise<void> => {
   if (!hasAnyFileProcessor()) return;
   await enqueue('files', FILE_PROCESS_JOB, { fileId: String(fileId) });
+};
+
+/** How long a file may sit at `pending` before the sweep decides its scan job is not coming. */
+export const RESCAN_AFTER_MINUTES = 10;
+const RESCAN_BATCH = 200;
+
+/**
+ * Re-queues the virus scan for files still `pending` after `RESCAN_AFTER_MINUTES` — the scanner
+ * was down when their job ran, or the job died with the worker. The queue's own retries cover the
+ * first minute of an outage; this covers the rest, at fifteen-minute steps, until the daemon is
+ * back. Nothing to do on a deployment with no scanner: nothing there is ever `pending`.
+ */
+export const rescanPendingFiles = async (now = new Date()): Promise<number> => {
+  if (!hasFileProcessor('virusScan')) return 0;
+  const stale = new Date(now.getTime() - RESCAN_AFTER_MINUTES * 60_000);
+  const files = await fileRepository.listPendingScans(stale, RESCAN_BATCH);
+  for (const file of files) {
+    await enqueue('files', FILE_PROCESS_JOB, { fileId: String(file._id), only: ['virusScan'] });
+  }
+  return files.length;
 };

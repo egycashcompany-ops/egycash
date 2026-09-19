@@ -58,7 +58,12 @@ All 403s are audited (permission probing is a signal).
   (Pino redaction paths), never in URLs, masked by default in list views
   (`298*******4567`) with `*.viewSensitive`-style permissions for full display where required.
 - **Files:** no static serving; authorized endpoint + short-lived signed URLs; per-category mime
-  and size validation; checksum integrity; malware-scan hook ([ADR-010](../03-decisions/ADR-010-file-storage.md)).
+  and size validation; checksum integrity; **virus scanning by ClamAV** on every upload when
+  `CLAMAV_HOST` is set (`platform/files/virus-scan.processor.ts` behind the `virusScan` extension
+  point of [ADR-010](../03-decisions/ADR-010-file-storage.md)). The scan runs in the worker; a file
+  is `pending` until the daemon answers and is **withheld from every download path** meanwhile
+  (`FILE_SCAN_PENDING`), `blocked` on a hit (`FILE_BLOCKED`), and rescanned every fifteen minutes
+  if the daemon was down. A scanner that could not answer never yields `clean`.
 
 ## 4. Application security controls
 
@@ -67,19 +72,26 @@ All 403s are audited (permission probing is a signal).
 | Injection (NoSQL operator) | Zod validation at edge; repositories accept typed filters only; `express-mongo-sanitize` as belt-and-braces |
 | XSS | React escaping; no `dangerouslySetInnerHTML` (lint-banned); CSP via Helmet; access token never in storage APIs |
 | CSRF | Refresh cookie `SameSite=Strict` + CORS allowlist; state changes require Bearer token (not cookie-authenticated) |
-| SSRF | Outbound HTTP only via the Integrations service with host allowlists |
+| SSRF | Every outbound request leaves through `infrastructure/http/outbound.ts` ([ADR-032](../03-decisions/ADR-032-outbound-http-one-door.md)): host allowlist (the configured base URLs, the SaaS hosts the code names, `OUTBOUND_HTTP_ALLOWLIST`), refusal of any destination resolving to a private/loopback/link-local address, redirects re-judged per hop; a guard spec forbids a bare `fetch` anywhere else. Browser-supplied Web Push endpoints must be public HTTPS |
 | Brute force / abuse | Redis rate limiting per route class; lockouts; alerting |
 | Mass assignment | DTOs are explicit Zod schemas — unknown keys stripped (`strict()`) |
 | IDOR | Scope filtering in BaseRepository + record-level ownership checks in services |
-| Dependency risk | Lockfile, `npm audit` + Dependabot in CI, minimal dependency policy |
-| Secrets leakage | `.env` never committed; env schema validation; secret scanning in CI |
+| Dependency risk | Lockfile; `scripts/dependency-audit.mjs` fails CI on any **high or critical** advisory in production dependencies (waivable by id, with a reason and an expiry that itself fails CI once past) and **fails on a registry outage** unless a dated outage waiver is recorded; Dependabot (`.github/dependabot.yml`) opens weekly grouped updates and security PRs; minimal dependency policy |
+| Secrets leakage | `.env` never committed; env schema validation; `scripts/check-secrets.mjs` scans every tracked file before `npm ci` and fails CI on a credential shape (private key, cloud/API keys, a connection string with a password, a JWT, a tracked `.env` or key file) — false positives are allowlisted by fingerprint with a reason |
 
 ## 5. Auditability & monitoring
 
 - 100% of mutations and all security events (logins, failures, permission denials, exports,
   file downloads) audited with actor/IP/requestId ([ADR-012](../03-decisions/ADR-012-logging-audit.md)).
 - Security alerts (worker jobs): refresh-token reuse, repeated 403s per user, lockout storms,
-  export spikes, dead-letter growth.
+  export spikes, dead-letter growth. Each is an `alertRaised` audit row plus the
+  `platform.audit.alertRaised` event, which the notifications service delivers as a **critical**
+  notification (bypassing quiet hours) to everyone with organization-wide audit-log visibility.
+- **Break-glass use pages at once.** `authorize()` writes a `breakGlassUsed` audit row when a
+  break-glass key (`file.purge`, `user.setupLink`, `user.manageSessions`, or a module's) is the
+  authority a request passed on, and raises the `breakGlassUsed` signal from the request itself —
+  not from the hourly sweep, which is the net under it. One alert per person per hour; every use
+  keeps its row, naming the key and the route.
 - `Applicant.Export`/`Print`-class permissions exist precisely so bulk data egress is a
   *granted, audited* capability — every export records who, what filter, and when.
 

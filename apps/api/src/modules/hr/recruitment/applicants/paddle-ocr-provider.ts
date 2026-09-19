@@ -19,6 +19,7 @@
 // endpoint answers `available: false` exactly as before — an existing deployment that does not run
 // the sidecar sees no behaviour change at all.
 import { setTimeout as delay } from 'node:timers/promises';
+import { OutboundBlockedError, outboundFetch } from '../../../../infrastructure/http/outbound';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { fileService } from '../../../../platform/files';
 import { type AuthContext } from '../../../../shared/types';
@@ -151,7 +152,7 @@ export class PaddleNationalIdOcrProvider implements NationalIdOcrProvider {
 
     for (let attempt = 0; attempt <= this.retries; attempt += 1) {
       try {
-        const response = await fetch(`${this.baseUrl}/extract`, {
+        const response = await outboundFetch(`${this.baseUrl}/extract`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body,
@@ -166,6 +167,8 @@ export class PaddleNationalIdOcrProvider implements NationalIdOcrProvider {
           return sanitize((await response.json()) as SidecarResponse);
         }
       } catch (error) {
+        // Refused by the outbound policy: a configuration fault, and retrying cannot change it.
+        if (error instanceof OutboundBlockedError) return {};
         logger.warn({ err: error, attempt }, 'national-id OCR sidecar unreachable');
         if (attempt === this.retries) return {};
       }

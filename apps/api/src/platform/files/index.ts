@@ -6,9 +6,12 @@ export {
   registerFileJobHandlers,
   clearFileProcessors,
   hasFileProcessor,
+  rescanPendingFiles,
+  RESCAN_AFTER_MINUTES,
   type FileProcessor,
   type FileProcessorResult,
 } from './file.processors';
+export { registerVirusScanner } from './virus-scan.processor';
 export { buildFilesRouter, buildFileCategoriesRouter } from './file.routes';
 export { type FileDoc } from './file.model';
 export {

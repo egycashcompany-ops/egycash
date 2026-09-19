@@ -15,6 +15,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     BUSINESS_RULE: 'That action is not allowed right now.',
     RATE_LIMITED: 'Too many requests — please slow down.',
     FILE_TOO_LARGE: 'That file is too large.',
+    FILE_BLOCKED: 'The virus scanner blocked this file.',
+    FILE_SCAN_PENDING: 'This file is still being scanned for viruses — try again in a moment.',
     // The 500 code. Without it a server fault fell through to the server's own
     // untranslated `Unexpected error`, which is what an Arabic user then read.
     INTERNAL: 'The server could not complete that request.',
@@ -34,6 +36,8 @@ const FRIENDLY: Record<Locale, Record<string, string>> = {
     BUSINESS_RULE: 'هذا الإجراء غير مسموح حاليًا.',
     RATE_LIMITED: 'طلبات كثيرة جدًا — يُرجى التمهّل.',
     FILE_TOO_LARGE: 'هذا الملف كبير جدًا.',
+    FILE_BLOCKED: 'حظر فاحص الفيروسات هذا الملف.',
+    FILE_SCAN_PENDING: 'ما زال هذا الملف قيد فحص الفيروسات — حاول مجددًا بعد لحظات.',
     INTERNAL: 'تعذّر على الخادم إتمام هذا الطلب.',
     AUTH_TOKEN_EXPIRED: 'انتهت جلستك — يُرجى تسجيل الدخول مجددًا.',
     AUTH_TOKEN_INVALID: 'لم تعد جلستك صالحة — يُرجى تسجيل الدخول مجددًا.',

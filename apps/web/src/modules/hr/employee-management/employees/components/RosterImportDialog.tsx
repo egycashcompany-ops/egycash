@@ -471,26 +471,24 @@ export const RosterImportDialog = ({
           onClose={() => {
             setConfirmClose(false);
           }}
-          // `md`, not `sm`: the two answers now name what they do, and two named answers do not
-          // sit side by side in the narrowest box on a desktop. The body is still one paragraph.
-          size="md"
+          size="sm"
           title={t('employees.roster.closeWhileBusy.title')}
           footer={
-            // A BUTTON THAT SAYS WHAT IT DOES IS A LONGER BUTTON. `flex-wrap` is what pays for
-            // the longer labels on a phone, where the box is as wide as the hand holding it: the
-            // two take a row each instead of being squeezed until the words break inside a
-            // fixed-height button.
-            <div className="flex flex-wrap items-center justify-end gap-2">
+            // THE HOUSE PAIR, asked for by name: «تاكيد والغاء». `common.cancel` backs out of the
+            // question and leaves the upload running; `common.confirm` is the one that closes, so
+            // it carries `danger`. The body above is what says which is which — «إلغاء» beside a
+            // running upload could otherwise be read as cancelling the UPLOAD.
+            <div className="flex items-center justify-end gap-2">
               <Button
                 variant="secondary"
                 onClick={() => {
                   setConfirmClose(false);
                 }}
               >
-                {t('employees.roster.closeWhileBusy.keep')}
+                {t('common.cancel')}
               </Button>
               <Button variant="danger" onClick={close}>
-                {t('employees.roster.closeWhileBusy.close')}
+                {t('common.confirm')}
               </Button>
             </div>
           }

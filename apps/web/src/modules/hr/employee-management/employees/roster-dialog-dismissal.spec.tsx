@@ -69,47 +69,28 @@ describe('the roster import dialog survives a click that missed', () => {
   });
 
   /**
-   * The question must have a way through it. A confirmation with no «close anyway» is a trap
-   * wearing a question mark.
+   * The question must have a way through it — a confirmation with no way out is a trap wearing a
+   * question mark — and the two answers must not both look harmless. «تاكيد والغاء»: the house
+   * pair, asked for by name. `common.cancel` backs out of the question and leaves the upload
+   * running; `common.confirm` is the one that closes, so it is the one wearing `danger`.
    */
-  it('offers both answers, and the destructive one really closes', () => {
-    expect(ROSTER).toContain("t('employees.roster.closeWhileBusy.keep')");
+  it('offers the house pair, and only the confirming one closes', () => {
+    expect(ROSTER).toContain("{t('common.cancel')}");
     expect(ROSTER).toContain('<Button variant="danger" onClick={close}>');
+    expect(ROSTER).toContain("{t('common.confirm')}");
   });
 
   /**
-   * EACH ANSWER NAMES THE THING IT ACTS ON. «عدل اسم الزرارين خليهم اكتر سميه عن كدا» — the first
-   * pair were «سيبه يخلّص» and «اقفل برضه» («Let it finish» / «Close anyway»): a verb and a
-   * pronoun between them, leaving both «it» and «what closes» unsaid. That is the one thing a
-   * button must not do when the answer beside it is the destructive one, and it is worse here
-   * because the two are NOT opposites — closing does not stop an apply, so a reader who guesses
-   * the object guesses wrong.
-   *
-   * The rule, stated as the test: every answer must carry one of this screen's nouns. All four of
-   * the old labels fail it; the new ones name «الرفع» and «الشاشة». Driven through `translate()`
-   * so the assertion is about the words a person reads, not a line in a file.
+   * Both answers resolve to real words in both locales. `translate()` falls back to returning the
+   * key, so a missing label survives typecheck, lint and every render test — the user simply sees
+   * `common.confirm` on the button.
    */
-  it('names the thing each answer acts on, in both locales', () => {
-    const NOUNS: Record<Locale, RegExp> = {
-      en: /upload|screen|file/i,
-      ar: /الرفع|الشاشة|الملف/,
-    };
+  it('has both answers translated in both locales', () => {
     for (const locale of ['en', 'ar'] as Locale[]) {
-      for (const key of ['keep', 'close'] as const) {
-        const label = translate(locale, `employees.roster.closeWhileBusy.${key}`);
-        expect(label).not.toContain('employees.roster');
-        expect(label).toMatch(NOUNS[locale]);
+      for (const key of ['common.cancel', 'common.confirm']) {
+        expect(translate(locale, key)).not.toBe(key);
       }
     }
-  });
-
-  /**
-   * A LONGER LABEL MUST NOT COST THE PHONE. The confirmation is the narrow `sm` dialog and the
-   * shared Button is a fixed height, so two labels that no longer fit on one row have to take a
-   * row each — squeezing them instead breaks the words inside the button.
-   */
-  it('lets the confirmation footer wrap rather than squeeze the buttons', () => {
-    expect(ROSTER).toContain('<div className="flex flex-wrap items-center justify-end gap-2">');
   });
 
   /**

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { objectId } from '@ecms/contracts';
+import { SetDelegationSchema, objectId } from '@ecms/contracts';
 import { asyncHandler } from '../../infrastructure/http/async-handler';
 import { validate } from '../../infrastructure/http/validate';
 import { authenticate } from '../auth';
@@ -25,6 +25,7 @@ import {
   updateAssignment,
   updateRole,
 } from './rbac.controller';
+import { myDelegationCatalog, setUserDelegation, userDelegations } from './delegation.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -106,6 +107,32 @@ export const buildRoleAssignmentsRouter = (): Router => {
     authorize('role.assign'),
     validate({ params: IdParamSchema }),
     asyncHandler(revokeAssignment),
+  );
+  return router;
+};
+
+/**
+ * Delegated grants (ADR-032). One key gates all three: what the caller may hand out, and to whom,
+ * is decided in the service from their own grants — the route only asks whether they delegate at all.
+ */
+export const buildDelegationsRouter = (): Router => {
+  const router = Router();
+  const UserParamSchema = z.object({ userId: objectId() }).strict();
+  const UserBranchParamSchema = z.object({ userId: objectId(), branchId: objectId() }).strict();
+  router.get('/me', authenticate, authorize('delegation.manage'), asyncHandler(myDelegationCatalog));
+  router.get(
+    '/users/:userId',
+    authenticate,
+    authorize('delegation.manage'),
+    validate({ params: UserParamSchema }),
+    asyncHandler(userDelegations),
+  );
+  router.put(
+    '/users/:userId/branches/:branchId',
+    authenticate,
+    authorize('delegation.manage'),
+    validate({ body: SetDelegationSchema, params: UserBranchParamSchema }),
+    asyncHandler(setUserDelegation),
   );
   return router;
 };

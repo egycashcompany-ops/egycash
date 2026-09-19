@@ -33,6 +33,7 @@ import { UserFormDialog } from '../components/UserFormDialog';
 // the roles feature — this page renders it rather than owning a second client for the same resource.
 import { UserRolesTab } from '../../roles/components/UserRolesTab';
 import { UserEffectivePermissionsTab } from '../../roles/components/UserEffectivePermissionsTab';
+import { DelegationPanel } from '../../../../platform/rbac/delegation/DelegationPanel';
 import { useSystemUser } from '../api/user-queries';
 
 const TABS = ['overview', 'roles', 'permissions', 'security', 'activity'] as const;
@@ -153,7 +154,24 @@ export const UserDetailPage = (): JSX.Element => {
           derived from effective permissions, so assigning the role IS the whole action and a second
           card would offer a control that changes nothing. What the account can reach is answered by
           the permissions tab, which is the same set the sidebar is built from. */}
-      {tab === 'roles' && <UserRolesTab user={user} />}
+      {tab === 'roles' && (
+        <div className="space-y-6">
+          <UserRolesTab user={user} />
+          {/* Direct, per-site grants (ADR-032) sit under the roles: same question — what does this
+              account hold — answered by the other kind of record. */}
+          <Can permission="delegation.manage">
+            <section>
+              <h2 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {t('employees.tabs.permissions')}
+              </h2>
+              <DelegationPanel
+                userId={user.id}
+                homeBranch={user.organization.branchId === null ? null : { id: user.organization.branchId }}
+              />
+            </section>
+          </Can>
+        </div>
+      )}
 
       {tab === 'permissions' && <UserEffectivePermissionsTab user={user} />}
 

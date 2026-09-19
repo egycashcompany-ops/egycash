@@ -26,6 +26,7 @@ require an ADR to extend the global vocabulary.
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|---|
 | `user` | ● | ● | ● | ● | ● | | | | `user.resetPassword`, `user.manageSessions` |
 | `role` | ● | ● | ● | ● | | | | | `role.assign` |
+| `delegation` | | | | | | | | | `delegation.manage` — hand out, per site, permissions one holds there (ADR-032) |
 | `permission` | ● | | | | | | | | *(registry is read-only)* |
 | `company` | ● | ● | ● | ● | | | | | |
 | `branch` | ● | ● | ● | ● | | | | | |

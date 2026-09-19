@@ -58,6 +58,29 @@ its entry here in the same PR.
   phase the system administrator does the granting; a department manager granting within his own
   department is the next.
 
+- **A manager can hand out, per site, the permissions they hold there.** (ADR-032, Phase 3 of the
+  permissions model.) «مدير عام الحركة» holds his
+  keys in every site; he may now give «مدير الحركة» in المهندسين everything there and, in أكتوبر, two
+  screens view-only — two independent lists, one per site, each saying nothing about the other. The
+  rule is the one the whole model obeys, read per site: nobody hands out what they do not hold **in
+  that site**, a key already on the list that the writer could not grant stays, and removing is
+  always allowed. One new key, `delegation.manage`, which is itself delegable — so the general
+  manager can let a site manager staff his own team.
+
+  Underneath, a grant's reach is now recorded **per permission key** rather than as one union across
+  the holder's grants. Without that, «الحضور في أكتوبر، عرض بس» would have ridden «الموظفين»'s two
+  sites. Nothing changes for an account whose grants all reach the same places, which is every
+  account before this change.
+
+  On screen: a colleague's profile gains a **«الصلاحيات» tab** for whoever holds `delegation.manage`
+  (the same panel sits under the roles on the account page in System Administration). One block per
+  site — the person's own site pinned, added sites as chips, «+ site» for the rest the manager
+  delegates in — each a table of screens × actions with the registry's own grouping. Ticking a
+  screen ticks every action the manager may grant on it; clearing «view» clears the screen; a new
+  site starts with everything the manager may grant there. What the manager cannot grant in that
+  site is disabled with the reason on it, and stays that way in both directions. Save writes only
+  the sites that changed. The "why can they" screen labels a direct grant with its site.
+
 - **Every screen now reads a grant's reach, not only the ones that go through the shared filter.**
   Phase 1 taught the grant to reach several sites; the ordinary lists honoured it at once, because
   they all ask one repository filter. Seven reads did not, because they aggregate or join and had
@@ -85,7 +108,7 @@ its entry here in the same PR.
     trust; a hit is `blocked`; a scan that could not run leaves the file `pending` — never `clean` —
     and `platform.files.rescanPending` asks again every fifteen minutes. `docker compose --profile
     antivirus up` runs the daemon locally. Without `CLAMAV_HOST` nothing changes.
-  - **One door for outbound HTTP** ([ADR-032](docs/03-decisions/ADR-032-outbound-http-one-door.md)).
+  - **One door for outbound HTTP** ([ADR-033](docs/03-decisions/ADR-033-outbound-http-one-door.md)).
     Every request the api makes leaves through `infrastructure/http/outbound.ts`: the configured
     base URLs are pinned, the SaaS hosts the code names are listed, everything else must be on
     `OUTBOUND_HTTP_ALLOWLIST` and resolve to a public address — including after a redirect, which

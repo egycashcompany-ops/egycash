@@ -4,4 +4,6 @@ export {
   buildPermissionsRouter,
   buildRolesRouter,
   buildRoleAssignmentsRouter,
+  buildDelegationsRouter,
 } from './rbac.routes';
+export { delegationService } from './delegation.service';

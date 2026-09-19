@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   currentBranchId,
+  keyReachesBranch,
   reachesBranch,
   scopeSelector,
   widestScopeSelector,
@@ -272,5 +273,42 @@ describe('the widest of several grants (widestScopeSelector)', () => {
 
   it('falls back to own when none of the keys is granted', () => {
     expect(widestScopeSelector(ctx({}), ['screening.view']).scope).toBe('own');
+  });
+});
+
+describe('reach is read per key when the snapshot records it (ADR-032)', () => {
+  const twoAndOne = ctx({
+    branchId: BRANCH_A,
+    permissions: { 'employee.view': 'branch', 'attendance.view': 'branch' },
+    reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+    keyReach: { 'employee.view': { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] } },
+  });
+
+  it('a key with an entry reaches its own sites; a key without one reaches home only', () => {
+    expect(scopeSelector(twoAndOne, 'employee.view').branchIds).toEqual([BRANCH_A, BRANCH_B]);
+    const home = scopeSelector(twoAndOne, 'attendance.view');
+    expect(home.branchIds).toBeUndefined();
+    expect(home.branchId).toBe(BRANCH_A);
+  });
+
+  it('a snapshot without per-key reach falls back to the union, as before', () => {
+    const old = ctx({
+      branchId: BRANCH_A,
+      permissions: { 'attendance.view': 'branch' },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+    });
+    expect(scopeSelector(old, 'attendance.view').branchIds).toEqual([BRANCH_A, BRANCH_B]);
+  });
+
+  it('keyReachesBranch answers per key, and organization-wide for everywhere', () => {
+    expect(keyReachesBranch(twoAndOne, 'employee.view', BRANCH_B)).toBe(true);
+    expect(keyReachesBranch(twoAndOne, 'attendance.view', BRANCH_B)).toBe(false);
+    expect(keyReachesBranch(twoAndOne, 'attendance.view', BRANCH_A)).toBe(true);
+    expect(keyReachesBranch(twoAndOne, 'leave.view', BRANCH_A)).toBe(false);
+    const org = ctx({ permissions: { 'employee.view': 'organization' } });
+    expect(keyReachesBranch(org, 'employee.view', BRANCH_B)).toBe(true);
+    // Narrower than a site is never "held in the site".
+    const own = ctx({ branchId: BRANCH_A, permissions: { 'employee.view': 'own' } });
+    expect(keyReachesBranch(own, 'employee.view', BRANCH_A)).toBe(false);
   });
 });

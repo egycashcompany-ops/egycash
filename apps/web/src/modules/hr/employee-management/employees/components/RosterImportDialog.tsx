@@ -471,10 +471,16 @@ export const RosterImportDialog = ({
           onClose={() => {
             setConfirmClose(false);
           }}
-          size="sm"
+          // `md`, not `sm`: the two answers now name what they do, and two named answers do not
+          // sit side by side in the narrowest box on a desktop. The body is still one paragraph.
+          size="md"
           title={t('employees.roster.closeWhileBusy.title')}
           footer={
-            <div className="flex items-center justify-end gap-2">
+            // A BUTTON THAT SAYS WHAT IT DOES IS A LONGER BUTTON. `flex-wrap` is what pays for
+            // the longer labels on a phone, where the box is as wide as the hand holding it: the
+            // two take a row each instead of being squeezed until the words break inside a
+            // fixed-height button.
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Button
                 variant="secondary"
                 onClick={() => {

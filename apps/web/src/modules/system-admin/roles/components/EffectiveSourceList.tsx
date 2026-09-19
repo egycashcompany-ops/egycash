@@ -46,7 +46,21 @@ export const EffectiveSourceList = ({
             <span className="font-medium text-slate-800 dark:text-slate-100">
               {source.roleName[locale]}
             </span>
-            <ManagedRoleBadge managed={source.roleManaged} />
+            {source.kind === 'delegation' ? (
+              // A direct grant (ADR-032): no role behind it, one site in front of it.
+              <>
+                <Badge size="sm" tone="info">
+                  {t('systemAdmin.effective.delegated')}
+                </Badge>
+                {source.branch !== null && (
+                  <Badge size="sm" tone="neutral">
+                    {source.branch.name[locale]}
+                  </Badge>
+                )}
+              </>
+            ) : (
+              <ManagedRoleBadge managed={source.roleManaged} />
+            )}
             <AssignmentScopeBadge scope={source.scope} />
             <PermissionStateBadge state={source.state} />
             {source.decisive && (

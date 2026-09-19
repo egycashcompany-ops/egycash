@@ -72,7 +72,7 @@ All 403s are audited (permission probing is a signal).
 | Injection (NoSQL operator) | Zod validation at edge; repositories accept typed filters only; `express-mongo-sanitize` as belt-and-braces |
 | XSS | React escaping; no `dangerouslySetInnerHTML` (lint-banned); CSP via Helmet; access token never in storage APIs |
 | CSRF | Refresh cookie `SameSite=Strict` + CORS allowlist; state changes require Bearer token (not cookie-authenticated) |
-| SSRF | Every outbound request leaves through `infrastructure/http/outbound.ts` ([ADR-032](../03-decisions/ADR-032-outbound-http-one-door.md)): host allowlist (the configured base URLs, the SaaS hosts the code names, `OUTBOUND_HTTP_ALLOWLIST`), refusal of any destination resolving to a private/loopback/link-local address, redirects re-judged per hop; a guard spec forbids a bare `fetch` anywhere else. Browser-supplied Web Push endpoints must be public HTTPS |
+| SSRF | Every outbound request leaves through `infrastructure/http/outbound.ts` ([ADR-033](../03-decisions/ADR-033-outbound-http-one-door.md)): host allowlist (the configured base URLs, the SaaS hosts the code names, `OUTBOUND_HTTP_ALLOWLIST`), refusal of any destination resolving to a private/loopback/link-local address, redirects re-judged per hop; a guard spec forbids a bare `fetch` anywhere else. Browser-supplied Web Push endpoints must be public HTTPS |
 | Brute force / abuse | Redis rate limiting per route class; lockouts; alerting |
 | Mass assignment | DTOs are explicit Zod schemas — unknown keys stripped (`strict()`) |
 | IDOR | Scope filtering in BaseRepository + record-level ownership checks in services |

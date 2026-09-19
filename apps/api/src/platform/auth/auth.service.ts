@@ -834,6 +834,8 @@ class AuthService {
       permissions: effective.permissions,
       // A snapshot cached before `reach` existed carries none; treated as "home unit only".
       reach: effective.reach ?? { branchIds: [], departmentIds: [] },
+      // Per key when the snapshot has it; the selector falls back to the union when it does not.
+      ...(effective.keyReach === undefined ? {} : { keyReach: effective.keyReach }),
       permissionVersion: snapshot.permissionVersion,
       isPrivileged: effective.isPrivileged,
       identity: snapshot.identity,

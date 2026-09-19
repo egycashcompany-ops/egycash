@@ -1,4 +1,4 @@
-# ADR-032: Outbound HTTP leaves through one guarded door
+# ADR-033: Outbound HTTP leaves through one guarded door
 
 **Status:** Accepted · **Date:** 2026-09-19 · **Relates to:**
 [Security Architecture §4](../06-security/security-architecture.md) (the SSRF row),

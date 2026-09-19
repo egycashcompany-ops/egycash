@@ -47,6 +47,51 @@ describe('the roster import dialog survives a click that missed', () => {
   });
 
   /**
+   * «لو دوست عليها برضو يقولى تنبيه ان اقفل ولا اسيبه يحمل». Blocking the backdrop stopped the
+   * stray click; this is the other half, for the presses that are real but may still be a reflex
+   * during a forty-second wait. All three exits route through ONE question, because an × that
+   * asks and an Escape that does not would only move the accident to the keyboard.
+   */
+  it('asks before closing while the upload is still working, on every exit', () => {
+    expect(ROSTER).toContain('const requestClose = (): void => {');
+    expect(ROSTER).toContain('if (run.isPending) {');
+    // the ×/Escape path, and the footer button — the same handler, not two behaviours
+    expect(ROSTER).toContain('onClose={requestClose}');
+    expect(ROSTER).toContain('<Button variant="secondary" onClick={requestClose}>');
+  });
+
+  it('asks nothing once the work is done — a finished preview closes on one press', () => {
+    const start = ROSTER.indexOf('const requestClose');
+    const fn = ROSTER.slice(start, ROSTER.indexOf('useEffect(', start));
+    expect(fn).toContain('close();');
+  });
+
+  /**
+   * The question must have a way through it. A confirmation with no «close anyway» is a trap
+   * wearing a question mark.
+   */
+  it('offers both answers, and the destructive one really closes', () => {
+    expect(ROSTER).toContain("t('employees.roster.closeWhileBusy.keep')");
+    expect(ROSTER).toContain('<Button variant="danger" onClick={close}>');
+  });
+
+  /**
+   * THE HONEST HALF. Closing does not call the request back: while an apply is running the
+   * records keep being written on the server. Telling somebody «nothing will happen» there would
+   * be a lie about 2,600 people, so the two cases have two texts and the code picks by which is
+   * in flight — the same test the spinner's own label uses.
+   */
+  it('says something different while writing than while only reading', () => {
+    expect(ROSTER).toContain("'employees.roster.closeWhileBusy.applying'");
+    expect(ROSTER).toContain("'employees.roster.closeWhileBusy.reading'");
+    expect(ROSTER).toContain("(run.variables?.apply.length ?? 0) > 0");
+  });
+
+  it('drops the question if the work finishes while it is on screen', () => {
+    expect(ROSTER).toContain('if (!run.isPending) setConfirmClose(false);');
+  });
+
+  /**
    * The default stays ON. Every other module's dialogs carry the same trap, and turning it off for
    * all of them on the way past would change dozens of screens nobody asked about.
    */

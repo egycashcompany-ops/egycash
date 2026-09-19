@@ -7,7 +7,7 @@
 //
 // The same File object is posted both times, so the run cannot differ from the preview that was
 // agreed to. Nothing is held on the server between them.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import {
   type Locale,
@@ -122,6 +122,7 @@ export const RosterImportDialog = ({
   const [file, setFile] = useState<File | null>(null);
   const [report, setReport] = useState<RosterImportReportDto | null>(null);
   const [selected, setSelected] = useState<RosterImportAction[]>([...DEFAULT_ACTIONS]);
+  const [confirmClose, setConfirmClose] = useState(false);
 
   const toggle = (action: RosterImportAction): void =>
     setSelected((current) =>
@@ -138,12 +139,38 @@ export const RosterImportDialog = ({
   });
 
   const close = (): void => {
+    setConfirmClose(false);
     setFile(null);
     setReport(null);
     setSelected([...DEFAULT_ACTIONS]);
     run.reset();
     onClose();
   };
+
+  /**
+   * WHILE IT IS WORKING, EVERY WAY OUT ASKS FIRST — the ×, Escape and Cancel alike.
+   *
+   * «لو دوست عليها برضو يقولى تنبيه ان اقفل ولا اسيبه يحمل». Blocking the backdrop stopped the
+   * stray click; this is the other half, for the presses that are real but may still be a
+   * reflex during a forty-second wait. Routing all three through one question is what keeps the
+   * guard from having a back door: an X that asks and an Escape that does not would just move
+   * the accident to the keyboard.
+   *
+   * Nothing is blocked. The question has a «close anyway» and it means it.
+   */
+  const requestClose = (): void => {
+    if (run.isPending) {
+      setConfirmClose(true);
+      return;
+    }
+    close();
+  };
+
+  // The question is about a wait that is still happening. Once it is over the preview is sitting
+  // behind this box, so the box goes rather than asking about something already finished.
+  useEffect(() => {
+    if (!run.isPending) setConfirmClose(false);
+  }, [run.isPending]);
 
   const pick = (files: File[]): void => {
     const picked = files[0] ?? null;
@@ -174,7 +201,7 @@ export const RosterImportDialog = ({
   return (
     <Dialog
       open={open}
-      onClose={close}
+      onClose={requestClose}
       size="lg"
       // «انا عاوز لما ادوس على الاكس بس يقفل مش اى ميس كليك يقفل التاب». This dialog held the
       // longest-running thing in the product: the file is read and compared against 2,600 records
@@ -190,7 +217,7 @@ export const RosterImportDialog = ({
       description={t('employees.roster.subtitle')}
       footer={
         <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" onClick={close}>
+          <Button variant="secondary" onClick={requestClose}>
             {applied ? t('common.close') : t('common.cancel')}
           </Button>
           {report !== null && !applied && !nothingToDo && (
@@ -429,6 +456,48 @@ export const RosterImportDialog = ({
           </div>
         )}
       </div>
+
+      {/*
+        THE TEXT TELLS THE TRUTH ABOUT WHAT CLOSING DOES, and the two cases are not the same fact.
+
+        While the PREVIEW is being read nothing has been written, so closing costs the wait and
+        nothing else. While an APPLY is running the request is already with the server and closing
+        this box does NOT call it back — the records keep being written, and all that is lost is
+        seeing how it went. Saying «nothing will happen» there would be a lie about 2,600 people.
+      */}
+      {confirmClose && (
+        <Dialog
+          open
+          onClose={() => {
+            setConfirmClose(false);
+          }}
+          size="sm"
+          title={t('employees.roster.closeWhileBusy.title')}
+          footer={
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setConfirmClose(false);
+                }}
+              >
+                {t('employees.roster.closeWhileBusy.keep')}
+              </Button>
+              <Button variant="danger" onClick={close}>
+                {t('employees.roster.closeWhileBusy.close')}
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {t(
+              (run.variables?.apply.length ?? 0) > 0
+                ? 'employees.roster.closeWhileBusy.applying'
+                : 'employees.roster.closeWhileBusy.reading',
+            )}
+          </p>
+        </Dialog>
+      )}
     </Dialog>
   );
 };

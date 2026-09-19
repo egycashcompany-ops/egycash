@@ -20,6 +20,11 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
+      # Before anything is installed: a committed credential fails the run on its own, whatever
+      # else the change did. Tracked files only, high-confidence rules, fingerprint allowlist.
+      - name: No secrets in the tree (Security Architecture §4)
+        run: node scripts/check-secrets.mjs
+
       - name: Install
         run: npm ci
 
@@ -61,29 +66,9 @@ jobs:
       - name: Build
         run: npm run build
 
-      # The advisory gate needs npmjs.com's audit endpoints. When they are down or
-      # mid-migration (2026-07-26: the quick endpoint was retired and the bulk endpoint
-      # started returning gzip bodies npm cannot parse) the audit CANNOT run at all —
-      # degrade to a workflow warning instead of failing every pipeline on a registry
-      # outage. A REAL critical advisory in production dependencies still fails the run.
-      - name: Dependency audit
-        run: |
-          out=$(npm audit --omit=dev --audit-level=critical --json 2>/dev/null || true)
-          crit=$(printf '%s' "$out" | node -e '
-            let d = "";
-            process.stdin.on("data", (c) => (d += c)).on("end", () => {
-              try {
-                const v = JSON.parse(d).metadata?.vulnerabilities?.critical;
-                process.stdout.write(v === undefined ? "" : String(v));
-              } catch { process.stdout.write(""); }
-            });')
-          if [ -z "$crit" ]; then
-            echo "::warning::npm audit advisory endpoints unavailable — dependency audit skipped this run"
-            exit 0
-          fi
-          if [ "$crit" != "0" ]; then
-            npm audit --omit=dev --audit-level=critical || true
-            echo "::error::${crit} critical vulnerabilities in production dependencies"
-            exit 1
-          fi
-          echo "dependency audit clean: 0 critical vulnerabilities"
+      # High AND critical advisories in production dependencies fail the run; a registry outage
+      # fails it too, unless a reviewer has recorded a dated outage waiver. Individual advisories
+      # are waived by id, with a reason and an expiry that fails the run once it passes — see
+      # scripts/dependency-audit.waivers.json. Lower severities are reported for Dependabot.
+      - name: Dependency audit (high/critical block; outage is not a pass)
+        run: node scripts/dependency-audit.mjs

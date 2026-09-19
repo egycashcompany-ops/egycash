@@ -30,6 +30,8 @@
     "check:flag-expiry": "npm run build -w packages/contracts && node scripts/check-flag-expiry.mjs",
     "check:page-registry": "npm run build -w packages/contracts && node scripts/check-page-registry.mjs",
     "check:bundle": "node scripts/check-bundle-require.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "check:dependencies": "node scripts/dependency-audit.mjs",
     "check:n8n": "node scripts/n8n-conformance.mjs",
     "check:automation-templates": "npm run build -w packages/contracts && node scripts/automation-templates.mjs",
     "automation:preview": "npm run build -w packages/contracts && node scripts/automation-templates.mjs --preview",

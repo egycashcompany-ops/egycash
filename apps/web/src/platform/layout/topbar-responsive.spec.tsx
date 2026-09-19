@@ -36,6 +36,7 @@ const me: MeDto = {
   navLayout: 'launchpad',
   theme: 'dark',
   branchId: null,
+  branchIds: [],
   employeeId: null,
   permissions: {},
   // Whole-company, so the branch switcher renders — the widest the bar ever gets.

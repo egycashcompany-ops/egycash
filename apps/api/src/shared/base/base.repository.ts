@@ -136,6 +136,14 @@ export class BaseRepository<T extends BaseDocFields> {
    * that field the scope widens to organization-wide ({}) — the same convention `branch` has always
    * used, so finer scopes are opt-in per collection and backward compatible (ADR-017).
    */
+  /** The list form of `orgScopeFilter`: every record in ANY of the units. */
+  private orgScopeFilterIn(field: string | undefined, ids: readonly string[]): FilterQuery<T> {
+    if (field === undefined) return {};
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (valid.length === 0) return NEVER as FilterQuery<T>;
+    return { [field]: { $in: valid.map((id) => new Types.ObjectId(id)) } } as FilterQuery<T>;
+  }
+
   private orgScopeFilter(field: string | undefined, id: string | null): FilterQuery<T> {
     if (field === undefined) return {};
     if (id === null) return NEVER as FilterQuery<T>;
@@ -147,10 +155,26 @@ export class BaseRepository<T extends BaseDocFields> {
     // Hierarchical scopes filter by the caller's own placement (branch ⊃ department ⊃ section).
     // Filtering by departmentId naturally includes every section under it; branch includes the
     // whole branch — matching the business rules for each scope.
+    // The list forms win when present: a grant that reaches several branches, or a company-wide
+    // department across them, is a `$in` over every unit it reaches. Absent, the single home id is
+    // used exactly as it always was.
     if (selector.scope === 'branch') {
+      if (selector.branchIds !== undefined && selector.branchIds.length > 0) {
+        return this.orgScopeFilterIn(this.options.branchField, selector.branchIds);
+      }
       return this.orgScopeFilter(this.options.branchField, selector.branchId);
     }
     if (selector.scope === 'department') {
+      if (selector.departmentIds !== undefined && selector.departmentIds.length > 0) {
+        // A department reach is already narrowed to the branches it covers, so the department
+        // clause alone is right; a branch narrowing on top of it is folded in when both are given.
+        const byDepartment = this.orgScopeFilterIn(this.options.departmentField, selector.departmentIds);
+        if (selector.branchIds !== undefined && selector.branchIds.length > 0 && this.options.branchField !== undefined) {
+          const byBranch = this.orgScopeFilterIn(this.options.branchField, selector.branchIds);
+          return { $and: [byDepartment, byBranch] } as FilterQuery<T>;
+        }
+        return byDepartment;
+      }
       return this.orgScopeFilter(this.options.departmentField, selector.departmentId);
     }
     if (selector.scope === 'section') {

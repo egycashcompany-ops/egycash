@@ -63,24 +63,33 @@ export const listAssignments = async (req: Request, res: Response): Promise<void
   const { query } = validated<never, ListRoleAssignmentsQuery>(req);
   const page = await rbacService.listAssignments(query, scopeSelector(ctx, 'role.view'));
   // One batched role read for the whole page — never one per row.
-  const roles = await rbacService.rolesForAssignments(page.items);
-  okPage(res, page, (doc) => rbacService.toAssignmentDto(doc, roles.get(String(doc.roleId))));
+  const [roles, names] = await Promise.all([
+    rbacService.rolesForAssignments(page.items),
+    rbacService.namesForAssignments(page.items),
+  ]);
+  okPage(res, page, (doc) => rbacService.toAssignmentDto(doc, roles.get(String(doc.roleId)), names));
 };
 
 export const createAssignment = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<CreateRoleAssignment>(req);
   const doc = await rbacService.assignRole(body, ctx.userId, ctx);
-  const role = await rbacService.getRole(String(doc.roleId));
-  created(res, rbacService.toAssignmentDto(doc, role));
+  const [role, names] = await Promise.all([
+    rbacService.getRole(String(doc.roleId)),
+    rbacService.namesForAssignments([doc]),
+  ]);
+  created(res, rbacService.toAssignmentDto(doc, role, names));
 };
 
 export const updateAssignment = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<UpdateRoleAssignment, never, IdParam>(req);
   const doc = await rbacService.updateAssignment(params.id, body, ctx.userId, ctx);
-  const role = await rbacService.getRole(String(doc.roleId));
-  ok(res, rbacService.toAssignmentDto(doc, role));
+  const [role, names] = await Promise.all([
+    rbacService.getRole(String(doc.roleId)),
+    rbacService.namesForAssignments([doc]),
+  ]);
+  ok(res, rbacService.toAssignmentDto(doc, role, names));
 };
 
 export const revokeAssignment = async (req: Request, res: Response): Promise<void> => {

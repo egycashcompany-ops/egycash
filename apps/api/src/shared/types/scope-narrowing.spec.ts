@@ -114,3 +114,89 @@ describe('it is decided per permission, not per caller', () => {
     expect(scopeSelector(caller, 'goldVault.view').branchId).toBe(BRANCH_A);
   });
 });
+
+/**
+ * A grant that reaches more than one branch — a manager given a second branch to follow.
+ *
+ * Two rules, same shape as the organization-wide case above. The reach is the ceiling: the switcher
+ * may narrow to ONE of the held branches and never to a branch outside them. And a caller whose
+ * grants reach only their home unit is untouched — `reach` empty means the single ids apply, which
+ * is every context that existed before the field did.
+ */
+describe('a multi-branch grant narrows within its reach', () => {
+  const REACH = { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] };
+
+  it('lists every reached branch when nothing is chosen', () => {
+    const selector = scopeSelector(
+      ctx({ branchId: BRANCH_A, permissions: { 'goldBar.view': 'branch' }, reach: REACH }),
+      'goldBar.view',
+    );
+    expect(selector.scope).toBe('branch');
+    expect(selector.branchIds).toEqual([BRANCH_A, BRANCH_B]);
+  });
+
+  it('narrows to the chosen branch when it is one of the reached ones', () => {
+    const selector = scopeSelector(
+      ctx({ branchId: BRANCH_A, permissions: { 'goldBar.view': 'branch' }, reach: REACH, activeBranchId: BRANCH_B }),
+      'goldBar.view',
+    );
+    expect(selector.branchIds).toEqual([BRANCH_B]);
+  });
+
+  /** THE CEILING. A branch outside the reach is not a narrowing, so it is ignored. */
+  it('ignores a chosen branch outside the reach and keeps the whole reach', () => {
+    const OUTSIDE = '650000000000000000000099';
+    const selector = scopeSelector(
+      ctx({ branchId: BRANCH_A, permissions: { 'goldBar.view': 'branch' }, reach: REACH, activeBranchId: OUTSIDE }),
+      'goldBar.view',
+    );
+    expect(selector.branchIds).toEqual([BRANCH_A, BRANCH_B]);
+  });
+
+  it('leaves a caller with an empty reach on the single home id, exactly as before', () => {
+    const selector = scopeSelector(
+      ctx({
+        branchId: BRANCH_A,
+        permissions: { 'goldBar.view': 'branch' },
+        reach: { branchIds: [], departmentIds: [] },
+        activeBranchId: BRANCH_B,
+      }),
+      'goldBar.view',
+    );
+    expect(selector.branchId).toBe(BRANCH_A);
+    expect(selector.branchIds).toBeUndefined();
+  });
+});
+
+describe('a company-wide department grant', () => {
+  const D1 = '650000000000000000000101';
+  const D2 = '650000000000000000000102';
+
+  it('carries every branch copy of the department, and the branches they sit in', () => {
+    const selector = scopeSelector(
+      ctx({
+        departmentId: D1,
+        permissions: { 'goldBar.view': 'department' },
+        reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [D1, D2] },
+      }),
+      'goldBar.view',
+    );
+    expect(selector.scope).toBe('department');
+    expect(selector.departmentIds).toEqual([D1, D2]);
+    expect(selector.branchIds).toEqual([BRANCH_A, BRANCH_B]);
+  });
+
+  it('narrows the branches, not the department, when one branch is chosen', () => {
+    const selector = scopeSelector(
+      ctx({
+        departmentId: D1,
+        permissions: { 'goldBar.view': 'department' },
+        reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [D1, D2] },
+        activeBranchId: BRANCH_B,
+      }),
+      'goldBar.view',
+    );
+    expect(selector.departmentIds).toEqual([D1, D2]);
+    expect(selector.branchIds).toEqual([BRANCH_B]);
+  });
+});

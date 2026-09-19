@@ -45,6 +45,7 @@ export const authenticate: RequestHandler = (
       const active = req.headers[ACTIVE_BRANCH_HEADER];
       ctx.activeBranchId = await resolveActiveBranch(
         typeof active === 'string' ? active : undefined,
+        ctx.reach?.branchIds,
       );
       (req as AuthedRequest).authContext = ctx;
       setActor({

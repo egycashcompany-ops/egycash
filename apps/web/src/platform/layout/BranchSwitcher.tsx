@@ -48,8 +48,11 @@ export const BranchSwitcher = (): JSX.Element => {
   useOnClickOutside(ref, () => setOpen(false), open);
 
   // An account placed IN a branch already sees only that branch, whatever it sends — so it is
-  // never offered a choice that would do nothing.
-  const orgWide = me !== null && me.branchId === null;
+  // never offered a choice that would do nothing. An account whose grants REACH several branches
+  // is the other population that has something to choose: it is offered exactly those.
+  const orgWide = me !== null && me.branchId === null && (me.branchIds ?? []).length === 0;
+  const reach = me?.branchIds ?? [];
+  const multi = !orgWide && reach.length > 1;
 
   // `/branches/options` rather than the branches LIST: the list is gated on `branch.view`, an
   // organization-administration grant that an operator narrowing their own view has no reason to
@@ -57,7 +60,7 @@ export const BranchSwitcher = (): JSX.Element => {
   const branches = useQuery({
     queryKey: ['platform', 'branches', 'options', 'switcher'],
     queryFn: () => get<OrgUnitOptionDto[]>('/platform/branches/options'),
-    enabled: orgWide,
+    enabled: orgWide || multi,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -79,18 +82,20 @@ export const BranchSwitcher = (): JSX.Element => {
   // Only ever on a SUCCESSFUL list: a failed request knows nothing about which branches exist, and
   // clearing on it would throw away a working choice every time the network hiccuped.
   useEffect(() => {
-    if (!orgWide || branches.data === undefined || active === null) return;
-    if (branches.data.some((branch) => branch.id === active)) return;
+    if ((!orgWide && !multi) || branches.data === undefined || active === null) return;
+    if (branches.data.some((branch) => branch.id === active && (orgWide || reach.includes(branch.id)))) return;
     setActive(null);
     writeStoredBranch(null);
     setActiveBranch(null);
   }, [orgWide, branches.data, active]);
 
-  if (!orgWide) return <></>;
+  if (!orgWide && !multi) return <></>;
 
-  const options = branches.data ?? [];
+  // A multi-branch account is shown ITS branches and no others — the reach is the ceiling.
+  const options = (branches.data ?? []).filter((b) => orgWide || reach.includes(b.id));
   const current = options.find((branch) => branch.id === active);
-  const label = current === undefined ? t('nav.branchSwitcher.all') : current.name[locale];
+  const allLabel = orgWide ? t('nav.branchSwitcher.all') : t('nav.branchSwitcher.mine');
+  const label = current === undefined ? allLabel : current.name[locale];
 
   return (
     <div className="relative" ref={ref}>
@@ -133,7 +138,7 @@ export const BranchSwitcher = (): JSX.Element => {
                 : 'text-slate-700 dark:text-slate-200'
             }`}
           >
-            {t('nav.branchSwitcher.all')}
+            {allLabel}
           </button>
           <div className="my-1 h-px bg-slate-100 dark:bg-slate-700" />
           {options.map((branch) => (

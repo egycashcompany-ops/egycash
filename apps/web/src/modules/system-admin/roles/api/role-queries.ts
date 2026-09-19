@@ -120,3 +120,13 @@ export const useEffectivePermissions = (userId: string, enabled = true) =>
     enabled: enabled && userId !== '',
     staleTime: 0,
   });
+
+/** Every active company-wide department, for the grant form. Rarely changes; cached like the roles. */
+export const useDepartmentCatalog = (enabled = true) =>
+  useQuery({
+    queryKey: ['platform', 'department-catalog', 'grant-form'],
+    queryFn: api.listDepartmentCatalog,
+    enabled,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });

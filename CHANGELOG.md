@@ -11,6 +11,27 @@ its entry here in the same PR.
 
 ### Added
 
+- **A role grant can reach more than the holder's own unit.** A department is one record per
+  branch, but one department to the company: «الحركة» has a general manager over every site and a
+  manager in each site who may be given a second site to follow. Neither was expressible while a
+  grant resolved to exactly the holder's home unit. Now a `branch` or `department` grant carries a
+  **reach** — sites added to the holder's own, chosen by name — and a `department` grant names the
+  **company-wide department** (the catalog entry) rather than one site's copy, so it reaches that
+  department in every listed site, or, as the general-manager form, in every site there is.
+
+  What that changes on screen, and only that: the grant form gains a department picker and a site
+  picker; the roles tab says «الحركة · المهندسين · أكتوبر» on the row instead of «الإدارة*»; and the
+  branch switcher in the command bar now appears for an account with several sites, listing exactly
+  those. A grant with no reach is byte-for-byte the grant that existed before, and every existing
+  grant is one. Nothing changes what any screen shows for a given permission.
+
+  The reach obeys the rule the whole permission model already obeys: nobody hands out what they do
+  not hold. A granter may add only sites their own grants reach and name only a department their
+  own grants name, and only an organization-wide administrator may grant «every site». The switcher
+  is the same — a multi-site account may narrow to one of its sites and never to a third. In this
+  phase the system administrator does the granting; a department manager granting within his own
+  department is the next.
+
 - **The import preview says which of the people it is adding are leavers.** Two thirds of the
   workbook is the Resignation sheet, so most of the people an upload adds join the registry already
   exited — a record of somebody who worked here, not a colleague starting on Monday. Listing them

@@ -38,6 +38,7 @@ const me = (overrides: Partial<MeDto> = {}): MeDto => ({
   navLayout: 'launchpad',
   theme: 'system',
   branchId: null,
+  branchIds: [],
   employeeId: null,
   permissions: {},
   isPrivileged: false,

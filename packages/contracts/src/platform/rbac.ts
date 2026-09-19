@@ -83,14 +83,46 @@ export const CreateRoleAssignmentSchema = z
     roleId: objectId(),
     scope: DataScopeSchema,
     // The hierarchical scopes resolve to the target user's own placement; these are optional and,
-    // when present, must match that placement (multi-scope grants are not supported yet).
+    // when present, must match that placement.
     branchId: objectId().optional(),
     departmentId: objectId().optional(),
     sectionId: objectId().optional(),
+    /**
+     * The REACH of a `branch` or `department` grant, beyond the holder's own placement.
+     *
+     * A department is one record per branch, but to the company it is one department — «الحركة»
+     * in every site — with a general manager over all of it and a manager in each branch who may be
+     * given a second branch to follow. Neither was expressible while a grant resolved to exactly the
+     * holder's home unit. So:
+     *
+     *   • `branchIds` — the branches this grant reaches. The holder's own branch is always included
+     *     whether or not it is listed; anything else here is a branch ADDED to their reach.
+     *   • `departmentCatalogId` — for a `department` grant, the company-wide department (the
+     *     catalog entry) rather than one branch's copy of it. With `branchIds` it means that
+     *     department in those branches; with `allBranches` it means that department everywhere.
+     *   • `allBranches` — the general-manager form: every branch, now and as branches are added.
+     *
+     * Omitted, a grant behaves exactly as before: the holder's home unit, and nothing else.
+     */
+    branchIds: z.array(objectId()).max(50).optional(),
+    departmentCatalogId: objectId().optional(),
+    allBranches: z.boolean().optional(),
     validFrom: z.coerce.date().optional(),
     validTo: z.coerce.date().optional(),
   })
   .strict()
+  .refine((v) => !(v.allBranches === true && v.branchIds !== undefined && v.branchIds.length > 0), {
+    message: 'allBranches and branchIds are two answers to one question — send one',
+    path: ['branchIds'],
+  })
+  .refine((v) => v.departmentCatalogId === undefined || v.scope === 'department', {
+    message: 'departmentCatalogId belongs to a department-scoped grant',
+    path: ['departmentCatalogId'],
+  })
+  .refine(
+    (v) => (v.branchIds === undefined && v.allBranches !== true) || v.scope === 'branch' || v.scope === 'department',
+    { message: 'a reach beyond the home unit needs a branch or department scope', path: ['branchIds'] },
+  )
   .refine((v) => v.validFrom === undefined || v.validTo === undefined || v.validFrom < v.validTo, {
     message: 'validFrom must be before validTo',
     path: ['validTo'],
@@ -147,6 +179,16 @@ export interface RoleAssignmentDto {
   branchId: string | null;
   departmentId: string | null;
   sectionId: string | null;
+  /**
+   * The grant's reach beyond the home unit — see `CreateRoleAssignmentSchema`. Names are resolved
+   * server-side for the page, like `role` above: a screen listing grants should not have to load the
+   * branch and department catalogs to say «الحركة · المهندسين · أكتوبر».
+   */
+  branchIds: string[];
+  branches: { id: string; name: { ar: string; en: string } }[];
+  departmentCatalogId: string | null;
+  departmentCatalog: { id: string; name: { ar: string; en: string } } | null;
+  allBranches: boolean;
   validFrom: string | null;
   validTo: string | null;
   /** Optimistic-concurrency version — sent back on a window change. */

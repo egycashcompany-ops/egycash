@@ -52,6 +52,7 @@ const me = (): MeDto => ({
   navLayout: 'rail',
   theme: 'system',
   branchId: null,
+  branchIds: [],
   employeeId: null,
   permissions: {},
   isPrivileged: false,

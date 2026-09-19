@@ -832,6 +832,8 @@ class AuthService {
       sectionId: snapshot.sectionId,
       locale: snapshot.locale,
       permissions: effective.permissions,
+      // A snapshot cached before `reach` existed carries none; treated as "home unit only".
+      reach: effective.reach ?? { branchIds: [], departmentIds: [] },
       permissionVersion: snapshot.permissionVersion,
       isPrivileged: effective.isPrivileged,
       identity: snapshot.identity,
@@ -861,6 +863,7 @@ class AuthService {
       navLayout: user.preferences?.navLayout ?? 'launchpad',
       theme: user.preferences?.theme ?? 'system',
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
+      branchIds: effective.reach?.branchIds ?? [],
       employeeId: user.employeeId === null ? null : String(user.employeeId),
       permissions: effective.permissions,
       isPrivileged: effective.isPrivileged,

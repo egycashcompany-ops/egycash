@@ -4,6 +4,8 @@
 // to the platform — the roles list's filters, the assignment validity-window PATCH (SA-3) and the
 // effective-permissions read (SA-4) — are extensions of existing routers, not a new surface.
 import {
+  MAX_PAGE_SIZE,
+  type DepartmentCatalogDto,
   type CreateRole,
   type CreateRoleAssignment,
   type EffectivePermissionsDto,
@@ -81,3 +83,22 @@ export const revokeAssignment = (id: string): Promise<void> =>
  */
 export const getEffectivePermissions = (userId: string): Promise<EffectivePermissionsDto> =>
   get<EffectivePermissionsDto>(`/platform/users/${userId}/effective-permissions`);
+
+/**
+ * The company-wide departments, for the grant form's picker — «الحركة», not «الحركة / طنطا».
+ *
+ * Read from the catalogue LIST, which is gated on `department.view`: the catalogue router has no
+ * `/options` route by design (its audience is the create form, whose caller already holds that
+ * key), and an administrator granting roles holds it too. Paged to exhaustion for the reason every
+ * catalogue read in this repository is now — `BaseRepository.list` clamps a page to 100.
+ */
+export const listDepartmentCatalog = async (): Promise<DepartmentCatalogDto[]> => {
+  const out: DepartmentCatalogDto[] = [];
+  for (let page = 1; ; page += 1) {
+    const res = await getPage<DepartmentCatalogDto>(
+      `/platform/department-catalog${buildQuery({ status: 'active', page, pageSize: MAX_PAGE_SIZE, sortDir: 'asc' })}`,
+    );
+    out.push(...res.items);
+    if (page >= res.meta.totalPages) return out;
+  }
+};

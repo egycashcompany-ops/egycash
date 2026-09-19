@@ -22,6 +22,17 @@ export interface AuthContext {
   locale: Locale;
   /** Effective permission → widest granted scope. */
   permissions: Record<string, DataScope>;
+  /**
+   * Where the caller's grants reach beyond their own placement (ADR-015, multi-branch grants).
+   *
+   * `branchIds` — every branch a branch- or department-level grant reaches, the home branch
+   * included. `departmentIds` — every branch copy of the department(s) a `department` grant names,
+   * across those branches. Both empty for a caller whose grants resolve to their home unit only,
+   * which is what every context looked like before this field existed; the selector and the
+   * repositories fall back to `branchId` / `departmentId` in that case, so nothing that never
+   * granted a wider reach behaves any differently.
+   */
+  reach?: { branchIds: string[]; departmentIds: string[] };
   permissionVersion: number;
   /** Holds a protected system role or any break-glass permission (Review R13). */
   isPrivileged: boolean;
@@ -67,6 +78,13 @@ export interface ScopeSelector {
   branchId: string | null;
   departmentId: string | null;
   sectionId: string | null;
+  /**
+   * The LIST forms of `branchId` / `departmentId`, for a caller whose grants reach more than one
+   * unit. When present and non-empty they are what a repository filters on; when absent, the single
+   * ids above are, exactly as before.
+   */
+  branchIds?: readonly string[];
+  departmentIds?: readonly string[];
 }
 
 /**
@@ -80,6 +98,8 @@ export interface ScopeSelector {
 export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSelector => {
   const scope = ctx.permissions[permissionKey] ?? 'own';
   const active = ctx.activeBranchId ?? null;
+  const reach = ctx.reach;
+  const reachesBranches = reach !== undefined && reach.branchIds.length > 0;
   if (scope === 'organization' && active !== null) {
     return {
       scope: 'branch',
@@ -87,6 +107,32 @@ export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSel
       branchId: active,
       departmentId: ctx.departmentId,
       sectionId: ctx.sectionId,
+    };
+  }
+  // A multi-branch caller narrowing to ONE of their branches: still a narrowing, so still allowed —
+  // and only to a branch the reach already holds. Anything else they send is ignored, as before.
+  if (scope === 'branch' && reachesBranches) {
+    const chosen = active !== null && reach.branchIds.includes(active) ? [active] : reach.branchIds;
+    return {
+      scope,
+      userId: ctx.userId,
+      branchId: ctx.branchId,
+      departmentId: ctx.departmentId,
+      sectionId: ctx.sectionId,
+      branchIds: chosen,
+    };
+  }
+  if (scope === 'department' && reach !== undefined && reach.departmentIds.length > 0) {
+    return {
+      scope,
+      userId: ctx.userId,
+      branchId: ctx.branchId,
+      departmentId: ctx.departmentId,
+      sectionId: ctx.sectionId,
+      departmentIds: reach.departmentIds,
+      ...(reachesBranches
+        ? { branchIds: active !== null && reach.branchIds.includes(active) ? [active] : reach.branchIds }
+        : {}),
     };
   }
   return {

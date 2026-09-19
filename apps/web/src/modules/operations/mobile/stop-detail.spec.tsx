@@ -30,6 +30,7 @@ const CAIRO = { lat: 30.0444, lng: 31.2357 };
 
 const place = (over = {}) => ({
   branchId: 'b-1',
+  branchIds: [],
   branchName: 'فرع التحرير',
   branchCode: '001',
   bankName: 'البنك الأهلي',
@@ -86,6 +87,7 @@ const me = (): MeDto =>
     theme: 'system',
     navLayout: 'rail',
     branchId: null,
+    branchIds: [],
     employeeId: 'e-1',
     permissions: { 'operationsExecution.own': 'own' as const },
     isPrivileged: false,

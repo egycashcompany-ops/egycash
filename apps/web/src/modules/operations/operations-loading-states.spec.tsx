@@ -40,6 +40,7 @@ const me = (permissions: string[]): MeDto => ({
   theme: 'system',
   navLayout: 'rail',
   branchId: null,
+  branchIds: [],
   employeeId: 'e-1',
   permissions: Object.fromEntries(permissions.map((key) => [key, 'organization' as const])),
   isPrivileged: false,

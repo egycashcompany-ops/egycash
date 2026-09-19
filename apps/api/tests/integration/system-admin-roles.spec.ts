@@ -1135,3 +1135,159 @@ describe('regressions', () => {
     expect((await readBranches()).status).toBe(403);
   });
 });
+
+/**
+ * A grant that reaches beyond the holder's own unit.
+ *
+ * A department is one record per branch but ONE department to the company, so «مدير الحركة» in one
+ * site can be given a second site to follow, and «مدير عام الحركة» is that department everywhere.
+ * These pin the three things that make that safe: the reach lands in the effective permissions
+ * (so the scope filter sees it), it comes back on the grant with names (so the roles tab can say
+ * it), and nobody can hand out a reach they do not hold.
+ */
+describe('a grant with a reach', () => {
+  const mkCatalog = async (code: string, en: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/platform/department-catalog')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, name: { ar: en, en } });
+    expect(res.status).toBe(201);
+    return data<{ id: string }>(res).id;
+  };
+  const mkCopy = async (code: string, branchId: string, catalogId: string): Promise<string> => {
+    const res = await request(app)
+      .post('/api/v1/platform/departments')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ code, branchId, catalogId });
+    expect(res.status).toBe(201);
+    return data<{ id: string }>(res).id;
+  };
+  const reachOf = async (userId: string) => {
+    const user = await userService.getById(userId);
+    return (await rbacService.getEffectivePermissions(userId, user.security.permissionVersion)).reach;
+  };
+
+  it('R1 — a branch grant can reach a second site, and says so by name', async () => {
+    const roleId = await seedRole('Follows two sites', ['user.view']);
+    const target = await seedUser('r1-target@ecms.local', { branchId: BRANCH_B });
+
+    const res = await postAssignment(
+      { userId: target, roleId, scope: 'branch', branchIds: [BRANCH_A] },
+      adminToken,
+    );
+    expect(res.status).toBe(201);
+    const dto = data<RoleAssignmentDto>(res);
+    // Home first, then what was added — and the home branch is not listed twice.
+    expect(dto.branchIds).toEqual([BRANCH_B, BRANCH_A]);
+    expect(dto.branches.map((b) => b.name.en)).toEqual(['Branch B', 'HQ']);
+
+    // What the scope filter will read: both branches.
+    const reach = await reachOf(target);
+    expect(reach.branchIds.sort()).toEqual([BRANCH_A, BRANCH_B].sort());
+  });
+
+  it('R2 — a company-wide department grant reaches its copy in every listed site', async () => {
+    const movement = await mkCatalog('MOV', 'Movement');
+    const inA = await mkCopy('MOV-A', BRANCH_A, movement);
+    const inB = await mkCopy('MOV-B', BRANCH_B, movement);
+    const roleId = await seedRole('Movement manager', ['user.view']);
+    const target = await seedUser('r2-target@ecms.local', { branchId: BRANCH_B, departmentId: inB });
+
+    const res = await postAssignment(
+      { userId: target, roleId, scope: 'department', departmentCatalogId: movement, branchIds: [BRANCH_A] },
+      adminToken,
+    );
+    expect(res.status).toBe(201);
+    const dto = data<RoleAssignmentDto>(res);
+    expect(dto.departmentCatalog?.name.en).toBe('Movement');
+    expect(dto.allBranches).toBe(false);
+
+    const reach = await reachOf(target);
+    expect(reach.departmentIds.sort()).toEqual([inA, inB].sort());
+  });
+
+  it('R3 — «every site» reaches copies that exist in branches the grant never listed', async () => {
+    const security = await mkCatalog('SEC', 'Security');
+    const inA = await mkCopy('SEC-A', BRANCH_A, security);
+    const inB = await mkCopy('SEC-B', BRANCH_B, security);
+    const roleId = await seedRole('Security GM', ['user.view']);
+    // Placed in NO branch: a general manager need not sit anywhere in particular.
+    const target = await seedUser('r3-target@ecms.local');
+
+    const res = await postAssignment(
+      { userId: target, roleId, scope: 'department', departmentCatalogId: security, allBranches: true },
+      adminToken,
+    );
+    expect(res.status).toBe(201);
+    expect(data<RoleAssignmentDto>(res).allBranches).toBe(true);
+
+    const reach = await reachOf(target);
+    expect(reach.departmentIds.sort()).toEqual([inA, inB].sort());
+    expect(reach.branchIds.sort()).toEqual([BRANCH_A, BRANCH_B].sort());
+  });
+
+  /** THE CEILING. A branch-scoped granter reaches branch B, so B is all they can pass on. */
+  it('R4 — a granter cannot hand out a site their own grants do not reach', async () => {
+    const roleId = await seedRole('Reach-limited', ['user.view']);
+    const target = await seedUser('r4-target@ecms.local', { branchId: BRANCH_B });
+
+    const beyond = await postAssignment(
+      { userId: target, roleId, scope: 'branch', branchIds: [BRANCH_A] },
+      branchGranterToken,
+    );
+    expect(beyond.status).toBe(422);
+    expect(errorOf(beyond).message).toContain('do not reach');
+
+    const everywhere = await postAssignment(
+      { userId: target, roleId, scope: 'branch', allBranches: true },
+      branchGranterToken,
+    );
+    expect(everywhere.status).toBe(422);
+    expect(errorOf(everywhere).message).toContain('organization-wide');
+  });
+
+  it('R5 — a site that does not exist is refused rather than granted to nothing', async () => {
+    const roleId = await seedRole('Ghost site', ['user.view']);
+    const target = await seedUser('r5-target@ecms.local', { branchId: BRANCH_B });
+    const res = await postAssignment(
+      { userId: target, roleId, scope: 'branch', branchIds: ['650000000000000000000999'] },
+      adminToken,
+    );
+    expect(res.status).toBe(422);
+    expect(errorOf(res).message).toContain('Unknown or inactive branch');
+  });
+
+  /** The same role — «مدير إدارة» — held for two departments is two grants, not a collision. */
+  it('R6 — one role can be granted for two different departments at once', async () => {
+    const ops = await mkCatalog('OPS2', 'Ops');
+    const fin = await mkCatalog('FIN2', 'Fin');
+    const opsB = await mkCopy('OPS2-B', BRANCH_B, ops);
+    await mkCopy('FIN2-B', BRANCH_B, fin);
+    const roleId = await seedRole('Department manager', ['user.view']);
+    const target = await seedUser('r6-target@ecms.local', { branchId: BRANCH_B, departmentId: opsB });
+
+    const first = await postAssignment(
+      { userId: target, roleId, scope: 'department', departmentCatalogId: ops },
+      adminToken,
+    );
+    const second = await postAssignment(
+      { userId: target, roleId, scope: 'department', departmentCatalogId: fin },
+      adminToken,
+    );
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+  });
+
+  /** A grant with no reach is byte-for-byte the grant that existed before this feature. */
+  it('R7 — a plain grant carries an empty reach and the old single placement', async () => {
+    const roleId = await seedRole('Plain', ['user.view']);
+    const target = await seedUser('r7-target@ecms.local', { branchId: BRANCH_B });
+    const res = await postAssignment({ userId: target, roleId, scope: 'branch' }, adminToken);
+    expect(res.status).toBe(201);
+    const dto = data<RoleAssignmentDto>(res);
+    expect(dto.branchId).toBe(BRANCH_B);
+    expect(dto.branchIds).toEqual([]);
+    expect(dto.allBranches).toBe(false);
+    expect((await reachOf(target)).branchIds).toEqual([]);
+  });
+});

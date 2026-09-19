@@ -433,10 +433,12 @@ describe('extension points (virus scan / thumbnail) and events', () => {
     expect((ticket.body as { error: { code: string } }).error.code).toBe('FILE_SCAN_PENDING');
 
     await fileRepository.setScanStatus(new Types.ObjectId(id), 'clean');
+    // Served again — which, on this endpoint, is the redirect to the signed URL (302), exactly as
+    // the download tests above expect it.
     const served = await request(app)
       .get(`/api/v1/platform/files/${id}/download`)
       .set('Authorization', `Bearer ${adminToken}`);
-    expect(served.status).toBe(200);
+    expect(served.status).toBe(302);
   });
 
   /**
@@ -453,38 +455,27 @@ describe('extension points (virus scan / thumbnail) and events', () => {
       { _id: objectId },
       { $set: { uploadedAt: new Date(Date.now() - 2 * RESCAN_AFTER_MINUTES * 60_000) } },
     ).exec();
-    const scansBefore = captured.filter(
-      (e) =>
-        e.name === PlatformEvents.VirusScanCompleted &&
-        (e.payload as { fileId: string }).fileId === id,
-    ).length;
-    const thumbsBefore = captured.filter(
-      (e) =>
-        e.name === PlatformEvents.ThumbnailCreated &&
-        (e.payload as { fileId: string }).fileId === id,
-    ).length;
+    // The upload's own completion events travel the reliable tier and land a tick after the
+    // response; take the baseline only once they have, or the first thumbnail counts as a second.
+    const forThisFile = (name: string): number =>
+      captured.filter((e) => e.name === name && (e.payload as { fileId: string }).fileId === id)
+        .length;
+    await waitFor(
+      () =>
+        forThisFile(PlatformEvents.VirusScanCompleted) >= 1 &&
+        forThisFile(PlatformEvents.ThumbnailCreated) >= 1,
+    );
+    const scansBefore = forThisFile(PlatformEvents.VirusScanCompleted);
+    const thumbsBefore = forThisFile(PlatformEvents.ThumbnailCreated);
 
     expect(await rescanPendingFiles()).toBe(1);
 
-    await waitFor(
-      () =>
-        captured.filter(
-          (e) =>
-            e.name === PlatformEvents.VirusScanCompleted &&
-            (e.payload as { fileId: string }).fileId === id,
-        ).length > scansBefore,
-    );
+    await waitFor(() => forThisFile(PlatformEvents.VirusScanCompleted) > scansBefore);
     const rescanned = await request(app)
       .get(`/api/v1/platform/files/${id}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect((rescanned.body as { data: { scanStatus: string } }).data.scanStatus).toBe('clean');
-    expect(
-      captured.filter(
-        (e) =>
-          e.name === PlatformEvents.ThumbnailCreated &&
-          (e.payload as { fileId: string }).fileId === id,
-      ).length,
-    ).toBe(thumbsBefore);
+    expect(forThisFile(PlatformEvents.ThumbnailCreated)).toBe(thumbsBefore);
     // Now clean: a second sweep finds nothing.
     expect(await rescanPendingFiles()).toBe(0);
   });

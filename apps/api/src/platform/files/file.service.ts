@@ -38,6 +38,25 @@ import { type FileDoc } from './file.model';
 import { type FileCategoryDoc } from './file-category.model';
 import { signedFileUrl } from './signed-url';
 
+/**
+ * The scanner's word on the bytes, before any of them leave. `blocked` is refused outright.
+ * `pending` is refused too: it means a scanner is registered and has not answered yet, and a file
+ * nobody has vouched for is withheld rather than served on trust — the window between upload and
+ * verdict is exactly when an infected file would otherwise be fetched. `unscanned` (no scanner on
+ * this deployment) passes, as it always has.
+ */
+const assertScanAllowsRead = (doc: FileDoc): void => {
+  if (doc.scanStatus === 'blocked') {
+    throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
+  }
+  if (doc.scanStatus === 'pending') {
+    throw new BusinessRuleError(
+      'File is still being scanned for viruses — try again in a moment',
+      ErrorCodes.FILE_SCAN_PENDING,
+    );
+  }
+};
+
 export interface UploadedBinary {
   originalName: string;
   mime: string;
@@ -608,9 +627,7 @@ class FileService {
    * become a way to publish another module's confidential data.
    */
   private async authorizeDownload(ctx: AuthContext, doc: FileDoc): Promise<void> {
-    if (doc.scanStatus === 'blocked') {
-      throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
-    }
+    assertScanAllowsRead(doc);
     await this.assertEntityAccess(ctx, doc, 'read');
     if (doc.visibility === 'private' && !hasPermission(ctx, 'file.download')) {
       await auditService.record({
@@ -659,9 +676,7 @@ class FileService {
     if (!this.isGuarded(doc)) {
       throw new ForbiddenError();
     }
-    if (doc.scanStatus === 'blocked') {
-      throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
-    }
+    assertScanAllowsRead(doc);
     await this.assertEntityAccess(ctx, doc, 'read');
     const buffer = await streamToBuffer(await getStorageProvider().getStream(doc.storage.key));
     return { doc, buffer };
@@ -728,9 +743,7 @@ class FileService {
     if (!this.verifyAppSignature(fileId, expiresAtEpoch, signature, subject)) {
       throw new AppError(ErrorCodes.FILE_SIGNATURE_INVALID, 403, 'Signed URL invalid or expired');
     }
-    if (doc.scanStatus === 'blocked') {
-      throw new BusinessRuleError('File is blocked by the virus scanner', ErrorCodes.FILE_BLOCKED);
-    }
+    assertScanAllowsRead(doc);
     if (guarded && ctx !== null) await this.assertEntityAccess(ctx, doc, 'read');
     const stream = await getStorageProvider().getStream(doc.storage.key);
     return { doc, stream };

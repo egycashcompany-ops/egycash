@@ -18,6 +18,7 @@ const BOOTING_CLIS = [
   'reset-workforce.cli.ts',
   'fleet-vocabulary.cli.ts',
   'fleet-vehicles-import.cli.ts',
+  'rescan-files.cli.ts',
 ];
 
 describe('a CLI that boots the platform cannot message the whole company by accident', () => {

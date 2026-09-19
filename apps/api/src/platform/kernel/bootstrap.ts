@@ -8,7 +8,7 @@ import { connectMongo } from '../../infrastructure/database/mongo';
 import { logger } from '../../infrastructure/logging/logger';
 import { registerAuthEventHandlers, registerAuthSettings } from '../auth';
 import { registerAuditJobHandlers, registerAuditSettings } from '../audit';
-import { registerFileJobHandlers } from '../files';
+import { registerFileJobHandlers, registerVirusScanner } from '../files';
 import {
   ensureBuiltinNotificationTemplates,
   initPushChannel,
@@ -48,6 +48,10 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   declareFeatureFlagSettings(z.boolean());
   registerAuditJobHandlers();
   registerOutboxJobHandlers();
+  // The scanner registers BEFORE the pipeline and in BOTH processes: the worker runs it, and the
+  // api has to know it exists to mark an upload `pending` rather than `unscanned`. Configured by
+  // `CLAMAV_HOST`; without it the extension point stays empty and nothing about uploads changes.
+  registerVirusScanner();
   registerFileJobHandlers(); // files extension-point pipeline (worker executes)
   registerNotificationJobHandlers();
   registerBuiltinChannelAdapters();

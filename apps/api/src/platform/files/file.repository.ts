@@ -72,6 +72,48 @@ class FileRepository extends BaseRepository<FileDoc> {
   async setScanStatus(id: Types.ObjectId, scanStatus: string): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: { scanStatus } }).exec();
   }
+
+  /** Live files nobody has ever scanned — the state every upload had before a scanner existed. */
+  async countUnscanned(): Promise<number> {
+    return this.model.countDocuments({ scanStatus: 'unscanned', isDeleted: false }).exec();
+  }
+
+  /** Ids of up to `limit` live `unscanned` files, oldest first, after `afterId` for paging. */
+  async listUnscannedIds(limit: number, afterId: Types.ObjectId | null): Promise<Types.ObjectId[]> {
+    const rows = await this.model
+      .find({
+        scanStatus: 'unscanned',
+        isDeleted: false,
+        ...(afterId === null ? {} : { _id: { $gt: afterId } }),
+      })
+      .sort({ _id: 1 })
+      .limit(limit)
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => row._id);
+  }
+
+  /** `unscanned` → `pending` for exactly these ids; a row already past `unscanned` is left alone. */
+  async markUnscannedPending(ids: readonly Types.ObjectId[]): Promise<number> {
+    const result = await this.model
+      .updateMany(
+        { _id: { $in: [...ids] }, scanStatus: 'unscanned' },
+        { $set: { scanStatus: 'pending' } },
+      )
+      .exec();
+    return result.modifiedCount;
+  }
+
+  /** Live files whose scan has been `pending` since before `uploadedBefore`, oldest first. */
+  async listPendingScans(uploadedBefore: Date, limit: number): Promise<FileDoc[]> {
+    return this.model
+      .find({ scanStatus: 'pending', isDeleted: false, uploadedAt: { $lte: uploadedBefore } })
+      .sort({ uploadedAt: 1 })
+      .limit(limit)
+      .lean<FileDoc[]>()
+      .exec();
+  }
 }
 
 export const fileRepository = new FileRepository();

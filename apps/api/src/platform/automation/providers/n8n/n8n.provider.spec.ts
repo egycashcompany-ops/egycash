@@ -6,7 +6,8 @@
 // contract: a provider that needed one to pass conformance would have made the runtime part of the
 // interface, which is the coupling the seam exists to prevent. `scripts/n8n-conformance.mjs` runs
 // the same shape against a real Railway instance when an operator wants end-to-end proof.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setOutboundPolicyForTests } from '../../../../infrastructure/http/outbound';
 import { runProviderConformance } from '../../provider-conformance';
 import { N8nAutomationProvider, N8nNotImplementedError, N8nUnmanagedWorkflowError } from './n8n.provider';
 import { decodeRef, N8N_FORMAT_VERSION } from './n8n.graph';
@@ -109,6 +110,13 @@ const dispatchInput = (over: Record<string, unknown> = {}) => ({
   depth: 0,
   ...over,
 });
+
+// The outbound policy pins what the environment configured; this spec configured nothing, so it
+// pins the fake instance itself. The policy has its own spec.
+beforeAll(() =>
+  setOutboundPolicyForTests({ allowHosts: [], pinnedHosts: ['n8n.example'], allowPrivate: false }),
+);
+afterAll(() => setOutboundPolicyForTests(null));
 
 beforeEach(() => {
   fake = { workflows: new Map(), calls: [], nextId: 0 };

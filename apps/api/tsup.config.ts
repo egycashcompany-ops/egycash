@@ -18,6 +18,11 @@ export default defineConfig({
     'src/seed.ts',
     'src/fleet-vocabulary.cli.ts',
     'src/fleet-vehicles-import.cli.ts',
+    // rescan:files — run once, on the day the scanner is switched on, from the service shell.
+    'src/rescan-files.cli.ts',
+    // migrate:org-catalog (P-ORG-2) — the dry run and the write both happen on the service shell
+    // against the live database; `npm run migrate:org-catalog` needs tsx and cannot run there.
+    'src/migrate-org-catalog.cli.ts',
   ],
   format: ['esm'],
   target: 'node22',

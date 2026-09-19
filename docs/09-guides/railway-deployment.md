@@ -297,7 +297,74 @@ Model load happens once per container, not per request.
 Verify: the sidecar's deploy log ends with `nidocr listening on [::]:8099`, and in the app a
 National-ID scan returns fields into the review dialog rather than "OCR unavailable".
 
-## 7. Notes
+## 7. Optional — the ClamAV virus scanner
+
+Every upload is scanned before its bytes can be downloaded — **once a scanner is configured**
+(Security Architecture §3). Without `CLAMAV_HOST` the files service runs exactly as it always
+has: uploads are `unscanned` and served on the usual authorization alone. Deploy this when you
+want the scan. It is one more service from the same repo, like the OCR sidecar.
+
+1. **Add a service from the same repo** → name it **clamav** → Settings → Build →
+   **Root Directory** = `infra/clamav`. **No public domain** — only the api and the worker talk
+   to it, over the private network.
+
+   > Root Directory, not Dockerfile Path — the same trap as §6: with only the path set, the root
+   > `railway.json` still applies and its `startCommand` (`npm run start -w apps/api`) is layered
+   > onto an image that has no Node in it. `infra/clamav/railway.json` sets no start command on
+   > purpose; the image's own init runs `freshclam` and `clamd`.
+
+2. **Attach a Volume** at `/var/lib/clamav`. The signature database is ~300 MB and refreshes
+   hourly; without the volume it downloads from scratch on every deploy, and the service answers
+   nothing for those minutes.
+
+3. Size it: `clamd` holds the signatures in memory — **give the service 2 GB**. A smaller
+   allocation is the classic symptom of "clamd is not answering" in the api log with a healthy
+   service card.
+
+4. Point **both** the app and the worker at it. The worker runs the scan; the app has to know a
+   scanner exists to mark an upload `pending` instead of `unscanned` — set the variables in the
+   shared env group, or on both services:
+
+   | Variable | Value |
+   |---|---|
+   | `CLAMAV_HOST` | `clamav.railway.internal` (the service's own name) |
+   | `CLAMAV_PORT` | `3310` |
+   | `CLAMAV_TIMEOUT_MS` | `60000` (default; a 25 MB file scans in a few seconds) |
+
+   `infra/clamav/Dockerfile` already sets `StreamMaxLength 50M`, above `MAX_UPLOAD_MB`. If you
+   raise the upload cap past that, raise it there too — a file larger than the stream limit fails
+   its scan and sits at `pending`.
+
+> **IPv6:** the Dockerfile binds clamd to `::`. The official image listens on `0.0.0.0`, which
+> is unreachable at `*.railway.internal` — same reason the OCR sidecar binds `::` and
+> `REDIS_URL` needs `?family=0`.
+
+**What changes once it is on.** Every new upload is `pending` until the worker has streamed it
+to clamd and heard back — a second or two — and a download in that window is refused with
+`FILE_SCAN_PENDING` ("still being scanned, try again in a moment") rather than served on trust.
+A hit is `blocked`, permanently, and the uploader's screen says so. A file the daemon could not
+answer for (service restarting, signatures still loading) stays `pending` and is rescanned every
+fifteen minutes until it has an answer.
+
+**Files uploaded before the scanner existed stay `unscanned`** and keep serving as before —
+nothing is scanned retroactively on its own, because withholding every old attachment at once
+is a decision to take at a chosen hour. When you are ready, from the **app** service shell:
+
+```bash
+node apps/api/dist/rescan-files.cli.js            # dry run: how many files it would withhold
+node apps/api/dist/rescan-files.cli.js --write     # mark them pending and queue the scans
+```
+
+(`HR_PROVISION_MISSING_LOGINS=false` must be set in the shell, as for every platform-booting
+command.) Each file is withheld only until its own verdict lands — the worker gets through a
+few files a second — and anything the queue dropped is picked up by the fifteen-minute sweep.
+
+Verify: the api's deploy log says `virus scanner registered: clamd reachable` (or, while the
+signatures load, `clamd is not answering — uploads will stay pending until it is`, which clears
+on its own). Then upload any file and watch it go `pending → clean` in the file's details; the
+EICAR test string in a `.txt` upload goes `pending → blocked`.
+
+## 8. Notes
 
 - **Worker is required**: notifications, the outbox relay, scheduled personnel actions,
   offer expiration and the invitation expiry sweep all run there. Without it the app works

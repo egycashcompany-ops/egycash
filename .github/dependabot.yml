@@ -1,0 +1,37 @@
+# Automated dependency updates (Security Architecture §4, "Dependency risk").
+#
+# The document has listed "Dependabot in CI" since the first review; this is the file that makes
+# it so. Weekly, early Monday Cairo time, so the PRs are waiting when the week starts rather than
+# landing mid-sprint. Minor and patch bumps arrive as ONE grouped PR — one review, one CI run —
+# and each major arrives on its own, because a major is a decision.
+#
+# Security advisories are not on this schedule: Dependabot opens those as soon as GitHub knows,
+# and `scripts/dependency-audit.mjs` fails the pipeline for any high or critical one that is not
+# waived. The two together are the control the document describes.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Africa/Cairo
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: ['minor', 'patch']
+    commit-message:
+      prefix: 'deps'
+    labels: ['dependencies']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Africa/Cairo
+    commit-message:
+      prefix: 'ci'
+    labels: ['dependencies']

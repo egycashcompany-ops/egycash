@@ -7,7 +7,15 @@
 // optional convenience into an outage.
 //
 // `fetch` and the Files service are stubbed, so these run with no sidecar and no database.
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setOutboundPolicyForTests } from '../../../../infrastructure/http/outbound';
+
+// The outbound policy pins what the environment configured; this spec configured nothing, so it
+// pins the fake sidecar itself. The policy has its own spec.
+beforeAll(() =>
+  setOutboundPolicyForTests({ allowHosts: [], pinnedHosts: ['nid-ocr', 'x'], allowPrivate: false }),
+);
+afterAll(() => setOutboundPolicyForTests(null));
 
 // `vi.mock` is hoisted above every top-level statement, so the stub has to be created inside
 // `vi.hoisted` to exist by the time the factory runs.

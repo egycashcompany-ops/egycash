@@ -303,6 +303,8 @@ const rowState = (sources: { state: PermissionState }[]): PermissionState => {
 
 class RbacService {
   private registryKeys = new Set<string>();
+  /** The break-glass subset of the registry — platform AND module keys — for the gate to consult. */
+  private breakGlassKeys = new Set<string>();
 
   /**
    * The administration surfaces this deployment declares (P7-A).
@@ -468,9 +470,11 @@ class RbacService {
 
   async syncPermissionRegistry(defs: PermissionDef[]): Promise<void> {
     const seen = new Set<string>();
+    const breakGlass = new Set<string>();
     for (const def of defs) {
       if (seen.has(def.key)) throw new Error(`duplicate permission key in catalog: ${def.key}`);
       seen.add(def.key);
+      if (def.breakGlass === true) breakGlass.add(def.key);
       await PermissionModel.updateOne(
         { key: def.key },
         {
@@ -488,6 +492,7 @@ class RbacService {
     }
     await PermissionModel.deleteMany({ key: { $nin: [...seen] } }).exec();
     this.registryKeys = seen;
+    this.breakGlassKeys = breakGlass;
 
     // Protected system roles track the catalog: super-admin holds everything. When the
     // catalog changed (a new module registered permissions), the holders' cached permission
@@ -512,6 +517,15 @@ class RbacService {
 
   isRegisteredPermission(key: string): boolean {
     return this.registryKeys.has(key);
+  }
+
+  /**
+   * Is exercising this key an emergency act? Answered from the synced registry so a module's
+   * break-glass keys count too, with the platform catalog as the floor — those are break-glass
+   * whether or not a boot has run yet.
+   */
+  isBreakGlassPermission(key: string): boolean {
+    return this.breakGlassKeys.has(key) || breakGlassPermissionKeys.includes(key);
   }
 
   /**

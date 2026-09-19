@@ -6,6 +6,11 @@
 //   npm run migrate:org-catalog -- --merge A=B         # "A and B are the same department"
 //   npm run migrate:org-catalog -- --report out.json   # where the full plan is written
 //
+// ON THE DEPLOYED IMAGE the npm script does not exist (`tsx` is dev-only); the same flags go to
+// the built file, from the service shell:
+//
+//   node apps/api/dist/migrate-org-catalog.cli.js --merge DEP-0041=CAI-0 --merge OPS-1=DEP-0052
+//
 // READ THE DRY RUN FIRST. It prints every catalog entry it would create, which branch rows would
 // point at each, every merge it was asked for, and every reference that merge would repoint. That
 // output IS the plan that `--write` then executes — not a summary of it.

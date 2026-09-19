@@ -21,7 +21,9 @@ its entry here in the same PR.
 - **`rescan:files`** — the operator's command for the files uploaded before a scanner existed.
   Switching the scanner on scans nothing retroactively; this marks every live `unscanned` file
   `pending` (withheld until its verdict) and queues a scan-only job for each, oldest first, in
-  batches. Dry run by default, refuses without a scanner, built into the deployed image.
+  batches. Dry run by default, refuses without a scanner, built into the deployed image — and so,
+  now, is `migrate:org-catalog`, which the image had no way to run (`tsx` is dev-only):
+  `node apps/api/dist/migrate-org-catalog.cli.js`.
 - **@sentry/node 8 → 10** (clears the OpenTelemetry baggage-propagation advisory in its
   dependencies; `init`/`captureException` unchanged, transmission smoke-tested against a local
   ingest endpoint) and an npm override lifting exceljs's `uuid` to 11 (the bounds-check advisory;

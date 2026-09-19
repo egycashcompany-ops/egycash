@@ -402,6 +402,15 @@ export interface OrgUnitOptionDto {
    * non-sensitive identifier the rest of this DTO carries.
    */
   parentId: string | null;
+  /**
+   * The catalog entry this unit is a branch copy OF — «الحركة» the company-wide department, of
+   * which «الحركة / طنطا» is one instance — and `null` for a unit that was never linked to one, and
+   * for Branches and Job Titles, which have no catalog.
+   *
+   * It is what lets a filter show ONE «الأمن» instead of eight: the seventy-one branch departments
+   * fold to their seventeen names, and choosing a name selects every branch copy behind it.
+   */
+  catalogId: string | null;
 }
 
 export interface DepartmentDto extends OrgUnitDto {

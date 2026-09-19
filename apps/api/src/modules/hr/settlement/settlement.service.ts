@@ -77,7 +77,7 @@ class SettlementService {
         employed: false,
         ...(query.search === undefined ? {} : { search: query.search }),
         ...(query.branchId === undefined ? {} : { branchId: [query.branchId] }),
-        ...(query.departmentId === undefined ? {} : { departmentId: query.departmentId }),
+        ...(query.departmentId === undefined ? {} : { departmentId: [query.departmentId] }),
       },
       page: query.page,
       pageSize: query.pageSize,

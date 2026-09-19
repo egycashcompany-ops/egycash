@@ -96,7 +96,7 @@ describe('the parent each option hangs under', () => {
   it('carries the code and both names through unchanged', async () => {
     const { read } = reader(catalog(1));
     expect(await collectOptions(read, () => null)).toEqual([
-      { id: 'unit-0', code: 'U-0000', name: { ar: 'وحدة 0', en: 'Unit 0' }, parentId: null },
+      { id: 'unit-0', code: 'U-0000', name: { ar: 'وحدة 0', en: 'Unit 0' }, parentId: null, catalogId: null },
     ]);
   });
 });

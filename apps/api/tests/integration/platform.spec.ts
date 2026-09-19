@@ -1018,6 +1018,7 @@ describe('login → permission → scoped data → audit trail', () => {
       code: string;
       name: { ar: string; en: string };
       parentId: string | null;
+      catalogId: string | null;
     };
     const asAdmin = await request(app)
       .get('/api/v1/platform/job-titles/options')
@@ -1027,11 +1028,11 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(options.some((o) => o.code === 'JT-OPT-A')).toBe(true);
     // Active only — a dropdown that offers a retired title invites somebody to pick it.
     expect(options.some((o) => o.code === 'JT-OPT-Z')).toBe(false);
-    // These four fields and no fifth: no grade, no salary band, no shift defaults. The point is
-    // what a dropdown option must NOT carry, and it still holds — `parentId` is the id of the unit
-    // this one hangs under, the same non-sensitive kind of identifier as `id` itself.
+    // These five fields and no sixth: no grade, no salary band, no shift defaults. The point is
+    // what a dropdown option must NOT carry, and it still holds — `parentId` and `catalogId` are
+    // ids of other units, the same non-sensitive kind of identifier as `id` itself.
     const one = options.find((o) => o.code === 'JT-OPT-A') as Option;
-    expect(Object.keys(one).sort()).toEqual(['code', 'id', 'name', 'parentId']);
+    expect(Object.keys(one).sort()).toEqual(['catalogId', 'code', 'id', 'name', 'parentId']);
     expect(one.name.ar).toBe('سائق');
     // Null for a job title specifically: the catalog is flat, with no hierarchy to hang from
     // (ADR-015). A Department's would be its Branch, a Section's its Department.

@@ -16,8 +16,9 @@ export interface EmployeeListFilter {
   applicantId?: string | undefined;
   jobOfferId?: string | undefined;
   branchId?: readonly string[] | undefined;
-  departmentId?: string | undefined;
-  sectionId?: string | undefined;
+  /** Lists, like `branchId`: a company-wide «الأمن» is one id per branch it exists in. */
+  departmentId?: readonly string[] | undefined;
+  sectionId?: readonly string[] | undefined;
   jobTitleId?: readonly string[] | undefined;
   managerId?: string | undefined;
   employmentType?: string | undefined;
@@ -402,8 +403,10 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     if (f.jobOfferId !== undefined) clauses.push({ jobOfferId: new Types.ObjectId(f.jobOfferId) });
     if (f.branchId !== undefined)
       clauses.push({ branchId: { $in: f.branchId.map((id) => new Types.ObjectId(id)) } });
-    if (f.departmentId !== undefined) clauses.push({ departmentId: new Types.ObjectId(f.departmentId) });
-    if (f.sectionId !== undefined) clauses.push({ sectionId: new Types.ObjectId(f.sectionId) });
+    if (f.departmentId !== undefined)
+      clauses.push({ departmentId: { $in: f.departmentId.map((id) => new Types.ObjectId(id)) } });
+    if (f.sectionId !== undefined)
+      clauses.push({ sectionId: { $in: f.sectionId.map((id) => new Types.ObjectId(id)) } });
     if (f.jobTitleId !== undefined)
       clauses.push({
         'employment.jobTitleId': { $in: f.jobTitleId.map((id) => new Types.ObjectId(id)) },

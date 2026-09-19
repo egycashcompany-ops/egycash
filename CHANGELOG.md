@@ -33,7 +33,7 @@ its entry here in the same PR.
   department is the next.
 
 - **A manager can hand out, per site, the permissions they hold there.** (ADR-032, Phase 3 of the
-  permissions model — the server side; the screen is the next change.) «مدير عام الحركة» holds his
+  permissions model.) «مدير عام الحركة» holds his
   keys in every site; he may now give «مدير الحركة» in المهندسين everything there and, in أكتوبر, two
   screens view-only — two independent lists, one per site, each saying nothing about the other. The
   rule is the one the whole model obeys, read per site: nobody hands out what they do not hold **in
@@ -45,6 +45,15 @@ its entry here in the same PR.
   the holder's grants. Without that, «الحضور في أكتوبر، عرض بس» would have ridden «الموظفين»'s two
   sites. Nothing changes for an account whose grants all reach the same places, which is every
   account before this change.
+
+  On screen: a colleague's profile gains a **«الصلاحيات» tab** for whoever holds `delegation.manage`
+  (the same panel sits under the roles on the account page in System Administration). One block per
+  site — the person's own site pinned, added sites as chips, «+ site» for the rest the manager
+  delegates in — each a table of screens × actions with the registry's own grouping. Ticking a
+  screen ticks every action the manager may grant on it; clearing «view» clears the screen; a new
+  site starts with everything the manager may grant there. What the manager cannot grant in that
+  site is disabled with the reason on it, and stays that way in both directions. Save writes only
+  the sites that changed. The "why can they" screen labels a direct grant with its site.
 
 - **Every screen now reads a grant's reach, not only the ones that go through the shared filter.**
   Phase 1 taught the grant to reach several sites; the ordinary lists honoured it at once, because

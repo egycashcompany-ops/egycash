@@ -65,7 +65,7 @@ describe('wired into the profile the way every additive tab is', () => {
     expect(PROFILE).toContain(
       "{tab === 'settlement' && e.compensationVisible && e.exit !== null && (",
     );
-    expect(PROFILE).toContain('visibleTabs(e.compensationVisible, e.exit !== null)');
+    expect(PROFILE).toContain("visibleTabs(e.compensationVisible, e.exit !== null, can('delegation.manage'))");
   });
 });
 

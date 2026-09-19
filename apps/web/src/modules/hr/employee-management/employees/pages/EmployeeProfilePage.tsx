@@ -6,7 +6,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { EMPLOYEE_EXIT_TYPES, type EmployeeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../../../platform/localization/useT';
 import { ActorById, useDirectoryPage } from '../../../../../platform/directory';
-import { Can } from '../../../../../platform/rbac/Can';
+import { Can, useCan } from '../../../../../platform/rbac/Can';
 import { useAppSelector } from '../../../../../store';
 import { PageContainer, PageHeader } from '../../../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
@@ -32,7 +32,7 @@ import { useEmployeeFiles } from '../../employee-files/api/employee-file-queries
 import { CandidateTimeline } from '../../../recruitment/timeline/components/CandidateTimeline';
 import { useEmployee, useEmployeeActions, useEmployeeTimeline } from '../api/employee-queries';
 
-const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'account'] as const;
+const TABS = ['overview', 'personal', 'employment', 'leave', 'attendance', 'training', 'contracts', 'payItems', 'adjustments', 'loans', 'payslips', 'settlement', 'documents', 'timeline', 'permissions', 'account'] as const;
 type Tab = (typeof TABS)[number];
 
 // Pay Items is the employee's COMPENSATION, so it appears exactly where compensation appears —
@@ -43,8 +43,13 @@ type Tab = (typeof TABS)[number];
 // server refuses a summary for a serving employee as a matter of fact rather than permission —
 // there is no exit month to state — so the tab follows the same condition instead of offering a
 // screen that can only answer 422.
-const visibleTabs = (compensationVisible: boolean, exited: boolean): readonly Tab[] =>
+//
+// Permissions (ADR-032) is the manager's tab: it appears for whoever holds `delegation.manage`,
+// which is how «مدير الحركة» reaches his people's screens from their profiles. The panel itself says
+// when the person has no login yet; hiding the tab would say nothing.
+const visibleTabs = (compensationVisible: boolean, exited: boolean, delegates: boolean): readonly Tab[] =>
   TABS.filter((k) => {
+    if (k === 'permissions') return delegates;
     if (k === 'settlement') return compensationVisible && exited;
     if (k === 'payItems' || k === 'adjustments' || k === 'loans' || k === 'payslips')
       return compensationVisible;
@@ -54,6 +59,7 @@ const visibleTabs = (compensationVisible: boolean, exited: boolean): readonly Ta
 // The Leave, Attendance and Contracts tabs are owned by their modules and lazy-loaded (additive
 // tabs) — the same dynamic import() seam, so each module's chunk loads only when its tab opens.
 const EmployeeLeaveTab = lazy(() => import('../../../leave-management/components/EmployeeLeaveTab'));
+const DelegationPanel = lazy(() => import('../../../../../platform/rbac/delegation/DelegationPanel'));
 const EmployeeAttendanceTab = lazy(
   () => import('../../../attendance/components/EmployeeAttendanceTab'),
 );
@@ -274,6 +280,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
   const rawTab = sp.get('tab');
   const tab: Tab = (TABS as readonly string[]).includes(rawTab ?? '') ? (rawTab as Tab) : 'overview';
   const [editPersonal, setEditPersonal] = useState(false);
+  const can = useCan();
   const { data: e, isLoading, isError, error, refetch } = useEmployee(id);
   // Pending-exit banner: a still-scheduled exit action (frozen design §3 edge rule).
   const scheduled = useEmployeeActions(id, { page: 1, pageSize: 20, status: 'scheduled' });
@@ -329,7 +336,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
       )}
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800" role="tablist">
-        {visibleTabs(e.compensationVisible, e.exit !== null).map((k) => (
+        {visibleTabs(e.compensationVisible, e.exit !== null, can('delegation.manage')).map((k) => (
           <button
             key={k}
             role="tab"
@@ -429,6 +436,25 @@ export const EmployeeProfilePage = (): JSX.Element => {
           <EmployeeSettlementTab employee={e} />
         </Suspense>
       )}
+      {tab === 'permissions' &&
+        (e.userId === null ? (
+          <Card>
+            <CardBody>
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t('delegation.noLogin')}</p>
+            </CardBody>
+          </Card>
+        ) : (
+          <Suspense fallback={<LoadingState />}>
+            <DelegationPanel
+              userId={e.userId}
+              homeBranch={
+                e.placement.branch === null
+                  ? { id: e.employment.branchId }
+                  : { id: e.placement.branch.id, name: e.placement.branch.name }
+              }
+            />
+          </Suspense>
+        ))}
       {tab === 'documents' && <DocumentsTab e={e} />}
       {tab === 'timeline' && <TimelineTab e={e} />}
       {tab === 'account' && (

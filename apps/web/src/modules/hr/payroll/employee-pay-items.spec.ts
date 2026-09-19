@@ -47,7 +47,7 @@ describe('the Pay Items tab is wired into the profile the way every additive tab
     // exit as well as on compensation, which a single condition could not express. What it protects
     // is unchanged — no money tab is offered to a caller the server redacts compensation from.
     expect(PROFILE).toMatch(
-      /visibleTabs = \(compensationVisible: boolean, exited: boolean\): readonly Tab\[\] =>/,
+      /visibleTabs = \(compensationVisible: boolean, exited: boolean, delegates: boolean\): readonly Tab\[\] =>/,
     );
     // P-HR-20 added the Payslips tab to the same branch — the rule is unchanged, and the
     // condition it is asserted against grew by one name.

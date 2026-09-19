@@ -112,9 +112,9 @@ its entry here in the same PR.
     `scripts/dependency-audit.mjs` replaces the shell step: three attempts at the registry, then
     red — unless a reviewer recorded a dated `outage` waiver. Advisories are waived by id with a
     reason and an expiry that fails the run once past, as feature flags do. Widening the gate found
-    eight highs on the day: three fixed in the lockfile (multer, fast-xml-parser, socket.io-parser,
-    brace-expansion); the five behind two major bumps (nodemailer 6→10, puppeteer-core 24→25) are
-    waived until 2026-10-31 with the reasoning in `scripts/dependency-audit.waivers.json`.
+    eight highs on the day: four fixed in the lockfile (multer, fast-xml-parser, socket.io-parser,
+    brace-expansion); the five behind two major bumps (nodemailer 6→10, puppeteer-core 24→25) were
+    waived for the day and are cleared by the bumps recorded under Changed — nothing stays waived.
 
 - **The import preview says which of the people it is adding are leavers.** Two thirds of the
   workbook is the Resignation sheet, so most of the people an upload adds join the registry already

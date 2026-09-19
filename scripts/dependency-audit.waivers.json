@@ -1,36 +1,5 @@
 {
   "$comment": "Advisories the dependency gate tolerates, each with a reason and an expiry. Past its date a waiver FAILS the pipeline until the dependency is fixed or the waiver is renewed under review — the same rule feature flags live by. Read by scripts/dependency-audit.mjs.",
-  "advisories": [
-    {
-      "id": "GHSA-rcmh-qjqh-p98v",
-      "package": "nodemailer",
-      "until": "2026-10-31",
-      "reason": "Fixed in nodemailer 7.0.11+/10.x; the mailer is on 6.10 and the jump is a major. Both advisories are denial-of-service in the address parser on attacker-supplied addresses; recipients here come from the user directory and the SMTP host is the deployment's own. Scheduled: bump to 10.x with the mailer's own send test."
-    },
-    {
-      "id": "GHSA-p6gq-j5cr-w38f",
-      "package": "nodemailer",
-      "until": "2026-10-31",
-      "reason": "The `raw` message option bypassing disableFileAccess/disableUrlAccess. The email adapter never passes `raw` and builds every message itself from a rendered template. Same scheduled major bump as above."
-    },
-    {
-      "id": "GHSA-2x7j-588g-ccc2",
-      "package": "nodemailer",
-      "until": "2026-10-31",
-      "reason": "Quadratic address parsing on attacker-supplied addresses; see GHSA-rcmh-qjqh-p98v — recipients are directory-sourced. Same scheduled major bump."
-    },
-    {
-      "id": "GHSA-jmr9-qjv8-65gv",
-      "package": "extract-zip",
-      "until": "2026-10-31",
-      "reason": "Symlink traversal when extracting an untrusted archive. Reached only through puppeteer-core's browser DOWNLOADER, which this deployment never runs: the PDF renderer launches the Chromium at CHROMIUM_PATH and downloads nothing. Fix is puppeteer-core 25 (major); scheduled with a render smoke test."
-    },
-    {
-      "id": "GHSA-7pqw-9j4j-h8q3",
-      "package": "extract-zip",
-      "until": "2026-10-31",
-      "reason": "Arbitrary file write through symlink archive entries — the same unused browser-download path as GHSA-jmr9-qjv8-65gv. Same scheduled major bump."
-    }
-  ],
+  "advisories": [],
   "outage": null
 }

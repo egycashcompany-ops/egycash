@@ -9,6 +9,29 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **nodemailer 6 → 10 and puppeteer-core 24 → 25.** The two major bumps the widened dependency
+  gate had waived are done, and the waivers are gone. nodemailer's own breaking changes across
+  the four majors (SESv2-only SES transport, `ENOAUTH` error code, TLS validation on remote
+  content, Node ≥ 20) touch nothing this mailer uses; the SMTP handshake is now proved by a spec
+  against a fake ESMTP server (`mailer.spec.ts`), which no suite had exercised before — the
+  suites use `jsonTransport`. puppeteer-core's `launch`/`setContent`/`pdf` path is unchanged and
+  was smoke-tested through the app's own driver against Chromium 141.
+- **ClamAV as a Railway service** (`infra/clamav`, guide §7). The official image with clamd
+  bound to `::` — Railway's private network is IPv6-only — and `StreamMaxLength 50M` above the
+  upload cap; a volume for the signature database; `CLAMAV_HOST=clamav.railway.internal` on
+  the app and the worker. Nothing changes until that variable is set.
+
+- **Email is asked for, never assumed** ([ADR-033](docs/03-decisions/ADR-033-email-is-opt-in-per-send.md)).
+  The platform no longer emails on its own initiative. Announcements and setup-link deliveries
+  (reset, resend, the gold portal's resend) show an "also by email" box, off by default, and only
+  that tick sends one; every automatic notification — a leave decision, a security alert, a rule
+  that fired — is inbox and push. Provisioning an employee's login sends no email; HR sends it
+  from the account panel's resend with the box ticked. The recipient's opt-out and the
+  organization kill switch still apply on top. The templates screen says beside the channels
+  what listing email now means.
+
 ### Added
 
 - **Security: the five controls the security document described and the code did not have.** The

@@ -27,12 +27,6 @@ export interface DeliverCredentialsInput {
   employeeCode: string | null;
   phone: string | null;
   email: string | null;
-  /**
-   * Whether to send the link by email at all. The person acting decides, every time — the
-   * platform never emails on its own (see `notify()`'s `byEmail` for the same rule on
-   * notifications). WhatsApp has no such switch: it is a transport an operator turns on once.
-   */
-  byEmail: boolean;
   /** One-time setup token (§14) — transit-only, never persisted or logged in the clear. */
   setupToken: string;
   expiresAt: Date;
@@ -106,10 +100,9 @@ const composeMessage = async (
 };
 
 /**
- * Deliver freshly issued credentials over every reachable channel the caller asked for. Never
- * throws — issuing an account must not fail because a carrier/SMTP endpoint is down; failures
- * are returned and audited so an admin can re-issue (R10). Email that was not asked for is not
- * attempted and gets no outcome row: the outcomes say what was tried, not what was possible.
+ * Deliver freshly issued credentials over every reachable channel. Never throws — issuing
+ * an account must not fail because a carrier/SMTP endpoint is down; failures are returned
+ * and audited so an admin can re-issue (R10).
  */
 export const deliverCredentials = async (
   input: DeliverCredentialsInput,
@@ -124,9 +117,7 @@ export const deliverCredentials = async (
     results.push({ channel: 'whatsapp', ok: sent.ok, detail: sent.detail });
   }
 
-  if (!input.byEmail) {
-    // Not asked for. No attempt, no row — see the note on `byEmail`.
-  } else if (input.email === null || input.email.trim() === '') {
+  if (input.email === null || input.email.trim() === '') {
     results.push({ channel: 'email', ok: false, detail: 'no email address on file' });
   } else {
     try {

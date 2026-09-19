@@ -10,7 +10,6 @@ import {
   ChangeGoldPortalAccountStatusSchema,
   CreateGoldPortalAccountSchema,
   ListGoldPortalAccountsQuerySchema,
-  SetupLinkDeliverySchema,
   UpdateGoldPortalAccountSchema,
   objectId,
 } from '@ecms/contracts';
@@ -72,7 +71,7 @@ export const buildGoldPortalAccountsRouter = (): Router => {
     '/:id/setup-link',
     authenticate,
     authorize('goldPortalAccount.edit'),
-    validate({ params: IdParamSchema, body: SetupLinkDeliverySchema }),
+    validate({ params: IdParamSchema }),
     asyncHandler(resendGoldPortalSetupLink),
   );
   router.delete(

@@ -26,16 +26,7 @@ import {
 import { useT } from '../../../../platform/localization/useT';
 import { useAppSelector } from '../../../../store';
 import { Can } from '../../../../platform/rbac/Can';
-import {
-  Badge,
-  Button,
-  Card,
-  CardBody,
-  CardHeader,
-  Checkbox,
-  Dialog,
-  toast,
-} from '../../../../shared/ui';
+import { Badge, Button, Card, CardBody, CardHeader, Dialog, toast } from '../../../../shared/ui';
 import {
   useIssueSetupLink,
   useResendUserCredentials,
@@ -75,9 +66,6 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
   // Held in component state and nowhere else: never in the query cache, never in a URL, and gone
   // the moment the dialog closes or the screen unmounts.
   const [setupLink, setSetupLink] = useState<SetupLinkDto | null>(null);
-  // Whether the link also goes by email. Asked on EVERY delivery and off by default: the platform
-  // never emails on its own initiative, and this tick is the one thing that makes it.
-  const [byEmail, setByEmail] = useState(false);
 
   const reset = useResetUserPassword(user.id);
   const resend = useResendUserCredentials(user.id);
@@ -121,10 +109,7 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
     );
   }
 
-  const close = (): void => {
-    setConfirm(null);
-    setByEmail(false);
-  };
+  const close = (): void => setConfirm(null);
 
   const confirmations: Record<
     Exclude<Confirm, null>,
@@ -134,31 +119,25 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
       title: t('systemAdmin.users.actions.resetPassword'),
       body: t('systemAdmin.users.confirm.resetPassword'),
       run: () =>
-        reset.mutate(
-          { byEmail },
-          {
-            onSuccess: (result) => {
-              setDelivery(result.delivery);
-              close();
-              toast.success(t('systemAdmin.users.resetSent'));
-            },
+        reset.mutate(undefined, {
+          onSuccess: (result) => {
+            setDelivery(result.delivery);
+            close();
+            toast.success(t('systemAdmin.users.resetSent'));
           },
-        ),
+        }),
     },
     resend: {
       title: t('systemAdmin.users.actions.resend'),
       body: t('systemAdmin.users.confirm.resend'),
       run: () =>
-        resend.mutate(
-          { byEmail },
-          {
-            onSuccess: (result) => {
-              setDelivery(result.delivery);
-              close();
-              toast.success(t('systemAdmin.users.resendSent'));
-            },
+        resend.mutate(undefined, {
+          onSuccess: (result) => {
+            setDelivery(result.delivery);
+            close();
+            toast.success(t('systemAdmin.users.resendSent'));
           },
-        ),
+        }),
     },
     totpReset: {
       title: t('systemAdmin.users.actions.resetTotp'),
@@ -319,17 +298,6 @@ export const UserSecurityActions = ({ user }: { user: UserDto }): JSX.Element =>
         }
       >
         <p className="text-sm text-slate-600 dark:text-slate-300">{active?.body ?? ''}</p>
-        {/* Delivery is decided per act, never assumed: WhatsApp goes when the transport is
-            configured, email only when this is ticked. Off every time the dialog opens. */}
-        {(confirm === 'reset' || confirm === 'resend') && (
-          <div className="mt-4">
-            <Checkbox
-              checked={byEmail}
-              onChange={(e) => setByEmail(e.target.checked)}
-              label={t('systemAdmin.users.byEmail')}
-            />
-          </div>
-        )}
       </Dialog>
 
       <SetupLinkDialog

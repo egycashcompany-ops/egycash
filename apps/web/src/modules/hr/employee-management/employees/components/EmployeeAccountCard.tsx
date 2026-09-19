@@ -19,7 +19,7 @@ import { Card, CardBody, CardHeader } from '../../../../../shared/ui/Card';
 import { Button } from '../../../../../shared/ui/Button';
 import { Dialog } from '../../../../../shared/ui/Dialog';
 import { Badge } from '../../../../../shared/ui/Badge';
-import { Checkbox, Field, Input, Form, FormActions, Select } from '../../../../../shared/ui/form';
+import { Field, Input, Form, FormActions, Select } from '../../../../../shared/ui/form';
 import { toast } from '../../../../../shared/ui/toast/toast-store';
 import { ApiError } from '../../../../../shared/lib/api-client';
 import {
@@ -178,17 +178,14 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
   const resetTotp = useResetUserTotp(userId);
   const requireTotp = useRequireUserTotp(userId);
   const [delivery, setDelivery] = useState<CredentialsDeliveryResultDto[] | null>(null);
-  // Whether the link also goes by email. HR decides per act, and it is off by default: the
-  // platform never emails on its own initiative — this tick is the one thing that makes it.
-  const [byEmail, setByEmail] = useState(false);
 
   const doResetPassword = async (): Promise<void> => {
-    const result = await resetPassword.mutateAsync({ byEmail });
+    const result = await resetPassword.mutateAsync();
     setDelivery(result.delivery);
     toast.success(t('employees.account.passwordResetDone'));
   };
   const doResend = async (): Promise<void> => {
-    const result = await resendCredentials.mutateAsync({ byEmail });
+    const result = await resendCredentials.mutateAsync();
     setDelivery(result.delivery);
     toast.success(t('employees.account.resendDone'));
   };
@@ -263,11 +260,6 @@ const SecurityActions = ({ userId }: { userId: string }): JSX.Element => {
           </ul>
         </div>
       )}
-      <Checkbox
-        checked={byEmail}
-        onChange={(e) => setByEmail(e.target.checked)}
-        label={t('employees.account.byEmail')}
-      />
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="secondary" loading={resetPassword.isPending} onClick={() => void doResetPassword()}>
           {t('employees.account.resetPassword')}

@@ -14,7 +14,6 @@ import {
   type EmployeeActionDto,
   type EmployeeActionType,
   type AdminResetPasswordResultDto,
-  type SetupLinkDelivery,
   type EmployeeDto,
   type EmployeeLoginProvisionDto,
   type EmployeeLoginDto,
@@ -166,18 +165,12 @@ export const updateUser = (id: string, body: UpdateUser): Promise<UserDto> =>
   patch<UserDto>(`/platform/users/${id}`, body);
 
 // ── Account security administration (auth design 4.4/4.5) ──────────────────
-export const resetUserPassword = (
-  id: string,
-  delivery: SetupLinkDelivery,
-): Promise<AdminResetPasswordResultDto> =>
-  post<AdminResetPasswordResultDto>(`/platform/users/${id}/reset-password`, delivery);
+export const resetUserPassword = (id: string): Promise<AdminResetPasswordResultDto> =>
+  post<AdminResetPasswordResultDto>(`/platform/users/${id}/reset-password`, {});
 
 /** Re-deliver credentials to a still-gated account (design §13 R13/R14) — no reset side effects. */
-export const resendUserCredentials = (
-  id: string,
-  delivery: SetupLinkDelivery,
-): Promise<AdminResetPasswordResultDto> =>
-  post<AdminResetPasswordResultDto>(`/platform/users/${id}/credentials/resend`, delivery);
+export const resendUserCredentials = (id: string): Promise<AdminResetPasswordResultDto> =>
+  post<AdminResetPasswordResultDto>(`/platform/users/${id}/credentials/resend`, {});
 
 export const resetUserTotp = (id: string): Promise<void> =>
   post<void>(`/platform/users/${id}/totp/reset`, {});

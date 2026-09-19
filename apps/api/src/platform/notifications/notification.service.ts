@@ -47,16 +47,6 @@ export interface NotifyInput {
   entityRef: EntityRef;
   attachments?: string[];
   expiresAt?: Date;
-  /**
-   * Also by email. THE PLATFORM NEVER EMAILS ON ITS OWN INITIATIVE — the owner's rule. A template
-   * that lists `email` only makes it available; an email leaves only when the send says so, and a
-   * send says so only because a person ticked "also by email" on the screen they sent from (an
-   * announcement, a setup link). Every automatic notification — a leave decision, a security
-   * alert, a rule that fired — reaches the inbox and, where a device is registered, push; none
-   * of them sets this. The recipient's own opt-out and the organization kill switch still apply
-   * on top: asking for email is necessary, not sufficient.
-   */
-  byEmail?: boolean;
 }
 
 export interface NotifyOptions {
@@ -148,7 +138,6 @@ class NotificationsService {
         attachmentIds,
         expiresAt,
         idempotencyKey: options.idempotencyKey ?? null,
-        byEmail: input.byEmail === true,
         now,
       });
       created.push(doc);
@@ -192,13 +181,9 @@ class NotificationsService {
     recipientUserId: string,
     template: NotificationTemplateDoc,
     now: Date,
-    byEmail: boolean,
   ): Promise<NotificationChannelState[]> {
     const channels: NotificationChannelState[] = [];
     for (const channelId of template.channels) {
-      // Email is asked for, never assumed — see `NotifyInput.byEmail`. Judged before the
-      // recipient's preference, which can only narrow further.
-      if (channelId === 'email' && !byEmail) continue;
       if (channelId === 'inApp') {
         channels.push({
           channel: 'inApp',
@@ -236,7 +221,6 @@ class NotificationsService {
     attachmentIds: string[];
     expiresAt: Date | null;
     idempotencyKey: string | null;
-    byEmail: boolean;
     now: Date;
   }): Promise<NotificationDoc> {
     if (params.idempotencyKey !== null) {
@@ -247,12 +231,7 @@ class NotificationsService {
       if (existing !== null) return existing; // §2a: second logical call for the same key is a no-op
     }
 
-    const channels = await this.buildInitialChannels(
-      params.recipientUserId,
-      params.template,
-      params.now,
-      params.byEmail,
-    );
+    const channels = await this.buildInitialChannels(params.recipientUserId, params.template, params.now);
     const doc = await notificationRepository.create({
       recipientUserId: new Types.ObjectId(params.recipientUserId),
       entityRef: params.entityRef,

@@ -6,7 +6,6 @@ import {
   type ListUsersQuery,
   type UpdateUser,
   type AdminResetPassword,
-  type SetupLinkDelivery,
   type TotpRequire,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage } from '../../infrastructure/http/respond';
@@ -78,18 +77,17 @@ export const deleteUser = async (req: Request, res: Response): Promise<void> => 
 };
 
 export const adminResetPassword = async (req: Request, res: Response): Promise<void> => {
-  const { body, params } = validated<AdminResetPassword, never, IdParam>(req);
-  // §14.4: lock out (hash cleared, sessions revoked) + deliver a fresh one-time setup link —
-  // by email only if the administrator asked for that on the screen.
-  const delivery = await userService.resetViaSetupLink(params.id, body.byEmail);
+  const { params } = validated<AdminResetPassword, never, IdParam>(req);
+  // §14.4: lock out (hash cleared, sessions revoked) + deliver a fresh one-time setup link.
+  const delivery = await userService.resetViaSetupLink(params.id);
   await authService.revokeAllSessionsForUser(params.id, 'admin-password-reset');
   ok(res, { delivery });
 };
 
 export const adminResendCredentials = async (req: Request, res: Response): Promise<void> => {
-  const { body, params } = validated<SetupLinkDelivery, never, IdParam>(req);
+  const { params } = validated<never, never, IdParam>(req);
   // §14.3: new token replaces (and invalidates) the pending link — no other side effects.
-  const delivery = await userService.resendSetupLink(params.id, body.byEmail);
+  const delivery = await userService.resendSetupLink(params.id);
   ok(res, { delivery });
 };
 

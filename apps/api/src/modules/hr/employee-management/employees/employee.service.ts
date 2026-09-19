@@ -1082,17 +1082,13 @@ class EmployeeService {
         code: employee.code,
       });
       // §14 — transient delivery of the one-time setup link; outcomes go back to the caller
-      // and onto the account for the admin panel (§16.5). NOT by email: provisioning happens on
-      // the system's initiative (a registration, the boot sweep), and the owner's rule is that
-      // nothing is emailed unless a person asks for it at the moment of sending — HR does that
-      // from the account panel's resend, with the email box ticked.
+      // and onto the account for the admin panel (§16.5).
       const delivery = await deliverCredentials({
         userId: String(user._id),
         username: user.username ?? employee.code.toLowerCase(),
         employeeCode: employee.code,
         phone,
         email,
-        byEmail: false,
         setupToken: activationToken,
         expiresAt: activationExpiresAt,
         mode: 'initial',

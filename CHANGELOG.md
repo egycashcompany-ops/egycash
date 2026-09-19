@@ -35,15 +35,6 @@ its entry here in the same PR.
   upload cap; a volume for the signature database; `CLAMAV_HOST=clamav.railway.internal` on
   the app and the worker. Nothing changes until that variable is set.
 
-- **Email is asked for, never assumed** ([ADR-033](docs/03-decisions/ADR-033-email-is-opt-in-per-send.md)).
-  The platform no longer emails on its own initiative. Announcements and setup-link deliveries
-  (reset, resend, the gold portal's resend) show an "also by email" box, off by default, and only
-  that tick sends one; every automatic notification — a leave decision, a security alert, a rule
-  that fired — is inbox and push. Provisioning an employee's login sends no email; HR sends it
-  from the account panel's resend with the box ticked. The recipient's opt-out and the
-  organization kill switch still apply on top. The templates screen says beside the channels
-  what listing email now means.
-
 ### Added
 
 - **A role grant can reach more than the holder's own unit.** A department is one record per

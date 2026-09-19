@@ -26,8 +26,6 @@ export interface LocalisedMessage {
   entityRef: EntityRef;
   /** Unique per recipient, so the same key across the two language groups cannot collide. */
   idempotencyKey?: string;
-  /** Also by email — only when the person sending ticked it. A rule that fires never does. */
-  byEmail?: boolean;
 }
 
 /**
@@ -62,7 +60,6 @@ export const sendLocalisedMessage = async (message: LocalisedMessage): Promise<n
         to: { userIds: group },
         data: { title: message.title[language], body: message.body[language] },
         entityRef: message.entityRef,
-        ...(message.byEmail === undefined ? {} : { byEmail: message.byEmail }),
       },
       message.idempotencyKey === undefined ? {} : { idempotencyKey: message.idempotencyKey },
     );

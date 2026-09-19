@@ -30,13 +30,6 @@ platform.notification.created (in-process) → enqueue other channels (email)
   (Web Push/VAPID — §11). The seam held: `push` arrived as one adapter file and one
   capability check, with no change to `notify()`'s own flow. Adding `sms`/`whatsapp`
   later is the same move again.
-- **Email is asked for, never assumed** ([ADR-033](../03-decisions/ADR-033-email-is-opt-in-per-send.md)).
-  A template that lists `email` only makes the channel *available*; `notify()` puts an
-  `email` row on a notification only when the send carries `byEmail: true`, and the only
-  thing that sets it is a person ticking "also by email" on the screen they send from — an
-  announcement, a setup link. Every automatic notification (a leave decision, a security
-  alert, a rule that fired) is inbox + push. The recipient's opt-out and the
-  organization kill switch still apply on top: asking is necessary, not sufficient.
 - **Rendering** (`{{variable}}` placeholder substitution only — no conditionals/loops):
   missing declared variables fail fast; extra `data` keys are ignored. One authored
   plain-text `body` per language is rendered into a multipart HTML+text email via a
@@ -134,7 +127,7 @@ sequenceDiagram
 
     Caller->>N: notify(input, options?)
     N->>N: render template · resolve recipients
-    N->>M: create Notification (channels: inApp=sent; email=queued only when byEmail)
+    N->>M: create Notification (channels: inApp=sent, email=queued)
     N->>N: audit each initial channel transition
     N->>Sock: emit notification:new (room user:<id>)
     N->>Q: enqueue notifications.deliver (email, attempt 1)
@@ -215,7 +208,7 @@ subscriptions always have a template to render, in every environment including t
 
 | Key | Default | Scope | Purpose |
 | --- | --- | --- | --- |
-| `notifications.email.enabled` | `true` | org/branch/user | Kill switch consulted when no per-category preference row exists — off, even a send that asked for email (`byEmail`) is held |
+| `notifications.email.enabled` | `true` | org/branch/user | Kill switch consulted when no per-category preference row exists |
 | `notifications.quietHours.enabledByDefault` | `false` | organization | Default `enabled` shown when a user has no quiet-hours row |
 
 ## 9. Out of scope this sprint

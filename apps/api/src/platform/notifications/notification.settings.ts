@@ -7,9 +7,7 @@ import { declareSetting } from '../settings';
 export const registerNotificationSettings = (): void => {
   declareSetting({
     key: SettingKeys.NotificationsEmailEnabled,
-    description:
-      'Organization-wide kill switch for the email notification channel — off, even a send ' +
-      'that asked for email is held',
+    description: 'Organization-wide kill switch for the email notification channel',
     schema: z.boolean(),
     defaultValue: true,
     allowedScopes: ['organization', 'branch', 'user'],

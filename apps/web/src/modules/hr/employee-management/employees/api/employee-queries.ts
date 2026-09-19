@@ -14,7 +14,6 @@ import {
   type EmploymentAction,
   type ExitAction,
   type RehireAction,
-  type SetupLinkDelivery,
   type UpdateEmployeeInsurance,
   type UpdateEmployeeOfficer,
   type UpdateEmployeePersonal,
@@ -295,7 +294,7 @@ export const useCancelEmployeeAction = (id: string) => {
 export const useResetUserPassword = (userId: string) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (delivery: SetupLinkDelivery) => api.resetUserPassword(userId, delivery),
+    mutationFn: () => api.resetUserPassword(userId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
   });
 };
@@ -303,7 +302,7 @@ export const useResetUserPassword = (userId: string) => {
 export const useResendUserCredentials = (userId: string) => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (delivery: SetupLinkDelivery) => api.resendUserCredentials(userId, delivery),
+    mutationFn: () => api.resendUserCredentials(userId),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['hr'] }),
   });
 };

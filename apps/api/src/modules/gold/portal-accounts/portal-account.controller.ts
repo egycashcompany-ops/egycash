@@ -5,7 +5,6 @@ import {
   type CreateGoldPortalAccount,
   type ListGoldPortalAccountsQuery,
   type UpdateGoldPortalAccount,
-  type SetupLinkDelivery,
 } from '@ecms/contracts';
 import { authContext } from '../../../platform/auth';
 import { created, noContent, ok, validated } from '../../../platform/web';
@@ -40,8 +39,8 @@ export const changeGoldPortalAccountStatus = async (req: Request, res: Response)
 };
 
 export const resendGoldPortalSetupLink = async (req: Request, res: Response): Promise<void> => {
-  const { body, params } = validated<SetupLinkDelivery, never, IdParam>(req);
-  await goldPortalAccountService.resendSetupLink(params.id, body.byEmail);
+  const { params } = validated<never, never, IdParam>(req);
+  await goldPortalAccountService.resendSetupLink(params.id);
   noContent(res);
 };
 

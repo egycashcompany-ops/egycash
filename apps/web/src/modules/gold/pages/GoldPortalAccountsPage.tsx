@@ -16,8 +16,6 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Checkbox } from '../../../shared/ui/form';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -96,20 +94,9 @@ export const GoldPortalAccountsPage = (): JSX.Element => {
     }
   };
 
-  // Issuing a link asks, every time, whether it also goes by email — the platform never emails on
-  // its own initiative (ADR-033). Off when the dialog opens; a customer usually has no WhatsApp
-  // transport behind them, so this tick is normally how the link actually arrives.
-  const [resendFor, setResendFor] = useState<GoldPortalAccountDto | null>(null);
-  const [byEmail, setByEmail] = useState(false);
-  const closeResend = (): void => {
-    setResendFor(null);
-    setByEmail(false);
-  };
-
   const onResend = async (row: GoldPortalAccountDto): Promise<void> => {
     try {
-      await resend.mutateAsync({ id: row.id, delivery: { byEmail } });
-      closeResend();
+      await resend.mutateAsync(row.id);
       toast.success(t('gold.portalAccounts.linkSent'));
     } catch (err) {
       fail(err);
@@ -159,7 +146,7 @@ export const GoldPortalAccountsPage = (): JSX.Element => {
             <Button
               variant="ghost"
               onClick={() => {
-                setResendFor(r);
+                void onResend(r);
               }}
             >
               {t('gold.portalAccounts.resend')}
@@ -250,40 +237,6 @@ export const GoldPortalAccountsPage = (): JSX.Element => {
           }}
         />
       )}
-
-      <Dialog
-        open={resendFor !== null}
-        onClose={closeResend}
-        title={t('gold.portalAccounts.resendTitle')}
-        size="sm"
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" size="sm" onClick={closeResend}>
-              {t('common.cancel')}
-            </Button>
-            <Button
-              size="sm"
-              loading={resend.isPending}
-              onClick={() => {
-                if (resendFor !== null) void onResend(resendFor);
-              }}
-            >
-              {t('common.confirm')}
-            </Button>
-          </div>
-        }
-      >
-        <p className="text-sm text-slate-600 dark:text-slate-300">
-          {t('gold.portalAccounts.resendHint', { name: resendFor?.fullName ?? '' })}
-        </p>
-        <div className="mt-4">
-          <Checkbox
-            checked={byEmail}
-            onChange={(e) => setByEmail(e.target.checked)}
-            label={t('gold.portalAccounts.byEmail')}
-          />
-        </div>
-      </Dialog>
 
       {dialog.open && (
         <PortalAccountDialog

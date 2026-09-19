@@ -162,19 +162,8 @@ export const ListSessionsQuerySchema = z.object({}).strict();
  * server-side, delivered to the employee (WhatsApp + email), all sessions are revoked and
  * the change gate re-arms. Passwords are never supplied by nor returned to admins (R11).
  */
-/**
- * How a setup link travels. WhatsApp goes whenever the transport is configured; EMAIL GOES ONLY
- * WHEN ASKED FOR, here, by the person pressing the button — the owner's rule for the whole
- * platform is that nothing is emailed on the system's own initiative. Off by default so an
- * older client, or a call that says nothing, sends none.
- */
-export const SetupLinkDeliverySchema = z
-  .object({ byEmail: z.boolean().default(false) })
-  .strict();
-export type SetupLinkDelivery = z.infer<typeof SetupLinkDeliverySchema>;
-
-export const AdminResetPasswordSchema = SetupLinkDeliverySchema;
-export type AdminResetPassword = SetupLinkDelivery;
+export const AdminResetPasswordSchema = z.object({}).strict();
+export type AdminResetPassword = z.infer<typeof AdminResetPasswordSchema>;
 
 /** Per-channel outcome of a transient credentials delivery (design §12 R3). */
 export interface CredentialsDeliveryResultDto {

@@ -67,6 +67,23 @@ its entry here in the same PR.
   phase the system administrator does the granting; a department manager granting within his own
   department is the next.
 
+- **Every screen now reads a grant's reach, not only the ones that go through the shared filter.**
+  Phase 1 taught the grant to reach several sites; the ordinary lists honoured it at once, because
+  they all ask one repository filter. Seven reads did not, because they aggregate or join and had
+  each spelled the rule by hand: the fleet dashboard, the gold dashboard and reports, the attendance
+  export, the roles list (which finds who may see a grant through its holder), the live-update rooms
+  a browser is let into, and the recruitment counters and batch list that run at the widest of
+  several grants. Each of those answered with the holder's home site only. The rule now lives once
+  (`orgScopeMatch`), the repository filter delegates to it, and every hand-written read asks the
+  same function — so «مدير الحركة» given a second site sees it on every one of those screens.
+
+  Three things follow the same reach. Where a new document is FILED — a gold receipt, an ATM row,
+  an IT ticket — is the site the caller is acting in: their own, or the one they chose in the
+  command bar when their grants reach several (the switcher now offers exactly those). A branch
+  settings editor may set the sites they reach, not only their own. And a notification that fans
+  out to «everyone holding X in site B» finds a holder placed elsewhere whose grant reaches B.
+  Nothing changes for an account whose grants reach only its home unit.
+
 - **Security: the five controls the security document described and the code did not have.** The
   review that scored the platform against its own document found six gaps; SSO stays planned, the
   other five are now real.

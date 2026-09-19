@@ -32,7 +32,12 @@ import {
   type UpdateItTicket,
 } from '@ecms/contracts';
 import { BusinessRuleError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors';
-import { hasPermission, type AuthContext, type ScopeSelector } from '../../../shared/types';
+import {
+  type AuthContext,
+  currentBranchId,
+  hasPermission,
+  type ScopeSelector,
+} from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -158,6 +163,7 @@ class ItTicketService {
     };
     const ticketCode = await nextTicketCode();
 
+    const filedIn = currentBranchId(ctx);
     const ticket = await unitOfWork(async (session) => {
       const created = await itTicketRepository.create(
         {
@@ -167,7 +173,9 @@ class ItTicketService {
           // The requester is the CALLER, never a field — a client that could name one could open
           // a ticket as somebody else.
           requesterUserId: new Types.ObjectId(ctx.userId),
-          branchId: ctx.branchId === null ? null : new Types.ObjectId(ctx.branchId),
+          // Filed in the branch the caller is acting in — their own, or the one they chose in the
+          // command bar when their grants reach several.
+          branchId: filedIn === null ? null : new Types.ObjectId(filedIn),
           categoryId: new Types.ObjectId(input.categoryId),
           priorityId: new Types.ObjectId(input.priorityId),
           assetId: input.assetId === undefined ? null : new Types.ObjectId(input.assetId),

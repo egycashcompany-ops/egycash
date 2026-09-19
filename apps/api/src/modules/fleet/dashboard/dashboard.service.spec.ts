@@ -421,8 +421,8 @@ describe('a branch-scoped reader sees their branch', () => {
       NOW,
     );
     const [match] = repo.vehiclesByTypeAndBranch.mock.calls[0] as [Record<string, unknown>];
-    expect(String(match.branchId), 'a branch id nothing carries').toBe(
-      '000000000000000000000000',
-    );
+    // The shared match answers "nothing" as a record id no row carries.
+    expect(String(match._id), 'an id nothing carries').toBe('000000000000000000000000');
+    expect(match.branchId).toBeUndefined();
   });
 });

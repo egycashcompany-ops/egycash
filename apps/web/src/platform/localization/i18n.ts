@@ -2418,6 +2418,13 @@ const en: Record<string, string> = {
   'employees.roster.orgWhat.section': 'Section',
   'employees.roster.orgWhat.jobTitle': 'Job title',
   'employees.roster.new': 'new',
+  'employees.roster.closeWhileBusy.title': 'Close, or let it finish?',
+  'employees.roster.closeWhileBusy.reading':
+    'The file is still being read and compared. Nothing has been written, so closing now costs only the wait — you would upload it again to see what it would do.',
+  'employees.roster.closeWhileBusy.applying':
+    'The changes are already being written. Closing this does NOT stop them — the records keep being saved on the server; you would just stop seeing how it went.',
+  'employees.roster.closeWhileBusy.keep': 'Let it finish',
+  'employees.roster.closeWhileBusy.close': 'Close anyway',
   'employees.roster.enum.maritalStatus.single': 'Single',
   'employees.roster.enum.maritalStatus.married': 'Married',
   'employees.roster.enum.maritalStatus.divorced': 'Divorced',
@@ -9069,6 +9076,13 @@ const ar: Record<string, string> = {
   'employees.roster.orgWhat.section': 'قسم',
   'employees.roster.orgWhat.jobTitle': 'وظيفة',
   'employees.roster.new': 'جديد',
+  'employees.roster.closeWhileBusy.title': 'تقفل ولا تسيبه يخلّص؟',
+  'employees.roster.closeWhileBusy.reading':
+    'الملف لسه بيتقرا ويتقارن. مفيش حاجة اتكتبت، فالإقفال دلوقتي مش هيضيّع غير الاستنى — هترفعه تاني عشان تشوف هيعمل إيه.',
+  'employees.roster.closeWhileBusy.applying':
+    'التعديلات بتتكتب فعلًا دلوقتي. الإقفال ده مش بيوقّفها — السجلات هتفضل تتحفظ على الخادم، وكل اللي هيحصل إنك مش هتشوف النتيجة.',
+  'employees.roster.closeWhileBusy.keep': 'سيبه يخلّص',
+  'employees.roster.closeWhileBusy.close': 'اقفل برضه',
   'employees.roster.enum.maritalStatus.single': 'أعزب',
   'employees.roster.enum.maritalStatus.married': 'متزوج',
   'employees.roster.enum.maritalStatus.divorced': 'مطلّق',

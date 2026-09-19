@@ -15,7 +15,7 @@
 import { branchRepository } from '../../../platform/organization';
 import { getDirectoryEmployee } from '../../../platform/directory';
 import { BusinessRuleError, ValidationError } from '../../../shared/errors';
-import { type AuthContext } from '../../../shared/types';
+import { currentBranchId, type AuthContext } from '../../../shared/types';
 import { fleetVehicleRepository } from '../fleet-boundary';
 
 /** Employment states that may still be named on a NEW document (`exited` may not). */
@@ -80,11 +80,10 @@ export const resolveVehicleRef = async (
  * document is filed into.
  */
 export const resolveCreateBranchId = async (ctx: AuthContext): Promise<string | null> => {
-  if (ctx.branchId !== null) return ctx.branchId;
-  // The command bar's choice. Only an organization-wide caller ever has one, because narrowing
-  // does nothing to anybody already placed in a branch.
-  const active = ctx.activeBranchId ?? null;
-  if (active !== null) return active;
+  // The branch the caller is acting in: their placement, or — for a caller whose grants reach
+  // several branches, and for one who sees the whole company — the command bar's choice.
+  const current = currentBranchId(ctx);
+  if (current !== null) return current;
   const page = await branchRepository.list({ page: 1, pageSize: 2 });
   if (page.meta.totalItems === 0) return null; // single-branch / legacy mode
   const only = page.items[0];

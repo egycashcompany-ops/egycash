@@ -21,6 +21,7 @@ import {
   type LocalizedString,
 } from '@ecms/contracts';
 import { type ScopeSelector } from '../../../shared/types';
+import { orgScopeMatch } from '../../../shared/base/org-scope-match';
 import { getDirectoryEmployees } from '../../../platform/directory';
 import { branchRepository } from '../../../platform/organization/branches/branch.repository';
 import { fleetVehicleTypeRepository } from '../vehicle-types/vehicle-type.repository';
@@ -56,19 +57,15 @@ const addDays = (at: Date, days: number): Date =>
  * The branch filter a scope implies, as a plain `$match` fragment.
  *
  * The repositories' own `scopeFilter` is the authority for the LIST endpoints; these pipelines do
- * not go through it, so the one thing a scope means for an aggregate — "your branch only" — is
- * spelled here, from the same selector. A scope with no branch matches nothing rather than
- * everything: a reader placed nowhere sees no branch, which is the fail-closed direction.
+ * not go through it, so the one thing a scope means for an aggregate — "your branches only" — is
+ * asked of the same rule (`orgScopeMatch`), from the same selector. A department or section grant
+ * narrows to its branch here rather than widening: a site's fleet, not the company's. A scope with
+ * no branch matches nothing rather than everything, which is the fail-closed direction.
  */
-const branchMatch = (scope: ScopeSelector): Record<string, unknown> => {
-  if (scope.scope === 'organization') return {};
-  if (scope.scope === 'branch' || scope.scope === 'department' || scope.scope === 'section') {
-    return scope.branchId === null
-      ? { branchId: new Types.ObjectId('000000000000000000000000') }
-      : { branchId: new Types.ObjectId(scope.branchId) };
-  }
-  return { createdBy: new Types.ObjectId(scope.userId) };
-};
+const branchMatch = (scope: ScopeSelector): Record<string, unknown> =>
+  orgScopeMatch(scope, { branch: 'branchId' }, { finerNarrowsToBranch: true }) ?? {
+    createdBy: new Types.ObjectId(scope.userId),
+  };
 
 /** The same, for a collection that reaches the branch THROUGH its vehicle. */
 const vehicleIdMatch = async (scope: ScopeSelector): Promise<Record<string, unknown>> => {

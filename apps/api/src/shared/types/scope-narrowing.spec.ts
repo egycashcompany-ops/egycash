@@ -5,7 +5,13 @@
 // that matters is one-directional: whatever a caller sends, they end up seeing the same rows as
 // before or fewer — never a row their grant did not already reach.
 import { describe, expect, it } from 'vitest';
-import { scopeSelector, type AuthContext } from './index';
+import {
+  currentBranchId,
+  reachesBranch,
+  scopeSelector,
+  widestScopeSelector,
+  type AuthContext,
+} from './index';
 
 const BRANCH_A = '650000000000000000000010';
 const BRANCH_B = '650000000000000000000011';
@@ -198,5 +204,73 @@ describe('a company-wide department grant', () => {
     );
     expect(selector.departmentIds).toEqual([D1, D2]);
     expect(selector.branchIds).toEqual([BRANCH_B]);
+  });
+});
+
+describe('the branch a caller is acting in (currentBranchId)', () => {
+  it('is the home branch for a caller placed in one, whatever the header says', () => {
+    expect(currentBranchId(ctx({ branchId: BRANCH_A, activeBranchId: BRANCH_B }))).toBe(BRANCH_A);
+  });
+
+  it('is the chosen branch when the caller reaches it', () => {
+    const c = ctx({
+      branchId: BRANCH_A,
+      activeBranchId: BRANCH_B,
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+    });
+    expect(currentBranchId(c)).toBe(BRANCH_B);
+  });
+
+  it('is the chosen branch for an organization-wide caller, who may choose anywhere', () => {
+    expect(currentBranchId(ctx({ activeBranchId: BRANCH_B }))).toBe(BRANCH_B);
+  });
+
+  it('is the only branch a reach names when the caller has no home', () => {
+    expect(currentBranchId(ctx({ reach: { branchIds: [BRANCH_B], departmentIds: [] } }))).toBe(BRANCH_B);
+  });
+
+  it('is nothing for a multi-branch caller with no home who has not chosen', () => {
+    const c = ctx({ reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] } });
+    expect(currentBranchId(c)).toBeNull();
+  });
+
+  it('ignores a choice outside the reach for a caller with no home', () => {
+    const c = ctx({
+      activeBranchId: '650000000000000000000099',
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+    });
+    expect(currentBranchId(c)).toBeNull();
+  });
+});
+
+describe('reachesBranch', () => {
+  it('is the home branch and every branch the grants reach', () => {
+    const c = ctx({ branchId: BRANCH_A, reach: { branchIds: [BRANCH_B], departmentIds: [] } });
+    expect(reachesBranch(c, BRANCH_A)).toBe(true);
+    expect(reachesBranch(c, BRANCH_B)).toBe(true);
+    expect(reachesBranch(c, '650000000000000000000099')).toBe(false);
+  });
+});
+
+describe('the widest of several grants (widestScopeSelector)', () => {
+  it('is built for the KEY that wins, so it carries that grant\'s reach', () => {
+    const c = ctx({
+      branchId: BRANCH_A,
+      permissions: { 'screening.view': 'branch', 'interview.view': 'organization' },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+    });
+    expect(widestScopeSelector(c, ['screening.view', 'interview.view']).scope).toBe('organization');
+    const narrower = ctx({
+      branchId: BRANCH_A,
+      permissions: { 'screening.view': 'own', 'interview.view': 'branch' },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+    });
+    const selector = widestScopeSelector(narrower, ['screening.view', 'interview.view']);
+    expect(selector.scope).toBe('branch');
+    expect(selector.branchIds).toEqual([BRANCH_A, BRANCH_B]);
+  });
+
+  it('falls back to own when none of the keys is granted', () => {
+    expect(widestScopeSelector(ctx({}), ['screening.view']).scope).toBe('own');
   });
 });

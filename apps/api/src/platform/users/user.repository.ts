@@ -1,6 +1,7 @@
 // Data access only (ADR-003) — the sole place Mongoose is queried for users.
 import { Types, type ClientSession, type FilterQuery, type UpdateQuery } from 'mongoose';
 import { BaseRepository } from '../../shared/base/base.repository';
+import { orgScopeMatch } from '../../shared/base/org-scope-match';
 import { type ScopeSelector } from '../../shared/types';
 import { UserModel, type UserDoc } from './user.model';
 
@@ -28,18 +29,13 @@ class UserRepository extends BaseRepository<UserDoc> {
     selector: ScopeSelector | undefined,
     prefix: string,
   ): Record<string, unknown> {
-    if (selector === undefined || selector.scope === 'organization') return {};
-    const on = (field: string, id: string | null): Record<string, unknown> =>
-      // A caller with no placement at the level they are scoped to sees nothing — the same
-      // fail-closed answer `orgScopeFilter` gives, rather than an accidental widening.
-      id === null
-        ? { _id: new Types.ObjectId('000000000000000000000000') }
-        : { [`${prefix}${field}`]: new Types.ObjectId(id) };
-    if (selector.scope === 'branch') return on('organization.branchId', selector.branchId);
-    if (selector.scope === 'department') {
-      return on('organization.departmentId', selector.departmentId);
-    }
-    if (selector.scope === 'section') return on('organization.sectionId', selector.sectionId);
+    if (selector === undefined) return {};
+    const hierarchical = orgScopeMatch(selector, {
+      branch: `${prefix}organization.branchId`,
+      department: `${prefix}organization.departmentId`,
+      section: `${prefix}organization.sectionId`,
+    });
+    if (hierarchical !== undefined) return hierarchical;
     // `own` on users has no owner field, so it means "accounts I created" — the same reading
     // `scopeFilter` gives it here.
     return { [`${prefix}createdBy`]: new Types.ObjectId(selector.userId) };

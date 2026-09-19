@@ -61,18 +61,25 @@ sequenceDiagram
     E->>U: createProvisioned(username = Employee Code,\nhashed one-time token, TTL window)
     U-->>E: user (status: invited)
     Note over U: audits accountAutoCreated + invitationCreated
-    E->>D: deliver setup link (transient, in memory)
+    E->>D: deliver setup link (transient, in memory; byEmail: false)
     D->>D: render admin-editable template\n(platform.credentialsDelivery)
     par channels are independent (R16)
         D-->>D: WhatsApp (provider-agnostic)
     and
-        D-->>D: Email (SMTP)
+        D-->>D: Email (SMTP) — only when the actor ticked it;\nnever on provisioning (ADR-033)
     end
     D-->>E: per-channel outcomes (never the link)
     E->>U: persist outcomes (Account panel §16.5)
     Note over D: audits credentialsDelivered (mode: initial)
     E-->>HR: employee + {username, delivery[]}
 ```
+
+**Email is a per-act choice, never a default** ([ADR-033](../03-decisions/ADR-033-email-is-opt-in-per-send.md)).
+Provisioning — a registration, the boot sweep — is the system's own act and asks for no email:
+the outcomes carry a WhatsApp row (when that transport is configured) and no email row at all.
+An administrator or HR user who wants the link emailed ticks "also send the setup link by
+email" on the reset/resend they perform; the request body carries it as `byEmail`, and the
+outcomes then show what was tried. The manual path (`user.setupLink`) sends nothing either way.
 
 ## 3. Invitation (resend / expiry)
 

@@ -47,6 +47,9 @@ const en: Record<string, string> = {
   'hr.announcements.message': 'Message',
   'hr.announcements.title': 'Title',
   'hr.announcements.body': 'Message',
+  'hr.announcements.byEmail': 'Also send by email',
+  'hr.announcements.byEmailHint':
+    'Everyone gets it in the app, and as a push where a device is registered. Email goes only when you tick this — the platform never emails on its own.',
   'hr.announcements.asWritten':
     'The message is delivered exactly as written, to everyone it reaches.',
   'hr.announcements.titleAr': 'Title (Arabic)',
@@ -296,6 +299,7 @@ const en: Record<string, string> = {
     'Authenticator is now required — enrollment happens at next sign-in.',
   'employees.account.totpRequiredOff': 'Authenticator is no longer required.',
   'employees.account.deliveryTitle': 'Credentials delivery',
+  'employees.account.byEmail': 'Also send the setup link by email',
   'employees.account.resendCredentials': 'Resend setup link',
   'employees.account.resendDone': 'A new setup link was sent to the employee',
   'employees.account.channelWhatsapp': 'WhatsApp',
@@ -303,10 +307,10 @@ const en: Record<string, string> = {
   'employees.account.deliverySent': 'sent',
   'employees.account.deliveryFailed': 'not delivered',
   'employees.account.resetHint':
-    'Reset locks the account (password cleared, signed out everywhere) and sends a fresh one-time setup link via WhatsApp and email. Resend issues a new link and invalidates the previous one.',
+    'Reset locks the account (password cleared, signed out everywhere) and sends a fresh one-time setup link — by WhatsApp when configured, and by email only if you tick it. Resend issues a new link and invalidates the previous one.',
   'employees.register.credentialsTitle': 'Login credentials created',
   'employees.register.credentialsHint':
-    'A one-time account-setup link was sent to the employee via WhatsApp and email. They choose their own password when opening it; the link expires if unused.',
+    'A one-time account-setup link was issued for the employee and sent by WhatsApp where that is configured. Nothing is emailed on its own: to send it by email, use "Resend setup link" on the account panel with the email box ticked. They choose their own password when opening it; the link expires if unused.',
   'common.continue': 'Continue',
   'platform.auth.login.password': 'Password',
   'platform.auth.login.submit': 'Sign in',
@@ -4878,6 +4882,8 @@ const en: Record<string, string> = {
   'systemAdmin.templates.fields.category': 'Category',
   'systemAdmin.templates.fields.priority': 'Priority',
   'systemAdmin.templates.fields.channels': 'Channels',
+  'systemAdmin.templates.fields.channelsHint':
+    'Listing email makes it available — it is sent only when the person sending ticks "also by email". Nothing is emailed on its own.',
   'systemAdmin.templates.fields.version': 'Version',
   'systemAdmin.templates.fields.status': 'Status',
   'systemAdmin.templates.fields.variables': 'Variables',
@@ -5097,7 +5103,8 @@ const en: Record<string, string> = {
   'systemAdmin.users.confirm.disableDetail':
     'They will be signed out immediately and cannot sign in again until the account is enabled. Any pending setup link stops working.',
   'systemAdmin.users.confirm.resetPassword':
-    'The current password stops working and a fresh one-time setup link is delivered to them. You never see or choose the new password.',
+    'The current password stops working and a fresh one-time setup link is delivered to them (WhatsApp when configured; email only if you tick it). You never see or choose the new password.',
+  'systemAdmin.users.byEmail': 'Also send the setup link by email',
   'systemAdmin.users.confirm.resend':
     'A new setup link replaces the pending one, which stops working immediately.',
   'systemAdmin.users.confirm.resetTotp':
@@ -6489,6 +6496,10 @@ const en: Record<string, string> = {
   'gold.portalAccounts.reactivate': 'Reactivate',
   'gold.portalAccounts.resend': 'New setup link',
   'gold.portalAccounts.linkSent': 'A new setup link was issued.',
+  'gold.portalAccounts.resendTitle': 'Issue a new setup link',
+  'gold.portalAccounts.resendHint':
+    'A fresh one-time setup link for {{name}} replaces any pending one. It goes by WhatsApp when that is configured, and by email only if you tick it — nothing is emailed on its own.',
+  'gold.portalAccounts.byEmail': 'Also send the setup link by email',
   'gold.portalAccounts.manageAccount': 'Account settings',
   'gold.portalAccounts.deletePrompt': 'Delete the portal login for {{name}}?',
 
@@ -6726,6 +6737,9 @@ const ar: Record<string, string> = {
   'hr.announcements.message': 'الرسالة',
   'hr.announcements.title': 'العنوان',
   'hr.announcements.body': 'نص الرسالة',
+  'hr.announcements.byEmail': 'إرسال بالبريد الإلكتروني أيضًا',
+  'hr.announcements.byEmailHint':
+    'الكل يستلمه داخل النظام، وكإشعار على الجهاز لمن سجّل جهازه. البريد الإلكتروني لا يُرسل إلا إذا علّمت هنا — النظام لا يرسل بريدًا من تلقاء نفسه.',
   'hr.announcements.asWritten': 'الرسالة توصل كما كُتبت تمامًا لكل من تصل إليه.',
   'hr.announcements.titleAr': 'العنوان (بالعربية)',
   'hr.announcements.titleEn': 'العنوان (بالإنجليزية)',
@@ -6969,6 +6983,7 @@ const ar: Record<string, string> = {
     'أصبحت المصادقة إلزامية — يتم التسجيل عند تسجيل الدخول التالي.',
   'employees.account.totpRequiredOff': 'لم تعد المصادقة إلزامية.',
   'employees.account.deliveryTitle': 'إرسال بيانات الدخول',
+  'employees.account.byEmail': 'أرسل رابط الإعداد بالبريد الإلكتروني أيضًا',
   'employees.account.resendCredentials': 'إعادة إرسال رابط التفعيل',
   'employees.account.resendDone': 'أُرسل رابط تفعيل جديد إلى الموظف',
   'employees.account.channelWhatsapp': 'واتساب',
@@ -6976,10 +6991,10 @@ const ar: Record<string, string> = {
   'employees.account.deliverySent': 'تم الإرسال',
   'employees.account.deliveryFailed': 'لم يتم الإرسال',
   'employees.account.resetHint':
-    'إعادة التعيين تقفل الحساب (تُمسح كلمة المرور ويُسجَّل الخروج من كل الأجهزة) وتُرسل رابط تفعيل جديدًا عبر واتساب والبريد الإلكتروني. إعادة الإرسال تُصدر رابطًا جديدًا وتُلغي السابق.',
+    'إعادة التعيين تقفل الحساب (تُمسح كلمة المرور ويُسجَّل الخروج من كل الأجهزة) وتُرسل رابط تفعيل جديدًا — عبر واتساب إن كان مفعّلًا، وبالبريد الإلكتروني فقط إذا علّمت ذلك. إعادة الإرسال تُصدر رابطًا جديدًا وتُلغي السابق.',
   'employees.register.credentialsTitle': 'تم إنشاء بيانات الدخول',
   'employees.register.credentialsHint':
-    'أُرسل إلى الموظف رابط تفعيل يُستخدم مرة واحدة عبر واتساب والبريد الإلكتروني. يختار كلمة المرور بنفسه عند فتحه، وتنتهي صلاحية الرابط إذا لم يُستخدم.',
+    'صدر للموظف رابط تفعيل يُستخدم مرة واحدة، وأُرسل عبر واتساب إن كان مفعّلًا. لا يُرسل بريد إلكتروني من تلقاء النظام: لإرساله بالبريد استخدم «إعادة إرسال رابط التفعيل» من لوحة الحساب مع تعليم خانة البريد. يختار كلمة المرور بنفسه عند فتحه، وتنتهي صلاحية الرابط إذا لم يُستخدم.',
   'common.continue': 'متابعة',
   'platform.auth.login.password': 'كلمة المرور',
   'platform.auth.login.submit': 'دخول',
@@ -11448,6 +11463,8 @@ const ar: Record<string, string> = {
   'systemAdmin.templates.fields.category': 'الفئة',
   'systemAdmin.templates.fields.priority': 'الأولوية',
   'systemAdmin.templates.fields.channels': 'القنوات',
+  'systemAdmin.templates.fields.channelsHint':
+    'إدراج البريد الإلكتروني هنا يجعله متاحًا فقط — لا يُرسل إلا عندما يعلّم المُرسل «إرسال بالبريد الإلكتروني أيضًا» لحظة الإرسال. لا شيء يُرسل بالبريد من تلقاء نفسه.',
   'systemAdmin.templates.fields.version': 'النسخة',
   'systemAdmin.templates.fields.status': 'الحالة',
   'systemAdmin.templates.fields.variables': 'المتغيّرات',
@@ -11662,7 +11679,8 @@ const ar: Record<string, string> = {
   'systemAdmin.users.confirm.disableDetail':
     'سيخرج من النظام فورًا ولن يستطيع الدخول حتى يُعاد تفعيل الحساب، وأي رابط إعداد معلّق يتوقف عن العمل.',
   'systemAdmin.users.confirm.resetPassword':
-    'تتوقف كلمة المرور الحالية ويُسلَّم له رابط إعداد جديد لمرة واحدة. أنت لا ترى كلمة المرور الجديدة ولا تختارها.',
+    'تتوقف كلمة المرور الحالية ويُسلَّم له رابط إعداد جديد لمرة واحدة (عبر واتساب إن كان مفعّلًا، وبالبريد الإلكتروني فقط إذا علّمت ذلك). أنت لا ترى كلمة المرور الجديدة ولا تختارها.',
+  'systemAdmin.users.byEmail': 'أرسل رابط الإعداد بالبريد الإلكتروني أيضًا',
   'systemAdmin.users.confirm.resend': 'رابط إعداد جديد يحلّ محلّ المعلّق، والقديم يتوقف فورًا.',
   'systemAdmin.users.confirm.resetTotp':
     'يُمحى تسجيل المصادقة الثنائية وتتوقف الرموز الاحتياطية. يُعيد التسجيل عند الدخول التالي.',
@@ -13019,6 +13037,10 @@ const ar: Record<string, string> = {
   'gold.portalAccounts.reactivate': 'إعادة تفعيل',
   'gold.portalAccounts.resend': 'رابط تفعيل جديد',
   'gold.portalAccounts.linkSent': 'تم إصدار رابط تفعيل جديد.',
+  'gold.portalAccounts.resendTitle': 'إصدار رابط تفعيل جديد',
+  'gold.portalAccounts.resendHint':
+    'رابط تفعيل جديد لمرة واحدة لـ {{name}} يحلّ محلّ أي رابط معلّق. يُرسل عبر واتساب إن كان مفعّلًا، وبالبريد الإلكتروني فقط إذا علّمت ذلك — لا يُرسل بريد من تلقاء النظام.',
+  'gold.portalAccounts.byEmail': 'أرسل رابط التفعيل بالبريد الإلكتروني أيضًا',
   'gold.portalAccounts.manageAccount': 'إعدادات الحساب',
   'gold.portalAccounts.deletePrompt': 'حذف حساب البوابة الخاص بـ {{name}}؟',
 

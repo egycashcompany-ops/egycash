@@ -17,6 +17,7 @@
 // slice is not allowed to make.
 import {
   type AdminResetPasswordResultDto,
+  type SetupLinkDelivery,
   type ChangeUserStatus,
   type CreateUser,
   type DepartmentDto,
@@ -83,12 +84,18 @@ export const changeUserStatus = (id: string, body: ChangeUserStatus): Promise<Us
  * No password is supplied by — or returned to — the administrator; the result carries delivery
  * OUTCOMES only.
  */
-export const resetUserPassword = (id: string): Promise<AdminResetPasswordResultDto> =>
-  post<AdminResetPasswordResultDto>(`/platform/users/${id}/reset-password`, {});
+export const resetUserPassword = (
+  id: string,
+  delivery: SetupLinkDelivery,
+): Promise<AdminResetPasswordResultDto> =>
+  post<AdminResetPasswordResultDto>(`/platform/users/${id}/reset-password`, delivery);
 
 /** Re-deliver a PENDING setup link (§14.3). The API refuses when none is outstanding. */
-export const resendUserCredentials = (id: string): Promise<AdminResetPasswordResultDto> =>
-  post<AdminResetPasswordResultDto>(`/platform/users/${id}/credentials/resend`, {});
+export const resendUserCredentials = (
+  id: string,
+  delivery: SetupLinkDelivery,
+): Promise<AdminResetPasswordResultDto> =>
+  post<AdminResetPasswordResultDto>(`/platform/users/${id}/credentials/resend`, delivery);
 
 /**
  * P9-A — mint a setup link and read it back, for an administrator to deliver by hand.

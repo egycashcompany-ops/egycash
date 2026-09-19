@@ -649,6 +649,32 @@ describe('notify() → in-app inbox (self-scoped, no permission required)', () =
 });
 
 describe('email delivery via the channel-adapter/queue path', () => {
+  /**
+   * The owner's rule: the platform never emails on its own. A template that lists `email` only
+   * makes it available — the send has to ask (`byEmail`), which only a person's tick on a screen
+   * ever does. Without it the notification is inbox-only, exactly as if the template had never
+   * listed the channel.
+   */
+  it('sends no email unless the send asked for it, even when the template lists the channel', async () => {
+    await createTemplate(adminToken, { key: 'test.email.optin', category: 'contracts' });
+    const unasked = await notificationsService.notify({
+      template: 'test.email.optin',
+      to: { userId: aliceId },
+      data: { name: 'Quiet' },
+      entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'email-unasked' },
+    });
+    expect(unasked[0]?.channels.map((c) => c.channel)).toEqual(['inApp']);
+
+    const asked = await notificationsService.notify({
+      template: 'test.email.optin',
+      to: { userId: aliceId },
+      data: { name: 'Asked' },
+      entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'email-asked' },
+      byEmail: true,
+    });
+    expect(asked[0]?.channels.map((c) => c.channel).sort()).toEqual(['email', 'inApp']);
+  });
+
   it('delivers successfully and every status transition is audited (§3b)', async () => {
     await createTemplate(adminToken, { key: 'test.email.ok', category: 'contracts' });
     const doc = await notificationsService.notify({
@@ -656,6 +682,7 @@ describe('email delivery via the channel-adapter/queue path', () => {
       to: { userId: aliceId },
       data: { name: 'Mail' },
       entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'email-ok' },
+      byEmail: true,
     });
     const notificationId = String(doc[0]?._id);
 
@@ -718,6 +745,7 @@ describe('email delivery via the channel-adapter/queue path', () => {
         to: { userId: aliceId },
         data: { name: 'Fail' },
         entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'email-fail' },
+        byEmail: true,
       });
       const notificationId = String(doc[0]?._id);
 
@@ -814,6 +842,7 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
       to: { userId: aliceId },
       data: { name: 'Opt' },
       entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'optout' },
+      byEmail: true,
     });
     expect(doc[0]?.channels.some((c) => c.channel === 'email')).toBe(false);
     expect(doc[0]?.channels.some((c) => c.channel === 'inApp')).toBe(true);
@@ -833,6 +862,7 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
         to: { userId: aliceId },
         data: { name: 'Def' },
         entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'default-off' },
+        byEmail: true,
       });
       expect(doc[0]?.channels.some((c) => c.channel === 'email')).toBe(false);
     } finally {
@@ -864,6 +894,7 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
       to: { userId: aliceId },
       data: { name: 'QH' },
       entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'qh-outside' },
+      byEmail: true,
     });
     const fetched = await fetchNotification(aliceToken, String(doc[0]?._id));
     const email = fetched.channels.find((c) => c.channel === 'email');
@@ -898,6 +929,7 @@ describe('preferences, settings defaults, and quiet hours (§3c)', () => {
       to: { userId: aliceId },
       data: { name: 'Crit' },
       entityRef: { moduleId: 'platform', entityType: 'test', entityId: 'critical-bypass' },
+      byEmail: true,
     });
     const fetched = await fetchNotification(aliceToken, String(doc[0]?._id));
     const email = fetched.channels.find((c) => c.channel === 'email');

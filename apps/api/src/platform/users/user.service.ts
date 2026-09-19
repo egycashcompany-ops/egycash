@@ -804,12 +804,16 @@ class UserService {
     await userRepository.updateSecurity(userId, { $set: { 'activation.delivery': delivery } });
   }
 
-  /** §14 — deliver the setup link over every reachable channel; outcomes only. */
+  /**
+   * §14 — deliver the setup link over the channels the actor asked for; outcomes only. Email is
+   * one of them only when `byEmail` says so — the administrator ticks it on the screen, per act.
+   */
   private async deliverLinkFor(
     user: UserDoc,
     setupToken: string,
     expiresAt: Date,
     mode: 'reset' | 'resend',
+    byEmail: boolean,
   ): Promise<CredentialsDeliveryResultDto[]> {
     const userId = String(user._id);
     const delivery = await deliverCredentials({
@@ -818,6 +822,7 @@ class UserService {
       employeeCode: await resolveEmployeeCodeOfUser(userId),
       phone: user.phone,
       email: user.email,
+      byEmail,
       setupToken,
       expiresAt,
       mode,
@@ -831,7 +836,10 @@ class UserService {
    * one-time setup link delivered. The user re-establishes their own password at the link.
    * (Session revocation happens at the route so audit/order match the other admin ops.)
    */
-  async resetViaSetupLink(userId: string): Promise<CredentialsDeliveryResultDto[]> {
+  async resetViaSetupLink(
+    userId: string,
+    byEmail = false,
+  ): Promise<CredentialsDeliveryResultDto[]> {
     const user = await userRepository.getById(userId);
     const token = this.generateActivationToken();
     const expiresAt = await this.activationLinkExpiry();
@@ -853,7 +861,7 @@ class UserService {
       action: 'invitationCreated',
       changes: [{ field: 'mode', old: null, new: 'reset' }],
     });
-    return this.deliverLinkFor(user, token, expiresAt, 'reset');
+    return this.deliverLinkFor(user, token, expiresAt, 'reset', byEmail);
   }
 
   /**
@@ -924,7 +932,10 @@ class UserService {
    * Re-deliver the setup link (§14.3): allowed only while a link is PENDING — a fresh token
    * replaces (and instantly invalidates) the previous one, with a fresh validity window.
    */
-  async resendSetupLink(userId: string): Promise<CredentialsDeliveryResultDto[]> {
+  async resendSetupLink(
+    userId: string,
+    byEmail = false,
+  ): Promise<CredentialsDeliveryResultDto[]> {
     const user = await userRepository.getById(userId);
     if (user.activation.tokenHash === null) {
       throw new BusinessRuleError(
@@ -943,7 +954,7 @@ class UserService {
     if (updated === null) throw new NotFoundError();
     // §15.7 — the replacement token invalidated its predecessor (§15.5).
     await auditService.record({ entityRef: entityRef(userId), action: 'invitationResent' });
-    return this.deliverLinkFor(user, token, expiresAt, 'resend');
+    return this.deliverLinkFor(user, token, expiresAt, 'resend', byEmail);
   }
 
   /** D6 admin force-on/off: force ON clears any enrolled secret — the user re-enrolls. */

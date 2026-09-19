@@ -5,6 +5,7 @@ import { authenticate } from '../auth';
 import { authorize } from '../rbac';
 import {
   AdminResetPasswordSchema,
+  SetupLinkDeliverySchema,
   TotpRequireSchema,
   ChangeUserStatusSchema,
   CreateUserSchema,
@@ -94,7 +95,7 @@ export const buildUsersRouter = (): Router => {
     '/:id/credentials/resend',
     authenticate,
     authorize('user.resetPassword'),
-    validate({ params: UserIdParamSchema }),
+    validate({ body: SetupLinkDeliverySchema, params: UserIdParamSchema }),
     asyncHandler(adminResendCredentials),
   );
   // P9-A. Its own key, not `user.resetPassword`: resetting delivers a link the actor never sees,

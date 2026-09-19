@@ -4,6 +4,7 @@ export {
   ChangeUserStatusSchema,
   ListUsersQuerySchema,
   AdminResetPasswordSchema,
+  SetupLinkDeliverySchema,
   TotpRequireSchema,
   UserIdParamSchema,
 } from '@ecms/contracts';

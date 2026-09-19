@@ -6,7 +6,12 @@
 // pure function of status, lock state and the pending setup link (`user.service.ts` §15.4), and a
 // client that recomputed it would drift from the server the first time one of those inputs moved.
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ChangeUserStatus, type CreateUser, type UpdateUser } from '@ecms/contracts';
+import {
+  type ChangeUserStatus,
+  type CreateUser,
+  type SetupLinkDelivery,
+  type UpdateUser,
+} from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../../shared/lib/query-keys';
 import { nextTimelinePage } from '../lib/timeline-view';
 import * as api from './user-api';
@@ -75,10 +80,10 @@ export const useChangeUserStatus = (id: string) =>
   useUserAction((body: ChangeUserStatus) => api.changeUserStatus(id, body), id);
 
 export const useResetUserPassword = (id: string) =>
-  useUserAction(() => api.resetUserPassword(id), id);
+  useUserAction((delivery: SetupLinkDelivery) => api.resetUserPassword(id, delivery), id);
 
 export const useResendUserCredentials = (id: string) =>
-  useUserAction(() => api.resendUserCredentials(id), id);
+  useUserAction((delivery: SetupLinkDelivery) => api.resendUserCredentials(id, delivery), id);
 
 /**
  * P9-A. Invalidates the user caches like every other action here, because minting a link moves

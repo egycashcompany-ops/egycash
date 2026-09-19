@@ -35,6 +35,7 @@ import {
   type UpdateGoldRepresentative,
   type UpdateGoldTransfer,
   type UpdateGoldVault,
+  type SetupLinkDelivery,
 } from '@ecms/contracts';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import * as api from './gold-api';
@@ -481,7 +482,10 @@ export const useChangeGoldPortalAccountStatus = () => {
 };
 
 export const useResendGoldPortalSetupLink = () =>
-  useMutation({ mutationFn: (id: string) => api.resendPortalSetupLink(id) });
+  useMutation({
+    mutationFn: ({ id, delivery }: { id: string; delivery: SetupLinkDelivery }) =>
+      api.resendPortalSetupLink(id, delivery),
+  });
 
 export const useDeleteGoldPortalAccount = () => {
   const qc = useQueryClient();

@@ -62,6 +62,7 @@ import {
   type UpdateGoldRepresentative,
   type UpdateGoldTransfer,
   type UpdateGoldVault,
+  type SetupLinkDelivery,
 } from '@ecms/contracts';
 import {
   buildQuery,
@@ -302,7 +303,7 @@ export const changePortalAccountStatus = (
   body: ChangeGoldPortalAccountStatus,
 ): Promise<GoldPortalAccountDto> =>
   post<GoldPortalAccountDto>(`/gold/portal-accounts/${id}/status`, body);
-export const resendPortalSetupLink = (id: string): Promise<void> =>
-  post<void>(`/gold/portal-accounts/${id}/setup-link`, {});
+export const resendPortalSetupLink = (id: string, delivery: SetupLinkDelivery): Promise<void> =>
+  post<void>(`/gold/portal-accounts/${id}/setup-link`, delivery);
 export const deletePortalAccount = (id: string): Promise<void> =>
   del<void>(`/gold/portal-accounts/${id}`);

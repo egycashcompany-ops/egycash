@@ -122,6 +122,9 @@ class AnnouncementService {
       title: written,
       body: writtenBody,
       entityRef: { moduleId: 'hr', entityType: 'announcement', entityId: String(doc._id) },
+      // The sender's own choice, made on the compose screen. The template lists email so that
+      // the choice is available; it is the tick, not the template, that sends one.
+      byEmail: (input.channels ?? []).includes('email'),
     });
 
     return toDto(doc.toObject() as AnnouncementDoc, null);

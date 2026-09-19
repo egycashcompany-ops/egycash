@@ -137,6 +137,12 @@ export const TemplateFormPanel = ({
             />
           ))}
         </div>
+        {/* Listing email here makes it AVAILABLE; it is the sender's tick, at send time, that uses
+            it. Said on the screen, because a channel list that reads as "sends by email" would
+            promise something the platform deliberately does not do on its own. */}
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          {t('systemAdmin.templates.fields.channelsHint')}
+        </p>
       </fieldset>
 
       {/* Arabic and English side by side. The English fields carry `dir="ltr"` explicitly: the page

@@ -194,10 +194,14 @@ class GoldPortalAccountService {
     await auditService.record({ entityRef: entityRef(id), action: 'delete', changes: [] });
   }
 
-  /** A fresh one-time setup link, for a customer who lost theirs or never used it. */
-  async resendSetupLink(id: string): Promise<void> {
+  /**
+   * A fresh one-time setup link, for a customer who lost theirs or never used it. By email only
+   * when the person pressing the button asked for it (ADR-033) — a customer rarely has a WhatsApp
+   * transport behind them, so this tick is usually how the link actually arrives.
+   */
+  async resendSetupLink(id: string, byEmail: boolean): Promise<void> {
     await this.portalUser(id);
-    await userService.resetViaSetupLink(id);
+    await userService.resetViaSetupLink(id, byEmail);
   }
 
   /**

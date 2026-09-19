@@ -19,7 +19,7 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
-import { Button, Card, CardBody, CardHeader } from '../../../../shared/ui';
+import { Button, Card, CardBody, CardHeader, Checkbox } from '../../../../shared/ui';
 import { toast } from '../../../../shared/ui/toast/toast-store';
 import { get } from '../../../../shared/lib/api-client';
 import { cn } from '../../../../shared/lib/cn';
@@ -37,6 +37,10 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
   const [mode, setMode] = useState<AudienceMode>('filter');
   const [filter, setFilter] = useState<EmployeeAudienceFilter>({});
   const [employees, setEmployees] = useState<PickedEmployee[]>([]);
+  // Also by email — the sender's choice, made here, every time. Off by default: the platform
+  // never emails on its own initiative, and this box is the only thing that makes an announcement
+  // do so. In-app (and push, where a device is registered) always go.
+  const [byEmail, setByEmail] = useState(false);
 
   const branches = useQuery({ queryKey: ['org', 'branches'], queryFn: () => orgOptions('branches') });
   const departments = useQuery({ queryKey: ['org', 'departments'], queryFn: () => orgOptions('departments') });
@@ -84,6 +88,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
         body: body.trim(),
         audience,
         priority: 'normal',
+        channels: byEmail ? ['inApp', 'email'] : ['inApp'],
       },
       {
         onSuccess: (dto) => {
@@ -92,6 +97,7 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
           setBody('');
           setFilter({});
           setEmployees([]);
+          setByEmail(false);
           preview.reset();
         },
         onError: () => toast.error(t('hr.announcements.sendFailed')),
@@ -146,6 +152,16 @@ export const ComposeAnnouncementPage = (): JSX.Element => {
             <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
               {t('hr.announcements.asWritten')}
             </p>
+            <div className="mt-4 space-y-1">
+              <Checkbox
+                checked={byEmail}
+                onChange={(e) => setByEmail(e.target.checked)}
+                label={t('hr.announcements.byEmail')}
+              />
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t('hr.announcements.byEmailHint')}
+              </p>
+            </div>
           </CardBody>
         </Card>
 

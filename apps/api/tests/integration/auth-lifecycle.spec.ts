@@ -202,8 +202,10 @@ describe('auto-provisioning (D1 + §14)', () => {
     // The response reports per-channel outcomes — never a credential (§12 R11/§14).
     expect(provision).not.toHaveProperty('temporaryPassword');
     const channels = (provision?.delivery ?? []).map((d) => d.channel).sort();
-    expect(channels).toEqual(['email', 'whatsapp']);
-    // Hermetic CI: the whatsapp transport is disabled and the fixture has no email.
+    // WhatsApp only. Provisioning is the system's own act, and the platform never emails on its
+    // own initiative — an email row appears only on a resend/reset where HR ticked the box.
+    expect(channels).toEqual(['whatsapp']);
+    // Hermetic CI: the whatsapp transport is disabled.
     expect(provision?.delivery.every((d) => !d.ok)).toBe(true);
 
     // Born INVITED — no password exists, so no password can sign in (§14.1).
@@ -317,13 +319,14 @@ describe('password management (§14.3/§14.4)', () => {
     const reset = await request(app)
       .post(`/api/v1/platform/users/${userId}/reset-password`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .send({ byEmail: true });
     expect(reset.status).toBe(200);
     const resetBody = reset.body.data as {
       delivery: { channel: string; ok: boolean }[];
     } & Record<string, unknown>;
     // Delivery outcomes only — no credential EVER appears in any API response (R11).
     expect(resetBody.temporaryPassword).toBeUndefined();
+    // Email was asked for, so it is a channel; asked for is the only way it becomes one.
     expect(resetBody.delivery.map((d) => d.channel).sort()).toEqual(['email', 'whatsapp']);
     const reissued = lastToken(spy);
     spy.mockRestore();
@@ -355,7 +358,7 @@ describe('password management (§14.3/§14.4)', () => {
     const resend = await request(app)
       .post(`/api/v1/platform/users/${userId}/credentials/resend`)
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .send({ byEmail: true });
     expect(resend.status).toBe(200);
     expect((resend.body.data as { delivery: unknown[] }).delivery).toHaveLength(2);
     const replacement = lastToken(spy);
@@ -378,12 +381,36 @@ describe('password management (§14.3/§14.4)', () => {
     expect(refused.status).toBe(422);
   });
 
-  it('channels are independent: email alone delivers when WhatsApp is unavailable (§13 R16)', async () => {
+  it('email alone delivers when WhatsApp is unavailable — once asked for (§13 R16)', async () => {
     const emp = await regEmployee({ email: `ess-${String(Date.now())}@ecms.local` });
     const provision = (emp as EmployeeDto & ProvisionShape).provisionedLogin;
-    const byChannel = new Map((provision?.delivery ?? []).map((d) => [d.channel, d]));
+    // Provisioning asked for nothing by email, so nothing went — an address on file is not a
+    // request.
+    expect((provision?.delivery ?? []).map((d) => d.channel)).toEqual(['whatsapp']);
+
+    // HR asks. Email alone suffices — no dual-channel dependency.
+    const resend = await request(app)
+      .post(`/api/v1/platform/users/${String(emp.userId)}/credentials/resend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ byEmail: true });
+    expect(resend.status).toBe(200);
+    const byChannel = new Map(
+      (resend.body.data as { delivery: { channel: string; ok: boolean }[] }).delivery.map((d) => [
+        d.channel,
+        d,
+      ]),
+    );
     expect(byChannel.get('whatsapp')?.ok).toBe(false); // transport disabled in CI
-    expect(byChannel.get('email')?.ok).toBe(true); // email alone suffices — no dual-channel dependency
+    expect(byChannel.get('email')?.ok).toBe(true);
+
+    // And a resend that does not ask attempts no email at all — no row, not a failed one.
+    const unasked = await request(app)
+      .post(`/api/v1/platform/users/${String(emp.userId)}/credentials/resend`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(
+      (unasked.body.data as { delivery: { channel: string }[] }).delivery.map((d) => d.channel),
+    ).toEqual(['whatsapp']);
   });
 
   it('the credential message template is seeded and admin-editable (§13 R15)', async () => {
@@ -605,7 +632,8 @@ describe('activation hardening + enterprise completeness (§15/§16)', () => {
     expect(before.invitationSentAt).not.toBeNull();
     expect(before.invitationExpiresAt).not.toBeNull();
     expect(before.activatedAt).toBeNull();
-    expect(before.lastDelivery?.find((d) => d.channel === 'email')?.ok).toBe(true);
+    // Provisioning delivered by WhatsApp only (disabled here, so not ok) and asked for no email.
+    expect(before.lastDelivery?.map((d) => d.channel)).toEqual(['whatsapp']);
 
     const activated = await activate(lastToken(spy));
     spy.mockRestore();

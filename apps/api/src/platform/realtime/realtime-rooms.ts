@@ -15,21 +15,29 @@ import { REALTIME_TOPICS } from './realtime-registry';
  * Fail-closed by construction:
  *  - no permission for a topic → no room, so not even "something changed" leaks;
  *  - an `organization` grant joins the org-wide room;
- *  - a `branch`/`department`/`section` grant joins only the caller's own branch room — signals
- *    that name no branch go to the org room only, so a branch viewer can never receive another
- *    branch's activity;
+ *  - a `branch`/`department`/`section` grant joins the caller's branch rooms — the home branch
+ *    and every branch their grants reach — and nothing else: signals that name no branch go to
+ *    the org room only, so a branch viewer can never receive another branch's activity;
  *  - an `own` grant joins nothing: own-scope screens are about the caller's records, and a
  *    branch-wide feed would tell them about everyone else's.
  *
  * The raw grant (`scopeOf`) decides, not the command bar's narrowing: an organization-wide
  * administrator peeking at one branch still holds the org grant, and an org-room signal at most
- * triggers a refetch that their normal, scoped API answers.
+ * triggers a refetch that their normal, scoped API answers. The reach is read the same way — it
+ * is the union across the caller's grants, and a room signal is never data, only "look again".
  */
 const roomsForTopic = (ctx: AuthContext, topic: string, permission: string): string[] => {
   const scope = scopeOf(ctx, permission);
   if (scope === undefined || scope === 'own') return [];
   if (scope === 'organization') return [topicRoom(topic)];
-  return ctx.branchId === null ? [] : [branchTopicRoom(topic, ctx.branchId)];
+  return branchesOf(ctx).map((branchId) => branchTopicRoom(topic, branchId));
+};
+
+/** The home branch plus every branch the grants reach, once each. */
+const branchesOf = (ctx: AuthContext): string[] => {
+  const ids = new Set<string>(ctx.reach?.branchIds ?? []);
+  if (ctx.branchId !== null) ids.add(ctx.branchId);
+  return [...ids];
 };
 
 export const roomsForContext = (ctx: AuthContext): string[] => {

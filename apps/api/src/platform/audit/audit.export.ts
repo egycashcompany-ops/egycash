@@ -3,7 +3,7 @@
 // stream completes. Row-capped by the `audit.export.maxRows` setting.
 import { type Response } from 'express';
 import { SettingKeys, type ExportAuditLogsQuery } from '@ecms/contracts';
-import { type AuthContext } from '../../shared/types';
+import { currentBranchId, type AuthContext } from '../../shared/types';
 import { settingsService } from '../settings';
 import { auditService, buildAuditFilter } from './audit.service';
 import { maskChanges } from './audit.masking';
@@ -64,7 +64,7 @@ export const streamAuditExport = async (
 ): Promise<void> => {
   const maxRows = await settingsService.resolve<number>(SettingKeys.AuditExportMaxRows, {
     userId: ctx.userId,
-    branchId: ctx.branchId,
+    branchId: currentBranchId(ctx),
   });
   const filter = buildAuditFilter(query);
 

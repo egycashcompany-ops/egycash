@@ -15,12 +15,11 @@ import {
   type StageCountDto,
 } from '@ecms/contracts';
 import {
-  hasPermission,
-  scopeOf,
-  scopeSelector,
-  widerScope,
   type AuthContext,
+  hasPermission,
+  scopeSelector,
   type ScopeSelector,
+  widestScopeSelector,
 } from '../../../../shared/types';
 import { applicantService } from '../applicants';
 import { screeningService } from '../screening';
@@ -195,18 +194,11 @@ class StageCountsService {
   /**
    * The evaluation aggregation spans every phase at once, so it runs at the WIDEST scope the
    * caller holds across the phase permissions — narrowing per phase would need a query per phase,
-   * which is exactly what this endpoint exists to avoid.
+   * which is exactly what this endpoint exists to avoid. The selector is built for the grant that
+   * wins, so its reach is that grant's.
    */
   private evaluationScope(ctx: AuthContext): ScopeSelector {
-    const widest = EVALUATION_VIEW_PERMISSIONS.reduce<ReturnType<typeof scopeOf>>(
-      (acc, key) => {
-        const granted = scopeOf(ctx, key);
-        if (granted === undefined) return acc;
-        return acc === undefined ? granted : widerScope(acc, granted);
-      },
-      undefined,
-    );
-    return { ...scopeSelector(ctx, 'evaluation.view'), scope: widest ?? 'own' };
+    return widestScopeSelector(ctx, EVALUATION_VIEW_PERMISSIONS);
   }
 }
 

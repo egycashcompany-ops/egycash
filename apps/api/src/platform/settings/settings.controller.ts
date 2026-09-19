@@ -4,6 +4,7 @@ import { ok, noContent } from '../../infrastructure/http/respond';
 import { validated } from '../../infrastructure/http/validate';
 import { authContext } from '../auth';
 import { settingsService } from './settings.service';
+import { currentBranchId } from '../../shared/types';
 
 export const listDefinitions = async (_req: Request, res: Response): Promise<void> => {
   ok(res, settingsService.listDefinitions());
@@ -11,7 +12,7 @@ export const listDefinitions = async (_req: Request, res: Response): Promise<voi
 
 export const resolveMySettings = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
-  ok(res, await settingsService.resolveAll({ userId: ctx.userId, branchId: ctx.branchId }));
+  ok(res, await settingsService.resolveAll({ userId: ctx.userId, branchId: currentBranchId(ctx) }));
 };
 
 export const setSetting = async (req: Request, res: Response): Promise<void> => {
@@ -23,5 +24,5 @@ export const setSetting = async (req: Request, res: Response): Promise<void> => 
 
 export const listFlags = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
-  ok(res, await settingsService.listFlagStates({ userId: ctx.userId, branchId: ctx.branchId }));
+  ok(res, await settingsService.listFlagStates({ userId: ctx.userId, branchId: currentBranchId(ctx) }));
 };

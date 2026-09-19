@@ -6,12 +6,11 @@
 // are a SUPERSET, so a role holding `evaluation.manage` works for every phase with no migration.
 import { ForbiddenError, NotFoundError } from '../../../../shared/errors';
 import {
-  hasPermission,
-  scopeOf,
-  scopeSelector,
-  widerScope,
   type AuthContext,
+  hasPermission,
+  scopeSelector,
   type ScopeSelector,
+  widestScopeSelector,
 } from '../../../../shared/types';
 import { evaluationPhaseService } from '../evaluations';
 import { evaluationBatchRepository } from './evaluation-batch.repository';
@@ -43,15 +42,10 @@ export const phaseManageScope = (ctx: AuthContext, resource: string): ScopeSelec
 /**
  * The list endpoint spans every batch phase at once, so it runs at the WIDEST scope the caller
  * holds — narrowing per phase would need a query per phase (the same rule the stage counters use).
+ * The selector is built for the grant that wins, so its reach is that grant's.
  */
-export const anyPhaseViewScope = (ctx: AuthContext): ScopeSelector => {
-  const widest = VIEW_PERMISSIONS.reduce<ReturnType<typeof scopeOf>>((acc, key) => {
-    const granted = scopeOf(ctx, key);
-    if (granted === undefined) return acc;
-    return acc === undefined ? granted : widerScope(acc, granted);
-  }, undefined);
-  return { ...scopeSelector(ctx, 'evaluation.view'), scope: widest ?? 'own' };
-};
+export const anyPhaseViewScope = (ctx: AuthContext): ScopeSelector =>
+  widestScopeSelector(ctx, VIEW_PERMISSIONS);
 
 export const canViewAnyPhase = (ctx: AuthContext): boolean =>
   VIEW_PERMISSIONS.some((key) => hasPermission(ctx, key));

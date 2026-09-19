@@ -1278,6 +1278,33 @@ describe('a grant with a reach', () => {
     expect(second.status).toBe(201);
   });
 
+  /** Phase 2: the screens that filter by hand (the roles list joins its holders) read the reach. */
+  it('R8 — a holder who reaches a second site sees that site\'s grants in the roles list', async () => {
+    const roleId = await seedRole('Two-site role admin', ['role.view', 'user.view']);
+    const email = 'r8-holder@ecms.local';
+    const holder = await seedUser(email, { branchId: BRANCH_B });
+    expect(
+      (await postAssignment({ userId: holder, roleId, scope: 'branch', branchIds: [BRANCH_A] }, adminToken))
+        .status,
+    ).toBe(201);
+    const watched = await seedRole('Watched', ['user.view']);
+    const inA = await seedUser('r8-in-a@ecms.local', { branchId: BRANCH_A });
+    const inB = await seedUser('r8-in-b@ecms.local', { branchId: BRANCH_B });
+    expect((await postAssignment({ userId: inA, roleId: watched, scope: 'own' })).status).toBe(201);
+    expect((await postAssignment({ userId: inB, roleId: watched, scope: 'own' })).status).toBe(201);
+
+    const view = await listAssignments(`?roleId=${watched}&pageSize=50`, await tokenOf(email));
+    expect(view.status).toBe(200);
+    const holders = rows<RoleAssignmentDto>(view).map((a) => a.userId);
+    expect(holders).toContain(inA);
+    expect(holders).toContain(inB);
+    expect(pageMeta(view).totalItems).toBe(2);
+
+    // And the fan-out that names recipients by branch finds them for the site they reach.
+    const forA = await rbacService.listUserIdsWithPermission('user.view', 'branch', BRANCH_A);
+    expect(forA).toContain(holder);
+  });
+
   /** A grant with no reach is byte-for-byte the grant that existed before this feature. */
   it('R7 — a plain grant carries an empty reach and the old single placement', async () => {
     const roleId = await seedRole('Plain', ['user.view']);

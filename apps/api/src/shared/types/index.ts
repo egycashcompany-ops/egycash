@@ -144,4 +144,53 @@ export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSel
   };
 };
 
+/**
+ * The selector for the WIDEST grant among several permissions — for a read that spans what
+ * several keys protect at once (every evaluation phase in one aggregation, say).
+ *
+ * The winning KEY is what the selector is built for, so its reach lists belong to that grant. A
+ * selector built for one key and then relabelled with another's scope mixes two grants, and the
+ * lists and the scope can disagree — which is the bug this exists to close.
+ */
+export const widestScopeSelector = (ctx: AuthContext, keys: readonly string[]): ScopeSelector => {
+  let winner: string | undefined;
+  for (const key of keys) {
+    const granted = ctx.permissions[key];
+    if (granted === undefined) continue;
+    if (winner === undefined || widerScope(ctx.permissions[winner] ?? 'own', granted) === granted) {
+      winner = key;
+    }
+  }
+  return winner === undefined
+    ? { scope: 'own', userId: ctx.userId, branchId: ctx.branchId, departmentId: ctx.departmentId, sectionId: ctx.sectionId }
+    : scopeSelector(ctx, winner);
+};
+
+/** Whether `branchId` is one the caller's own placement or grants reach. */
+export const reachesBranch = (ctx: AuthContext, branchId: string): boolean =>
+  ctx.branchId === branchId || (ctx.reach?.branchIds ?? []).includes(branchId);
+
+/**
+ * The branch the caller is acting IN right now — where a new document is filed, which branch's
+ * settings apply to them.
+ *
+ * In order: the switcher's choice when it names a branch the caller's grants reach; the home
+ * branch; the switcher's choice for an organization-wide caller (who has no home and may choose
+ * anywhere); the only branch a reach names, when it names exactly one. Otherwise null — a
+ * multi-branch caller with no home who has not chosen, or an organization-wide caller looking at
+ * the whole company — and the caller decides whether that is "ask" or "refuse".
+ *
+ * The order is what keeps the switcher a narrowing: a caller placed in one branch who sends any
+ * other branch in the header is still filed into their own.
+ */
+export const currentBranchId = (ctx: AuthContext): string | null => {
+  const active = ctx.activeBranchId ?? null;
+  const reach = ctx.reach?.branchIds ?? [];
+  if (active !== null && reach.includes(active)) return active;
+  if (ctx.branchId !== null) return ctx.branchId;
+  if (active !== null && reach.length === 0) return active;
+  if (reach.length === 1) return reach[0] ?? null;
+  return null;
+};
+
 export { widerScope };

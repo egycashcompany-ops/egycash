@@ -5,6 +5,7 @@ import { type Response } from 'express';
 import { ATTENDANCE_FEED_FIELDS, type ExportAttendanceQuery } from '@ecms/contracts';
 import { Types, type FilterQuery } from 'mongoose';
 import { type AuthContext, type ScopeSelector } from '../../../../shared/types';
+import { orgScopeMatch } from '../../../../shared/base/org-scope-match';
 import { NotFoundError } from '../../../../shared/errors';
 import { auditService } from '../../../../platform/audit';
 import { csvEscape } from '../../../../platform/audit/audit.export';
@@ -62,7 +63,7 @@ const buildFilter = async (
         : (filter.employeeId ?? { $in: ids.map((id) => new Types.ObjectId(id)) });
   }
   // The caller's data scope, applied the way the list applies it: own = the caller's linked
-  // employee only; branch = the caller's branch; organization = everything. Asking for somebody
+  // employee only; branch = the branches the grant reaches; organization = everything. Asking for somebody
   // else under an `own` grant exports NOTHING — never the caller's own rows under another
   // employee's heading (the same rule the scoped list follows).
   if (scope.scope === 'own') {
@@ -72,9 +73,13 @@ const buildFilter = async (
       query.employeeId !== undefined && query.employeeId !== String(own._id)
         ? { $in: [] }
         : own._id;
-  } else if (scope.scope !== 'organization') {
-    filter.branchId =
-      scope.branchId === null ? { $in: [] } : new Types.ObjectId(scope.branchId);
+  } else {
+    // Every other scope narrows to the branches the grant reaches (a department or section grant
+    // to its branch): the same rule the day-record list applies, from the same selector.
+    Object.assign(
+      filter,
+      orgScopeMatch(scope, { branch: 'branchId' }, { finerNarrowsToBranch: true }) ?? {},
+    );
   }
   return filter;
 };

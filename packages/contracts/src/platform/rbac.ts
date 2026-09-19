@@ -7,6 +7,7 @@ import {
   PaginationQuerySchema,
   type DataScope,
 } from '../common/index.js';
+import { PermissionKeySchema } from '../permissions/def.js';
 
 export const CreateRoleSchema = z
   .object({
@@ -253,13 +254,21 @@ export const PERMISSION_STATES = ['active', 'pending', 'expired'] as const;
 export const PermissionStateSchema = z.enum(PERMISSION_STATES);
 export type PermissionState = z.infer<typeof PermissionStateSchema>;
 
-/** One assignment's contribution of one permission key. */
+/** One grant's contribution of one permission key — a role assignment, or a direct delegation. */
 export interface EffectivePermissionSourceDto {
+  /** The assignment's id — or the delegated grant's, when `kind` is `delegation`. */
   assignmentId: string;
-  roleId: string;
+  /**
+   * `role` is a role assignment, exactly as before. `delegation` is a direct, per-site grant made
+   * by a manager to somebody they reach (ADR-032): it carries no role, so `roleId` is null and
+   * `roleName` is the fixed label for such grants; `branch` says which site it is for.
+   */
+  kind: 'role' | 'delegation';
+  roleId: string | null;
   roleName: { ar: string; en: string };
   roleKey: string | null;
   roleManaged: RoleManagement;
+  branch: { id: string; name: { ar: string; en: string } } | null;
   /** The grant's own scope, exactly as stored — never re-interpreted. */
   scope: DataScope;
   validFrom: string | null;
@@ -305,4 +314,45 @@ export interface EffectivePermissionsDto {
   /** Why. A privileged account is one holding a system role or a break-glass key (Review R13). */
   privilegedBecause: { systemRoles: string[]; breakGlassKeys: string[] };
   rows: EffectivePermissionRowDto[];
+}
+
+// ── Delegated grants (ADR-032) ──────────────────────────────────────────────
+//
+// A manager hands out, per site, permissions they hold there — to people they reach. No role in
+// between: the grant IS the list of keys, for one account, in one branch. Each site's table is its
+// own record, so what somebody may do in «المهندسين» says nothing about «أكتوبر».
+
+/** The full list for one (account, site): the server replaces, never merges. Empty = remove. */
+export const SetDelegationSchema = z
+  .object({ permissionKeys: z.array(PermissionKeySchema).max(500) })
+  .strict();
+export type SetDelegation = z.infer<typeof SetDelegationSchema>;
+
+export interface DelegationDto {
+  id: string;
+  userId: string;
+  branch: { id: string; name: { ar: string; en: string } };
+  permissionKeys: string[];
+  /** The account that last wrote this grant, or null for a system write. */
+  grantedBy: string | null;
+  updatedAt: string;
+}
+
+export interface UserDelegationsDto {
+  userId: string;
+  grants: DelegationDto[];
+}
+
+/**
+ * What the caller may delegate, and where — their own ceiling, resolved once for the screen.
+ *
+ * `branches` are the sites the caller may delegate in, each with the keys they hold there at branch
+ * level or wider. `pages` and `permissions` are the registry entries for the union of those keys,
+ * so the screen can draw «screen × actions» without a second, wider catalog read the caller may not
+ * be allowed to make.
+ */
+export interface DelegationCatalogDto {
+  branches: { id: string; name: { ar: string; en: string }; permissionKeys: string[] }[];
+  pages: PageDto[];
+  permissions: PermissionDto[];
 }

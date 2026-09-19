@@ -16,6 +16,7 @@ import { buildUsersRouter } from './platform/users';
 import {
   buildPermissionsRouter,
   buildRoleAssignmentsRouter,
+  buildDelegationsRouter,
   buildRolesRouter,
 } from './platform/rbac';
 import {
@@ -161,6 +162,7 @@ export const buildApp = (): Express => {
   api.use('/platform/roles', buildRolesRouter());
   api.use('/platform/role-assignments', buildRoleAssignmentsRouter());
   api.use('/platform/permissions', buildPermissionsRouter());
+  api.use('/platform/delegations', buildDelegationsRouter());
   api.use('/platform/organization', buildOrganizationRouter());
   api.use('/platform/branches', buildBranchesRouter());
   // The company-wide catalogs, mounted BEFORE the per-branch units so the more specific path wins

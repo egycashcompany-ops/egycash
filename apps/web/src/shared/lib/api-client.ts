@@ -210,6 +210,10 @@ export const getPage = async <T>(path: string): Promise<Paginated<T>> => {
 export const patch = <T>(path: string, body: unknown): Promise<T> =>
   api<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 
+/** Replace a resource whole — the server never merges what a PUT carries. */
+export const put = <T>(path: string, body: unknown): Promise<T> =>
+  api<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+
 /** Fetch a raw text response (endpoints outside the JSON envelope, e.g. document HTML). */
 export const getText = async (path: string): Promise<string> => {
   const authHeaders = (): Headers => {

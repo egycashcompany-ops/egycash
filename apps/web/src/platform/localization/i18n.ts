@@ -2419,8 +2419,8 @@ const en: Record<string, string> = {
     'The file is still being read and compared. Nothing has been written, so closing now costs only the wait — you would upload it again to see what it would do.',
   'employees.roster.closeWhileBusy.applying':
     'The changes are already being written. Closing this does NOT stop them — the records keep being saved on the server; you would just stop seeing how it went.',
-  'employees.roster.closeWhileBusy.keep': 'Let it finish',
-  'employees.roster.closeWhileBusy.close': 'Close anyway',
+  'employees.roster.closeWhileBusy.keep': 'Wait for the upload to finish',
+  'employees.roster.closeWhileBusy.close': 'Close the screen anyway',
   'employees.roster.enum.maritalStatus.single': 'Single',
   'employees.roster.enum.maritalStatus.married': 'Married',
   'employees.roster.enum.maritalStatus.divorced': 'Divorced',
@@ -9065,8 +9065,8 @@ const ar: Record<string, string> = {
     'الملف لسه بيتقرا ويتقارن. مفيش حاجة اتكتبت، فالإقفال دلوقتي مش هيضيّع غير الاستنى — هترفعه تاني عشان تشوف هيعمل إيه.',
   'employees.roster.closeWhileBusy.applying':
     'التعديلات بتتكتب فعلًا دلوقتي. الإقفال ده مش بيوقّفها — السجلات هتفضل تتحفظ على الخادم، وكل اللي هيحصل إنك مش هتشوف النتيجة.',
-  'employees.roster.closeWhileBusy.keep': 'سيبه يخلّص',
-  'employees.roster.closeWhileBusy.close': 'اقفل برضه',
+  'employees.roster.closeWhileBusy.keep': 'استنى لحد ما الرفع يخلّص',
+  'employees.roster.closeWhileBusy.close': 'اقفل الشاشة برضه',
   'employees.roster.enum.maritalStatus.single': 'أعزب',
   'employees.roster.enum.maritalStatus.married': 'متزوج',
   'employees.roster.enum.maritalStatus.divorced': 'مطلّق',

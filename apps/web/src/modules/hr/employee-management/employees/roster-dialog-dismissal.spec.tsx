@@ -16,6 +16,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import type { Locale } from '@ecms/contracts';
+import { translate } from '../../../../platform/localization/i18n';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIALOG_UI = readFileSync(join(HERE, '../../../../shared/ui/Dialog.tsx'), 'utf8');
@@ -73,6 +75,41 @@ describe('the roster import dialog survives a click that missed', () => {
   it('offers both answers, and the destructive one really closes', () => {
     expect(ROSTER).toContain("t('employees.roster.closeWhileBusy.keep')");
     expect(ROSTER).toContain('<Button variant="danger" onClick={close}>');
+  });
+
+  /**
+   * EACH ANSWER NAMES THE THING IT ACTS ON. «عدل اسم الزرارين خليهم اكتر سميه عن كدا» — the first
+   * pair were «سيبه يخلّص» and «اقفل برضه» («Let it finish» / «Close anyway»): a verb and a
+   * pronoun between them, leaving both «it» and «what closes» unsaid. That is the one thing a
+   * button must not do when the answer beside it is the destructive one, and it is worse here
+   * because the two are NOT opposites — closing does not stop an apply, so a reader who guesses
+   * the object guesses wrong.
+   *
+   * The rule, stated as the test: every answer must carry one of this screen's nouns. All four of
+   * the old labels fail it; the new ones name «الرفع» and «الشاشة». Driven through `translate()`
+   * so the assertion is about the words a person reads, not a line in a file.
+   */
+  it('names the thing each answer acts on, in both locales', () => {
+    const NOUNS: Record<Locale, RegExp> = {
+      en: /upload|screen|file/i,
+      ar: /الرفع|الشاشة|الملف/,
+    };
+    for (const locale of ['en', 'ar'] as Locale[]) {
+      for (const key of ['keep', 'close'] as const) {
+        const label = translate(locale, `employees.roster.closeWhileBusy.${key}`);
+        expect(label).not.toContain('employees.roster');
+        expect(label).toMatch(NOUNS[locale]);
+      }
+    }
+  });
+
+  /**
+   * A LONGER LABEL MUST NOT COST THE PHONE. The confirmation is the narrow `sm` dialog and the
+   * shared Button is a fixed height, so two labels that no longer fit on one row have to take a
+   * row each — squeezing them instead breaks the words inside the button.
+   */
+  it('lets the confirmation footer wrap rather than squeeze the buttons', () => {
+    expect(ROSTER).toContain('<div className="flex flex-wrap items-center justify-end gap-2">');
   });
 
   /**

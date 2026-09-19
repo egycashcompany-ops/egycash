@@ -39,6 +39,19 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **The employees list offers «الأمن» once, not eight times.** A department is one record per
+  branch — each site's security is its own unit with its own people — so the department filter
+  listed every branch copy, identically, seventy-one entries for seventeen names, with no way to
+  tell «الأمن» from «الأمن». It was listing the storage rather than the organization.
+
+  The filter now folds branch copies to their catalog entry: one «الأمن», standing for every site
+  it exists in, or for the one copy in the chosen site. Sections fold the same way. A unit never
+  linked to the catalog folds by its Arabic name instead, so nothing is hidden by the change. The
+  query carries every id behind the choice — `departmentId` and `sectionId` on the employees list
+  are lists now, like `branchId` already was — so the narrowing and the row count under the bar
+  stay the server's own. Dropdown options carry `catalogId` for the same reason they carry
+  `parentId`: so a screen can do this from one fetch of each list.
+
 - **An upload failed outright for anybody whose department, section or job title sat past the
   hundredth row of its catalogue.** The org resolver asked for `pageSize: 500` and `1000`, but
   `BaseRepository.list` clamps to `MAX_PAGE_SIZE` (100) — and with no `sortBy`, the hundred it got

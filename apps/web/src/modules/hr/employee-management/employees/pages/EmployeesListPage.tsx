@@ -25,10 +25,12 @@ const RosterImportDialog = lazy(() =>
 );
 import { employeeColumns } from '../lib/employee-columns';
 import {
-  departmentsIn,
+  departmentGroupsIn,
+  departmentIdsFor,
   hasPlacementFilter,
   prunePlacement,
-  sectionsIn,
+  sectionGroupsIn,
+  sectionIdsFor,
   type PlacementSelection,
 } from '../lib/placement-filters';
 import {
@@ -83,10 +85,11 @@ export const EmployeesListPage = (): JSX.Element => {
   const [importOpen, setImportOpen] = useState(false);
   const search = sp.get('q') ?? '';
   const status = sp.get('status') ?? '';
+  // `dept` and `section` hold GROUP keys — a company-wide department, not one branch's copy of it.
   const placement: PlacementSelection = {
     branchId: sp.get('branch') ?? '',
-    departmentId: sp.get('dept') ?? '',
-    sectionId: sp.get('section') ?? '',
+    departmentKey: sp.get('dept') ?? '',
+    sectionKey: sp.get('section') ?? '',
     jobTitleId: sp.get('job') ?? '',
   };
   const viewRaw = sp.get('view');
@@ -122,6 +125,22 @@ export const EmployeesListPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
 
+  const { data: branchOptions = [] } = useBranchOptions();
+  const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
+  const { data: sectionOptions = [] } = useSectionReferenceOptions();
+  const { data: jobTitleOptions = [] } = useJobTitleReferenceOptions();
+
+  // The ids a chosen group stands for, narrowed to the chosen site. Memoised so the query key does
+  // not change on every render — the list would refetch for nothing.
+  const departmentIds = useMemo(
+    () => departmentIdsFor(departmentOptions, placement),
+    [departmentOptions, placement.branchId, placement.departmentKey],
+  );
+  const sectionIds = useMemo(
+    () => sectionIdsFor(sectionOptions, departmentOptions, placement),
+    [sectionOptions, departmentOptions, placement.branchId, placement.departmentKey, placement.sectionKey],
+  );
+
   const params = useMemo<EmployeeListParams>(
     () => ({
       page,
@@ -134,12 +153,15 @@ export const EmployeesListPage = (): JSX.Element => {
       ...(status === '' ? {} : { status }),
       // The registry already filters on all four (`ListEmployeesQuery`), so narrowing is one query,
       // not a client-side pass over a page — the count under the bar stays the server's own.
+      //
+      // A department is one record per branch, so «الأمن» company-wide is every branch copy of it:
+      // the chosen group is expanded to its ids here, narrowed to the chosen site when there is one.
       ...(placement.branchId === '' ? {} : { branchId: placement.branchId }),
-      ...(placement.departmentId === '' ? {} : { departmentId: placement.departmentId }),
-      ...(placement.sectionId === '' ? {} : { sectionId: placement.sectionId }),
+      ...(departmentIds.length === 0 ? {} : { departmentId: departmentIds }),
+      ...(sectionIds.length === 0 ? {} : { sectionId: sectionIds }),
       ...(placement.jobTitleId === '' ? {} : { jobTitleId: placement.jobTitleId }),
     }),
-    [paramsKey],
+    [paramsKey, departmentIds, sectionIds],
   );
 
   // The queue is served by its own endpoint, so the employees read stands down while it is open.
@@ -165,18 +187,14 @@ export const EmployeesListPage = (): JSX.Element => {
   // NOT gated by the unit's `view` permission, so the filters populate for anybody who may read the
   // employee list — and they are paged to exhaustion server-side, so a deployment with 142 job
   // titles offers 142 of them.
-  const { data: branchOptions = [] } = useBranchOptions();
-  const { data: departmentOptions = [] } = useDepartmentReferenceOptions();
-  const { data: sectionOptions = [] } = useSectionReferenceOptions();
-  const { data: jobTitleOptions = [] } = useJobTitleReferenceOptions();
 
   const departments = useMemo(
-    () => departmentsIn(departmentOptions, placement.branchId),
+    () => departmentGroupsIn(departmentOptions, placement.branchId),
     [departmentOptions, placement.branchId],
   );
   const sections = useMemo(
-    () => sectionsIn(sectionOptions, departmentOptions, placement.branchId, placement.departmentId),
-    [sectionOptions, departmentOptions, placement.branchId, placement.departmentId],
+    () => sectionGroupsIn(sectionOptions, departmentOptions, placement),
+    [sectionOptions, departmentOptions, placement.branchId, placement.departmentKey],
   );
 
   /**
@@ -190,8 +208,8 @@ export const EmployeesListPage = (): JSX.Element => {
     const next = prunePlacement({ ...placement, ...part }, departmentOptions, sectionOptions);
     patch({
       branch: next.branchId || null,
-      dept: next.departmentId || null,
-      section: next.sectionId || null,
+      dept: next.departmentKey || null,
+      section: next.sectionKey || null,
       job: next.jobTitleId || null,
     });
   };
@@ -292,24 +310,24 @@ export const EmployeesListPage = (): JSX.Element => {
               </Select>
               <Select
                 aria-label={t('employees.columns.department')}
-                value={placement.departmentId}
-                onChange={(e) => setPlacement({ departmentId: e.target.value })}
+                value={placement.departmentKey}
+                onChange={(e) => setPlacement({ departmentKey: e.target.value })}
               >
                 <option value="">{t('employees.filters.anyDepartment')}</option>
                 {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
+                  <option key={d.key} value={d.key}>
                     {d.name[locale]}
                   </option>
                 ))}
               </Select>
               <Select
                 aria-label={t('employees.columns.section')}
-                value={placement.sectionId}
-                onChange={(e) => setPlacement({ sectionId: e.target.value })}
+                value={placement.sectionKey}
+                onChange={(e) => setPlacement({ sectionKey: e.target.value })}
               >
                 <option value="">{t('employees.filters.anySection')}</option>
                 {sections.map((sec) => (
-                  <option key={sec.id} value={sec.id}>
+                  <option key={sec.key} value={sec.key}>
                     {sec.name[locale]}
                   </option>
                 ))}

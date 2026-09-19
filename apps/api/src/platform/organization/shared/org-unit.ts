@@ -127,6 +127,11 @@ export interface OrgUnitHooks<TDoc extends OrgUnitDoc> {
    * instead of a `<unit>.view`-gated request per selection.
    */
   optionParentId?: (doc: TDoc) => string | null;
+  /**
+   * Optional: the catalog entry this unit is a branch copy of, for `options()`. Departments and
+   * Sections declare it; a Branch has no catalog. It is what a filter folds duplicates on.
+   */
+  optionCatalogId?: (doc: TDoc) => string | null;
 }
 
 export class OrgUnitService<TDoc extends OrgUnitDoc> {
@@ -288,6 +293,7 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
    */
   async options(): Promise<OrgUnitOptionDto[]> {
     const parentOf = this.hooks.optionParentId;
+    const catalogOf = this.hooks.optionCatalogId;
     return collectOptions<TDoc>(
       (page, pageSize) =>
         this.repository.list({
@@ -300,6 +306,7 @@ export class OrgUnitService<TDoc extends OrgUnitDoc> {
           scope: { scope: 'organization', userId: '', branchId: null, departmentId: null, sectionId: null },
         }),
       (doc) => (parentOf === undefined ? null : parentOf(doc)),
+      (doc) => (catalogOf === undefined ? null : catalogOf(doc)),
     );
   }
 

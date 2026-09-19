@@ -411,8 +411,13 @@ export const ListEmployeesQuerySchema = PaginationQuerySchema.extend({
   applicantId: objectId().optional(),
   jobOfferId: objectId().optional(),
   branchId: listQuery(objectId()),
-  departmentId: objectId().optional(),
-  sectionId: objectId().optional(),
+  /**
+   * LISTS, like `branchId`. A department is one record per branch, so «الأمن» company-wide is
+   * eight ids — the screen folds them to one name and sends all eight. A single id still parses as
+   * a one-item list, so every existing caller is unchanged.
+   */
+  departmentId: listQuery(objectId()),
+  sectionId: listQuery(objectId()),
   /**
    * The seats asked about, ORed — like `branchId` above and for the same reason a consumer
    * eventually needs: a caller whose question is «people holding ANY of these titles» would

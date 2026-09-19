@@ -36,12 +36,20 @@ export interface OptionSource {
 export const collectOptions = async <T extends OptionSource>(
   readPage: (page: number, pageSize: number) => Promise<OptionPage<T>>,
   parentIdOf: (doc: T) => string | null,
+  /** The catalog entry this unit is a branch copy of; omitted for units that have no catalog. */
+  catalogIdOf: (doc: T) => string | null = () => null,
 ): Promise<OrgUnitOptionDto[]> => {
   const out: OrgUnitOptionDto[] = [];
   for (let page = 1; ; page += 1) {
     const res = await readPage(page, MAX_PAGE_SIZE);
     for (const doc of res.items) {
-      out.push({ id: String(doc._id), code: doc.code, name: doc.name, parentId: parentIdOf(doc) });
+      out.push({
+        id: String(doc._id),
+        code: doc.code,
+        name: doc.name,
+        parentId: parentIdOf(doc),
+        catalogId: catalogIdOf(doc),
+      });
     }
     // Bounded by the reader's own count, so an empty catalog reads one page and a full one reads
     // exactly as many as it has. Never by "the page came back short" — a reader that returns a

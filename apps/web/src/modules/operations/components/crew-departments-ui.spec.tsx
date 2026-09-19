@@ -30,12 +30,14 @@ const CASH: OrgUnitOptionDto = {
   code: 'DEP-01',
   name: { ar: 'نقل الأموال', en: 'Cash transfer' },
   parentId: null,
+  catalogId: null,
 };
 const HR: OrgUnitOptionDto = {
   id: '507f1f77bcf86cd799439012',
   code: 'DEP-02',
   name: { ar: 'الموارد البشرية', en: 'Human resources' },
   parentId: null,
+  catalogId: null,
 };
 
 const me = (permissions: string[]): MeDto => ({

@@ -53,6 +53,8 @@ export const departmentService = new OrgUnitService<DepartmentDoc>(
     assertManagerExists,
     // A Department hangs under a Branch — what lets the employees filter narrow one by the other.
     optionParentId: (doc) => String(doc.branchId),
+    // The company-wide entry this is a branch copy of — what a filter folds duplicates on.
+    optionCatalogId: (doc) => (doc.catalogId == null ? null : String(doc.catalogId)),
     // `description` is a per-unit column the generic update does not know about (ADR-015 seam).
     buildUpdateSet: (input) =>
       input.description !== undefined ? { description: input.description ?? null } : {},

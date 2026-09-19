@@ -142,6 +142,26 @@ describe('realtime over a real socket', () => {
     branchB.disconnect();
   });
 
+  it('a viewer whose grant reaches a second branch hears that branch too', async () => {
+    const socket = await connectAs(
+      ctxOf({
+        userId: 'two-sites',
+        branchId: 'b1',
+        permissions: { 'goldBar.view': 'branch' },
+        reach: { branchIds: ['b1', 'b2'], departmentIds: [] },
+      }),
+    );
+    const arriving = nextChange(socket);
+    publishAuditedChange({
+      entityRef: { moduleId: 'gold', entityType: 'bar', entityId: 'bar-in-b2' },
+      action: 'update',
+      at: '2026-08-25T12:02:00.000Z',
+      branchId: 'b2',
+    });
+    expect((await arriving).entityId).toBe('bar-in-b2');
+    socket.disconnect();
+  });
+
   it('a branch-scoped viewer also stays silent on a change whose branch nobody named', async () => {
     const socket = await connectAs(
       ctxOf({ userId: 'b-only', branchId: 'b1', permissions: { 'goldBar.view': 'branch' } }),

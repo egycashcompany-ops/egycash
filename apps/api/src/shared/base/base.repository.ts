@@ -14,6 +14,7 @@ import { MAX_PAGE_SIZE, type Paginated } from '@ecms/contracts';
 import { ConflictError, NotFoundError, StaleDocumentError } from '../errors';
 import { type ScopeSelector } from '../types';
 import { type BaseDocFields } from './base.model';
+import { orgScopeMatch } from './org-scope-match';
 
 export interface BaseRepositoryOptions {
   /** Dot path of the branch scoping field (e.g. `branchId`, `organization.branchId`). */
@@ -120,66 +121,24 @@ const duplicateMessage = (error: unknown): string | undefined => {
 /** Exported for its spec: the value-redaction rule is worth pinning, and it is a pure function. */
 export const duplicateMessageForTest = duplicateMessage;
 
-/** Matches nothing — used when a branch-scoped caller has no branch. */
-const NEVER: FilterQuery<{ _id: unknown }> = {
-  _id: new Types.ObjectId('000000000000000000000000'),
-};
-
 export class BaseRepository<T extends BaseDocFields> {
   constructor(
     protected readonly model: Model<T>,
     protected readonly options: BaseRepositoryOptions = {},
   ) {}
 
-  /**
-   * Filter one organizational scope by its configured field. When the collection does not declare
-   * that field the scope widens to organization-wide ({}) — the same convention `branch` has always
-   * used, so finer scopes are opt-in per collection and backward compatible (ADR-017).
-   */
-  /** The list form of `orgScopeFilter`: every record in ANY of the units. */
-  private orgScopeFilterIn(field: string | undefined, ids: readonly string[]): FilterQuery<T> {
-    if (field === undefined) return {};
-    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
-    if (valid.length === 0) return NEVER as FilterQuery<T>;
-    return { [field]: { $in: valid.map((id) => new Types.ObjectId(id)) } } as FilterQuery<T>;
-  }
-
-  private orgScopeFilter(field: string | undefined, id: string | null): FilterQuery<T> {
-    if (field === undefined) return {};
-    if (id === null) return NEVER as FilterQuery<T>;
-    return { [field]: new Types.ObjectId(id) } as FilterQuery<T>;
-  }
-
   protected scopeFilter(selector: ScopeSelector | undefined): FilterQuery<T> {
     if (selector === undefined || selector.scope === 'organization') return {};
-    // Hierarchical scopes filter by the caller's own placement (branch ⊃ department ⊃ section).
-    // Filtering by departmentId naturally includes every section under it; branch includes the
-    // whole branch — matching the business rules for each scope.
-    // The list forms win when present: a grant that reaches several branches, or a company-wide
-    // department across them, is a `$in` over every unit it reaches. Absent, the single home id is
-    // used exactly as it always was.
-    if (selector.scope === 'branch') {
-      if (selector.branchIds !== undefined && selector.branchIds.length > 0) {
-        return this.orgScopeFilterIn(this.options.branchField, selector.branchIds);
-      }
-      return this.orgScopeFilter(this.options.branchField, selector.branchId);
-    }
-    if (selector.scope === 'department') {
-      if (selector.departmentIds !== undefined && selector.departmentIds.length > 0) {
-        // A department reach is already narrowed to the branches it covers, so the department
-        // clause alone is right; a branch narrowing on top of it is folded in when both are given.
-        const byDepartment = this.orgScopeFilterIn(this.options.departmentField, selector.departmentIds);
-        if (selector.branchIds !== undefined && selector.branchIds.length > 0 && this.options.branchField !== undefined) {
-          const byBranch = this.orgScopeFilterIn(this.options.branchField, selector.branchIds);
-          return { $and: [byDepartment, byBranch] } as FilterQuery<T>;
-        }
-        return byDepartment;
-      }
-      return this.orgScopeFilter(this.options.departmentField, selector.departmentId);
-    }
-    if (selector.scope === 'section') {
-      return this.orgScopeFilter(this.options.sectionField, selector.sectionId);
-    }
+    // Hierarchical scopes filter by the units the caller's grant reaches (branch ⊃ department ⊃
+    // section) — `orgScopeMatch` is the one place that rule is spelled, shared with the reads that
+    // cannot come through here (aggregations, joins). Filtering by departmentId naturally includes
+    // every section under it; branch includes the whole branch — the business rule for each scope.
+    const hierarchical = orgScopeMatch(selector, {
+      ...(this.options.branchField === undefined ? {} : { branch: this.options.branchField }),
+      ...(this.options.departmentField === undefined ? {} : { department: this.options.departmentField }),
+      ...(this.options.sectionField === undefined ? {} : { section: this.options.sectionField }),
+    });
+    if (hierarchical !== undefined) return hierarchical as FilterQuery<T>;
     // own: records the user created, is assigned to (Review R17), or is the subject of (C1-R)
     const userId = new Types.ObjectId(selector.userId);
     const ors: FilterQuery<T>[] = [{ createdBy: userId } as FilterQuery<T>];

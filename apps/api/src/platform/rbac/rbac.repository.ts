@@ -162,7 +162,8 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
   /**
    * Users with a currently-active assignment to one of `roleIds`, at `scope` or wider
    * (an `organization`-scope assignment always qualifies; a `branch`-scope assignment
-   * qualifies only for a matching `branchId` — Sprint 3.3 plan §8/§11).
+   * qualifies when it is placed in `branchId` or REACHES it — a named branch, or every branch —
+   * Sprint 3.3 plan §8/§11).
    */
   async distinctUserIdsForRolesAtScope(
     roleIds: Types.ObjectId[],
@@ -177,6 +178,8 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
             $or: [
               { scope: 'organization' },
               { scope: 'branch', branchId: new Types.ObjectId(branchId) },
+              { scope: 'branch', branchIds: new Types.ObjectId(branchId) },
+              { scope: 'branch', allBranches: true },
             ],
           };
     const ids = await this.model

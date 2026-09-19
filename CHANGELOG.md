@@ -18,6 +18,16 @@ its entry here in the same PR.
   against a fake ESMTP server (`mailer.spec.ts`), which no suite had exercised before — the
   suites use `jsonTransport`. puppeteer-core's `launch`/`setContent`/`pdf` path is unchanged and
   was smoke-tested through the app's own driver against Chromium 141.
+- **`rescan:files`** — the operator's command for the files uploaded before a scanner existed.
+  Switching the scanner on scans nothing retroactively; this marks every live `unscanned` file
+  `pending` (withheld until its verdict) and queues a scan-only job for each, oldest first, in
+  batches. Dry run by default, refuses without a scanner, built into the deployed image.
+- **@sentry/node 8 → 10** (clears the OpenTelemetry baggage-propagation advisory in its
+  dependencies; `init`/`captureException` unchanged, transmission smoke-tested against a local
+  ingest endpoint) and an npm override lifting exceljs's `uuid` to 11 (the bounds-check advisory;
+  exceljs uses only `v4()`). The remaining moderate advisories all sit behind UI majors — tiptap 3
+  and react-router 7 — left for a change that can be clicked through; the two react-router ones
+  are not reachable here (no user-supplied navigation targets; the other is SSR-only).
 - **ClamAV as a Railway service** (`infra/clamav`, guide §7). The official image with clamd
   bound to `::` — Railway's private network is IPv6-only — and `StreamMaxLength 50M` above the
   upload cap; a volume for the signature database; `CLAMAV_HOST=clamav.railway.internal` on

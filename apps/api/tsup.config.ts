@@ -18,6 +18,8 @@ export default defineConfig({
     'src/seed.ts',
     'src/fleet-vocabulary.cli.ts',
     'src/fleet-vehicles-import.cli.ts',
+    // rescan:files — run once, on the day the scanner is switched on, from the service shell.
+    'src/rescan-files.cli.ts',
   ],
   format: ['esm'],
   target: 'node22',

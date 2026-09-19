@@ -23,14 +23,15 @@
     "import:vehicles": "tsx --env-file=../../.env src/fleet-vehicles-import.cli.ts",
     "reset:workforce": "tsx --env-file=../../.env src/reset-workforce.cli.ts",
     "report:org-duplication": "tsx --env-file-if-exists=../../.env src/org-duplication-report.cli.ts",
-    "migrate:org-catalog": "tsx --env-file=../../.env src/migrate-org-catalog.cli.ts"
+    "migrate:org-catalog": "tsx --env-file=../../.env src/migrate-org-catalog.cli.ts",
+    "rescan:files": "tsx --env-file=../../.env src/rescan-files.cli.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1083.0",
     "@aws-sdk/s3-request-presigner": "^3.1083.0",
     "@azure/storage-blob": "^12.33.0",
     "@ecms/contracts": "*",
-    "@sentry/node": "^8.48.0",
+    "@sentry/node": "^10.75.0",
     "@types/qrcode": "^1.5.6",
     "archiver": "^7.0.1",
     "argon2": "^0.41.1",

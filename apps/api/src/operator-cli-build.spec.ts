@@ -24,7 +24,12 @@ const PKG = JSON.parse(readFileSync(join(HERE, '../package.json'), 'utf8')) as {
 };
 
 describe('the operator CLIs reach the deployed image', () => {
-  const CLIS = ['src/fleet-vocabulary.cli.ts', 'src/fleet-vehicles-import.cli.ts'];
+  const CLIS = [
+    'src/fleet-vocabulary.cli.ts',
+    'src/fleet-vehicles-import.cli.ts',
+    // The backlog rescan runs on the deployed image too — on the day the scanner is switched on.
+    'src/rescan-files.cli.ts',
+  ];
 
   it('builds every go-live CLI, not only the long-running services', () => {
     const entry = CONFIG.slice(

@@ -7,7 +7,9 @@ export {
   clearFileProcessors,
   hasFileProcessor,
   rescanPendingFiles,
+  rescanBacklog,
   RESCAN_AFTER_MINUTES,
+  type BacklogRescanReport,
   type FileProcessor,
   type FileProcessorResult,
 } from './file.processors';

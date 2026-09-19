@@ -344,8 +344,20 @@ to clamd and heard back — a second or two — and a download in that window is
 `FILE_SCAN_PENDING` ("still being scanned, try again in a moment") rather than served on trust.
 A hit is `blocked`, permanently, and the uploader's screen says so. A file the daemon could not
 answer for (service restarting, signatures still loading) stays `pending` and is rescanned every
-fifteen minutes until it has an answer. **Files uploaded before the scanner existed stay
-`unscanned`** — they are not scanned retroactively and keep serving as before.
+fifteen minutes until it has an answer.
+
+**Files uploaded before the scanner existed stay `unscanned`** and keep serving as before —
+nothing is scanned retroactively on its own, because withholding every old attachment at once
+is a decision to take at a chosen hour. When you are ready, from the **app** service shell:
+
+```bash
+node apps/api/dist/rescan-files.cli.js            # dry run: how many files it would withhold
+node apps/api/dist/rescan-files.cli.js --write     # mark them pending and queue the scans
+```
+
+(`HR_PROVISION_MISSING_LOGINS=false` must be set in the shell, as for every platform-booting
+command.) Each file is withheld only until its own verdict lands — the worker gets through a
+few files a second — and anything the queue dropped is picked up by the fifteen-minute sweep.
 
 Verify: the api's deploy log says `virus scanner registered: clamd reachable` (or, while the
 signatures load, `clamd is not answering — uploads will stay pending until it is`, which clears

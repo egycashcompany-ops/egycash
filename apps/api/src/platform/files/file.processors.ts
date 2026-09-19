@@ -122,8 +122,78 @@ export const rescanPendingFiles = async (now = new Date()): Promise<number> => {
   if (!hasFileProcessor('virusScan')) return 0;
   const stale = new Date(now.getTime() - RESCAN_AFTER_MINUTES * 60_000);
   const files = await fileRepository.listPendingScans(stale, RESCAN_BATCH);
-  for (const file of files) {
-    await enqueue('files', FILE_PROCESS_JOB, { fileId: String(file._id), only: ['virusScan'] });
-  }
+  for (const file of files) await enqueueVirusScan(file._id);
   return files.length;
+};
+
+/** The scan, and only the scan — no second thumbnail, no second `ThumbnailCreated`. */
+export const enqueueVirusScan = async (fileId: Types.ObjectId): Promise<void> => {
+  await enqueue('files', FILE_PROCESS_JOB, { fileId: String(fileId), only: ['virusScan'] });
+};
+
+export interface BacklogRescanReport {
+  /** Live files that had never been scanned when the run started. */
+  unscanned: number;
+  /** Rows flipped `unscanned` → `pending` (0 on a dry run). */
+  marked: number;
+  /** Scan jobs handed to the queue (0 on a dry run). */
+  queued: number;
+  /** Files marked but not queued: the queue refused. The fifteen-minute sweep picks them up. */
+  leftToSweep: number;
+}
+
+/**
+ * Scan what was uploaded BEFORE a scanner existed (`rescan:files`).
+ *
+ * A file uploaded on a deployment with no scanner is `unscanned`, and stays that way when one is
+ * switched on — scanning never happens retroactively on its own, because withholding every old
+ * file at once is an operator's decision, not a boot's. This is that decision: every live
+ * `unscanned` file becomes `pending` (withheld until its verdict) and a scan-only job is queued
+ * for it, in batches, oldest first. Marking and queueing are separate acts on purpose — a row
+ * marked while the queue is down is not lost; the sweep re-queues anything `pending` for longer
+ * than its patience, so the outcome is the same, only slower.
+ *
+ * Refused outright when no scanner is registered: marking files `pending` with nothing to
+ * answer would withhold them forever.
+ */
+export const rescanBacklog = async (options: {
+  write: boolean;
+  batch?: number;
+  onBatch?: (progress: BacklogRescanReport) => void;
+}): Promise<BacklogRescanReport> => {
+  if (!hasFileProcessor('virusScan')) {
+    throw new Error(
+      'no virus scanner is registered (CLAMAV_HOST is unset) — nothing would ever answer',
+    );
+  }
+  const batch = options.batch ?? RESCAN_BATCH;
+  const report: BacklogRescanReport = {
+    unscanned: await fileRepository.countUnscanned(),
+    marked: 0,
+    queued: 0,
+    leftToSweep: 0,
+  };
+  if (!options.write) return report;
+
+  let after: Types.ObjectId | null = null;
+  for (;;) {
+    const ids = await fileRepository.listUnscannedIds(batch, after);
+    if (ids.length === 0) break;
+    report.marked += await fileRepository.markUnscannedPending(ids);
+    for (const id of ids) {
+      try {
+        await enqueueVirusScan(id);
+        report.queued += 1;
+      } catch (error) {
+        report.leftToSweep += 1;
+        logger.warn(
+          { err: error, fileId: String(id) },
+          'rescan: queue refused; the sweep will retry',
+        );
+      }
+    }
+    options.onBatch?.(report);
+    after = ids[ids.length - 1] ?? null;
+  }
+  return report;
 };

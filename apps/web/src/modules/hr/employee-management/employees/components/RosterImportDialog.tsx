@@ -176,6 +176,16 @@ export const RosterImportDialog = ({
       open={open}
       onClose={close}
       size="lg"
+      // «انا عاوز لما ادوس على الاكس بس يقفل مش اى ميس كليك يقفل التاب». This dialog held the
+      // longest-running thing in the product: the file is read and compared against 2,600 records
+      // while a spinner turns, and one stray click on the backdrop — or one tap beside the panel
+      // on a phone — threw the whole thing away. What was lost was not a form: it was a preview
+      // somebody was part-way through reading, the only chance to see what an upload would write
+      // before agreeing to it, and getting it back meant uploading and waiting all over again.
+      //
+      // The two deliberate ways out are unchanged: the × and Escape. Neither is reachable by
+      // accident, which is the whole distinction this flag draws.
+      dismissOnOutsideClick={false}
       title={t('employees.roster.title')}
       description={t('employees.roster.subtitle')}
       footer={

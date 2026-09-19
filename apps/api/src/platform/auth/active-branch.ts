@@ -43,9 +43,18 @@ const activeBranchIds = async (): Promise<Set<string>> => {
  * Anything unrecognisable — a malformed id, a branch that no longer exists, `all` — resolves to
  * null, which is the unnarrowed view the caller would have had anyway.
  */
-export const resolveActiveBranch = async (raw: string | undefined): Promise<string | null> => {
+export const resolveActiveBranch = async (
+  raw: string | undefined,
+  /**
+   * The branches the caller's grants reach, when they reach more than one. A multi-branch account
+   * may narrow only to one of THOSE — the reach is the ceiling, exactly as the organization-wide
+   * grant is for everybody else — so a value outside it resolves to null, the unnarrowed view.
+   */
+  reach?: readonly string[],
+): Promise<string | null> => {
   if (raw === undefined || raw === '' || raw === 'all') return null;
   if (!isObjectId(raw)) return null;
+  if (reach !== undefined && reach.length > 0 && !reach.includes(raw)) return null;
   if ((await activeBranchIds()).has(raw)) return raw;
 
   // A MISS is re-checked against the database before it is refused. Without this, a branch created

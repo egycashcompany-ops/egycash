@@ -104,7 +104,7 @@ export const UserRolesTab = ({ user }: { user: UserDto }): JSX.Element => {
     {
       key: 'scope',
       header: t('systemAdmin.assignments.scope'),
-      render: (a) => <AssignmentScopeBadge scope={a.scope} />,
+      render: (a) => <AssignmentScopeBadge scope={a.scope} assignment={a} />,
     },
     {
       key: 'validity',

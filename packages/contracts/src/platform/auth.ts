@@ -104,6 +104,13 @@ export interface MeDto {
   /** Personal colour scheme; `system` is resolved by the client against the device. */
   theme: ThemeMode;
   branchId: string | null;
+  /**
+   * Every branch the account's active grants reach — its own plus any added to it. Empty for an
+   * organization-wide account (which reaches all of them) and for one confined to its own branch.
+   * The command bar's branch switcher lists exactly these, so a manager given a second branch to
+   * follow can narrow to either without being offered a third they cannot see.
+   */
+  branchIds: string[];
   /** The Employee this login belongs to (ADR-017) — the self-service subject (leave C1-R). */
   employeeId: string | null;
   /** Effective permission → widest granted scope (ADR-004, ADR-015). */

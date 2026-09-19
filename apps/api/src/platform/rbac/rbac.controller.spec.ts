@@ -43,6 +43,7 @@ vi.mock('./rbac.service', () => ({
     updateAssignment: (...args: unknown[]) => updateAssignment(...args),
     revokeAssignment: (...args: unknown[]) => revokeAssignment(...args),
     getRole: vi.fn().mockResolvedValue(roleDoc),
+    namesForAssignments: vi.fn().mockResolvedValue(new Map()),
     toRoleDto: (doc: unknown) => doc,
     toAssignmentDto: (doc: unknown) => doc,
   },

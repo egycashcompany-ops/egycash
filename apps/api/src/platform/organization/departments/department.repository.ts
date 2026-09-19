@@ -13,6 +13,26 @@ class DepartmentRepository extends BaseRepository<DepartmentDoc> {
   }
 
   /** Does any branch still declare this company-wide department? Blocks deleting the entry. */
+  /**
+   * Every live branch copy of the given company-wide departments — optionally only in the given
+   * branches. What a `department` grant with a reach resolves to: «الحركة» in the branches it
+   * covers, as ids the scope filter can `$in` on.
+   */
+  async findByCatalogIdsSystem(
+    catalogIds: readonly string[],
+    branchIds?: readonly string[],
+  ): Promise<DepartmentDoc[]> {
+    if (catalogIds.length === 0) return [];
+    const filter: Record<string, unknown> = {
+      catalogId: { $in: catalogIds.map((id) => new Types.ObjectId(id)) },
+      isDeleted: false,
+    };
+    if (branchIds !== undefined && branchIds.length > 0) {
+      filter.branchId = { $in: branchIds.map((id) => new Types.ObjectId(id)) };
+    }
+    return this.model.find(filter).lean<DepartmentDoc[]>().exec();
+  }
+
   async existsWithCatalog(catalogId: string): Promise<boolean> {
     return this.exists({ catalogId: new Types.ObjectId(catalogId) });
   }

@@ -32,6 +32,18 @@ export interface ChainBound {
 const NEWEST_FIRST = { outReading: -1, _id: -1 } as const;
 
 /**
+ * A row that IS A LINK IN THE CHAIN.
+ *
+ * A day recorded with no reading (`outReading: null`, see `odometer.model.ts`) is a record of who
+ * drove, not a measurement — it must never come back as a bound, a predecessor, a neighbour, a
+ * chain head or a latest reading. Every question the chain is asked carries this clause, and
+ * missing one is silent and wrong in the expensive direction: MongoDB sorts `null` BELOW `0`, so
+ * an unfiltered day-row would win `sort({ outReading: 1 })` and become an upper bound of nothing,
+ * refusing every legitimate reading after it.
+ */
+const ON_THE_CHAIN = { outReading: { $ne: null } } as const;
+
+/**
  * «One of these cars»: by registry id, or — for a row kept from the old book on a car the
  * registry never had — by the code the book wrote. Shared by every register that keeps such rows.
  * An empty id list with no codes still narrows to NOTHING, as the callers' comments promise.
@@ -52,7 +64,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
 
   async findOpen(vehicleId: string, session?: ClientSession): Promise<FleetOdometerLogDoc | null> {
     return this.model
-      .findOne({ vehicleId: new Types.ObjectId(vehicleId), inReading: null, isDeleted: false })
+      .findOne({ vehicleId: new Types.ObjectId(vehicleId), inReading: null, isDeleted: false, ...ON_THE_CHAIN })
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
       .exec();
@@ -71,10 +83,12 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
    */
   async existingByKey(ref: BookRef): Promise<Map<string, FleetOdometerLogDoc[]>> {
     const rows = await this.model
-      .find(bookRefFilter<FleetOdometerLogDoc>(ref))
+      .find({ ...bookRefFilter<FleetOdometerLogDoc>(ref), ...ON_THE_CHAIN })
       .lean<FleetOdometerLogDoc[]>()
       .exec();
-    return groupByKey(rows, (row) => this.rowKey(row.date, row.outReading));
+    // Every row the book ever wrote carries an opening reading, so a day recorded with no reading
+    // on the new screen is not one of them and is left out of the question entirely.
+    return groupByKey(rows, (row) => this.rowKey(row.date, row.outReading as number));
   }
 
   /**
@@ -131,7 +145,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     session?: ClientSession,
   ): Promise<FleetOdometerLogDoc | null> {
     return this.model
-      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false, ...ON_THE_CHAIN })
       .sort(NEWEST_FIRST)
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
@@ -146,7 +160,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     // Strictly-lower / strictly-higher WOULD skip a row that ties this one's value, leaving a
     // tied pair with no relationship in either direction — so the comparison falls back to `_id`
     // at equal readings, which is the same total order `NEWEST_FIRST` imposes.
-    const base = { vehicleId: entry.vehicleId, isDeleted: false };
+    const base = { vehicleId: entry.vehicleId, isDeleted: false, ...ON_THE_CHAIN };
     const lower = {
       $or: [
         { outReading: { $lt: entry.outReading } },
@@ -202,9 +216,32 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       .findOne({
         vehicleId: new Types.ObjectId(vehicleId),
         isDeleted: false,
+        ...ON_THE_CHAIN,
         date: { $lt: FleetOdometerRepository.dayAfter(on) },
       })
       .sort({ date: -1, _id: -1 })
+      .session(session ?? null)
+      .lean<FleetOdometerLogDoc>()
+      .exec();
+  }
+
+  /**
+   * A day this vehicle already has on record WITHOUT a reading. The only thing that stops the
+   * same empty day being logged twice — no unique index can, because the row is deliberately not
+   * a measurement and two of them are indistinguishable.
+   */
+  async findDayWithoutReading(
+    vehicleId: string,
+    on: Date,
+    session?: ClientSession,
+  ): Promise<FleetOdometerLogDoc | null> {
+    return this.model
+      .findOne({
+        vehicleId: new Types.ObjectId(vehicleId),
+        isDeleted: false,
+        outReading: null,
+        date: { $gte: FleetOdometerRepository.dayOf(on), $lt: FleetOdometerRepository.dayAfter(on) },
+      })
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
       .exec();
@@ -216,7 +253,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     session?: ClientSession,
   ): Promise<FleetOdometerLogDoc | null> {
     return this.model
-      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false })
+      .findOne({ vehicleId: new Types.ObjectId(vehicleId), isDeleted: false, ...ON_THE_CHAIN })
       .sort({ date: 1, _id: 1 })
       .session(session ?? null)
       .lean<FleetOdometerLogDoc>()
@@ -236,6 +273,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         $match: {
           vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
           isDeleted: false,
+          ...ON_THE_CHAIN,
         },
       },
       { $sort: { vehicleId: 1, outReading: -1, _id: -1 } },
@@ -275,6 +313,13 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     return end;
   }
 
+  /** Midnight UTC of the day `on` names — the inclusive start of it, the pair to `dayAfter`. */
+  private static dayOf(on: Date): Date {
+    const start = new Date(on);
+    start.setUTCHours(0, 0, 0, 0);
+    return start;
+  }
+
   /**
    * The two bounds a counter measured on `on` would have to sit between to be a point on this
    * vehicle's chain: the highest reading dated on or before that day, and the lowest dated after
@@ -300,7 +345,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     session?: ClientSession,
   ): Promise<{ lower: ChainBound | null; upper: ChainBound | null }> {
     const end = FleetOdometerRepository.dayAfter(on);
-    const base = { vehicleId: new Types.ObjectId(vehicleId), isDeleted: false };
+    const base = { vehicleId: new Types.ObjectId(vehicleId), isDeleted: false, ...ON_THE_CHAIN };
     const [early, late] = await Promise.all([
       this.model
         .findOne({ ...base, date: { $lt: end } })
@@ -315,10 +360,43 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
         .lean<FleetOdometerLogDoc>()
         .exec(),
     ]);
+    // `ON_THE_CHAIN` is in `base`, so neither row can carry a null reading.
     return {
-      lower: early === null ? null : { reading: early.outReading, date: early.date },
-      upper: late === null ? null : { reading: late.outReading, date: late.date },
+      lower: early === null ? null : { reading: early.outReading as number, date: early.date },
+      upper: late === null ? null : { reading: late.outReading as number, date: late.date },
     };
+  }
+
+  /**
+   * HOW MANY DAYS THIS CAR WAS DRIVEN WITH NOBODY WRITING THE COUNTER — per vehicle, each counted
+   * from its OWN date, in one query for the whole fleet.
+   *
+   * «يدله انذار ان العربيه دى المفروض تدخل الرقم عشان احسب الصيانه». A day recorded with no
+   * reading is on no chain, so it moves no figure the alarm computes — which is exactly why the
+   * alarm has to say it is there. «Since the last service» is the window that matters: days
+   * before it are already behind the baseline and cannot be part of the distance since.
+   *
+   * `since: null` counts every such day the car has, for a car with no baseline to count from.
+   */
+  async daysWithoutReadingSince(
+    pairs: readonly { vehicleId: string; since: Date | null }[],
+  ): Promise<Map<string, number>> {
+    if (pairs.length === 0) return new Map();
+    const rows = await this.model.aggregate<{ _id: Types.ObjectId; days: number }>([
+      {
+        $match: {
+          isDeleted: false,
+          outReading: null,
+          $or: pairs.map((pair) =>
+            pair.since === null
+              ? { vehicleId: new Types.ObjectId(pair.vehicleId) }
+              : { vehicleId: new Types.ObjectId(pair.vehicleId), date: { $gte: pair.since } },
+          ),
+        },
+      },
+      { $group: { _id: '$vehicleId', days: { $sum: 1 } } },
+    ]);
+    return new Map(rows.map((row) => [String(row._id), row.days]));
   }
 
   /**
@@ -340,6 +418,7 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       {
         $match: {
           isDeleted: false,
+          ...ON_THE_CHAIN,
           $or: pairs.map((pair) => ({
             vehicleId: new Types.ObjectId(pair.vehicleId),
             date: { $lt: FleetOdometerRepository.dayAfter(pair.on) },

@@ -157,6 +157,15 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
   // Each baseline against the chain AS IT STOOD ON ITS OWN SERVICE DATE — one query for the whole
   // fleet, not one per car. Only vehicles that actually have a baseline are asked about: a car
   // with no counting visit has no date to ask on, and `noService` answers it first anyway.
+  // How many days each car ran since its last service with nobody writing the counter — one
+  // query for the whole fleet, counted from each car's own service date. See the DTO field.
+  const unread = await fleetOdometerRepository.daysWithoutReadingSince(
+    vehicles.map((vehicle) => ({
+      vehicleId: String(vehicle._id),
+      since: baselines.get(String(vehicle._id))?.serviceDate ?? null,
+    })),
+  );
+
   const lowerBounds = await fleetOdometerRepository.lowerBoundsAt(
     [...baselines.values()].map((baseline) => ({
       vehicleId: baseline.vehicleId,
@@ -198,6 +207,7 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       lastServiceVisitId: baseline?.visitId ?? null,
       // Straight from the guards. Re-deriving it here would be a second copy of the rule.
       noAlarmReason: result.noAlarmReason,
+      daysWithoutReading: unread.get(id) ?? 0,
     };
   });
 };

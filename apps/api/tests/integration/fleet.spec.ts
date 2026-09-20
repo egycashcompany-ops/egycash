@@ -1411,6 +1411,123 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
     expect((await record(v.id, 1500, '2026-07-11')).status).toBe(201);
   });
 
+  /*
+   * A DAY WITH NO READING AT ALL — «لا اما يسيبو فاضى ويدله انذار ان العربيه دى المفروض تدخل
+   * الرقم عشان احسب الصيانه، لو مش هيفرق فى الصيانه سيبوا فاضى».
+   *
+   * The day is worth recording — who drove it — and the counter nobody wrote down is not invented
+   * for it. What these pin is that such a row changes NOTHING that is measured: the chain either
+   * side of it is untouched, the car's open period is still its own, and the next real reading
+   * still lands exactly where it would have.
+   */
+  const recordNoReading = (vehicleId: string, date: string) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, date });
+
+  it('records a missed day with NO reading, between two readings, and touches neither', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09'); // Thursday
+    await record(v.id, 1600, '2026-07-12'); // Sunday
+
+    expect((await recordNoReading(v.id, '2026-07-11')).status, 'Saturday, uncounted').toBe(201);
+
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => [r.outReading, r.inReading, r.km])).toEqual([
+      [1000, 1600, 600], // Thursday still carries the WHOLE Thursday→Sunday distance
+      [null, null, null], // Saturday: a day, and no measurement of any kind
+      [1600, null, null], // Sunday, still the car's one open period
+    ]);
+    expect(rows.filter((r) => r.inReading === null), 'the empty day is NOT a second open period')
+      .toHaveLength(2);
+  });
+
+  it('the car can still take its next real reading — the open-period index is not confused', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await recordNoReading(v.id, '2026-07-11');
+
+    // The row that genuinely opens a period. Under an index that counted the empty day as open,
+    // this is the write that would have been refused.
+    expect((await record(v.id, 2000, '2026-07-14')).status).toBe(201);
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => r.outReading)).toEqual([1000, null, 1600, 2000]);
+    expect(rows.filter((r) => r.outReading !== null && r.inReading === null)).toHaveLength(1);
+  });
+
+  it('a missed day does not move the bracket, the expected reading, or the alarm’s distance', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    const expectedReading = async (): Promise<number | null> =>
+      data<{ expectedReading: number | null }>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/expected')
+          .query({ vehicleId: v.id })
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).expectedReading;
+    const before = await expectedReading();
+
+    await recordNoReading(v.id, '2026-07-11');
+
+    expect(await expectedReading(), 'a day nobody measured moves no figure').toEqual(before);
+    // …and the bracket for the very day it was recorded on still reads off the real readings.
+    const bracket = data<{ lowerBound: number | null; upperBound: number | null }>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/bracket')
+        .query({ vehicleId: v.id, on: '2026-07-11' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect([bracket.lowerBound, bracket.upperBound]).toEqual([1000, 1600]);
+  });
+
+  it('REFUSES a missing reading at the end of the chain — «بس اللى هى فاتت»', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+
+    // Nothing is recorded after this day, so the day is not a gap — it is the end of the chain,
+    // and a row there with no reading would be the car's open period carrying no number at all.
+    const refused = await recordNoReading(v.id, '2026-07-11');
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain('before it AND after it');
+    expect(await logsFor(v.id), 'and it wrote nothing').toHaveLength(1);
+  });
+
+  it('REFUSES a missing reading on a car with no earlier reading either', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1600, '2026-07-12');
+    expect((await recordNoReading(v.id, '2026-07-09')).status).toBe(409);
+  });
+
+  it('REFUSES the same empty day twice — two of them say nothing a first does not', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    expect((await recordNoReading(v.id, '2026-07-11')).status).toBe(201);
+
+    const again = await recordNoReading(v.id, '2026-07-11');
+    expect(again.status).toBe(409);
+    expect(JSON.stringify(again.body)).toContain('already recorded');
+    expect(await logsFor(v.id)).toHaveLength(3);
+  });
+
+  it('the correction flow refuses to put a reading on it, and says where to put one', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await recordNoReading(v.id, '2026-07-11');
+    const empty = (await logsFor(v.id)).find((r) => r.outReading === null) as FleetOdometerLogDto;
+
+    const refused = await request(app)
+      .patch(`/api/v1/fleet/odometer/${empty.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outReading: 1400, version: 0 });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('record the reading for that date');
+  });
+
   it('the owner’s own example: Thursday, Sunday, then Saturday, then Friday', async () => {
     // «لو مثلا اخر قراءه الخميس وجيت ضيفت الاحد بعدين هضيف السبت وبعدين [الجمعه]».
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));

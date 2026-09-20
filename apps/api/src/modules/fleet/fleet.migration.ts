@@ -295,9 +295,17 @@ export const migrateFixedCrewIndex = async (): Promise<{
  */
 export const retireOpenRowIndexes = async (): Promise<{ dropped: string[] }> => {
   const dropped: string[] = [];
-  for (const [model, name] of [
-    [FleetOdometerLogModel, 'ux_open_period'],
-    [FleetMaintenanceVisitModel, 'ux_open_visit'],
+  // Each index, with the keys its CURRENT filter must name. An index missing any of them was
+  // built under an older shape and is dropped so the builder below can rebuild it: mongo answers
+  // a rebuild under a different `partialFilterExpression` with IndexOptionsConflict, and the new
+  // filter would silently never take effect.
+  //
+  // `outReading` joined the odometer's list when a day could first be recorded WITHOUT a reading:
+  // such a row carries `inReading: null` because it closes nothing, and under the old filter it
+  // read as a second open period — so the car's real open one would be refused.
+  for (const [model, name, keys] of [
+    [FleetOdometerLogModel, 'ux_open_period', ['vehicleId', 'outReading']],
+    [FleetMaintenanceVisitModel, 'ux_open_visit', ['vehicleId']],
   ] as const) {
     try {
       const existing = await model.collection
@@ -308,7 +316,8 @@ export const retireOpenRowIndexes = async (): Promise<{ dropped: string[] }> => 
         | { partialFilterExpression?: Record<string, unknown> }
         | undefined;
       if (index === undefined) continue;
-      if (index.partialFilterExpression?.['vehicleId'] !== undefined) continue;
+      const filter = index.partialFilterExpression ?? {};
+      if (keys.every((key) => filter[key] !== undefined)) continue;
       await model.collection.dropIndex(name);
       dropped.push(`${model.collection.name}.${name}`);
     } catch (error) {

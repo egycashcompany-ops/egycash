@@ -108,6 +108,62 @@ class FleetOdometerService {
         input.date,
         session,
       );
+
+      /*
+       * A DAY WITH NO READING — «لا اما يسيبو فاضى ويدله انذار ان العربيه دى المفروض تدخل الرقم
+       * عشان احسب الصيانه».
+       *
+       * A day that was missed can still be worth recording: who took the car out, and what
+       * happened. What it cannot carry is a counter nobody wrote down, and every number this
+       * could invent for it would be a lie told in the one column the maintenance alarm measures
+       * from. So the reading may be left out — and ONLY where leaving it out changes nothing that
+       * is measured: a day the chain already brackets on BOTH sides. Thursday was read, Sunday
+       * was read, and Saturday sits between them; Thursday's row already carries the whole
+       * Thursday-to-Sunday distance, and the Saturday row adds no distance because none was
+       * measured on it.
+       *
+       * Either bound absent and the reading is REQUIRED, which is the same sentence read twice:
+       * no bound below means the vehicle has no reading before that day, so nothing brackets it;
+       * no bound above means the day is at the END of the chain, and a day at the end with no
+       * reading would be the car's open period carrying no number at all. «بس اللى هى فاتت».
+       *
+       * The row is on NO CHAIN. It closes nothing, opens nothing, hands nothing on, splices no
+       * period, and `ON_THE_CHAIN` in the repository keeps it out of every question the chain is
+       * asked. The alarm counts it instead — see `daysWithoutReading` — so the distance since the
+       * last service is reported as what it is: measured, with days in it that nobody measured.
+       */
+      if (input.reading == null) {
+        if (bounds.lower === null || bounds.upper === null) {
+          throw new ConflictError(
+            'a reading may be left out only for a day that already has a reading before it AND after it; this date is at the end of the chain, or the vehicle has no earlier reading',
+          );
+        }
+        const already = await fleetOdometerRepository.findDayWithoutReading(
+          input.vehicleId,
+          input.date,
+          session,
+        );
+        if (already !== null) {
+          throw new ConflictError('this day is already recorded for this vehicle without a reading');
+        }
+        const day = await fleetOdometerRepository.create(
+          {
+            vehicleId: new Types.ObjectId(input.vehicleId),
+            date: input.date,
+            outReading: null,
+            inReading: null,
+            km: null,
+            driver1EmployeeId:
+              input.driver1EmployeeId == null ? null : new Types.ObjectId(input.driver1EmployeeId),
+            driver2EmployeeId:
+              input.driver2EmployeeId == null ? null : new Types.ObjectId(input.driver2EmployeeId),
+            notes: input.notes ?? null,
+          },
+          { by, session },
+        );
+        return { created: day, closed: null, inserted: false, code: vehicle.code };
+      }
+
       if (bounds.lower !== null && input.reading < bounds.lower.reading) {
         throw new ConflictError(
           `reading ${input.reading} is below the ${bounds.lower.reading} already recorded on or before ${iso(bounds.lower.date)} (FR-2); use the correction flow for a mis-entered past reading`,
@@ -144,7 +200,8 @@ class FleetOdometerService {
       if (prior !== null) {
         closed = await fleetOdometerRepository.updateById(
           String(prior._id),
-          { inReading: input.reading, km: input.reading - prior.outReading },
+          // `findPriorByDate` answers with a row that is ON THE CHAIN, so its reading is a number.
+          { inReading: input.reading, km: input.reading - (prior.outReading as number) },
           { by, version: prior.__v, session },
         );
       }
@@ -174,7 +231,11 @@ class FleetOdometerService {
       entityRef: entityRef(String(outcome.created._id)),
       action: 'create',
       changes: [
-        { field: 'outReading', old: null, new: outcome.created.outReading },
+        // A day recorded with no counter did not record a reading of «null» — it recorded a day.
+        // The trail says which of the two happened, because the two are not the same act.
+        ...(outcome.created.outReading === null
+          ? [{ field: 'dayWithoutReading', old: null, new: true }]
+          : [{ field: 'outReading', old: null, new: outcome.created.outReading }]),
         // A back-dated reading SPLITS a period that was already closed, so the trail has to say
         // that rather than reading like an ordinary close: two rows now carry the km one row used
         // to, and the audit is where that is explained if the figures are ever questioned.
@@ -210,7 +271,8 @@ class FleetOdometerService {
     const latest = await fleetOdometerRepository.findLatest(vehicleId);
     if (latest === null) return { reading: null, asOf: null };
     return {
-      reading: Math.max(latest.outReading, latest.inReading ?? latest.outReading),
+      // `findLatest` answers with a row that is ON THE CHAIN — a day with no reading is not one.
+      reading: Math.max(latest.outReading as number, latest.inReading ?? (latest.outReading as number)),
       asOf: latest.date,
     };
   }
@@ -312,15 +374,32 @@ class FleetOdometerService {
 
     const { updated, vehicleId, bookCode } = await unitOfWork(async (session) => {
       const entry = await fleetOdometerRepository.getById(id);
-      const { prev, next } = await fleetOdometerRepository.findNeighbors(entry, session);
+
+      /*
+       * A DAY RECORDED WITH NO READING IS NOT CORRECTED HERE. It is on no chain — there are no
+       * neighbours to check it against and no period to rewrite — so the two reading fields have
+       * nothing to mean on it. The way to give that day a counter is to RECORD the reading for
+       * that date, which splices into the chain properly; everything else about the day (who
+       * drove, the note) is corrected exactly as on any other row.
+       */
+      if (entry.outReading === null && (input.outReading !== undefined || input.inReading !== undefined)) {
+        throw invalid(
+          'outReading',
+          'this day was recorded without a reading — record the reading for that date instead of correcting this row',
+        );
+      }
+      const { prev, next } =
+        entry.outReading === null
+          ? { prev: null, next: null }
+          : await fleetOdometerRepository.findNeighbors(entry, session);
 
       const newOut = input.outReading ?? entry.outReading;
       const newIn = input.inReading === undefined ? entry.inReading : input.inReading;
 
-      if (newIn !== null && newIn < newOut) {
+      if (newOut !== null && newIn !== null && newIn < newOut) {
         throw invalid('inReading', 'a period cannot end below its own start');
       }
-      if (prev !== null && newOut <= prev.outReading) {
+      if (prev !== null && newOut !== null && newOut <= (prev.outReading as number)) {
         throw invalid('outReading', 'the corrected reading falls below the previous period');
       }
       if (next !== null && newIn === null) {
@@ -339,7 +418,7 @@ class FleetOdometerService {
       const set: Partial<FleetOdometerLogDoc> = {
         outReading: newOut,
         inReading: newIn,
-        km: newIn === null ? null : newIn - newOut,
+        km: newIn === null || newOut === null ? null : newIn - newOut,
       };
       if (input.date !== undefined) set.date = input.date;
       if (input.driver1EmployeeId !== undefined) {
@@ -374,10 +453,12 @@ class FleetOdometerService {
       });
 
       // Propagate the SHARED readings — the identity that makes the chain a chain.
-      if (prev !== null && newOut !== entry.outReading) {
+      // `prev` is non-null only for a row that is itself on the chain, so both readings are
+      // numbers here — a day with no reading has no neighbours at all.
+      if (prev !== null && newOut !== null && newOut !== entry.outReading) {
         await fleetOdometerRepository.updateById(
           String(prev._id),
-          { inReading: newOut, km: newOut - prev.outReading },
+          { inReading: newOut, km: newOut - (prev.outReading as number) },
           { by, version: prev.__v, session },
         );
       }

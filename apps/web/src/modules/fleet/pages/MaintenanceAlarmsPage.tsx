@@ -166,6 +166,34 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
         alarm.sinceServiceKm === null ? '—' : formatNumber(alarm.sinceServiceKm, locale),
     },
     {
+      key: 'daysWithoutReading',
+      sortable: true,
+      header: t('fleet.alarms.columns.daysWithoutReading'),
+      align: 'end',
+      /*
+       * «يدله انذار ان العربيه دى المفروض تدخل الرقم عشان احسب الصيانه».
+       *
+       * A day recorded with no counter is on no chain, so it moves NONE of the figures beside it
+       * — and that is precisely why this column has to exist. `sinceServiceKm` is the distance
+       * somebody measured; this is how many days of the cycle nobody did, which makes the real
+       * distance at least what the row says and possibly more.
+       *
+       * Zero is the ordinary case and prints as a dash rather than a 0, so the eye lands only on
+       * the cars that actually need a reading typed in.
+       */
+      render: (alarm) =>
+        alarm.daysWithoutReading === 0 ? (
+          <span className="text-slate-400 dark:text-slate-600">—</span>
+        ) : (
+          <span
+            className="tabular-nums font-medium text-amber-700 dark:text-amber-300"
+            title={t('fleet.alarms.daysWithoutReadingHint')}
+          >
+            {formatNumber(alarm.daysWithoutReading, locale)}
+          </span>
+        ),
+    },
+    {
       key: 'remainingKm',
       sortable: true,
       header: t('fleet.alarms.columns.remaining'),

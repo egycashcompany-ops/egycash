@@ -64,7 +64,7 @@ describe('the UNBOUNDED read is different, and deliberately still takes the max'
 
   it('findLatest likewise — the floor `record()` refuses below', () => {
     const service = readFileSync(join(HERE, 'odometer.service.ts'), 'utf8');
-    expect(service).toContain('Math.max(latest.outReading, latest.inReading ?? latest.outReading)');
+    expect(service).toContain('Math.max(latest.outReading as number, latest.inReading ?? (latest.outReading as number))');
   });
 });
 

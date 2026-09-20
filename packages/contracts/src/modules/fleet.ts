@@ -749,7 +749,13 @@ export interface FleetOdometerLogDto {
    */
   vehicleCode: string | null;
   date: string;
-  outReading: number;
+  /**
+   * `null` = A DAY RECORDED WITH NO READING — «سيبوا فاضى». A day missed between two readings can
+   * be recorded for who drove it without a counter nobody wrote down. Such a row is on no chain:
+   * `inReading` and `km` are null too, nothing is measured from it, and the maintenance alarm
+   * counts it so the distance it reports is not read as the whole truth.
+   */
+  outReading: number | null;
   /** null = the OPEN period; closed by the vehicle's next reading. */
   inReading: number | null;
   /** SERVER-derived, never client-supplied. */
@@ -777,7 +783,14 @@ export const RecordFleetOdometerSchema = z
   .object({
     vehicleId: objectId(),
     date: z.coerce.date(),
-    reading: z.number().int().min(0),
+    /**
+     * SHAPE ONLY. Whether the reading may actually be left out depends on where the date sits in
+     * THIS vehicle's chain — a day between two recorded readings may be logged for who drove it
+     * without a counter nobody wrote down — and no schema can see a chain. `odometer.service`
+     * decides it from the same bracket that already enforces FR-2, and refuses a missing reading
+     * anywhere else.
+     */
+    reading: z.number().int().min(0).nullish(),
     driver1EmployeeId: objectId().nullish(),
     driver2EmployeeId: objectId().nullish(),
     notes: z.string().trim().min(1).max(1000).nullish(),
@@ -964,6 +977,18 @@ export interface FleetMaintenanceAlarmDto {
    * honest behaviour — the answer was never "one thing is missing", only "this is what stopped it".
    */
   noAlarmReason: FleetNoAlarmReason | null;
+  /**
+   * DAYS THIS CAR RAN SINCE ITS LAST SERVICE WITH NOBODY WRITING THE COUNTER.
+   *
+   * «لا اما يسيبو فاضى ويدله انذار ان العربيه دى المفروض تدخل الرقم عشان احسب الصيانه». A day
+   * recorded without a reading is on no chain, so it moves none of the figures above — and that
+   * is the point: `sinceServiceKm` is the distance somebody MEASURED, and this is how many days
+   * of the cycle nobody did. A non-zero figure means the real distance is at least what the
+   * screen says, and the way to make it exact is to record the counter for those days.
+   *
+   * Counted since the last alarm-counting service; for a car with no such service, since ever.
+   */
+  daysWithoutReading: number;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────

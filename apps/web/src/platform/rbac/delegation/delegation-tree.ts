@@ -91,6 +91,8 @@ export interface UnitNode {
   screensOn: number;
   screensTotal: number;
   lockedScreens: number;
+  /** Screens the caller MAY tick and has not — never the locked ones, which are not his to tick. */
+  untickedScreens: number;
   actionsOn: number;
   actionsTotal: number;
   /** Nothing here is the caller's to grant: the block explains a refusal, it is not a control. */
@@ -169,6 +171,7 @@ const buildUnit = (
     screensOn: screens.filter((s) => s.on > 0).length,
     screensTotal: screens.length,
     lockedScreens: screens.filter((s) => !s.grantable).length,
+    untickedScreens: screens.filter((s) => s.grantable && s.on === 0).length,
     actionsOn,
     actionsTotal,
     editable: ceiling.size > 0,

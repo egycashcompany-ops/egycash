@@ -170,6 +170,16 @@ describe('the counts drawn beside the rows', () => {
     expect(d1?.modules.flatMap((m) => m.screens).find((s) => s.id === 'fleet.vehicles')?.grantable).toBe(false);
   });
 
+  it('counts the screens still to tick without counting the locked ones as ticked', () => {
+    // `vehicle.*` is out of reach in A. A wider grant put a key on the department, so ONE screen is
+    // on — the locked one — while the caller's own screen is still untouched. Subtracting the two
+    // counts from the total would have said «nothing left to tick», which is the opposite.
+    const d1 = branchOf(tree({}, { 'A:d1': ['vehicle.view'] }), 'A').departments[0];
+    expect(d1?.screensOn).toBe(1);
+    expect(d1?.lockedScreens).toBe(1);
+    expect(d1?.untickedScreens).toBe(1);
+  });
+
   it('rolls a branch up from its own record and its departments', () => {
     const half = branchOf(tree({ 'A:d1': ['employee.view'] }), 'A');
     expect(half.state).toBe('some');

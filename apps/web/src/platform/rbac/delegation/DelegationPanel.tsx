@@ -419,7 +419,6 @@ const DepartmentRow = ({
 const ScreenList = ({ unit, nodeId, w }: { unit: UnitNode; nodeId: string; w: Wiring }): JSX.Element => {
   const single = unit.modules.length <= 1;
   const bulk = (on: boolean): void => w.setDraft(unit.unit, setAll(unit.selected, unit.ceiling, on));
-  const unticked = unit.screensTotal - unit.screensOn - unit.lockedScreens;
   return (
     <div id={panelId(nodeId)} className="space-y-1.5 border-t border-slate-100 px-3 py-2 dark:border-slate-800">
       {unit.modules.map((group) => {
@@ -461,7 +460,9 @@ const ScreenList = ({ unit, nodeId, w }: { unit: UnitNode; nodeId: string; w: Wi
         <Button size="sm" variant="ghost" onClick={() => bulk(false)}>
           {w.t('delegation.clearAll')}
         </Button>
-        {unticked > 0 && <span>{w.t('delegation.unticked', { count: unticked })}</span>}
+        {unit.untickedScreens > 0 && (
+          <span>{w.t('delegation.unticked', { count: unit.untickedScreens })}</span>
+        )}
         {unit.lockedScreens > 0 && <span>{w.t('delegation.lockedScreens', { count: unit.lockedScreens })}</span>}
       </div>
     </div>

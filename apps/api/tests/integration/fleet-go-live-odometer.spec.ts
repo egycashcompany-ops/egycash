@@ -234,8 +234,12 @@ describe('the run that can proceed', () => {
       .lean<{ outReading: number; inReading: number | null }[]>()
       .exec();
     expect(orphan.map((row) => [row.outReading, row.inReading])).toEqual([[1, 2]]);
-    expect(String(chain[3]?.driver1EmployeeId), 'two of four names, matched as a prefix').toBe(String(employeeIds.short));
-    expect(chain[3]?.notes).toBe('اسوان');
+    expect(
+      chain[3]?.driver1EmployeeId,
+      'the row the book left with no opening reading carries no driver either — it named none',
+    ).toBeNull();
+    expect(String(chain[4]?.driver1EmployeeId), 'two of four names, matched as a prefix').toBe(String(employeeIds.short));
+    expect(chain[4]?.notes).toBe('اسوان');
     expect(String(chain[0]?.createdBy), 'authored by the seeded admin').toBe(adminId);
   });
 

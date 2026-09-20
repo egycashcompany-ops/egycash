@@ -130,6 +130,19 @@ const EnvSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(16).default('dev-only-access-secret-change-me'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   REFRESH_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
+  /**
+   * Minutes a session may sit with nobody touching it before it is closed; `0` turns it off.
+   *
+   * The server is the one that decides, and it decides from `sessions.lastUsedAt` — the moment
+   * the browser last renewed its token. An ACTIVE browser renews well inside this window, so the
+   * timestamp tracks the person; an idle one stops renewing and the window runs out. That is why
+   * the number must stay comfortably above the renewal cadence the web app uses (half the window,
+   * and never more than half the access-token life) or an active user would be cut off.
+   *
+   * The refresh response carries the value to the browser, so the countdown on screen and the
+   * rule on the server are always the same number.
+   */
+  SESSION_IDLE_MINUTES: z.coerce.number().int().min(0).max(1440).default(10),
   COOKIE_SECURE: z
     .enum(['true', 'false'])
     .default('false')

@@ -9,6 +9,30 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **An unattended screen stops being a signed-in screen.** «لو قعد 10 دقايق مش بيحرك الماوس يخرج
+  عشان يسجل تاني، لكن طول ما هو بيستخدمه خلاص» — and both halves of that sentence are the
+  feature. `SESSION_IDLE_MINUTES` (default 10, `0` switches it off) is enforced by the SERVER, at
+  the renewal, against `sessions.lastUsedAt`: past the window the session is **revoked**, not
+  merely refused, because a cookie that outlives the deadline is the hole the rule exists to
+  close. It is recorded as `idle-timeout` beside a `sessionRevoked` row, so «stepped away» reads
+  differently from «taken over» in the audit log.
+
+  What keeps `lastUsedAt` honest is that the browser renews ONLY WHEN SOMEBODY HAS BEEN THERE
+  since the last renewal (`platform/auth/idle-session.ts`). A timer that renewed regardless would
+  hold every abandoned laptop open for ever and turn the window into decoration; renewing on
+  activity instead means a person entering data for three hours is never signed out, and an empty
+  desk is signed out in ten minutes. Mouse, keys, wheel, scroll and touch count; nothing the
+  application does to itself does, because a background poll continues on a screen nobody is at.
+
+  The last minute is a warning with a countdown and a «كمّل شغل» button, which is also what stands
+  between the rule and the unsaved form it would otherwise discard without notice. Two tabs are
+  one person: the last sign of life is shared through `localStorage`, so the tab being read is
+  never signed out by the tab being typed in. The window travels to the browser on every renewal,
+  so the countdown on screen and the rule on the server are the same number, and an operator
+  changing the variable is obeyed within one cycle rather than at the next full page load.
+
 ### Fixed
 
 - **A delegated grant is over a department in a branch, not the branch.** (ADR-032, amended —

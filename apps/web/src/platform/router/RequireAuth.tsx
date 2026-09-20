@@ -7,6 +7,7 @@ import { type ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAppSelector } from '../../store';
 import { ForcePasswordChangePage } from '../auth/ForcePasswordChangePage';
+import { IdleSessionGuard } from '../auth/IdleSessionGuard';
 
 export const RequireAuth = ({ children }: { children: ReactNode }): ReactNode => {
   const status = useAppSelector((state) => state.auth.status);
@@ -14,5 +15,8 @@ export const RequireAuth = ({ children }: { children: ReactNode }): ReactNode =>
   if (status === 'unknown') return null;
   if (status !== 'signedIn') return <Navigate to="/login" replace />;
   if (mustChange) return <ForcePasswordChangePage />;
-  return children;
+  // Mounted HERE rather than higher up, and as its own component rather than hooks in this one:
+  // the inactivity count belongs to a session, so it starts when one exists and is torn down
+  // with it — and this component's early returns above make it no place for a hook.
+  return <IdleSessionGuard>{children}</IdleSessionGuard>;
 };

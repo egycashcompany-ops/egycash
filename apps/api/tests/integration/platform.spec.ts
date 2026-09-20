@@ -14,6 +14,8 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { getCache } from '../../src/infrastructure/redis/cache';
+import { SessionModel } from '../../src/platform/auth/session.model';
+import { env } from '../../src/infrastructure/config/env';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 import { type Express } from 'express';
@@ -1363,6 +1365,85 @@ describe('refresh rotation with reuse detection (ADR-006)', () => {
     // The rotated (newest) token is dead too.
     const afterRevoke = await request(app).post('/api/v1/auth/refresh').set('Cookie', secondCookie);
     expect(afterRevoke.status).toBe(401);
+  });
+});
+
+/**
+ * A screen nobody is looking at stops being a signed-in screen (`SESSION_IDLE_MINUTES`).
+ *
+ * The clock the rule reads is `sessions.lastUsedAt`, which the browser keeps fresh by renewing
+ * while somebody is there. These tests move that timestamp rather than waiting ten minutes, which
+ * is the only honest way to test a deadline — the alternative is a sleep that makes the suite
+ * slower than the feature.
+ */
+describe('a session nobody has touched is closed', () => {
+  const idleCookieFor = async (): Promise<{ cookie: string; sessionId: string }> => {
+    const login = await doLogin('admin@ecms.local', PASSWORD);
+    const cookie = (login.cookie ?? '').split(';')[0] ?? '';
+    const session = await SessionModel.findOne({ revokedAt: null }).sort({ createdAt: -1 }).exec();
+    return { cookie, sessionId: String(session?._id ?? '') };
+  };
+
+  it('tells the browser the window, so both count to the same number', async () => {
+    const login = await doLogin('admin@ecms.local', PASSWORD);
+    const cookie = (login.cookie ?? '').split(';')[0] ?? '';
+    const refreshed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(refreshed.status).toBe(200);
+    expect((refreshed.body as { data: { idleMinutes: number } }).data.idleMinutes).toBe(
+      env.SESSION_IDLE_MINUTES,
+    );
+    // And at the way in, so a fresh tab is counting before its first renewal.
+    expect((login.body as { data: { idleMinutes?: number } }).data.idleMinutes).toBe(
+      env.SESSION_IDLE_MINUTES,
+    );
+  });
+
+  it('refuses to renew one that has sat past the window, and REVOKES it', async () => {
+    const { cookie, sessionId } = await idleCookieFor();
+    const pastTheWindow = new Date(Date.now() - (env.SESSION_IDLE_MINUTES + 1) * 60_000);
+    await SessionModel.updateOne({ _id: sessionId }, { $set: { lastUsedAt: pastTheWindow } });
+
+    const refused = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(refused.status).toBe(401);
+    expect((refused.body as { error: { code: string } }).error.code).toBe('AUTH_SESSION_IDLE');
+
+    // A refusal alone would leave the cookie usable a second later, which is the whole hole.
+    const session = await SessionModel.findById(sessionId).exec();
+    expect(session?.revokedAt).not.toBeNull();
+    expect(session?.revokedReason).toBe('idle-timeout');
+
+    // And the same cookie stays dead on a second attempt.
+    const again = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(again.status).toBe(401);
+  });
+
+  it('renews one that was touched inside the window, however old the SESSION is', async () => {
+    // The rule is about the last sign of life, not about how long ago somebody signed in: a
+    // person working all day must never be cut off by their own morning login.
+    const { cookie, sessionId } = await idleCookieFor();
+    await SessionModel.updateOne(
+      { _id: sessionId },
+      {
+        $set: {
+          createdAt: new Date(Date.now() - 6 * 60 * 60_000),
+          lastUsedAt: new Date(Date.now() - 60_000),
+        },
+      },
+    );
+    const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(renewed.status).toBe(200);
+  });
+
+  it('sits exactly on the boundary without closing', async () => {
+    // `>` and not `>=`: a browser that renews the instant the window elapses must be served, or
+    // the cadence would have to be tuned against an off-by-one.
+    const { cookie, sessionId } = await idleCookieFor();
+    await SessionModel.updateOne(
+      { _id: sessionId },
+      { $set: { lastUsedAt: new Date(Date.now() - env.SESSION_IDLE_MINUTES * 60_000 + 2_000) } },
+    );
+    const renewed = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookie);
+    expect(renewed.status).toBe(200);
   });
 });
 

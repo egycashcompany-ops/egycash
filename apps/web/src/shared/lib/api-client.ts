@@ -108,10 +108,29 @@ const rawRequest = async <T>(path: string, init: RequestInit = {}): Promise<T> =
     );
 };
 
+/**
+ * The inactivity window the SERVER enforces, in minutes; `0` means it is switched off.
+ *
+ * Learned from the server rather than configured here, and re-learned on every renewal, so the
+ * countdown on screen can never be counting to a different number than the rule that will
+ * actually close the session. Unknown until the first login or renewal answers, which is why it
+ * starts at `0` — counting down to a guess would be worse than not counting down yet.
+ */
+let idleMinutes = 0;
+
+export const setIdleMinutes = (minutes: number): void => {
+  idleMinutes = Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
+};
+
+export const getIdleMinutes = (): number => idleMinutes;
+
 const refreshOnce = async (): Promise<boolean> => {
   try {
-    const data = await rawRequest<{ accessToken: string }>('/auth/refresh', { method: 'POST' });
+    const data = await rawRequest<{ accessToken: string; idleMinutes?: number }>('/auth/refresh', {
+      method: 'POST',
+    });
     setAccessToken(data.accessToken);
+    if (data.idleMinutes !== undefined) setIdleMinutes(data.idleMinutes);
     return true;
   } catch {
     setAccessToken(null);
@@ -145,6 +164,15 @@ const tryRefresh = (): Promise<boolean> => {
     });
   return refreshPromise;
 };
+
+/**
+ * Renew the session because somebody is USING it, not because a request failed.
+ *
+ * Shares the single-flight promise above, so a renewal and a request that happens to hit an
+ * expired token at the same moment are one rotation, never two racing ones — which is the same
+ * reason the lazy path shares it.
+ */
+export const renewSession = (): Promise<boolean> => tryRefresh();
 
 /** Request with one silent-refresh retry on an expired/invalid access token. */
 export const api = async <T>(path: string, init: RequestInit = {}): Promise<T> => {

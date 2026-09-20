@@ -166,6 +166,7 @@ export const UserDetailPage = (): JSX.Element => {
               </h2>
               <DelegationPanel
                 userId={user.id}
+                personName={fullName(user, locale)}
                 homeUnit={
                   user.organization.branchId === null
                     ? null

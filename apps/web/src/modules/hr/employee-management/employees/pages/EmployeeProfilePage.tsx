@@ -447,6 +447,7 @@ export const EmployeeProfilePage = (): JSX.Element => {
           <Suspense fallback={<LoadingState />}>
             <DelegationPanel
               userId={e.userId}
+              personName={e.personal.fullNameAr}
               homeUnit={{
                 branchId: e.employment.branchId,
                 departmentId: e.employment.departmentId,

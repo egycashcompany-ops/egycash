@@ -22,7 +22,6 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
 import {
   useExpectedReading,
-  useOdometerBracket,
   useRecordOdometer,
   useRosterDay,
   useVehicles,
@@ -84,23 +83,23 @@ export const RecordOdometerDialog = ({
   const can = useCan();
 
   /*
-   * WHERE THIS DAY SITS IN THIS CAR'S CHAIN — the same bracket the server enforces FR-2 with, and
-   * the same one that decides whether the reading may be left out at all.
+   * MAY THE COUNTER BE LEFT OUT FOR THIS DAY? — the same question the server asks, asked the same
+   * way, so the star on the field and the answer from the save cannot disagree.
    *
-   * «لا اما يسيبو فاضى ويدله انذار». A day with a reading before it AND a reading after it is a
-   * day that was missed: whoever drove it can be recorded without a counter nobody wrote down.
-   * Every other day — today, or any date past the end of the chain — still needs its reading,
-   * because a day at the end with no reading would be the car's open period carrying no number.
+   * «لا اما يسيبو فاضى ويدله انذار» … «بس اللى هى فاتت». A day that HAS PASSED can be recorded
+   * without a counter: whoever drove it is worth keeping, and a number nobody wrote down cannot
+   * be invented. Today's reading is the one somebody is standing at the car to take, and
+   * tomorrow's has not happened — so those two still require it, and that is the whole rule.
    *
-   * `undefined` while the answer is in flight, and while it is, the field stays REQUIRED: a
-   * momentarily optional star that turns back into a required one is worse than one that never
-   * moved. The server refuses it either way, so nothing here can let a bad row through.
+   * IT USED TO ASK THE SERVER FOR THE DAY'S BRACKET and allow this only inside a gap. It no
+   * longer has to: a day with no reading is on NO chain, so where the chain happens to end has
+   * nothing to say about it — and «has this day passed» is a question the browser answers with no
+   * request at all, so the field's star no longer flickers while an answer is in flight.
+   *
+   * `today()` is UTC, as the date input is and as the server's own midnight is, so the two agree
+   * at every hour rather than only outside the small hours.
    */
-  const bracket = useOdometerBracket(vehicleId, date, open && vehicleId !== '' && date !== '');
-  const inGap =
-    bracket.data === undefined || bracket.isFetching
-      ? false
-      : bracket.data.lowerBound !== null && bracket.data.upperBound !== null;
+  const dayHasPassed = date !== '' && date < today();
 
   // The vehicle is picked by CODE and typed into, not scrolled to: a registry runs to hundreds of
   // cars and "150" is what the operator knows the car as. `Combobox` only ever commits a value
@@ -179,7 +178,7 @@ export const RecordOdometerDialog = ({
 
   const readingNumber = Number(reading);
   const readingGiven = reading !== '' && Number.isInteger(readingNumber);
-  const complete = vehicleId !== '' && date !== '' && (readingGiven || inGap);
+  const complete = vehicleId !== '' && date !== '' && (readingGiven || dayHasPassed);
 
   const submit = async (): Promise<void> => {
     await record.mutateAsync({
@@ -266,9 +265,9 @@ export const RecordOdometerDialog = ({
               unrecordable to stop a slip. */}
           <Field
             label={t('fleet.odometer.fields.reading')}
-            required={!inGap}
-            hint={inGap ? t('fleet.odometer.readingOptionalHint') : expectedHint}
-            {...(inGap && !readingGiven
+            required={!dayHasPassed}
+            hint={dayHasPassed ? t('fleet.odometer.readingOptionalHint') : expectedHint}
+            {...(dayHasPassed && !readingGiven
               ? { warning: t('fleet.odometer.recordingWithoutReading') }
               : derivedKm === 0
                 ? { warning: t('fleet.odometer.sameAsPrevious') }

@@ -6,10 +6,11 @@
 // system could invent for it would be a lie told in the one column the maintenance alarm measures
 // from, so the column is left empty and the alarm is told how many such days there are.
 //
-// The rule has three halves and each is pinned below, because each is a different way to get it
-// wrong: WHERE it is allowed (a day the chain brackets on both sides, and nowhere else), what the
-// row IS (not a link in the chain — and the queries that must therefore skip it), and what the
-// alarm SAYS about it.
+// The rule has four halves and each is pinned below, because each is a different way to get it
+// wrong: WHEN it is allowed (a day that has already passed, and no other test), what the row IS
+// (not a link in the chain — and the queries that must therefore skip it), what happens when the
+// number turns up LATER (it fills that row; the day does not appear twice), and what the alarm
+// SAYS about it.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -49,21 +50,29 @@ describe('what the model lets a row be', () => {
   });
 });
 
-describe('where a reading may be left out — and nowhere else', () => {
+describe('when a reading may be left out — and the whole of the rule', () => {
   const service = source('odometer.service.ts');
 
-  it('it is decided in `record`, from the SAME bracket that enforces FR-2', () => {
+  it('it is decided in `record`, before anything is written', () => {
     const at = service.indexOf('if (input.reading == null)');
-    const bounds = service.indexOf('chainBounds(');
     expect(at, 'the branch exists').toBeGreaterThan(-1);
-    expect(at, 'and it reads the bracket that was already fetched').toBeGreaterThan(bounds);
+    expect(at, 'and before the row is created').toBeLessThan(service.indexOf('const prior ='));
   });
 
-  it('BOTH bounds must be present — a day at the end of the chain still needs its reading', () => {
+  it('THE DAY MUST HAVE PASSED, and nothing else is asked of it', () => {
     const branch = service.slice(service.indexOf('if (input.reading == null)'));
-    expect(branch).toContain('bounds.lower === null || bounds.upper === null');
-    // «بس اللى هى فاتت» — a day with no reading after it is not a missed day, it is today.
-    expect(branch.slice(0, 600)).toMatch(/before it AND after it/);
+    // «بس اللى هى فاتت». Today's reading is the one somebody is standing at the car to take, and
+    // tomorrow's has not happened; every earlier day can only be remembered.
+    expect(branch.slice(0, 400)).toContain('input.date >= startOfTodayUtc()');
+    expect(service).toMatch(/const startOfTodayUtc = \(\): Date/);
+  });
+
+  it('a day at the END of the chain is NOT refused — the row is on no chain to end', () => {
+    // It used to ask for a reading before the day AND after it, on the reasoning that a day with
+    // none after it would be the car's open period carrying no number. Such a row is on NO chain,
+    // so it cannot BE the open period, and `ux_open_period` excludes it by name.
+    expect(service).not.toContain('bounds.lower === null || bounds.upper === null');
+    expect(service).not.toMatch(/before it AND after it/);
   });
 
   it('the same empty day cannot be logged twice — no index can say so, so the service does', () => {
@@ -121,6 +130,43 @@ describe('the row is on NO chain, and every question the chain asks must skip it
     // `null` sorts BELOW `0` in MongoDB, so an unfiltered day-row wins `sort({ outReading: 1 })`
     // and becomes an upper bound of nothing — refusing every legitimate reading after that date.
     expect(repository).toMatch(/sorts `null` BELOW `0`/);
+  });
+});
+
+describe('when the number turns up later, it FILLS that day', () => {
+  const service = source('odometer.service.ts');
+
+  it('the path that HAS a reading looks for the empty day too, not only the path without one', () => {
+    // Two rows for one day is a register that has to be read twice to be believed: one would sit
+    // there forever saying «بدون قراءة» about a day that now has a reading.
+    const measured = service.indexOf('const measured = {');
+    expect(measured, 'the reading path exists').toBeGreaterThan(-1);
+    expect(service.indexOf('findDayWithoutReading(', measured)).toBeGreaterThan(-1);
+  });
+
+  it('it UPDATES that row rather than creating a second one, under its own version', () => {
+    const branch = service.slice(service.indexOf('const empty = await'));
+    expect(branch.slice(0, 1800)).toContain('empty === null');
+    expect(branch.slice(0, 1800)).toContain('version: empty.__v');
+  });
+
+  it('the filled row is spliced like any other reading — same bounds, same prior, same hand-on', () => {
+    const measured = service.slice(service.indexOf('const measured = {'));
+    expect(measured.slice(0, 300)).toContain('inReading: handOn');
+    // The SAME measurements go into the create and into the fill, so the two cannot drift.
+    expect((measured.match(/\.\.\.measured,/g) ?? []).length).toBe(2);
+  });
+
+  it('what the second form leaves blank keeps what the day was recorded with', () => {
+    // The empty day may be the only surviving record of who took the car out, and a blank field
+    // on the form that carries the number is not a retraction.
+    expect(service).toContain('driver(input.driver1EmployeeId, empty.driver1EmployeeId)');
+    expect(service).toContain('driver(input.driver2EmployeeId, empty.driver2EmployeeId)');
+    expect(service).toContain('input.notes ?? empty.notes');
+  });
+
+  it('the trail calls it an UPDATE — the row is older than this act', () => {
+    expect(service).toContain("action: outcome.filled ? 'update' : 'create'");
   });
 });
 

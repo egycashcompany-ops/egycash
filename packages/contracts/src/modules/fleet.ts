@@ -943,6 +943,18 @@ export interface FleetHighestReadingDto {
   at: string | null;
   /** How many cars the filter matched — the set the reading is the highest of. */
   vehicles: number;
+  /**
+   * THE DISTANCE THE FILTERED ROWS ACCOUNT FOR — and the one figure here that IS a sum.
+   *
+   * A counter is a position and may only be maximised; `km` is a distance, and distances add. The
+   * two live side by side because they answer the two different questions a reader has about a
+   * filtered set: how far the cars have got, and how far they went inside it.
+   *
+   * `null` = this screen does not measure distance. Only the readings register holds a row per
+   * period with its own km; the workshop register and the alarms board are about visits and
+   * levels, and a figure invented for them would be a different number under the same word.
+   */
+  km: number | null;
 }
 
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────

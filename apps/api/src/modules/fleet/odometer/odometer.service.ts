@@ -38,12 +38,27 @@ const invalid = (field: string, message: string): ValidationError =>
 /** The day a bound was taken on, for a refusal that has to name WHICH reading it is refusing. */
 const iso = (date: Date): string => date.toISOString().slice(0, 10);
 
+/**
+ * Midnight UTC of today — the line between «a day that has passed» and «now».
+ *
+ * A reading's date arrives as `<input type="date">` → midnight UTC, so a date strictly below this
+ * is yesterday or earlier however the clock is read. The whole rule about leaving a reading out
+ * turns on it: «بس اللى هى فاتت».
+ */
+const startOfTodayUtc = (): Date => {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  return start;
+};
+
 interface RecordOutcome {
   created: FleetOdometerLogDoc;
   /** The row this reading closed (an append) or split in two (a back-dated insert). */
   closed: FleetOdometerLogDoc | null;
   /** true = the reading landed INSIDE the chain rather than extending it. */
   inserted: boolean;
+  /** true = it filled a day already on record without a counter, rather than adding a row. */
+  filled: boolean;
   code: string;
 }
 
@@ -119,26 +134,25 @@ class FleetOdometerService {
        * A day that was missed can still be worth recording: who took the car out, and what
        * happened. What it cannot carry is a counter nobody wrote down, and every number this
        * could invent for it would be a lie told in the one column the maintenance alarm measures
-       * from. So the reading may be left out — and ONLY where leaving it out changes nothing that
-       * is measured: a day the chain already brackets on BOTH sides. Thursday was read, Sunday
-       * was read, and Saturday sits between them; Thursday's row already carries the whole
-       * Thursday-to-Sunday distance, and the Saturday row adds no distance because none was
-       * measured on it.
+       * from. So the reading may be left out — «بس اللى هى فاتت», and that is the whole rule: the
+       * day must be BEHIND us. Today's reading is the one somebody is standing at the car to
+       * take, and tomorrow's has not happened.
        *
-       * Either bound absent and the reading is REQUIRED, which is the same sentence read twice:
-       * no bound below means the vehicle has no reading before that day, so nothing brackets it;
-       * no bound above means the day is at the END of the chain, and a day at the end with no
-       * reading would be the car's open period carrying no number at all. «بس اللى هى فاتت».
+       * IT USED TO ASK FOR MORE — a reading before the day AND after it — on the reasoning that a
+       * day at the end of the chain with no reading would be the car's open period carrying no
+       * number. That reasoning was already obsolete when it was written: the row is on NO CHAIN,
+       * so it cannot BE the open period, and `ux_open_period` excludes it by name. What is left is
+       * the owner's own sentence, and nothing else was ever doing any work.
        *
-       * The row is on NO CHAIN. It closes nothing, opens nothing, hands nothing on, splices no
-       * period, and `ON_THE_CHAIN` in the repository keeps it out of every question the chain is
-       * asked. The alarm counts it instead — see `daysWithoutReading` — so the distance since the
-       * last service is reported as what it is: measured, with days in it that nobody measured.
+       * The row closes nothing, opens nothing, hands nothing on, splices no period, and
+       * `ON_THE_CHAIN` in the repository keeps it out of every question the chain is asked. The
+       * alarm counts it instead — see `daysWithoutReading` — so the distance since the last
+       * service is reported as what it is: measured, with days in it that nobody measured.
        */
       if (input.reading == null) {
-        if (bounds.lower === null || bounds.upper === null) {
+        if (input.date >= startOfTodayUtc()) {
           throw new ConflictError(
-            'a reading may be left out only for a day that already has a reading before it AND after it; this date is at the end of the chain, or the vehicle has no earlier reading',
+            'a reading may be left out only for a day that has already passed; today’s reading is the one somebody is at the car to take',
           );
         }
         const already = await fleetOdometerRepository.findDayWithoutReading(
@@ -164,7 +178,7 @@ class FleetOdometerService {
           },
           { by, session },
         );
-        return { created: day, closed: null, inserted: false, code: vehicle.code };
+        return { created: day, closed: null, inserted: false, filled: false, code: vehicle.code };
       }
 
       if (bounds.lower !== null && input.reading < bounds.lower.reading) {
@@ -212,27 +226,75 @@ class FleetOdometerService {
       // period; otherwise it inherits whatever the row it displaced used to close with, so the
       // entry that followed still opens on a reading somebody is handing it.
       const handOn = prior === null ? (head?.outReading ?? null) : prior.inReading;
-      const created = await fleetOdometerRepository.create(
-        {
-          vehicleId: new Types.ObjectId(input.vehicleId),
-          date: input.date,
-          outReading: input.reading,
-          inReading: handOn,
-          km: handOn === null ? null : handOn - input.reading,
-          driver1EmployeeId:
-            input.driver1EmployeeId == null ? null : new Types.ObjectId(input.driver1EmployeeId),
-          driver2EmployeeId:
-            input.driver2EmployeeId == null ? null : new Types.ObjectId(input.driver2EmployeeId),
-          notes: input.notes ?? null,
-        },
-        { by, session },
+      const measured = {
+        outReading: input.reading,
+        inReading: handOn,
+        km: handOn === null ? null : handOn - input.reading,
+      };
+
+      /*
+       * THE DAY MAY ALREADY BE ON RECORD WITHOUT ITS COUNTER — and then this is that counter, not
+       * a second day.
+       *
+       * The clerk logs Saturday with no reading because nobody wrote one down; on Tuesday the
+       * number turns up in the driver's own notebook and is entered for Saturday. Written as a new
+       * row it would leave the register showing ONE Saturday TWICE — once with the reading and
+       * once still saying «بدون قراءة» about a day that now has one. So the reading fills the row
+       * that is already there.
+       *
+       * WHAT THE SECOND FORM LEAVES BLANK IS NOT A RETRACTION. The empty day may be the only
+       * surviving record of who took the car out, and the person entering a number found in a
+       * notebook days later is not being asked to remember the drivers again. So the new
+       * submission wins wherever it says something, and where it says nothing the day keeps what
+       * it was recorded with.
+       */
+      const empty = await fleetOdometerRepository.findDayWithoutReading(
+        input.vehicleId,
+        input.date,
+        session,
       );
-      return { created, closed, inserted: handOn !== null, code: vehicle.code };
+      const driver = (
+        given: string | null | undefined,
+        had: Types.ObjectId | null,
+      ): Types.ObjectId | null => (given == null ? had : new Types.ObjectId(given));
+      const created =
+        empty === null
+          ? await fleetOdometerRepository.create(
+              {
+                vehicleId: new Types.ObjectId(input.vehicleId),
+                date: input.date,
+                ...measured,
+                driver1EmployeeId: driver(input.driver1EmployeeId, null),
+                driver2EmployeeId: driver(input.driver2EmployeeId, null),
+                notes: input.notes ?? null,
+              },
+              { by, session },
+            )
+          : await fleetOdometerRepository.updateById(
+              String(empty._id),
+              {
+                date: input.date,
+                ...measured,
+                driver1EmployeeId: driver(input.driver1EmployeeId, empty.driver1EmployeeId),
+                driver2EmployeeId: driver(input.driver2EmployeeId, empty.driver2EmployeeId),
+                notes: input.notes ?? empty.notes,
+              },
+              { by, version: empty.__v, session },
+            );
+      return {
+        created,
+        closed,
+        inserted: handOn !== null,
+        filled: empty !== null,
+        code: vehicle.code,
+      };
     });
 
     await auditService.record({
       entityRef: entityRef(String(outcome.created._id)),
-      action: 'create',
+      // Filling a day that was already on record is an UPDATE of that row, and the trail has to
+      // say so — the row's id is older than this act, and «create» would date it wrongly.
+      action: outcome.filled ? 'update' : 'create',
       changes: [
         // A day recorded with no counter did not record a reading of «null» — it recorded a day.
         // The trail says which of the two happened, because the two are not the same act.
@@ -390,8 +452,10 @@ class FleetOdometerService {
    */
   async summary(query: FleetOdometerSummaryQuery): Promise<FleetHighestReadingDto> {
     const filter = await this.filterFor(query);
-    const vehicleIds = await fleetOdometerRepository.vehicleIdsMatching(filter);
-    return highestReadingAmong(vehicleIds);
+    const { vehicleIds, km } = await fleetOdometerRepository.vehicleIdsMatching(filter);
+    // The distance comes from the same pass that named the cars, so the two figures above the
+    // table are always about the same set of rows — they cannot be one filter apart.
+    return { ...(await highestReadingAmong(vehicleIds)), km };
   }
 
   /**

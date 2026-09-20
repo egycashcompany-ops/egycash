@@ -141,6 +141,9 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       // The board carries no date for the reading — it is a projection of levels, not of the log.
       at: null,
       vehicles: rows.length,
+      // And no distance: it holds one row per CAR, not one per period, so there is nothing here
+      // to add up. The strip leaves the cell out rather than showing a zero.
+      km: null,
     };
   }, [rows]);
 

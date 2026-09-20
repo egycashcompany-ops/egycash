@@ -52,6 +52,41 @@ describe('the figure is a maximum, and never a sum', () => {
   });
 });
 
+describe('the distance beside it — the one figure that IS a sum', () => {
+  // «إجمالي الكيلومترات المقطوعة». The counter may only be maximised because it is a position;
+  // `km` is a DISTANCE, and distances add. The two sit side by side and must not be confused, so
+  // each is computed where its own rule holds: the maximum in `highest-reading.ts`, which does no
+  // arithmetic at all, and the sum in the register that actually holds a row per period.
+  it('is summed over the ROWS in the very pass that named the cars', () => {
+    const repository = source('odometer/odometer.repository.ts');
+    const at = repository.indexOf('async vehicleIdsMatching(');
+    const body = repository.slice(at, at + 1_200);
+    expect(body).toContain("vehicleIds: { $addToSet: '$vehicleId' }");
+    expect(body).toContain("km: { $sum: '$km' }");
+  });
+
+  it('the counter helper stays free of arithmetic — the sum is not in it', () => {
+    const helper = source('odometer/highest-reading.ts');
+    expect(helper).toContain('km: null');
+    for (const forbidden of ['$sum', '+=', 'reduce(']) {
+      expect(helper).not.toContain(forbidden);
+    }
+  });
+
+  it('only the register that HOLDS distances fills it in', () => {
+    // A register of visits holds no row per period, so there is nothing there to add up — and a
+    // zero under «إجمالي الكيلومترات» would be a different number wearing the same word.
+    expect(source('odometer/odometer.service.ts')).toContain(
+      '...(await highestReadingAmong(vehicleIds)), km',
+    );
+    const maintenance = source('maintenance/maintenance.service.ts');
+    expect(maintenance).toContain('return highestReadingAmong(');
+    expect(maintenance, 'the workshop register adds nothing to the answer').not.toContain(
+      'km }',
+    );
+  });
+});
+
 describe('it describes the whole filtered set, never one page', () => {
   it.each([
     ['odometer/odometer.repository.ts', 'the readings register'],

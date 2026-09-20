@@ -23,6 +23,7 @@ import { cn } from '../../../shared/lib/cn';
 import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import {
   useExpectedReading,
+  useOdometerTotals,
   useFleetCatalog,
   useCanReadAlarms,
   useMaintenanceAlarms,
@@ -111,6 +112,10 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
   const canAlarms = useCanReadAlarms();
 
   const expected = useExpectedReading(vehicle.id, canOdometer);
+  // «إجمالي الكيلومترات» for THIS car, from the same door the readings register asks — the
+  // register's filter is just narrowed to one vehicle, so the two screens cannot disagree about
+  // how far it has gone. A counter says where the car is; this says how far it went to get there.
+  const driven = useOdometerTotals({ vehicleId: vehicle.id }, canOdometer);
   const alarms = useMaintenanceAlarms();
   const lastVisit = useMaintenanceVisits(
     { vehicleId: vehicle.id, open: false, pageSize: 1, sortBy: 'outDate', sortDir: 'desc' },
@@ -194,6 +199,18 @@ export const Indicators = ({ vehicle }: { vehicle: FleetVehicleDto }): JSX.Eleme
                 : `${formatNumber(expected.data.expectedReading, locale)} ${t('fleet.vehicle.km')}`
           }
           caption={t('fleet.vehicle.lastReadingHint')}
+        />
+      )}
+      {canOdometer && (
+        <FleetKpi
+          label={t('fleet.odometer.highest.km')}
+          icon={GaugeIcon}
+          value={
+            driven.data === undefined || driven.data.km === null
+              ? undefined
+              : `${formatNumber(driven.data.km, locale)} ${t('fleet.vehicle.km')}`
+          }
+          caption={t('fleet.vehicle.drivenHint')}
         />
       )}
       {canAlarms && (

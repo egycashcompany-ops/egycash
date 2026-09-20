@@ -15,7 +15,7 @@ import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 import { failureReason, fold, MIME, parseCars } from './vehicles-import';
 import { DRIVER_PHOTOS_DIR, DRIVER_PHOTOS_GO_LIVE_MARK, planDriverPhotos } from './driver-photos';
 import { CARS_LOG_FILE, ODOMETER_GO_LIVE_MARK } from './odometer';
-import { parseCarsLog } from './odometer-import';
+import { parseCarsLog, planOdometerImport } from './odometer-import';
 import { CAR_MAINTENANCE_FILE, MAINTENANCE_GO_LIVE_MARK } from './maintenance';
 import { parseVisits } from './maintenance-import';
 import { CAR_VIOLATIONS_FILE, VIOLATIONS_GO_LIVE_MARK } from './violations';
@@ -422,58 +422,87 @@ describe('the data ships with the build', () => {
     expect(parsed.skippedDeleted).toBe(4);
   });
 
-  it('the odometer book is there: 20,322 rows, 747 deleted, one unreadable date, every car but two in the registry', () => {
+  it('the odometer book is there: all 20,322 rows are read — 747 of them already deleted, two it cannot fully read', () => {
     const dir = resolveGoLiveDataDir() as string;
     const parsed = parseCarsLog(JSON.parse(readFileSync(join(dir, CARS_LOG_FILE), 'utf8')));
-    expect(parsed.rows.length + parsed.skippedDeleted + parsed.rejected.length).toBe(20_322);
-    expect(parsed.skippedDeleted).toBe(747);
-    expect(parsed.rejected.map((r) => r.reason)).toEqual(['176: the date cannot be read']);
-    // The book names three rows on cars the handover did not have — «194» and «تويوتا1». They
-    // are reported by the run, not fixed here: the data is the data.
+    expect(parsed.rows.length, 'EVERY row of the book — «متسبش داتا فاضيه»').toBe(20_322);
+    expect(parsed.rejected).toEqual([]);
+    expect(parsed.keptDeleted).toBe(747);
+    expect(parsed.unreadable.map((r) => r.reason)).toEqual([
+      '176: the date cannot be read',
+      '177: a reading is not a number',
+    ]);
+    // The book names rows on cars the handover did not have — «194», «تويوتا1» and, among the
+    // rows the old system had deleted, four more. Reported by the run, not fixed here.
     const cars = parseCars(JSON.parse(readFileSync(join(dir, 'cars.json'), 'utf8')));
     const codes = new Set(cars.cars.map((car) => car.code));
-    const unknown = [...new Set(parsed.rows.filter((row) => !codes.has(row.code)).map((row) => row.code))].sort();
-    expect(unknown).toEqual(['194', 'تويوتا1']);
-    expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v2');
+    const live = parsed.rows.filter((row) => !row.deletion.isDeleted && !row.unreadable);
+    expect([...new Set(live.filter((row) => !codes.has(row.code)).map((row) => row.code))].sort()).toEqual([
+      '194',
+      'تويوتا1',
+    ]);
+    expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v3');
   });
 
-  it('the workshop book is there: 1,938 rows, 133 deleted, four unreadable, six rows on cars the registry lacks', () => {
+  it('every row of the odometer book is PLANNED, none dropped, and no car ends with two open periods', () => {
+    const dir = resolveGoLiveDataDir() as string;
+    const parsed = parseCarsLog(JSON.parse(readFileSync(join(dir, CARS_LOG_FILE), 'utf8')));
+    const cars = parseCars(JSON.parse(readFileSync(join(dir, 'cars.json'), 'utf8')));
+    const registry = new Map(cars.cars.map((car, index) => [car.code, index.toString(16).padStart(24, '0')]));
+    const plan = planOdometerImport(parsed.rows, registry, new Map());
+    expect(plan.vehicles.reduce((sum, v) => sum + v.rows.length, 0)).toBe(20_322);
+    expect(plan.openedByPrevious, 'the 837 rows the book left with no opening reading').toBe(837);
+    expect(plan.deleted, 'the 747 the old system deleted, and the one whose date is not a date').toBe(748);
+    for (const vehicle of plan.vehicles) {
+      const open = vehicle.rows.filter((row) => !row.deleted && row.in === null);
+      expect(open.length, `${vehicle.code}: at most one open period — ux_open_period`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('the workshop book is there: all 1,938 visits are read — 133 already deleted, five it cannot fully read', () => {
     const dir = resolveGoLiveDataDir() as string;
     const parsed = parseVisits(JSON.parse(readFileSync(join(dir, CAR_MAINTENANCE_FILE), 'utf8')));
-    expect(parsed.visits.length + parsed.skippedDeleted + parsed.rejected.length).toBe(1938);
-    expect(parsed.skippedDeleted).toBe(133);
-    // Two rows with no car, two whose out-date is not a date. Reported by the run, not fixed here.
-    expect(parsed.rejected.map((r) => r.reason).sort()).toEqual([
-      '171 2025-04-06: the out-date «6/4/20205» cannot be read',
-      '517 2025-08-06: the out-date «011/08/2025» cannot be read',
+    expect(parsed.visits.length, 'EVERY visit in the book').toBe(1938);
+    expect(parsed.rejected).toEqual([]);
+    expect(parsed.keptDeleted).toBe(133);
+    // Two with no car, two whose out-date is not a date, one whose in-date is not. Every one of
+    // them is kept, with the book's own words on the visit, and written deleted.
+    expect(parsed.unreadable.map((r) => r.reason).sort()).toEqual([
+      '171 2025-04-06: the out-date cannot be read',
+      '209: the in-date cannot be read',
+      '517 2025-08-06: the out-date cannot be read',
       'no car code',
       'no car code',
     ]);
     const cars = parseCars(JSON.parse(readFileSync(join(dir, 'cars.json'), 'utf8')));
     const codes = new Set(cars.cars.map((car) => car.code));
-    const unknown = parsed.visits.filter((v) => !codes.has(v.code));
-    expect(unknown.length, 'six rows').toBe(6);
+    const unknown = parsed.visits.filter((v) => !v.deletion.isDeleted && !v.unreadable && !codes.has(v.code));
+    expect(unknown.length, 'six visits').toBe(6);
     expect(new Set(unknown.map((v) => v.code)).size, 'on five codes').toBe(5);
-    expect(MAINTENANCE_GO_LIVE_MARK).toBe('go-live:maintenance:v2');
+    expect(MAINTENANCE_GO_LIVE_MARK).toBe('go-live:maintenance:v3');
   });
 
-  it('the violations book is there: 1,023 rows, 86 deleted, 425 statement rows and 512 fines, every one readable', () => {
+  it('the violations book is there: all 1,023 rows are read — 86 of them already deleted, every one readable', () => {
     const dir = resolveGoLiveDataDir() as string;
     const parsed = parseViolations(JSON.parse(readFileSync(join(dir, CAR_VIOLATIONS_FILE), 'utf8')));
-    expect(parsed.company.length + parsed.driver.length + parsed.skippedDeleted).toBe(1023);
+    expect(parsed.company.length + parsed.driver.length, 'EVERY row in the book').toBe(1023);
     expect(parsed.rejected).toEqual([]);
-    expect(parsed.company.length).toBe(425);
-    expect(parsed.driver.length).toBe(512);
-    expect(VIOLATIONS_GO_LIVE_MARK).toBe('go-live:violations:v2');
+    expect(parsed.unreadable).toEqual([]);
+    expect(parsed.keptDeleted).toBe(86);
+    expect(parsed.company.filter((row) => !row.deletion.isDeleted).length, 'live statement rows').toBe(425);
+    expect(parsed.driver.filter((row) => !row.deletion.isDeleted).length, 'live fines').toBe(512);
+    expect(VIOLATIONS_GO_LIVE_MARK).toBe('go-live:violations:v3');
   });
 
-  it('the accidents book is there: 196 files, 12 deleted, every one readable, 25 without a date', () => {
+  it('the accidents book is there: all 196 files are read — 12 of them already deleted, 25 without a date', () => {
     const dir = resolveGoLiveDataDir() as string;
     const parsed = parseAccidents(JSON.parse(readFileSync(join(dir, FLEET_ACCIDENT_FILE), 'utf8')));
-    expect(parsed.accidents.length + parsed.skippedDeleted).toBe(196);
+    expect(parsed.accidents.length, 'EVERY file in the book').toBe(196);
     expect(parsed.rejected).toEqual([]);
+    expect(parsed.unreadable).toEqual([]);
+    expect(parsed.keptDeleted).toBe(12);
     expect(parsed.accidents.filter((a) => a.occurredAt === null).length).toBe(25);
-    expect(ACCIDENTS_GO_LIVE_MARK).toBe('go-live:accidents:v2');
+    expect(ACCIDENTS_GO_LIVE_MARK).toBe('go-live:accidents:v3');
   });
 
   it('all 56 licence scans are there, and every one is named for a car in the data', () => {

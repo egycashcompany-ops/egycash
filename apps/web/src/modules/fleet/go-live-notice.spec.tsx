@@ -172,7 +172,7 @@ describe('what the notice says', () => {
   });
 
   it.each([
-    ['violations', 'استيراد دفتر المخالفات', { imported: 925, unknownTypes: ['274 2025: —'], zeroCount: ['508 2025'] }, ['274 2025: —', 'تُركت']],
+    ['violations', 'استيراد دفتر المخالفات', { imported: 925, unknownTypes: ['274 2025: —'], zeroCount: ['508 2025'] }, ['274 2025: —', 'غير محدد']],
     ['accidents', 'استيراد دفتر الحوادث', { imported: 154, noDate: ['202: محمد مهدى'], amountNotes: ['279 2026-02-15: amountCollected: من عبدالرحمن'] }, ['202: محمد مهدى', 'من عبدالرحمن']],
   ] as const)('prints a finished %s import with what it could not place', (step, title, outcome, expected) => {
     const markup = render([run({ key: `go-live:${step}:v1`, status: 'done', outcome: { ...outcome } })], { step });

@@ -12,11 +12,19 @@ import { Types, type FilterQuery } from 'mongoose';
 /** The car a book row belongs to: a registry vehicle, or a code the registry does not have. */
 export type BookRef = { vehicleId: string; vehicleCode?: undefined } | { vehicleId: null; vehicleCode: string };
 
-/** The rows already written for this car, live ones only — what a take-over checks before writing. */
+/**
+ * Every row already written for this car — what a take-over checks before writing.
+ *
+ * DELETED ROWS COUNT HERE, and nowhere else in the module. The imports write two kinds of row
+ * deleted: the ones the old books had already deleted, and the ones the model's own invariants
+ * would refuse alive (`legacy-row.ts`). A filter that skipped those would tell the next run they
+ * had never been written and it would write every one of them a second time. This is the
+ * «has this row landed?» question, not the «show me this car's readings» one.
+ */
 export const bookRefFilter = <T>(ref: BookRef): FilterQuery<T> =>
   (ref.vehicleId === null
-    ? { vehicleId: null, vehicleCode: ref.vehicleCode, isDeleted: false }
-    : { vehicleId: new Types.ObjectId(ref.vehicleId), isDeleted: false }) as FilterQuery<T>;
+    ? { vehicleId: null, vehicleCode: ref.vehicleCode }
+    : { vehicleId: new Types.ObjectId(ref.vehicleId) }) as FilterQuery<T>;
 
 /** The two fields a written row carries for its car, from the ref. */
 export const bookRefFields = (

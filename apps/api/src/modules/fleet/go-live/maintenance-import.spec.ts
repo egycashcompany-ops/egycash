@@ -36,6 +36,8 @@ describe('reading the export', () => {
         driver: 'احمد فرج',
         driver2: '-',
         notes: 'تغير عامود دريكسيون',
+        deletion: { isDeleted: false, deletedAt: null },
+        unreadable: false,
       },
     ]);
   });
@@ -49,27 +51,54 @@ describe('reading the export', () => {
     expect(visit?.parts).toEqual([]);
   });
 
-  it('skips a row the old system had deleted, and counts it', () => {
-    const parsed = parseVisits([legacy({ deleted: 1 }), legacy({ _id: 'b' })]);
-    expect(parsed.skippedDeleted).toBe(1);
-    expect(parsed.visits.map((v) => v.id)).toEqual(['b']);
+  it('KEEPS a visit the old system had deleted, carrying its deletion and the day of it', () => {
+    const parsed = parseVisits([
+      legacy({ deleted: 1, deleted_date: { $date: '2025-11-26T15:01:23.514Z' } }),
+      legacy({ _id: 'b' }),
+    ]);
+    expect(parsed.keptDeleted).toBe(1);
+    expect(parsed.visits.map((v) => v.id)).toEqual(['69244af87db333ddf88f339c', 'b']);
+    expect(parsed.visits[0]?.deletion).toEqual({
+      isDeleted: true,
+      deletedAt: new Date('2025-11-26T15:01:23.514Z'),
+    });
   });
 
-  it('REPORTS a row it cannot read — no car, an out-date that is not a date — and reads the rest', () => {
+  it('KEEPS a visit it cannot read — every one of them — and reports what could not be read', () => {
     const parsed = parseVisits([
       legacy({ _id: 'no-car', car_code: ' ' }),
       legacy({ _id: 'bad-out', out_date: '6/4/20205' }),
-      legacy({ _id: 'bad-in', in_date: '2025-13-45' }),
+      legacy({ _id: 'bad-in', in_date: '2025-13-45', added_date: { $date: '2024-10-13T00:00:00.000Z' } }),
       legacy({ _id: 'bad-counter', counter: '12a' }),
       legacy({ _id: 'fine' }),
     ]);
-    expect(parsed.rejected).toEqual([
+    expect(parsed.unreadable).toEqual([
       { id: 'no-car', reason: 'no car code' },
-      { id: 'bad-out', reason: '223 2024-10-13: the out-date «6/4/20205» cannot be read' },
+      { id: 'bad-out', reason: '223 2024-10-13: the out-date cannot be read' },
       { id: 'bad-in', reason: '223: the in-date cannot be read' },
       { id: 'bad-counter', reason: '223 2024-10-13: the counter is not a number' },
     ]);
-    expect(parsed.visits.map((v) => v.id)).toEqual(['fine']);
+    expect(parsed.rejected, 'only a file that is not a list of rows is refused').toEqual([]);
+    expect(parsed.visits.map((v) => v.id)).toEqual(['no-car', 'bad-out', 'bad-in', 'bad-counter', 'fine']);
+  });
+
+  it('keeps the book’s own words for a date or a counter the model cannot hold', () => {
+    const [noCar, badOut, badIn, badCounter] = parseVisits([
+      legacy({ _id: 'no-car', car_code: ' ' }),
+      legacy({ _id: 'bad-out', out_date: '6/4/20205' }),
+      legacy({ _id: 'bad-in', in_date: '2025-13-45', added_date: { $date: '2024-10-13T00:00:00.000Z' } }),
+      legacy({ _id: 'bad-counter', counter: '12a', notes: '' }),
+    ]).visits;
+    expect(noCar?.code, 'never an empty column').toBe('بدون كود');
+    expect(badOut?.outDate, 'a car is never shown in two workshops over a word nobody can read').toBeNull();
+    expect(badOut?.notes).toBe('تغير عامود دريكسيون · تاريخ الخروج فى الدفتر القديم: «6/4/20205»');
+    expect(badIn?.inDate, 'the day the row was added is the nearest thing the export has').toEqual(
+      new Date('2024-10-13T00:00:00.000Z'),
+    );
+    expect(badCounter?.counter).toBeNull();
+    expect(badCounter?.notes).toBe('العداد فى الدفتر القديم: «12a»');
+    expect([noCar, badOut, badIn].map((v) => v?.unreadable)).toEqual([true, true, true]);
+    expect(badCounter?.unreadable, 'a counter the chain can supply does not bury the visit').toBe(false);
   });
 });
 
@@ -96,6 +125,8 @@ const visit = (over: Partial<ParsedVisit>): ParsedVisit => ({
   driver: null,
   driver2: null,
   notes: null,
+  deletion: { isDeleted: false, deletedAt: null },
+  unreadable: false,
   ...over,
 });
 
@@ -120,14 +151,34 @@ describe('turning the ledger into visits', () => {
     expect(car?.visits[0]?.driverIn, 'nothing written is nobody').toEqual({ id: null, name: null });
   });
 
-  it('skips a visit that left before it arrived, and names it', () => {
+  it('KEEPS a visit that left before it arrived, both dates as the book wrote them, and names it', () => {
     const plan = planMaintenanceImport(
       [visit({ id: 'a', code: '161', inDate: new Date('2025-01-13T00:00:00.000Z'), outDate: new Date('2025-01-11T00:00:00.000Z') })],
       REGISTRY,
       new Map(),
     );
     expect(plan.outBeforeIn).toEqual(['161 2025-01-13 → 2025-01-11']);
-    expect(plan.vehicles).toEqual([]);
+    expect(plan.vehicles[0]?.visits.map((v) => [v.inDate, v.outDate, v.deleted])).toEqual([
+      [new Date('2025-01-13T00:00:00.000Z'), new Date('2025-01-11T00:00:00.000Z'), false],
+    ]);
+  });
+
+  it('a visit the old system deleted, or one the model cannot hold, is kept and written deleted', () => {
+    const plan = planMaintenanceImport(
+      [
+        visit({ id: 'a' }),
+        visit({ id: 'gone', deletion: { isDeleted: true, deletedAt: new Date('2025-11-26T00:00:00.000Z') } }),
+        visit({ id: 'unreadable', unreadable: true }),
+      ],
+      REGISTRY,
+      new Map(),
+    );
+    expect(plan.vehicles[0]?.visits.map((v) => [v.id, v.deleted])).toEqual([
+      ['a', false],
+      ['gone', true],
+      ['unreadable', true],
+    ]);
+    expect(plan.deleted).toBe(2);
   });
 
   it('a car the registry does not have KEEPS its visits, by the book’s code, and is listed with its row count', () => {

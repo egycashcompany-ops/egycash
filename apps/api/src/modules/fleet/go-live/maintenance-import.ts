@@ -11,9 +11,12 @@
 //   works       → the `workType` catalog     counter     → odometerAtService
 //   notes       → notes
 //
-// `deleted`, `added_by`, `added_date`, `out_by`, `deleted_by`, `deleted_date` and `__v` are legacy
-// bookkeeping and do not travel: the two «by» fields are the old system's LOGIN names, not
-// employees, and a custodian invented from a login would be a name against work they did not do.
+// `added_by`, `added_date`, `out_by`, `deleted_by` and `__v` are legacy bookkeeping and do not
+// travel: the two «by» fields are the old system's LOGIN names, not employees, and a custodian
+// invented from a login would be a name against work they did not do. `deleted` DOES travel — a
+// visit the old system had deleted arrives already deleted, carrying the day of it, and EVERY
+// row of the book lands: «المهم تضيف كل الداتا ومتسبش داتا فاضيه». `legacy-row.ts` says what
+// that state is and why the model's one-open-visit invariant is safe around it.
 //
 // THE CATALOGS ARE THE BOOK'S OWN WORDS. Every workshop, work type and spare part the book names
 // is matched to the catalog by folded spelling — «صيانه» is «صيانة» — and the seeded vocabulary
@@ -24,22 +27,27 @@
 // because the model requires both and the visit happened.
 //
 // THE COUNTER IS REQUIRED AND THE BOOK OFTEN LEFT IT OUT. `odometerAtService` is what the alarm
-// measures from, so a visit cannot be written without one. Where the book has it, it is used.
-// Where it does not, the odometer book — imported by the step before this one — is asked for the
-// car's highest reading on or before the day it went in, and failing that the earliest reading
-// after; a visit with neither is skipped and listed, because a number invented here would move a
-// real alarm.
+// measures from. Where the book has it, it is used. Where it does not, the odometer book —
+// imported by the step before this one — is asked for the car's highest reading on or before the
+// day it went in, and failing that the earliest reading after. A visit with neither is written
+// with a counter of 0 and LISTED, exactly as a visit on a car the registry never had is: the
+// visit happened and the book says so, and a zero is visibly not a reading, where leaving the
+// visit out would have been invisible.
 //
-// WHAT IS NOT REPAIRED. A visit that left before it arrived (15 rows) and a visit whose out-date
-// is not a date (2) are skipped and listed: which of the two dates is wrong is not a question an
-// import may answer. `exitOdometer` did not exist in the old system and stays empty.
+// WHAT IS NOT REPAIRED — but is still written. A visit that left before it arrived (14 rows) is
+// kept with both of the book's dates and listed: which of the two is wrong is not a question an
+// import may answer, and the person who can answer it needs to see the visit to do so. A visit
+// whose out-date is not a date at all (2 rows) keeps the book's text in its notes and is written
+// deleted, so a car is never shown as being in two workshops over a word nobody can read.
+// `exitOdometer` did not exist in the old system and stays empty.
 //
 // DRIVERS ARE NAMES, as in the odometer book, and kept as text where HR has no employee for the
 // spelling — with more spellings for «nobody»: a dash, dots, zeros, and «ونش» (the tow truck)
 // and «جراج» (the garage), none of which is an employee. CARS THE REGISTRY NEVER HAD keep their
 // visits too, by the book's code (`book-ref.ts`); a visit on such a car has no chain to take a
 // counter from, so where the book has none the counter is written as 0 and the visit listed —
-// nothing measures from a car that does not exist.
+// nothing measures from a car that does not exist. A name HR has several employees for is never
+// guessed between: «اكتب الاسم بس ومتكتبش كود موظف».
 import { Types } from 'mongoose';
 import { type FleetCatalogKind } from '@ecms/contracts';
 import { fleetCatalogItemRepository, fleetCatalogItemService } from '../catalogs';
@@ -48,14 +56,26 @@ import { type FleetMaintenanceVisitDoc } from '../maintenance/maintenance.model'
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
 import { day, driverRef, isPlaceholderDriver, type DriverRef } from './odometer-import';
 import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
+import {
+  asWritten,
+  deletedFields,
+  deletionOf,
+  legacyDateOf,
+  liveFields,
+  noteWith,
+  type LegacyBookkeeping,
+  type LegacyDeletion,
+} from './legacy-row';
+import { NO_CODE } from './odometer-import';
 import { failureReason, fold } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
-interface LegacyVisit {
+interface LegacyVisit extends LegacyBookkeeping {
   _id?: { $oid?: string } | string;
   car_code?: string;
   in_date?: string;
   out_date?: string | null;
+  added_date?: { $date?: string } | string;
   destination?: string;
   works?: string;
   spare_parts?: unknown;
@@ -63,7 +83,6 @@ interface LegacyVisit {
   driver?: string;
   driver2?: string;
   notes?: string;
-  deleted?: number;
 }
 
 export interface ParsedVisit {
@@ -81,11 +100,19 @@ export interface ParsedVisit {
   driver: string | null;
   driver2: string | null;
   notes: string | null;
+  /** The old system's own deletion, carried through untouched. */
+  deletion: LegacyDeletion;
+  /** The book says something the model cannot hold — the visit is kept, and written deleted. */
+  unreadable: boolean;
 }
 
 export interface ParseVisitsResult {
   visits: ParsedVisit[];
-  skippedDeleted: number;
+  /** Visits the old system had deleted — kept, deleted, and counted. */
+  keptDeleted: number;
+  /** Visits kept but unreadable — «id · what could not be read». */
+  unreadable: { id: string; reason: string }[];
+  /** Only a file that is not a list of rows at all. */
   rejected: { id: string; reason: string }[];
 }
 
@@ -118,57 +145,71 @@ const legacyId = (value: LegacyVisit['_id'], index: number): string => {
 };
 
 /**
- * Read the export. A row that cannot be read is REPORTED by legacy id and reason, not refused:
- * two out-dates that are not dates are a note for whoever keeps the book, not a reason to leave
- * 1,800 visits in it.
+ * Read the export. NOTHING IS DROPPED: a visit the book wrote badly is kept, marked, and carries
+ * the book's own words for whatever could not be read, so the visit still says what it said.
  */
 export const parseVisits = (raw: unknown): ParseVisitsResult => {
-  const result: ParseVisitsResult = { visits: [], skippedDeleted: 0, rejected: [] };
+  const result: ParseVisitsResult = { visits: [], keptDeleted: 0, unreadable: [], rejected: [] };
   if (!Array.isArray(raw)) {
     result.rejected.push({ id: 'file', reason: 'the export is not a JSON array' });
     return result;
   }
   raw.forEach((entry: LegacyVisit, index) => {
     const id = legacyId(entry._id, index);
-    if (entry.deleted === 1) {
-      result.skippedDeleted += 1;
-      return;
-    }
+    const deletion = deletionOf(entry);
+    if (deletion.isDeleted) result.keptDeleted += 1;
+    let unreadable = false;
+    let notes = text(entry.notes);
+
     const code = text(entry.car_code);
     if (code === null) {
-      result.rejected.push({ id, reason: 'no car code' });
-      return;
+      unreadable = true;
+      result.unreadable.push({ id, reason: 'no car code' });
     }
-    const inDate = visitDate(entry.in_date);
-    if (inDate === null || inDate === 'invalid') {
-      result.rejected.push({ id, reason: `${code}: the in-date cannot be read` });
-      return;
+
+    // The day it went in. Where that is not a date, the day the row was ADDED is the nearest
+    // thing the export has to it, and the book's own text goes on the visit.
+    const written = visitDate(entry.in_date);
+    let inDate = written === 'invalid' ? null : written;
+    if (inDate === null) {
+      unreadable = true;
+      result.unreadable.push({ id, reason: `${code ?? NO_CODE}: the in-date cannot be read` });
+      notes = noteWith(notes, asWritten('تاريخ الدخول', entry.in_date));
+      inDate = legacyDateOf(entry.added_date) ?? deletion.deletedAt ?? new Date(0);
     }
-    const outDate = visitDate(entry.out_date);
-    if (outDate === 'invalid') {
-      result.rejected.push({ id, reason: `${code} ${day(inDate)}: the out-date «${String(entry.out_date)}» cannot be read` });
-      return;
+
+    const parsedOut = visitDate(entry.out_date);
+    let outDate = parsedOut === 'invalid' ? null : parsedOut;
+    if (parsedOut === 'invalid') {
+      unreadable = true;
+      result.unreadable.push({ id, reason: `${code ?? NO_CODE} ${day(inDate)}: the out-date cannot be read` });
+      notes = noteWith(notes, asWritten('تاريخ الخروج', entry.out_date));
+      outDate = null;
     }
+
     const reading = counter(entry.counter);
     if (reading === 'invalid') {
-      result.rejected.push({ id, reason: `${code} ${day(inDate)}: the counter is not a number` });
-      return;
+      result.unreadable.push({ id, reason: `${code ?? NO_CODE} ${day(inDate)}: the counter is not a number` });
+      notes = noteWith(notes, asWritten('العداد', entry.counter));
     }
+
     const parts = Array.isArray(entry.spare_parts)
       ? entry.spare_parts.map(text).filter((part): part is string => part !== null)
       : [];
     result.visits.push({
       id,
-      code,
+      code: code ?? NO_CODE,
       inDate,
       outDate,
       workshop: text(entry.destination),
       workType: text(entry.works),
       parts,
-      counter: reading,
+      counter: reading === 'invalid' ? null : reading,
       driver: text(entry.driver),
       driver2: text(entry.driver2),
-      notes: text(entry.notes),
+      notes,
+      deletion,
+      unreadable,
     });
   });
   return result;
@@ -190,6 +231,8 @@ export const UNSPECIFIED = { ar: 'غير محدد', en: 'Unspecified' };
 export interface PlannedVisit extends ParsedVisit {
   driverIn: DriverRef;
   driverOut: DriverRef;
+  /** Written deleted: the book had deleted it, or the model could not hold it alive. */
+  deleted: boolean;
 }
 
 export interface VehicleVisits {
@@ -203,8 +246,10 @@ export interface MaintenancePlan {
   vehicles: VehicleVisits[];
   /** Codes the registry does not have — their visits are KEPT by code — with how many rows each. */
   unknownCars: string[];
-  /** Visits that left before they arrived — «code in-date → out-date» — skipped. */
+  /** Visits that left before they arrived — «code in-date → out-date» — kept as the book wrote them. */
   outBeforeIn: string[];
+  /** Visits written deleted: the book's own deletions, and the ones it could not say readably. */
+  deleted: number;
   /** The book's own words the catalog will be asked for, distinct, in order of first use. */
   names: { workshop: string[]; workType: string[]; sparePart: string[] };
   /** Visits with NO workshop, and with NO work type — the ones filed under «غير محدد». */
@@ -226,6 +271,7 @@ export const planMaintenanceImport = (
     vehicles: [],
     unknownCars: [],
     outBeforeIn: [],
+    deleted: 0,
     names: { workshop: [], workType: [], sparePart: [] },
     blanks: { workshop: 0, workType: 0 },
   };
@@ -240,10 +286,13 @@ export const planMaintenanceImport = (
 
   for (const visit of visits) {
     if (!vehicleIdByCode.has(visit.code)) unknown.set(visit.code, (unknown.get(visit.code) ?? 0) + 1);
+    // A visit that left before it arrived is kept with BOTH of the book's dates: one of the two
+    // is a typo, and the only person who can say which needs to see the visit on the screen.
     if (visit.outDate !== null && visit.outDate < visit.inDate) {
       plan.outBeforeIn.push(`${visit.code} ${day(visit.inDate)} → ${day(visit.outDate)}`);
-      continue;
     }
+    const deleted = visit.deletion.isDeleted || visit.unreadable;
+    if (deleted) plan.deleted += 1;
     remember('workshop', visit.workshop);
     remember('workType', visit.workType);
     if (visit.workshop === null) plan.blanks.workshop += 1;
@@ -254,6 +303,7 @@ export const planMaintenanceImport = (
       ...visit,
       driverIn: driverRef(visit.driver, driverIdByName, isNobody),
       driverOut: driverRef(visit.driver2, driverIdByName, isNobody),
+      deleted,
     });
     byCode.set(visit.code, list);
   }
@@ -316,11 +366,11 @@ export interface MaintenanceImportOutcome {
   namesFilled: number;
   /** Visits whose counter came from the odometer book rather than this one. */
   counterFromOdometer: number;
-  /** Visits with no counter anywhere on a car the registry has — «code in-date» — skipped. */
+  /** Visits with no counter anywhere on a car the registry has — «code in-date» — written as 0. */
   noCounter: string[];
   /** Visits on a car the registry never had, with no counter in the book — written as 0 and listed. */
   counterUnknown: string[];
-  /** Visits that are still open in the book, for a car that is already in a workshop today. */
+  /** Visits still open in the book on a car already in a workshop — written DELETED, not dropped. */
   openConflicts: string[];
   /** Catalog rows this run added, by kind. */
   catalogCreated: string[];
@@ -364,11 +414,15 @@ export const applyMaintenanceImport = async (
       ? (catalog[kind].unspecified as string)
       : (catalog[kind].ids.get(fold(name)) as string);
 
+  const at = new Date();
   for (const vehicle of plan.vehicles) {
     try {
       const existing = await fleetMaintenanceRepository.existingByKey(vehicle.ref);
       const vehicleId = vehicle.ref.vehicleId;
       const open = vehicleId === null ? null : await fleetMaintenanceRepository.findOpen(vehicleId);
+      // Whether THIS run has already written the car's one open visit — the book left a handful
+      // of cars with two, and the index would refuse the second.
+      let openWritten = false;
       const docs: Partial<FleetMaintenanceVisitDoc>[] = [];
       for (const visit of vehicle.visits) {
         const workshopId = id('workshop', visit.workshop);
@@ -393,24 +447,32 @@ export const applyMaintenanceImport = async (
         }
         let odometerAtService = visit.counter;
         if (odometerAtService === null) {
-          if (vehicleId === null) {
-            // No car, no chain, nothing to measure: the visit is kept, the counter is 0, the
-            // file says which.
+          const bounds =
+            vehicleId === null ? null : await fleetOdometerRepository.chainBounds(vehicleId, visit.inDate);
+          odometerAtService = bounds === null ? null : (bounds.lower?.reading ?? bounds.upper?.reading ?? null);
+          if (odometerAtService === null) {
+            // Nothing to measure — no car, or a car with no reading anywhere near the day. The
+            // visit is kept, the counter is written 0, and the run names it: a zero is visibly
+            // not a reading, where leaving the visit out would have been invisible.
             odometerAtService = 0;
-            outcome.counterUnknown.push(`${vehicle.code} ${day(visit.inDate)}`);
+            (vehicleId === null ? outcome.counterUnknown : outcome.noCounter).push(
+              `${vehicle.code} ${day(visit.inDate)}`,
+            );
           } else {
-            const bounds = await fleetOdometerRepository.chainBounds(vehicleId, visit.inDate);
-            odometerAtService = bounds.lower?.reading ?? bounds.upper?.reading ?? null;
-            if (odometerAtService === null) {
-              outcome.noCounter.push(`${vehicle.code} ${day(visit.inDate)}`);
-              continue;
-            }
             outcome.counterFromOdometer += 1;
           }
         }
-        if (visit.outDate === null && open !== null) {
-          outcome.openConflicts.push(`${vehicle.code} ${day(visit.inDate)}`);
-          continue;
+        // ONE OPEN VISIT PER CAR is the database's own statement (`ux_open_visit`). A second one
+        // — the car already had an open visit, or the book itself left two open — is written
+        // DELETED rather than dropped: «بس ميحصلش تعارض».
+        let deleted = visit.deleted;
+        if (visit.outDate === null && !deleted) {
+          if (open !== null || openWritten) {
+            outcome.openConflicts.push(`${vehicle.code} ${day(visit.inDate)}`);
+            deleted = true;
+          } else {
+            openWritten = true;
+          }
         }
         docs.push({
           ...bookRefFields(vehicle.ref),
@@ -429,6 +491,7 @@ export const applyMaintenanceImport = async (
           takenInByEmployeeId: null,
           takenOutByEmployeeId: null,
           notes: visit.notes,
+          ...(deleted ? deletedFields(visit.deletion, at) : liveFields()),
         });
       }
       if (docs.length > 0) await fleetMaintenanceRepository.createMany(docs, { by });

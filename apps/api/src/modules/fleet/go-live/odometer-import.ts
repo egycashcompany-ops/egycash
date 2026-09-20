@@ -10,22 +10,28 @@
 //   km       → recomputed: `in − out`, because the book's own figure disagrees with its own two
 //              readings on 137 rows and the model derives it anyway
 //
-// `deleted`, `added_by`, `added_date`, `deleted_by`, `deleted_date` and `__v` are legacy
-// bookkeeping and do not travel; a row flagged deleted is skipped and counted.
+// EVERY ROW OF THE BOOK IS BROUGHT ACROSS — «المهم تضيف كل الداتا ومتسبش داتا فاضيه». `added_by`,
+// `added_date`, `deleted_by` and `__v` are legacy bookkeeping and do not travel; `deleted` does:
+// a row the old system had deleted arrives ALREADY DELETED, carrying the day it was deleted on,
+// and nothing else about it is changed — «عاوزها موجوده والdeleted 1 زى ما هى». `legacy-row.ts`
+// says what that state is and why the model's invariants are safe around it.
 //
 // THE BOOK IS NOT A CHAIN, AND THE MODEL IS. `odometer.model.ts` says one reading closes a period
 // and opens the next — `inReading` of entry k IS `outReading` of entry k+1 — and allows ONE open
 // period per vehicle (`ux_open_period`). The book was a ledger somebody typed: 1,109 rows have no
-// closing reading at all, 458 links do not meet, a few closing readings are «0». So the rows are
-// brought across AS THEY WERE WRITTEN, ordered by date, with exactly two repairs, both counted
-// and both reported:
+// closing reading at all, 837 have no opening one, 458 links do not meet, a few closing readings
+// are «0». So the rows are brought across AS THEY WERE WRITTEN, ordered by date, and the two ends
+// the book left blank are filled from the chain itself — the SAME rule, read in both directions,
+// both counted and both reported:
 //
 //   • A row with NO closing reading — or one below its own opening reading, which is no reading
-//     — is closed with the NEXT row's opening reading, which is the reading the model says it
-//     should have carried. The last row of a vehicle has no next row and stays open, which is
-//     the model's own open period, and there is one of it per vehicle.
-//   • A row with NO opening reading cannot be a period at all and is not invented; it is skipped
-//     and listed by car and date, so whoever keeps the book can look it up.
+//     — is closed with the NEXT row's opening reading. The last row of a vehicle has no next row
+//     and stays open, which is the model's own open period, one per vehicle.
+//   • A row with NO opening reading is opened at the LAST READING THE BOOK KNOWS for that car —
+//     the running reading the rows before it left. That is not a number this invents: it is the
+//     reading the model says the row carries, and it is why all 837 such rows land instead of
+//     being dropped. A car's very first row, if it has no opening reading, opens at its own
+//     closing one: a period of no distance, keeping its day, its driver and its note.
 //
 // A link that does not meet — row k closes at 1,000 and row k+1 opens at 1,050 — is left as it
 // is: both readings were written down, and «which one was wrong» is not a question an import may
@@ -37,7 +43,7 @@
 // answers with HR's candidates: one is the driver; none, or several, and the NAME IS KEPT ON THE
 // ROW AS TEXT — «عاوز يتحفظ كداتا زى ما يكون سواق كان موجود ومشى» — shown in the driver column
 // in the employee's place, and listed on the run so HR can add the person if they are still
-// here. A reading is a fact about the car; the driver is a label on it, and the label is kept.
+// here. Several candidates is never guessed between: «اكتب الاسم بس ومتكتبش كود موظف».
 //
 // CARS THE REGISTRY NEVER HAD — «194», «تويوتا1» — keep their rows too, carrying the book's code
 // and no vehicle (`book-ref.ts`): the row is data the company refers back to; the car is not
@@ -45,22 +51,32 @@
 import { Types } from 'mongoose';
 import { findDirectoryEmployeesByNames } from '../../../platform/directory';
 import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
+import {
+  asWritten,
+  deletedFields,
+  deletionOf,
+  legacyDateOf,
+  liveFields,
+  noteWith,
+  type LegacyBookkeeping,
+  type LegacyDeletion,
+} from './legacy-row';
 import { fleetOdometerRepository } from '../odometer/odometer.repository';
 import { type FleetOdometerLogDoc } from '../odometer/odometer.model';
 import { failureReason, fold } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
-interface LegacyLogRow {
+interface LegacyLogRow extends LegacyBookkeeping {
   _id?: { $oid?: string } | string;
   car_code?: string;
   date?: { $date?: string } | string;
+  added_date?: { $date?: string } | string;
   out_num?: string;
   in_num?: string;
   km?: string;
   driver?: string;
   driver2?: string;
   notes?: string;
-  deleted?: number;
 }
 
 /** A row the import will act on: trimmed, typed, and still in the book's own terms. */
@@ -68,20 +84,35 @@ export interface ParsedLogRow {
   id: string;
   code: string;
   date: Date;
-  /** `null` = the book has no opening reading — the row cannot be a period. */
+  /** `null` = the book has no opening reading — the chain supplies one. */
   out: number | null;
   /** `null` = the book has no closing reading. */
   in: number | null;
   driver: string | null;
   driver2: string | null;
   notes: string | null;
+  /** The old system's own deletion, carried through untouched. */
+  deletion: LegacyDeletion;
+  /**
+   * The row says something the new model cannot hold as written — a date that is not a date, a
+   * car with no code. It is kept, with the book's words in its notes, and written DELETED: off
+   * the screens and off the chain until somebody fixes it, and still there to be fixed.
+   */
+  unreadable: boolean;
 }
 
 export interface ParseLogResult {
   rows: ParsedLogRow[];
-  skippedDeleted: number;
+  /** Rows the old system had deleted — kept, deleted, and counted. */
+  keptDeleted: number;
+  /** Rows kept but unreadable — «id · what could not be read». */
+  unreadable: { id: string; reason: string }[];
+  /** Only a file that is not a list of rows at all. */
   rejected: { id: string; reason: string }[];
 }
+
+/** The code a row carries when the book named no car at all — never an empty column. */
+export const NO_CODE = 'بدون كود';
 
 const text = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
@@ -102,61 +133,66 @@ const legacyId = (value: LegacyLogRow['_id'], index: number): string => {
   return `row ${index}`;
 };
 
-/**
- * The book's date, or nothing. One row carries a date before the year 0 — a typo the export
- * serialised faithfully — and a reading on that day belongs to no period anybody can name.
- */
-const logDate = (value: LegacyLogRow['date']): Date | null => {
-  const raw = typeof value === 'string' ? value : value?.$date;
-  if (typeof raw !== 'string') return null;
-  const date = new Date(raw);
-  if (Number.isNaN(date.getTime())) return null;
+/** A day the company could have worked on. One row carries a date before the year 0. */
+const inRange = (date: Date): boolean => {
   const year = date.getUTCFullYear();
-  return year < 2000 || year > 2100 ? null : date;
+  return year >= 2000 && year <= 2100;
 };
 
 /**
- * Read the export. A row that cannot be read is REPORTED by its legacy id and the reason — not a
- * refusal, as it is for the cars: one unreadable date among twenty thousand readings is a note
- * for whoever keeps the book, not a reason to leave the other 19,999 in it.
+ * Read the export. NOTHING IS DROPPED: a row the book wrote badly is kept, marked, and carries
+ * the book's own words for whatever could not be read, so the row still says what it said.
  */
 export const parseCarsLog = (raw: unknown): ParseLogResult => {
-  const result: ParseLogResult = { rows: [], skippedDeleted: 0, rejected: [] };
+  const result: ParseLogResult = { rows: [], keptDeleted: 0, unreadable: [], rejected: [] };
   if (!Array.isArray(raw)) {
     result.rejected.push({ id: 'file', reason: 'the export is not a JSON array' });
     return result;
   }
   raw.forEach((entry: LegacyLogRow, index) => {
     const id = legacyId(entry._id, index);
-    if (entry.deleted === 1) {
-      result.skippedDeleted += 1;
-      return;
-    }
+    const deletion = deletionOf(entry);
+    if (deletion.isDeleted) result.keptDeleted += 1;
+    let unreadable = false;
+    let notes = text(entry.notes);
+
     const code = text(entry.car_code);
     if (code === null) {
-      result.rejected.push({ id, reason: 'no car code' });
-      return;
+      unreadable = true;
+      result.unreadable.push({ id, reason: 'no car code' });
     }
-    const date = logDate(entry.date);
-    if (date === null) {
-      result.rejected.push({ id, reason: `${code}: the date cannot be read` });
-      return;
+
+    // The book's date, as written. One that is not a date at all — or a year nobody worked in —
+    // keeps the row: the day the row was ADDED is the nearest thing the export has to it, and
+    // what the book wrote is quoted in the notes for whoever comes to correct it.
+    const written = legacyDateOf(entry.date);
+    let date = written;
+    if (date === null || !inRange(date)) {
+      unreadable = true;
+      result.unreadable.push({ id, reason: `${code ?? NO_CODE}: the date cannot be read` });
+      notes = noteWith(notes, asWritten('التاريخ', entry.date));
+      date = legacyDateOf(entry.added_date) ?? deletion.deletedAt ?? written ?? new Date(0);
     }
+
     const out = reading(entry.out_num);
     const inReading = reading(entry.in_num);
+    if (out === 'invalid') notes = noteWith(notes, asWritten('قراءة الخروج', entry.out_num));
+    if (inReading === 'invalid') notes = noteWith(notes, asWritten('قراءة الدخول', entry.in_num));
     if (out === 'invalid' || inReading === 'invalid') {
-      result.rejected.push({ id, reason: `${code}: a reading is not a number` });
-      return;
+      result.unreadable.push({ id, reason: `${code ?? NO_CODE}: a reading is not a number` });
     }
+
     result.rows.push({
       id,
-      code,
+      code: code ?? NO_CODE,
       date,
-      out,
-      in: inReading,
+      out: out === 'invalid' ? null : out,
+      in: inReading === 'invalid' ? null : inReading,
       driver: text(entry.driver),
       driver2: text(entry.driver2),
-      notes: text(entry.notes),
+      notes,
+      deletion,
+      unreadable,
     });
   });
   return result;
@@ -244,6 +280,11 @@ export interface ChainRow {
   driver1: DriverRef;
   driver2: DriverRef;
   notes: string | null;
+  /** Written deleted: the book had deleted it, or the model could not hold it alive. */
+  deletion: LegacyDeletion;
+  deleted: boolean;
+  /** The book gave this row no closing reading — the one field a later run may still fill. */
+  bookHadNoClose: boolean;
 }
 
 export interface VehicleChain {
@@ -257,20 +298,33 @@ export interface OdometerPlan {
   vehicles: VehicleChain[];
   /** Codes the registry does not have — their rows are KEPT by code — with how many rows each. */
   unknownCars: string[];
-  /** Rows without an opening reading: how many, and which («code date»). */
-  noOutReading: number;
-  noOutReadingRows: string[];
+  /** Rows the book left with no opening reading, opened at the car's last known reading. */
+  openedByPrevious: number;
   /** Rows whose missing (or impossible) closing reading was taken from the next row. */
   closedByNext: number;
   badInReading: number;
+  /** Rows written deleted: the book's own deletions, and the ones it could not say readably. */
+  deleted: number;
 }
 
 /** `2025-11-25` — how a row is named in a report. */
 export const day = (date: Date): string => date.toISOString().slice(0, 10);
 
+/** Date first, then the reading: two rows on one day are the morning and the evening. */
+const chainOrder = (a: ParsedLogRow, b: ParsedLogRow): number =>
+  a.date.getTime() - b.date.getTime() ||
+  (a.out ?? a.in ?? 0) - (b.out ?? b.in ?? 0) ||
+  a.id.localeCompare(b.id);
+
 /**
  * Turn the ledger into one chain per car. Pure: the registry and the directory are handed in as
  * maps, so the rule can be tested on rows alone.
+ *
+ * A DELETED ROW IS NOT ON THE CHAIN. It keeps the readings the book gave it and takes no part in
+ * what the live rows hand one another: the old system deleted it, so it is not a period of the
+ * car's life any more — it is a record of one. Where the book gave it no opening reading either,
+ * it opens at whatever the live chain had reached by then, purely so the row has the reading the
+ * model requires; nothing is measured from it and nothing is closed by it.
  */
 export const planOdometerImport = (
   rows: readonly ParsedLogRow[],
@@ -281,20 +335,15 @@ export const planOdometerImport = (
   const plan: OdometerPlan = {
     vehicles: [],
     unknownCars: [],
-    noOutReading: 0,
-    noOutReadingRows: [],
+    openedByPrevious: 0,
     closedByNext: 0,
     badInReading: 0,
+    deleted: 0,
   };
   const byCode = new Map<string, ParsedLogRow[]>();
   const unknown = new Map<string, number>();
   for (const row of rows) {
     if (!vehicleIdByCode.has(row.code)) unknown.set(row.code, (unknown.get(row.code) ?? 0) + 1);
-    if (row.out === null) {
-      plan.noOutReading += 1;
-      plan.noOutReadingRows.push(`${row.code} ${day(row.date)}`);
-      continue;
-    }
     const list = byCode.get(row.code) ?? [];
     list.push(row);
     byCode.set(row.code, list);
@@ -302,33 +351,44 @@ export const planOdometerImport = (
   plan.unknownCars = [...unknown].sort().map(([code, count]) => `${code} (${count})`);
 
   for (const [code, list] of [...byCode].sort(([a], [b]) => a.localeCompare(b))) {
-    // Date first, then the reading: two rows on one day are the morning and the evening, and the
-    // lower reading came first. The legacy id settles a tie the way the book was written.
-    const ordered = [...list].sort(
-      (a, b) =>
-        a.date.getTime() - b.date.getTime() ||
-        (a.out as number) - (b.out as number) ||
-        a.id.localeCompare(b.id),
-    );
-    const chain: ChainRow[] = ordered.map((row, index) => {
-      const out = row.out as number;
-      const next = ordered[index + 1];
+    const ordered = [...list].sort(chainOrder);
+    // The car's last known reading, walking forward. Only live rows move it: a deleted row is a
+    // record of a period, not one the next row carries on from.
+    let cursor: number | null = null;
+    const opened = ordered.map((row) => {
+      const deleted = row.deletion.isDeleted || row.unreadable;
+      const out = row.out ?? cursor ?? row.in ?? 0;
+      if (row.out === null && !deleted) plan.openedByPrevious += 1;
       let inReading = row.in;
       if (inReading !== null && inReading < out) {
         plan.badInReading += 1;
         inReading = null;
       }
-      if (inReading === null && next !== undefined) {
-        inReading = next.out as number;
-        plan.closedByNext += 1;
+      if (!deleted) cursor = inReading ?? out;
+      if (deleted) plan.deleted += 1;
+      return { row, out, in: inReading, deleted };
+    });
+    // A live row the book left open is closed by the next LIVE row's opening reading — the
+    // reading the model says it hands on. The last live row stays open: the car's open period.
+    const chain: ChainRow[] = opened.map((entry, index) => {
+      let inReading = entry.in;
+      if (inReading === null && !entry.deleted) {
+        const next = opened.slice(index + 1).find((later) => !later.deleted);
+        if (next !== undefined) {
+          inReading = next.out;
+          plan.closedByNext += 1;
+        }
       }
       return {
-        date: row.date,
-        out,
+        date: entry.row.date,
+        out: entry.out,
         in: inReading,
-        driver1: driverRef(row.driver, driverIdByName, isNobody),
-        driver2: driverRef(row.driver2, driverIdByName, isNobody),
-        notes: row.notes,
+        driver1: driverRef(entry.row.driver, driverIdByName, isNobody),
+        driver2: driverRef(entry.row.driver2, driverIdByName, isNobody),
+        notes: entry.row.notes,
+        deletion: entry.row.deletion,
+        deleted: entry.deleted,
+        bookHadNoClose: entry.row.in === null || entry.in === null,
       };
     });
     plan.vehicles.push({ code, ref: bookRefOf(code, vehicleIdByCode), rows: chain });
@@ -342,9 +402,11 @@ export interface OdometerImportOutcome {
   alreadyThere: number;
   /** Rows already written whose driver was empty and now carries the book's name. */
   namesFilled: number;
+  /** Rows already written whose import-filled closing reading now meets the row after it. */
+  relinked: number;
   /** Open tails closed against a reading the company had already recorded after the book ends. */
   closedByExisting: number;
-  /** Cars whose open tail could not be written because the car already has an open period. */
+  /** Rows written DELETED so the car's one open period is not contested — «ميحصلش تعارض». */
   openConflicts: string[];
   failures: { code: string; reason: string }[];
 }
@@ -354,17 +416,26 @@ export interface OdometerImportOutcome {
  * left unfinished, and the take-over that follows skips what did land.
  *
  * IDEMPOTENT PER ROW, which is what makes the lease's take-over safe here: a row is «the same»
- * as one already written when it is the same car, the same day and the same opening reading,
- * and such a row is counted and not written again — but a driver's NAME is filled into it where
- * an earlier run left the driver empty, which is the one repair a later run makes.
+ * as one already written when it is the same car, the same day and the same opening reading —
+ * DELETED ROWS INCLUDED, or a second run would write every one of them again. Such a row is
+ * counted and not written twice, and two repairs are made to it:
+ *
+ *   • a driver's NAME is filled in where an earlier run left the driver empty;
+ *   • a closing reading the BOOK never gave, and which no person has touched since the import
+ *     wrote it, is re-filled from the row that now follows — so inserting a row between two the
+ *     last run wrote leaves the chain meeting, instead of a step nobody typed.
+ *
+ * A reading a person entered or corrected is never touched: `updatedAt` moves the moment anybody
+ * does, and a row whose `updatedAt` has moved is left exactly as they left it.
  *
  * THE OPEN TAIL IS THE ONE PLACE THE BOOK MEETS WHAT THE COMPANY HAS TYPED SINCE. The model
  * allows one open period per car. If the car already has one — readings recorded on the new
  * screen after the book stopped — the book's last row is closed against the earliest of those,
  * which is the reading the model says it hands on to; and if that earliest reading is dated
  * before the book's last row, or below it, the two histories cannot be joined without inventing
- * a number, so the tail is left out and the car is reported. A car the registry never had has no
- * chain to meet: its rows are written as the book had them.
+ * a number, so the row is written DELETED instead of dropped: the data is kept, the index is not
+ * contested, and the run names the car. A car the registry never had has no chain to meet: its
+ * rows are written as the book had them.
  */
 export const applyOdometerImport = async (
   plan: OdometerPlan,
@@ -374,10 +445,12 @@ export const applyOdometerImport = async (
     imported: 0,
     alreadyThere: 0,
     namesFilled: 0,
+    relinked: 0,
     closedByExisting: 0,
     openConflicts: [],
     failures: [],
   };
+  const at = new Date();
   for (const vehicle of plan.vehicles) {
     try {
       const existing = await fleetOdometerRepository.existingByKey(vehicle.ref);
@@ -401,16 +474,22 @@ export const applyOdometerImport = async (
             await fleetOdometerRepository.setDriverNames(written._id, names);
             outcome.namesFilled += 1;
           }
+          const untouched = written.updatedAt.getTime() === written.createdAt.getTime();
+          if (row.bookHadNoClose && untouched && row.in !== null && written.inReading !== row.in && row.in >= written.outReading) {
+            await fleetOdometerRepository.setClosing(written._id, row.in, row.in - written.outReading);
+            outcome.relinked += 1;
+          }
           continue;
         }
         let inReading = row.in;
-        if (inReading === null && open !== null) {
+        let deleted = row.deleted;
+        if (inReading === null && !deleted && open !== null) {
           if (head !== null && head.date >= row.date && head.outReading >= row.out) {
             inReading = head.outReading;
             outcome.closedByExisting += 1;
           } else {
             outcome.openConflicts.push(`${vehicle.code} ${day(row.date)}`);
-            continue;
+            deleted = true;
           }
         }
         docs.push({
@@ -424,6 +503,7 @@ export const applyOdometerImport = async (
           driver1Name: row.driver1.name,
           driver2Name: row.driver2.name,
           notes: row.notes,
+          ...(deleted ? deletedFields(row.deletion, at) : liveFields()),
         });
       }
       if (docs.length > 0) await fleetOdometerRepository.createMany(docs, { by });

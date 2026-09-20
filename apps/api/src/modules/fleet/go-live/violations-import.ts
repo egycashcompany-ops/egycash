@@ -17,33 +17,42 @@
 //   done               → collected                                                   by NAME
 //   total_before_grievance → the (vehicle, year) grievance row   done             → collected
 //
-// `added_by`, `violation_car` (a copy of `type`), `createdAt`, `updatedAt` and `__v` do not travel.
+// `added_by`, `violation_car` (a copy of `type`), `createdAt`, `updatedAt` and `__v` do not
+// travel. `deleted` DOES — a row the old system had deleted arrives already deleted, and EVERY
+// row of the book lands: «المهم تضيف كل الداتا ومتسبش داتا فاضيه», «عاوزها موجوده والdeleted 1 زى
+// ما هى». `legacy-row.ts` says what that state is.
 //
 // THE YEAR IS THE FACT for a statement row — H8's fate, `violation.model.ts` — so `date_car` is
 // read for its year and nothing else. THE GRIEVANCE is one figure per (vehicle, year) in its own
 // collection — H9's fate — and the book stamped it on every row of that year; the rows agree,
 // and the figure is written once.
 //
-// WHAT IS NOT WRITTEN, and listed instead: a statement row with a count of zero (eight of them,
-// all blank), and a row whose type is blank or not in the catalog on that side — the violation
-// types are the one catalog the owner asked to keep as it is («ما عدا أنواع المخالفات»), so
-// nothing is added to it here. A row on a car the registry never had IS written, by the book's
-// code (`book-ref.ts`); its grievance figure, keyed on a vehicle, cannot be and is listed.
+// EVERYTHING IS WRITTEN. A statement row with a count of zero (eight of them) is written with
+// its zero and listed: a zero on the screen is a row somebody can correct; a row left out is
+// not. A row whose type is blank or is not in the catalog on that side (two of them) is filed
+// under «غير محدد», ONE catalog row per side and only when some row actually needs it — the
+// violation types are the catalog the owner asked to keep as it is («ما عدا أنواع المخالفات»),
+// and this neither renames nor guesses at any of them; it adds the one row that says «nobody
+// wrote what this was», so the fine itself is not the thing that goes missing. A row on a car
+// the registry never had IS written, by the book's code (`book-ref.ts`); its grievance figure,
+// keyed on a vehicle the registry does not have, cannot be and is listed.
 //
 // DRIVERS ARE NAMES, as in the other books, with the same answer: matched, or the NAME KEPT ON
 // THE ROW AS TEXT and listed for HR. A fine is history; it is not less a fine for HR not knowing
 // the spelling.
 import { Types } from 'mongoose';
 import { type FleetViolationSide } from '@ecms/contracts';
-import { fleetCatalogItemRepository } from '../catalogs';
+import { fleetCatalogItemRepository, fleetCatalogItemService } from '../catalogs';
 import { fleetGrievanceRepository, fleetViolationRepository } from '../violations/violation.repository';
 import { type FleetViolationDoc } from '../violations/violation.model';
 import { day, driverRef, isPlaceholderDriver } from './odometer-import';
 import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
+import { deletedFields, deletionOf, liveFields, type LegacyBookkeeping, type LegacyDeletion } from './legacy-row';
+import { NO_CODE } from './odometer-import';
 import { failureReason, fold } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
-interface LegacyViolation {
+interface LegacyViolation extends LegacyBookkeeping {
   _id?: { $oid?: string } | string;
   car_code?: string;
   date_car?: { $date?: string } | string;
@@ -54,12 +63,20 @@ interface LegacyViolation {
   done?: number | null;
   total_before_grievance?: string | number;
   date_driver?: { $date?: string } | string;
+  createdAt?: { $date?: string } | string;
   driver?: string;
   violation_driver?: string;
-  deleted?: number;
 }
 
-export interface ParsedCompanyViolation {
+/** What a row of either shape carries about its own fate — see `legacy-row.ts`. */
+interface KeptRow {
+  /** The old system's own deletion, carried through untouched. */
+  deletion: LegacyDeletion;
+  /** The book says something the model cannot hold — the row is kept, and written deleted. */
+  unreadable: boolean;
+}
+
+export interface ParsedCompanyViolation extends KeptRow {
   id: string;
   code: string;
   year: number;
@@ -71,10 +88,10 @@ export interface ParsedCompanyViolation {
   grievance: number;
 }
 
-export interface ParsedDriverViolation {
+export interface ParsedDriverViolation extends KeptRow {
   id: string;
   code: string;
-  date: Date;
+  date: Date | null;
   type: string;
   amount: number;
   driver: string | null;
@@ -84,7 +101,11 @@ export interface ParsedDriverViolation {
 export interface ParseViolationsResult {
   company: ParsedCompanyViolation[];
   driver: ParsedDriverViolation[];
-  skippedDeleted: number;
+  /** Rows the old system had deleted — kept, deleted, and counted. */
+  keptDeleted: number;
+  /** Rows kept but unreadable — «id · what could not be read». */
+  unreadable: { id: string; reason: string }[];
+  /** Only a file that is not a list of rows at all. */
   rejected: { id: string; reason: string }[];
 }
 
@@ -122,65 +143,69 @@ const legacyId = (value: LegacyViolation['_id'], index: number): string => {
  * reason, not refused.
  */
 export const parseViolations = (raw: unknown): ParseViolationsResult => {
-  const result: ParseViolationsResult = { company: [], driver: [], skippedDeleted: 0, rejected: [] };
+  const result: ParseViolationsResult = { company: [], driver: [], keptDeleted: 0, unreadable: [], rejected: [] };
   if (!Array.isArray(raw)) {
     result.rejected.push({ id: 'file', reason: 'the export is not a JSON array' });
     return result;
   }
   raw.forEach((entry: LegacyViolation, index) => {
     const id = legacyId(entry._id, index);
-    if (entry.deleted === 1) {
-      result.skippedDeleted += 1;
-      return;
-    }
+    const deletion = deletionOf(entry);
+    if (deletion.isDeleted) result.keptDeleted += 1;
+    let unreadable = false;
+    const cannotRead = (reason: string): void => {
+      unreadable = true;
+      result.unreadable.push({ id, reason });
+    };
+
     const code = text(entry.car_code);
-    if (code === null) {
-      result.rejected.push({ id, reason: 'no car code' });
-      return;
-    }
+    if (code === null) cannotRead('no car code');
+
     if (entry.violation_driver !== undefined) {
+      // A fine, on a day. The day is the fact; a fine whose day cannot be read is kept with no
+      // day at all — the model allows that — and written deleted until somebody dates it.
       const date = legacyDate(entry.date_driver);
-      if (date === null) {
-        result.rejected.push({ id, reason: `${code}: the date cannot be read` });
-        return;
-      }
+      if (date === null) cannotRead(`${code ?? NO_CODE}: the date cannot be read`);
       const amount = figure(entry.amount);
       if (amount === 'invalid') {
-        result.rejected.push({ id, reason: `${code} ${day(date)}: the amount is not a number` });
-        return;
+        cannotRead(`${code ?? NO_CODE} ${date === null ? '—' : day(date)}: the amount is not a number`);
       }
       result.driver.push({
         id,
-        code,
+        code: code ?? NO_CODE,
         date,
         type: text(entry.violation_driver) ?? '',
-        amount,
+        amount: amount === 'invalid' ? 0 : amount,
         driver: text(entry.driver),
         collected: entry.done === 1,
+        deletion,
+        unreadable,
       });
       return;
     }
-    const date = legacyDate(entry.date_car);
-    if (date === null) {
-      result.rejected.push({ id, reason: `${code}: the date cannot be read` });
-      return;
-    }
+
+    // A statement row. The YEAR is the fact; where the book's date is not one, the year the row
+    // was created in is the nearest the export has, and the row is written deleted.
+    const date = legacyDate(entry.date_car) ?? legacyDate(entry.createdAt);
+    if (legacyDate(entry.date_car) === null) cannotRead(`${code ?? NO_CODE}: the date cannot be read`);
     const count = figure(entry.num);
     const unitValue = figure(entry.value_violationCar);
-    if (count === 'invalid' || unitValue === 'invalid' || !Number.isInteger(count)) {
-      result.rejected.push({ id, reason: `${code} ${date.getUTCFullYear()}: the count or the value is not a number` });
-      return;
+    const readable = count !== 'invalid' && unitValue !== 'invalid' && Number.isInteger(count);
+    if (!readable) {
+      cannotRead(`${code ?? NO_CODE} ${date?.getUTCFullYear() ?? '—'}: the count or the value is not a number`);
     }
     const grievance = figure(entry.total_before_grievance ?? 0);
     result.company.push({
       id,
-      code,
-      year: date.getUTCFullYear(),
+      code: code ?? NO_CODE,
+      year: date?.getUTCFullYear() ?? 0,
       type: text(entry.type),
-      count,
-      unitValue,
+      count: readable ? (count as number) : 0,
+      unitValue: unitValue === 'invalid' ? 0 : unitValue,
       collected: entry.done === 1,
       grievance: grievance === 'invalid' ? 0 : grievance,
+      deletion,
+      unreadable,
     });
   });
   return result;
@@ -208,7 +233,19 @@ export const loadViolationTypes = async (): Promise<ViolationTypeIndex> => {
 export interface PlannedViolation {
   doc: Partial<FleetViolationDoc>;
   key: string;
+  /**
+   * The book wrote no type for this row, or one the catalog does not have on this side. The id
+   * of «غير محدد» on that side is filled in at write time — the plan is pure and adding a
+   * catalog row is not.
+   */
+  unspecified: FleetViolationSide | null;
 }
+
+/** The catalog row a violation whose type nobody wrote is filed under, one per side. */
+export const UNSPECIFIED_TYPE: Readonly<Record<FleetViolationSide, { ar: string; en: string }>> = {
+  company: { ar: 'غير محدد (مخالفات الشركة)', en: 'Unspecified (company)' },
+  driver: { ar: 'غير محدد (مخالفات السائقين)', en: 'Unspecified (driver)' },
+};
 
 export interface PlannedGrievance {
   vehicleId: string;
@@ -224,10 +261,14 @@ export interface ViolationsPlan {
   unknownCars: string[];
   /** Grievance figures on such a car — «code year: figure» — which need a vehicle and are not written. */
   grievancesUnplaced: string[];
-  /** Statement rows with a count of zero — nothing to file. */
+  /** Statement rows with a count of zero — written with their zero, and listed. */
   zeroCount: string[];
   /** Rows whose type is blank, or not in the catalog on that side — «code year/date: type». */
   unknownTypes: string[];
+  /** Which sides need the «غير محدد» catalog row — none, unless some row actually left it blank. */
+  unspecifiedNeeded: FleetViolationSide[];
+  /** Rows written deleted: the book's own deletions, and the ones it could not say readably. */
+  deleted: number;
   /** A (vehicle, year) the book stamped with two different grievance figures — the first is kept. */
   grievanceConflicts: string[];
 }
@@ -259,8 +300,11 @@ export const planViolationsImport = (
     grievancesUnplaced: [],
     zeroCount: [],
     unknownTypes: [],
+    unspecifiedNeeded: [],
+    deleted: 0,
     grievanceConflicts: [],
   };
+  const needsUnspecified = new Set<FleetViolationSide>();
   const byCode = new Map<string, PlannedViolation[]>();
   const unknown = new Map<string, number>();
   const grievances = new Map<string, PlannedGrievance>();
@@ -279,20 +323,21 @@ export const planViolationsImport = (
 
   for (const row of parsed.company) {
     noteUnknown(row.code);
-    if (row.count === 0) {
-      plan.zeroCount.push(`${row.code} ${row.year}`);
-      continue;
-    }
+    // A count of zero is what the book wrote. It is written, and listed: a zero on the screen is
+    // a row somebody can correct; a row left out is not.
+    if (row.count === 0) plan.zeroCount.push(`${row.code} ${row.year}`);
     const typeId = row.type === null ? null : typeOn(row.type, 'company');
     if (typeId === null) {
       plan.unknownTypes.push(`${row.code} ${row.year}: ${row.type ?? '—'}`);
-      continue;
+      needsUnspecified.add('company');
     }
+    const deleted = row.deletion.isDeleted || row.unreadable;
+    if (deleted) plan.deleted += 1;
     const ref = bookRefOf(row.code, vehicleIdByCode);
     const doc: Partial<FleetViolationDoc> = {
       kind: 'vehicle',
       ...bookRefFields(ref),
-      violationTypeId: new Types.ObjectId(typeId),
+      ...(typeId === null ? {} : { violationTypeId: new Types.ObjectId(typeId) }),
       amount: egp(row.count * row.unitValue),
       year: row.year,
       count: row.count,
@@ -301,9 +346,15 @@ export const planViolationsImport = (
       driverEmployeeId: null,
       driverName: null,
       collected: row.collected,
+      ...(deleted ? deletedFields(row.deletion) : liveFields()),
     };
-    push(row.code, { doc, key: violationKey(doc as FleetViolationDoc) });
-    if (row.grievance > 0) {
+    push(row.code, {
+      doc,
+      key: violationKey(doc as FleetViolationDoc),
+      unspecified: typeId === null ? 'company' : null,
+    });
+    // A deleted row's grievance figure is not the year's figure — it was deleted.
+    if (row.grievance > 0 && !deleted) {
       if (ref.vehicleId === null) {
         plan.grievancesUnplaced.push(`${row.code} ${row.year}: ${row.grievance}`);
         continue;
@@ -323,14 +374,16 @@ export const planViolationsImport = (
     const typeName = DRIVER_TYPE_ALIASES[row.type] ?? row.type;
     const typeId = typeName === '' ? null : typeOn(typeName, 'driver');
     if (typeId === null) {
-      plan.unknownTypes.push(`${row.code} ${day(row.date)}: ${row.type === '' ? '—' : row.type}`);
-      continue;
+      plan.unknownTypes.push(`${row.code} ${row.date === null ? '—' : day(row.date)}: ${row.type === '' ? '—' : row.type}`);
+      needsUnspecified.add('driver');
     }
+    const deleted = row.deletion.isDeleted || row.unreadable;
+    if (deleted) plan.deleted += 1;
     const driver = driverRef(row.driver, driverIdByName, isNobody);
     const doc: Partial<FleetViolationDoc> = {
       kind: 'driver',
       ...bookRefFields(bookRefOf(row.code, vehicleIdByCode)),
-      violationTypeId: new Types.ObjectId(typeId),
+      ...(typeId === null ? {} : { violationTypeId: new Types.ObjectId(typeId) }),
       amount: egp(row.amount),
       year: null,
       count: null,
@@ -339,10 +392,16 @@ export const planViolationsImport = (
       driverEmployeeId: driver.id === null ? null : new Types.ObjectId(driver.id),
       driverName: driver.name,
       collected: row.collected,
+      ...(deleted ? deletedFields(row.deletion) : liveFields()),
     };
-    push(row.code, { doc, key: violationKey(doc as FleetViolationDoc) });
+    push(row.code, {
+      doc,
+      key: violationKey(doc as FleetViolationDoc),
+      unspecified: typeId === null ? 'driver' : null,
+    });
   }
 
+  plan.unspecifiedNeeded = [...needsUnspecified].sort();
   plan.unknownCars = [...unknown].sort().map(([code, count]) => `${code} (${count})`);
   plan.grievances = [...grievances.values()];
   for (const [code, rows] of [...byCode].sort(([a], [b]) => a.localeCompare(b))) {
@@ -359,6 +418,8 @@ export interface ViolationsImportOutcome {
   grievancesWritten: number;
   /** A (vehicle, year) that already had a DIFFERENT grievance figure on the new screen — kept. */
   grievancesKept: string[];
+  /** The «غير محدد» catalog rows this run had to add, by side — none unless a row needed one. */
+  typesCreated: string[];
   failures: { code: string; reason: string }[];
 }
 
@@ -378,13 +439,41 @@ export const applyViolationsImport = async (
     namesFilled: 0,
     grievancesWritten: 0,
     grievancesKept: [],
+    typesCreated: [],
     failures: [],
+  };
+  // The one catalog row this step may add, and only for a side some row actually left blank.
+  // The catalog is read first, so a take-over after a lapsed lease finds the row the first
+  // attempt made and does not report adding it again.
+  const unspecified = new Map<FleetViolationSide, Types.ObjectId>();
+  if (plan.unspecifiedNeeded.length > 0) {
+    const catalog = await loadViolationTypes();
+    for (const side of plan.unspecifiedNeeded) {
+      const found = catalog.byName.get(fold(UNSPECIFIED_TYPE[side].ar));
+      if (found !== undefined) {
+        unspecified.set(side, new Types.ObjectId(found.id));
+        continue;
+      }
+      const item = await fleetCatalogItemService.ensure(
+        { kind: 'violationType', name: UNSPECIFIED_TYPE[side], violationSide: side, countsForAlarm: false },
+        by,
+      );
+      unspecified.set(side, new Types.ObjectId(String(item._id)));
+      outcome.typesCreated.push(`${side}: ${UNSPECIFIED_TYPE[side].ar}`);
+    }
+  }
+  const placed = (row: PlannedViolation): PlannedViolation => {
+    const id = row.unspecified === null ? undefined : unspecified.get(row.unspecified);
+    if (id === undefined) return row;
+    const doc: Partial<FleetViolationDoc> = { ...row.doc, violationTypeId: id };
+    return { doc, key: violationKey(doc as FleetViolationDoc), unspecified: null };
   };
   for (const vehicle of plan.vehicles) {
     try {
       const existing = await fleetViolationRepository.existingByKey(vehicle.ref, violationKey);
       const docs: Partial<FleetViolationDoc>[] = [];
-      for (const row of vehicle.rows) {
+      for (const planned of vehicle.rows) {
+        const row = placed(planned);
         const written = existing.get(row.key)?.shift();
         if (written !== undefined) {
           outcome.alreadyThere += 1;

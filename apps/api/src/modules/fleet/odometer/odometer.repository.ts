@@ -77,6 +77,16 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     return groupByKey(rows, (row) => this.rowKey(row.date, row.outReading));
   }
 
+  /**
+   * The go-live import's second repair on a row already written: the closing reading the BOOK
+   * never gave, re-filled from the row that now follows it, so a row inserted between two the
+   * last run wrote leaves the chain meeting. Only ever called for a row nobody has touched since
+   * the import created it — see `applyOdometerImport`.
+   */
+  async setClosing(id: Types.ObjectId, inReading: number, km: number): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: { inReading, km } }).exec();
+  }
+
   /** The go-live import's one repair on a row already written: the driver's name, where it had none. */
   async setDriverNames(
     id: Types.ObjectId,

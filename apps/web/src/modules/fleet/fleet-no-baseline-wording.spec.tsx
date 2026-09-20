@@ -45,6 +45,7 @@ const NO_SERVICE: FleetMaintenanceAlarmDto = {
   lastServiceVisitId: null,
   noAlarmReason: 'noService',
   daysWithoutReading: 0,
+  latestReading: 12000,
 };
 
 const store = () =>

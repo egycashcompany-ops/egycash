@@ -33,7 +33,8 @@ import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
-import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
+import { useMaintenanceAlarms, useOdometerLogs, useOdometerTotals } from '../api/fleet-queries';
+import { HighestReadingStrip } from '../components/HighestReadingStrip';
 import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
@@ -120,11 +121,15 @@ export const OdometerPage = (): JSX.Element => {
   // requires a driving test, so every offer is a driver this table could actually show.
   const mayFilterByDriver = can('employee.view');
 
-  const params = useMemo(
+  /**
+   * WHAT THE READER IS LOOKING AT — the filters, and only the filters.
+   *
+   * Split from `params` because the figure above the table describes THIS set and paging cannot
+   * reach it: the summary endpoint has no `page` field at all and would refuse a request that
+   * carried one. The accidents screen splits its state for the same reason, in the same words.
+   */
+  const filters = useMemo(
     () => ({
-      page,
-      pageSize,
-      ...sortQuery(sorts),
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       from: from || undefined,
       to: to || undefined,
@@ -133,7 +138,12 @@ export const OdometerPage = (): JSX.Element => {
     }),
     [paramsKey],
   );
+  const params = useMemo(
+    () => ({ ...filters, page, pageSize, ...sortQuery(sorts) }),
+    [filters, page, pageSize, sorts],
+  );
   const { data, isLoading, isError, error, refetch } = useOdometerLogs(params);
+  const highest = useOdometerTotals(filters);
   const rows = data?.items ?? [];
 
   /**
@@ -470,6 +480,11 @@ export const OdometerPage = (): JSX.Element => {
             onChange={(next) => patch({ alerts: next.length === 0 ? null : next.join(',') })}
           />
         </FilterBar>
+
+        {/* «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figure describes THIS filter, not
+            this page: it is asked of the server with the filters alone, and turning a page
+            neither refetches it nor changes it. */}
+        <HighestReadingStrip data={highest.data} loading={highest.isPending} />
 
         <DataTable
           columns={columns}

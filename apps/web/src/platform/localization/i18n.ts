@@ -3782,6 +3782,10 @@ const en: Record<string, string> = {
   'fleet.odometer.correctHint':
     'A shared reading lives on two rows — the server rewrites the neighbour atomically and refuses anything that breaks the chain. Fully audited.',
   'fleet.odometer.corrected': 'Reading corrected.',
+  'fleet.odometer.highest.reading': 'Highest odometer reading',
+  'fleet.odometer.highest.vehicle': 'Vehicle',
+  'fleet.odometer.highest.at': 'Read on',
+  'fleet.odometer.highest.vehicles': 'Vehicles in this filter',
   'fleet.odometer.noReading': 'No reading',
   'fleet.odometer.readingOptionalHint': 'This day already has a reading before it and after it — the counter is optional. Leave it empty if nobody wrote it down.',
   'fleet.odometer.recordingWithoutReading': 'Saving with no counter. The maintenance alarm will count this day as unmeasured — record the reading later if it matters for the service.',
@@ -10426,6 +10430,10 @@ const ar: Record<string, string> = {
   'fleet.odometer.correctHint':
     'القراءة المشتركة تعيش على صفين — الخادم يعيد كتابة الصف المجاور ذرّياً ويرفض أي تصحيح يكسر السلسلة. مسجَّل بالكامل في التدقيق.',
   'fleet.odometer.corrected': 'تم تصحيح القراءة.',
+  'fleet.odometer.highest.reading': 'أعلى قراءة عدّاد',
+  'fleet.odometer.highest.vehicle': 'العربية',
+  'fleet.odometer.highest.at': 'تاريخ القراءة',
+  'fleet.odometer.highest.vehicles': 'عربيات فى الفلتر',
   'fleet.odometer.noReading': 'بدون قراءة',
   'fleet.odometer.readingOptionalHint': 'اليوم ده قبله قراءة وبعده قراءة — العدّاد اختيارى. سيبه فاضى لو محدّش كتبه.',
   'fleet.odometer.recordingWithoutReading': 'هيتسجّل من غير عدّاد. إنذار الصيانة هيحسب اليوم ده كيوم مش متقاس — سجّل القراءة بعدين لو فارقة فى الصيانة.',

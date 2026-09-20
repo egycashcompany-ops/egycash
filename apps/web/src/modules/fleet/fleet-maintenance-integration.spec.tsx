@@ -60,6 +60,7 @@ const ALARM: FleetMaintenanceAlarmDto = {
   lastServiceVisitId: VISIT,
   noAlarmReason: null,
   daysWithoutReading: 0,
+  latestReading: 12000,
 };
 
 const visit = (over: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisitDto =>

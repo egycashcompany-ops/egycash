@@ -4,6 +4,7 @@ import {
   CheckInFleetMaintenanceSchema,
   CheckOutFleetMaintenanceSchema,
   FleetOdometerBracketQuerySchema,
+  FleetMaintenanceSummaryQuerySchema,
   ListFleetMaintenanceQuerySchema,
   ReopenFleetMaintenanceSchema,
   UpdateFleetMaintenanceSchema,
@@ -18,6 +19,7 @@ import {
   deleteMaintenance,
   listMaintenanceAlarms,
   listMaintenanceVisits,
+  maintenanceSummary,
   reopenMaintenance,
   updateMaintenance,
 } from './maintenance.controller';
@@ -45,6 +47,15 @@ export const buildFleetMaintenanceRouter = (): Router => {
    *
    * Safe above the `:id` routes and independent of ordering: this router has no `GET /:id`.
    */
+  // The figures ABOVE the table — the same filters, and deliberately no paging. See the odometer
+  // register's `/summary`, which answers the identical question for the identical reason.
+  router.get(
+    '/summary',
+    authenticate,
+    authorize('fleetMaintenance.view'),
+    validate({ query: FleetMaintenanceSummaryQuerySchema }),
+    asyncHandler(maintenanceSummary),
+  );
   router.get(
     '/alarms',
     authenticate,

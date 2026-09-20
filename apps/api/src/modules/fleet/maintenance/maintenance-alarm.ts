@@ -208,6 +208,8 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       // Straight from the guards. Re-deriving it here would be a second copy of the rule.
       noAlarmReason: result.noAlarmReason,
       daysWithoutReading: unread.get(id) ?? 0,
+      // The very reading the arithmetic above measured from — see the DTO.
+      latestReading: reading?.reading ?? null,
     };
   });
 };

@@ -368,6 +368,24 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   }
 
   /**
+   * WHICH CARS the rows matching this filter belong to — distinct, over the WHOLE filtered set.
+   *
+   * The step that turns «the readings the filter matched» into «the cars the filter is about»,
+   * which is what the summary's figure is a maximum over. One `$group`, no paging: a page cannot
+   * change a number the query never learned about.
+   *
+   * Rows kept from the old book on a car the registry never had carry no `vehicleId`, and they
+   * drop out here — such a row is on no chain and the registry has no car to answer for.
+   */
+  async vehicleIdsMatching(filter: FilterQuery<FleetOdometerLogDoc>): Promise<string[]> {
+    const rows = await this.model.aggregate<{ _id: Types.ObjectId | null }>([
+      { $match: this.baseFilter(undefined, filter) },
+      { $group: { _id: '$vehicleId' } },
+    ]);
+    return rows.filter((row) => row._id !== null).map((row) => String(row._id));
+  }
+
+  /**
    * HOW MANY DAYS THIS CAR WAS DRIVEN WITH NOBODY WRITING THE COUNTER — per vehicle, each counted
    * from its OWN date, in one query for the whole fleet.
    *

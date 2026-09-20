@@ -125,6 +125,7 @@ const alarm = (over: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAl
   lastServiceVisitId: VISIT,
   noAlarmReason: null,
   daysWithoutReading: 0,
+  latestReading: 12000,
   ...over,
 });
 

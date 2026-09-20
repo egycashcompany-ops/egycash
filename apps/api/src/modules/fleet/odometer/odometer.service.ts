@@ -10,11 +10,13 @@ import {
   FleetEvents,
   parseFleetSort,
   type CorrectFleetOdometer,
+  type FleetHighestReadingDto,
+  type FleetOdometerSummaryQuery,
   type ListFleetOdometerQuery,
   type Paginated,
   type RecordFleetOdometer,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { ConflictError, ValidationError } from '../../../shared/errors';
 import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
@@ -24,6 +26,7 @@ import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { alarmSortsFor } from '../maintenance/alarm-sort';
 import { fleetOdometerRepository } from './odometer.repository';
+import { highestReadingAmong } from './highest-reading';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 
@@ -315,6 +318,39 @@ class FleetOdometerService {
    * the system, which reads as "no matches were excluded" and is the one wrong answer available.
    */
   async list(query: ListFleetOdometerQuery): Promise<OdometerLogPage> {
+    const filter = await this.filterFor(query);
+    const sorts = parseFleetSort(query.sort);
+    const page = await fleetOdometerRepository.listLogs({
+      filter,
+      page: query.page,
+      pageSize: query.pageSize,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
+      // …and the rest of the reader's order behind it. `sortBy` stays the first column
+      // so nothing that only speaks the pagination contract is left sorting by nothing.
+      sorts,
+      // «فارق عداد الصيانة» is a figure about the CAR, not about the reading — so it is computed
+      // for the fleet and handed to the query as something it can order by. Only when the reader
+      // has actually asked for it: on every other request this is an empty list and the register
+      // stays the plain, indexed query it was.
+      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+    });
+    // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
+    // many vehicles the registry holds.
+    const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
+    return { ...page, codes };
+  }
+
+  /**
+   * THE FILTER, BUILT ONCE — what the page is cut from, and what the summary is measured over.
+   *
+   * The figures above the table describe the whole filtered set, and the only way to keep that
+   * true as either question grows a filter is for both to be asked in the same words. The
+   * summary's schema shares this one's fields for the same reason, and has no `page` at all.
+   */
+  private async filterFor(
+    query: ListFleetOdometerQuery | FleetOdometerSummaryQuery,
+  ): Promise<FilterQuery<FleetOdometerLogDoc>> {
     let vehicleIds: string[] | undefined;
 
     if (query.vehicleCodes !== undefined) {
@@ -334,32 +370,28 @@ class FleetOdometerService {
         vehicleIds === undefined ? byLevel : vehicleIds.filter((id) => byLevel.includes(id));
     }
 
-    const sorts = parseFleetSort(query.sort);
-    const page = await fleetOdometerRepository.listLogs({
-      filter: fleetOdometerRepository.logFilter({
-        ...query,
-        vehicleIds,
-        // The typed codes may stand on their own only when nothing else narrowed the ids: a
-        // reading kept from the old book on a car the registry never had has no alarm level.
-        vehicleCodes: query.alerts === undefined ? query.vehicleCodes : undefined,
-      }),
-      page: query.page,
-      pageSize: query.pageSize,
-      sortBy: query.sortBy,
-      sortDir: query.sortDir,
-      // …and the rest of the reader's order behind it. `sortBy` stays the first column
-      // so nothing that only speaks the pagination contract is left sorting by nothing.
-      sorts,
-      // «فارق عداد الصيانة» is a figure about the CAR, not about the reading — so it is computed
-      // for the fleet and handed to the query as something it can order by. Only when the reader
-      // has actually asked for it: on every other request this is an empty list and the register
-      // stays the plain, indexed query it was.
-      sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
+    return fleetOdometerRepository.logFilter({
+      ...query,
+      vehicleIds,
+      // The typed codes may stand on their own only when nothing else narrowed the ids: a
+      // reading kept from the old book on a car the registry never had has no alarm level.
+      vehicleCodes: query.alerts === undefined ? query.vehicleCodes : undefined,
     });
-    // The codes for the vehicles ON this page, in one query — bounded by the page, never by how
-    // many vehicles the registry holds.
-    const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
-    return { ...page, codes };
+  }
+
+  /**
+   * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the highest reading any car in the
+   * filter has reached, over the WHOLE filtered set and never over one page.
+   *
+   * Two steps, and the first is why there are two: the readings the filter matched name their
+   * cars, and the answer is about the CARS. A maximum over the matched ROWS would answer a
+   * different question — «the biggest number written inside this date window» — and a car is at
+   * the reading it is at, not at the one it happened to be at last month.
+   */
+  async summary(query: FleetOdometerSummaryQuery): Promise<FleetHighestReadingDto> {
+    const filter = await this.filterFor(query);
+    const vehicleIds = await fleetOdometerRepository.vehicleIdsMatching(filter);
+    return highestReadingAmong(vehicleIds);
   }
 
   /**

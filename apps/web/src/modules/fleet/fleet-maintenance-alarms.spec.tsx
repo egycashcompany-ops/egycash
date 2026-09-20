@@ -44,6 +44,7 @@ const alarm = (
   lastServiceVisitId: `visit-${code}`,
   noAlarmReason: null,
   daysWithoutReading: 0,
+  latestReading: 12000,
   ...o,
 });
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   CorrectFleetOdometerSchema,
   FleetOdometerBracketQuerySchema,
+  FleetOdometerSummaryQuerySchema,
   FleetVehicleIdQuerySchema,
   ListFleetOdometerQuerySchema,
   RecordFleetOdometerSchema,
@@ -16,6 +17,7 @@ import {
   expectedOdometerReading,
   listOdometerLogs,
   odometerBracket,
+  odometerSummary,
   recordOdometer,
 } from './odometer.controller';
 // The SAME handler `/fleet/maintenance/alarms` is mounted with — one projection, two permissions.
@@ -31,6 +33,15 @@ export const buildFleetOdometerRouter = (): Router => {
     authorize('fleetOdometer.view'),
     validate({ query: ListFleetOdometerQuerySchema }),
     asyncHandler(listOdometerLogs),
+  );
+  // The figures ABOVE the table — the same filters, and deliberately no paging, so a page can
+  // never change a number the query was never told about. Static, so no `/:id` shadows it.
+  router.get(
+    '/summary',
+    authenticate,
+    authorize('fleetOdometer.view'),
+    validate({ query: FleetOdometerSummaryQuerySchema }),
+    asyncHandler(odometerSummary),
   );
   // H2's fate — the server says what reading is expected next; the client never computes it.
   router.get(

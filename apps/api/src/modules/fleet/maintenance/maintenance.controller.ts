@@ -3,6 +3,7 @@ import { type Request, type Response } from 'express';
 import {
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
+  type FleetMaintenanceSummaryQuery,
   type ListFleetMaintenanceQuery,
   type ReopenFleetMaintenance,
   type UpdateFleetMaintenance,
@@ -31,6 +32,12 @@ type IdParam = { id: string };
  */
 export const listMaintenanceAlarms = async (_req: Request, res: Response): Promise<void> => {
   ok(res, await computeAlarms());
+};
+
+/** The highest reading any car in the CURRENT FILTER has reached — never one page's worth. */
+export const maintenanceSummary = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetMaintenanceSummaryQuery>(req);
+  ok(res, await fleetMaintenanceService.summary(query));
 };
 
 export const listMaintenanceVisits = async (req: Request, res: Response): Promise<void> => {

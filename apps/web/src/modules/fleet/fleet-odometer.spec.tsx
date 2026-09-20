@@ -95,6 +95,7 @@ const alarm = (o: Partial<FleetMaintenanceAlarmDto> = {}): FleetMaintenanceAlarm
   lastServiceVisitId: 'visit-1',
   noAlarmReason: null,
   daysWithoutReading: 0,
+  latestReading: 12000,
   ...o,
 });
 
@@ -865,15 +866,32 @@ describe('the filter bar', () => {
 
   it('sends every filter to the SERVER — nothing is applied to the fetched page', () => {
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    // The filters live in their OWN memo now, so the figure above the table can be asked for
+    // with them alone — the summary endpoint has no `page` and would refuse one that carried it.
+    const filters = source.slice(
+      source.indexOf('const filters = useMemo'),
+      source.indexOf('const params = useMemo'),
+    );
+    for (const key of ['vehicleCodes:', 'from:', 'to:', 'alerts:', 'driverEmployeeIds:']) {
+      expect(filters, `${key} reaches the query`).toContain(key);
+    }
+    // …and the page's own query is those same filters plus the paging, never a second list.
     const params = source.slice(
       source.indexOf('const params = useMemo'),
       source.indexOf('useOdometerLogs('),
     );
-    for (const key of ['vehicleCodes:', 'from:', 'to:', 'alerts:', 'driverEmployeeIds:']) {
-      expect(params, `${key} reaches the query`).toContain(key);
-    }
+    expect(params, 'the page is the filters plus paging').toContain('...filters');
     expect(source).not.toContain('rows.filter(');
     expect(source).not.toContain('items.filter(');
+  });
+
+  it('asks the SERVER for the figure above the table, with the filters and no page', () => {
+    // «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام». The figure describes the whole filtered
+    // set; a page cannot change a number the query was never told about.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source).toContain('useOdometerTotals(filters)');
+    expect(source, 'never the paged params').not.toContain('useOdometerTotals(params)');
+    expect(source).toContain('<HighestReadingStrip');
   });
 
   it('the backend accepts every one of them', () => {

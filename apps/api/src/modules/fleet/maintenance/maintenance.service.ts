@@ -5,11 +5,13 @@ import {
   parseFleetSort,
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
+  type FleetHighestReadingDto,
+  type FleetMaintenanceSummaryQuery,
   type ListFleetMaintenanceQuery,
   type Paginated,
   type UpdateFleetMaintenance,
 } from '@ecms/contracts';
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import { ConflictError, ValidationError } from '../../../shared/errors';
 import { getDirectoryEmployee, getSelfDirectoryEmployee } from '../../../platform/directory';
 import { auditService } from '../../../platform/audit';
@@ -25,6 +27,7 @@ import {
 } from './maintenance.repository';
 import { type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
+import { highestReadingAmong } from '../odometer/highest-reading';
 
 /**
  * A page of visits plus the registry codes for exactly the vehicles ON that page — one lookup,
@@ -404,7 +407,9 @@ class FleetMaintenanceService {
    * them, and paginating what survived — a page cut from a bounded fetch, so a driver with more
    * history than that bound would silently lose the rest. It belongs in the pipeline.
    */
-  private async vehicleScope(query: ListFleetMaintenanceQuery): Promise<string[] | undefined> {
+  private async vehicleScope(
+    query: ListFleetMaintenanceQuery | FleetMaintenanceSummaryQuery,
+  ): Promise<string[] | undefined> {
     if (query.vehicleCodes === undefined) return undefined;
     const matched = await fleetVehicleRepository.list({
       filter: { code: { $in: [...query.vehicleCodes] } },
@@ -414,15 +419,39 @@ class FleetMaintenanceService {
     return matched.items.map((vehicle) => String(vehicle._id));
   }
 
-  async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
+  /**
+   * THE FILTER, BUILT ONCE — what the page is cut from, and what the summary is measured over.
+   * The odometer register does the same, for the same reason; see `filterFor` there.
+   */
+  private async filterFor(
+    query: ListFleetMaintenanceQuery | FleetMaintenanceSummaryQuery,
+  ): Promise<FilterQuery<FleetMaintenanceVisitDoc>> {
     const vehicleIds = await this.vehicleScope(query);
-    const sorts = parseFleetSort(query.sort);
-    const page = await fleetMaintenanceRepository.listVisits({
-      filter: fleetMaintenanceRepository.visitFilter({
+    return fleetMaintenanceRepository.withDriverFilter(
+      fleetMaintenanceRepository.visitFilter({
         ...query,
         ...(vehicleIds === undefined ? {} : { vehicleIds }),
       }),
-      driverEmployeeIds: query.driverEmployeeIds,
+      query.driverEmployeeIds,
+    );
+  }
+
+  /**
+   * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the highest reading any car in the
+   * filter has reached. The visits name their cars; the figure is about the cars, and comes from
+   * the same one place every other screen's copy of it comes from.
+   */
+  async summary(query: FleetMaintenanceSummaryQuery): Promise<FleetHighestReadingDto> {
+    const filter = await this.filterFor(query);
+    return highestReadingAmong(await fleetMaintenanceRepository.vehicleIdsMatching(filter));
+  }
+
+  async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {
+    const sorts = parseFleetSort(query.sort);
+    const page = await fleetMaintenanceRepository.listVisits({
+      filter: await this.filterFor(query),
+      // Already folded into the filter above; `listVisits` must not fold it twice.
+      driverEmployeeIds: undefined,
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy,

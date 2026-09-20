@@ -194,7 +194,7 @@ describe('the counts drawn beside the rows', () => {
 
 describe('the whole-branch grant', () => {
   it('carries the departments beneath it rather than ticking them', () => {
-    const branch = branchOf(tree({ 'A:*': ['employee.view'] }), 'A');
+    const branch = branchOf(tree({ 'A:*': ['employee.view', 'employee.edit'] }), 'A');
     expect(branch.departments.every((d) => d.coveredByBranch)).toBe(true);
     // Carried, not copied: nothing was written into the departments' own records.
     expect(branch.departments.every((d) => d.actionsOn === 0)).toBe(true);
@@ -202,6 +202,53 @@ describe('the whole-branch grant', () => {
 
   it('stops carrying them the moment it is cleared', () => {
     expect(branchOf(tree(), 'A').departments.every((d) => d.coveredByBranch)).toBe(false);
+  });
+
+  it('carries nothing it does not actually hold — a partial branch grant locks no department', () => {
+    // The branch record holds one of the two keys a department could be given here, so the other
+    // is still the caller's to grant and the department must stay open.
+    const branch = branchOf(tree({ 'A:*': ['employee.view'] }), 'A');
+    expect(branch.departments.every((d) => d.coveredByBranch)).toBe(false);
+  });
+
+  it('does not lock a department-level manager out of his own department', () => {
+    // Branch B: the caller holds nothing over the branch and everything in d3. Somebody above him
+    // granted the target a whole-branch record there. Reading «the branch record has keys» as
+    // «the departments are carried» would hide d3 — the one unit he actually delegates in.
+    const b = branchOf(tree({}, { 'B:*': ['employee.view'] }), 'B');
+    expect(b.whole.editable).toBe(false);
+    expect(b.whole.actionsOn).toBe(1);
+    expect(b.departments[0]?.editable).toBe(true);
+    expect(b.departments[0]?.coveredByBranch).toBe(false);
+  });
+
+  it('does not hide a department that holds something of its own', () => {
+    const branch = branchOf(
+      tree({ 'A:*': ['employee.view', 'employee.edit'] }, { 'A:d1': ['employee.view'] }),
+      'A',
+    );
+    expect(branch.departments[0]?.coveredByBranch).toBe(false);
+    expect(branch.departments[1]?.coveredByBranch).toBe(true);
+  });
+});
+
+describe('the open/closed default of a module group', () => {
+  it('reads the saved record, not the draft, so it holds still while the manager ticks', () => {
+    const saved = { 'B:d3': ['vehicle.view'] };
+    const withSaved = branchOf(tree({}, saved), 'B').departments[0];
+    expect(withSaved?.modules[0]?.savedOn).toBe(1);
+
+    // He clears the last tick. `on` drops to zero; `savedOn` — which the default reads — does not,
+    // so the group he is working in does not shut under his hand.
+    const cleared = branchOf(tree({ 'B:d3': [] }, saved), 'B').departments[0];
+    expect(cleared?.modules[0]?.on).toBe(0);
+    expect(cleared?.modules[0]?.savedOn).toBe(1);
+  });
+
+  it('is closed for a group nothing was ever saved in', () => {
+    const fresh = branchOf(tree({ 'B:d3': ['vehicle.view'] }), 'B').departments[0];
+    expect(fresh?.modules[0]?.on).toBe(1);
+    expect(fresh?.modules[0]?.savedOn).toBe(0);
   });
 });
 

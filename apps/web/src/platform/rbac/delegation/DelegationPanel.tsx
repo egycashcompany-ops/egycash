@@ -52,6 +52,8 @@ interface Wiring {
   setOpen: (id: string, open: boolean) => void;
   setDraft: (unit: Unit, keys: ReadonlySet<string>) => void;
   setDrafts: (drafts: Record<string, string[]>) => void;
+  /** Drop drafts entirely, so those units read their saved records again. */
+  clearDrafts: (units: readonly Unit[]) => void;
   isDirty: (unit: Unit) => boolean;
   homeKey: string | null;
 }
@@ -140,6 +142,11 @@ export const DelegationPanel = ({
     },
     setDraft: (unit, keys) => setDrafts((cur) => ({ ...cur, [unitKey(unit)]: [...keys].sort() })),
     setDrafts: (next) => setDrafts((cur) => ({ ...cur, ...next })),
+    clearDrafts: (units) =>
+      setDrafts((cur) => {
+        const drop = new Set(units.map(unitKey));
+        return Object.fromEntries(Object.entries(cur).filter(([key]) => !drop.has(key)));
+      }),
     isDirty: (unit) => dirty.includes(unitKey(unit)),
     homeKey: homeUnit === null ? null : unitKey(homeUnit),
   };
@@ -299,13 +306,10 @@ const WholeBranchBlock = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX
   const open = w.isOpen(id);
   const tick = (): void => {
     w.setDraft(unit.unit, setAll(unit.selected, unit.ceiling, !on));
-    // Turning it on hides the departments beneath it, so any draft down there would be a write
-    // the manager can no longer see. They go back to their saved records, untouched.
-    if (!on) {
-      w.setDrafts(
-        Object.fromEntries(branch.departments.map((d) => [unitKey(d.unit), [...d.selected].sort()])),
-      );
-    }
+    // Turning it on can hide a department beneath it, and an unsaved draft down there would then
+    // be a write the manager can no longer see. The drafts are DROPPED, not rewritten: writing
+    // `d.selected` back would write the draft as itself and revert nothing.
+    if (!on) w.clearDrafts(branch.departments.map((d) => d.unit));
   };
   return (
     <div
@@ -423,17 +427,16 @@ const ScreenList = ({ unit, nodeId, w }: { unit: UnitNode; nodeId: string; w: Wi
     <div id={panelId(nodeId)} className="space-y-1.5 border-t border-slate-100 px-3 py-2 dark:border-slate-800">
       {unit.modules.map((group) => {
         const id = `${nodeId}:m:${group.moduleId ?? 'other'}`;
-        // A group holding something ticked opens on its own: a tick nobody can see is a tick
-        // nobody can take back.
-        const open = single || w.isOpen(id, group.on > 0);
+        // A group holding something in the SAVED record opens on its own: a grant nobody can see
+        // is a grant nobody can take back. Read off the saved record rather than the draft, so the
+        // group does not shut under the manager's hand when he clears the last tick in it.
+        const open = single || w.isOpen(id, group.savedOn > 0);
         return (
           <div key={group.moduleId ?? 'other'}>
             {!single && (
               <div className="flex items-center gap-2 py-1">
                 <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  {group.moduleId === null
-                    ? w.t('delegation.other')
-                    : w.t(`systemAdmin.roles.module.${group.moduleId}`)}
+                  {moduleLabel(w, group.moduleId)}
                 </span>
                 <span className="text-[11px] text-slate-400 dark:text-slate-500">
                   {group.on > 0
@@ -562,6 +565,21 @@ const Actions = ({
 );
 
 // ── Shared bits ─────────────────────────────────────────────────────────────
+
+/**
+ * A module's name, or the module's own id when the dictionary has no name for it.
+ *
+ * The key is built from data (`systemAdmin.roles.module.<id>`), so no source scan can check it and
+ * `translate` answers a missing key with the key itself — a module added to the registry without a
+ * label would put `systemAdmin.roles.module.gold` on the screen as a heading. The id is a poor
+ * heading; the key is a broken one.
+ */
+const moduleLabel = (w: Wiring, moduleId: string | null): string => {
+  if (moduleId === null) return w.t('delegation.other');
+  const key = `systemAdmin.roles.module.${moduleId}`;
+  const label = w.t(key);
+  return label === key ? moduleId : label;
+};
 
 const panelId = (id: string): string => `delegation-${id.replace(/[.:|]/g, '-')}`;
 

@@ -5287,6 +5287,9 @@ const en: Record<string, string> = {
   'systemAdmin.roles.module.fleet': 'Fleet',
   'systemAdmin.roles.module.it': 'IT',
   'systemAdmin.roles.module.automation': 'Automation',
+  'systemAdmin.roles.module.gold': 'Gold',
+  'systemAdmin.roles.module.atm': 'ATMs',
+  'systemAdmin.roles.module.operations': 'Operations',
   'systemAdmin.roles.module.unknown': 'Unknown module',
   'systemAdmin.roles.title': 'Roles',
   'systemAdmin.roles.subtitle':
@@ -11913,6 +11916,9 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.module.fleet': 'الحركة',
   'systemAdmin.roles.module.it': 'تقنية المعلومات',
   'systemAdmin.roles.module.automation': 'الأتمتة',
+  'systemAdmin.roles.module.gold': 'الذهب',
+  'systemAdmin.roles.module.atm': 'ماكينات الصرف',
+  'systemAdmin.roles.module.operations': 'العمليات',
   'systemAdmin.roles.module.unknown': 'موديول غير معروف',
   'systemAdmin.roles.title': 'الأدوار',
   'systemAdmin.roles.subtitle':

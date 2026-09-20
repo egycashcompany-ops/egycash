@@ -145,6 +145,39 @@ describe('what the caller may not grant', () => {
   });
 });
 
+describe('a module the dictionary has no name for', () => {
+  it('is headed by its own id, never by the unresolved key', () => {
+    // The key is built from data, so no source scan can check it and `translate` answers a missing
+    // key with the key itself. A module added to the registry without a label would otherwise put
+    // `systemAdmin.roles.module.zzz` on the screen as a heading.
+    const catalog: DelegationCatalogDto = {
+      ...CATALOG,
+      branches: [
+        {
+          ...(CATALOG.branches[0] as DelegationCatalogDto['branches'][number]),
+          departments: [
+            {
+              id: 'd1',
+              name: { ar: 'الحركة', en: 'Fleet' },
+              permissionKeys: ['vehicle.view', 'widget.view'],
+            },
+          ],
+        },
+      ],
+      pages: [
+        ...CATALOG.pages,
+        { id: 'zzz.widgets', moduleId: 'zzz', name: { ar: 'ودجت', en: 'Widgets' }, route: null, sortOrder: 3 },
+      ],
+      permissions: [...CATALOG.permissions, p('widget.view', 'zzz', 'zzz.widgets')],
+    };
+    const html = render({ catalog });
+    expect(html).not.toContain('systemAdmin.roles.module.');
+    expect(html).toContain('>zzz<');
+    // The modules that DO have a name still get it.
+    expect(html).toContain('>Fleet<');
+  });
+});
+
 describe('the counters', () => {
   it('count what is drawn beneath them, and leave no placeholder unfilled', () => {
     const html = render();

@@ -69,6 +69,14 @@ export interface ScreenNode {
   /** Ticked actions, and every action shown on the screen — locked ones included in both. */
   on: number;
   total: number;
+  /**
+   * Ticked in the SAVED record, ignoring the draft.
+   *
+   * A default that reads the draft moves under the manager's hand: a module group open «because
+   * something is ticked in it» shuts the moment he clears the last tick, with his cursor still in
+   * it. The saved record does not change while he works, so a default read off it holds still.
+   */
+  savedOn: number;
   /** False when no action here is the caller's to grant in this unit: shown, never ticked. */
   grantable: boolean;
 }
@@ -79,6 +87,8 @@ export interface ModuleNode {
   screens: ScreenNode[];
   on: number;
   total: number;
+  /** Screens carrying something in the SAVED record — the group's open/closed default. */
+  savedOn: number;
 }
 
 /** One record on the server: a department in a branch, or the branch as a whole. */
@@ -124,13 +134,19 @@ export interface BranchNode {
 const VIEW_ACTION = 'view';
 const OTHER_SCREEN = 'other';
 
-const screenOf = (row: GridRow, selected: Selection, ceiling: Selection): ScreenNode => ({
+const screenOf = (
+  row: GridRow,
+  selected: Selection,
+  ceiling: Selection,
+  saved: Selection,
+): ScreenNode => ({
   id: row.page?.id ?? OTHER_SCREEN,
   page: row.page,
   row,
   state: pageState(selected, row),
   on: row.keys.filter((k) => selected.has(k.key)).length,
   total: row.keys.length,
+  savedOn: row.keys.filter((k) => saved.has(k.key)).length,
   grantable: row.keys.some((k) => ceiling.has(k.key)),
 });
 
@@ -140,12 +156,13 @@ const groupByModule = (screens: readonly ScreenNode[]): ModuleNode[] => {
   for (const screen of screens) {
     const moduleId = screen.page?.moduleId ?? null;
     const found = groups.find((g) => g.moduleId === moduleId);
-    if (found === undefined) groups.push({ moduleId, screens: [screen], on: 0, total: 0 });
+    if (found === undefined) groups.push({ moduleId, screens: [screen], on: 0, total: 0, savedOn: 0 });
     else found.screens.push(screen);
   }
   for (const group of groups) {
     group.on = group.screens.filter((s) => s.on > 0).length;
     group.total = group.screens.length;
+    group.savedOn = group.screens.filter((s) => s.savedOn > 0).length;
   }
   return [...groups].sort((a, b) => (a.moduleId === null ? 1 : b.moduleId === null ? -1 : 0));
 };
@@ -158,7 +175,7 @@ const buildUnit = (
 ): UnitNode => {
   const ceiling = ceilingOf(cat, unit);
   const rows = buildRows(cat, ceiling, saved);
-  const screens = rows.map((row) => screenOf(row, selected, ceiling));
+  const screens = rows.map((row) => screenOf(row, selected, ceiling, saved));
   const actionsOn = screens.reduce((n, s) => n + s.on, 0);
   const actionsTotal = screens.reduce((n, s) => n + s.total, 0);
   const ticked = rows.flatMap((row) => row.keys.filter((k) => selected.has(k.key)));
@@ -251,14 +268,14 @@ export const buildTree = (
   cat.branches.map((branch) => {
     const wholeUnit: Unit = { branchId: branch.id, departmentId: null };
     const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit));
-    const covered = whole.actionsOn > 0;
     const departments = branch.departments.map((department): DepartmentNode => {
       const unit: Unit = { branchId: branch.id, departmentId: department.id };
+      const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit));
       return {
-        ...buildUnit(cat, unit, selectedOf(unit), savedOf(unit)),
+        ...node,
         id: department.id,
         name: department.name,
-        coveredByBranch: covered,
+        coveredByBranch: carries(whole, node),
       };
     });
     const departmentsOn = departments.filter((d) => d.state !== 'none').length;
@@ -277,6 +294,28 @@ export const buildTree = (
       departmentsTotal: departments.length,
     };
   });
+
+/**
+ * Does the branch record carry this department whole — nothing left here to decide?
+ *
+ * Only then may the department be drawn as a locked «مشمولة في منح الفرع كله» row, because only
+ * then is there nothing behind the lock. Three conditions, and each one is a bug that was found by
+ * leaving it out:
+ *
+ *   • the branch record has to hold something at all;
+ *   • it has to already hold everything the caller could grant in this department — a department
+ *     ceiling can carry keys the branch's does not, and those are still his to give;
+ *   • the department must hold nothing of its own, or the lock would hide a grant. That includes a
+ *     grant from somebody with more authority than the caller, which he may not touch but must
+ *     still be able to SEE.
+ *
+ * The middle one is what stops a department-level manager from being locked out of his own
+ * department by a whole-branch grant that somebody above him made and he cannot edit.
+ */
+const carries = (whole: UnitNode, department: UnitNode): boolean =>
+  whole.actionsOn > 0 &&
+  department.actionsOn === 0 &&
+  [...department.ceiling].every((key) => whole.selected.has(key));
 
 /** Everything the caller may grant in this unit, or none of it. Locked keys never move. */
 export const setAll = (selected: Selection, ceiling: Selection, on: boolean): Set<string> => {

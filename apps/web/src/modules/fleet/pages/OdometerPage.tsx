@@ -27,7 +27,6 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { GoLiveNotice } from '../components/GoLiveNotice';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
@@ -363,7 +362,6 @@ export const OdometerPage = (): JSX.Element => {
         }
       />
 
-      <GoLiveNotice step="odometer" />
 
       <div className="space-y-4">
         <FilterBar

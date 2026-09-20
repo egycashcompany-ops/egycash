@@ -1,11 +1,17 @@
-// What the boot-time go-live step did — on the screen it was supposed to fill.
+// What the boot-time go-live steps did — on ONE page, not on every screen they filled.
 //
 // «مفيش عربيات اضافت». Twice, the deploy ran the import and the registry stayed empty, and the
-// only account of why was a server log the owner cannot open. The steps now write what they found
-// on their own row (`fleet_go_live_runs`), and this prints it where the missing data would have
-// been: a refusal with its reasons, a partial run with its failures, a run in progress, or a
-// finished run that had something to note. A finished run with nothing to say prints nothing —
-// this is a notice, not a status bar.
+// only account of why was a server log the owner cannot open. The steps write what they found on
+// their own row (`fleet_go_live_runs`), and this prints it: a refusal with its reasons, a partial
+// run with its failures, a run in progress, or a finished run that had something to note.
+//
+// IT USED TO SIT ON THE SCREENS THEMSELVES, above the readings, the visits, the fines and the
+// files — and earned its place twice over, because it is how the seventeen buried readings and
+// the workshop book that never started were both found. It is also six walls of text, hundreds
+// of names that will not change, permanent, on every screen in the module: «انا مش عاوز الرسايل
+// تظهر هنا». So it lives on the Fleet settings page now, all six runs together, and the screens
+// show the data instead of the story of how it got there. Nothing is lost — the rows are the
+// same rows, the detail is the same detail, and `GoLiveRunsPanel` is one click away.
 //
 // It prints the row AS IT IS. The reasons are the step's own words (a branch name, a car code, a
 // file name, a validation detail) and the whole point is that the owner can copy them to whoever
@@ -73,7 +79,14 @@ const TONES: Record<State, string> = {
   done: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100',
 };
 
-export const GoLiveNotice = ({ step }: { step: GoLiveStep }): JSX.Element | null => {
+export const GoLiveNotice = ({
+  step,
+  always = false,
+}: {
+  step: GoLiveStep;
+  /** On the report page, a run that finished cleanly is worth a line too — «تم، من غير ملاحظات». */
+  always?: boolean;
+}): JSX.Element | null => {
   const t = useT();
   const can = useCan();
   // The same two grants the endpoint accepts — whoever may create a car or manage a driver.
@@ -83,7 +96,7 @@ export const GoLiveNotice = ({ step }: { step: GoLiveStep }): JSX.Element | null
   const run = latestRun(runs.data.runs, step);
   if (run === null) return null;
   const state = runState(run);
-  if (state === 'done' && !finishedWithNotes(run)) return null;
+  if (state === 'done' && !finishedWithNotes(run) && !always) return null;
 
   // A key the catalogue does not name is printed as itself — the step's own word beats a blank.
   const fieldLabel = (key: string): string => {
@@ -129,5 +142,38 @@ export const GoLiveNotice = ({ step }: { step: GoLiveStep }): JSX.Element | null
       )}
       <p className="mt-2 text-xs opacity-80">{t('fleet.goLive.hint')}</p>
     </div>
+  );
+};
+
+/** Every step in the order the boot runs them — the report page's whole content. */
+const STEPS: readonly GoLiveStep[] = [
+  'vehicles',
+  'driver-photos',
+  'odometer',
+  'maintenance',
+  'violations',
+  'accidents',
+];
+
+/**
+ * All six runs, on the page the owner goes to when they want to know what the import did — and
+ * nowhere else. A step that has never run at all prints nothing, as it always did.
+ */
+export const GoLiveRunsPanel = (): JSX.Element | null => {
+  const t = useT();
+  const can = useCan();
+  const mayRead = can('fleetVehicle.create') || can('fleetDriver.manage');
+  const runs = useFleetGoLiveRuns(mayRead);
+  if (!mayRead || runs.data === undefined || runs.data.runs.length === 0) return null;
+  return (
+    <section data-go-live-panel="">
+      <h2 className="mb-1 text-base font-semibold text-slate-900 dark:text-slate-100">
+        {t('fleet.goLive.panel.title')}
+      </h2>
+      <p className="mb-3 text-sm text-slate-600 dark:text-slate-400">{t('fleet.goLive.panel.hint')}</p>
+      {STEPS.map((step) => (
+        <GoLiveNotice key={step} step={step} always />
+      ))}
+    </section>
   );
 };

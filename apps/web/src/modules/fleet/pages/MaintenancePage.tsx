@@ -63,7 +63,6 @@ import {
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { DriverName } from '../components/EmployeeName';
-import { GoLiveNotice } from '../components/GoLiveNotice';
 import { RemainingKm } from '../components/AlarmBadge';
 import {
   CheckInDialog,
@@ -516,7 +515,6 @@ export const MaintenancePage = (): JSX.Element => {
         }
       />
 
-      <GoLiveNotice step="maintenance" />
 
       <div className="space-y-4">
         {/* Ten filters, in the order the question is asked, each sized to what it holds so the row

@@ -41,7 +41,6 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
-import { GoLiveNotice } from '../components/GoLiveNotice';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FilterField } from '../../../shared/ui/FilterField';
@@ -593,7 +592,6 @@ export const DriversListPage = (): JSX.Element => {
           { label: t('fleet.nav.drivers') },
         ]}
       />
-      <GoLiveNotice step="driver-photos" />
 
       <div className="space-y-4">
         {/*

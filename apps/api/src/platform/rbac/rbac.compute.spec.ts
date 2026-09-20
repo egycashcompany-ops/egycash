@@ -137,6 +137,49 @@ describe('reach is collected per key', () => {
     expect([...(raw?.catalogBranches.get(CATALOG) ?? [])].sort()).toEqual([B1, B2]);
   });
 
+  /**
+   * THE PRODUCTION OUTAGE. Grants are loaded `.lean()`, and a lean row written before the reach
+   * fields existed has none of them — not `[]`, not `null`: absent. Reading `branchIds.map` on it
+   * threw on every login. A row like that is a plain home grant and must be read as one.
+   */
+  it('reads a row written before the reach fields existed as a plain home grant', () => {
+    const legacy = {
+      _id: new Types.ObjectId(),
+      userId: new Types.ObjectId(),
+      roleId: new Types.ObjectId(R1),
+      scope: 'branch',
+      branchId: new Types.ObjectId(B1),
+      departmentId: null,
+      sectionId: null,
+      validFrom: null,
+      validTo: null,
+    } as unknown as RoleAssignmentDoc;
+    const legacyDepartment = {
+      ...legacy,
+      _id: new Types.ObjectId(),
+      roleId: new Types.ObjectId(R2),
+      scope: 'department',
+      departmentId: new Types.ObjectId('650000000000000000000031'),
+    } as unknown as RoleAssignmentDoc;
+    const legacyDelegation = {
+      _id: new Types.ObjectId(),
+      userId: new Types.ObjectId(),
+      branchId: new Types.ObjectId(B2),
+      permissionKeys: ['attendance.view'],
+      grantedBy: null,
+    } as unknown as DelegatedGrantDoc;
+    const out = computeEffective(
+      [legacy, legacyDepartment],
+      roles(role(R1, ['employee.view']), role(R2, ['leave.view'])),
+      [legacyDelegation],
+      NOW,
+    );
+    expect(out.permissions).toEqual({ 'employee.view': 'branch', 'leave.view': 'department', 'attendance.view': 'branch' });
+    expect(branchesOf(out.reachByKey.get('employee.view'))).toEqual({ listed: [], homes: [B1] });
+    expect([...(out.reachByKey.get('leave.view')?.homeDepartmentIds ?? [])]).toEqual(['650000000000000000000031']);
+    expect([...(out.reachByKey.get('attendance.view')?.branchIds ?? [])]).toEqual([B2]);
+  });
+
   it('an expired assignment contributes neither scope nor reach', () => {
     const out = computeEffective(
       [assignment(R1, { branchIds: [new Types.ObjectId(B2)], validTo: new Date('2026-01-01') })],

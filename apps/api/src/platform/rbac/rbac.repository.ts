@@ -160,6 +160,30 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
   }
 
   /**
+   * Every currently-active assignment of one of `roleIds`, whole.
+   *
+   * Whole documents rather than a `distinct` on `userId`, because the caller has to read each
+   * grant's SHAPE — its scope, the department it names, how far it reaches — to decide which rung
+   * of an approval chain its holder stands on. Encoding that as a Mongo filter would put the rule
+   * in two places, and the one place it must not differ is «who may approve this».
+   */
+  async findActiveForRoles(roleIds: Types.ObjectId[]): Promise<RoleAssignmentDoc[]> {
+    if (roleIds.length === 0) return [];
+    const now = new Date();
+    return this.model
+      .find({
+        roleId: { $in: roleIds },
+        isDeleted: false,
+        $and: [
+          { $or: [{ validFrom: null }, { validFrom: { $lte: now } }] },
+          { $or: [{ validTo: null }, { validTo: { $gt: now } }] },
+        ],
+      } as FilterQuery<RoleAssignmentDoc>)
+      .lean<RoleAssignmentDoc[]>()
+      .exec();
+  }
+
+  /**
    * Users with a currently-active assignment to one of `roleIds`, at `scope` or wider
    * (an `organization`-scope assignment always qualifies; a `branch`-scope assignment
    * qualifies when it is placed in `branchId` or REACHES it — a named branch, or every branch —

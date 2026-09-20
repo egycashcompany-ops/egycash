@@ -17,6 +17,22 @@ class DelegatedGrantRepository extends BaseRepository<DelegatedGrantDoc> {
       .exec();
   }
 
+  /**
+   * Every live grant carrying one key in one branch — the whole-branch rows and the department
+   * rows together, because which of the two a row is decides which approval rung its holder
+   * stands on, and that is the caller's rule to apply.
+   */
+  async findByKeyInBranch(permissionKey: string, branchId: string): Promise<DelegatedGrantDoc[]> {
+    return this.model
+      .find({
+        branchId: new Types.ObjectId(branchId),
+        permissionKeys: permissionKey,
+        isDeleted: false,
+      })
+      .lean<DelegatedGrantDoc[]>()
+      .exec();
+  }
+
   /** The one live grant for an account over a unit — a department in a branch, or the whole branch. */
   async findForUserInUnit(
     userId: string,

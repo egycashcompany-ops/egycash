@@ -116,9 +116,49 @@ export const skippedBefore = (
  * Exactly, and never by rank. It is tempting to order the four levels and let anything wider
  * satisfy anything narrower, and that is wrong in both directions: a company-wide HR account is
  * not «مدير حركة المهندسين» and must not silently absorb his rung, while a chain that asks for
- * «مدير عام الحركة» is not satisfied by the branch manager underneath him. Somebody with more
- * authority who wants to decide a rung that is not his does it through the override, which is
- * recorded — that is the whole point of the override existing.
+ * «مدير عام الحركة» is not satisfied by the branch manager underneath him.
+ *
+ * Seniority does have its say — but through the CHAIN'S OWN ORDER, in `decisionFor` below, not by
+ * ranking the four words. The two are different claims: this one is «is this rung his», that one
+ * is «may he act on a rung below his».
  */
 export const levelSatisfied = (required: ApprovalLevel, held: ApprovalLevel): boolean =>
   required === held;
+
+/** What a decision by one person does to the chain. */
+export interface Decision {
+  /** The rung he is deciding — his own, which may be above the one that was waiting. */
+  step: number;
+  /**
+   * The rungs his decision cancels: the ones still waiting, below his.
+   *
+   * «لو المدير العام وافق مش محتاج مدير الفرع». They are CANCELLED, not decided — nobody stood on
+   * them and the trail must not pretend somebody did.
+   */
+  covers: number[];
+}
+
+/**
+ * Which rung a person decides, and what that cancels — or `null` when it is not his to decide.
+ *
+ * The rule the owner stated, in the only form that stays generic: a chain is a ladder, and
+ * somebody standing further UP it may answer while it is still waiting further down, because his
+ * yes is the one the lower rungs existed to escalate to. What that cancels is everything BELOW
+ * him. What comes after him is untouched — «الموارد البشرية لسه لازم توافق» — because the rungs
+ * above are not people he outranks, they are a different authority being asked a different
+ * question.
+ *
+ * `ownSteps` are the indices whose key and level this person actually satisfies. Passing them in
+ * rather than resolving them here keeps the database out of the rule.
+ */
+export const decisionFor = (
+  ownSteps: readonly number[],
+  liveIndex: number,
+): Decision | null => {
+  const eligible = ownSteps.filter((i) => i >= liveIndex).sort((a, b) => a - b);
+  const step = eligible[0];
+  if (step === undefined) return null;
+  const covers: number[] = [];
+  for (let i = liveIndex; i < step; i += 1) covers.push(i);
+  return { step, covers };
+};

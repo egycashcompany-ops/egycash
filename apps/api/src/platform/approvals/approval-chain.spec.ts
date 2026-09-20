@@ -5,6 +5,7 @@
 // the sentence it came from.
 import { describe, expect, it } from 'vitest';
 import {
+  decisionFor,
   levelSatisfied,
   liveStep,
   resolveChain,
@@ -118,6 +119,40 @@ describe('which rung is waiting', () => {
     const live = liveStep(resolved([false, true, true]), 0);
     expect(live?.step.level).toBe('department');
     expect(live?.step.permissionKey).toBe('leave.approve');
+  });
+});
+
+describe('deciding ahead of your turn', () => {
+  // The chain: 0 مدير حركة الفرع · 1 مدير عام الحركة · 2 الموارد البشرية.
+  it('lets somebody further up answer while it is still waiting further down', () => {
+    // «لو المدير العام وافق مش محتاج مدير الفرع» — he decides HIS rung, and rung 0 is cancelled.
+    expect(decisionFor([1], 0)).toEqual({ step: 1, covers: [0] });
+  });
+
+  it('cancels only what is below him — never what comes after', () => {
+    // «الموارد البشرية لسه لازم توافق»: rung 2 is not his to cancel and is not in `covers`.
+    expect(decisionFor([1], 0)?.covers).toEqual([0]);
+    expect(decisionFor([2], 0)).toEqual({ step: 2, covers: [0, 1] });
+  });
+
+  it('cancels nothing when it is simply his turn', () => {
+    expect(decisionFor([0], 0)).toEqual({ step: 0, covers: [] });
+    expect(decisionFor([2], 2)).toEqual({ step: 2, covers: [] });
+  });
+
+  it('takes the lowest rung he holds, so he is never credited higher than he acted', () => {
+    // Somebody who satisfies two rungs answers as the earlier one, and cancels less, not more.
+    expect(decisionFor([1, 2], 0)).toEqual({ step: 1, covers: [0] });
+  });
+
+  it('is nothing for somebody whose only rung is already behind the chain', () => {
+    // He decided at rung 0 and the chain moved on; he has no second say.
+    expect(decisionFor([0], 1)).toBeNull();
+  });
+
+  it('is nothing for somebody who is on no rung of this chain at all', () => {
+    // Not a trespass to refuse — a different thing entirely, which `approval.override` answers.
+    expect(decisionFor([], 0)).toBeNull();
   });
 });
 

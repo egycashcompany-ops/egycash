@@ -113,12 +113,23 @@ export const APPROVAL_DECISIONS = ['approved', 'rejected'] as const;
 export const ApprovalDecisionSchema = z.enum(APPROVAL_DECISIONS);
 export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
 
-/** A rung that has been decided, or skipped, with everything an auditor asks about it. */
+/**
+ * What became of a rung.
+ *
+ * `skipped` and `covered` are both «nobody decided this», and keeping them apart is the difference
+ * between two questions a reader actually asks. `skipped` means the rung was EMPTY — nobody in the
+ * company holds that key at that level over this unit, so there was no one to ask. `covered` means
+ * somebody FURTHER UP THE SAME CHAIN decided first, and the owner's rule applied: «لو المدير العام
+ * وافق مش محتاج مدير الفرع».
+ */
+export type ApprovalOutcome = ApprovalDecision | 'skipped' | 'covered' | 'pending';
+
+/** A rung that has been decided, or passed, with everything an auditor asks about it. */
 export interface ApprovalTrailEntryDto {
   permissionKey: string;
   level: ApprovalLevel;
   label: { ar: string; en: string } | null;
-  outcome: ApprovalDecision | 'skipped' | 'pending';
+  outcome: ApprovalOutcome;
   decidedBy: { id: string; name: string } | null;
   decidedAt: string | null;
   comment: string | null;
@@ -138,9 +149,30 @@ export interface ApprovalTrailDto {
   steps: ApprovalTrailEntryDto[];
   /** The index of the rung waiting on somebody, or null when the chain is finished. */
   currentStep: number | null;
-  /** Whether the reader is the one this rung is waiting for — the screen's decide buttons. */
+  /**
+   * Whether the reader may decide right now.
+   *
+   * True when he stands on the live rung — and also when he stands on any rung ABOVE it in this
+   * same chain, because deciding early is his own authority, not a trespass on somebody else's:
+   * «لو المدير العام وافق مش محتاج مدير الفرع». What he cancels by doing so is everything between,
+   * never what comes after him.
+   */
   viewerMayDecide: boolean;
-  /** Whether the reader could decide it anyway, and would be recorded as having overridden. */
+  /**
+   * The rung the reader would be deciding — his own, which may be above the live one.
+   *
+   * Null when he may not decide at all. The screen needs it to say «هتوافق كـمدير عام الحركة،
+   * وده هيلغي خطوة مدير الفرع» before he presses anything.
+   */
+  viewerStep: number | null;
+  /** The rungs his decision would cancel — below him, and still waiting. */
+  viewerCovers: number[];
+  /**
+   * Whether the reader is not in this chain at all and would be stepping into it.
+   *
+   * A different thing from deciding early, and it needs `approval.override` and says so in the
+   * trail. Somebody in the chain deciding ahead of his turn needs no extra permission.
+   */
   viewerMayOverride: boolean;
 }
 

@@ -18,6 +18,26 @@ export interface LeaveApprovalStep {
   at: Date;
 }
 
+/**
+ * One rung of a CONFIGURED chain, exactly as the platform engine hands it back.
+ *
+ * A second list beside `approvals` rather than a widening of it, and deliberately so. The old list
+ * is the two-desk machine's record and every row in it means «manager or HR decided»; this one
+ * means «rung N of the chain this request's department configured». Folding them together would
+ * make every existing row need a rung index it never had, and would make the reader of a
+ * four-year-old request guess which shape he was looking at.
+ *
+ * A request carries one or the other, never both, and which one is settled at submission.
+ */
+export interface LeaveApprovalEntry {
+  stepIndex: number;
+  outcome: 'approved' | 'rejected' | 'skipped' | 'covered' | 'unreached';
+  deciderUserId: Types.ObjectId | null;
+  decidedAt: Date;
+  comment: string | null;
+  overriddenWith: string | null;
+}
+
 export interface LeaveRequestDoc extends BaseDocFields {
   employeeId: Types.ObjectId;
   employeeUserId: Types.ObjectId | null;
@@ -37,6 +57,8 @@ export interface LeaveRequestDoc extends BaseDocFields {
   reason: string | null;
   attachments: Types.ObjectId[];
   approvals: LeaveApprovalStep[];
+  /** The engine's trail. Empty on a request the two-desk machine is running. */
+  approvalSteps: LeaveApprovalEntry[];
   actualReturnDate: Date | null;
   statusDriveOutcome: LeaveStatusDriveOutcome | null;
   cancelReason: string | null;
@@ -49,6 +71,18 @@ const approvalStepSchema = new Schema<LeaveApprovalStep>(
     decision: { type: String, required: true },
     comment: { type: String, default: null },
     at: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const approvalEntrySchema = new Schema<LeaveApprovalEntry>(
+  {
+    stepIndex: { type: Number, required: true },
+    outcome: { type: String, required: true },
+    deciderUserId: { type: Schema.Types.ObjectId, default: null },
+    decidedAt: { type: Date, required: true },
+    comment: { type: String, default: null },
+    overriddenWith: { type: String, default: null },
   },
   { _id: false },
 );
@@ -73,6 +107,7 @@ const leaveRequestSchema = new Schema<LeaveRequestDoc>(
     reason: { type: String, default: null },
     attachments: { type: [Schema.Types.ObjectId], default: [] },
     approvals: { type: [approvalStepSchema], default: [] },
+    approvalSteps: { type: [approvalEntrySchema], default: [] },
     actualReturnDate: { type: Date, default: null },
     statusDriveOutcome: { type: String, default: null },
     cancelReason: { type: String, default: null },

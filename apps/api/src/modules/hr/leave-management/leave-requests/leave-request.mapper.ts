@@ -1,10 +1,18 @@
 // Doc → DTO. The pending step is DERIVED from the status (the chain stores decided steps
 // only — R9b dynamic manager binding).
-import { type LeaveRequestDto } from '@ecms/contracts';
+//
+// The configured chain's trail is PASSED IN rather than resolved here, and the mapper stays
+// synchronous because of it. Resolving a chain costs a fan-out across roles, assignments and
+// delegations per request, which a list of fifty would pay fifty times over for a column nobody
+// reads; only the detail route asks for it.
+import { type ApprovalTrailDto, type LeaveRequestDto } from '@ecms/contracts';
 import { dateOnlyIso } from '../../shared/business-date';
 import { type LeaveRequestDoc } from './leave-request.model';
 
-export const toLeaveRequestDto = (doc: LeaveRequestDoc): LeaveRequestDto => ({
+export const toLeaveRequestDto = (
+  doc: LeaveRequestDoc,
+  approvalTrail: ApprovalTrailDto | null = null,
+): LeaveRequestDto => ({
   id: String(doc._id),
   employeeId: String(doc.employeeId),
   employeeCode: doc.employeeCode,
@@ -30,6 +38,7 @@ export const toLeaveRequestDto = (doc: LeaveRequestDoc): LeaveRequestDto => ({
     at: a.at.toISOString(),
   })),
   pendingStep: doc.status === 'pendingManager' ? 'manager' : doc.status === 'pendingHr' ? 'hr' : null,
+  approvalTrail,
   actualReturnDate: doc.actualReturnDate === null ? null : dateOnlyIso(doc.actualReturnDate),
   statusDriveOutcome: doc.statusDriveOutcome,
   cancelReason: doc.cancelReason,

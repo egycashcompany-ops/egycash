@@ -4,6 +4,7 @@
 // verifies before production (decision L4). The balance ledger is append-only truth; the
 // balance row is a rebuildable cache and the atomic reservation gate (R1).
 import { z } from 'zod';
+import { type ApprovalTrailDto } from '../platform/approvals.js';
 import { objectId } from '../common/index.js';
 import { LocalizedStringSchema } from '../common/localized.js';
 
@@ -211,9 +212,21 @@ export interface WorkCalendarDto {
 
 // ── Leave requests (§3 — final status enum C3) ──────────────────────────────
 
+/**
+ * `pendingApproval` is the one the ENGINE uses, and the reason it is one word where the other two
+ * are two.
+ *
+ * `pendingManager` and `pendingHr` name the desk a request is sitting on, which only works while
+ * there are exactly two desks with those names. A configured chain can run «مدير حركة الفرع ←
+ * مدير عام الحركة ← الموارد البشرية», or one rung, or five, and no status word can keep up with
+ * that — the rung a request is waiting on is read from its trail, where it is a fact rather than
+ * a guess. The two older words stay valid and untouched: requests filed before a chain was written
+ * finish on the rails they started on, which is why this change migrates no rows at all.
+ */
 export const LEAVE_REQUEST_STATUSES = [
   'pendingManager',
   'pendingHr',
+  'pendingApproval',
   'approved',
   'active',
   'completed',
@@ -223,11 +236,12 @@ export const LEAVE_REQUEST_STATUSES = [
 export const LeaveRequestStatusSchema = z.enum(LEAVE_REQUEST_STATUSES);
 export type LeaveRequestStatus = z.infer<typeof LeaveRequestStatusSchema>;
 
-export const LEAVE_PENDING_STATUSES = ['pendingManager', 'pendingHr'] as const;
+export const LEAVE_PENDING_STATUSES = ['pendingManager', 'pendingHr', 'pendingApproval'] as const;
 /** Requests that occupy days (overlap checks + reservation): everything not terminalized. */
 export const LEAVE_BLOCKING_STATUSES = [
   'pendingManager',
   'pendingHr',
+  'pendingApproval',
   'approved',
   'active',
 ] as const;
@@ -325,8 +339,21 @@ export interface LeaveRequestDto {
   reason: string | null;
   attachments: string[];
   approvals: LeaveApprovalStepDto[];
-  /** The step the request is waiting on, when pending. */
+  /**
+   * The step the request is waiting on — the two-desk machine's own word.
+   *
+   * Null on a request the ENGINE is running, where the question has no two-word answer: read
+   * `approvalTrail.currentStep` instead, which names an index into a chain the company configured.
+   */
   pendingStep: 'manager' | 'hr' | null;
+  /**
+   * The configured chain and how far it has got — null on a request filed before one existed.
+   *
+   * Carries what THIS reader may do about it, which is why it is on the request's own DTO rather
+   * than a second call: a screen that had to ask twice would draw the buttons a moment after the
+   * request, and the gap is where a reader clicks a button that was never his.
+   */
+  approvalTrail: ApprovalTrailDto | null;
   actualReturnDate: string | null;
   statusDriveOutcome: LeaveStatusDriveOutcome | null;
   cancelReason: string | null;

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../../../platform/localization/useT';
+import { ApprovalChainPanel } from '../../../../platform/approvals/ApprovalChainPanel';
 import { useAppSelector } from '../../../../store';
 import { PageContainer, PageHeader } from '../../../../platform/layout/PageContainer';
 import {
@@ -47,7 +48,13 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
     return <PageContainer><ErrorState onRetry={() => void refetch()} /></PageContainer>;
   }
 
-  const pending = request.status === 'pendingManager' || request.status === 'pendingHr';
+  // The engine's own status counts as pending here: the page's «may I act» gates are about the
+  // request being open, and WHO may act is answered separately — by the chain for an engine
+  // request, and by the two-desk rules for an older one.
+  const pending =
+    request.status === 'pendingManager' ||
+    request.status === 'pendingHr' ||
+    request.status === 'pendingApproval';
   const busy = decide.isPending || cancel.isPending || doReturn.isPending;
   const activeError =
     (decide.isError ? decide.error : null) ??
@@ -167,6 +174,12 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
           </CardBody>
         </Card>
 
+        {/* A request the engine runs shows its configured chain instead of the two-desk list —
+            the two describe different machines and drawing both would invite the reader to read
+            one as a summary of the other. */}
+        <ApprovalChainPanel trail={request.approvalTrail} />
+
+        {request.approvalTrail === null && (
         <Card>
           <CardBody>
             <h3 className="mb-3 text-sm font-semibold">{t('leave.detail.approvals')}</h3>
@@ -197,6 +210,7 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
             </ol>
           </CardBody>
         </Card>
+        )}
       </div>
 
       {activeError !== null && <p className="mt-3 text-sm text-red-600">{(activeError as Error).message}</p>}

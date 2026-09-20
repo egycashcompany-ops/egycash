@@ -60,7 +60,11 @@ export const submitLeaveRequest = async (req: Request, res: Response): Promise<v
 export const listLeaveRequests = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { query } = validated<never, ListLeaveRequestsQuery, never>(req);
-  okPage(res, await leaveRequestService.list(query, scopeSelector(ctx, 'leave.view')), toLeaveRequestDto);
+  // `(doc) => …` rather than the mapper by reference: `Array.map` would hand it the index as the
+  // trail. A list does not carry trails anyway — resolving one per row is a fan-out per row.
+  okPage(res, await leaveRequestService.list(query, scopeSelector(ctx, 'leave.view')), (doc) =>
+    toLeaveRequestDto(doc),
+  );
 };
 
 export const getLeaveRequest = async (req: Request, res: Response): Promise<void> => {
@@ -68,27 +72,28 @@ export const getLeaveRequest = async (req: Request, res: Response): Promise<void
   const { params } = validated<never, never, IdParam>(req);
   const viewScope = hasPermission(ctx, 'leave.view') ? scopeSelector(ctx, 'leave.view') : null;
   const doc = await leaveRequestService.getById(params.id, ctx, callerFlags(ctx), viewScope);
-  ok(res, toLeaveRequestDto(doc));
+  // The one route that pays for the chain, because it is the one with buttons on it.
+  ok(res, toLeaveRequestDto(doc, await leaveRequestService.trailFor(doc, ctx)));
 };
 
 export const pendingLeaveApprovals = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const docs = await leaveRequestService.pendingApprovals(ctx, callerFlags(ctx));
-  ok(res, docs.map(toLeaveRequestDto));
+  ok(res, docs.map((doc) => toLeaveRequestDto(doc)));
 };
 
 export const approveLeaveRequest = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<DecideLeaveRequest, never, IdParam>(req);
   const doc = await leaveRequestService.decide(ctx, params.id, 'approved', body, callerFlags(ctx));
-  ok(res, toLeaveRequestDto(doc));
+  ok(res, toLeaveRequestDto(doc, await leaveRequestService.trailFor(doc, ctx)));
 };
 
 export const rejectLeaveRequest = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body, params } = validated<DecideLeaveRequest, never, IdParam>(req);
   const doc = await leaveRequestService.decide(ctx, params.id, 'rejected', body, callerFlags(ctx));
-  ok(res, toLeaveRequestDto(doc));
+  ok(res, toLeaveRequestDto(doc, await leaveRequestService.trailFor(doc, ctx)));
 };
 
 export const cancelLeaveRequest = async (req: Request, res: Response): Promise<void> => {
@@ -132,7 +137,7 @@ export const leaveCalendar = async (req: Request, res: Response): Promise<void> 
   const ctx = authContext(req);
   const { query } = validated<never, LeaveCalendarQuery, never>(req);
   const docs = await leaveRequestService.calendar(query.from, query.to, scopeSelector(ctx, 'leave.view'));
-  ok(res, docs.map(toLeaveRequestDto));
+  ok(res, docs.map((doc) => toLeaveRequestDto(doc)));
 };
 
 export const leaveEligibility = async (req: Request, res: Response): Promise<void> => {

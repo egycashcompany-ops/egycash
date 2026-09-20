@@ -55,6 +55,19 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
     request.status === 'pendingManager' ||
     request.status === 'pendingHr' ||
     request.status === 'pendingApproval';
+  /**
+   * Whether to offer the decision at all.
+   *
+   * On a request the ENGINE runs the chain has already answered this, against the reader's own
+   * roles and delegations — so the screen offers exactly what the save would accept, instead of a
+   * button that turns into a 403. On an older request the two-desk rules still decide, and they
+   * are enforced on the server against a relationship the screen cannot see; there the button
+   * stays offered to anybody who can open a pending request, as it always was.
+   */
+  const mayDecide =
+    request.approvalTrail === null
+      ? pending
+      : request.approvalTrail.viewerMayDecide || request.approvalTrail.viewerMayOverride;
   const busy = decide.isPending || cancel.isPending || doReturn.isPending;
   const activeError =
     (decide.isError ? decide.error : null) ??
@@ -97,7 +110,7 @@ export const LeaveRequestDetailPage = (): JSX.Element => {
         breadcrumbs={[{ label: t('leave.module.title'), to: '/leave' }, { label: t('leave.detail.title') }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {pending && (
+            {mayDecide && (
               <>
                 <Button size="sm" onClick={() => setAct('approve')}>{t('leave.actions.approve')}</Button>
                 <Button size="sm" variant="danger" onClick={() => setAct('reject')}>{t('leave.actions.reject')}</Button>

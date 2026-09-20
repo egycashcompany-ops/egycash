@@ -11,6 +11,7 @@ export * from './platform/password-policy.js';
 export * from './platform/users.js';
 export * from './platform/directory.js';
 export * from './platform/rbac.js';
+export * from './platform/approvals.js';
 export * from './platform/organization.js';
 export * from './platform/application.js';
 export * from './platform/department-application.js';

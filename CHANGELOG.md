@@ -47,6 +47,14 @@ its entry here in the same PR.
   over eight rows. Nothing about the save changed: one PUT per unit that actually differs, an empty
   list still removes the record.
 
+  The branch level is a heading, not a checkbox, and that is the one place the approved mock was
+  wrong rather than merely imprecise. A tri-state box there reads «tick the rest» — it is what a
+  half-ticked box means everywhere — while the only thing a branch can do is take away: it has no
+  record of its own, the whole-branch grant inside it does. A manager with grants in three of six
+  departments who clicked it got three records deleted without ever having opened the branch.
+  Removing is a button that names itself, and it shows only when there is something there the
+  caller could remove.
+
 - **nodemailer 6 → 10 and puppeteer-core 24 → 25.** The two major bumps the widened dependency
   gate had waived are done, and the waivers are gone. nodemailer's own breaking changes across
   the four majors (SESv2-only SES transport, `ENOAUTH` error code, TLS validation on remote

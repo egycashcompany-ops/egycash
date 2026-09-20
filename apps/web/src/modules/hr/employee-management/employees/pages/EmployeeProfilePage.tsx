@@ -447,6 +447,9 @@ export const EmployeeProfilePage = (): JSX.Element => {
           <Suspense fallback={<LoadingState />}>
             <DelegationPanel
               userId={e.userId}
+              personName={
+                locale === 'en' ? (e.personal.fullNameEn ?? e.personal.fullNameAr) : e.personal.fullNameAr
+              }
               homeUnit={{
                 branchId: e.employment.branchId,
                 departmentId: e.employment.departmentId,

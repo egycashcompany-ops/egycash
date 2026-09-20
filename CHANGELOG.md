@@ -49,6 +49,36 @@ its entry here in the same PR.
 
 ### Changed
 
+- **«الصلاحيات» is now one person walked down: his branches, the departments in each, the screens
+  in each department.** Same records and same server rules (ADR-032, Gap 1) — the screen changed,
+  not the model. The panel that shipped with delegation asked the manager to name a unit in two
+  dropdowns before it would show him anything, and then drew one seventy-row table per unit he
+  named; the owner's verdict on it was «هل المفروض يبقى كدا بالشكل الزباله دا والتعقيد دا», and the
+  order he actually asks the question in is «احدد شخص … بختار الفرع الأول … وبعدها اخش في كل فرع
+  احدد الإدارات اللي ممكن يشوفها واحدد إيه الصفحات اللي يشوفها في كل إدارة». That is now the shape
+  of the screen: branch → department → screen → actions, each level a checkbox with a computed
+  count beside it, opened on the person's own unit so the common case needs no clicks. Ticking a
+  screen turns on every action on it («لما يعمل صح على شاشه يعمل صح على كل حاجه») and the pills
+  underneath are there to take one back. «الفرع كله» is drawn as its own block and says what it is:
+  a grant with its own record, covering departments nobody has opened yet, not a «tick them all»
+  button — while it is on, the departments beneath it read «مشمولة في منح الفرع كله» and what they
+  hold separately is left untouched and comes back if it is cleared. What the manager may not grant
+  is shown with the reason on it rather than hidden, and it is inert in both directions: it cannot
+  be ticked, and it survives a clear at every level — the action, the screen, «شيل الكل», and the
+  whole branch. A row nobody may open carries no chevron, which the design this was drawn from got
+  wrong, and every count on the screen is computed from the state the checkboxes read rather than
+  written by hand, which that design also got wrong — it labelled a department «٩ شاشات متعلّمة»
+  over eight rows. Nothing about the save changed: one PUT per unit that actually differs, an empty
+  list still removes the record.
+
+  The branch level is a heading, not a checkbox, and that is the one place the approved mock was
+  wrong rather than merely imprecise. A tri-state box there reads «tick the rest» — it is what a
+  half-ticked box means everywhere — while the only thing a branch can do is take away: it has no
+  record of its own, the whole-branch grant inside it does. A manager with grants in three of six
+  departments who clicked it got three records deleted without ever having opened the branch.
+  Removing is a button that names itself, and it shows only when there is something there the
+  caller could remove.
+
 - **nodemailer 6 → 10 and puppeteer-core 24 → 25.** The two major bumps the widened dependency
   gate had waived are done, and the waivers are gone. nodemailer's own breaking changes across
   the four majors (SESv2-only SES transport, `ENOAUTH` error code, TLS validation on remote

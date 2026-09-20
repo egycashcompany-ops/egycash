@@ -1,9 +1,16 @@
 // F4 (plan) / F5 (this sprint's numbering) — security-signal detection. Scheduled
 // detectors scan a trailing window of the audit stream; a raised signal is itself an
-// `alertRaised` audit record (entityType `security`) plus a reliable event — the event
-// is a seam only, no consumer subscribes this sprint (notifications capability, later).
+// `alertRaised` audit record (entityType `security`) plus a reliable event, which the
+// notifications service turns into a critical alert for everyone with organization-wide
+// audit-log visibility (`notification.events.ts`).
+//
+// One signal does not wait for the sweep. Break-glass use is raised from the gate the moment it
+// happens (`flagBreakGlassUse`) — an emergency power exercised at 02:00 is worth a page at 02:00,
+// not at the top of the hour — and the sweep's own detector is the net under it.
 import { Types } from 'mongoose';
 import { PlatformEvents, SettingKeys } from '@ecms/contracts';
+import { logger } from '../../infrastructure/logging/logger';
+import { captureError } from '../../infrastructure/observability/sentry';
 import { settingsService } from '../settings';
 import { emit, nudgeOutboxRelay } from '../kernel/event-bus';
 import { auditService } from './audit.service';
@@ -22,6 +29,9 @@ const LOCKOUT_CLUSTER_WINDOW_MINUTES = 60;
 const REFRESH_REUSE_WINDOW_MINUTES = 60;
 const DENIED_WINDOW_MINUTES = 60;
 const EXPORT_SPIKE_WINDOW_MINUTES = 24 * 60;
+/** Severe at ONE occurrence, like refresh reuse; the window is the alert's dedup, not a threshold. */
+const BREAK_GLASS_WINDOW_MINUTES = 60;
+export const BREAK_GLASS_SIGNAL = 'breakGlassUsed';
 
 /** Pure floor-enforcement — unit-testable without touching Mongo (mirrors retention's). */
 export const applyThresholdFloor = (floor: number, configured: number): number =>
@@ -131,6 +141,65 @@ const detectExportSpike = async (threshold: number): Promise<void> => {
   }
 };
 
+export interface BreakGlassUse {
+  userId: string;
+  /** The key exercised — or the `a|b` list when an any-of gate passed on emergency keys alone. */
+  permission: string;
+  /** `METHOD /path`, so the alert says what the power was used for without a second lookup. */
+  route: string;
+}
+
+/**
+ * A break-glass permission was exercised. Its own audit row, then the signal — raised NOW, from
+ * the request, with `raiseAlert`'s dedup so one person purging twenty files pages once, not
+ * twenty times (every use still gets its row). Never throws: this runs fire-and-forget behind
+ * `authorize()`, and an alarm that failed the request it is about would be its own outage.
+ */
+export const flagBreakGlassUse = async (use: BreakGlassUse): Promise<void> => {
+  try {
+    await auditService.record({
+      entityRef: { moduleId: 'platform', entityType: 'user', entityId: use.userId },
+      action: 'breakGlassUsed',
+      changes: [
+        { field: 'permission', old: null, new: use.permission },
+        { field: 'route', old: null, new: use.route },
+      ],
+    });
+    await raiseAlert({
+      signal: BREAK_GLASS_SIGNAL,
+      userId: use.userId,
+      count: 1,
+      windowMinutes: BREAK_GLASS_WINDOW_MINUTES,
+      details: { permission: use.permission, route: use.route },
+    });
+  } catch (error) {
+    logger.error(
+      { err: error, userId: use.userId, permission: use.permission },
+      'break-glass alert failed',
+    );
+    captureError(error, { userId: use.userId, permission: use.permission });
+  }
+};
+
+/**
+ * The net under `flagBreakGlassUse`: a `breakGlassUsed` row whose immediate raise did not land
+ * (the alert write failed, the process died between the two) is raised by the sweep instead.
+ * Dedup makes the common case — already raised — a no-op.
+ */
+const detectBreakGlassUse = async (): Promise<void> => {
+  const windowStart = new Date(Date.now() - BREAK_GLASS_WINDOW_MINUTES * 60_000);
+  const rows = await countByUser('breakGlassUsed', windowStart, 1);
+  for (const row of rows) {
+    if (row._id === null) continue;
+    await raiseAlert({
+      signal: BREAK_GLASS_SIGNAL,
+      userId: String(row._id),
+      count: row.count,
+      windowMinutes: BREAK_GLASS_WINDOW_MINUTES,
+    });
+  }
+};
+
 /** Any refresh-token reuse is inherently severe — threshold of one occurrence. */
 const detectRefreshReuse = async (): Promise<void> => {
   const windowStart = new Date(Date.now() - REFRESH_REUSE_WINDOW_MINUTES * 60_000);
@@ -163,4 +232,5 @@ export const runSecuritySignalDetection = async (): Promise<void> => {
   await detectLockoutCluster();
   await detectExportSpike(exportSpikeThreshold);
   await detectRefreshReuse();
+  await detectBreakGlassUse();
 };

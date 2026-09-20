@@ -6,6 +6,7 @@ import { logger } from '../../infrastructure/logging/logger';
 import { relayOutbox } from '../kernel/event-bus';
 import { rbacService } from '../rbac';
 import { runActivityRetention, runSecuritySignalDetection } from '../audit';
+import { rescanPendingFiles, RESCAN_AFTER_MINUTES } from '../files';
 import { userService } from '../users';
 import { schedulerService } from './scheduler.service';
 
@@ -72,6 +73,20 @@ export const registerPlatformScheduledTasks = (): void => {
     ownerService: 'audit',
     handler: async () => {
       await runSecuritySignalDetection();
+    },
+  });
+
+  // A file whose virus scan never came back — clamd down when the job ran, the worker gone with
+  // the job — sits at `pending`, withheld from every download, until something asks again. This
+  // asks again. A no-op on a deployment with no scanner, where nothing is ever `pending`.
+  schedulerService.declareTask({
+    key: 'platform.files.rescanPending',
+    description: `Re-queue the virus scan for files still pending after ${String(RESCAN_AFTER_MINUTES)} minutes`,
+    cron: '*/15 * * * *',
+    ownerService: 'files',
+    handler: async () => {
+      const requeued = await rescanPendingFiles();
+      if (requeued > 0) logger.info({ requeued }, 'pending virus scans re-queued');
     },
   });
 };

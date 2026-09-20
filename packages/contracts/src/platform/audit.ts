@@ -18,6 +18,11 @@ export const AUDIT_ACTIONS = [
   'totpDisabled',
   'sessionRevoked',
   'permissionDenied',
+  // A break-glass permission was EXERCISED — the gate passed. `purge` says what was done; this row
+  // says an emergency power was the authority for it, which is the fact an incident review filters
+  // on. Written by `authorize()` and raised as a security signal the moment it lands, not on the
+  // hourly sweep (Security Architecture §5).
+  'breakGlassUsed',
   'export',
   'settingChanged',
   'roleAssigned',

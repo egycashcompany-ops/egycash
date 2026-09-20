@@ -13,17 +13,39 @@ export interface SendMailInput {
   html: string;
 }
 
+export interface SmtpOptions {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+}
+
+/**
+ * The real transport, built from explicit options rather than `env` so a spec can point it at a
+ * fake SMTP server on a loopback port and prove the handshake — the one thing about nodemailer
+ * a major upgrade could quietly change, and the one thing `jsonTransport` never exercises.
+ */
+export const createSmtpTransport = (options: SmtpOptions): Transporter =>
+  nodemailer.createTransport({
+    host: options.host,
+    port: options.port,
+    secure: options.secure,
+    auth: options.user === '' ? undefined : { user: options.user, pass: options.password },
+  });
+
 let transporter: Transporter | null = null;
 
 const getTransporter = (): Transporter => {
   if (transporter !== null) return transporter;
   transporter = isTest
     ? nodemailer.createTransport({ jsonTransport: true })
-    : nodemailer.createTransport({
+    : createSmtpTransport({
         host: env.SMTP_HOST,
         port: env.SMTP_PORT,
         secure: env.SMTP_SECURE,
-        auth: env.SMTP_USER === '' ? undefined : { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
+        user: env.SMTP_USER,
+        password: env.SMTP_PASSWORD,
       });
   return transporter;
 };

@@ -8,7 +8,9 @@ import {
   type PushSubscriptionDto,
   type PushSubscriptionInput,
 } from '@ecms/contracts';
+import { publicHttpsRefusal } from '../../infrastructure/http/outbound';
 import { noContent, ok } from '../../infrastructure/http/respond';
+import { ValidationError } from '../../shared/errors';
 import { validated } from '../../infrastructure/http/validate';
 import { authContext } from '../auth';
 import { pushConfig } from './push-config';
@@ -42,6 +44,16 @@ export const getPushConfig = (req: Request, res: Response): void => {
 export const registerPushSubscription = async (req: Request, res: Response): Promise<void> => {
   const ctx = authContext(req);
   const { body } = validated<PushSubscriptionInput>(req);
+  // The one URL in the system a caller chooses for THIS SERVER to send requests to. A push
+  // service is HTTPS on a public address; anything else is a request the browser is asking the
+  // api to make on its behalf (Security Architecture §4, SSRF), and it is refused here, once,
+  // rather than attempted on every notification.
+  const refusal = await publicHttpsRefusal(body.endpoint);
+  if (refusal !== null) {
+    throw new ValidationError([
+      { field: 'endpoint', code: 'invalid', message: `not a push service endpoint: ${refusal}` },
+    ]);
+  }
   const doc = await pushSubscriptionRepository.upsert({
     userId: ctx.userId,
     endpoint: body.endpoint,

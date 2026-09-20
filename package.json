@@ -30,6 +30,8 @@
     "check:flag-expiry": "npm run build -w packages/contracts && node scripts/check-flag-expiry.mjs",
     "check:page-registry": "npm run build -w packages/contracts && node scripts/check-page-registry.mjs",
     "check:bundle": "node scripts/check-bundle-require.mjs",
+    "check:secrets": "node scripts/check-secrets.mjs",
+    "check:dependencies": "node scripts/dependency-audit.mjs",
     "check:n8n": "node scripts/n8n-conformance.mjs",
     "check:automation-templates": "npm run build -w packages/contracts && node scripts/automation-templates.mjs",
     "automation:preview": "npm run build -w packages/contracts && node scripts/automation-templates.mjs --preview",
@@ -39,7 +41,8 @@
     "import:vehicles": "npm run build -w packages/contracts && npm run import:vehicles -w apps/api --",
     "reset:workforce": "npm run build -w packages/contracts && npm run reset:workforce -w apps/api --",
     "report:org-duplication": "npm run build -w packages/contracts && npm run report:org-duplication -w apps/api --",
-    "migrate:org-catalog": "npm run build -w packages/contracts && npm run migrate:org-catalog -w apps/api --"
+    "migrate:org-catalog": "npm run build -w packages/contracts && npm run migrate:org-catalog -w apps/api --",
+    "rescan:files": "npm run build -w packages/contracts && npm run rescan:files -w apps/api --"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
@@ -49,5 +52,8 @@
     "prettier": "^3.4.2",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.20.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

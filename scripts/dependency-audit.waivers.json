@@ -1,0 +1,5 @@
+{
+  "$comment": "Advisories the dependency gate tolerates, each with a reason and an expiry. Past its date a waiver FAILS the pipeline until the dependency is fixed or the waiver is renewed under review — the same rule feature flags live by. Read by scripts/dependency-audit.mjs.",
+  "advisories": [],
+  "outage": null
+}

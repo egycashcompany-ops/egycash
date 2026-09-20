@@ -12,6 +12,7 @@ Target platform: **Railway** + **GitHub** (source + CI via GitHub Actions).
 | MongoDB | Managed (Atlas or Railway plugin, **replica set required** for transactions) | — | Vertical + storage |
 | Redis | Railway plugin / managed | — | Vertical |
 | Volume | attached to `ecms-api` | file storage (until cloud adapter) | Storage |
+| `clamav` (optional) | `infra/clamav` (Docker) | `clamd` + `freshclam` — the upload virus scanner, reached by api and worker over the private network | Vertical (2 GB: signatures live in memory) + a volume for the signature database |
 
 Health: `/health/live` (process up) and `/health/ready` (Mongo + Redis reachable) wired to
 Railway health checks. Graceful shutdown: stop accepting connections → drain sockets → let

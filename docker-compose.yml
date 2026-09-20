@@ -29,6 +29,24 @@ services:
       - '8025:8025' # web UI
       - '1025:1025' # SMTP
 
+  # Virus scanning for uploads (Security Architecture §3). Opt-in — `--profile antivirus` — and
+  # paired with CLAMAV_HOST=localhost in .env. The signature database downloads on first start
+  # (a few minutes); until then the api logs "clamd is not answering" and holds uploads at
+  # `pending`, which is the intended behaviour, not a fault.
+  clamav:
+    image: clamav/clamav:stable
+    profiles: ['antivirus']
+    ports:
+      - '3310:3310'
+    volumes:
+      - clamav-data:/var/lib/clamav
+    healthcheck:
+      test: ['CMD', 'clamdcheck.sh']
+      interval: 30s
+      timeout: 10s
+      retries: 20
+
 volumes:
   mongo-data:
   redis-data:
+  clamav-data:

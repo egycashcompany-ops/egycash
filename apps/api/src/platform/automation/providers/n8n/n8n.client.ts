@@ -8,6 +8,7 @@
 // Nothing here is n8n-workflow-aware. It sends authenticated requests and reports what happened.
 // Building workflows, mapping triggers, interpreting responses — none of that is the client's job.
 import { setTimeout as delay } from 'node:timers/promises';
+import { OutboundBlockedError, outboundFetch } from '../../../../infrastructure/http/outbound';
 import { logger } from '../../../../infrastructure/logging/logger';
 
 export interface N8nClientOptions {
@@ -89,7 +90,7 @@ export class N8nClient {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       try {
-        const response = await fetch(url, {
+        const response = await outboundFetch(url, {
           method,
           headers: this.headers(extraHeaders),
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -114,6 +115,8 @@ export class N8nClient {
         return { status: response.status, ok: true, body: parsed };
       } catch (error) {
         lastError = error;
+        // A destination the outbound policy refuses will be refused identically next time.
+        if (error instanceof OutboundBlockedError) throw new N8nRequestError(error.message, null);
         // A 4xx (thrown above) is not retryable and rethrows immediately.
         if (error instanceof N8nRequestError && error.status !== null && !RETRYABLE_STATUS.has(error.status)) {
           throw error;

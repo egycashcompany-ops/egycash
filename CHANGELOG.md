@@ -23,6 +23,32 @@ its entry here in the same PR.
   never implies its departments' grants, and a department never implies its branch's; tests pin
   branch scope, department + branch, and department-wide against each other.
 
+### Changed
+
+- **nodemailer 6 → 10 and puppeteer-core 24 → 25.** The two major bumps the widened dependency
+  gate had waived are done, and the waivers are gone. nodemailer's own breaking changes across
+  the four majors (SESv2-only SES transport, `ENOAUTH` error code, TLS validation on remote
+  content, Node ≥ 20) touch nothing this mailer uses; the SMTP handshake is now proved by a spec
+  against a fake ESMTP server (`mailer.spec.ts`), which no suite had exercised before — the
+  suites use `jsonTransport`. puppeteer-core's `launch`/`setContent`/`pdf` path is unchanged and
+  was smoke-tested through the app's own driver against Chromium 141.
+- **`rescan:files`** — the operator's command for the files uploaded before a scanner existed.
+  Switching the scanner on scans nothing retroactively; this marks every live `unscanned` file
+  `pending` (withheld until its verdict) and queues a scan-only job for each, oldest first, in
+  batches. Dry run by default, refuses without a scanner, built into the deployed image — and so,
+  now, is `migrate:org-catalog`, which the image had no way to run (`tsx` is dev-only):
+  `node apps/api/dist/migrate-org-catalog.cli.js`.
+- **@sentry/node 8 → 10** (clears the OpenTelemetry baggage-propagation advisory in its
+  dependencies; `init`/`captureException` unchanged, transmission smoke-tested against a local
+  ingest endpoint) and an npm override lifting exceljs's `uuid` to 11 (the bounds-check advisory;
+  exceljs uses only `v4()`). The remaining moderate advisories all sit behind UI majors — tiptap 3
+  and react-router 7 — left for a change that can be clicked through; the two react-router ones
+  are not reachable here (no user-supplied navigation targets; the other is SSR-only).
+- **ClamAV as a Railway service** (`infra/clamav`, guide §7). The official image with clamd
+  bound to `::` — Railway's private network is IPv6-only — and `StreamMaxLength 50M` above the
+  upload cap; a volume for the signature database; `CLAMAV_HOST=clamav.railway.internal` on
+  the app and the worker. Nothing changes until that variable is set.
+
 ### Added
 
 - **A role grant can reach more than the holder's own unit.** A department is one record per
@@ -85,6 +111,38 @@ its entry here in the same PR.
   settings editor may set the sites they reach, not only their own. And a notification that fans
   out to «everyone holding X in site B» finds a holder placed elsewhere whose grant reaches B.
   Nothing changes for an account whose grants reach only its home unit.
+
+- **Security: the five controls the security document described and the code did not have.** The
+  review that scored the platform against its own document found six gaps; SSO stays planned, the
+  other five are now real.
+  - **Virus scanning.** The `virusScan` extension point has a scanner behind it: ClamAV over its
+    `INSTREAM` socket protocol (`infrastructure/antivirus/clamd.ts`), registered when `CLAMAV_HOST`
+    is set and scanning every upload in the worker. A file the daemon has not answered for is
+    `pending` and **withheld from every download path** (`FILE_SCAN_PENDING`) rather than served on
+    trust; a hit is `blocked`; a scan that could not run leaves the file `pending` — never `clean` —
+    and `platform.files.rescanPending` asks again every fifteen minutes. `docker compose --profile
+    antivirus up` runs the daemon locally. Without `CLAMAV_HOST` nothing changes.
+  - **One door for outbound HTTP** ([ADR-033](docs/03-decisions/ADR-033-outbound-http-one-door.md)).
+    Every request the api makes leaves through `infrastructure/http/outbound.ts`: the configured
+    base URLs are pinned, the SaaS hosts the code names are listed, everything else must be on
+    `OUTBOUND_HTTP_ALLOWLIST` and resolve to a public address — including after a redirect, which
+    is followed by hand and judged per hop. A guard spec fails CI on a bare `fetch` anywhere else.
+    Web Push endpoints a browser registers must be public HTTPS.
+  - **Break-glass use pages at once.** `authorize()` writes a `breakGlassUsed` audit row when a
+    break-glass key was the authority a request passed on, and raises the `breakGlassUsed` security
+    signal from the request itself, which the notifications service delivers as a critical alert.
+    The hourly sweep is the net under it. One alert per person per hour; every use keeps its row.
+  - **Secret scanning in CI.** `scripts/check-secrets.mjs` reads every tracked file before `npm ci`
+    and fails the run on a credential shape — private key, cloud and API keys, a connection string
+    carrying a password, a JWT, a tracked `.env` or key file. False positives are allowlisted by
+    fingerprint, with a reason. `.github/dependabot.yml` opens weekly grouped dependency updates.
+  - **The dependency gate blocks high as well as critical, and an outage is no longer a pass.**
+    `scripts/dependency-audit.mjs` replaces the shell step: three attempts at the registry, then
+    red — unless a reviewer recorded a dated `outage` waiver. Advisories are waived by id with a
+    reason and an expiry that fails the run once past, as feature flags do. Widening the gate found
+    eight highs on the day: four fixed in the lockfile (multer, fast-xml-parser, socket.io-parser,
+    brace-expansion); the five behind two major bumps (nodemailer 6→10, puppeteer-core 24→25) were
+    waived for the day and are cleared by the bumps recorded under Changed — nothing stays waived.
 
 - **The import preview says which of the people it is adding are leavers.** Two thirds of the
   workbook is the Resignation sheet, so most of the people an upload adds join the registry already

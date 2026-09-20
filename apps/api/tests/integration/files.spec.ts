@@ -19,7 +19,15 @@ import { buildApp } from '../../src/app';
 import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
-import { registerFileProcessor } from '../../src/platform/files';
+import {
+  registerFileProcessor,
+  rescanPendingFiles,
+  RESCAN_AFTER_MINUTES,
+} from '../../src/platform/files';
+import { FileModel } from '../../src/platform/files/file.model';
+import { Types } from 'mongoose';
+import { fileRepository } from '../../src/platform/files/file.repository';
+import { AuditLogModel } from '../../src/platform/audit/audit.model';
 import { getCache } from '../../src/infrastructure/redis/cache';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
@@ -139,6 +147,9 @@ beforeAll(async () => {
     captured.push(e);
   });
   subscribe(PlatformEvents.ThumbnailCreated, 'spec-capture-thumb', (e) => {
+    captured.push(e);
+  });
+  subscribe(PlatformEvents.AuditAlertRaised, 'spec-capture-alert', (e) => {
     captured.push(e);
   });
   subscribe(PlatformEvents.FileUploaded, 'spec-capture-upload', (e) => {
@@ -368,6 +379,33 @@ describe('upload with category-driven validation', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(purgedGone.status).toBe(404);
 
+    // The purge exercised a break-glass permission. That is its own audit row, naming the key
+    // and the route — and a security alert raised from the gate at once, not by the hourly
+    // sweep, which the notifications consumer turns into a critical alert.
+    const breakGlassAlert = (e: EventEnvelope): boolean =>
+      e.name === PlatformEvents.AuditAlertRaised &&
+      (e.payload as { signal: string; userId?: string }).signal === 'breakGlassUsed' &&
+      (e.payload as { userId?: string }).userId === adminId;
+    await waitFor(() => captured.some(breakGlassAlert));
+    const alert = captured.find(breakGlassAlert) as EventEnvelope;
+    expect((alert.payload as { details?: { permission: string } }).details?.permission).toBe(
+      'file.purge',
+    );
+    const used = await AuditLogModel.find({
+      action: 'breakGlassUsed',
+      'entityRef.entityType': 'user',
+      'entityRef.entityId': adminId,
+    })
+      .lean()
+      .exec();
+    expect(used.length).toBeGreaterThanOrEqual(1);
+    expect(
+      used.map((row) => row.changes.find((change) => change.field === 'permission')?.new),
+    ).toContain('file.purge');
+    expect(
+      used.map((row) => row.changes.find((change) => change.field === 'route')?.new),
+    ).toContain(`DELETE /api/v1/platform/files/${freshId}/permanent`);
+
     // Bob may not purge (file.purge is break-glass).
     const denied = await request(app)
       .delete(`/api/v1/platform/files/${fileId}/permanent`)
@@ -377,6 +415,71 @@ describe('upload with category-driven validation', () => {
 });
 
 describe('extension points (virus scan / thumbnail) and events', () => {
+  /**
+   * A scanner is registered and has not answered: the bytes are withheld, on every read path,
+   * with a code that says "not yet" rather than "never". In this suite the pipeline runs inline
+   * so an upload is `clean` before its response returns; the state is set by hand to stand in
+   * for the worker not having reached the job.
+   */
+  it('withholds a file whose scan is still pending, and serves it once the verdict is in', async () => {
+    const uploaded = await uploadPng(adminToken, { name: 'still-scanning.png' });
+    const id = (uploaded.body as { data: { id: string } }).data.id;
+    await fileRepository.setScanStatus(new Types.ObjectId(id), 'pending');
+
+    const ticket = await request(app)
+      .get(`/api/v1/platform/files/${id}/download`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ticket.status).toBe(422);
+    expect((ticket.body as { error: { code: string } }).error.code).toBe('FILE_SCAN_PENDING');
+
+    await fileRepository.setScanStatus(new Types.ObjectId(id), 'clean');
+    // Served again — which, on this endpoint, is the redirect to the signed URL (302), exactly as
+    // the download tests above expect it.
+    const served = await request(app)
+      .get(`/api/v1/platform/files/${id}/download`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(served.status).toBe(302);
+  });
+
+  /**
+   * The net under the queue: a file left `pending` longer than the sweep's patience gets its scan
+   * re-queued — the scan ONLY, so the thumbnail processor does not run (and emit) a second time.
+   */
+  it('re-queues the scan, and only the scan, for a file pending too long', async () => {
+    const uploaded = await uploadPng(adminToken, { name: 'stuck.png' });
+    const id = (uploaded.body as { data: { id: string } }).data.id;
+    const objectId = new Types.ObjectId(id);
+    await fileRepository.setScanStatus(objectId, 'pending');
+    // Older than the sweep's patience; younger than that is the queue's business, not the sweep's.
+    await FileModel.updateOne(
+      { _id: objectId },
+      { $set: { uploadedAt: new Date(Date.now() - 2 * RESCAN_AFTER_MINUTES * 60_000) } },
+    ).exec();
+    // The upload's own completion events travel the reliable tier and land a tick after the
+    // response; take the baseline only once they have, or the first thumbnail counts as a second.
+    const forThisFile = (name: string): number =>
+      captured.filter((e) => e.name === name && (e.payload as { fileId: string }).fileId === id)
+        .length;
+    await waitFor(
+      () =>
+        forThisFile(PlatformEvents.VirusScanCompleted) >= 1 &&
+        forThisFile(PlatformEvents.ThumbnailCreated) >= 1,
+    );
+    const scansBefore = forThisFile(PlatformEvents.VirusScanCompleted);
+    const thumbsBefore = forThisFile(PlatformEvents.ThumbnailCreated);
+
+    expect(await rescanPendingFiles()).toBe(1);
+
+    await waitFor(() => forThisFile(PlatformEvents.VirusScanCompleted) > scansBefore);
+    const rescanned = await request(app)
+      .get(`/api/v1/platform/files/${id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((rescanned.body as { data: { scanStatus: string } }).data.scanStatus).toBe('clean');
+    expect(forThisFile(PlatformEvents.ThumbnailCreated)).toBe(thumbsBefore);
+    // Now clean: a second sweep finds nothing.
+    expect(await rescanPendingFiles()).toBe(0);
+  });
+
   it('blocks an infected upload and emits VirusScanCompleted', async () => {
     const response = await uploadPng(adminToken, { name: 'eicar-sample.png' });
     expect(response.status).toBe(201);

@@ -38,6 +38,39 @@ const EnvSchema = z.object({
   ATM_MAIL_GRAPH_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(20_000),
 
   /**
+   * ClamAV, the scanner behind the files service's `virusScan` extension point (Security
+   * Architecture §3). UNSET = no scanner registers, uploads stay `unscanned`, and the deployment
+   * behaves exactly as it does today. Set the host where `clamd` listens (the `clamav/clamav`
+   * image, port 3310) and every upload is scanned in the worker before its bytes can be served;
+   * a file the scanner has not answered for yet is `pending` and withheld, not served on trust.
+   *
+   * `clamd.conf`'s `StreamMaxLength` must be at least `MAX_UPLOAD_MB`, or a larger upload fails
+   * its scan and sits at `pending` until the limit is raised.
+   */
+  CLAMAV_HOST: z.string().default(''),
+  CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
+  CLAMAV_TIMEOUT_MS: z.coerce.number().int().min(1000).max(600_000).default(60_000),
+
+  /**
+   * Outbound HTTP policy (Security Architecture §4, SSRF). Every request the api makes leaves
+   * through `infrastructure/http/outbound.ts`, which refuses a destination that is not on the
+   * allowlist or that resolves to a private, loopback or link-local address — including one
+   * reached by redirect. The hosts of the base URLs configured in this file (`N8N_BASE_URL`,
+   * `NATIONAL_ID_OCR_URL`) and the SaaS endpoints the code itself names (Microsoft Graph, Meta,
+   * Twilio) are allowed without being listed.
+   *
+   * `OUTBOUND_HTTP_ALLOWLIST` — comma-separated extra hostnames; `*.example.com` for a suffix.
+   * `OUTBOUND_HTTP_ALLOW_PRIVATE` — let an allowlisted host resolve to a private address, for an
+   * integration on the deployment's own network under a name that is not one of the configured
+   * base URLs. Off by default; a configured base URL never needs it.
+   */
+  OUTBOUND_HTTP_ALLOWLIST: z.string().default(''),
+  OUTBOUND_HTTP_ALLOW_PRIVATE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  /**
    * Envelope-encryption key ring — `id:base64,id:base64`, 32-byte keys (A-1).
    *
    * More than one so rotation has an overlap window: the retired key still decrypts what has not

@@ -356,6 +356,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['system-admin', 'assignments'],
   ],
   'platform.role': [['system-admin']],
+  // A chain is read on one screen and nowhere else, so one key is the whole answer — and it is the
+  // feature key rather than a list key, because the editor writes by PLACE, not by id: a save can
+  // create a row the list does not have yet.
+  'platform.approvalWorkflow': [['system-admin', 'approval-workflows']],
   'platform.organization': [['org'], ['platform', 'organization']],
   'platform.branch': [['org'], ['platform', 'organization'], ['system-admin', 'branch-options']],
   'platform.department': [['org'], ['platform', 'organization']],

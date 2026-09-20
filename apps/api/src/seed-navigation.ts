@@ -1007,6 +1007,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         icon: 'key',
         permission: 'permission.view',
       },
+      // Gap 2. Its own row rather than a tab on Roles: a role says what somebody MAY do, a chain
+      // says who has to say yes before something happens, and the two are administered by
+      // different people on different days.
+      {
+        en: 'Approval chains',
+        ar: 'مسارات الموافقة',
+        route: '/system/approvals',
+        icon: 'check',
+        permission: 'approval.configure',
+      },
       // P8. `setting.view` is what `GET /settings/definitions` enforces and what the route guards
       // on, so the row advertises exactly the screen the caller can open. The values half of the
       // screen (`GET /settings/me`) is open to any session, which makes the definitions permission

@@ -12,6 +12,29 @@ export { type ActorIdentity };
 export type ExternalSubject = ExternalSubjectDto;
 
 /** The object every authenticated request carries (Platform Core §1, ADR-015 scopes). */
+/**
+ * The units a grant (or a permission key) covers beyond the holder's own placement — as TWO lists,
+ * because they mean different things (ADR-032, Gap 1):
+ *
+ *   • `branchIds` — WHOLE branches: every department in each of them;
+ *   • `departments` — department COPIES, each in exactly one branch: that department there and
+ *     nothing else in that branch.
+ *
+ * A branch on its own never implies its departments' grants, and a department never implies its
+ * branch's. Both lists empty means "the home unit only", which the selector answers from the
+ * single ids as it always did.
+ */
+export interface UnitReach {
+  branchIds: string[];
+  departments: { id: string; branchId: string }[];
+}
+
+/** Every branch a reach touches at all — wholly, or through one of its departments. */
+export const touchedBranches = (reach: UnitReach | undefined): string[] =>
+  reach === undefined
+    ? []
+    : [...new Set([...reach.branchIds, ...reach.departments.map((d) => d.branchId)])];
+
 export interface AuthContext {
   userId: string;
   sessionId: string;
@@ -32,14 +55,14 @@ export interface AuthContext {
    * repositories fall back to `branchId` / `departmentId` in that case, so nothing that never
    * granted a wider reach behaves any differently.
    */
-  reach?: { branchIds: string[]; departmentIds: string[] };
+  reach?: UnitReach;
   /**
    * The same, PER PERMISSION KEY — because each site's table is its own (ADR-032). A person may
    * hold «الموظفين» in two sites and «الحضور» in one, and a single union would let the narrower key
    * ride the wider one's reach. A key with no entry reaches the home unit only. Absent altogether
-   * on a snapshot cached before it existed, in which case the union above answers, as it did.
+   * on a synthetic context (seeds, PDF renderers), in which case the union above answers.
    */
-  keyReach?: Record<string, { branchIds: string[]; departmentIds: string[] }>;
+  keyReach?: Record<string, UnitReach>;
   permissionVersion: number;
   /** Holds a protected system role or any break-glass permission (Review R13). */
   isPrivileged: boolean;
@@ -92,6 +115,12 @@ export interface ScopeSelector {
    */
   branchIds?: readonly string[];
   departmentIds?: readonly string[];
+  /**
+   * The branches the listed department copies sit in. For a collection that carries a branch but
+   * no department, a department-level authority narrows to THESE rather than widening: «الحركة في
+   * أكتوبر» over the gold vault is «أكتوبر», not the company.
+   */
+  departmentBranchIds?: readonly string[];
 }
 
 /**
@@ -102,77 +131,95 @@ export interface ScopeSelector {
  * branch-placed caller sees their own branch whatever the switcher says, and department/section
  * grants are finer still, so widening them to a branch would be the one thing this must never do.
  */
-const NO_REACH: { branchIds: string[]; departmentIds: string[] } = { branchIds: [], departmentIds: [] };
+const NO_REACH: UnitReach = { branchIds: [], departments: [] };
 
 /**
  * Where ONE permission key reaches: its own entry when the snapshot records reach per key, else the
- * union across grants (a snapshot from before per-key reach existed), else nothing beyond home.
+ * union across grants (a synthetic context), else nothing beyond home.
  */
-export const reachOfKey = (
-  ctx: AuthContext,
-  permissionKey: string,
-): { branchIds: string[]; departmentIds: string[] } =>
+export const reachOfKey = (ctx: AuthContext, permissionKey: string): UnitReach =>
   ctx.keyReach === undefined ? (ctx.reach ?? NO_REACH) : (ctx.keyReach[permissionKey] ?? NO_REACH);
 
 /**
- * Whether the caller holds `permissionKey` in `branchId`: organization-wide, or at branch level or
- * wider in a site the key reaches (the home site when it reaches nowhere else).
+ * Whether the caller holds `permissionKey` over a UNIT: a whole branch (`departmentId: null`), or
+ * one department in a branch.
+ *
+ * Organization-wide covers everything. Otherwise the key's coverage is read as units: whole
+ * branches cover any department in them; a department copy covers exactly itself. When the key
+ * reaches nowhere beyond home, home is the one unit — the home branch for a `branch` grant, the
+ * home department for a `department` grant. `own` and `section` cover no unit at all.
  */
-export const keyReachesBranch = (ctx: AuthContext, permissionKey: string, branchId: string): boolean => {
+export const keyCoversUnit = (
+  ctx: AuthContext,
+  permissionKey: string,
+  branchId: string,
+  departmentId: string | null,
+): boolean => {
   const held = ctx.permissions[permissionKey];
   if (held === undefined || held === 'own' || held === 'section') return false;
   if (held === 'organization') return true;
-  const reach = reachOfKey(ctx, permissionKey).branchIds;
-  return reach.length > 0 ? reach.includes(branchId) : ctx.branchId === branchId;
+  const reach = reachOfKey(ctx, permissionKey);
+  const beyondHome = reach.branchIds.length > 0 || reach.departments.length > 0;
+  const wholeBranches = beyondHome
+    ? reach.branchIds
+    : held === 'branch' && ctx.branchId !== null
+      ? [ctx.branchId]
+      : [];
+  if (wholeBranches.includes(branchId)) return true;
+  if (departmentId === null) return false;
+  const copies = beyondHome
+    ? reach.departments.map((d) => d.id)
+    : held === 'department' && ctx.departmentId !== null
+      ? [ctx.departmentId]
+      : [];
+  return copies.includes(departmentId);
 };
 
+/** Whether the caller holds `permissionKey` over the WHOLE of `branchId`. */
+export const keyReachesBranch = (ctx: AuthContext, permissionKey: string, branchId: string): boolean =>
+  keyCoversUnit(ctx, permissionKey, branchId, null);
+
+/**
+ * The selector a repository applies for one permission — with the command bar's branch narrowing
+ * folded in.
+ *
+ * Only an `organization` grant narrows to any branch. Everything else is already at or below
+ * branch level: a caller whose key reaches several units may narrow to the units inside ONE of
+ * those branches, and never to anything else — the reach is the ceiling.
+ */
 export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSelector => {
   const scope = ctx.permissions[permissionKey] ?? 'own';
   const active = ctx.activeBranchId ?? null;
-  const reach = reachOfKey(ctx, permissionKey);
-  const reachesBranches = reach.branchIds.length > 0;
-  if (scope === 'organization' && active !== null) {
-    return {
-      scope: 'branch',
-      userId: ctx.userId,
-      branchId: active,
-      departmentId: ctx.departmentId,
-      sectionId: ctx.sectionId,
-    };
-  }
-  // A multi-branch caller narrowing to ONE of their branches: still a narrowing, so still allowed —
-  // and only to a branch the reach already holds. Anything else they send is ignored, as before.
-  if (scope === 'branch' && reachesBranches) {
-    const chosen = active !== null && reach.branchIds.includes(active) ? [active] : reach.branchIds;
-    return {
-      scope,
-      userId: ctx.userId,
-      branchId: ctx.branchId,
-      departmentId: ctx.departmentId,
-      sectionId: ctx.sectionId,
-      branchIds: chosen,
-    };
-  }
-  if (scope === 'department' && reach.departmentIds.length > 0) {
-    return {
-      scope,
-      userId: ctx.userId,
-      branchId: ctx.branchId,
-      departmentId: ctx.departmentId,
-      sectionId: ctx.sectionId,
-      departmentIds: reach.departmentIds,
-      ...(reachesBranches
-        ? { branchIds: active !== null && reach.branchIds.includes(active) ? [active] : reach.branchIds }
-        : {}),
-    };
-  }
-  return {
-    scope,
+  const home = {
     userId: ctx.userId,
     branchId: ctx.branchId,
     departmentId: ctx.departmentId,
     sectionId: ctx.sectionId,
   };
+  if (scope === 'organization' && active !== null) {
+    return { scope: 'branch', ...home, branchId: active };
+  }
+  const reach = reachOfKey(ctx, permissionKey);
+  const beyondHome = reach.branchIds.length > 0 || reach.departments.length > 0;
+  if ((scope === 'branch' || scope === 'department') && beyondHome) {
+    // Narrowing to a chosen branch keeps only the units inside it. A choice outside the reach is
+    // ignored, as before: the caller then sees everything their key covers.
+    const narrow = active !== null && touchedBranches(reach).includes(active);
+    const branchIds = narrow ? reach.branchIds.filter((id) => id === active) : reach.branchIds;
+    const departments = narrow ? reach.departments.filter((d) => d.branchId === active) : reach.departments;
+    return {
+      scope,
+      ...home,
+      ...(branchIds.length > 0 ? { branchIds } : {}),
+      ...(departments.length > 0
+        ? {
+            departmentIds: departments.map((d) => d.id),
+            departmentBranchIds: [...new Set(departments.map((d) => d.branchId))],
+          }
+        : {}),
+    };
+  }
+  return { scope, ...home };
 };
 
 /**
@@ -199,7 +246,7 @@ export const widestScopeSelector = (ctx: AuthContext, keys: readonly string[]): 
 
 /** Whether `branchId` is one the caller's own placement or grants reach. */
 export const reachesBranch = (ctx: AuthContext, branchId: string): boolean =>
-  ctx.branchId === branchId || (ctx.reach?.branchIds ?? []).includes(branchId);
+  ctx.branchId === branchId || touchedBranches(ctx.reach).includes(branchId);
 
 /**
  * The branch the caller is acting IN right now — where a new document is filed, which branch's
@@ -216,7 +263,7 @@ export const reachesBranch = (ctx: AuthContext, branchId: string): boolean =>
  */
 export const currentBranchId = (ctx: AuthContext): string | null => {
   const active = ctx.activeBranchId ?? null;
-  const reach = ctx.reach?.branchIds ?? [];
+  const reach = touchedBranches(ctx.reach);
   if (active !== null && reach.includes(active)) return active;
   if (ctx.branchId !== null) return ctx.branchId;
   if (active !== null && reach.length === 0) return active;

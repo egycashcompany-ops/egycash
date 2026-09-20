@@ -32,7 +32,7 @@ import {
   validatePageRegistry,
 } from '@ecms/contracts';
 import { BusinessRuleError, NotFoundError } from '../../shared/errors';
-import { scopeSelector, type AuthContext, type ScopeSelector } from '../../shared/types';
+import { scopeSelector, touchedBranches, type AuthContext, type ScopeSelector, type UnitReach } from '../../shared/types';
 import { HR_ONLY_ROLE_KEY_PREFIX, isDerivedHrRoleKey } from '../../hr-only-policy';
 import { getCache } from '../../infrastructure/redis/cache';
 import { logger } from '../../infrastructure/logging/logger';
@@ -70,12 +70,13 @@ export interface EffectivePermissions {
    * branch copies of every company-wide department the grants name, already narrowed to the
    * branches they cover. Both empty when no grant reaches past the home unit.
    */
-  reach: { branchIds: string[]; departmentIds: string[] };
+  reach: UnitReach;
   /**
-   * The same, per permission key, for keys that reach beyond the home unit (ADR-032: each site's
-   * table is its own). Absent on a snapshot cached before it existed; the union then answers.
+   * The same, per permission key, for keys that reach beyond the home unit (ADR-032: each unit's
+   * table is its own). Every snapshot written since Gap 1 carries it; the cache key changed with
+   * the shape, so an older snapshot is never read.
    */
-  keyReach?: Record<string, { branchIds: string[]; departmentIds: string[] }>;
+  keyReach: Record<string, UnitReach>;
 }
 
 const roleEntityRef = (id: string) => ({ moduleId: 'platform', entityType: 'role', entityId: id });
@@ -112,18 +113,31 @@ const grantState = (assignment: RoleAssignmentDoc, now: Date): PermissionState =
   return 'active';
 };
 
-/** The reach the active grants ask for, before the org structure is consulted. */
+/**
+ * The reach the active grants ask for, before the org structure is consulted.
+ *
+ * Whole branches and department copies are kept apart from the first step (ADR-032, Gap 1): a
+ * `branch` grant covers every department in its branches; a `department` grant covers one copy per
+ * branch and NOTHING else in those branches. Folding the two into one list of branches is exactly
+ * the widening this shape exists to refuse.
+ */
 interface RawReach {
-  /** Sites a grant LISTED beyond its home (the home of such a grant rides along). */
+  /** Whole branches LISTED by branch-scope grants (with the homes of those grants). */
   branchIds: Set<string>;
-  departmentCatalogIds: Set<string>;
-  /** A department grant with `allBranches`: its catalog copies in EVERY branch, not a listed set. */
-  allBranchCatalogIds: Set<string>;
+  /** A branch-scope grant marked «every branch». */
+  everyBranch: boolean;
+  /** Department copies granted directly — a delegation over one department in one branch. */
+  departmentIds: Set<string>;
+  /** Company-wide departments, with the branches to find their copies in. */
+  catalogBranches: Map<string, Set<string>>;
+  /** Company-wide departments in EVERY branch. */
+  catalogEverywhere: Set<string>;
   /**
-   * The home site / department of a grant that reaches NOWHERE else. Kept apart so that, when
-   * another grant of the same key does reach further, the home is added back to the list — a
-   * person holding «الموظفين» at home through a role and in a second site through a delegation
-   * holds it in both, and a list of the second site alone would lose the first.
+   * The home unit of a grant that reaches NOWHERE else — a branch for a `branch` grant, a
+   * department copy for a `department` grant. Kept apart so that, when another grant of the same
+   * key does reach further, the home is added back: a person holding «الموظفين» at home through a
+   * role and in a second site through a delegation holds it in both, and a list of the second site
+   * alone would lose the first.
    */
   homeBranchIds: Set<string>;
   homeDepartmentIds: Set<string>;
@@ -131,35 +145,64 @@ interface RawReach {
 
 const emptyReach = (): RawReach => ({
   branchIds: new Set(),
-  departmentCatalogIds: new Set(),
-  allBranchCatalogIds: new Set(),
+  everyBranch: false,
+  departmentIds: new Set(),
+  catalogBranches: new Map(),
+  catalogEverywhere: new Set(),
   homeBranchIds: new Set(),
   homeDepartmentIds: new Set(),
 });
 
 const mergeReach = (into: RawReach, from: RawReach): void => {
-  for (const k of Object.keys(into) as (keyof RawReach)[]) for (const v of from[k]) into[k].add(v);
+  for (const v of from.branchIds) into.branchIds.add(v);
+  into.everyBranch = into.everyBranch || from.everyBranch;
+  for (const v of from.departmentIds) into.departmentIds.add(v);
+  for (const [catalog, branches] of from.catalogBranches) {
+    const target = into.catalogBranches.get(catalog) ?? new Set<string>();
+    for (const b of branches) target.add(b);
+    into.catalogBranches.set(catalog, target);
+  }
+  for (const v of from.catalogEverywhere) into.catalogEverywhere.add(v);
+  for (const v of from.homeBranchIds) into.homeBranchIds.add(v);
+  for (const v of from.homeDepartmentIds) into.homeDepartmentIds.add(v);
 };
 
 /** What one role assignment asks of the reach, on its own. */
 const reachOfAssignment = (a: RoleAssignmentDoc): RawReach => {
   const raw = emptyReach();
-  if (a.scope !== 'branch' && a.scope !== 'department') return raw;
   const listed = a.branchIds.map(String);
-  if (listed.length > 0 || a.allBranches) {
-    if (a.branchId !== null) raw.branchIds.add(String(a.branchId));
-    for (const id of listed) raw.branchIds.add(id);
-  } else if (a.branchId !== null) {
-    raw.homeBranchIds.add(String(a.branchId));
-  }
-  if (a.scope === 'department') {
+  if (a.scope === 'branch') {
+    if (listed.length > 0 || a.allBranches) {
+      if (a.branchId !== null) raw.branchIds.add(String(a.branchId));
+      for (const id of listed) raw.branchIds.add(id);
+      raw.everyBranch = a.allBranches;
+    } else if (a.branchId !== null) {
+      raw.homeBranchIds.add(String(a.branchId));
+    }
+  } else if (a.scope === 'department') {
     if (a.departmentCatalogId !== null) {
-      if (a.allBranches) raw.allBranchCatalogIds.add(String(a.departmentCatalogId));
-      else raw.departmentCatalogIds.add(String(a.departmentCatalogId));
+      const catalog = String(a.departmentCatalogId);
+      if (a.allBranches) {
+        raw.catalogEverywhere.add(catalog);
+      } else {
+        // The copies in the listed branches and in the holder's own — never the branches
+        // themselves: a department grant is that department there, not the site.
+        const branches = new Set(listed);
+        if (a.branchId !== null) branches.add(String(a.branchId));
+        raw.catalogBranches.set(catalog, branches);
+      }
     } else if (a.departmentId !== null) {
       raw.homeDepartmentIds.add(String(a.departmentId));
     }
   }
+  return raw;
+};
+
+/** What one delegated grant asks: its one unit, and nothing beside it. */
+const reachOfDelegation = (grant: DelegatedGrantDoc): RawReach => {
+  const raw = emptyReach();
+  if (grant.departmentId === null) raw.branchIds.add(String(grant.branchId));
+  else raw.departmentIds.add(String(grant.departmentId));
   return raw;
 };
 
@@ -176,11 +219,12 @@ const reachOfAssignment = (a: RoleAssignmentDoc): RawReach => {
  * The merge rules: only ACTIVE grants contribute; a key held at two scopes resolves to the wider
  * (`widerScope`); `isPrivileged` is decided per ASSIGNMENT (a system role makes its holder
  * privileged even if it happens to carry no keys), never per key. A delegated grant (ADR-032) is
- * one more contribution per key, at branch scope in its one site; it never makes anyone privileged.
+ * one more contribution per key, over its one unit; it never makes anyone privileged.
  *
  * Reach is collected twice from the same walk: the UNION across every grant (what the branch
  * switcher offers, which rooms a socket joins) and PER KEY (what each permission's filter reads),
- * because each site's table is its own — «الحضور» in one site must not ride «الموظفين» in two.
+ * because each unit's table is its own — «الحضور» in one site must not ride «الموظفين» in two, and
+ * «الحركة في أكتوبر» must not ride a whole-branch grant somewhere else.
  *
  * Exported for its spec; the service is its only production caller.
  */
@@ -224,10 +268,10 @@ export const computeEffective = (
     for (const key of grant.role.permissionKeys) contribute(key, grant.assignment.scope, raw);
   }
   for (const { grant } of delegations) {
-    const raw = emptyReach();
-    raw.branchIds.add(String(grant.branchId));
+    const raw = reachOfDelegation(grant);
     mergeReach(reach, raw);
-    for (const key of grant.permissionKeys) contribute(key, 'branch', raw);
+    const scope: DataScope = grant.departmentId === null ? 'branch' : 'department';
+    for (const key of grant.permissionKeys) contribute(key, scope, raw);
   }
   const isPrivileged =
     holdsProtectedRole || breakGlassPermissionKeys.some((key) => key in permissions);
@@ -236,7 +280,7 @@ export const computeEffective = (
 };
 
 /**
- * Turn a raw reach into the ids a repository can filter on.
+ * Turn a raw reach into the units a repository can filter on.
  *
  * A company-wide department is one record per branch, so «الحركة in المهندسين and أكتوبر» is the
  * two branch copies with that catalog id; «الحركة everywhere» is every copy there is. A reach that
@@ -245,47 +289,59 @@ export const computeEffective = (
  * Resolved once per permission snapshot and cached with it — the org structure changes rarely, and
  * a new branch copy created inside one TTL becomes visible at the next.
  */
-const resolveReach = async (raw: RawReach): Promise<EffectivePermissions['reach']> => {
-  const listed = new Set(raw.branchIds);
-  const everywhere =
-    raw.allBranchCatalogIds.size === 0
-      ? []
-      : await departmentRepository.findByCatalogIdsSystem([...raw.allBranchCatalogIds]);
-  // Every branch that department exists in is a branch the holder now reaches.
-  for (const d of everywhere) listed.add(String(d.branchId));
-
-  const beyondHome = listed.size > 0;
-  const branchIds = beyondHome ? new Set([...listed, ...raw.homeBranchIds]) : new Set<string>();
-  const departmentIds = new Set(everywhere.map((d) => String(d._id)));
-  if (raw.departmentCatalogIds.size > 0) {
-    const within = beyondHome ? [...branchIds] : [...raw.homeBranchIds];
-    if (within.length > 0) {
-      const copies = await departmentRepository.findByCatalogIdsSystem([...raw.departmentCatalogIds], within);
-      for (const d of copies) departmentIds.add(String(d._id));
-    }
+const resolveReach = async (raw: RawReach): Promise<UnitReach> => {
+  const whole = new Set(raw.branchIds);
+  if (raw.everyBranch) {
+    for (const b of await branchRepository.listAll()) whole.add(String(b._id));
   }
-  if (departmentIds.size > 0) for (const id of raw.homeDepartmentIds) departmentIds.add(id);
-  return { branchIds: [...branchIds], departmentIds: [...departmentIds] };
+  const copies = new Map<string, string>();
+  const take = (docs: { _id: Types.ObjectId; branchId: Types.ObjectId }[]): void => {
+    for (const d of docs) copies.set(String(d._id), String(d.branchId));
+  };
+  if (raw.catalogEverywhere.size > 0) {
+    take(await departmentRepository.findByCatalogIdsSystem([...raw.catalogEverywhere]));
+  }
+  for (const [catalog, branches] of raw.catalogBranches) {
+    if (branches.size > 0) take(await departmentRepository.findByCatalogIdsSystem([catalog], [...branches]));
+  }
+  const direct = [...raw.departmentIds].filter((id) => !copies.has(id));
+  if (direct.length > 0) take(await departmentRepository.findByIdsSystem(direct));
+
+  const beyondHome = whole.size > 0 || copies.size > 0;
+  if (!beyondHome) return { branchIds: [], departments: [] };
+  for (const id of raw.homeBranchIds) whole.add(id);
+  const homes = [...raw.homeDepartmentIds].filter((id) => !copies.has(id));
+  if (homes.length > 0) take(await departmentRepository.findByIdsSystem(homes));
+  return {
+    branchIds: [...whole],
+    departments: [...copies].map(([id, branchId]) => ({ id, branchId })),
+  };
 };
 
-/** The per-key lists, resolved once per DISTINCT raw reach — most keys share one. */
+/** The per-key units, resolved once per DISTINCT raw reach — most keys share one. */
 const resolveReachByKey = async (
   reachByKey: Map<string, RawReach>,
-): Promise<NonNullable<EffectivePermissions['keyReach']>> => {
+): Promise<Record<string, UnitReach>> => {
   const signature = (raw: RawReach): string =>
-    JSON.stringify(
-      (Object.keys(raw) as (keyof RawReach)[]).map((k) => [k, [...raw[k]].sort()]),
-    );
-  const resolved = new Map<string, EffectivePermissions['reach']>();
-  const out: NonNullable<EffectivePermissions['keyReach']> = {};
+    JSON.stringify([
+      [...raw.branchIds].sort(),
+      raw.everyBranch,
+      [...raw.departmentIds].sort(),
+      [...raw.catalogBranches].map(([c, b]) => [c, [...b].sort()]).sort(),
+      [...raw.catalogEverywhere].sort(),
+      [...raw.homeBranchIds].sort(),
+      [...raw.homeDepartmentIds].sort(),
+    ]);
+  const resolved = new Map<string, UnitReach>();
+  const out: Record<string, UnitReach> = {};
   for (const [key, raw] of reachByKey) {
     const sig = signature(raw);
-    let lists = resolved.get(sig);
-    if (lists === undefined) {
-      lists = await resolveReach(raw);
-      resolved.set(sig, lists);
+    let units = resolved.get(sig);
+    if (units === undefined) {
+      units = await resolveReach(raw);
+      resolved.set(sig, units);
     }
-    if (lists.branchIds.length > 0 || lists.departmentIds.length > 0) out[key] = lists;
+    if (units.branchIds.length > 0 || units.departments.length > 0) out[key] = units;
   }
   return out;
 };
@@ -405,7 +461,7 @@ class RbacService {
     if (allBranches) {
       throw new BusinessRuleError('Only an organization-wide administrator can grant a department in all branches');
     }
-    const held = new Set([...(actor.reach?.branchIds ?? []), ...(actor.branchId === null ? [] : [actor.branchId])]);
+    const held = new Set([...touchedBranches(actor.reach), ...(actor.branchId === null ? [] : [actor.branchId])]);
     const beyond = branchIds.map(String).filter((id) => !held.has(id));
     if (beyond.length > 0) {
       throw new BusinessRuleError('You cannot grant branches your own grants do not reach');
@@ -414,7 +470,7 @@ class RbacService {
       // The granter's context carries their department as branch COPIES, not as the catalog entry,
       // so the question is asked of the copies: the named department must own at least one copy
       // the granter reaches. «الحركة» can grant «الحركة»; it cannot grant «الأمن».
-      const heldCopies = new Set(actor.reach?.departmentIds ?? []);
+      const heldCopies = new Set((actor.reach?.departments ?? []).map((d) => d.id));
       if (actor.departmentId !== null) heldCopies.add(actor.departmentId);
       const copies = await departmentRepository.findByCatalogIdsSystem([String(departmentCatalogId)]);
       if (!copies.some((d) => heldCopies.has(String(d._id)))) {
@@ -965,7 +1021,8 @@ class RbacService {
   // ── Evaluation & cache (ADR-004) ──────────────────────────────────────────
 
   private permCacheKey(userId: string, version: number): string {
-    return `perms:${userId}:v${version}`;
+    // `u2`: the reach shape changed with ADR-032 Gap 1; a snapshot from before it is never read.
+    return `perms:u2:${userId}:v${version}`;
   }
 
   async invalidateUser(userId: string): Promise<void> {
@@ -1066,6 +1123,13 @@ class RbacService {
         (b) => [String(b._id), b.name],
       ),
     );
+    const departmentNames = new Map(
+      (
+        await departmentRepository.findByIdsSystem(
+          delegations.flatMap((d) => (d.grant.departmentId === null ? [] : [String(d.grant.departmentId)])),
+        )
+      ).map((d) => [String(d._id), d.name]),
+    );
 
     // The registry, for the module and the human name. A key it does not know still gets a row:
     // a role outlives the module that declared its keys, and hiding it would hide the reason.
@@ -1097,6 +1161,7 @@ class RbacService {
                 roleKey: g.role.key,
                 roleManaged: this.managementOf(g.role),
                 branch: null,
+                department: null,
                 scope: g.assignment.scope,
                 validFrom: g.assignment.validFrom?.toISOString() ?? null,
                 validTo: g.assignment.validTo?.toISOString() ?? null,
@@ -1122,11 +1187,21 @@ class RbacService {
                     en: String(d.grant.branchId),
                   },
                 },
-                scope: 'branch',
+                department:
+                  d.grant.departmentId === null
+                    ? null
+                    : {
+                        id: String(d.grant.departmentId),
+                        name: departmentNames.get(String(d.grant.departmentId)) ?? {
+                          ar: String(d.grant.departmentId),
+                          en: String(d.grant.departmentId),
+                        },
+                      },
+                scope: d.grant.departmentId === null ? 'branch' : 'department',
                 validFrom: null,
                 validTo: null,
                 state: d.state,
-                decisive: permissions[key] === 'branch',
+                decisive: permissions[key] === (d.grant.departmentId === null ? 'branch' : 'department'),
               }),
             ),
         ];

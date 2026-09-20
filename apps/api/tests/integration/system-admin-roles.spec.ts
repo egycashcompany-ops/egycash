@@ -1203,7 +1203,7 @@ describe('a grant with a reach', () => {
     expect(dto.allBranches).toBe(false);
 
     const reach = await reachOf(target);
-    expect(reach.departmentIds.sort()).toEqual([inA, inB].sort());
+    expect(reach.departments.map((d) => d.id).sort()).toEqual([inA, inB].sort());
   });
 
   it('R3 — «every site» reaches copies that exist in branches the grant never listed', async () => {
@@ -1222,8 +1222,10 @@ describe('a grant with a reach', () => {
     expect(data<RoleAssignmentDto>(res).allBranches).toBe(true);
 
     const reach = await reachOf(target);
-    expect(reach.departmentIds.sort()).toEqual([inA, inB].sort());
-    expect(reach.branchIds.sort()).toEqual([BRANCH_A, BRANCH_B].sort());
+    expect(reach.departments.map((d) => d.id).sort()).toEqual([inA, inB].sort());
+    // A department grant reaches the department in those branches — never the branches as wholes.
+    expect(reach.branchIds).toEqual([]);
+    expect(reach.departments.map((d) => d.branchId).sort()).toEqual([BRANCH_A, BRANCH_B].sort());
   });
 
   /** THE CEILING. A branch-scoped granter reaches branch B, so B is all they can pass on. */

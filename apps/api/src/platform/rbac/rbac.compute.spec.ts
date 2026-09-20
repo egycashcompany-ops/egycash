@@ -40,11 +40,12 @@ const assignment = (
     ...over,
   }) as RoleAssignmentDoc;
 
-const delegated = (branchId: string, keys: string[]): DelegatedGrantDoc =>
+const delegated = (branchId: string, keys: string[], departmentId: string | null = null): DelegatedGrantDoc =>
   ({
     _id: new Types.ObjectId(),
     userId: new Types.ObjectId(),
     branchId: new Types.ObjectId(branchId),
+    departmentId: departmentId === null ? null : new Types.ObjectId(departmentId),
     permissionKeys: keys,
     grantedBy: null,
   }) as DelegatedGrantDoc;
@@ -103,6 +104,37 @@ describe('reach is collected per key', () => {
     expect(out.isPrivileged).toBe(true);
     const plain = computeEffective([], new Map(), [delegated(B3, ['employee.view'])], NOW);
     expect(plain.isPrivileged).toBe(false);
+  });
+
+  it('a delegation over one department covers that copy and never its branch (Gap 1)', () => {
+    const D3 = '650000000000000000000033';
+    const out = computeEffective([], new Map(), [delegated(B3, ['employee.view'], D3)], NOW);
+    expect(out.permissions).toEqual({ 'employee.view': 'department' });
+    const raw = out.reachByKey.get('employee.view');
+    expect([...(raw?.departmentIds ?? [])]).toEqual([D3]);
+    expect([...(raw?.branchIds ?? [])]).toEqual([]);
+    expect([...out.reach.branchIds]).toEqual([]);
+  });
+
+  it('a department grant with listed branches asks for the copies there, never for the branches', () => {
+    const CATALOG = '650000000000000000000501';
+    const out = computeEffective(
+      [
+        assignment(R1, {
+          scope: 'department',
+          departmentId: new Types.ObjectId('650000000000000000000031'),
+          departmentCatalogId: new Types.ObjectId(CATALOG),
+          branchIds: [new Types.ObjectId(B2)],
+        }),
+      ],
+      roles(role(R1, ['employee.view'])),
+      [],
+      NOW,
+    );
+    const raw = out.reachByKey.get('employee.view');
+    expect([...(raw?.branchIds ?? [])]).toEqual([]);
+    expect([...(raw?.homeBranchIds ?? [])]).toEqual([]);
+    expect([...(raw?.catalogBranches.get(CATALOG) ?? [])].sort()).toEqual([B1, B2]);
   });
 
   it('an expired assignment contributes neither scope nor reach', () => {

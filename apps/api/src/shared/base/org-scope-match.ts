@@ -10,9 +10,10 @@
 //
 // What it answers, per scope:
 //   organization → nothing (no narrowing);
-//   branch       → the branches the grant reaches (`branchIds`), else the home branch;
-//   department   → the department copies the grant reaches (`departmentIds`), narrowed to the
-//                  branches it reaches when both are listed, else the home department;
+//   branch / department with a reach → the OR of the units the key covers: whole branches
+//                  (`branchIds`) and department copies (`departmentIds`) — see ADR-032;
+//   branch       → else the home branch;
+//   department   → else the home department;
 //   section      → the home section.
 // A scope whose unit the caller does not have (placed nowhere) matches NOTHING — the fail-closed
 // direction — and a scope over a collection that carries no such field widens, exactly as the
@@ -57,13 +58,15 @@ const many = (field: string, ids: readonly string[]): Record<string, unknown> =>
 const listed = (ids: readonly string[] | undefined): ids is readonly string[] =>
   ids !== undefined && ids.length > 0;
 
-/** The branch clause a branch-level narrowing implies: the reach list when there is one, else home. */
-const branchClause = (field: string, selector: ScopeSelector): Record<string, unknown> =>
-  listed(selector.branchIds) ? many(field, selector.branchIds) : one(field, selector.branchId);
-
 /**
  * The `$match` fragment for a hierarchical scope over `fields`. `{}` for organization scope.
  * Returns `undefined` for `own`, which the caller spells for its own collection.
+ *
+ * With a reach (either list present) the answer is the OR of the units it names — whole branches
+ * on the branch field, department copies on the department field. Over a collection that carries
+ * a branch but no department, a department copy narrows to ITS branch rather than widening: that is
+ * as close as the data lets «this department in this site» get, and it never reaches past the site.
+ * Without a reach, the single home id answers, exactly as it always has.
  */
 export const orgScopeMatch = (
   selector: ScopeSelector,
@@ -75,23 +78,35 @@ export const orgScopeMatch = (
 
   const fallback = (): Record<string, unknown> =>
     options.finerNarrowsToBranch === true && fields.branch !== undefined
-      ? branchClause(fields.branch, selector)
+      ? one(fields.branch, selector.branchId)
       : {};
 
-  if (selector.scope === 'branch') {
-    return fields.branch === undefined ? {} : branchClause(fields.branch, selector);
+  if (selector.scope === 'section') {
+    return fields.section === undefined ? fallback() : one(fields.section, selector.sectionId);
   }
-  if (selector.scope === 'department') {
-    if (fields.department === undefined) return fallback();
-    if (!listed(selector.departmentIds)) return one(fields.department, selector.departmentId);
-    // A department reach is already narrowed to the branches it covers; when the collection also
-    // carries the branch, both are asked for, so the two lists can never disagree on a row.
-    const byDepartment = many(fields.department, selector.departmentIds);
-    if (fields.branch !== undefined && listed(selector.branchIds)) {
-      return { $and: [byDepartment, many(fields.branch, selector.branchIds)] };
+
+  const branchIds = listed(selector.branchIds) ? selector.branchIds : undefined;
+  const departmentIds = listed(selector.departmentIds) ? selector.departmentIds : undefined;
+  if (branchIds !== undefined || departmentIds !== undefined) {
+    const clauses: Record<string, unknown>[] = [];
+    if (branchIds !== undefined && fields.branch !== undefined) clauses.push(many(fields.branch, branchIds));
+    if (departmentIds !== undefined) {
+      if (fields.department !== undefined) {
+        clauses.push(many(fields.department, departmentIds));
+      } else if (fields.branch !== undefined && listed(selector.departmentBranchIds)) {
+        clauses.push(many(fields.branch, selector.departmentBranchIds));
+      } else {
+        // Neither field: the collection is not placed at all, so the scope cannot narrow it.
+        return {};
+      }
     }
-    return byDepartment;
+    if (clauses.length === 0) return {};
+    return clauses.length === 1 ? (clauses[0] as Record<string, unknown>) : { $or: clauses };
   }
-  // section
-  return fields.section === undefined ? fallback() : one(fields.section, selector.sectionId);
+
+  if (selector.scope === 'branch') {
+    return fields.branch === undefined ? {} : one(fields.branch, selector.branchId);
+  }
+  // department, home only
+  return fields.department === undefined ? fallback() : one(fields.department, selector.departmentId);
 };

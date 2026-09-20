@@ -17,10 +17,6 @@ export const getMyDelegationCatalog = (): Promise<DelegationCatalogDto> =>
 export const getUserDelegations = (userId: string): Promise<UserDelegationsDto> =>
   get<UserDelegationsDto>(`/platform/delegations/users/${userId}`);
 
-/** Replace one site's table. An empty list removes it. */
-export const setUserDelegation = (
-  userId: string,
-  branchId: string,
-  body: SetDelegation,
-): Promise<UserDelegationsDto> =>
-  put<UserDelegationsDto>(`/platform/delegations/users/${userId}/branches/${branchId}`, body);
+/** Replace one unit's table — a department in a branch, or the whole branch. An empty list removes it. */
+export const setUserDelegation = (userId: string, body: SetDelegation): Promise<UserDelegationsDto> =>
+  put<UserDelegationsDto>(`/platform/delegations/users/${userId}/grants`, body);

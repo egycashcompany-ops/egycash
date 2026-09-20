@@ -269,6 +269,8 @@ export interface EffectivePermissionSourceDto {
   roleKey: string | null;
   roleManaged: RoleManagement;
   branch: { id: string; name: { ar: string; en: string } } | null;
+  /** For a delegation confined to one department of that branch; null for the whole branch. */
+  department: { id: string; name: { ar: string; en: string } } | null;
   /** The grant's own scope, exactly as stored — never re-interpreted. */
   scope: DataScope;
   validFrom: string | null;
@@ -318,13 +320,22 @@ export interface EffectivePermissionsDto {
 
 // ── Delegated grants (ADR-032) ──────────────────────────────────────────────
 //
-// A manager hands out, per site, permissions they hold there — to people they reach. No role in
-// between: the grant IS the list of keys, for one account, in one branch. Each site's table is its
-// own record, so what somebody may do in «المهندسين» says nothing about «أكتوبر».
+// A manager hands out, per UNIT, permissions they hold there — to people they reach. No role in
+// between: the grant IS the list of keys, for one account, over one department in one branch (or,
+// from a whole-branch holder, over the branch as a whole). Each unit's table is its own record, so
+// what somebody may do in «الحركة · المهندسين» says nothing about «الأمن · المهندسين» or about
+// «الحركة · أكتوبر».
 
-/** The full list for one (account, site): the server replaces, never merges. Empty = remove. */
+/**
+ * The full list for one (account, unit): the server replaces, never merges. Empty = remove.
+ * `departmentId: null` names the whole branch, which only a whole-branch holder may grant.
+ */
 export const SetDelegationSchema = z
-  .object({ permissionKeys: z.array(PermissionKeySchema).max(500) })
+  .object({
+    branchId: objectId(),
+    departmentId: objectId().nullable(),
+    permissionKeys: z.array(PermissionKeySchema).max(500),
+  })
   .strict();
 export type SetDelegation = z.infer<typeof SetDelegationSchema>;
 
@@ -332,6 +343,8 @@ export interface DelegationDto {
   id: string;
   userId: string;
   branch: { id: string; name: { ar: string; en: string } };
+  /** The department copy the grant is confined to, or null for the whole branch. */
+  department: { id: string; name: { ar: string; en: string } } | null;
   permissionKeys: string[];
   /** The account that last wrote this grant, or null for a system write. */
   grantedBy: string | null;
@@ -346,13 +359,21 @@ export interface UserDelegationsDto {
 /**
  * What the caller may delegate, and where — their own ceiling, resolved once for the screen.
  *
- * `branches` are the sites the caller may delegate in, each with the keys they hold there at branch
- * level or wider. `pages` and `permissions` are the registry entries for the union of those keys,
- * so the screen can draw «screen × actions» without a second, wider catalog read the caller may not
- * be allowed to make.
+ * Per branch: the keys the caller holds over the WHOLE branch (`permissionKeys`; empty for a
+ * department-level manager), and its departments with the keys held over each of them BEYOND the
+ * whole-branch ones (so an organization-wide administrator's answer stays small: every key once
+ * per branch, and the departments list carries names only). A unit's ceiling is the union of the
+ * two. `pages` and `permissions` are the registry entries for the union of every key named, so the
+ * screen can draw «screen × actions» without a wider catalog read the caller may not be allowed
+ * to make.
  */
 export interface DelegationCatalogDto {
-  branches: { id: string; name: { ar: string; en: string }; permissionKeys: string[] }[];
+  branches: {
+    id: string;
+    name: { ar: string; en: string };
+    permissionKeys: string[];
+    departments: { id: string; name: { ar: string; en: string }; permissionKeys: string[] }[];
+  }[];
   pages: PageDto[];
   permissions: PermissionDto[];
 }

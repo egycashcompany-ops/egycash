@@ -6,7 +6,7 @@
 import { type NextFunction, type Request, type RequestHandler, type Response } from 'express';
 import { ErrorCodes } from '@ecms/contracts';
 import { AppError, ForbiddenError, UnauthenticatedError } from '../../shared/errors';
-import { type AuthContext } from '../../shared/types';
+import { type AuthContext, touchedBranches } from '../../shared/types';
 import { setActor } from '../../infrastructure/http/request-context';
 import { auditService } from '../audit';
 import { authService } from './auth.service';
@@ -45,7 +45,7 @@ export const authenticate: RequestHandler = (
       const active = req.headers[ACTIVE_BRANCH_HEADER];
       ctx.activeBranchId = await resolveActiveBranch(
         typeof active === 'string' ? active : undefined,
-        ctx.reach?.branchIds,
+        touchedBranches(ctx.reach),
       );
       (req as AuthedRequest).authContext = ctx;
       setActor({

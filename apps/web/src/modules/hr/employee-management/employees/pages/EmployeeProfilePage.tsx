@@ -447,11 +447,12 @@ export const EmployeeProfilePage = (): JSX.Element => {
           <Suspense fallback={<LoadingState />}>
             <DelegationPanel
               userId={e.userId}
-              homeBranch={
-                e.placement.branch === null
-                  ? { id: e.employment.branchId }
-                  : { id: e.placement.branch.id, name: e.placement.branch.name }
-              }
+              homeUnit={{
+                branchId: e.employment.branchId,
+                departmentId: e.employment.departmentId,
+                ...(e.placement.branch === null ? {} : { branchName: e.placement.branch.name }),
+                ...(e.placement.department === null ? {} : { departmentName: e.placement.department.name }),
+              }}
             />
           </Suspense>
         ))}

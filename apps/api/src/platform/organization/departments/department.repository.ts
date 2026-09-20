@@ -12,6 +12,15 @@ class DepartmentRepository extends BaseRepository<DepartmentDoc> {
     return this.exists({ branchId: new Types.ObjectId(branchId) });
   }
 
+  /** Every live department in the given branches — the units a whole-branch holder may name. */
+  async findLiveInBranchesSystem(branchIds: readonly string[]): Promise<DepartmentDoc[]> {
+    if (branchIds.length === 0) return [];
+    return this.model
+      .find({ branchId: { $in: branchIds.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .lean<DepartmentDoc[]>()
+      .exec();
+  }
+
   /** Does any branch still declare this company-wide department? Blocks deleting the entry. */
   /**
    * Every live branch copy of the given company-wide departments — optionally only in the given

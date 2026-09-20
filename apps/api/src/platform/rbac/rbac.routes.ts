@@ -118,7 +118,6 @@ export const buildRoleAssignmentsRouter = (): Router => {
 export const buildDelegationsRouter = (): Router => {
   const router = Router();
   const UserParamSchema = z.object({ userId: objectId() }).strict();
-  const UserBranchParamSchema = z.object({ userId: objectId(), branchId: objectId() }).strict();
   router.get('/me', authenticate, authorize('delegation.manage'), asyncHandler(myDelegationCatalog));
   router.get(
     '/users/:userId',
@@ -127,11 +126,12 @@ export const buildDelegationsRouter = (): Router => {
     validate({ params: UserParamSchema }),
     asyncHandler(userDelegations),
   );
+  // The unit is in the body, not the path: a whole-branch grant has no department to name.
   router.put(
-    '/users/:userId/branches/:branchId',
+    '/users/:userId/grants',
     authenticate,
     authorize('delegation.manage'),
-    validate({ body: SetDelegationSchema, params: UserBranchParamSchema }),
+    validate({ body: SetDelegationSchema, params: UserParamSchema }),
     asyncHandler(setUserDelegation),
   );
   return router;

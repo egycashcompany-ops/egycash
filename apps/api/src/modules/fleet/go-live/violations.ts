@@ -17,9 +17,9 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import {
   claimGoLiveRun,
   finishGoLiveRun,
-  FleetGoLiveRunModel,
   recordGoLiveFailure,
   recordGoLiveRefusal,
+  waitForGoLiveRuns,
 } from './go-live-run.model';
 import { resolveDrivers } from './odometer-import';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
@@ -70,8 +70,7 @@ export const runViolationsGoLive = async (dataDir?: string): Promise<void> => {
     return;
   }
 
-  const vehiclesDone = await FleetGoLiveRunModel.exists({ key: VEHICLE_GO_LIVE_MARK, status: 'done' });
-  if (vehiclesDone === null) {
+  if (!(await waitForGoLiveRuns([VEHICLE_GO_LIVE_MARK]))) {
     logger.warn(
       'fleet go-live: the vehicle registry has not finished importing — the violations book waits for the next boot; nothing was imported and the run is NOT claimed',
     );

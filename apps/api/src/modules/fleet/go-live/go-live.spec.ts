@@ -170,25 +170,28 @@ describe('the long-running processes are what import the vehicle registry', () =
     const source = code('src/modules/fleet/go-live/odometer.ts');
     const claim = source.indexOf('claimGoLiveRun(ODOMETER_GO_LIVE_MARK');
     expect(claim).toBeGreaterThan(-1);
-    for (const refusal of ['dir === null', '!existsSync(file)', 'vehiclesDone === null', 'admin === null']) {
+    for (const refusal of ['dir === null', '!existsSync(file)', 'waitForGoLiveRuns(', 'admin === null']) {
       expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
       expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
     }
     // Every row names a car by code; a registry still being written would make the book «unknown
-    // cars» and the run would finish, correctly and forever.
-    expect(source).toContain("FleetGoLiveRunModel.exists({ key: VEHICLE_GO_LIVE_MARK, status: 'done' })");
+    // cars» and the run would finish, correctly and forever. It WAITS for them rather than
+    // refusing on the instant — see `waitForGoLiveRuns`.
+    expect(source).toContain('waitForGoLiveRuns([VEHICLE_GO_LIVE_MARK])');
   });
 
   it('the workshop book refuses before its claim too — and waits for the cars AND the readings', () => {
     const source = code('src/modules/fleet/go-live/maintenance.ts');
     const claim = source.indexOf('claimGoLiveRun(MAINTENANCE_GO_LIVE_MARK');
     expect(claim).toBeGreaterThan(-1);
-    for (const refusal of ['dir === null', '!existsSync(file)', 'priorDone < 2', 'admin === null']) {
+    for (const refusal of ['dir === null', '!existsSync(file)', 'waitForGoLiveRuns(', 'admin === null']) {
       expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
       expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
     }
-    // A third of the visits take their counter from the odometer book, so both go first.
-    expect(source).toContain('key: { $in: [VEHICLE_GO_LIVE_MARK, ODOMETER_GO_LIVE_MARK] }');
+    // A third of the visits take their counter from the odometer book, so both go first — and it
+    // WAITS for them. Checking once cost the workshop book a whole deploy: every step is started
+    // in the same breath, so a second into the boot the odometer book is always «not done yet».
+    expect(source).toContain('waitForGoLiveRuns([VEHICLE_GO_LIVE_MARK, ODOMETER_GO_LIVE_MARK])');
   });
 
   it.each([
@@ -198,10 +201,11 @@ describe('the long-running processes are what import the vehicle registry', () =
     const source = code(`src/modules/fleet/go-live/${step}.ts`);
     const claim = source.indexOf(`claimGoLiveRun(${mark}`);
     expect(claim).toBeGreaterThan(-1);
-    for (const refusal of ['dir === null', '!existsSync(file)', 'vehiclesDone === null', 'admin === null']) {
+    for (const refusal of ['dir === null', '!existsSync(file)', 'waitForGoLiveRuns(', 'admin === null']) {
       expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeGreaterThan(-1);
       expect(source.indexOf(refusal), `${refusal} is checked before the mark`).toBeLessThan(claim);
     }
+    expect(source).toContain('waitForGoLiveRuns([VEHICLE_GO_LIVE_MARK])');
   });
 
   it('every refusal is WRITTEN, not only logged — the owner cannot read the log', () => {
@@ -441,7 +445,7 @@ describe('the data ships with the build', () => {
       '194',
       'تويوتا1',
     ]);
-    expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v3');
+    expect(ODOMETER_GO_LIVE_MARK).toBe('go-live:odometer:v4');
   });
 
   it('every row of the odometer book is PLANNED, none dropped, and no car ends with two open periods', () => {

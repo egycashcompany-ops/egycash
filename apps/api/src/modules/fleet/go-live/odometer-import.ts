@@ -404,6 +404,8 @@ export interface OdometerImportOutcome {
   namesFilled: number;
   /** Rows already written whose import-filled closing reading now meets the row after it. */
   relinked: number;
+  /** Rows an earlier run wrote deleted over a contested open period, brought back now it is free. */
+  restored: number;
   /** Open tails closed against a reading the company had already recorded after the book ends. */
   closedByExisting: number;
   /** Rows written DELETED so the car's one open period is not contested — «ميحصلش تعارض». */
@@ -423,7 +425,10 @@ export interface OdometerImportOutcome {
  *   • a driver's NAME is filled in where an earlier run left the driver empty;
  *   • a closing reading the BOOK never gave, and which no person has touched since the import
  *     wrote it, is re-filled from the row that now follows — so inserting a row between two the
- *     last run wrote leaves the chain meeting, instead of a step nobody typed.
+ *     last run wrote leaves the chain meeting, instead of a step nobody typed;
+ *   • a row an EARLIER run wrote deleted only because the car's one open period was taken is
+ *     brought back, now that it is free. The book calls it a reading like any other and nobody
+ *     has touched it since; it was buried by a bookkeeping mistake, not by anybody's decision.
  *
  * A reading a person entered or corrected is never touched: `updatedAt` moves the moment anybody
  * does, and a row whose `updatedAt` has moved is left exactly as they left it.
@@ -436,6 +441,14 @@ export interface OdometerImportOutcome {
  * a number, so the row is written DELETED instead of dropped: the data is kept, the index is not
  * contested, and the run names the car. A car the registry never had has no chain to meet: its
  * rows are written as the book had them.
+ *
+ * THE OPEN ROW A RUN CLOSES IS NO LONGER OPEN. The car's one open row is read once, before the
+ * rows are walked — and the relink above may CLOSE it a moment later, when this run has a row to
+ * put after it. That is the ordinary shape of a second run over a book the first one only partly
+ * kept: the earlier run left the book's last row open, and this one has the row that follows it.
+ * Reading «is there an open row?» from a value taken before that happened made the new tail look
+ * like a second open period and buried it as a conflict — seventeen real readings, deleted for a
+ * row that had already been closed. The open row is tracked as the loop closes it.
  */
 export const applyOdometerImport = async (
   plan: OdometerPlan,
@@ -446,6 +459,7 @@ export const applyOdometerImport = async (
     alreadyThere: 0,
     namesFilled: 0,
     relinked: 0,
+    restored: 0,
     closedByExisting: 0,
     openConflicts: [],
     failures: [],
@@ -455,7 +469,9 @@ export const applyOdometerImport = async (
     try {
       const existing = await fleetOdometerRepository.existingByKey(vehicle.ref);
       const registered = vehicle.ref.vehicleId !== null;
-      const open = registered ? await fleetOdometerRepository.findOpen(vehicle.ref.vehicleId as string) : null;
+      // The car's one open row, as the database has it — and `null` again the moment this run
+      // closes it, which the relink below may do.
+      let open = registered ? await fleetOdometerRepository.findOpen(vehicle.ref.vehicleId as string) : null;
       const head =
         open === null ? null : await fleetOdometerRepository.findChainHead(vehicle.ref.vehicleId as string);
       const docs: Partial<FleetOdometerLogDoc>[] = [];
@@ -478,6 +494,25 @@ export const applyOdometerImport = async (
           if (row.bookHadNoClose && untouched && row.in !== null && written.inReading !== row.in && row.in >= written.outReading) {
             await fleetOdometerRepository.setClosing(written._id, row.in, row.in - written.outReading);
             outcome.relinked += 1;
+            // That row WAS the car's open period. It is not any more, and the row this run has
+            // to put after it is free to be the open one.
+            if (open !== null && String(open._id) === String(written._id)) open = null;
+          }
+          // A row an EARLIER run buried over a contested open period — the book says it is a
+          // reading like any other, and nobody has touched it since that run wrote it. If the
+          // open period is free now, it comes back.
+          if (written.isDeleted && !row.deleted && untouched) {
+            if (row.in !== null || open === null) {
+              await fleetOdometerRepository.restore(
+                written._id,
+                row.in,
+                row.in === null ? null : row.in - written.outReading,
+              );
+              outcome.restored += 1;
+              if (row.in === null) open = { ...written, isDeleted: false, inReading: null };
+            } else {
+              outcome.openConflicts.push(`${vehicle.code} ${day(row.date)}`);
+            }
           }
           continue;
         }

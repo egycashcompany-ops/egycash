@@ -28,10 +28,15 @@ describe('the odometer collection constrains OPEN periods, not readings', () => 
     expect(fields).toEqual({ vehicleId: 1 });
     // …and to rows that HAVE a vehicle: a reading kept from the old book for a car the registry
     // never had is on no chain, and two such cars must not collide on the one value `null`.
+    //
+    // …and to rows that ARE readings. A day recorded WITHOUT a reading carries `inReading: null`
+    // too — it closes nothing — and without `outReading` in this filter it would read as a second
+    // open period and the car's real open one would be refused.
     expect(options?.partialFilterExpression).toEqual({
       isDeleted: false,
       inReading: null,
       vehicleId: { $type: 'objectId' },
+      outReading: { $type: 'number' },
     });
   });
 

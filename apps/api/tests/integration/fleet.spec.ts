@@ -18,6 +18,7 @@ import {
   type FleetDriverRowDto,
   type FleetDriverUnavailabilityDto,
   type FleetMaintenanceVisitDto,
+  type FleetHighestReadingDto,
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
@@ -1411,6 +1412,205 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
     expect((await record(v.id, 1500, '2026-07-11')).status).toBe(201);
   });
 
+  /*
+   * A DAY WITH NO READING AT ALL — «لا اما يسيبو فاضى ويدله انذار ان العربيه دى المفروض تدخل
+   * الرقم عشان احسب الصيانه، لو مش هيفرق فى الصيانه سيبوا فاضى».
+   *
+   * The day is worth recording — who drove it — and the counter nobody wrote down is not invented
+   * for it. What these pin is that such a row changes NOTHING that is measured: the chain either
+   * side of it is untouched, the car's open period is still its own, and the next real reading
+   * still lands exactly where it would have.
+   */
+  const recordNoReading = (vehicleId: string, date: string) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, date });
+
+  it('records a missed day with NO reading, between two readings, and touches neither', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09'); // Thursday
+    await record(v.id, 1600, '2026-07-12'); // Sunday
+
+    expect((await recordNoReading(v.id, '2026-07-11')).status, 'Saturday, uncounted').toBe(201);
+
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => [r.outReading, r.inReading, r.km])).toEqual([
+      [1000, 1600, 600], // Thursday still carries the WHOLE Thursday→Sunday distance
+      [null, null, null], // Saturday: a day, and no measurement of any kind
+      [1600, null, null], // Sunday, still the car's one open period
+    ]);
+    expect(rows.filter((r) => r.inReading === null), 'the empty day is NOT a second open period')
+      .toHaveLength(2);
+  });
+
+  it('the car can still take its next real reading — the open-period index is not confused', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await recordNoReading(v.id, '2026-07-11');
+
+    // The row that genuinely opens a period. Under an index that counted the empty day as open,
+    // this is the write that would have been refused.
+    expect((await record(v.id, 2000, '2026-07-14')).status).toBe(201);
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => r.outReading)).toEqual([1000, null, 1600, 2000]);
+    expect(rows.filter((r) => r.outReading !== null && r.inReading === null)).toHaveLength(1);
+  });
+
+  it('a missed day does not move the bracket, the expected reading, or the alarm’s distance', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    const expectedReading = async (): Promise<number | null> =>
+      data<{ expectedReading: number | null }>(
+        await request(app)
+          .get('/api/v1/fleet/odometer/expected')
+          .query({ vehicleId: v.id })
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).expectedReading;
+    const before = await expectedReading();
+
+    await recordNoReading(v.id, '2026-07-11');
+
+    expect(await expectedReading(), 'a day nobody measured moves no figure').toEqual(before);
+    // …and the bracket for the very day it was recorded on still reads off the real readings.
+    const bracket = data<{ lowerBound: number | null; upperBound: number | null }>(
+      await request(app)
+        .get('/api/v1/fleet/odometer/bracket')
+        .query({ vehicleId: v.id, on: '2026-07-11' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect([bracket.lowerBound, bracket.upperBound]).toEqual([1000, 1600]);
+  });
+
+  it('REFUSES a missing reading at the end of the chain — «بس اللى هى فاتت»', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+
+    // Nothing is recorded after this day, so the day is not a gap — it is the end of the chain,
+    // and a row there with no reading would be the car's open period carrying no number at all.
+    const refused = await recordNoReading(v.id, '2026-07-11');
+    expect(refused.status).toBe(409);
+    expect(JSON.stringify(refused.body)).toContain('before it AND after it');
+    expect(await logsFor(v.id), 'and it wrote nothing').toHaveLength(1);
+  });
+
+  it('REFUSES a missing reading on a car with no earlier reading either', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1600, '2026-07-12');
+    expect((await recordNoReading(v.id, '2026-07-09')).status).toBe(409);
+  });
+
+  it('REFUSES the same empty day twice — two of them say nothing a first does not', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    expect((await recordNoReading(v.id, '2026-07-11')).status).toBe(201);
+
+    const again = await recordNoReading(v.id, '2026-07-11');
+    expect(again.status).toBe(409);
+    expect(JSON.stringify(again.body)).toContain('already recorded');
+    expect(await logsFor(v.id)).toHaveLength(3);
+  });
+
+  it('the correction flow refuses to put a reading on it, and says where to put one', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await recordNoReading(v.id, '2026-07-11');
+    const empty = (await logsFor(v.id)).find((r) => r.outReading === null) as FleetOdometerLogDto;
+
+    const refused = await request(app)
+      .patch(`/api/v1/fleet/odometer/${empty.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ outReading: 1400, version: 0 });
+    expect(refused.status).toBe(400);
+    expect(JSON.stringify(refused.body)).toContain('record the reading for that date');
+  });
+
+  /*
+   * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figure above the table.
+   *
+   * It is a MAXIMUM over the cars the filter matched, never a sum: a counter is a position on an
+   * instrument, and adding two of them gives a number that exists on no dashboard in the fleet.
+   * What these pin is that it describes the whole filtered SET — paging cannot reach it and is
+   * refused outright — and that it answers about the CARS rather than about the matched rows.
+   */
+  const summary = (query: Record<string, unknown>) =>
+    request(app)
+      .get('/api/v1/fleet/odometer/summary')
+      .query(query)
+      .set('Authorization', `Bearer ${adminToken}`);
+
+  it('answers the highest reading any car in the filter has reached, and names the car', async () => {
+    const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(a.id, 1000, '2026-07-09');
+    await record(a.id, 4000, '2026-07-12');
+    await record(b.id, 9000, '2026-07-10');
+
+    const one = data<FleetHighestReadingDto>(await summary({ vehicleId: a.id }));
+    expect(one.reading, 'car A is at 4,000 — NOT 1,000 + 4,000').toBe(4000);
+    expect(one.code).toBe(a.code);
+    expect(one.vehicles).toBe(1);
+
+    const both = data<FleetHighestReadingDto>(
+      await summary({ vehicleCodes: [a.code, b.code].join(',') }),
+    );
+    expect(both.reading, 'the highest of the two, not their total').toBe(9000);
+    expect(both.code, 'and it says whose').toBe(b.code);
+    expect(both.vehicles).toBe(2);
+  });
+
+  it('REFUSES to be paged — a page cannot change a figure about the whole set', async () => {
+    const refused = await summary({ page: 1, pageSize: 10 });
+    expect(refused.status).toBe(400);
+  });
+
+  it('narrowing by DATE narrows which cars are in view, not which of their readings counts', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 4000, '2026-09-20');
+
+    // A window that contains only the EARLY reading. The car is still at 4,000 — «وصلتها
+    // العربية» asks where the car is, and a car is at the reading it is at.
+    const early = data<FleetHighestReadingDto>(
+      await summary({ vehicleId: v.id, from: '2026-07-01', to: '2026-07-31' }),
+    );
+    expect(early.reading).toBe(4000);
+    expect(early.vehicles, 'the car is in view, because a reading of its matched').toBe(1);
+  });
+
+  it('answers with nothing — never a zero — when the filter matches no car', async () => {
+    const empty = data<FleetHighestReadingDto>(await summary({ vehicleCodes: 'NO-SUCH-CODE' }));
+    expect(empty).toMatchObject({ reading: null, code: null, at: null, vehicles: 0 });
+  });
+
+  it('a day recorded with NO reading does not become the highest, or the lowest', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 4000, '2026-07-12');
+    await recordNoReading(v.id, '2026-07-11');
+
+    const answer = data<FleetHighestReadingDto>(await summary({ vehicleId: v.id }));
+    expect(answer.reading, 'the empty day is on no chain and moves no figure').toBe(4000);
+  });
+
+  it('the workshop register answers the same figure, from the same place', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 7000, '2026-07-09');
+
+    const answer = data<FleetHighestReadingDto>(
+      await request(app)
+        .get('/api/v1/fleet/maintenance/summary')
+        .query({ vehicleId: v.id })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // No visit for this car, so no car is in view — and the honest answer is nothing, not 7,000.
+    expect(answer).toMatchObject({ reading: null, vehicles: 0 });
+  });
+
   it('the owner’s own example: Thursday, Sunday, then Saturday, then Friday', async () => {
     // «لو مثلا اخر قراءه الخميس وجيت ضيفت الاحد بعدين هضيف السبت وبعدين [الجمعه]».
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
@@ -1873,8 +2073,14 @@ describe('the alarm projection has two permission doors and one answer', () => {
       expect(Object.keys(row).sort()).toEqual(
         [
           'code',
+          // How many days of this cycle nobody measured — see the DTO. It rides the projection
+          // rather than a second query so the two doors keep answering the same thing.
+          'daysWithoutReading',
           'lastServiceAt',
           'lastServiceVisitId',
+          // The reading `sinceServiceKm` was measured FROM, carried so the screens that show
+          // «أعلى قراءة عدّاد» cannot disagree with the alarm about where a car is.
+          'latestReading',
           'level',
           'noAlarmReason',
           'remainingKm',

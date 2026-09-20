@@ -213,22 +213,9 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
       driverEmployeeIds?: readonly string[] | undefined;
     },
   ): Promise<Paginated<FleetMaintenanceVisitRow>> {
-    // EITHER end of the visit: "which visits did this person drive" must not miss the one they
-    // drove away. An EMPTY id list is a real answer — HR matched nobody — and `$in: []` matches
-    // nothing, which is the honest result rather than an unfiltered page.
-    const driverFilter: FilterQuery<FleetMaintenanceVisitDoc> | null =
-      params.driverEmployeeIds === undefined
-        ? null
-        : {
-            $or: [
-              { driverInEmployeeId: { $in: params.driverEmployeeIds.map(oid) } },
-              { driverOutEmployeeId: { $in: params.driverEmployeeIds.map(oid) } },
-            ],
-          };
     // Both drivers live on the visit, so this is one indexed query again — no join, and the page
-    // is cut by the same filter the totals are counted from.
-    const filter: FilterQuery<FleetMaintenanceVisitDoc> =
-      driverFilter === null ? (params.filter ?? {}) : { $and: [params.filter ?? {}, driverFilter] };
+    // is cut by the SAME filter the summary is measured over, because both build it here.
+    const filter = this.withDriverFilter(params.filter ?? {}, params.driverEmployeeIds);
     // The keys published beyond the visit's own columns — the car's code, the entry and exit
     // drivers' names, and whichever per-vehicle figure the reader asked for. See the odometer
     // register for why the two are declared together.
@@ -258,6 +245,47 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
    *
    * The DRIVER filter is not here: it needs the roster join, which happens in `listVisits`.
    */
+  /**
+   * The driver half of the filter, folded onto the rest — EITHER end of the visit, because
+   * "which visits did this person drive" must not miss the one they drove away.
+   *
+   * It is not part of `visitFilter` because it is not a clause about the visit's own columns in
+   * the way the others are; it is here, as its own step, so the PAGE and the SUMMARY compose the
+   * identical filter instead of one of them quietly leaving the drivers out.
+   *
+   * An EMPTY id list is a real answer — HR matched nobody — and `$in: []` matches nothing, which
+   * is the honest result rather than an unfiltered page.
+   */
+  withDriverFilter(
+    filter: FilterQuery<FleetMaintenanceVisitDoc>,
+    driverEmployeeIds: readonly string[] | undefined,
+  ): FilterQuery<FleetMaintenanceVisitDoc> {
+    if (driverEmployeeIds === undefined) return filter;
+    return {
+      $and: [
+        filter,
+        {
+          $or: [
+            { driverInEmployeeId: { $in: driverEmployeeIds.map(oid) } },
+            { driverOutEmployeeId: { $in: driverEmployeeIds.map(oid) } },
+          ],
+        },
+      ],
+    };
+  }
+
+  /**
+   * WHICH CARS the visits matching this filter belong to — distinct, over the WHOLE filtered set.
+   * The odometer register does the same, for the same figure; see `vehicleIdsMatching` there.
+   */
+  async vehicleIdsMatching(filter: FilterQuery<FleetMaintenanceVisitDoc>): Promise<string[]> {
+    const rows = await this.model.aggregate<{ _id: Types.ObjectId | null }>([
+      { $match: this.baseFilter(undefined, filter) },
+      { $group: { _id: '$vehicleId' } },
+    ]);
+    return rows.filter((row) => row._id !== null).map((row) => String(row._id));
+  }
+
   visitFilter(query: {
     vehicleId?: string | undefined;
     vehicleIds?: readonly string[] | undefined;

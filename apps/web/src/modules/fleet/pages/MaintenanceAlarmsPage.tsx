@@ -14,6 +14,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { HighestReadingStrip } from '../components/HighestReadingStrip';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -115,6 +116,34 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     );
   }, [alarmsQuery.data, levels.join(','), vehicleCodes.join(','), sortParam]);
 
+  /*
+   * «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the same figure the two registers show,
+   * computed HERE rather than asked of a summary endpoint, and that is not an exception to the
+   * rule those two follow. The rule is «the figure describes the whole filtered set, never one
+   * page», and this board holds the whole set: it has no paging at all and its two filters run
+   * in the browser over every row. Asking a server for a maximum over rows already in hand would
+   * be a second, slower copy of the same arithmetic — and one that could disagree with the table
+   * beneath it, because the board filters by code and level in ways the endpoint has no words for.
+   *
+   * The READING it maximises is still the server's: `latestReading` is the very number this row's
+   * `sinceServiceKm` was measured from, so the strip and the row cannot drift apart.
+   */
+  const highest = useMemo(() => {
+    let best: (typeof rows)[number] | null = null;
+    for (const alarm of rows) {
+      if (alarm.latestReading === null) continue;
+      if (best === null || alarm.latestReading > (best.latestReading as number)) best = alarm;
+    }
+    return {
+      reading: best?.latestReading ?? null,
+      vehicleId: best?.vehicleId ?? null,
+      code: best?.code ?? null,
+      // The board carries no date for the reading — it is a projection of levels, not of the log.
+      at: null,
+      vehicles: rows.length,
+    };
+  }, [rows]);
+
   // Ascending, then descending, then out of the order altogether — and a column the table
   // is NOT sorted by joins the end of it rather than replacing what is there.
   const changeSort = (by: string): void => {
@@ -164,6 +193,34 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
       align: 'end',
       render: (alarm) =>
         alarm.sinceServiceKm === null ? '—' : formatNumber(alarm.sinceServiceKm, locale),
+    },
+    {
+      key: 'daysWithoutReading',
+      sortable: true,
+      header: t('fleet.alarms.columns.daysWithoutReading'),
+      align: 'end',
+      /*
+       * «يدله انذار ان العربيه دى المفروض تدخل الرقم عشان احسب الصيانه».
+       *
+       * A day recorded with no counter is on no chain, so it moves NONE of the figures beside it
+       * — and that is precisely why this column has to exist. `sinceServiceKm` is the distance
+       * somebody measured; this is how many days of the cycle nobody did, which makes the real
+       * distance at least what the row says and possibly more.
+       *
+       * Zero is the ordinary case and prints as a dash rather than a 0, so the eye lands only on
+       * the cars that actually need a reading typed in.
+       */
+      render: (alarm) =>
+        alarm.daysWithoutReading === 0 ? (
+          <span className="text-slate-400 dark:text-slate-600">—</span>
+        ) : (
+          <span
+            className="tabular-nums font-medium text-amber-700 dark:text-amber-300"
+            title={t('fleet.alarms.daysWithoutReadingHint')}
+          >
+            {formatNumber(alarm.daysWithoutReading, locale)}
+          </span>
+        ),
     },
     {
       key: 'remainingKm',
@@ -239,6 +296,10 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
             onChange={(next) => patch({ level: next.length === 0 ? null : next.join(',') })}
           />
         </FilterBar>
+
+        {/* The same figure the two registers show — see the strip, and the memo above for why
+            this board computes it instead of asking for it. */}
+        <HighestReadingStrip data={highest} loading={alarmsQuery.isPending} />
 
         <DataTable
           columns={columns}

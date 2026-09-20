@@ -491,8 +491,10 @@ export const applyOdometerImport = async (
             outcome.namesFilled += 1;
           }
           const untouched = written.updatedAt.getTime() === written.createdAt.getTime();
-          if (row.bookHadNoClose && untouched && row.in !== null && written.inReading !== row.in && row.in >= written.outReading) {
-            await fleetOdometerRepository.setClosing(written._id, row.in, row.in - written.outReading);
+          // `existingByKey` answers with rows that are ON THE CHAIN, so the reading is a number.
+          const writtenOut = written.outReading as number;
+          if (row.bookHadNoClose && untouched && row.in !== null && written.inReading !== row.in && row.in >= writtenOut) {
+            await fleetOdometerRepository.setClosing(written._id, row.in, row.in - writtenOut);
             outcome.relinked += 1;
             // That row WAS the car's open period. It is not any more, and the row this run has
             // to put after it is free to be the open one.
@@ -506,7 +508,7 @@ export const applyOdometerImport = async (
               await fleetOdometerRepository.restore(
                 written._id,
                 row.in,
-                row.in === null ? null : row.in - written.outReading,
+                row.in === null ? null : row.in - writtenOut,
               );
               outcome.restored += 1;
               if (row.in === null) open = { ...written, isDeleted: false, inReading: null };
@@ -519,8 +521,8 @@ export const applyOdometerImport = async (
         let inReading = row.in;
         let deleted = row.deleted;
         if (inReading === null && !deleted && open !== null) {
-          if (head !== null && head.date >= row.date && head.outReading >= row.out) {
-            inReading = head.outReading;
+          if (head !== null && head.date >= row.date && (head.outReading as number) >= row.out) {
+            inReading = head.outReading as number;
             outcome.closedByExisting += 1;
           } else {
             outcome.openConflicts.push(`${vehicle.code} ${day(row.date)}`);

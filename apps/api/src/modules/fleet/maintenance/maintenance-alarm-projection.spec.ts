@@ -23,6 +23,10 @@ const state = {
   lowerBound: null as { reading: number; date: Date } | null,
 };
 
+/** Days the car ran with nobody writing the counter — see the DTO field; no days by default. */
+const daysWithoutReadingSince = vi.fn(
+  async (_pairs: readonly { vehicleId: string; since: Date | null }[]) => new Map<string, number>(),
+);
 const lowerBoundsAt = vi.fn(async (pairs: readonly { vehicleId: string; on: Date }[]) =>
   state.lowerBound === null
     ? new Map<string, { reading: number; date: Date }>()
@@ -53,6 +57,8 @@ vi.mock('../odometer/odometer.repository', () => ({
     latestReadings: async () =>
       new Map([[String(vehicleId), { vehicleId: String(vehicleId), ...state.latestReading }]]),
     lowerBoundsAt: (pairs: readonly { vehicleId: string; on: Date }[]) => lowerBoundsAt(pairs),
+    daysWithoutReadingSince: (pairs: readonly { vehicleId: string; since: Date | null }[]) =>
+      daysWithoutReadingSince(pairs),
   },
 }));
 vi.mock('./maintenance.repository', () => ({
@@ -71,6 +77,7 @@ const only = async () => {
 
 beforeEach(() => {
   lowerBoundsAt.mockClear();
+  daysWithoutReadingSince.mockClear();
   state.lowerBound = null;
 });
 

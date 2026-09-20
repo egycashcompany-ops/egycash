@@ -33,7 +33,8 @@ import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
-import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
+import { useMaintenanceAlarms, useOdometerLogs, useOdometerTotals } from '../api/fleet-queries';
+import { HighestReadingStrip } from '../components/HighestReadingStrip';
 import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
@@ -120,11 +121,15 @@ export const OdometerPage = (): JSX.Element => {
   // requires a driving test, so every offer is a driver this table could actually show.
   const mayFilterByDriver = can('employee.view');
 
-  const params = useMemo(
+  /**
+   * WHAT THE READER IS LOOKING AT — the filters, and only the filters.
+   *
+   * Split from `params` because the figure above the table describes THIS set and paging cannot
+   * reach it: the summary endpoint has no `page` field at all and would refuse a request that
+   * carried one. The accidents screen splits its state for the same reason, in the same words.
+   */
+  const filters = useMemo(
     () => ({
-      page,
-      pageSize,
-      ...sortQuery(sorts),
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       from: from || undefined,
       to: to || undefined,
@@ -133,7 +138,12 @@ export const OdometerPage = (): JSX.Element => {
     }),
     [paramsKey],
   );
+  const params = useMemo(
+    () => ({ ...filters, page, pageSize, ...sortQuery(sorts) }),
+    [filters, page, pageSize, sorts],
+  );
   const { data, isLoading, isError, error, refetch } = useOdometerLogs(params);
+  const highest = useOdometerTotals(filters);
   const rows = data?.items ?? [];
 
   /**
@@ -257,14 +267,28 @@ export const OdometerPage = (): JSX.Element => {
       header: t('fleet.odometer.columns.outReading'),
       sortable: true,
       align: 'end',
-      render: (log) => formatNumber(log.outReading, locale),
+      // A DAY RECORDED WITH NO READING says so, in words. A dash would read as "nothing here" in
+      // a column where every other row carries a number, and the reader would take the day for a
+      // gap in the log rather than for what it is: a day somebody recorded, with a counter nobody
+      // wrote down. It is also why the two reading columns cannot simply be blank — «بدون قراءة»
+      // is the fact, and the alarm counts it.
+      render: (log) =>
+        log.outReading === null ? (
+          <Badge tone="neutral">{t('fleet.odometer.noReading')}</Badge>
+        ) : (
+          formatNumber(log.outReading, locale)
+        ),
     },
     {
       key: 'inReading',
       header: t('fleet.odometer.columns.inReading'),
       align: 'end',
+      // Such a row closes nothing, so it is NOT the open period either — the badge here means
+      // "waiting for the next reading", and this row is not waiting for anything.
       render: (log) =>
-        log.inReading === null ? (
+        log.outReading === null ? (
+          <span className="text-slate-400">—</span>
+        ) : log.inReading === null ? (
           <Badge tone="info">{t('fleet.odometer.openPeriod')}</Badge>
         ) : (
           formatNumber(log.inReading, locale)
@@ -456,6 +480,11 @@ export const OdometerPage = (): JSX.Element => {
             onChange={(next) => patch({ alerts: next.length === 0 ? null : next.join(',') })}
           />
         </FilterBar>
+
+        {/* «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figure describes THIS filter, not
+            this page: it is asked of the server with the filters alone, and turning a page
+            neither refetches it nor changes it. */}
+        <HighestReadingStrip data={highest.data} loading={highest.isPending} />
 
         <DataTable
           columns={columns}

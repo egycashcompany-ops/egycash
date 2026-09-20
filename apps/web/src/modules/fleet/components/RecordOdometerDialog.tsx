@@ -22,6 +22,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
 import {
   useExpectedReading,
+  useOdometerBracket,
   useRecordOdometer,
   useRosterDay,
   useVehicles,
@@ -81,6 +82,25 @@ export const RecordOdometerDialog = ({
   const expected = useExpectedReading(vehicleId, open && vehicleId !== '');
   const record = useRecordOdometer();
   const can = useCan();
+
+  /*
+   * WHERE THIS DAY SITS IN THIS CAR'S CHAIN — the same bracket the server enforces FR-2 with, and
+   * the same one that decides whether the reading may be left out at all.
+   *
+   * «لا اما يسيبو فاضى ويدله انذار». A day with a reading before it AND a reading after it is a
+   * day that was missed: whoever drove it can be recorded without a counter nobody wrote down.
+   * Every other day — today, or any date past the end of the chain — still needs its reading,
+   * because a day at the end with no reading would be the car's open period carrying no number.
+   *
+   * `undefined` while the answer is in flight, and while it is, the field stays REQUIRED: a
+   * momentarily optional star that turns back into a required one is worse than one that never
+   * moved. The server refuses it either way, so nothing here can let a bad row through.
+   */
+  const bracket = useOdometerBracket(vehicleId, date, open && vehicleId !== '' && date !== '');
+  const inGap =
+    bracket.data === undefined || bracket.isFetching
+      ? false
+      : bracket.data.lowerBound !== null && bracket.data.upperBound !== null;
 
   // The vehicle is picked by CODE and typed into, not scrolled to: a registry runs to hundreds of
   // cars and "150" is what the operator knows the car as. `Combobox` only ever commits a value
@@ -158,14 +178,16 @@ export const RecordOdometerDialog = ({
   }, [rosterRow, roster.isPlaceholderData]);
 
   const readingNumber = Number(reading);
-  const complete =
-    vehicleId !== '' && date !== '' && reading !== '' && Number.isInteger(readingNumber);
+  const readingGiven = reading !== '' && Number.isInteger(readingNumber);
+  const complete = vehicleId !== '' && date !== '' && (readingGiven || inGap);
 
   const submit = async (): Promise<void> => {
     await record.mutateAsync({
       vehicleId,
       date: new Date(date),
-      reading: readingNumber,
+      // `null` is «this day ran, and nobody wrote the counter» — allowed only in a gap, and the
+      // server says so again on its own bracket rather than trusting this one.
+      reading: readingGiven ? readingNumber : null,
       driver1EmployeeId: driver1 === '' ? null : driver1,
       driver2EmployeeId: driver2 === '' ? null : driver2,
       notes: notes.trim() === '' ? null : notes.trim(),
@@ -244,9 +266,13 @@ export const RecordOdometerDialog = ({
               unrecordable to stop a slip. */}
           <Field
             label={t('fleet.odometer.fields.reading')}
-            required
-            hint={expectedHint}
-            {...(derivedKm === 0 ? { warning: t('fleet.odometer.sameAsPrevious') } : {})}
+            required={!inGap}
+            hint={inGap ? t('fleet.odometer.readingOptionalHint') : expectedHint}
+            {...(inGap && !readingGiven
+              ? { warning: t('fleet.odometer.recordingWithoutReading') }
+              : derivedKm === 0
+                ? { warning: t('fleet.odometer.sameAsPrevious') }
+                : {})}
           >
             <Input
               type="number"

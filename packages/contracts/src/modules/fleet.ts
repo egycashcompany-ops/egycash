@@ -749,7 +749,13 @@ export interface FleetOdometerLogDto {
    */
   vehicleCode: string | null;
   date: string;
-  outReading: number;
+  /**
+   * `null` = A DAY RECORDED WITH NO READING — «سيبوا فاضى». A day missed between two readings can
+   * be recorded for who drove it without a counter nobody wrote down. Such a row is on no chain:
+   * `inReading` and `km` are null too, nothing is measured from it, and the maintenance alarm
+   * counts it so the distance it reports is not read as the whole truth.
+   */
+  outReading: number | null;
   /** null = the OPEN period; closed by the vehicle's next reading. */
   inReading: number | null;
   /** SERVER-derived, never client-supplied. */
@@ -777,7 +783,14 @@ export const RecordFleetOdometerSchema = z
   .object({
     vehicleId: objectId(),
     date: z.coerce.date(),
-    reading: z.number().int().min(0),
+    /**
+     * SHAPE ONLY. Whether the reading may actually be left out depends on where the date sits in
+     * THIS vehicle's chain — a day between two recorded readings may be logged for who drove it
+     * without a counter nobody wrote down — and no schema can see a chain. `odometer.service`
+     * decides it from the same bracket that already enforces FR-2, and refuses a missing reading
+     * anywhere else.
+     */
+    reading: z.number().int().min(0).nullish(),
     driver1EmployeeId: objectId().nullish(),
     driver2EmployeeId: objectId().nullish(),
     notes: z.string().trim().min(1).max(1000).nullish(),
@@ -861,9 +874,15 @@ export const FleetOdometerBracketQuerySchema = z
   .strict();
 export type FleetOdometerBracketQuery = z.infer<typeof FleetOdometerBracketQuerySchema>;
 
-export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
-  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
-  sort: fleetSortQuery(),
+/**
+ * WHAT NARROWS THE SET, on its own — the filters, and nothing about which page of it is wanted.
+ *
+ * Extracted so the list and the summary CANNOT drift: the figures above the table describe the
+ * whole filtered set, and the only way to keep that true is for both questions to be asked in
+ * the same words. The summary schema is `.strict()` and simply has no `page`, so a request that
+ * tried to page a total would be refused at the door rather than answered with one page's worth.
+ */
+const odometerFilters = {
   /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
   /**
@@ -887,8 +906,44 @@ export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
    * the vehicles first and then the readings — the thresholds stay in settings, never here.
    */
   alerts: listQuery(FleetAlarmLevelSchema),
+} as const;
+
+export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
+  ...odometerFilters,
 }).strict();
 export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema>;
+
+/** The SAME filters as the list, and deliberately no paging — see `odometerFilters`. */
+export const FleetOdometerSummaryQuerySchema = z.object(odometerFilters).strict();
+export type FleetOdometerSummaryQuery = z.infer<typeof FleetOdometerSummaryQuerySchema>;
+
+/**
+ * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — THE HIGHEST ODOMETER READING ANY CAR IN
+ * THE FILTER HAS REACHED.
+ *
+ * A counter is a POSITION on an instrument, not a distance, so the figure that answers this is a
+ * MAXIMUM and never a sum: adding two cars' odometers gives a number that exists on no dashboard
+ * in the fleet, and adding one car's readings to each other counts the same measured instant
+ * twice over, because `inReading` of one row IS `outReading` of the next.
+ *
+ * It is the car's CURRENT reading — «وصلتها العربية» — taken from the same place the alarm engine
+ * takes it, so the odometer screen, the workshop screen and the alarms board cannot disagree
+ * about where a car is. Narrowing by date narrows WHICH CARS are in view, not which of their
+ * readings counts: a car is at the reading it is at.
+ */
+export interface FleetHighestReadingDto {
+  /** `null` = no car in this filter has a reading at all. */
+  reading: number | null;
+  /** The car holding it — a bare maximum over several cars names none of them. */
+  vehicleId: string | null;
+  code: string | null;
+  /** The day that reading was taken. */
+  at: string | null;
+  /** How many cars the filter matched — the set the reading is the highest of. */
+  vehicles: number;
+}
 
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────
 
@@ -964,6 +1019,28 @@ export interface FleetMaintenanceAlarmDto {
    * honest behaviour — the answer was never "one thing is missing", only "this is what stopped it".
    */
   noAlarmReason: FleetNoAlarmReason | null;
+  /**
+   * DAYS THIS CAR RAN SINCE ITS LAST SERVICE WITH NOBODY WRITING THE COUNTER.
+   *
+   * «لا اما يسيبو فاضى ويدله انذار ان العربيه دى المفروض تدخل الرقم عشان احسب الصيانه». A day
+   * recorded without a reading is on no chain, so it moves none of the figures above — and that
+   * is the point: `sinceServiceKm` is the distance somebody MEASURED, and this is how many days
+   * of the cycle nobody did. A non-zero figure means the real distance is at least what the
+   * screen says, and the way to make it exact is to record the counter for those days.
+   *
+   * Counted since the last alarm-counting service; for a car with no such service, since ever.
+   */
+  daysWithoutReading: number;
+  /**
+   * The car's CURRENT odometer reading — «أعلى قراءة عدّاد وصلتها العربية».
+   *
+   * Already the number this projection measures `sinceServiceKm` from, so carrying it costs
+   * nothing and saves the board a second question. It is here rather than computed on the screen
+   * for the reason every other figure on this row is: the subtraction belongs to the server, and
+   * a screen that re-derived it would be a second copy of the rule that could drift from the one
+   * the alarm actually used.
+   */
+  latestReading: number | null;
 }
 
 // ── Maintenance visits (§4.2) ───────────────────────────────────────────────
@@ -1131,9 +1208,8 @@ export const UpdateFleetMaintenanceSchema = z
   .strict();
 export type UpdateFleetMaintenance = z.infer<typeof UpdateFleetMaintenanceSchema>;
 
-export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
-  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
-  sort: fleetSortQuery(),
+/** What narrows the set, on its own — see `odometerFilters` for why this is extracted. */
+const maintenanceFilters = {
   vehicleId: objectId().optional(),
   /**
    * «حالة الصيانة» — the visit's ONE state: `true` = in the workshop (`outDate` null), `false` =
@@ -1172,8 +1248,18 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
   /** Check-OUT date window — a different question from the one above, so a different pair. */
   outFrom: z.coerce.date().optional(),
   outTo: z.coerce.date().optional(),
+} as const;
+
+export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
+  ...maintenanceFilters,
 }).strict();
 export type ListFleetMaintenanceQuery = z.infer<typeof ListFleetMaintenanceQuerySchema>;
+
+/** The SAME filters as the list, and deliberately no paging — see `odometerFilters`. */
+export const FleetMaintenanceSummaryQuerySchema = z.object(maintenanceFilters).strict();
+export type FleetMaintenanceSummaryQuery = z.infer<typeof FleetMaintenanceSummaryQuerySchema>;
 
 /**
  * An id, settled to its CANONICAL spelling at the boundary — shared by both assignment boards.

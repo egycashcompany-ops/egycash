@@ -24,6 +24,7 @@ import {
   type FleetExpectedReadingDto,
   type FleetOdometerBracketDto,
   type FleetGrievanceDto,
+  type FleetHighestReadingDto,
   type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type FleetOdometerLogDto,
@@ -181,6 +182,10 @@ export const listOdometerLogs = (
   params: FleetListParams,
 ): Promise<Paginated<FleetOdometerLogDto>> =>
   getPage<FleetOdometerLogDto>(`/fleet/odometer${buildQuery(params)}`);
+
+/** The figures ABOVE the table: the same filters, no paging — see the endpoint's own comment. */
+export const odometerSummary = (params: FleetListParams): Promise<FleetHighestReadingDto> =>
+  get<FleetHighestReadingDto>(`/fleet/odometer/summary${buildQuery(params)}`);
 export const expectedOdometerReading = (vehicleId: string): Promise<FleetExpectedReadingDto> =>
   get<FleetExpectedReadingDto>(`/fleet/odometer/expected${buildQuery({ vehicleId })}`);
 /**
@@ -229,6 +234,10 @@ export const listMaintenanceVisits = (
   params: FleetListParams,
 ): Promise<Paginated<FleetMaintenanceVisitDto>> =>
   getPage<FleetMaintenanceVisitDto>(`/fleet/maintenance${buildQuery(params)}`);
+
+/** As the odometer's — the same filters, no paging. */
+export const maintenanceSummary = (params: FleetListParams): Promise<FleetHighestReadingDto> =>
+  get<FleetHighestReadingDto>(`/fleet/maintenance/summary${buildQuery(params)}`);
 export const checkInMaintenance = (
   body: CheckInFleetMaintenance,
 ): Promise<FleetMaintenanceVisitDto> => post<FleetMaintenanceVisitDto>('/fleet/maintenance', body);

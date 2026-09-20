@@ -101,7 +101,7 @@ const readings = async (sort: string): Promise<number[]> => {
     pageSize: 50,
     sorts: parseFleetSort(sort),
   });
-  return page.items.map((doc) => doc.outReading);
+  return page.items.map((doc) => doc.outReading as number);
 };
 
 beforeAll(async () => {
@@ -174,7 +174,7 @@ describe('both columns at once', () => {
         pageSize: 1,
         sorts: parseFleetSort('driver1Name:asc'),
       });
-      return answered.items.map((doc) => doc.outReading);
+      return answered.items.map((doc) => doc.outReading as number);
     };
     expect([await pageOf(1), await pageOf(2), await pageOf(3)]).toEqual([[1000], [3000], [2000]]);
   });

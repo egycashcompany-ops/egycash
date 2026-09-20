@@ -43,6 +43,8 @@ const alarm = (
   lastServiceAt: '2026-08-01T00:00:00.000Z',
   lastServiceVisitId: `visit-${code}`,
   noAlarmReason: null,
+  daysWithoutReading: 0,
+  latestReading: 12000,
   ...o,
 });
 

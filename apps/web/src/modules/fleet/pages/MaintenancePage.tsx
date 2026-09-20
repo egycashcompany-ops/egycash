@@ -37,6 +37,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { HighestReadingStrip } from '../components/HighestReadingStrip';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -58,6 +59,7 @@ import {
   useDeleteMaintenance,
   useFleetCatalog,
   useMaintenanceAlarms,
+  useMaintenanceTotals,
   useMaintenanceVisits,
   useReopenMaintenance,
 } from '../api/fleet-queries';
@@ -161,11 +163,13 @@ export const MaintenancePage = (): JSX.Element => {
   // Ids picked off the registry need no resolving and can only name people this table can show.
   const mayFilterByDriver = can('employee.view');
 
-  const params = useMemo(
+  /**
+   * WHAT THE READER IS LOOKING AT — the filters, and only the filters. Split from `params` so the
+   * figure above the table can describe THIS set: the summary endpoint has no `page` field and
+   * would refuse a request that carried one. See the odometer register, which splits the same way.
+   */
+  const filters = useMemo(
     () => ({
-      page,
-      pageSize,
-      ...sortQuery(sorts),
       from: from || undefined,
       outFrom: outFrom || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
@@ -179,7 +183,12 @@ export const MaintenancePage = (): JSX.Element => {
     }),
     [paramsKey],
   );
+  const params = useMemo(
+    () => ({ ...filters, page, pageSize, ...sortQuery(sorts) }),
+    [filters, page, pageSize, sorts],
+  );
   const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(params);
+  const highest = useMaintenanceTotals(filters);
   const rows = data?.items ?? [];
 
   /**
@@ -612,6 +621,9 @@ export const MaintenancePage = (): JSX.Element => {
             <option value="closed">{t('fleet.maintenance.leftWorkshop')}</option>
           </Select>
         </FilterBar>
+
+        {/* The same figure the odometer register shows, from the same place — see the strip. */}
+        <HighestReadingStrip data={highest.data} loading={highest.isPending} />
 
         <DataTable
           columns={columns}

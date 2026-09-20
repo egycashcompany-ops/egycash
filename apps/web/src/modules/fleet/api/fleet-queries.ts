@@ -357,6 +357,31 @@ export const useExpectedReading = (vehicleId: string, enabled = true) =>
  * a different bracket from one closed today, and that is exactly what makes a back-dated counter
  * legitimate rather than suspicious — so a changed date must fetch, not reuse.
  */
+/**
+ * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figures ABOVE the table.
+ *
+ * Keyed on the FILTERS alone, under the list's own feature key: the figures describe the whole
+ * filtered set, so turning a page must not refetch them and must not change them. That is also
+ * why the caller passes its `filters` memo and never its `params` one — the endpoint has no
+ * `page` field and would refuse the request that carried one.
+ */
+export const useOdometerTotals = (filters: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'odometer', { summary: true, ...filters }),
+    queryFn: () => api.odometerSummary(filters),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** As the odometer's — see it for why this is keyed on the filters and not on the params. */
+export const useMaintenanceTotals = (filters: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'maintenance', { summary: true, ...filters }),
+    queryFn: () => api.maintenanceSummary(filters),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
 export const useOdometerBracket = (vehicleId: string, on: string, enabled = true) => {
   const can = useCan();
   const viaMaintenance = can('fleetMaintenance.view');

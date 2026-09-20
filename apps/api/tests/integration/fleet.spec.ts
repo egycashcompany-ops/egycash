@@ -2073,8 +2073,14 @@ describe('the alarm projection has two permission doors and one answer', () => {
       expect(Object.keys(row).sort()).toEqual(
         [
           'code',
+          // How many days of this cycle nobody measured — see the DTO. It rides the projection
+          // rather than a second query so the two doors keep answering the same thing.
+          'daysWithoutReading',
           'lastServiceAt',
           'lastServiceVisitId',
+          // The reading `sinceServiceKm` was measured FROM, carried so the screens that show
+          // «أعلى قراءة عدّاد» cannot disagree with the alarm about where a car is.
+          'latestReading',
           'level',
           'noAlarmReason',
           'remainingKm',

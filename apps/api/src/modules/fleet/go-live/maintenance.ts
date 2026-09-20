@@ -25,9 +25,9 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import {
   claimGoLiveRun,
   finishGoLiveRun,
-  FleetGoLiveRunModel,
   recordGoLiveFailure,
   recordGoLiveRefusal,
+  waitForGoLiveRuns,
 } from './go-live-run.model';
 import {
   applyMaintenanceImport,
@@ -81,11 +81,7 @@ export const runMaintenanceGoLive = async (dataDir?: string): Promise<void> => {
   }
 
   // The cars and the readings first — see the header.
-  const priorDone = await FleetGoLiveRunModel.countDocuments({
-    key: { $in: [VEHICLE_GO_LIVE_MARK, ODOMETER_GO_LIVE_MARK] },
-    status: 'done',
-  }).exec();
-  if (priorDone < 2) {
+  if (!(await waitForGoLiveRuns([VEHICLE_GO_LIVE_MARK, ODOMETER_GO_LIVE_MARK]))) {
     logger.warn(
       'fleet go-live: the vehicle registry or the odometer book has not finished importing — the workshop book waits for the next boot; nothing was imported and the run is NOT claimed',
     );

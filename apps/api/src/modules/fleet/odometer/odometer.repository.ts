@@ -87,6 +87,18 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
     await this.model.updateOne({ _id: id }, { $set: { inReading, km } }).exec();
   }
 
+  /**
+   * The go-live import's third repair: a row IT wrote deleted only because the car's one open
+   * period was already taken, brought back now that it is not. Nobody has touched the row since
+   * the import created it — see `applyOdometerImport` — so putting it back is putting back what
+   * the book said, not overruling anyone.
+   */
+  async restore(id: Types.ObjectId, inReading: number | null, km: number | null): Promise<void> {
+    await this.model
+      .updateOne({ _id: id }, { $set: { isDeleted: false, deletedAt: null, deletedBy: null, inReading, km } })
+      .exec();
+  }
+
   /** The go-live import's one repair on a row already written: the driver's name, where it had none. */
   async setDriverNames(
     id: Types.ObjectId,

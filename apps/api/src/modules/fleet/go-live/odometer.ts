@@ -27,9 +27,9 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import {
   claimGoLiveRun,
   finishGoLiveRun,
-  FleetGoLiveRunModel,
   recordGoLiveFailure,
   recordGoLiveRefusal,
+  waitForGoLiveRuns,
 } from './go-live-run.model';
 import {
   applyOdometerImport,
@@ -49,8 +49,14 @@ import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
  * had deleted, which arrive deleted; the 837 with no opening reading, opened at the car's last
  * known reading; and the one whose date is not a date. Over a database v2 ran on it writes those
  * and relinks the rows either side of them.
+ *
+ * v4 exists for a mistake v3 made on the way. It read «does this car already have an open
+ * period?» once, before walking the rows — and then closed that very row a moment later, to put
+ * the new one after it. Seventeen real readings were written deleted as «a second open period»
+ * for a period that no longer existed. v4 tracks the open row as it closes it, and BRINGS BACK
+ * every row v3 buried that way: the mark has to move or no deploy would look at them again.
  */
-export const ODOMETER_GO_LIVE_MARK = 'go-live:odometer:v3';
+export const ODOMETER_GO_LIVE_MARK = 'go-live:odometer:v4';
 
 /**
  * The vehicles' lease. Twenty thousand rows in 191 inserts is well under a minute; thirty
@@ -90,8 +96,7 @@ export const runOdometerGoLive = async (dataDir?: string): Promise<void> => {
 
   // The cars first — see the header. Checked before the admin so the reason on the row is the
   // one that will actually change between this boot and the next.
-  const vehiclesDone = await FleetGoLiveRunModel.exists({ key: VEHICLE_GO_LIVE_MARK, status: 'done' });
-  if (vehiclesDone === null) {
+  if (!(await waitForGoLiveRuns([VEHICLE_GO_LIVE_MARK]))) {
     logger.warn(
       'fleet go-live: the vehicle registry has not finished importing — the odometer book waits for the next boot; nothing was imported and the run is NOT claimed',
     );
@@ -149,6 +154,7 @@ export const runOdometerGoLive = async (dataDir?: string): Promise<void> => {
     alreadyThere: outcome.alreadyThere,
     namesFilled: outcome.namesFilled,
     relinked: outcome.relinked,
+    restored: outcome.restored,
     closedByExisting: outcome.closedByExisting,
     openConflicts: outcome.openConflicts,
     ...notes,

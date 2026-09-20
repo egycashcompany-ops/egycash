@@ -27,6 +27,11 @@ import { fleetOdometerService } from '../../src/modules/fleet/odometer/odometer.
 import { FleetGoLiveRunModel } from '../../src/modules/fleet/go-live/go-live-run.model';
 import { runVehicleGoLive } from '../../src/modules/fleet/go-live/vehicles';
 import { CARS_LOG_FILE, ODOMETER_GO_LIVE_MARK, runOdometerGoLive } from '../../src/modules/fleet/go-live/odometer';
+import {
+  applyOdometerImport,
+  type ChainRow,
+  type OdometerPlan,
+} from '../../src/modules/fleet/go-live/odometer-import';
 
 let replset: MongoMemoryReplSet | undefined;
 let dataDir = '';
@@ -117,7 +122,11 @@ beforeAll(async () => {
   await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
 
   dataDir = await mkdtemp(join(tmpdir(), 'fleet-go-live-odometer-'));
-  await writeFile(join(dataDir, 'cars.json'), JSON.stringify([car('ODO-1'), car('ODO-2'), car('ODO-3')]), 'utf8');
+  await writeFile(
+    join(dataDir, 'cars.json'),
+    JSON.stringify([car('ODO-1'), car('ODO-2'), car('ODO-3'), car('ODO-4')]),
+    'utf8',
+  );
   await mkdir(join(dataDir, 'license-photos'), { recursive: true });
   await writeFile(join(dataDir, CARS_LOG_FILE), JSON.stringify(BOOK), 'utf8');
 
@@ -174,7 +183,7 @@ describe('it waits for the cars', () => {
 describe('the run that can proceed', () => {
   it('writes each car’s chain as the book had it, with the two repairs and the drivers by name', async () => {
     await runVehicleGoLive(dataDir);
-    expect(await FleetVehicleModel.countDocuments({}).exec()).toBe(3);
+    expect(await FleetVehicleModel.countDocuments({}).exec()).toBe(4);
 
     // What the company typed on the new screen before the book arrived: a later open reading on
     // ODO-2, an EARLIER one on ODO-3.
@@ -333,5 +342,122 @@ describe('a run that died is finished by the next boot, without writing a row tw
 
     expect((await chainOf('ODO-1')).length, 'nothing was written under a live lease').toBe(4);
     expect((await run())?.status).toBe('running');
+  });
+});
+
+/**
+ * THE SEVENTEEN READINGS A SECOND RUN BURIED. The first run left a car's last row open, because
+ * the book gave it no closing reading. The next run's book has a row AFTER it — the shape the
+ * rows with no opening reading make — so it closes that row and the new one becomes the tail.
+ * Reading «does this car already have an open period?» from a value taken before that happened
+ * made the new tail look like a second one, and it was written deleted: real readings, off every
+ * screen, for a row that had already been closed a moment earlier.
+ */
+describe('a second run whose book now has a row AFTER the one the last run left open', () => {
+  const chainRow = (over: Partial<ChainRow>): ChainRow => ({
+    date: new Date('2026-01-01T00:00:00.000Z'),
+    out: 100,
+    in: null,
+    driver1: { id: null, name: null },
+    driver2: { id: null, name: null },
+    notes: null,
+    deletion: { isDeleted: false, deletedAt: null },
+    deleted: false,
+    bookHadNoClose: true,
+    ...over,
+  });
+  const planFor = (id: string, rows: readonly ChainRow[]): OdometerPlan => ({
+    vehicles: [{ code: 'ODO-4', ref: { vehicleId: id }, rows: [...rows] }],
+    unknownCars: [],
+    openedByPrevious: 0,
+    closedByNext: 0,
+    badInReading: 0,
+    deleted: 0,
+  });
+
+  it('closes the open row and lets the new one be the tail — it does not bury it as a conflict', async () => {
+    const id = String(await vehicleId('ODO-4'));
+
+    // What the earlier run wrote: one row, left open, because the book closed it with nothing.
+    await applyOdometerImport(planFor(id, [chainRow({})]), adminId);
+    expect((await chainOf('ODO-4')).map((row) => [row.outReading, row.inReading])).toEqual([[100, null]]);
+
+    // This run's book has the row that follows it.
+    const outcome = await applyOdometerImport(
+      planFor(id, [
+        chainRow({ in: 150 }),
+        chainRow({ date: new Date('2026-01-02T00:00:00.000Z'), out: 150, in: null }),
+      ]),
+      adminId,
+    );
+
+    expect(outcome.relinked, 'the row the last run left open is closed by the one that follows it').toBe(1);
+    expect(outcome.openConflicts, 'so the new tail is NOT a second open period').toEqual([]);
+    expect(outcome.imported).toBe(1);
+    expect((await chainOf('ODO-4')).map((row) => [row.outReading, row.inReading, row.km])).toEqual([
+      [100, 150, 50],
+      [150, null, null],
+    ]);
+    expect(
+      await FleetOdometerLogModel.countDocuments({ vehicleId: new Types.ObjectId(id), isDeleted: true }).exec(),
+      'and not one reading was buried',
+    ).toBe(0);
+  });
+
+  it('brings BACK a reading an earlier run buried that way — the mistake is undone, not only stopped', async () => {
+    const id = String(await vehicleId('ODO-4'));
+    // The shape the earlier run left: the row is there, written deleted over an open period that
+    // is not contested any more, and nobody has touched it since.
+    await FleetOdometerLogModel.create({
+      vehicleId: new Types.ObjectId(id),
+      date: new Date('2026-01-03T00:00:00.000Z'),
+      outReading: 300,
+      inReading: null,
+      km: null,
+      isDeleted: true,
+      deletedAt: new Date('2026-01-03T00:00:00.000Z'),
+    });
+    expect((await chainOf('ODO-4')).length, 'off the screen entirely').toBe(2);
+
+    const outcome = await applyOdometerImport(
+      planFor(id, [
+        chainRow({ in: 150 }),
+        chainRow({ date: new Date('2026-01-02T00:00:00.000Z'), out: 150, in: 300 }),
+        chainRow({ date: new Date('2026-01-03T00:00:00.000Z'), out: 300, in: null }),
+      ]),
+      adminId,
+    );
+
+    expect(outcome.restored, 'the buried reading is back').toBe(1);
+    expect(outcome.imported, 'and nothing was written twice to do it').toBe(0);
+    expect((await chainOf('ODO-4')).map((row) => [row.outReading, row.inReading])).toEqual([
+      [100, 150],
+      [150, 300],
+      [300, null],
+    ]);
+    expect(
+      await FleetOdometerLogModel.countDocuments({ vehicleId: new Types.ObjectId(id), isDeleted: true }).exec(),
+    ).toBe(0);
+  });
+
+  it('leaves a row a PERSON deleted exactly where they left it', async () => {
+    const id = String(await vehicleId('ODO-4'));
+    const [, second] = await chainOf('ODO-4');
+    await FleetOdometerLogModel.updateOne(
+      { _id: second!._id },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: new Types.ObjectId() } },
+    ).exec();
+
+    const outcome = await applyOdometerImport(
+      planFor(id, [
+        chainRow({ in: 150 }),
+        chainRow({ date: new Date('2026-01-02T00:00:00.000Z'), out: 150, in: 300 }),
+        chainRow({ date: new Date('2026-01-03T00:00:00.000Z'), out: 300, in: null }),
+      ]),
+      adminId,
+    );
+
+    expect(outcome.restored, 'a person’s deletion is a decision, not a bookkeeping mistake').toBe(0);
+    expect((await chainOf('ODO-4')).map((row) => row.outReading)).toEqual([100, 300]);
   });
 });

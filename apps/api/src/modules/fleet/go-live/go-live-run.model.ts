@@ -18,6 +18,7 @@
 // Operational bookkeeping, not business data: no soft delete, no versioning, nothing here is read
 // to answer a business question.
 import { Schema, model } from 'mongoose';
+import { isTest } from '../../../infrastructure/config/env';
 
 export type GoLiveRunStatus = 'running' | 'done';
 
@@ -54,6 +55,35 @@ export const FleetGoLiveRunModel = model<FleetGoLiveRunDoc>(
 
 const isDuplicateKey = (error: unknown): boolean =>
   typeof error === 'object' && error !== null && (error as { code?: unknown }).code === 11000;
+
+/**
+ * WAIT for the runs a step depends on, rather than refusing the instant they are not done yet.
+ *
+ * THE BUG THIS EXISTS FOR. Every step is started at the same moment by `server.ts`, and the four
+ * that depend on another one checked its mark once: the workshop book asks whether the cars and
+ * the odometer book have finished, found them still running a second into the boot, and refused —
+ * «الدفتر ينتظر التشغيل التالي». That is correct and it is also useless: until somebody redeploys,
+ * 1,938 visits are nowhere, and the deploy that would fix it is the same deploy that caused it.
+ * It only bites when the step it waits for has real work to do, which is exactly the deploy that
+ * matters — the one that moves a mark.
+ *
+ * So the check becomes a wait. On the ordinary boot, where the earlier runs finished on a deploy
+ * weeks ago, this is the single query it always was. Under test it does not wait at all, so the
+ * suites that prove the refusal still see it immediately.
+ */
+export const waitForGoLiveRuns = async (
+  keys: readonly string[],
+  timeoutMs = 10 * 60 * 1000,
+  pollMs = 5_000,
+): Promise<boolean> => {
+  const deadline = Date.now() + (isTest ? 0 : timeoutMs);
+  for (;;) {
+    const done = await FleetGoLiveRunModel.countDocuments({ key: { $in: [...keys] }, status: 'done' }).exec();
+    if (done >= keys.length) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+};
 
 /**
  * Try to take the job. True to exactly one caller at a time; false when it is done, or somebody

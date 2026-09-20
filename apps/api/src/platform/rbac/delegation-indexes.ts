@@ -14,15 +14,22 @@ import { DelegatedGrantModel, SUPERSEDED_DELEGATION_INDEX } from './delegation.m
 
 export const migrateDelegationIndexes = async (): Promise<void> => {
   try {
-    const existing = (await DelegatedGrantModel.collection.indexes()) as { name?: string }[];
+    // A collection that does not exist yet answers `ns not found` to `indexes()`: nothing to drop,
+    // and `createIndexes()` below is what brings the collection into being with its indexes —
+    // which matters in production, where `autoIndex` is off and nothing else would build them.
+    const existing = await DelegatedGrantModel.collection
+      .indexes()
+      .then((list) => list as { name?: string }[])
+      .catch((error: { codeName?: string }) => {
+        if (error.codeName === 'NamespaceNotFound') return [] as { name?: string }[];
+        throw error;
+      });
     if (existing.some((index) => index.name === SUPERSEDED_DELEGATION_INDEX)) {
       await DelegatedGrantModel.collection.dropIndex(SUPERSEDED_DELEGATION_INDEX);
       logger.info({ index: SUPERSEDED_DELEGATION_INDEX }, 'delegated grants: superseded index dropped');
     }
     await DelegatedGrantModel.createIndexes();
   } catch (error) {
-    // A collection that does not exist yet answers `ns not found` to `indexes()`; nothing to do.
-    if ((error as { codeName?: string }).codeName === 'NamespaceNotFound') return;
     logger.warn({ err: error }, 'delegated grants: index migration did not complete');
   }
 };

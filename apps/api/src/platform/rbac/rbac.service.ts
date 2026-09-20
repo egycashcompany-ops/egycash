@@ -167,22 +167,31 @@ const mergeReach = (into: RawReach, from: RawReach): void => {
   for (const v of from.homeDepartmentIds) into.homeDepartmentIds.add(v);
 };
 
-/** What one role assignment asks of the reach, on its own. */
+/**
+ * What one role assignment asks of the reach, on its own.
+ *
+ * The reach fields are read with `??`: grants are loaded `.lean()`, and a lean document carries
+ * no schema defaults, so a row written before the fields existed has NO `branchIds`, no
+ * `departmentCatalogId` and no `allBranches` at all. Such a row is a plain home grant — which is
+ * what every grant was before the fields existed — and must be read as one, not thrown on.
+ */
 const reachOfAssignment = (a: RoleAssignmentDoc): RawReach => {
   const raw = emptyReach();
-  const listed = a.branchIds.map(String);
+  const listed = (a.branchIds ?? []).map(String);
+  const allBranches = a.allBranches === true;
+  const catalogId = a.departmentCatalogId ?? null;
   if (a.scope === 'branch') {
-    if (listed.length > 0 || a.allBranches) {
+    if (listed.length > 0 || allBranches) {
       if (a.branchId !== null) raw.branchIds.add(String(a.branchId));
       for (const id of listed) raw.branchIds.add(id);
-      raw.everyBranch = a.allBranches;
+      raw.everyBranch = allBranches;
     } else if (a.branchId !== null) {
       raw.homeBranchIds.add(String(a.branchId));
     }
   } else if (a.scope === 'department') {
-    if (a.departmentCatalogId !== null) {
-      const catalog = String(a.departmentCatalogId);
-      if (a.allBranches) {
+    if (catalogId !== null) {
+      const catalog = String(catalogId);
+      if (allBranches) {
         raw.catalogEverywhere.add(catalog);
       } else {
         // The copies in the listed branches and in the holder's own — never the branches
@@ -201,8 +210,10 @@ const reachOfAssignment = (a: RoleAssignmentDoc): RawReach => {
 /** What one delegated grant asks: its one unit, and nothing beside it. */
 const reachOfDelegation = (grant: DelegatedGrantDoc): RawReach => {
   const raw = emptyReach();
-  if (grant.departmentId === null) raw.branchIds.add(String(grant.branchId));
-  else raw.departmentIds.add(String(grant.departmentId));
+  // Lean rows from before `departmentId` existed carry none: whole-branch grants, as they were.
+  const departmentId = grant.departmentId ?? null;
+  if (departmentId === null) raw.branchIds.add(String(grant.branchId));
+  else raw.departmentIds.add(String(departmentId));
   return raw;
 };
 
@@ -270,7 +281,7 @@ export const computeEffective = (
   for (const { grant } of delegations) {
     const raw = reachOfDelegation(grant);
     mergeReach(reach, raw);
-    const scope: DataScope = grant.departmentId === null ? 'branch' : 'department';
+    const scope: DataScope = (grant.departmentId ?? null) === null ? 'branch' : 'department';
     for (const key of grant.permissionKeys) contribute(key, scope, raw);
   }
   const isPrivileged =

@@ -210,10 +210,20 @@ const reachOfAssignment = (a: RoleAssignmentDoc): RawReach => {
 /** What one delegated grant asks: its one unit, and nothing beside it. */
 const reachOfDelegation = (grant: DelegatedGrantDoc): RawReach => {
   const raw = emptyReach();
-  // Lean rows from before `departmentId` existed carry none: whole-branch grants, as they were.
+  // Read with `??`: lean rows carry no schema defaults, so a row written before a field existed
+  // has no value at all rather than its default — the production 500 this rule was written for.
+  const catalogId = grant.departmentCatalogId ?? null;
+  if (catalogId !== null && grant.allBranches === true) {
+    // «This department, in every branch» — the general manager's own reach, handed down.
+    raw.catalogEverywhere.add(String(catalogId));
+    return raw;
+  }
   const departmentId = grant.departmentId ?? null;
-  if (departmentId === null) raw.branchIds.add(String(grant.branchId));
-  else raw.departmentIds.add(String(departmentId));
+  const branchId = grant.branchId ?? null;
+  // A row with neither a branch nor a catalog names no unit at all and must reach nothing, rather
+  // than reaching «the branch called null».
+  if (departmentId !== null) raw.departmentIds.add(String(departmentId));
+  else if (branchId !== null) raw.branchIds.add(String(branchId));
   return raw;
 };
 
@@ -281,7 +291,11 @@ export const computeEffective = (
   for (const { grant } of delegations) {
     const raw = reachOfDelegation(grant);
     mergeReach(reach, raw);
-    const scope: DataScope = (grant.departmentId ?? null) === null ? 'branch' : 'department';
+    // A grant that names a department is department scope wherever it reaches — one branch or all
+    // of them. Only a whole-branch grant is branch scope, and it is the one with no department.
+    const namesDepartment =
+      (grant.departmentId ?? null) !== null || (grant.departmentCatalogId ?? null) !== null;
+    const scope: DataScope = namesDepartment ? 'department' : 'branch';
     for (const key of grant.permissionKeys) contribute(key, scope, raw);
   }
   const isPrivileged =
@@ -326,6 +340,10 @@ const resolveReach = async (raw: RawReach): Promise<UnitReach> => {
   return {
     branchIds: [...whole],
     departments: [...copies].map(([id, branchId]) => ({ id, branchId })),
+    // Carried UNRESOLVED beside the copies. The copies answer «which records may he see»; this
+    // answers «was this every branch, or the branches that happen to exist» — and only the first
+    // may be handed on as «كل الفروع».
+    ...(raw.catalogEverywhere.size > 0 ? { everywhere: [...raw.catalogEverywhere] } : {}),
   };
 };
 

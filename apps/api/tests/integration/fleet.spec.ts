@@ -1484,22 +1484,125 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
     expect([bracket.lowerBound, bracket.upperBound]).toEqual([1000, 1600]);
   });
 
-  it('REFUSES a missing reading at the end of the chain — «بس اللى هى فاتت»', async () => {
+  it('ALLOWS a missing reading AFTER the last one — the row is on no chain, so it opens nothing', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     await record(v.id, 1000, '2026-07-09');
 
-    // Nothing is recorded after this day, so the day is not a gap — it is the end of the chain,
-    // and a row there with no reading would be the car's open period carrying no number at all.
-    const refused = await recordNoReading(v.id, '2026-07-11');
-    expect(refused.status).toBe(409);
-    expect(JSON.stringify(refused.body)).toContain('before it AND after it');
-    expect(await logsFor(v.id), 'and it wrote nothing').toHaveLength(1);
+    // Nothing is recorded after this day, and that is not a reason to refuse it. The day passed;
+    // the car went out and nobody wrote the counter down. The row is on NO chain, so it cannot be
+    // the vehicle's open period — `ux_open_period` excludes it by name — and «بس اللى هى فاتت» is
+    // the whole rule that is left.
+    expect((await recordNoReading(v.id, '2026-07-11')).status).toBe(201);
+    expect((await logsFor(v.id)).map((r) => [r.outReading, r.inReading, r.km])).toEqual([
+      [1000, null, null], // still the car's one open period, still closing on nothing
+      [null, null, null],
+    ]);
+
+    // …and the next real reading still lands exactly where it would have.
+    expect((await record(v.id, 1600, '2026-07-14')).status).toBe(201);
+    expect((await logsFor(v.id)).map((r) => r.outReading)).toEqual([1000, null, 1600]);
   });
 
-  it('REFUSES a missing reading on a car with no earlier reading either', async () => {
+  it('ALLOWS a missing reading on a car with no earlier reading either', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     await record(v.id, 1600, '2026-07-12');
-    expect((await recordNoReading(v.id, '2026-07-09')).status).toBe(409);
+    expect((await recordNoReading(v.id, '2026-07-09')).status).toBe(201);
+    expect((await logsFor(v.id)).map((r) => r.outReading)).toEqual([null, 1600]);
+  });
+
+  it('REFUSES a day that has NOT passed — «بس اللى هى فاتت» is the whole rule', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const day = (offset: number): string => {
+      const at = new Date();
+      at.setUTCHours(0, 0, 0, 0);
+      at.setUTCDate(at.getUTCDate() + offset);
+      return at.toISOString().slice(0, 10);
+    };
+
+    // Today's reading is the one somebody is standing at the car to take, and tomorrow's has not
+    // happened. Neither is a day that was missed.
+    for (const offset of [0, 1]) {
+      const refused = await recordNoReading(v.id, day(offset));
+      expect(refused.status, day(offset)).toBe(409);
+      expect(JSON.stringify(refused.body)).toContain('already passed');
+    }
+    expect(await logsFor(v.id), 'and it wrote nothing').toHaveLength(0);
+
+    // Yesterday is a day that has passed, whatever the clock says.
+    expect((await recordNoReading(v.id, day(-1))).status).toBe(201);
+  });
+
+  /*
+   * THE NUMBER TURNS UP LATER — «سجّلت اليوم فاضى، وبعدين لقيت الرقم».
+   *
+   * The day is already on record without its counter; the reading for that same day is entered
+   * afterwards. Written as a new row it would leave the register showing ONE day TWICE — once
+   * with the reading, and once still saying «بدون قراءة» about a day that now has one. So the
+   * reading FILLS the row that is already there, and is spliced into the chain from that row.
+   */
+  it('a reading found later FILLS that empty day instead of adding a second row for it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09'); // Thursday
+    await record(v.id, 1600, '2026-07-12'); // Sunday
+    await recordNoReading(v.id, '2026-07-11'); // Saturday, uncounted
+    const before = await logsFor(v.id);
+    expect(before).toHaveLength(3);
+    const saturday = before.find((r) => r.outReading === null) as FleetOdometerLogDto;
+
+    expect((await record(v.id, 1400, '2026-07-11')).status).toBe(201);
+
+    const rows = await logsFor(v.id);
+    expect(rows, 'ONE Saturday, not two').toHaveLength(3);
+    expect(rows.map((r) => [r.outReading, r.inReading, r.km])).toEqual([
+      [1000, 1400, 400], // Thursday now closes on Saturday's number
+      [1400, 1600, 200], // the row that was empty, spliced in exactly where the date says
+      [1600, null, null], // Sunday, still the car's one open period
+    ]);
+    expect(rows[1]?.id, 'and it is the SAME row, not a replacement').toBe(saturday.id);
+  });
+
+  it('what the second form leaves blank keeps what the empty day was recorded with', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, date: '2026-07-11', notes: 'نقل عفش — العداد مش مكتوب' });
+
+    // A blank field on the form that carries the number is not a retraction of what the day was
+    // recorded with; the empty day may be the only record of what happened on it.
+    expect((await record(v.id, 1400, '2026-07-11')).status).toBe(201);
+    const filled = (await logsFor(v.id))[1] as FleetOdometerLogDto;
+    expect(filled.outReading).toBe(1400);
+    expect(filled.notes).toBe('نقل عفش — العداد مش مكتوب');
+
+    // …and what the form DOES say wins.
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, date: '2026-07-10', notes: 'الأصل' });
+    await request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId: v.id, date: '2026-07-10', reading: 1200, notes: 'المصحّح' });
+    expect(((await logsFor(v.id))[1] as FleetOdometerLogDto).notes).toBe('المصحّح');
+  });
+
+  it('fills only the SAME day — an empty day elsewhere is left alone', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await recordNoReading(v.id, '2026-07-10');
+
+    expect((await record(v.id, 1400, '2026-07-11')).status).toBe(201);
+    const rows = await logsFor(v.id);
+    expect(rows.map((r) => r.outReading), 'the 10th is still empty').toEqual([
+      1000,
+      null,
+      1400,
+      1600,
+    ]);
   });
 
   it('REFUSES the same empty day twice — two of them say nothing a first does not', async () => {
@@ -1595,6 +1698,49 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
 
     const answer = data<FleetHighestReadingDto>(await summary({ vehicleId: v.id }));
     expect(answer.reading, 'the empty day is on no chain and moves no figure').toBe(4000);
+  });
+
+  it('adds up the DISTANCE beside it — the one figure on the strip that is a sum', async () => {
+    // A counter is a position and may only be maximised; km is a distance, and distances add.
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12'); // closes 07-09 with 600 km
+    await record(v.id, 1900, '2026-07-14'); // closes 07-12 with 300 km
+    await recordNoReading(v.id, '2026-07-13'); // a day nobody measured adds nothing
+
+    const answer = data<FleetHighestReadingDto>(await summary({ vehicleId: v.id }));
+    expect(answer.reading, 'where the car is — a maximum').toBe(1900);
+    expect(answer.km, 'how far it went — a sum, and the open period contributes nothing').toBe(900);
+  });
+
+  it('the DATE window cuts the distance, because a distance is a property of the rows', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-09');
+    await record(v.id, 1600, '2026-07-12');
+    await record(v.id, 1900, '2026-07-14');
+
+    // «وصلتها العربية» asks where the car is and is unmoved by the window; «إجمالي الكيلومترات»
+    // asks how far it went INSIDE it, and only the 07-09 row is in this one.
+    const early = data<FleetHighestReadingDto>(
+      await summary({ vehicleId: v.id, from: '2026-07-09', to: '2026-07-10' }),
+    );
+    expect(early.reading).toBe(1900);
+    expect(early.km).toBe(600);
+  });
+
+  it('the workshop register and the alarms board measure NO distance, and say so', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 7000, '2026-07-09');
+
+    const answer = data<FleetHighestReadingDto>(
+      await request(app)
+        .get('/api/v1/fleet/maintenance/summary')
+        .query({ vehicleId: v.id })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // A register of VISITS holds no row per period, so there is nothing there to add up — and a
+    // zero under «إجمالي الكيلومترات» would be a different number under the same word.
+    expect(answer.km).toBeNull();
   });
 
   it('the workshop register answers the same figure, from the same place', async () => {

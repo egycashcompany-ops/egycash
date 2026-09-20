@@ -22,6 +22,10 @@ const NOTHING: FleetHighestReadingDto = {
   code: null,
   at: null,
   vehicles: 0,
+  // The distance is not this helper's to know: it is a property of the ROWS a filter matched, and
+  // this one is handed only the cars. The readings register fills it in; every other caller leaves
+  // it empty rather than publishing a zero it never measured.
+  km: null,
 };
 
 export const highestReadingAmong = async (
@@ -43,5 +47,6 @@ export const highestReadingAmong = async (
     code: codes.get(best.vehicleId) ?? null,
     at: best.date.toISOString(),
     vehicles: vehicleIds.length,
+    km: null,
   };
 };

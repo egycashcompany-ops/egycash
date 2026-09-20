@@ -484,7 +484,7 @@ export const OdometerPage = (): JSX.Element => {
         {/* «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figure describes THIS filter, not
             this page: it is asked of the server with the filters alone, and turning a page
             neither refetches it nor changes it. */}
-        <HighestReadingStrip data={highest.data} loading={highest.isPending} />
+        <HighestReadingStrip data={highest.data} loading={highest.isPending} distance />
 
         <DataTable
           columns={columns}

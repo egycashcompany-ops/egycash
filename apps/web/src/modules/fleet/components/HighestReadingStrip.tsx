@@ -15,6 +15,16 @@
 // bare maximum over twelve cars names none of them, dates nothing, and does not say twelve. The
 // reader's next question is always «بتاعة أنهى عربية», and a strip that cannot answer it sends
 // them back to the table to look for the biggest number by eye.
+//
+// THE DISTANCE IS THE ONE THAT IS. «إجمالي الكيلومترات» is a second figure, and the only sum on
+// this strip: km is a distance and distances add. It appears only where it was measured — the
+// readings register holds a row per period carrying its own km, and the workshop register and the
+// alarms board do not. An absent figure is better than one invented to keep four cells looking
+// like five.
+//
+// The SCREEN says whether that cell exists, not the answer: `distance` is a property of what is
+// being listed and is known before the request is sent, so the strip has its final shape on the
+// first paint instead of losing a cell when the data lands.
 import { type FleetHighestReadingDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
@@ -24,9 +34,12 @@ import { formatDate, formatNumber } from '../../../shared/lib/format';
 export const HighestReadingStrip = ({
   data,
   loading,
+  distance = false,
 }: {
   data: FleetHighestReadingDto | undefined;
   loading: boolean;
+  /** Does this screen list things that carry a distance? Only the readings register does. */
+  distance?: boolean;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -59,6 +72,19 @@ export const HighestReadingStrip = ({
           'vehicles',
           data === undefined ? undefined : formatNumber(data.vehicles, locale),
         ),
+        // Not drawn at all on a screen that does not measure distance — see the note above.
+        ...(distance
+          ? [
+              cell(
+                'km',
+                data === undefined
+                  ? undefined
+                  : data.km === null
+                    ? null
+                    : `${formatNumber(data.km, locale)} ${t('fleet.vehicle.km')}`,
+              ),
+            ]
+          : []),
       ]}
     />
   );

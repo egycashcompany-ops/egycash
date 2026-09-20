@@ -87,8 +87,21 @@ export interface ModuleNode {
   screens: ScreenNode[];
   on: number;
   total: number;
-  /** Screens carrying something in the SAVED record — the group's open/closed default. */
+  /** Screens carrying something in the SAVED record. */
   savedOn: number;
+  /** Screens with at least one action the caller may grant here. */
+  grantableScreens: number;
+  /**
+   * Whether the group shows itself without being asked.
+   *
+   * Read off the SAVED record and the ceiling, never off the draft, so it does not move while the
+   * manager ticks. A group opens when the account already holds something in it — a grant nobody
+   * can see is a grant nobody can take back — and the first group carrying anything the caller may
+   * actually grant opens too, so the unit never lands on nothing but shut headers. A group that is
+   * only there because somebody with more authority granted in it stays shut: there is nothing in
+   * it for this reader to do, and its count is on the line below.
+   */
+  openByDefault: boolean;
 }
 
 /** One record on the server: a department in a branch, or the branch as a whole. */
@@ -96,6 +109,8 @@ export interface UnitNode {
   unit: Unit;
   ceiling: Set<string>;
   selected: Set<string>;
+  /** What the server holds for this unit right now — what a cleared unit goes back to. */
+  saved: Set<string>;
   modules: ModuleNode[];
   state: TickState;
   screensOn: number;
@@ -156,15 +171,30 @@ const groupByModule = (screens: readonly ScreenNode[]): ModuleNode[] => {
   for (const screen of screens) {
     const moduleId = screen.page?.moduleId ?? null;
     const found = groups.find((g) => g.moduleId === moduleId);
-    if (found === undefined) groups.push({ moduleId, screens: [screen], on: 0, total: 0, savedOn: 0 });
-    else found.screens.push(screen);
+    if (found === undefined) {
+      groups.push({
+        moduleId,
+        screens: [screen],
+        on: 0,
+        total: 0,
+        savedOn: 0,
+        grantableScreens: 0,
+        openByDefault: false,
+      });
+    } else found.screens.push(screen);
   }
   for (const group of groups) {
     group.on = group.screens.filter((s) => s.on > 0).length;
     group.total = group.screens.length;
     group.savedOn = group.screens.filter((s) => s.savedOn > 0).length;
+    group.grantableScreens = group.screens.filter((s) => s.grantable).length;
   }
-  return [...groups].sort((a, b) => (a.moduleId === null ? 1 : b.moduleId === null ? -1 : 0));
+  const ordered = [...groups].sort((a, b) => (a.moduleId === null ? 1 : b.moduleId === null ? -1 : 0));
+  const lead = ordered.find((g) => g.grantableScreens > 0);
+  for (const group of ordered) {
+    group.openByDefault = group.savedOn > 0 || group === lead;
+  }
+  return ordered;
 };
 
 const buildUnit = (
@@ -172,8 +202,9 @@ const buildUnit = (
   unit: Unit,
   selected: Selection,
   saved: Selection,
+  readOnly: ReadonlySet<string>,
 ): UnitNode => {
-  const ceiling = ceilingOf(cat, unit);
+  const ceiling = readOnly.has(unitKey(unit)) ? new Set<string>() : ceilingOf(cat, unit);
   const rows = buildRows(cat, ceiling, saved);
   const screens = rows.map((row) => screenOf(row, selected, ceiling, saved));
   const actionsOn = screens.reduce((n, s) => n + s.on, 0);
@@ -183,6 +214,7 @@ const buildUnit = (
     unit,
     ceiling,
     selected: new Set(selected),
+    saved: new Set(saved),
     modules: groupByModule(screens),
     state: actionsOn === 0 ? 'none' : actionsOn === actionsTotal ? 'all' : 'some',
     screensOn: screens.filter((s) => s.on > 0).length,
@@ -204,11 +236,26 @@ const buildUnit = (
  * They must be SEEN: a grant that vanishes from the screen because the reader lost the authority
  * to change it reads as a grant that was removed.
  */
+export interface MergedCatalog {
+  catalog: DelegationCatalogDto;
+  /**
+   * The units this function invented — ones the catalog did not offer.
+   *
+   * They must be read-only whatever else is true of their branch. A department the server no
+   * longer lists (soft-deleted after a grant was written on it) would otherwise inherit its
+   * branch's whole-branch keys through `ceilingOf`, render as a perfectly ordinary editable row,
+   * and produce a PUT the server answers «Unknown department» — which aborts the save loop and
+   * strands every unit queued behind it.
+   */
+  readOnly: Set<string>;
+}
+
 export const withSavedUnits = (
   cat: DelegationCatalogDto,
   grants: readonly DelegationDto[],
   home: HomeUnit | null,
-): DelegationCatalogDto => {
+): MergedCatalog => {
+  const readOnly = new Set<string>();
   const unnamed = (id: string): LocalizedString => ({ ar: id, en: id });
   const branches = cat.branches.map((b) => ({ ...b, departments: [...b.departments] }));
   const add = (
@@ -221,9 +268,11 @@ export const withSavedUnits = (
     if (branch === undefined) {
       branch = { id: branchId, name: branchName, permissionKeys: [], departments: [] };
       branches.push(branch);
+      readOnly.add(unitKey({ branchId, departmentId: null }));
     }
     if (departmentId !== null && !branch.departments.some((d) => d.id === departmentId)) {
       branch.departments.push({ id: departmentId, name: departmentName, permissionKeys: [] });
+      readOnly.add(unitKey({ branchId, departmentId }));
     }
   };
   for (const grant of grants) {
@@ -248,9 +297,9 @@ export const withSavedUnits = (
     for (const branch of branches) {
       if (branch.id === home.branchId) branch.departments = first(branch.departments, home.departmentId);
     }
-    return { ...cat, branches: first(branches, home.branchId) };
+    return { catalog: { ...cat, branches: first(branches, home.branchId) }, readOnly };
   }
-  return { ...cat, branches };
+  return { catalog: { ...cat, branches }, readOnly };
 };
 
 /**
@@ -264,13 +313,14 @@ export const buildTree = (
   cat: DelegationCatalogDto,
   selectedOf: (unit: Unit) => Selection,
   savedOf: (unit: Unit) => Selection,
+  readOnly: ReadonlySet<string> = new Set(),
 ): BranchNode[] =>
   cat.branches.map((branch) => {
     const wholeUnit: Unit = { branchId: branch.id, departmentId: null };
-    const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit));
+    const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit), readOnly);
     const departments = branch.departments.map((department): DepartmentNode => {
       const unit: Unit = { branchId: branch.id, departmentId: department.id };
-      const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit));
+      const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit), readOnly);
       return {
         ...node,
         id: department.id,
@@ -340,6 +390,16 @@ export const clearBranch = (branch: BranchNode): Record<string, string[]> => {
   }
   return drafts;
 };
+
+/**
+ * How many keys the caller could remove across a branch — the branch-level clear's whole reason to
+ * exist, and the test for whether to offer it at all.
+ */
+export const clearableIn = (branch: BranchNode): number =>
+  [branch.whole, ...branch.departments].reduce(
+    (n, unit) => n + [...unit.selected].filter((key) => unit.ceiling.has(key)).length,
+    0,
+  );
 
 /** One line of «what this person will see», per unit that ends up with something on it. */
 export interface GrantLine {

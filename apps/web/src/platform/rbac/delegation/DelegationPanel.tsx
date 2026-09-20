@@ -25,6 +25,7 @@ import { sameSelection, toggleKey, togglePage, type GridRow } from './delegation
 import {
   buildTree,
   clearBranch,
+  clearableIn,
   grantLines,
   parseUnit,
   setAll,
@@ -33,7 +34,9 @@ import {
   type BranchNode,
   type DepartmentNode,
   type HomeUnit,
+  type GrantLine,
   type ScreenNode,
+  type TickState,
   type Unit,
   type UnitNode,
 } from './delegation-tree';
@@ -93,11 +96,15 @@ export const DelegationPanel = ({
   const [open, setOpen] = useState<string[]>(() => homeOpen(homeBranch, homeDepartment));
   const [closed, setClosed] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  // Deliberately keyed on the PERSON alone. `homeUnit` comes from the parent's own query, so
+  // including it would discard a manager's unsaved work the moment that query returned a changed
+  // placement — or filled in a department that first arrived as null. Both mounts have the record
+  // before they render the panel, so there is nothing to wait for.
   useEffect(() => {
     setDrafts({});
     setOpen(homeOpen(homeBranch, homeDepartment));
     setClosed([]);
-  }, [userId, homeBranch, homeDepartment]);
+  }, [userId]);
 
   const saved = useMemo(
     () =>
@@ -120,15 +127,22 @@ export const DelegationPanel = ({
 
   // Units the caller cannot delegate in are folded in read-only rather than hidden: a grant that
   // vanishes because the reader lost the authority to change it reads as a grant that was removed.
-  const cat = withSavedUnits(catalog.data, grants.data.grants, homeUnit);
+  const merged = withSavedUnits(catalog.data, grants.data.grants, homeUnit);
   const savedOf = (unit: Unit): Set<string> => new Set(saved.get(unitKey(unit)) ?? []);
   const selectedOf = (unit: Unit): Set<string> => {
     const draft = drafts[unitKey(unit)];
     return draft === undefined ? savedOf(unit) : new Set(draft);
   };
-  const tree = buildTree(cat, selectedOf, savedOf);
+  const tree = buildTree(merged.catalog, selectedOf, savedOf, merged.readOnly);
+  // Only units the tree actually draws. A draft for a unit that has since left the catalog — the
+  // department was deleted, or a refetch narrowed the caller's own reach — would otherwise be
+  // counted in the footer, drawn nowhere, and PUT on save, where the server refuses it and takes
+  // the rest of the save down with it.
+  const drawn = new Set(
+    tree.flatMap((b) => [unitKey(b.whole.unit), ...b.departments.map((d) => unitKey(d.unit))]),
+  );
   const dirty = Object.keys(drafts).filter(
-    (key) => !sameSelection(new Set(drafts[key] ?? []), savedOf(parseUnit(key))),
+    (key) => drawn.has(key) && !sameSelection(new Set(drafts[key] ?? []), savedOf(parseUnit(key))),
   );
 
   const wiring: Wiring = {
@@ -154,11 +168,14 @@ export const DelegationPanel = ({
   const reset = (): void => setDrafts({});
   const commit = async (): Promise<void> => {
     setSaving(true);
+    const written = [...dirty];
     try {
       for (const key of dirty) {
         await save.mutateAsync({ ...parseUnit(key), permissionKeys: [...(drafts[key] ?? [])].sort() });
       }
-      reset();
+      // Only the units this save actually wrote. Clearing the whole map would silently discard an
+      // edit the manager made while the requests were in flight, under a «saved» toast.
+      setDrafts((cur) => Object.fromEntries(Object.entries(cur).filter(([k]) => !written.includes(k))));
       toast.success(t('delegation.saved'));
     } catch (error) {
       toast.error(error instanceof ApiError ? error.message : t('delegation.failed'));
@@ -203,19 +220,7 @@ export const DelegationPanel = ({
                 <li key={unitKey(line.unit)}>
                   {line.department === null
                     ? t('delegation.lineWholeBranch', { branch: line.branch[locale] })
-                    : t(
-                        line.everything
-                          ? 'delegation.lineAll'
-                          : line.viewOnly
-                            ? 'delegation.lineView'
-                            : 'delegation.lineSome',
-                        {
-                          department: line.department[locale],
-                          branch: line.branch[locale],
-                          screens: line.screens,
-                          actions: line.actions,
-                        },
-                      )}
+                    : summaryLine(t, line, locale)}
                 </li>
               ))}
             </ul>
@@ -239,9 +244,15 @@ export const DelegationPanel = ({
 // ── The levels ──────────────────────────────────────────────────────────────
 
 /**
- * A branch. Its checkbox is the only one on the screen that is not a grant of its own: there is no
- * record for «a branch» apart from the whole-branch grant below it, so ticking an empty branch
- * opens it, and clearing a branch clears everything under it that the caller could have ticked.
+ * A branch — a heading, and deliberately NOT a checkbox.
+ *
+ * There is no record for «a branch» apart from the whole-branch grant inside it, so a tri-state box
+ * here would have nothing to write. Worse, it would lie in both directions: a half-ticked box means
+ * «tick the rest» everywhere else in this app and on every other screen the reader has ever used,
+ * while the only thing this level can do is take away — and a branch whose only grant came from
+ * somebody with more authority would draw a checked, enabled box that does nothing at all when
+ * clicked. So the state is shown, the count is shown, and taking it all away is a button that says
+ * what it does and appears only when there is something the caller may actually remove.
  */
 const BranchCard = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX.Element => {
   const id = `b:${branch.id}`;
@@ -251,14 +262,7 @@ const BranchCard = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX.Eleme
     : branch.departmentsOn > 0
       ? w.t('delegation.departmentsOn', { on: branch.departmentsOn, total: branch.departmentsTotal })
       : w.t('delegation.departments', { count: branch.departmentsTotal });
-  const tick = (): void => {
-    // A branch is not a record of its own, so ticking an empty one has nothing to write: it opens.
-    if (branch.state === 'none') {
-      w.setOpen(id, true);
-      return;
-    }
-    w.setDrafts(clearBranch(branch));
-  };
+  const clearable = clearableIn(branch);
   return (
     <Card>
       <div
@@ -267,14 +271,16 @@ const BranchCard = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX.Eleme
           branch.state !== 'none' && 'bg-brand-50/60 dark:bg-brand-950/30',
         )}
       >
-        <Checkbox
-          label={branch.name[w.locale]}
-          checked={branch.state === 'all'}
-          indeterminate={branch.state === 'some'}
-          onChange={tick}
-          className="min-w-0 font-semibold text-slate-800 dark:text-slate-100"
-        />
+        <StateMark state={branch.state} />
+        <h3 className="min-w-0 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+          {branch.name[w.locale]}
+        </h3>
         <span className="truncate text-xs text-slate-500 dark:text-slate-400">{count}</span>
+        {clearable > 0 && (
+          <Button size="sm" variant="ghost" onClick={() => w.setDrafts(clearBranch(branch))}>
+            {w.t('delegation.clearBranch')}
+          </Button>
+        )}
         <Disclosure id={id} open={open} w={w} className="ms-auto" />
       </div>
       {open && (
@@ -305,11 +311,22 @@ const WholeBranchBlock = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX
   const id = `w:${branch.id}`;
   const open = w.isOpen(id);
   const tick = (): void => {
-    w.setDraft(unit.unit, setAll(unit.selected, unit.ceiling, !on));
+    if (on) {
+      w.setDraft(unit.unit, setAll(unit.selected, unit.ceiling, false));
+      return;
+    }
+    // Turning it back on puts back what was THERE, not everything the caller could put there. The
+    // block's contents are behind a chevron, so widening a deliberately narrow branch grant to the
+    // caller's whole ceiling would happen out of sight; only a unit that holds nothing yet starts
+    // with everything.
+    w.setDraft(
+      unit.unit,
+      unit.saved.size > 0 ? new Set(unit.saved) : setAll(unit.selected, unit.ceiling, true),
+    );
     // Turning it on can hide a department beneath it, and an unsaved draft down there would then
     // be a write the manager can no longer see. The drafts are DROPPED, not rewritten: writing
     // `d.selected` back would write the draft as itself and revert nothing.
-    if (!on) w.clearDrafts(branch.departments.map((d) => d.unit));
+    w.clearDrafts(branch.departments.map((d) => d.unit));
   };
   return (
     <div
@@ -338,7 +355,7 @@ const WholeBranchBlock = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX
         {on && unit.editable && <Disclosure id={id} open={open} w={w} className="ms-auto" />}
       </div>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        {w.t(unit.editable ? 'delegation.wholeHint' : 'delegation.wholeLockedHint')}
+        {unit.editable ? w.t('delegation.wholeHint') : w.t('delegation.wholeLockedHint')}
       </p>
       {on && open && unit.editable && <ScreenList unit={unit} nodeId={id} w={w} />}
     </div>
@@ -387,7 +404,14 @@ const DepartmentRow = ({
   }
 
   const tick = (): void => {
-    w.setDraft(department.unit, setAll(department.selected, department.ceiling, department.state !== 'all'));
+    const next =
+      department.state === 'all'
+        ? setAll(department.selected, department.ceiling, false)
+        : department.state === 'none' && department.saved.size > 0
+          ? // Cleared a moment ago and clicked again: that is an undo, not a request for everything.
+            new Set(department.saved)
+          : setAll(department.selected, department.ceiling, true);
+    w.setDraft(department.unit, next);
     w.setOpen(id, true);
   };
   return (
@@ -427,10 +451,7 @@ const ScreenList = ({ unit, nodeId, w }: { unit: UnitNode; nodeId: string; w: Wi
     <div id={panelId(nodeId)} className="space-y-1.5 border-t border-slate-100 px-3 py-2 dark:border-slate-800">
       {unit.modules.map((group) => {
         const id = `${nodeId}:m:${group.moduleId ?? 'other'}`;
-        // A group holding something in the SAVED record opens on its own: a grant nobody can see
-        // is a grant nobody can take back. Read off the saved record rather than the draft, so the
-        // group does not shut under the manager's hand when he clears the last tick in it.
-        const open = single || w.isOpen(id, group.savedOn > 0);
+        const open = single || w.isOpen(id, group.openByDefault);
         return (
           <div key={group.moduleId ?? 'other'}>
             {!single && (
@@ -447,7 +468,7 @@ const ScreenList = ({ unit, nodeId, w }: { unit: UnitNode; nodeId: string; w: Wi
               </div>
             )}
             {open && (
-              <div className={cn('space-y-1', !single && 'ps-3')}>
+              <div id={panelId(id)} className={cn('space-y-1', !single && 'ps-3')}>
                 {group.screens.map((screen) => (
                   <ScreenRow key={screen.id} unit={unit} screen={screen} nodeId={nodeId} w={w} />
                 ))}
@@ -494,7 +515,7 @@ const ScreenRow = ({
             ? w.t('delegation.actionsOn', { on: screen.on, total: screen.total })
             : w.t('delegation.nothing')
         }
-        reason={w.t(screen.on > 0 ? 'delegation.grantedElsewhere' : 'delegation.locked')}
+        reason={screen.on > 0 ? w.t('delegation.grantedElsewhere') : w.t('delegation.locked')}
         ticked={screen.on > 0}
         tag={null}
       />
@@ -581,6 +602,42 @@ const moduleLabel = (w: Wiring, moduleId: string | null): string => {
   return label === key ? moduleId : label;
 };
 
+/**
+ * One line of «what this person will see», written with a literal key per shape.
+ *
+ * The three shapes could be one key chosen by a ternary inside `t(...)`, and that is exactly what
+ * hides a key from `delegation-i18n.spec` — its scan only sees a single-quoted literal as the first
+ * thing after `t(`. A key it cannot see is a key that can ship untranslated.
+ */
+const summaryLine = (t: T, line: GrantLine, locale: Locale): string => {
+  const params = {
+    department: line.department === null ? '' : line.department[locale],
+    branch: line.branch[locale],
+    screens: line.screens,
+    actions: line.actions,
+  };
+  if (line.everything) return t('delegation.lineAll', params);
+  if (line.viewOnly) return t('delegation.lineView', params);
+  return t('delegation.lineSome', params);
+};
+
+/** What a level holds, drawn and not clickable — the level itself is not a record. */
+const StateMark = ({ state }: { state: TickState }): JSX.Element => (
+  <span
+    aria-hidden
+    className={cn(
+      'grid h-4 w-4 shrink-0 place-items-center rounded border text-[10px] font-bold',
+      state === 'all'
+        ? 'border-brand-600 bg-brand-600 text-white'
+        : state === 'some'
+          ? 'border-brand-500 text-brand-600 dark:text-brand-300'
+          : 'border-slate-300 dark:border-slate-600',
+    )}
+  >
+    {state === 'all' ? '✓' : state === 'some' ? '–' : ''}
+  </span>
+);
+
 const panelId = (id: string): string => `delegation-${id.replace(/[.:|]/g, '-')}`;
 
 /** A row nobody may change here. No chevron: there is nothing behind it to open. */
@@ -630,7 +687,7 @@ const Disclosure = ({
     onClick={() => w.setOpen(id, !open)}
     aria-expanded={open}
     aria-controls={panelId(id)}
-    aria-label={w.t(open ? 'delegation.collapse' : 'delegation.expand')}
+    aria-label={open ? w.t('delegation.collapse') : w.t('delegation.expand')}
     className={cn(
       'shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800 dark:hover:text-slate-200',
       className,

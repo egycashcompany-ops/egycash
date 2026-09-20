@@ -79,6 +79,10 @@ export const toggleKey = (
     return next;
   }
   next.delete(key);
+  // «An action on a screen one cannot open» is only a statement about a SCREEN. The page-less row
+  // is not one: the registry puts unrelated keys there on purpose, so a `view` among them says
+  // nothing about the rest and clearing it must not take them with it.
+  if (row.page === null) return next;
   const entry = row.keys.find((k) => k.key === key);
   if (entry?.action === VIEW_ACTION) {
     for (const k of row.keys) if (ceiling.has(k.key)) next.delete(k.key);

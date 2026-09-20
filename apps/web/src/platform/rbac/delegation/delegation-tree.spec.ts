@@ -11,12 +11,14 @@ import {
   buildTree,
   ceilingOf,
   clearBranch,
+  clearableIn,
   grantLines,
   parseUnit,
   setAll,
   unitKey,
   withSavedUnits,
   type BranchNode,
+  type MergedCatalog,
 } from './delegation-tree';
 
 const p = (key: string, moduleId: string, pageId: string | null): PermissionDto => ({
@@ -72,12 +74,13 @@ const NOTHING = new Set<string>();
 const tree = (
   selected: Record<string, string[]> = {},
   saved: Record<string, string[]> = {},
-  cat: DelegationCatalogDto = CATALOG,
+  merged: MergedCatalog = { catalog: CATALOG, readOnly: new Set() },
 ): BranchNode[] =>
   buildTree(
-    cat,
+    merged.catalog,
     (unit) => new Set(selected[unitKey(unit)] ?? saved[unitKey(unit)] ?? []),
     (unit) => new Set(saved[unitKey(unit)] ?? []),
+    merged.readOnly,
   );
 
 const branchOf = (nodes: BranchNode[], id: string): BranchNode => {
@@ -250,6 +253,26 @@ describe('the open/closed default of a module group', () => {
     expect(fresh?.modules[0]?.on).toBe(1);
     expect(fresh?.modules[0]?.savedOn).toBe(0);
   });
+
+  it('always opens the first group the caller can actually act in', () => {
+    // A/d1: `vehicle.*` is out of the caller's reach there, and somebody above him granted one.
+    // Opening only «a group with something ticked» would have opened the locked one and left the
+    // grantable one shut — the manager landing on nothing he can do.
+    const d1 = branchOf(tree({}, { 'A:d1': ['vehicle.view'] }), 'A').departments[0];
+    const byModule = new Map(d1?.modules.map((m) => [m.moduleId, m]));
+    expect(byModule.get('hr')?.grantableScreens).toBe(1);
+    expect(byModule.get('hr')?.openByDefault).toBe(true);
+    // The locked group opens too, and on purpose: it is what the account already holds, and a
+    // grant nobody can see is a grant nobody can ask about.
+    expect(byModule.get('fleet')?.grantableScreens).toBe(0);
+    expect(byModule.get('fleet')?.savedOn).toBe(1);
+    expect(byModule.get('fleet')?.openByDefault).toBe(true);
+  });
+
+  it('leaves a further group shut when it holds nothing — that is what the level is for', () => {
+    const d3 = branchOf(tree(), 'B').departments[0];
+    expect(d3?.modules.map((m) => m.openByDefault)).toEqual([true, false]);
+  });
 });
 
 describe('ticking a whole unit', () => {
@@ -276,6 +299,25 @@ describe('clearing a branch', () => {
     // Granted on d1 by somebody who reaches further than the caller: a clear is not a revoke.
     const branch = branchOf(tree({}, { 'A:d1': ['employee.view', 'vehicle.view'] }), 'A');
     expect(clearBranch(branch)['A:d1']).toEqual(['vehicle.view']);
+  });
+});
+
+describe('what the branch-level clear may take', () => {
+  it('counts only the keys the caller could remove himself', () => {
+    const branch = branchOf(tree({ 'A:*': ['employee.view'], 'A:d1': ['employee.edit'] }), 'A');
+    expect(clearableIn(branch)).toBe(2);
+  });
+
+  it('counts nothing when the only grant there came from higher up', () => {
+    // Branch B: the caller holds nothing over the branch, so a whole-branch grant somebody above
+    // him made is not his to take away — and the control that would take it must not be offered.
+    const b = branchOf(tree({}, { 'B:*': ['employee.view'] }), 'B');
+    expect(b.whole.actionsOn).toBe(1);
+    expect(clearableIn(b)).toBe(0);
+  });
+
+  it('counts nothing in a branch with nothing on it', () => {
+    expect(clearableIn(branchOf(tree(), 'A'))).toBe(0);
   });
 });
 
@@ -313,16 +355,29 @@ describe('units the caller cannot reach', () => {
     expect(d.departments.map((x) => x.name.en)).toEqual(['Operations']);
   });
 
+  it('gives a unit it invented nothing to grant, whatever its branch offers', () => {
+    // d9 was soft-deleted after a grant was written on it, so the catalog no longer lists it.
+    // Inheriting branch A's whole-branch keys would draw it as an ordinary editable row and
+    // produce a PUT the server answers «Unknown department», taking the rest of the save with it.
+    const merged = withSavedUnits(CATALOG, [grant('A', 'd9')], null);
+    expect(merged.readOnly.has('A:d9')).toBe(true);
+    const d9 = branchOf(tree({}, { 'A:d9': ['employee.view'] }, merged), 'A').departments.find(
+      (d) => d.id === 'd9',
+    );
+    expect(d9?.ceiling.size).toBe(0);
+    expect(d9?.editable).toBe(false);
+  });
+
   it('puts the account’s own branch and department first', () => {
     const merged = withSavedUnits(CATALOG, [], { branchId: 'B', departmentId: 'd3' });
-    expect(merged.branches.map((b) => b.id)).toEqual(['B', 'A']);
+    expect(merged.catalog.branches.map((b) => b.id)).toEqual(['B', 'A']);
     const both = withSavedUnits(CATALOG, [], { branchId: 'A', departmentId: 'd2' });
-    expect(both.branches[0]?.departments.map((d) => d.id)).toEqual(['d2', 'd1']);
+    expect(both.catalog.branches[0]?.departments.map((d) => d.id)).toEqual(['d2', 'd1']);
   });
 
   it('does not duplicate a unit the catalog already offers', () => {
     const merged = withSavedUnits(CATALOG, [grant('A', 'd1')], { branchId: 'A', departmentId: 'd1' });
-    expect(merged.branches.filter((b) => b.id === 'A')).toHaveLength(1);
+    expect(merged.catalog.branches.filter((b) => b.id === 'A')).toHaveLength(1);
     expect(branchOf(tree({}, {}, merged), 'A').departments.map((d) => d.id)).toEqual(['d1', 'd2']);
   });
 });

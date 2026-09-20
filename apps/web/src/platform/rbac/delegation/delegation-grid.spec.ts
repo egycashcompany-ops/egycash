@@ -56,6 +56,25 @@ describe('buildRows', () => {
   });
 });
 
+describe('the page-less bucket is not a screen', () => {
+  // The registry leaves some keys on no page on purpose (attendance devices, the punch and import
+  // keys beside them). They land in one row together, and they have nothing to do with each other,
+  // so the «clearing view clears the screen» rule must not reach across them.
+  const unassigned: DelegationCatalogDto = {
+    branches: [{ id: 'A', name: { ar: 'أ', en: 'A' }, permissionKeys: [], departments: [] }],
+    pages: [],
+    permissions: [p('device.view', null), p('device.manage', null), p('punch.import', null)],
+  };
+  const ceiling = new Set(['device.view', 'device.manage', 'punch.import']);
+
+  it('clearing a «view» there takes away that key and nothing else', () => {
+    const [row] = buildRows(unassigned, ceiling, new Set());
+    expect(row?.page).toBeNull();
+    const left = toggleKey(new Set(ceiling), 'device.view', row!, ceiling);
+    expect([...left].sort()).toEqual(['device.manage', 'punch.import']);
+  });
+});
+
 describe('ticking', () => {
   const rows = buildRows(catalog, CEILING, new Set());
   const employees = rows[0]!;

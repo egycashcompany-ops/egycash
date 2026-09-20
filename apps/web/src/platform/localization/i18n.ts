@@ -385,7 +385,8 @@ const en: Record<string, string> = {
   'nav.branchSwitcher.all': 'The whole company',
   'nav.branchSwitcher.mine': 'All my sites',
   // Delegated grants (ADR-032): the «Permissions» tab a manager sees on a colleague.
-  'delegation.treeIntro': 'Tick a branch to open it, choose the departments this person works in, then the screens he sees in each.',
+  'delegation.treeIntro': 'Open a branch, choose the departments this person works in, then the screens he sees in each.',
+  'delegation.clearBranch': 'Clear this branch',
   'delegation.noLogin': 'This person has no login account yet, so there is nothing to grant.',
   'delegation.noReach': 'You do not delegate in any unit.',
   'delegation.homeTag': 'own unit',
@@ -7127,7 +7128,8 @@ const ar: Record<string, string> = {
   'nav.branchSwitcher.all': 'الشركة كلها',
   'nav.branchSwitcher.mine': 'كل فروعي',
   // توزيع الصلاحيات (ADR-032): تبويب «الصلاحيات» اللي المدير بيشوفه على زميله.
-  'delegation.treeIntro': 'علّم على الفرع عشان يفتح، اختار الإدارات اللي الشخص ده شغّال فيها، وبعدين حدّد الشاشات اللي يشوفها في كل إدارة.',
+  'delegation.treeIntro': 'افتح الفرع، اختار الإدارات اللي الشخص ده شغّال فيها، وبعدين حدّد الشاشات اللي يشوفها في كل إدارة.',
+  'delegation.clearBranch': 'شيل صلاحيات الفرع',
   'delegation.noLogin': 'الشخص ده ملوش حساب دخول لسه، فمفيش صلاحيات تتوزّع.',
   'delegation.noReach': 'أنت لا توزّع صلاحيات في أي وحدة.',
   'delegation.homeTag': 'وحدته',

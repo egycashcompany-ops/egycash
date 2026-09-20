@@ -145,6 +145,23 @@ describe('what the caller may not grant', () => {
   });
 });
 
+describe('the branch level', () => {
+  it('is a heading, not a checkbox — there is no record for it to write', () => {
+    // A tri-state box here would read «tick the rest» and could only ever take away. The state is
+    // drawn, the count is drawn, and removing is a button that says what it does.
+    const body = SOURCE.slice(SOURCE.indexOf('const BranchCard ='), SOURCE.indexOf('const WholeBranchBlock ='));
+    expect(body).not.toContain('<Checkbox');
+    expect(body).not.toContain('indeterminate');
+  });
+
+  it('offers the clear only when something there is the caller’s to remove', () => {
+    // The caller delegates in d1 only, and nothing is granted yet: nothing to clear.
+    expect(render()).not.toContain('Clear this branch');
+    // A grant from somebody with more authority is still not his to remove.
+    expect(render({ grants: GRANTS })).not.toContain('Clear this branch');
+  });
+});
+
 describe('a module the dictionary has no name for', () => {
   it('is headed by its own id, never by the unresolved key', () => {
     // The key is built from data, so no source scan can check it and `translate` answers a missing

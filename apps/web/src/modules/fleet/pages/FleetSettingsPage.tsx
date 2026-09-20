@@ -29,6 +29,7 @@ import { formatNumber } from '../../../shared/lib/format';
 import { useMySettings } from '../../../platform/settings/settings-api';
 import { useSetFleetSetting, useVehicleTypes } from '../api/fleet-queries';
 import { VehicleTypeDialog } from '../components/CatalogDialogs';
+import { GoLiveRunsPanel } from '../components/GoLiveNotice';
 
 /** The module's §13 defaults surface — labels only; VALUES always come from the resolver. */
 const NUMBER_KEYS = [
@@ -267,6 +268,10 @@ export const FleetSettingsPage = (): JSX.Element => {
         </Card>
 
         {settings.data !== undefined && <FleetSettingsCard resolved={fleetSettings} />}
+
+        {/* What the go-live import did, all six books together — it used to sit on top of every
+            screen in the module, which is six walls of names nobody can act on twice. */}
+        <GoLiveRunsPanel />
       </div>
 
       <VehicleTypeDialog open={creatingType} onClose={() => setCreatingType(false)} type={null} />

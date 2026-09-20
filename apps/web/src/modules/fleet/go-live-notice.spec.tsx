@@ -1,8 +1,10 @@
-// The go-live notice: what the boot-time import recorded, printed where the data should be.
+// The go-live notice: what the boot-time import recorded, and the one page it is printed on.
 //
 // «مفيش عربيات اضافت» — twice, and the reason lived in a log the owner cannot open. The
 // notice's job is to print the run row on the screen it was meant to fill, and to stay out of the
 // way when there is nothing to say.
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -218,5 +220,35 @@ describe('the rules', () => {
     expect(formatValue(['أ', 'ب'])).toBe('أ ، ب');
     expect(formatValue({ code: '150', field: 'plateNumber' })).toBe('code: 150 · field: plateNumber');
     expect(formatValue(3)).toBe('3');
+  });
+});
+
+/**
+ * WHERE IT IS ALLOWED TO APPEAR. The notice earned its keep twice — it is how the seventeen
+ * buried readings and the workshop book that never started were both found — and it is also six
+ * walls of names, permanent, above the data on every screen in the module: «انا مش عاوز الرسايل
+ * تظهر هنا». One page, not six.
+ */
+describe('it lives on the settings page and nowhere else', () => {
+  const PAGES = join(__dirname, 'pages');
+
+  it('NO fleet screen renders it above its table', () => {
+    const offenders = readdirSync(PAGES)
+      .filter((name) => name.endsWith('.tsx'))
+      .filter((name) => name !== 'FleetSettingsPage.tsx')
+      .filter((name) => readFileSync(join(PAGES, name), 'utf8').includes('GoLiveNotice'));
+    expect(offenders, 'the data goes on the screen; the story of how it got there does not').toEqual([]);
+  });
+
+  it('the settings page renders every run in one panel', () => {
+    const source = readFileSync(join(PAGES, 'FleetSettingsPage.tsx'), 'utf8');
+    expect(source).toContain('<GoLiveRunsPanel />');
+  });
+
+  it('the panel names all six steps, so none of them quietly stops being reported', () => {
+    const source = readFileSync(join(__dirname, 'components', 'GoLiveNotice.tsx'), 'utf8');
+    for (const step of ['vehicles', 'driver-photos', 'odometer', 'maintenance', 'violations', 'accidents']) {
+      expect(source, step).toContain(`'${step}',`);
+    }
   });
 });

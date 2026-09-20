@@ -9,11 +9,12 @@
 //
 // Two sources, and both of them, because the owner named both: «المرجع الأساسي يكون Department +
 // Branch + Role/Scope + Delegated Permissions». A role assignment can put somebody on any of the
-// four rungs; a delegation only on the two it can express (ADR-032, Gap 1).
+// four rungs; a delegation on the three its own shapes can express (ADR-032, Gap 1).
 import { Types } from 'mongoose';
 import { type ApprovalLevel } from '@ecms/contracts';
 import { roleAssignmentRepository, roleRepository } from '../rbac/rbac.repository';
 import { delegatedGrantRepository } from '../rbac/delegation.repository';
+import { type DelegatedGrantDoc } from '../rbac/delegation.model';
 import { delegationMeetsLevel, grantMeetsLevel, type Unit } from './approver-level';
 
 export type { Unit } from './approver-level';
@@ -42,16 +43,32 @@ export const approversFor = async (
     if (grantMeetsLevel(shape, level, unit)) found.add(String(a.userId));
   }
 
-  // A delegation is always written in one branch, so a request with no branch has none to read.
+  // Two reads rather than one, because the two delegation shapes are stored under different keys
+  // and neither index can serve the other: a branch grant has a branch to look under, and an
+  // «every branch» grant deliberately has none. Each is asked only for the levels it can answer,
+  // so no rung costs a query that cannot return anybody.
+  const delegations: DelegatedGrantDoc[] = [];
   if (unit.branchId !== null && (level === 'unit' || level === 'branch')) {
-    const grants = await delegatedGrantRepository.findByKeyInBranch(permissionKey, unit.branchId);
-    for (const g of grants) {
-      const shape = {
-        branchId: String(g.branchId),
-        departmentId: g.departmentId === null ? null : String(g.departmentId),
-      };
-      if (delegationMeetsLevel(shape, level, unit)) found.add(String(g.userId));
-    }
+    delegations.push(
+      ...(await delegatedGrantRepository.findByKeyInBranch(permissionKey, unit.branchId)),
+    );
+  }
+  if (level === 'department' && unit.departmentCatalogId !== null) {
+    delegations.push(
+      ...(await delegatedGrantRepository.findByKeyForDepartmentEverywhere(
+        permissionKey,
+        unit.departmentCatalogId,
+      )),
+    );
+  }
+  for (const g of delegations) {
+    const shape = {
+      branchId: g.branchId === null ? null : String(g.branchId),
+      departmentId: g.departmentId === null ? null : String(g.departmentId),
+      departmentCatalogId: g.departmentCatalogId === null ? null : String(g.departmentCatalogId),
+      allBranches: g.allBranches === true,
+    };
+    if (delegationMeetsLevel(shape, level, unit)) found.add(String(g.userId));
   }
 
   return [...found];
@@ -70,3 +87,59 @@ export const hasApprovers = async (
   level: ApprovalLevel,
   unit: Unit,
 ): Promise<boolean> => (await approversFor(permissionKey, level, unit)).length > 0;
+
+/**
+ * The rungs of one chain that ONE account stands on — the reader's own steps.
+ *
+ * Asked from the other end than `approversFor`, and deliberately so. A screen showing a request
+ * asks «what may I do here», and answering it by fanning out every rung to every holder in the
+ * company and then looking for one name in the result would make one man's inbox cost the whole
+ * org chart. This reads his own grants once — his role assignments, the roles behind them, his
+ * delegations — and measures each rung against them, so the cost is three queries whatever the
+ * chain's length.
+ */
+export const ownStepsOf = async (
+  userId: string,
+  steps: readonly { permissionKey: string; level: ApprovalLevel }[],
+  unit: Unit,
+): Promise<number[]> => {
+  if (steps.length === 0) return [];
+  const assignments = await roleAssignmentRepository.findActiveForUser(userId);
+  const roles = await roleRepository.findByIds(
+    assignments.map((a) => new Types.ObjectId(String(a.roleId))),
+  );
+  const keysByRole = new Map(
+    roles.map((role) => [String(role._id), new Set(role.permissionKeys ?? [])]),
+  );
+  const delegations = await delegatedGrantRepository.findForUser(userId);
+
+  const standsOn = (permissionKey: string, level: ApprovalLevel): boolean => {
+    for (const a of assignments) {
+      if (keysByRole.get(String(a.roleId))?.has(permissionKey) !== true) continue;
+      const shape = {
+        scope: String(a.scope),
+        branchId: a.branchId === null ? null : String(a.branchId),
+        branchIds: (a.branchIds ?? []).map(String),
+        departmentCatalogId: a.departmentCatalogId === null ? null : String(a.departmentCatalogId),
+        departmentId: a.departmentId === null ? null : String(a.departmentId),
+        allBranches: a.allBranches === true,
+      };
+      if (grantMeetsLevel(shape, level, unit)) return true;
+    }
+    for (const g of delegations) {
+      if (!(g.permissionKeys ?? []).includes(permissionKey)) continue;
+      const shape = {
+        branchId: g.branchId === null ? null : String(g.branchId),
+        departmentId: g.departmentId === null ? null : String(g.departmentId),
+        departmentCatalogId: g.departmentCatalogId === null ? null : String(g.departmentCatalogId),
+        allBranches: g.allBranches === true,
+      };
+      if (delegationMeetsLevel(shape, level, unit)) return true;
+    }
+    return false;
+  };
+
+  return steps.flatMap((step, index) =>
+    standsOn(step.permissionKey, step.level) ? [index] : [],
+  );
+};

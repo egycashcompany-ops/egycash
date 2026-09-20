@@ -116,13 +116,18 @@ export type ApprovalDecision = z.infer<typeof ApprovalDecisionSchema>;
 /**
  * What became of a rung.
  *
- * `skipped` and `covered` are both «nobody decided this», and keeping them apart is the difference
- * between two questions a reader actually asks. `skipped` means the rung was EMPTY — nobody in the
- * company holds that key at that level over this unit, so there was no one to ask. `covered` means
- * somebody FURTHER UP THE SAME CHAIN decided first, and the owner's rule applied: «لو المدير العام
- * وافق مش محتاج مدير الفرع».
+ * Three of these are «nobody decided this», and keeping them apart is the difference between
+ * three questions a reader actually asks about a rung with no name on it:
+ *
+ *   skipped    the rung was EMPTY — nobody in the company holds that key at that level over this
+ *              unit, so there was no one to ask, and the chain stepped over it.
+ *   covered    somebody FURTHER UP THE SAME CHAIN decided first, and the owner's rule applied:
+ *              «لو المدير العام وافق مش محتاج مدير الفرع».
+ *   unreached  the request was REJECTED further down and never got this far. The rung is staffed
+ *              and willing; it was simply never asked. Calling that «skipped» would tell the
+ *              reader nobody holds it, which is false, and would hide a real desk from an audit.
  */
-export type ApprovalOutcome = ApprovalDecision | 'skipped' | 'covered' | 'pending';
+export type ApprovalOutcome = ApprovalDecision | 'skipped' | 'covered' | 'unreached' | 'pending';
 
 /** A rung that has been decided, or passed, with everything an auditor asks about it. */
 export interface ApprovalTrailEntryDto {

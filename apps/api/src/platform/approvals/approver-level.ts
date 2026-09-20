@@ -14,9 +14,11 @@
 //   branch        scope `branch`, reaching this branch — every department in it. «مدير الفرع».
 //   organization  scope `organization`. «الموارد البشرية».
 //
-// A delegated grant can only ever be `unit` or `branch`: it is written over one department in one
-// branch, or over one whole branch (ADR-032, Gap 1). Nobody delegates «in every branch» — that is
-// an authority an administrator assigns, not one a manager hands down.
+// A delegated grant reaches three of the four, matching the three shapes a delegation can take
+// (ADR-032, Gap 1): one department in one branch is `unit`, one whole branch is `branch`, and one
+// department in EVERY branch is `department` — the shape a general manager hands to a deputy, and
+// his own reach exactly: «هيدى نفس اللى هو ماسك، ليه، نايب يعتبر». Only `organization` is out of
+// reach, because nobody hands down the whole company; that one an administrator assigns.
 import { type ApprovalLevel } from '@ecms/contracts';
 
 /** A role assignment, reduced to what the level question needs. */
@@ -79,25 +81,40 @@ export const grantMeetsLevel = (grant: GrantShape, level: ApprovalLevel, unit: U
   }
 };
 
-/** A delegated grant, which is always written over one unit or one whole branch. */
+/** A delegated grant, in whichever of its three shapes it was written. */
 export interface DelegationShape {
-  branchId: string;
-  /** `null` for the whole branch. */
+  /** `null` only for the «every branch» shape, which is not about one branch at all. */
+  branchId: string | null;
+  /** The branch's own copy of a department — `null` for the whole branch. */
   departmentId: string | null;
+  /** The company-wide department, set only by the «every branch» shape. */
+  departmentCatalogId: string | null;
+  allBranches: boolean;
 }
 
 /**
  * Does a delegated grant put its holder on the rung?
  *
- * Only the two levels a delegation can express. A delegation over a department is `unit`; one over
- * a whole branch is `branch`. Neither can reach «every branch» or the company, so a chain whose
- * rung asks for those is never answered by a hand-me-down.
+ * Three of the four levels, one per shape, and each exactly — a deputy who was handed «الحركة في
+ * كل الفروع» stands where the general manager stands, because that is precisely what he was
+ * handed, while a deputy handed الحركة in one branch does not. Reading the everywhere shape as
+ * `unit` too would put him on his own boss's rung AND the one below it, and a chain with both
+ * would then be answered twice by one person.
+ *
+ * `organization` is never satisfied here: nobody hands down the whole company.
  */
 export const delegationMeetsLevel = (
   grant: DelegationShape,
   level: ApprovalLevel,
   unit: Unit,
 ): boolean => {
+  if (grant.allBranches) {
+    return (
+      level === 'department' &&
+      grant.departmentCatalogId !== null &&
+      grant.departmentCatalogId === unit.departmentCatalogId
+    );
+  }
   if (unit.branchId === null || grant.branchId !== unit.branchId) return false;
   if (level === 'branch') return grant.departmentId === null;
   if (level === 'unit') return grant.departmentId !== null && grant.departmentId === unit.departmentId;

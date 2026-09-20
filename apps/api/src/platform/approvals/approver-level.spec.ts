@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   delegationMeetsLevel,
   grantMeetsLevel,
+  type DelegationShape,
   type GrantShape,
   type Unit,
 } from './approver-level';
@@ -102,22 +103,59 @@ describe('a grant written before the department catalog existed', () => {
   });
 });
 
+const handedDown = (over: Partial<DelegationShape>): DelegationShape => ({
+  branchId: null,
+  departmentId: null,
+  departmentCatalogId: null,
+  allBranches: false,
+  ...over,
+});
+
+/** «الحركة في المهندسين» — one department, one branch. */
+const inOneUnit = handedDown({ branchId: MOH, departmentId: FLEET_IN_MOH });
+/** «فرع المهندسين كله». */
+const wholeBranch = handedDown({ branchId: MOH });
+/** «الحركة في كل الفروع» — the deputy a general manager appoints. */
+const everywhere = handedDown({ departmentCatalogId: FLEET, allBranches: true });
+
 describe('a delegated grant', () => {
   it('stands on the unit rung when it names the department, and the branch rung when it does not', () => {
-    expect(delegationMeetsLevel({ branchId: MOH, departmentId: FLEET_IN_MOH }, 'unit', UNIT)).toBe(true);
-    expect(delegationMeetsLevel({ branchId: MOH, departmentId: null }, 'branch', UNIT)).toBe(true);
+    expect(delegationMeetsLevel(inOneUnit, 'unit', UNIT)).toBe(true);
+    expect(delegationMeetsLevel(wholeBranch, 'branch', UNIT)).toBe(true);
   });
 
-  it('never reaches the two levels a delegation cannot express', () => {
-    // Nobody hands down «in every branch» or «the whole company» — those an administrator assigns.
-    expect(delegationMeetsLevel({ branchId: MOH, departmentId: FLEET_IN_MOH }, 'department', UNIT)).toBe(
-      false,
-    );
-    expect(delegationMeetsLevel({ branchId: MOH, departmentId: null }, 'organization', UNIT)).toBe(false);
+  it('never reaches the one level a delegation cannot express', () => {
+    // Nobody hands down the whole company — that one an administrator assigns.
+    expect(delegationMeetsLevel(inOneUnit, 'organization', UNIT)).toBe(false);
+    expect(delegationMeetsLevel(wholeBranch, 'organization', UNIT)).toBe(false);
+    expect(delegationMeetsLevel(everywhere, 'organization', UNIT)).toBe(false);
   });
 
   it('does not cross into another branch or another department', () => {
-    expect(delegationMeetsLevel({ branchId: OCT, departmentId: FLEET_IN_MOH }, 'unit', UNIT)).toBe(false);
-    expect(delegationMeetsLevel({ branchId: MOH, departmentId: 'dep-sec-moh' }, 'unit', UNIT)).toBe(false);
+    expect(delegationMeetsLevel(handedDown({ branchId: OCT, departmentId: FLEET_IN_MOH }), 'unit', UNIT)).toBe(false);
+    expect(delegationMeetsLevel(handedDown({ branchId: MOH, departmentId: 'dep-sec-moh' }), 'unit', UNIT)).toBe(false);
+  });
+
+  // «هيدى نفس اللى هو ماسك، ليه، نايب يعتبر» — the deputy stands exactly where the general
+  // manager stands, and a chain that could not find him would step over that rung and send the
+  // request past him to HR. Silently, which is the whole danger.
+  it('puts the deputy handed «الحركة في كل الفروع» on the general manager’s own rung', () => {
+    expect(delegationMeetsLevel(everywhere, 'department', UNIT)).toBe(true);
+    expect(delegationMeetsLevel(everywhere, 'department', { ...UNIT, branchId: OCT })).toBe(true);
+  });
+
+  it('keeps that deputy OFF the rung below his, so one person never answers two rungs', () => {
+    expect(delegationMeetsLevel(everywhere, 'unit', UNIT)).toBe(false);
+    expect(delegationMeetsLevel(everywhere, 'branch', UNIT)).toBe(false);
+  });
+
+  it('follows the department, not the branch — and no further', () => {
+    expect(
+      delegationMeetsLevel(everywhere, 'department', { ...UNIT, departmentCatalogId: SECURITY }),
+    ).toBe(false);
+    // A request with no branch still has a department, and that is all this shape reads.
+    expect(
+      delegationMeetsLevel(everywhere, 'department', { ...UNIT, branchId: null, departmentId: null }),
+    ).toBe(true);
   });
 });

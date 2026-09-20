@@ -13,6 +13,16 @@ export const CreateRoleSchema = z
   .object({
     name: LocalizedStringSchema,
     description: z.string().max(500).optional(),
+    /**
+     * The company-wide department this role belongs to (ADR-031), or null for one that belongs to
+     * no department in particular.
+     *
+     * Purely organizational — nothing authorizes on it, exactly as `pageId` organizes permissions
+     * without authorizing on them. It exists because a flat list of every role in the company is
+     * unreadable by the time there are thirty of them: «انا مش عاوز الادوار سايحه على بعض انا عاوز
+     * تنظيم فى الادوار على حسب الادارات».
+     */
+    departmentCatalogId: objectId().nullable().optional(),
     permissionKeys: z.array(z.string()).min(1),
   })
   .strict();
@@ -22,6 +32,7 @@ export const UpdateRoleSchema = z
   .object({
     name: LocalizedStringSchema.optional(),
     description: z.string().max(500).nullable().optional(),
+    departmentCatalogId: objectId().nullable().optional(),
     permissionKeys: z.array(z.string()).min(1).optional(),
     version: z.number().int().min(0),
   })
@@ -54,6 +65,14 @@ export interface RoleDto {
   isSystem: boolean;
   /** Derived from `isSystem` + `key` — the single answer to "may I edit this?". */
   managed: RoleManagement;
+  /**
+   * The company-wide department the list groups this role under; null groups it under «عام».
+   *
+   * The ID alone, not the name: the screen that groups on it already loads the department catalog
+   * to offer it in the form, so resolving the name here would be a second read of the same list
+   * for every role on the page.
+   */
+  departmentCatalogId: string | null;
   permissionKeys: string[];
   version: number;
   createdAt: string;

@@ -5293,6 +5293,10 @@ const en: Record<string, string> = {
   'systemAdmin.roles.notHeld': 'You do not hold this',
   'systemAdmin.roles.notHeldHint':
     'You can only grant permissions you hold yourself — the rest are shown but cannot be ticked.',
+  'systemAdmin.roles.noDepartment': 'General',
+  'systemAdmin.roles.groupCount': '{{count}} roles',
+  'systemAdmin.roles.department': 'Department',
+  'systemAdmin.roles.departmentHint': 'Groups the role in the list. It grants nothing — leave it empty for a role that belongs to no department.',
   'systemAdmin.roles.module.platform': 'Platform',
   'systemAdmin.roles.module.hr': 'HR',
   'systemAdmin.roles.module.fleet': 'Fleet',
@@ -11932,6 +11936,10 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.notHeld': 'لا تملكها',
   'systemAdmin.roles.notHeldHint':
     'لا يمكنك منح صلاحيات لا تملكها أنت — تظهر البقية لكن لا يمكن اختيارها.',
+  'systemAdmin.roles.noDepartment': 'عام',
+  'systemAdmin.roles.groupCount': '{{count}} دور',
+  'systemAdmin.roles.department': 'الإدارة',
+  'systemAdmin.roles.departmentHint': 'بتنظّم الدور في القايمة بس. مابتديش أي صلاحية — سيبها فاضية للدور اللي مش تابع لإدارة.',
   'systemAdmin.roles.module.platform': 'المنصة',
   'systemAdmin.roles.module.hr': 'الموارد البشرية',
   'systemAdmin.roles.module.fleet': 'الحركة',

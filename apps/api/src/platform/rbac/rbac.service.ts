@@ -701,6 +701,10 @@ class RbacService {
         name: input.name,
         description: input.description ?? null,
         isSystem: false,
+        departmentCatalogId:
+          input.departmentCatalogId === undefined || input.departmentCatalogId === null
+            ? null
+            : new Types.ObjectId(input.departmentCatalogId),
         permissionKeys: [...new Set(input.permissionKeys)],
       },
       { by },
@@ -725,6 +729,10 @@ class RbacService {
     const set: Record<string, unknown> = {};
     if (input.name !== undefined) set.name = input.name;
     if (input.description !== undefined) set.description = input.description;
+    if (input.departmentCatalogId !== undefined) {
+      set.departmentCatalogId =
+        input.departmentCatalogId === null ? null : new Types.ObjectId(input.departmentCatalogId);
+    }
     if (input.permissionKeys !== undefined) {
       this.assertKnownPermissionKeys(input.permissionKeys);
       // Only what the edit ADDS is checked. Removing a grant is a narrowing and always allowed, and
@@ -800,7 +808,10 @@ class RbacService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['createdAt', 'name.en'],
+      // `departmentCatalogId` is sortable so the grouped list can keep a department's roles
+      // CONTIGUOUS across pages. Without it, grouping a page would split «الحركة» into two
+      // headings with the same name on two pages, which reads as two departments.
+      sortableFields: ['createdAt', 'name.en', 'departmentCatalogId'],
     });
   }
 
@@ -1332,6 +1343,9 @@ class RbacService {
       description: doc.description,
       isSystem: doc.isSystem,
       managed: this.managementOf(doc),
+      // Lean rows from before the field existed carry none — «no department», which groups the
+      // role under «عام» and is exactly what it was.
+      departmentCatalogId: (doc.departmentCatalogId ?? null) === null ? null : String(doc.departmentCatalogId),
       permissionKeys: doc.permissionKeys,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),

@@ -38,6 +38,7 @@ const role = (permissionKeys: string[], over: Partial<RoleDto> = {}): RoleDto =>
   name: { ar: 'مسؤول الحسابات', en: 'Account admin' },
   description: 'Looks after accounts',
   isSystem: false,
+  departmentCatalogId: null,
   managed: 'none',
   permissionKeys,
   version: 3,

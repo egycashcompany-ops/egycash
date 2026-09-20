@@ -15,10 +15,13 @@ import { useState } from 'react';
 import { type CreateRole, type RoleDto, type UpdateRole } from '@ecms/contracts';
 import { duplicateName, duplicatePayload } from '../lib/role-duplication';
 import { useT } from '../../../../platform/localization/useT';
-import { Button, Dialog, Field, Form, Input, Textarea, toast } from '../../../../shared/ui';
+import { Button, Dialog, Field, Form, Input, Select, Textarea, toast } from '../../../../shared/ui';
+import { useAppSelector } from '../../../../store';
+import { type Locale } from '@ecms/contracts';
 import { RolePermissionMatrix } from './RolePermissionMatrix';
 import {
   useCreateRole,
+  useDepartmentCatalog,
   usePermissionCatalog,
   usePermissionPages,
   useUpdateRole,
@@ -60,6 +63,11 @@ export const RoleFormDialog = ({
       : (role?.name.en ?? ''),
   );
   const [description, setDescription] = useState(copied?.description ?? role?.description ?? '');
+  // Organizational only: it decides which heading the role sits under in the list and grants
+  // nothing. A copy keeps its source's department, which is almost always what a duplicate wants.
+  const [departmentId, setDepartmentId] = useState(
+    duplicateOf?.departmentCatalogId ?? role?.departmentCatalogId ?? '',
+  );
   const [keys, setKeys] = useState<string[]>(copied?.permissionKeys ?? role?.permissionKeys ?? []);
   const create = useCreateRole();
   const update = useUpdateRole(role?.id ?? '');
@@ -69,6 +77,8 @@ export const RoleFormDialog = ({
   const { data: catalog = [], isError: catalogUnavailable } = usePermissionCatalog(open);
   // Same request as the catalog — `select` splits one response, never a second fetch (P7-A).
   const { data: pages = [] } = usePermissionPages(open);
+  const { data: departments = [] } = useDepartmentCatalog(open);
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const busy = create.isPending || update.isPending;
 
   const toggle = (key: string, next: boolean): void => {
@@ -93,6 +103,7 @@ export const RoleFormDialog = ({
       const body: CreateRole = {
         name,
         permissionKeys: keys,
+        departmentCatalogId: departmentId === '' ? null : departmentId,
         ...(trimmedDescription === '' ? {} : { description: trimmedDescription }),
       };
       create.mutate(body, {
@@ -109,6 +120,7 @@ export const RoleFormDialog = ({
     const body: UpdateRole = {
       name,
       description: trimmedDescription === '' ? null : trimmedDescription,
+      departmentCatalogId: departmentId === '' ? null : departmentId,
       permissionKeys: keys,
       version: role.version,
     };
@@ -161,6 +173,19 @@ export const RoleFormDialog = ({
             <Input dir="ltr" value={nameEn} onChange={(e) => setNameEn(e.target.value)} required />
           </Field>
         </div>
+        <Field
+          label={t('systemAdmin.roles.department')}
+          hint={t('systemAdmin.roles.departmentHint')}
+        >
+          <Select value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+            <option value="">{t('systemAdmin.roles.noDepartment')}</option>
+            {departments.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name[locale]}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field label={t('systemAdmin.roles.form.description')}>
           <Textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>

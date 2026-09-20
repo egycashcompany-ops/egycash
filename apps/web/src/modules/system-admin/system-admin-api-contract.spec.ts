@@ -219,13 +219,20 @@ describe('the roles client calls endpoints the RBAC routers declare', () => {
         .map((s) => s.trim().replace(/'/g, '')),
     );
     expect(declaredSorts.size, 'the scan found no sortable fields').toBeGreaterThan(0);
+    // The list is GROUPED by department rather than sorted by a clickable header, so it declares no
+    // sortable columns at all — the check below therefore guards two things: any column that ever
+    // comes back must be one the API can sort by, AND the sort the page actually sends must be.
     const sortableColumns = [
       ...ROLES_LIST_PAGE.matchAll(/key: '([a-zA-Z.]+)',\s*\n\s*header:[^\n]*\n\s*sortable: true/g),
     ].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
-    expect(sortableColumns.length, 'the scan itself must not match nothing').toBeGreaterThan(0);
     for (const key of sortableColumns) {
       expect(declaredSorts, `${key} is not sortable on the API`).toContain(key);
     }
+    const defaultSort = /sp\.get\('sort'\) \?\? '([a-zA-Z.]+):/.exec(ROLES_LIST_PAGE)?.[1];
+    expect(defaultSort, 'the page must name the sort it sends').toBeDefined();
+    expect(declaredSorts, `the default sort ${defaultSort ?? ''} is not sortable on the API`).toContain(
+      defaultSort,
+    );
   });
 
   // ADR-019 rule 5 again — the roles catalogue grows with every module and every administrator, so

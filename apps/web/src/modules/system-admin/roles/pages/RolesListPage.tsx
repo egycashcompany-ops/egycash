@@ -1,4 +1,16 @@
-// Every role in the system. The three filters answer the three questions an administrator opens
+// Every role in the company, GROUPED BY DEPARTMENT.
+//
+// It used to be one flat table sorted by creation date, which is readable while there are six
+// roles and unreadable by the time there are thirty: «انا مش عاوز الادوار سايحه على بعض انا عاوز
+// تنظيم فى الادوار على حسب الادارات». A role's department is organizational only — nothing in the
+// authorization path reads it — so this changes how the list is arranged and nothing about what
+// any role grants. Roles nobody filed under a department group under «عام» rather than vanishing.
+//
+// The page size is the shared default (ADR-019 rule 5 — a screen does not ask for a bigger page to
+// avoid paging), so the list is SORTED by department on the server. That keeps a department's roles
+// contiguous: a group never appears twice under the same heading on two pages.
+//
+// The three filters answer the three questions an administrator opens
 // this screen with: "which role grants X" (search covers permission keys, not just names), "which
 // of these may I edit" (managed), and "which are effectively off" (unassigned).
 //
@@ -16,20 +28,21 @@ import { PageContainer, PageHeader } from '../../../../platform/layout/PageConta
 import {
   Badge,
   Button,
+  Card,
+  CardBody,
   Checkbox,
-  DataTable,
   EmptyState,
+  ErrorState,
   FilterBar,
+  LoadingState,
   Pagination,
   SearchInput,
   Select,
-  type Column,
 } from '../../../../shared/ui';
 import { PlusIcon } from '../../../../shared/ui/icons';
-import { formatDate } from '../../../../shared/lib/format';
 import { ManagedRoleBadge } from '../components/ManagedRoleBadge';
 import { RoleFormDialog } from '../components/RoleFormDialog';
-import { useRoles } from '../api/role-queries';
+import { useDepartmentCatalog, useRoles } from '../api/role-queries';
 import { type RoleListParams } from '../api/role-api';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
@@ -57,7 +70,7 @@ export const RolesListPage = (): JSX.Element => {
   const unassigned = sp.get('unassigned') === 'true';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
+  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'departmentCatalogId:asc').split(':');
   const sort = { by: sortByRaw ?? 'createdAt', dir: sortDirRaw === 'asc' ? 'asc' : 'desc' } as {
     by: string;
     dir: 'asc' | 'desc';
@@ -74,10 +87,6 @@ export const RolesListPage = (): JSX.Element => {
     setSp(next);
   };
 
-  const changeSort = (by: string): void => {
-    const dir = sort.by === by && sort.dir === 'asc' ? 'desc' : 'asc';
-    patch({ sort: `${by}:${dir}` }, false);
-  };
 
   const params = useMemo<RoleListParams>(
     () => ({
@@ -95,45 +104,34 @@ export const RolesListPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useRoles(params);
   const rows = data?.items ?? [];
 
-  const columns: Column<RoleDto>[] = [
-    {
-      key: 'name.en',
-      header: t('systemAdmin.roles.columns.name'),
-      sortable: true,
-      render: (role) => (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="truncate font-medium text-slate-800 dark:text-slate-100">
-            {role.name[locale]}
-          </span>
-          <ManagedRoleBadge managed={role.managed} />
-        </div>
-      ),
-    },
-    {
-      key: 'permissionKeys',
-      header: t('systemAdmin.roles.columns.permissions'),
-      render: (role) => (
-        <Badge size="sm" tone="neutral">
-          {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
-        </Badge>
-      ),
-    },
-    {
-      key: 'key',
-      header: t('systemAdmin.roles.columns.key'),
-      render: (role) => (
-        <span className="font-mono text-xs text-slate-400" dir="ltr">
-          {role.key ?? '—'}
-        </span>
-      ),
-    },
-    {
-      key: 'createdAt',
-      header: t('systemAdmin.roles.columns.created'),
-      sortable: true,
-      render: (role) => formatDate(role.createdAt, locale),
-    },
-  ];
+  const { data: catalog = [] } = useDepartmentCatalog();
+  const departmentName = (id: string | null): string =>
+    id === null
+      ? t('systemAdmin.roles.noDepartment')
+      : (catalog.find((d) => d.id === id)?.name[locale] ?? t('systemAdmin.roles.noDepartment'));
+
+  /**
+   * The page's roles, in department order, with the unfiled ones last.
+   *
+   * Grouped from what the page actually returned rather than asked for per department: one read,
+   * and a group can never disagree with the rows under it.
+   */
+  const groups = useMemo(() => {
+    const by = new Map<string | null, RoleDto[]>();
+    for (const role of rows) {
+      const key = role.departmentCatalogId;
+      by.set(key, [...(by.get(key) ?? []), role]);
+    }
+    return [...by.entries()]
+      .sort(([a], [b]) =>
+        a === null ? 1 : b === null ? -1 : departmentName(a).localeCompare(departmentName(b), locale),
+      )
+      .map(([id, roles]) => ({
+        id,
+        name: departmentName(id),
+        roles: [...roles].sort((x, y) => x.name[locale].localeCompare(y.name[locale], locale)),
+      }));
+  }, [rows, catalog, locale]);
 
   return (
     <PageContainer>
@@ -188,20 +186,49 @@ export const RolesListPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(role) => role.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sort}
-          onSortChange={changeSort}
-          onRowClick={(role) => navigate(role.id)}
-          empty={<EmptyState title={t('systemAdmin.roles.empty')} />}
-        />
+        {isLoading && <LoadingState />}
+        {isError && <ErrorState error={error} onRetry={() => void refetch()} />}
+        {!isLoading && !isError && groups.length === 0 && (
+          <EmptyState title={t('systemAdmin.roles.empty')} />
+        )}
 
-        {data !== undefined && data.meta.totalItems > 0 && (
+        {groups.map((group) => (
+          <Card key={group.id ?? 'none'}>
+            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+              <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {group.name}
+              </h3>
+              <span className="text-xs text-slate-400">
+                {t('systemAdmin.roles.groupCount', { count: group.roles.length })}
+              </span>
+            </div>
+            <CardBody padded={false}>
+              <ul>
+                {group.roles.map((role) => (
+                  <li key={role.id} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => navigate(role.id)}
+                      className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    >
+                      <span className="min-w-0 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                        {role.name[locale]}
+                      </span>
+                      <ManagedRoleBadge managed={role.managed} />
+                      <span className="ms-auto shrink-0">
+                        <Badge size="sm" tone="neutral">
+                          {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
+                        </Badge>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          </Card>
+        ))}
+
+        {data !== undefined && data.meta.totalPages > 1 && (
           <Pagination
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}

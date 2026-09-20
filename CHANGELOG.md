@@ -9,6 +9,20 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A delegated grant is over a department in a branch, not the branch.** (ADR-032, amended —
+  Gap 1 of the approvals plan, fixed before anything is built on it.) The first cut of delegation
+  keyed a grant by branch and let a manager who holds a department hand out the whole branch: «مدير
+  عام الحركة» could have given somebody «المهندسين» as a whole, «الأمن» included — wider than what he
+  holds. Nobody had been given the delegation key yet, so nothing was exposed, and it is closed
+  now: the grant names the department (or, from a whole-branch holder only, the branch as a whole),
+  the ceiling compares the units themselves rather than a rank, and what is granted stays confined
+  to that department in that branch on every screen. The tab shows units — «الحركة · المهندسين» —
+  and adds one by picking a branch, then a department or «الفرع كله» when allowed. A whole branch
+  never implies its departments' grants, and a department never implies its branch's; tests pin
+  branch scope, department + branch, and department-wide against each other.
+
 ### Changed
 
 - **nodemailer 6 → 10 and puppeteer-core 24 → 25.** The two major bumps the widened dependency

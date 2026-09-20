@@ -24,7 +24,7 @@ const p = (key: string, pageId: string | null): PermissionDto => ({
 
 const catalog: DelegationCatalogDto = {
   branches: [
-    { id: 'A', name: { ar: 'أ', en: 'A' }, permissionKeys: ['employee.view', 'employee.edit', 'attendance.view'] },
+    { id: 'A', name: { ar: 'أ', en: 'A' }, permissionKeys: ['employee.view', 'employee.edit', 'attendance.view'], departments: [] },
   ],
   pages: [
     { id: 'hr.employees', moduleId: 'hr', name: { ar: 'الموظفين', en: 'Employees' }, route: '/employees', sortOrder: 1 },

@@ -71,22 +71,14 @@ describe('a department scope', () => {
     });
   });
 
-  it('is every department copy the grant reaches, narrowed to the branches it reaches', () => {
+  it('is every department copy the grant reaches — and never their branches (Gap 1)', () => {
     const m = orgScopeMatch(
-      selector({ scope: 'department', departmentIds: [D1, D2], branchIds: [B1, B2] }),
+      selector({ scope: 'department', departmentIds: [D1, D2], departmentBranchIds: [B1, B2] }),
       ALL,
-    ) as { $and: Record<string, unknown>[] };
-    expect(ids(m.$and[0]?.departmentId)).toEqual([D1, D2]);
-    expect(ids(m.$and[1]?.branchId)).toEqual([B1, B2]);
-  });
-
-  it('asks only for the departments when the collection carries no branch', () => {
-    const m = orgScopeMatch(
-      selector({ scope: 'department', departmentIds: [D1, D2], branchIds: [B1, B2] }),
-      { department: 'departmentId' },
     );
     expect(ids(m?.departmentId)).toEqual([D1, D2]);
-    expect(m?.$and).toBeUndefined();
+    expect(m?.branchId).toBeUndefined();
+    expect(m?.$or).toBeUndefined();
   });
 
   it('matches nothing for a caller placed in no department', () => {
@@ -95,21 +87,48 @@ describe('a department scope', () => {
     );
   });
 
-  it('widens over a branch-only collection by default (the repository reading)', () => {
+  it('widens over a branch-only collection for a home-only grant (the repository reading)', () => {
     expect(orgScopeMatch(selector({ scope: 'department' }), { branch: 'branchId' })).toEqual({});
   });
 
-  it('narrows to the branches it reaches over a branch-only collection when asked', () => {
+  it('narrows a department reach to its branches over a branch-only collection — never past them', () => {
+    const reach = orgScopeMatch(
+      selector({ scope: 'department', departmentIds: [D1, D2], departmentBranchIds: [B1, B2] }),
+      { branch: 'branchId' },
+    );
+    expect(ids(reach?.branchId)).toEqual([B1, B2]);
+    // A collection placed nowhere at all cannot be narrowed by a department.
+    expect(
+      orgScopeMatch(selector({ scope: 'department', departmentIds: [D1], departmentBranchIds: [B1] }), {}),
+    ).toEqual({});
+  });
+
+  it('narrows a home-only department to its branch over a branch-only collection when asked', () => {
     const home = orgScopeMatch(selector({ scope: 'department' }), { branch: 'branchId' }, {
       finerNarrowsToBranch: true,
     });
     expect(home).toEqual({ branchId: new Types.ObjectId(B1) });
-    const reach = orgScopeMatch(
-      selector({ scope: 'department', departmentIds: [D1, D2], branchIds: [B1, B2] }),
+  });
+});
+
+describe('units of two kinds at once (Gap 1)', () => {
+  it('is the OR of the whole branches and the department copies', () => {
+    const m = orgScopeMatch(
+      selector({ scope: 'branch', branchIds: [B1], departmentIds: [D2], departmentBranchIds: [B2] }),
+      ALL,
+    ) as { $or: Record<string, unknown>[] };
+    expect(m.$or).toHaveLength(2);
+    expect(ids(m.$or[0]?.branchId)).toEqual([B1]);
+    expect(ids(m.$or[1]?.departmentId)).toEqual([D2]);
+  });
+
+  it('over a branch-only collection, the copies narrow to their branch beside the whole ones', () => {
+    const m = orgScopeMatch(
+      selector({ scope: 'branch', branchIds: [B1], departmentIds: [D2], departmentBranchIds: [B2] }),
       { branch: 'branchId' },
-      { finerNarrowsToBranch: true },
-    );
-    expect(ids(reach?.branchId)).toEqual([B1, B2]);
+    ) as { $or: Record<string, unknown>[] };
+    expect(ids(m.$or[0]?.branchId)).toEqual([B1]);
+    expect(ids(m.$or[1]?.branchId)).toEqual([B2]);
   });
 });
 

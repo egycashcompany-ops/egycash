@@ -148,7 +148,7 @@ describe('realtime over a real socket', () => {
         userId: 'two-sites',
         branchId: 'b1',
         permissions: { 'goldBar.view': 'branch' },
-        reach: { branchIds: ['b1', 'b2'], departmentIds: [] },
+        reach: { branchIds: ['b1', 'b2'], departments: [] },
       }),
     );
     const arriving = nextChange(socket);

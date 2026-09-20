@@ -1,6 +1,6 @@
-# ADR-032: A manager hands out, per site, what they hold there
+# ADR-032: A manager hands out, per unit, what they hold there
 
-**Status:** Accepted · **Date:** 2026-09-19 · **Builds on:**
+**Status:** Accepted · **Date:** 2026-09-19 · **Amended:** 2026-09-20 (Gap 1: units, not sites) · **Builds on:**
 [ADR-004](ADR-004-permission-based-authorization.md) (permissions; roles are only bundles),
 [ADR-017](ADR-017-platform-identity-and-access-control.md) (hierarchical data scopes),
 [ADR-026](ADR-026-role-administration-guards.md) (nobody hands out what they do not hold),
@@ -97,3 +97,63 @@ which is an explanation of that refusal and not a guard.
 - Endpoints: `GET /platform/delegations/me` (the caller's own ceiling, per site, with the registry
   entries to draw it), `GET /platform/delegations/users/:userId`,
   `PUT /platform/delegations/users/:userId/branches/:branchId`.
+
+## Amendment (2026-09-20) — Gap 1: a grant is over a UNIT, and the ceiling is coverage, not rank
+
+The first cut keyed a delegated grant by branch and read the ceiling with `keyReachesBranch`, which
+let a holder at `department` scope pass. Two things were wrong with that, and the owner named both
+before anything was built on it:
+
+- **A branch on its own is not its departments.** «مدير عام الحركة» holds «الحركة» in every branch;
+  granting «المهندسين» as a whole would have handed out «الأمن» in المهندسين too — wider than the
+  granter. The distribution scope must be **Department + Branch**, explicitly.
+- **Rank is the wrong comparison.** `DATA_SCOPE_RANK` orders `department < branch`, which says a
+  whole branch is wider than one department in it — true — but nothing about *which* branch or
+  *which* department. The ceiling has to compare the units themselves.
+
+### What changed
+
+1. **`delegated_grants` carries `departmentId`** (`null` = the whole branch). One live row per
+   (account, branch, department): the unique index is now `ux_userId_branchId_department`; the boot
+   step `migrateDelegationIndexes` drops the superseded `ux_userId_branchId` when present. Rows
+   written before the field existed read as whole-branch grants — exactly what they were. The
+   collection was empty in production when the shape changed (only administrators held the key).
+
+2. **Reach is a set of UNITS, in two lists.** `UnitReach = { branchIds, departments: {id, branchId}[] }`
+   replaces `{ branchIds, departmentIds }` on the effective-permission snapshot, `AuthContext.reach`,
+   and `keyReach[key]`. `branchIds` are WHOLE branches (every department in them); `departments` are
+   copies (that department there, nothing else in that branch). The derivation keeps them apart from
+   the first step: a `department` grant — at home, by catalogue in listed branches, or everywhere —
+   never contributes a branch to `branchIds`; a `branch` grant never contributes a department. The
+   union `reach` follows the same shape; `touchedBranches(reach)` is what the switcher, the
+   active-branch ceiling and the realtime rooms read. The cache key changed with the shape, so no
+   snapshot of the old shape is ever read.
+
+3. **The filter is the OR of the units.** `scopeSelector` emits `branchIds` and `departmentIds`
+   (with `departmentBranchIds`) side by side, and `orgScopeMatch` builds `{ $or: [branch ∈ …,
+   department ∈ …] }`. The earlier AND of "department copies ∩ listed branches" is gone: a copy is
+   already in exactly one branch, and an AND was the only thing keeping the two lists apart. Over a
+   collection that carries a branch but no department, a department copy narrows to ITS branch
+   rather than widening — as close as the data lets «this department in this site» get, and never
+   past the site. A home-only `department` grant over such a collection keeps the repository's
+   historical widening, so nothing an existing account sees has moved.
+
+4. **The ceiling is `keyCoversUnit(ctx, key, branchId, departmentId)`.** Organization-wide covers
+   everything. A whole branch in the key's `branchIds` covers the branch and any department in it.
+   A department copy in the key's `departments` covers that copy and nothing else. Home only: the
+   home branch for a `branch` grant, the home department for a `department` grant. `delegation.manage`
+   is read the same way for the unit being written; every key ADDED is read the same way. So:
+   `Fleet → ALL branches` may grant `Fleet → one branch` and never `one branch → whole`; `Fleet →
+   one branch` may grant nothing in another department or another branch; `Branch A → whole` may
+   grant the whole of A or any department in A. Tests pin each of the three shapes against the
+   other two.
+
+5. **`setting.edit @ branch`** reads the same coverage (`keyReachesBranch` = whole-branch
+   coverage), so a department in a branch no longer counts as "reaching" that branch's settings.
+
+### Unchanged
+
+The role-assignment model, its reach fields, the S-guards of ADR-026, what every screen shows for
+an account whose grants all reach the same places, and the request/response shapes of everything
+but the delegation endpoints (`PUT /platform/delegations/users/:userId/grants` now names the unit
+in the body: `{ branchId, departmentId | null, permissionKeys }`).

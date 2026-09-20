@@ -27,7 +27,10 @@ import { logger } from '../../infrastructure/logging/logger';
 import { getCache } from '../../infrastructure/redis/cache';
 import { getContext, type ActorIdentity } from '../../infrastructure/http/request-context';
 import { BusinessRuleError, NotFoundError, UnauthenticatedError } from '../../shared/errors';
-import { type AuthContext } from '../../shared/types';
+import {
+  type AuthContext,
+  touchedBranches,
+} from '../../shared/types';
 import { randomBackupCode, randomToken, sha256 } from '../../shared/utils/crypto';
 import { sendWhatsApp } from '../../infrastructure/messaging/whatsapp';
 import { verifyPassword } from '../../shared/utils/passwords';
@@ -833,9 +836,8 @@ class AuthService {
       locale: snapshot.locale,
       permissions: effective.permissions,
       // A snapshot cached before `reach` existed carries none; treated as "home unit only".
-      reach: effective.reach ?? { branchIds: [], departmentIds: [] },
-      // Per key when the snapshot has it; the selector falls back to the union when it does not.
-      ...(effective.keyReach === undefined ? {} : { keyReach: effective.keyReach }),
+      reach: effective.reach,
+      keyReach: effective.keyReach,
       permissionVersion: snapshot.permissionVersion,
       isPrivileged: effective.isPrivileged,
       identity: snapshot.identity,
@@ -865,7 +867,7 @@ class AuthService {
       navLayout: user.preferences?.navLayout ?? 'launchpad',
       theme: user.preferences?.theme ?? 'system',
       branchId: user.organization.branchId === null ? null : String(user.organization.branchId),
-      branchIds: effective.reach?.branchIds ?? [],
+      branchIds: touchedBranches(effective.reach),
       employeeId: user.employeeId === null ? null : String(user.employeeId),
       permissions: effective.permissions,
       isPrivileged: effective.isPrivileged,

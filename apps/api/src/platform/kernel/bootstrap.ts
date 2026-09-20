@@ -122,6 +122,11 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   // that has not run `migrate:org-catalog` yet.
   const { migrateOrgCatalogIndexes } = await import('../organization/org-catalog-indexes');
   await migrateOrgCatalogIndexes();
+  // ADR-032 Gap 1 — a delegated grant became per UNIT (department in branch, or whole branch), so
+  // `ux_userId_branchId` (one row per branch) would refuse the second unit in a branch. Dropped
+  // when present; the schema's replacement builds beside it. Idempotent, warns rather than throws.
+  const { migrateDelegationIndexes } = await import('../rbac/delegation-indexes');
+  await migrateDelegationIndexes();
 
   // Module reference-data seeds run last — after permissions, the org singleton, and the
   // scheduler exist, since a module's seed may depend on any of them (Module Structure §2.1).

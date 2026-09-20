@@ -8,7 +8,7 @@ import {
   topicRoom,
 } from '@ecms/contracts';
 import { env } from '../../infrastructure/config/env';
-import { scopeOf, type AuthContext } from '../../shared/types';
+import { scopeOf, touchedBranches, type AuthContext } from '../../shared/types';
 import { REALTIME_TOPICS } from './realtime-registry';
 
 /**
@@ -35,7 +35,7 @@ const roomsForTopic = (ctx: AuthContext, topic: string, permission: string): str
 
 /** The home branch plus every branch the grants reach, once each. */
 const branchesOf = (ctx: AuthContext): string[] => {
-  const ids = new Set<string>(ctx.reach?.branchIds ?? []);
+  const ids = new Set<string>(touchedBranches(ctx.reach));
   if (ctx.branchId !== null) ids.add(ctx.branchId);
   return [...ids];
 };

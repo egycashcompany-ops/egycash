@@ -15,7 +15,7 @@ import {
 import { BusinessRuleError, ForbiddenError, ValidationError } from '../../shared/errors';
 import {
   type AuthContext,
-  reachesBranch,
+  keyReachesBranch,
 } from '../../shared/types';
 import { getCache } from '../../infrastructure/redis/cache';
 import { auditService } from '../audit';
@@ -113,8 +113,8 @@ class SettingsService {
 
   /**
    * Scope authority: `setting.edit @ organization` sets anything; `@ branch` sets the branches
-   * the caller reaches (their own, and any their grants add) and own user values; `@ own` sets
-   * own user values only.
+   * that key covers WHOLLY (their own, and any their grants add as whole branches — a department
+   * in a branch is not the branch) and own user values; `@ own` sets own user values only.
    */
   private assertEditAuthority(
     ctx: AuthContext,
@@ -129,7 +129,7 @@ class SettingsService {
       editScope === 'branch' &&
       scope === 'branch' &&
       scopeRef !== null &&
-      reachesBranch(ctx, scopeRef)
+      keyReachesBranch(ctx, 'setting.edit', scopeRef)
     )
       return;
     throw new ForbiddenError('setting.edit scope does not cover the requested target');

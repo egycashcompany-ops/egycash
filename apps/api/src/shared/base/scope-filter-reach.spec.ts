@@ -77,14 +77,14 @@ describe('a department reach', () => {
     expect(ids(f.departmentId)).toEqual([D1, D2]);
   });
 
-  /** A branch narrowing on top of a department reach is ANDed in, never used instead of it. */
-  it('folds a chosen branch in beside the department clause', () => {
+  /** A whole branch beside department copies is the OR of the two units (Gap 1) — never an AND. */
+  it('reads a whole branch and department copies as separate units, OR-ed', () => {
     const f = new Probe().filterFor(
-      selector({ scope: 'department', departmentIds: [D1, D2], branchIds: [B] }),
-    ) as { $and?: Record<string, unknown>[] };
-    expect(f.$and).toHaveLength(2);
-    expect(ids(f.$and?.[0]?.departmentId)).toEqual([D1, D2]);
-    expect(ids(f.$and?.[1]?.branchId)).toEqual([B]);
+      selector({ scope: 'branch', departmentIds: [D1, D2], branchIds: [B] }),
+    ) as { $or?: Record<string, unknown>[] };
+    expect(f.$or).toHaveLength(2);
+    expect(ids(f.$or?.[0]?.branchId)).toEqual([B]);
+    expect(ids(f.$or?.[1]?.departmentId)).toEqual([D1, D2]);
   });
 
   it('falls back to the home department when no list is given', () => {

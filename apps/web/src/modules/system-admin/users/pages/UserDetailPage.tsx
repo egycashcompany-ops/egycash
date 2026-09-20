@@ -166,7 +166,11 @@ export const UserDetailPage = (): JSX.Element => {
               </h2>
               <DelegationPanel
                 userId={user.id}
-                homeBranch={user.organization.branchId === null ? null : { id: user.organization.branchId }}
+                homeUnit={
+                  user.organization.branchId === null
+                    ? null
+                    : { branchId: user.organization.branchId, departmentId: user.organization.departmentId }
+                }
               />
             </section>
           </Can>

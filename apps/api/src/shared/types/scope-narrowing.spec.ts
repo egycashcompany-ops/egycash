@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   currentBranchId,
+  keyCoversUnit,
   keyReachesBranch,
   reachesBranch,
   scopeSelector,
@@ -131,7 +132,7 @@ describe('it is decided per permission, not per caller', () => {
  * is every context that existed before the field did.
  */
 describe('a multi-branch grant narrows within its reach', () => {
-  const REACH = { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] };
+  const REACH = { branchIds: [BRANCH_A, BRANCH_B], departments: [] };
 
   it('lists every reached branch when nothing is chosen', () => {
     const selector = scopeSelector(
@@ -165,7 +166,7 @@ describe('a multi-branch grant narrows within its reach', () => {
       ctx({
         branchId: BRANCH_A,
         permissions: { 'goldBar.view': 'branch' },
-        reach: { branchIds: [], departmentIds: [] },
+        reach: { branchIds: [], departments: [] },
         activeBranchId: BRANCH_B,
       }),
       'goldBar.view',
@@ -179,32 +180,103 @@ describe('a company-wide department grant', () => {
   const D1 = '650000000000000000000101';
   const D2 = '650000000000000000000102';
 
-  it('carries every branch copy of the department, and the branches they sit in', () => {
+  it('carries every branch copy of the department, and the branches they sit in — never the branches themselves', () => {
     const selector = scopeSelector(
       ctx({
         departmentId: D1,
         permissions: { 'goldBar.view': 'department' },
-        reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [D1, D2] },
+        reach: { branchIds: [], departments: [{ id: D1, branchId: BRANCH_A }, { id: D2, branchId: BRANCH_B }] },
       }),
       'goldBar.view',
     );
     expect(selector.scope).toBe('department');
     expect(selector.departmentIds).toEqual([D1, D2]);
-    expect(selector.branchIds).toEqual([BRANCH_A, BRANCH_B]);
+    expect(selector.departmentBranchIds).toEqual([BRANCH_A, BRANCH_B]);
+    expect(selector.branchIds).toBeUndefined();
   });
 
-  it('narrows the branches, not the department, when one branch is chosen', () => {
+  it('narrows to the copy inside the chosen branch, and to nothing else', () => {
     const selector = scopeSelector(
       ctx({
         departmentId: D1,
         permissions: { 'goldBar.view': 'department' },
-        reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [D1, D2] },
+        reach: { branchIds: [], departments: [{ id: D1, branchId: BRANCH_A }, { id: D2, branchId: BRANCH_B }] },
         activeBranchId: BRANCH_B,
       }),
       'goldBar.view',
     );
-    expect(selector.departmentIds).toEqual([D1, D2]);
-    expect(selector.branchIds).toEqual([BRANCH_B]);
+    expect(selector.departmentIds).toEqual([D2]);
+    expect(selector.departmentBranchIds).toEqual([BRANCH_B]);
+    expect(selector.branchIds).toBeUndefined();
+  });
+});
+
+describe('a key covers UNITS — whole branches and department copies are different things (Gap 1)', () => {
+  const D_A = '650000000000000000000201'; // «الحركة» in branch A
+  const D_B = '650000000000000000000202'; // «الحركة» in branch B
+  const OTHER_A = '650000000000000000000203'; // «الأمن» in branch A
+
+  /** Branch scope: the whole of A — every department in it — and nothing in B. */
+  const branchHolder = ctx({
+    branchId: BRANCH_A,
+    permissions: { 'employee.view': 'branch' },
+  });
+  /** Department + branch: «الحركة» in A only. */
+  const branchDepartmentHolder = ctx({
+    branchId: BRANCH_A,
+    departmentId: D_A,
+    permissions: { 'employee.view': 'department' },
+  });
+  /** Department-wide: «الحركة» in every branch, and no branch as a whole. */
+  const departmentWideHolder = ctx({
+    permissions: { 'employee.view': 'department' },
+    reach: { branchIds: [], departments: [{ id: D_A, branchId: BRANCH_A }, { id: D_B, branchId: BRANCH_B }] },
+    keyReach: {
+      'employee.view': { branchIds: [], departments: [{ id: D_A, branchId: BRANCH_A }, { id: D_B, branchId: BRANCH_B }] },
+    },
+  });
+
+  it('branch scope covers the whole branch and any department in it', () => {
+    expect(keyCoversUnit(branchHolder, 'employee.view', BRANCH_A, null)).toBe(true);
+    expect(keyCoversUnit(branchHolder, 'employee.view', BRANCH_A, D_A)).toBe(true);
+    expect(keyCoversUnit(branchHolder, 'employee.view', BRANCH_A, OTHER_A)).toBe(true);
+    expect(keyCoversUnit(branchHolder, 'employee.view', BRANCH_B, null)).toBe(false);
+    expect(keyCoversUnit(branchHolder, 'employee.view', BRANCH_B, D_B)).toBe(false);
+  });
+
+  it('department + branch covers that department there, never the branch and never another department', () => {
+    expect(keyCoversUnit(branchDepartmentHolder, 'employee.view', BRANCH_A, D_A)).toBe(true);
+    expect(keyCoversUnit(branchDepartmentHolder, 'employee.view', BRANCH_A, null)).toBe(false);
+    expect(keyCoversUnit(branchDepartmentHolder, 'employee.view', BRANCH_A, OTHER_A)).toBe(false);
+    expect(keyCoversUnit(branchDepartmentHolder, 'employee.view', BRANCH_B, D_B)).toBe(false);
+  });
+
+  it('department-wide covers the department in every branch, and no branch as a whole', () => {
+    expect(keyCoversUnit(departmentWideHolder, 'employee.view', BRANCH_A, D_A)).toBe(true);
+    expect(keyCoversUnit(departmentWideHolder, 'employee.view', BRANCH_B, D_B)).toBe(true);
+    expect(keyCoversUnit(departmentWideHolder, 'employee.view', BRANCH_A, null)).toBe(false);
+    expect(keyCoversUnit(departmentWideHolder, 'employee.view', BRANCH_B, null)).toBe(false);
+    expect(keyCoversUnit(departmentWideHolder, 'employee.view', BRANCH_A, OTHER_A)).toBe(false);
+    // The whole-branch question is the same function, asked with no department.
+    expect(keyReachesBranch(departmentWideHolder, 'employee.view', BRANCH_A)).toBe(false);
+  });
+
+  it('a key held at home as a branch and elsewhere as one department filters as the OR of both units', () => {
+    const mixed = ctx({
+      branchId: BRANCH_A,
+      permissions: { 'employee.view': 'branch' },
+      reach: { branchIds: [BRANCH_A], departments: [{ id: D_B, branchId: BRANCH_B }] },
+      keyReach: { 'employee.view': { branchIds: [BRANCH_A], departments: [{ id: D_B, branchId: BRANCH_B }] } },
+    });
+    const selector = scopeSelector(mixed, 'employee.view');
+    expect(selector.branchIds).toEqual([BRANCH_A]);
+    expect(selector.departmentIds).toEqual([D_B]);
+    expect(keyCoversUnit(mixed, 'employee.view', BRANCH_B, null)).toBe(false);
+    expect(keyCoversUnit(mixed, 'employee.view', BRANCH_B, D_B)).toBe(true);
+    // Narrowing to B keeps only the unit inside B: the department, not the branch.
+    const narrowed = scopeSelector({ ...mixed, activeBranchId: BRANCH_B }, 'employee.view');
+    expect(narrowed.branchIds).toBeUndefined();
+    expect(narrowed.departmentIds).toEqual([D_B]);
   });
 });
 
@@ -217,7 +289,7 @@ describe('the branch a caller is acting in (currentBranchId)', () => {
     const c = ctx({
       branchId: BRANCH_A,
       activeBranchId: BRANCH_B,
-      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] },
     });
     expect(currentBranchId(c)).toBe(BRANCH_B);
   });
@@ -227,18 +299,18 @@ describe('the branch a caller is acting in (currentBranchId)', () => {
   });
 
   it('is the only branch a reach names when the caller has no home', () => {
-    expect(currentBranchId(ctx({ reach: { branchIds: [BRANCH_B], departmentIds: [] } }))).toBe(BRANCH_B);
+    expect(currentBranchId(ctx({ reach: { branchIds: [BRANCH_B], departments: [] } }))).toBe(BRANCH_B);
   });
 
   it('is nothing for a multi-branch caller with no home who has not chosen', () => {
-    const c = ctx({ reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] } });
+    const c = ctx({ reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] } });
     expect(currentBranchId(c)).toBeNull();
   });
 
   it('ignores a choice outside the reach for a caller with no home', () => {
     const c = ctx({
       activeBranchId: '650000000000000000000099',
-      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] },
     });
     expect(currentBranchId(c)).toBeNull();
   });
@@ -246,7 +318,7 @@ describe('the branch a caller is acting in (currentBranchId)', () => {
 
 describe('reachesBranch', () => {
   it('is the home branch and every branch the grants reach', () => {
-    const c = ctx({ branchId: BRANCH_A, reach: { branchIds: [BRANCH_B], departmentIds: [] } });
+    const c = ctx({ branchId: BRANCH_A, reach: { branchIds: [BRANCH_B], departments: [] } });
     expect(reachesBranch(c, BRANCH_A)).toBe(true);
     expect(reachesBranch(c, BRANCH_B)).toBe(true);
     expect(reachesBranch(c, '650000000000000000000099')).toBe(false);
@@ -258,13 +330,13 @@ describe('the widest of several grants (widestScopeSelector)', () => {
     const c = ctx({
       branchId: BRANCH_A,
       permissions: { 'screening.view': 'branch', 'interview.view': 'organization' },
-      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] },
     });
     expect(widestScopeSelector(c, ['screening.view', 'interview.view']).scope).toBe('organization');
     const narrower = ctx({
       branchId: BRANCH_A,
       permissions: { 'screening.view': 'own', 'interview.view': 'branch' },
-      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] },
     });
     const selector = widestScopeSelector(narrower, ['screening.view', 'interview.view']);
     expect(selector.scope).toBe('branch');
@@ -280,8 +352,8 @@ describe('reach is read per key when the snapshot records it (ADR-032)', () => {
   const twoAndOne = ctx({
     branchId: BRANCH_A,
     permissions: { 'employee.view': 'branch', 'attendance.view': 'branch' },
-    reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
-    keyReach: { 'employee.view': { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] } },
+    reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] },
+    keyReach: { 'employee.view': { branchIds: [BRANCH_A, BRANCH_B], departments: [] } },
   });
 
   it('a key with an entry reaches its own sites; a key without one reaches home only', () => {
@@ -295,7 +367,7 @@ describe('reach is read per key when the snapshot records it (ADR-032)', () => {
     const old = ctx({
       branchId: BRANCH_A,
       permissions: { 'attendance.view': 'branch' },
-      reach: { branchIds: [BRANCH_A, BRANCH_B], departmentIds: [] },
+      reach: { branchIds: [BRANCH_A, BRANCH_B], departments: [] },
     });
     expect(scopeSelector(old, 'attendance.view').branchIds).toEqual([BRANCH_A, BRANCH_B]);
   });

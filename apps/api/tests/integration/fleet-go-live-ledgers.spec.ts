@@ -92,7 +92,7 @@ const VIOLATIONS = [
   fine({ driver: 'سائق مجهول', date_driver: { $date: '2025-04-01T00:00:00.000Z' } }),
   // A car the registry lacks, and a deleted row.
   company({ car_code: 'كوستر' }),
-  fine({ deleted: 1 }),
+  fine({ deleted: 1, deleted_date: { $date: '2025-12-31T00:00:00.000Z' } }),
 ];
 
 const accident = (over: Record<string, unknown>) => ({
@@ -114,7 +114,7 @@ const ACCIDENTS = [
   accident({ car_code: 'LG-2', culprit: 'سائق تاكسي', statement: '', amount_collected: '4650 من عبدالرحمن', paid: '', finsh_status_color: '0', notes: null }),
   accident({ date_accident: null }),
   accident({ car_code: 'تويوتا1' }),
-  accident({ deleted: 1 }),
+  accident({ deleted: 1, deleted_date: { $date: '2025-12-31T13:24:01.727Z' } }),
 ];
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -218,17 +218,20 @@ describe('the violations book', () => {
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
       vehicles: 2,
-      imported: 7,
+      imported: 10, // EVERY row of the book — the deleted fine included
       alreadyThere: 0,
       namesFilled: 0,
       grievancesWritten: 1,
       grievancesUnplaced: [],
       grievancesKept: [],
-      skippedDeleted: 1,
+      keptDeleted: 1,
+      deletedRows: 1,
+      unreadable: [],
       rejected: [],
       unknownCars: ['كوستر (1)'],
       zeroCount: ['LG-1 2025'],
-      unknownTypes: ['LG-1 2025: —'],
+      unknownTypes: ['LG-1 2025: —', 'LG-1 2025: —'],
+      typesCreated: ['company: غير محدد (مخالفات الشركة)'],
       grievanceConflicts: [],
       unmatchedDrivers: ['سائق مجهول'],
       ambiguousDrivers: [],
@@ -238,11 +241,20 @@ describe('the violations book', () => {
     const statements = rows.filter((r) => r.kind === 'vehicle');
     const fines = rows.filter((r) => r.kind === 'driver');
     expect(statements.map((r) => [r.year, r.count, r.unitValue, r.amount, r.collected])).toEqual([
+      [2025, 0, 550, 0, true], // the count of zero the book wrote — written, not dropped
       [2025, 9, 20, 180, false],
       [2025, 1, 550, 550, true],
       [2025, 1, 550, 550, true], // the second of two identical rows — both written
+      [2025, 1, 550, 550, true], // the one whose type nobody wrote
     ]);
-    expect(await typeName(statements[0]!.violationTypeId)).toBe('الانتظار في الممنوع');
+    expect(await typeName(statements[1]!.violationTypeId)).toBe('الانتظار في الممنوع');
+    // The two rows whose type the book left blank are filed under the one catalog row this step
+    // may add — nothing else in the violation types is touched («ما عدا أنواع المخالفات»).
+    const names = await Promise.all(statements.map((r) => typeName(r.violationTypeId)));
+    expect(names.filter((name) => name === 'غير محدد (مخالفات الشركة)')).toHaveLength(2);
+    expect(await FleetCatalogItemModel.countDocuments({ kind: 'violationType' }).exec()).toBe(
+      (await FleetCatalogItemModel.countDocuments({ kind: 'violationType', 'name.ar': { $ne: 'غير محدد (مخالفات الشركة)' } }).exec()) + 1,
+    );
     expect(fines.map((r) => [r.date?.toISOString().slice(0, 10), r.amount, r.collected])).toEqual([
       ['2025-03-06', 350, true],
       ['2025-03-06', 700, false],
@@ -255,6 +267,12 @@ describe('the violations book', () => {
     // The car the registry never had: its row is kept, by the book's code and no vehicle.
     expect(await FleetViolationModel.countDocuments({ vehicleId: null, vehicleCode: 'كوستر', isDeleted: false }).exec()).toBe(1);
     expect(String(rows[0]!.createdBy), 'authored by the seeded admin').toBe(adminId);
+    // The fine the old system had deleted is THERE, off every screen, keeping the day of it.
+    const gone = await FleetViolationModel.find({ vehicleId: await vehicleId('LG-1'), isDeleted: true })
+      .lean<{ kind: string; amount: number; deletedAt: Date | null }[]>()
+      .exec();
+    expect(gone.map((r) => [r.kind, r.amount])).toEqual([['driver', 700]]);
+    expect(gone[0]?.deletedAt).toEqual(new Date('2025-12-31T00:00:00.000Z'));
 
     const grievance = await FleetGrievanceModel.findOne({ vehicleId: await vehicleId('LG-1'), year: 2025 }).lean<{ totalBeforeGrievance: number }>().exec();
     expect(grievance?.totalBeforeGrievance).toBe(5000);
@@ -277,7 +295,12 @@ describe('the violations book', () => {
     expect(await FleetViolationModel.countDocuments({}).exec()).toBe(before);
     const doc = await run(VIOLATIONS_GO_LIVE_MARK);
     expect(doc?.status).toBe('done');
-    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 6, grievancesWritten: 0 });
+    expect(doc?.outcome).toMatchObject({
+      imported: 1,
+      alreadyThere: 9,
+      grievancesWritten: 0,
+      typesCreated: [], // the «غير محدد» row the first attempt added is found, not added again
+    });
     expect(await FleetGrievanceModel.countDocuments({}).exec(), 'the grievance figure, once').toBe(1);
   });
 });
@@ -290,9 +313,11 @@ describe('the accidents book', () => {
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
       vehicles: 3,
-      imported: 4,
+      imported: 5, // EVERY file in the book — the deleted one included
       alreadyThere: 0,
-      skippedDeleted: 1,
+      keptDeleted: 1,
+      deletedRows: 1,
+      unreadable: [],
       rejected: [],
       unknownCars: ['تويوتا1 (1)'],
       noDate: ['LG-1: احمد جمال'],
@@ -312,6 +337,12 @@ describe('the accidents book', () => {
     expect(open).toMatchObject({ culprit: 'سائق تاكسي', culpritEmployeeId: null, statement: NOT_STATED, amountCollected: 4650, paidAmount: 0, status: 'open', notes: null });
     // The car the registry never had: its file is kept, by the book's code and no vehicle.
     expect(await FleetAccidentModel.countDocuments({ vehicleId: null, vehicleCode: 'تويوتا1', isDeleted: false }).exec()).toBe(1);
+    // The file the old system had deleted is THERE, off every screen, keeping the day of it.
+    const gone = await FleetAccidentModel.find({ vehicleId: await vehicleId('LG-1'), isDeleted: true })
+      .lean<{ culprit: string; deletedAt: Date | null }[]>()
+      .exec();
+    expect(gone.map((a) => a.culprit)).toEqual(['احمد جمال']);
+    expect(gone[0]?.deletedAt).toEqual(new Date('2025-12-31T13:24:01.727Z'));
   });
 
   it('a later boot writes nothing at all', async () => {

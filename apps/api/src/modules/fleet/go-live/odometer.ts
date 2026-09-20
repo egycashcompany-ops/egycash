@@ -45,8 +45,12 @@ import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
  * v1 left out the rows of cars the registry never had, and left the driver empty where HR did
  * not know the spelling. v2 keeps both — the code and the name as text — and, over a database v1
  * already ran on, writes only the rows v1 skipped and fills the names into the rows it wrote.
+ * v3 leaves NOTHING out — «المهم تضيف كل الداتا ومتسبش داتا فاضيه»: the 747 rows the old system
+ * had deleted, which arrive deleted; the 837 with no opening reading, opened at the car's last
+ * known reading; and the one whose date is not a date. Over a database v2 ran on it writes those
+ * and relinks the rows either side of them.
  */
-export const ODOMETER_GO_LIVE_MARK = 'go-live:odometer:v2';
+export const ODOMETER_GO_LIVE_MARK = 'go-live:odometer:v3';
 
 /**
  * The vehicles' lease. Twenty thousand rows in 191 inserts is well under a minute; thirty
@@ -111,21 +115,22 @@ export const runOdometerGoLive = async (dataDir?: string): Promise<void> => {
   const drivers = await resolveDrivers(parsed.rows.flatMap((row) => [row.driver, row.driver2]));
   const plan = planOdometerImport(parsed.rows, await fleetVehicleRepository.codeIndex(), drivers.ids);
   const notes = {
-    skippedDeleted: parsed.skippedDeleted,
+    keptDeleted: parsed.keptDeleted,
+    unreadable: parsed.unreadable.slice(0, REPORT_CAP),
     rejected: parsed.rejected.slice(0, REPORT_CAP),
     unknownCars: plan.unknownCars,
-    noOutReading: plan.noOutReading,
-    noOutReadingRows: plan.noOutReadingRows.slice(0, REPORT_CAP),
+    openedByPrevious: plan.openedByPrevious,
     closedByNext: plan.closedByNext,
     badInReading: plan.badInReading,
+    deletedRows: plan.deleted,
     unmatchedDrivers: drivers.unmatched,
     ambiguousDrivers: drivers.ambiguous,
     placeholders: drivers.placeholders,
   };
-  if (parsed.rejected.length > 0 || plan.unknownCars.length > 0 || drivers.unmatched.length > 0) {
+  if (parsed.unreadable.length > 0 || plan.unknownCars.length > 0 || drivers.unmatched.length > 0) {
     logger.warn(
-      { rejected: parsed.rejected, unknownCars: plan.unknownCars, unmatchedDrivers: drivers.unmatched, ambiguousDrivers: drivers.ambiguous },
-      'fleet go-live: rows of the odometer book that name no car, no employee, or no date — imported without the driver, or skipped, and listed on the run',
+      { unreadable: parsed.unreadable, unknownCars: plan.unknownCars, unmatchedDrivers: drivers.unmatched, ambiguousDrivers: drivers.ambiguous },
+      'fleet go-live: rows of the odometer book that name no car, no employee, or no date — every one of them imported, the unreadable ones written deleted with the book’s own words in their notes, and all of them listed on the run',
     );
   }
 
@@ -143,6 +148,7 @@ export const runOdometerGoLive = async (dataDir?: string): Promise<void> => {
     imported: outcome.imported,
     alreadyThere: outcome.alreadyThere,
     namesFilled: outcome.namesFilled,
+    relinked: outcome.relinked,
     closedByExisting: outcome.closedByExisting,
     openConflicts: outcome.openConflicts,
     ...notes,

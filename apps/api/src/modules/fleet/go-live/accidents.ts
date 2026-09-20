@@ -33,8 +33,10 @@ import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 /**
  * The run key — versioned like the vehicles', and for the same reason. v2 keeps the files of
  * cars the registry never had and the files with no date, as the other books' v2 keep theirs.
+ * v3 leaves NOTHING out — «المهم تضيف كل الداتا ومتسبش داتا فاضيه»: the 12 files the old system
+ * had deleted, which arrive deleted, and the ones whose culprit or figures it could not read.
  */
-export const ACCIDENTS_GO_LIVE_MARK = 'go-live:accidents:v2';
+export const ACCIDENTS_GO_LIVE_MARK = 'go-live:accidents:v3';
 
 /** The vehicles' lease. Two hundred files is seconds. */
 export const ACCIDENTS_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -92,8 +94,10 @@ export const runAccidentsGoLive = async (dataDir?: string): Promise<void> => {
   const culprits = await resolveDrivers(parsed.accidents.map((row) => row.culprit), isNobodyCulprit);
   const plan = planAccidentsImport(parsed.accidents, await fleetVehicleRepository.codeIndex(), culprits.ids);
   const notes = {
-    skippedDeleted: parsed.skippedDeleted,
+    keptDeleted: parsed.keptDeleted,
+    unreadable: parsed.unreadable.slice(0, REPORT_CAP),
     rejected: parsed.rejected.slice(0, REPORT_CAP),
+    deletedRows: plan.deleted,
     unknownCars: plan.unknownCars,
     noDate: plan.noDate,
     statementFilled: plan.statementFilled,
@@ -102,9 +106,9 @@ export const runAccidentsGoLive = async (dataDir?: string): Promise<void> => {
     unmatchedCulprits: culprits.unmatched,
     ambiguousCulprits: culprits.ambiguous,
   };
-  if (parsed.rejected.length > 0 || plan.unknownCars.length > 0 || plan.noDate.length > 0) {
+  if (parsed.unreadable.length > 0 || plan.unknownCars.length > 0 || plan.noDate.length > 0) {
     logger.warn(
-      { rejected: parsed.rejected, unknownCars: plan.unknownCars, noDate: plan.noDate },
+      { unreadable: parsed.unreadable, unknownCars: plan.unknownCars, noDate: plan.noDate },
       'fleet go-live: files of the accidents book that name no car the registry has, or no date — kept by the book\'s code, or with no date, and listed on the run',
     );
   }

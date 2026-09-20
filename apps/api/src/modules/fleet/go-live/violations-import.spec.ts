@@ -40,11 +40,12 @@ describe('reading the export', () => {
   it('tells the two shapes apart by their keys and reads each in its own terms', () => {
     const parsed = parseViolations([company({}), driver({})]);
     expect(parsed.rejected).toEqual([]);
+    const kept = { deletion: { isDeleted: false, deletedAt: null }, unreadable: false };
     expect(parsed.company).toEqual([
-      { id: '694d465224bc82fd3d28a05d', code: '175', year: 2025, type: 'الانتظار في الممنوع', count: 9, unitValue: 20, collected: true, grievance: 0 },
+      { id: '694d465224bc82fd3d28a05d', code: '175', year: 2025, type: 'الانتظار في الممنوع', count: 9, unitValue: 20, collected: true, grievance: 0, ...kept },
     ]);
     expect(parsed.driver).toEqual([
-      { id: '694d46d324bc82fd3d28a06b', code: '175', date: new Date('2025-03-06T00:00:00.000Z'), type: 'سرعة', amount: 700, driver: 'احمد جمال عطية', collected: false },
+      { id: '694d46d324bc82fd3d28a06b', code: '175', date: new Date('2025-03-06T00:00:00.000Z'), type: 'سرعة', amount: 700, driver: 'احمد جمال عطية', collected: false, ...kept },
     ]);
   });
 
@@ -53,16 +54,28 @@ describe('reading the export', () => {
     expect(row).toMatchObject({ unitValue: 117.85, count: 1, type: null, grievance: 5000 });
   });
 
-  it('skips a deleted row and REPORTS one it cannot read', () => {
+  it('KEEPS a deleted row and every one it cannot read, and reports what could not be read', () => {
     const parsed = parseViolations([
-      company({ deleted: 1 }),
+      company({ deleted: 1, deleted_date: { $date: '2025-12-31T00:00:00.000Z' } }),
       company({ _id: 'no-car', car_code: '' }),
       company({ _id: 'bad-num', num: 'x' }),
       driver({ _id: 'bad-date', date_driver: null }),
       driver({ _id: 'bad-amount', amount: '' }),
     ]);
-    expect(parsed.skippedDeleted).toBe(1);
-    expect(parsed.rejected.map((r) => r.id)).toEqual(['no-car', 'bad-num', 'bad-date', 'bad-amount']);
+    expect(parsed.keptDeleted).toBe(1);
+    expect(parsed.company[0]?.deletion).toEqual({
+      isDeleted: true,
+      deletedAt: new Date('2025-12-31T00:00:00.000Z'),
+    });
+    expect(parsed.rejected, 'only a file that is not a list of rows is refused').toEqual([]);
+    expect(parsed.unreadable.map((r) => r.id)).toEqual(['no-car', 'bad-num', 'bad-date', 'bad-amount']);
+    expect(parsed.company.map((r) => r.id).slice(1), 'both statement rows are kept').toEqual(['no-car', 'bad-num']);
+    expect(parsed.driver.map((r) => r.id), 'both fines are kept').toEqual(['bad-date', 'bad-amount']);
+    expect(parsed.company[2], 'a count nobody can read is zero, and the row is written deleted').toMatchObject({
+      count: 0,
+      unreadable: true,
+    });
+    expect(parsed.driver[0]?.date, 'a fine whose day cannot be read keeps no day').toBeNull();
   });
 });
 
@@ -113,7 +126,7 @@ describe('turning the book into rows', () => {
     expect(plan.vehicles[0]!.rows).toHaveLength(2);
   });
 
-  it('skips and names: a count of zero, a blank type, a type on the wrong side — and KEEPS a car the registry lacks, by code', () => {
+  it('KEEPS and names: a count of zero, a blank type, a type on the wrong side — and a car the registry lacks, by code', () => {
     const plan = planViolationsImport(
       parseViolations([
         company({ num: '0', amount: '0' }),
@@ -126,11 +139,18 @@ describe('turning the book into rows', () => {
       TYPES,
       new Map(),
     );
-    expect(plan.zeroCount).toEqual(['175 2025']);
+    expect(plan.zeroCount, 'written with its zero, and named').toEqual(['175 2025']);
     expect(plan.unknownTypes).toEqual(['175 2025: —', '175 2025: سرعة', '175 2025-03-06: رسوم خدمة']);
     expect(plan.unknownCars).toEqual(['كوستر (1)']);
-    expect(plan.vehicles.map((v) => [v.code, v.ref, v.rows.length])).toEqual([['كوستر', { vehicleId: null, vehicleCode: 'كوستر' }, 1]]);
-    expect(plan.vehicles[0]!.rows[0]!.doc).toMatchObject({ vehicleId: null, vehicleCode: 'كوستر', year: 2025 });
+    expect(plan.vehicles.map((v) => [v.code, v.ref, v.rows.length])).toEqual([
+      ['175', { vehicleId: V175 }, 4],
+      ['كوستر', { vehicleId: null, vehicleCode: 'كوستر' }, 1],
+    ]);
+    expect(plan.vehicles[1]!.rows[0]!.doc).toMatchObject({ vehicleId: null, vehicleCode: 'كوستر', year: 2025 });
+    // The three rows whose type nobody wrote carry no type yet — «غير محدد» is a catalog row,
+    // and adding one is not something a pure plan may do. The write fills it in.
+    expect(plan.unspecifiedNeeded).toEqual(['company', 'driver']);
+    expect(plan.vehicles[0]!.rows.map((row) => row.unspecified)).toEqual([null, 'company', 'company', 'driver']);
   });
 
   it('a grievance figure on a car the registry lacks has no vehicle to hang on — listed, not written', () => {

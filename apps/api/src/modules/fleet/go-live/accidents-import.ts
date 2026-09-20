@@ -10,8 +10,11 @@
 //                        NAME through the         notes            → notes
 //                        directory                statement        → statement
 //
-// `added_by`, `added_date`, `edited_by`, `edited_date`, `deleted_user`, `deleted_date` and `__v`
-// are legacy bookkeeping and do not travel.
+// `added_by`, `added_date`, `edited_by`, `edited_date`, `deleted_user` and `__v` are legacy
+// bookkeeping and do not travel. `deleted` and `deleted_date` DO — a file the old system had
+// deleted arrives already deleted, carrying the day of it, and EVERY file in the book lands:
+// «المهم تضيف كل الداتا ومتسبش داتا فاضيه», «عاوزها موجوده والdeleted 1 زى ما هى». See
+// `legacy-row.ts`.
 //
 // THE CULPRIT IS BOTH A NAME AND A PERSON. The model keeps the name the book wrote — «who was at
 // fault» is sometimes «سائق تاكسي» and not an employee at all — and beside it the employee it
@@ -24,18 +27,29 @@
 // car the registry never had is written by the book's code (`book-ref.ts`).
 //
 // WHAT IS FILLED IN, and counted: a blank statement is written as «غير مذكور» — the model
-// requires one, and «not stated» is the truth of it; a blank amount is 0. An amount with words
-// after the number («4650 من عب…») is read for its number and the words are listed, so whoever
-// keeps the book can put them where they belong.
+// requires one, and «not stated» is the truth of it — and so is a blank CULPRIT and a car the
+// book named with no code; a blank amount is 0, and so is an amount that is not a number, with
+// the file written deleted so the figure is nobody's total until it is corrected. An amount with
+// words after the number («4650 من عب…») is read for its number and the words are listed, so
+// whoever keeps the book can put them where they belong.
 import { Types } from 'mongoose';
 import { fleetAccidentRepository } from '../accidents/accident.repository';
 import { type FleetAccidentDoc } from '../accidents/accident.model';
-import { day } from './odometer-import';
+import { day, NO_CODE } from './odometer-import';
 import { bookRefFields, bookRefOf, type BookRef } from './book-ref';
+import {
+  deletedFields,
+  deletionOf,
+  liveFields,
+  noteWith,
+  asWritten,
+  type LegacyBookkeeping,
+  type LegacyDeletion,
+} from './legacy-row';
 import { failureReason } from './vehicles-import';
 
 /** One legacy row, exactly as the export writes it. Everything is optional; nothing is trusted. */
-interface LegacyAccident {
+interface LegacyAccident extends LegacyBookkeeping {
   _id?: { $oid?: string } | string;
   car_code?: string;
   date_accident?: { $date?: string } | string | null;
@@ -46,7 +60,6 @@ interface LegacyAccident {
   paid?: string | number | null;
   finsh_status_color?: string | number;
   notes?: string | null;
-  deleted?: number;
 }
 
 export interface ParsedAccident {
@@ -62,11 +75,19 @@ export interface ParsedAccident {
   notes: string | null;
   /** Words the book wrote after an amount's number — «field: text». */
   amountNotes: string[];
+  /** The old system's own deletion, carried through untouched. */
+  deletion: LegacyDeletion;
+  /** The book says something the model cannot hold — the file is kept, and written deleted. */
+  unreadable: boolean;
 }
 
 export interface ParseAccidentsResult {
   accidents: ParsedAccident[];
-  skippedDeleted: number;
+  /** Files the old system had deleted — kept, deleted, and counted. */
+  keptDeleted: number;
+  /** Files kept but unreadable — «id · what could not be read». */
+  unreadable: { id: string; reason: string }[];
+  /** Only a file that is not a list of rows at all. */
   rejected: { id: string; reason: string }[];
 }
 
@@ -107,38 +128,60 @@ const legacyId = (value: LegacyAccident['_id'], index: number): string => {
   return `row ${index}`;
 };
 
-/** Read the export. A row that cannot be read is REPORTED by legacy id and reason, not refused. */
+/**
+ * What a blank statement — or a blank culprit — is written as. The model requires both, and
+ * «not stated» is the truth of it: the accident happened, and nobody wrote down who.
+ */
+export const NOT_STATED = 'غير مذكور';
+
+/** How each money column is named on the file when the book's own figure could not be read. */
+const AMOUNT_LABELS: Readonly<Record<string, string>> = {
+  companyCost: 'تكلفة الشركة',
+  amountCollected: 'المبلغ المحصَّل',
+  paidAmount: 'المبلغ المدفوع',
+};
+
+/**
+ * Read the export. NOTHING IS DROPPED: a file the book wrote badly is kept, marked, and carries
+ * the book's own words for whatever could not be read, so the file still says what it said.
+ */
 export const parseAccidents = (raw: unknown): ParseAccidentsResult => {
-  const result: ParseAccidentsResult = { accidents: [], skippedDeleted: 0, rejected: [] };
+  const result: ParseAccidentsResult = { accidents: [], keptDeleted: 0, unreadable: [], rejected: [] };
   if (!Array.isArray(raw)) {
     result.rejected.push({ id: 'file', reason: 'the export is not a JSON array' });
     return result;
   }
   raw.forEach((entry: LegacyAccident, index) => {
     const id = legacyId(entry._id, index);
-    if (entry.deleted === 1) {
-      result.skippedDeleted += 1;
-      return;
-    }
+    const deletion = deletionOf(entry);
+    if (deletion.isDeleted) result.keptDeleted += 1;
+    let unreadable = false;
+    let notes = text(entry.notes);
+    const cannotRead = (reason: string): void => {
+      unreadable = true;
+      result.unreadable.push({ id, reason });
+    };
+
     const code = text(entry.car_code);
-    if (code === null) {
-      result.rejected.push({ id, reason: 'no car code' });
-      return;
-    }
+    if (code === null) cannotRead('no car code');
     const culprit = text(entry.culprit);
-    if (culprit === null) {
-      result.rejected.push({ id, reason: `${code}: no culprit` });
-      return;
-    }
+    if (culprit === null) cannotRead(`${code ?? NO_CODE}: no culprit`);
+
     const amounts = {
       companyCost: money(entry.company_account),
       amountCollected: money(entry.amount_collected),
       paidAmount: money(entry.paid),
     };
-    const invalid = Object.entries(amounts).find(([, value]) => value === 'invalid');
-    if (invalid !== undefined) {
-      result.rejected.push({ id, reason: `${code}: ${invalid[0]} is not a number` });
-      return;
+    const raws: Record<string, unknown> = {
+      companyCost: entry.company_account,
+      amountCollected: entry.amount_collected,
+      paidAmount: entry.paid,
+    };
+    for (const [field, value] of Object.entries(amounts)) {
+      if (value !== 'invalid') continue;
+      cannotRead(`${code ?? NO_CODE}: ${field} is not a number`);
+      notes = noteWith(notes, asWritten(AMOUNT_LABELS[field] ?? field, raws[field]));
+      amounts[field as keyof typeof amounts] = { amount: null, rest: null };
     }
     const amountNotes: string[] = [];
     for (const [field, value] of Object.entries(amounts)) {
@@ -148,23 +191,22 @@ export const parseAccidents = (raw: unknown): ParseAccidentsResult => {
     const status = String(entry.finsh_status_color ?? '0').trim() === '1' ? 'closed' : 'open';
     result.accidents.push({
       id,
-      code,
+      code: code ?? NO_CODE,
       occurredAt: legacyDate(entry.date_accident),
-      culprit,
+      culprit: culprit ?? NOT_STATED,
       statement: text(entry.statement),
       companyCost: (amounts.companyCost as { amount: number | null }).amount,
       amountCollected: (amounts.amountCollected as { amount: number | null }).amount,
       paidAmount: (amounts.paidAmount as { amount: number | null }).amount,
       status,
-      notes: text(entry.notes),
+      notes,
       amountNotes,
+      deletion,
+      unreadable,
     });
   });
   return result;
 };
-
-/** What a blank statement is written as — the model requires one, and this is the truth of it. */
-export const NOT_STATED = 'غير مذكور';
 
 const ARABIC_LETTER = /[؀-ۿ]/;
 
@@ -184,6 +226,8 @@ export interface AccidentsPlan {
   noDate: string[];
   /** Files written with «غير مذكور» for a statement the book left blank. */
   statementFilled: number;
+  /** Files written deleted: the book's own deletions, and the ones it could not say readably. */
+  deleted: number;
   /** Amounts the book left blank, written as 0. */
   blankAmounts: number;
   /** Words the book wrote after an amount — «code date: field: text». */
@@ -207,6 +251,7 @@ export const planAccidentsImport = (
     unknownCars: [],
     noDate: [],
     statementFilled: 0,
+    deleted: 0,
     blankAmounts: 0,
     amountNotes: [],
   };
@@ -222,6 +267,8 @@ export const planAccidentsImport = (
     const when = row.occurredAt === null ? '—' : day(row.occurredAt);
     for (const note of row.amountNotes) plan.amountNotes.push(`${row.code} ${when}: ${note}`);
     const culpritId = culpritIdByName.get(row.culprit) ?? null;
+    const deleted = row.deletion.isDeleted || row.unreadable;
+    if (deleted) plan.deleted += 1;
     const doc: Partial<FleetAccidentDoc> = {
       ...bookRefFields(bookRefOf(row.code, vehicleIdByCode)),
       occurredAt: row.occurredAt,
@@ -233,6 +280,7 @@ export const planAccidentsImport = (
       paidAmount: row.paidAmount ?? 0,
       status: row.status,
       notes: row.notes,
+      ...(deleted ? deletedFields(row.deletion) : liveFields()),
     };
     const list = byCode.get(row.code) ?? [];
     list.push({ doc, key: accidentKey(doc as FleetAccidentDoc) });

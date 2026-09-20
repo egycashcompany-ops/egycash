@@ -100,7 +100,7 @@ const BOOK = [
   log({ car_code: 'WS-3', in_date: '2025-06-01', out_date: null, counter: '300' }),
   // A car the registry does not have, and a deleted row.
   log({ car_code: 'بجو', counter: '1' }),
-  log({ counter: '9', deleted: 1 }),
+  log({ counter: '9', deleted: 1, deleted_date: { $date: '2025-11-26T15:01:23.514Z' } }),
 ];
 
 const resolveMongoUri = async (): Promise<string> => {
@@ -207,7 +207,7 @@ describe('the run that can proceed', () => {
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
       vehicles: 4,
-      imported: 5,
+      imported: 9, // EVERY visit in the book — the deleted one and the contested open one too
       alreadyThere: 0,
       namesFilled: 0,
       counterFromOdometer: 1,
@@ -215,7 +215,9 @@ describe('the run that can proceed', () => {
       counterUnknown: [],
       openConflicts: ['WS-3 2025-06-01'],
       catalogCreated: ['workshop: تويوتا 2', 'workshop: غير محدد'],
-      skippedDeleted: 1,
+      keptDeleted: 1,
+      deletedRows: 1,
+      unreadable: [],
       rejected: [],
       unknownCars: ['بجو (1)'],
       outBeforeIn: ['WS-2 2025-05-13 → 2025-05-11'],
@@ -240,10 +242,34 @@ describe('the run that can proceed', () => {
     expect(await catalogName(visits[2]!.workshopId), 'a workshop the catalog lacked, added as written').toBe('تويوتا 2');
     expect(visits[3]!.notes).toBe('فاصلة كهرباء');
     expect(String(visits[0]!.createdBy), 'authored by the seeded admin').toBe(adminId);
-    expect((await visitsOf('WS-2')).length, 'no counter anywhere, left before it arrived — neither written').toBe(0);
+    // No counter anywhere, and left before it arrived: BOTH are written — the first with a
+    // counter of 0, which is visibly not a reading; the second with the two dates the book wrote,
+    // for the one person who can say which of them is the typo.
+    expect(
+      (await visitsOf('WS-2')).map((v) => [
+        v.inDate.toISOString().slice(0, 10),
+        v.outDate?.toISOString().slice(0, 10) ?? null,
+        v.odometerAtService,
+      ]),
+    ).toEqual([
+      ['2025-01-13', '2025-01-20', 0],
+      ['2025-05-13', '2025-05-11', 100],
+    ]);
     expect((await visitsOf('WS-3')).length, 'the new screen’s visit, and nothing invented beside it').toBe(1);
+    // …and the book's open visit is not lost for it: written DELETED, so the car is never in two
+    // workshops and the visit is still there to go back to.
+    const parked = await FleetMaintenanceVisitModel.find({ vehicleId: await vehicleId('WS-3'), isDeleted: true })
+      .lean<{ odometerAtService: number }[]>()
+      .exec();
+    expect(parked.map((v) => v.odometerAtService)).toEqual([300]);
     // The car the registry never had: its visit is kept, by the book's code and no vehicle.
     expect(await FleetMaintenanceVisitModel.countDocuments({ vehicleId: null, vehicleCode: 'بجو', odometerAtService: 1 }).exec()).toBe(1);
+    // The visit the old system had deleted is THERE, off every screen, keeping the day of it.
+    const gone = await FleetMaintenanceVisitModel.find({ vehicleId: await vehicleId('WS-1'), isDeleted: true })
+      .lean<{ odometerAtService: number; deletedAt: Date | null }[]>()
+      .exec();
+    expect(gone.map((v) => v.odometerAtService)).toEqual([9]);
+    expect(gone[0]?.deletedAt).toEqual(new Date('2025-11-26T15:01:23.514Z'));
   });
 
   it('a later boot writes nothing at all', async () => {
@@ -268,7 +294,7 @@ describe('a run that died is finished by the next boot, without writing a visit 
     expect((await visitsOf('WS-1')).map((v) => v.odometerAtService)).toEqual([6000, 5000, 7000, 8000]);
     const doc = await run();
     expect(doc?.status).toBe('done');
-    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 4, catalogCreated: [] });
+    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 8, catalogCreated: [] });
     expect(await FleetCatalogItemModel.countDocuments({ kind: 'workshop', 'name.ar': 'تويوتا 2' }).exec()).toBe(1);
   });
 });

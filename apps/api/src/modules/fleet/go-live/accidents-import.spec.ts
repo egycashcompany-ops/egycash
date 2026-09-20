@@ -35,6 +35,8 @@ describe('reading the export', () => {
         status: 'closed',
         notes: 'تم الاصلاح',
         amountNotes: [],
+        deletion: { isDeleted: false, deletedAt: null },
+        unreadable: false,
       },
     ]);
   });
@@ -50,19 +52,32 @@ describe('reading the export', () => {
     expect(parseAccidents([legacy({ date_accident: null })]).accidents[0]?.occurredAt).toBeNull();
   });
 
-  it('skips a deleted row and REPORTS one it cannot read', () => {
+  it('KEEPS a deleted file and every one it cannot read, and reports what could not be read', () => {
     const parsed = parseAccidents([
-      legacy({ deleted: 1 }),
+      legacy({ deleted: 1, deleted_date: { $date: '2025-12-31T13:24:01.727Z' } }),
       legacy({ _id: 'no-car', car_code: null }),
       legacy({ _id: 'no-culprit', culprit: ' ' }),
       legacy({ _id: 'bad-money', paid: 'x' }),
     ]);
-    expect(parsed.skippedDeleted).toBe(1);
-    expect(parsed.rejected).toEqual([
+    expect(parsed.keptDeleted).toBe(1);
+    expect(parsed.accidents[0]?.deletion).toEqual({
+      isDeleted: true,
+      deletedAt: new Date('2025-12-31T13:24:01.727Z'),
+    });
+    expect(parsed.rejected, 'only a file that is not a list of rows is refused').toEqual([]);
+    expect(parsed.unreadable).toEqual([
       { id: 'no-car', reason: 'no car code' },
       { id: 'no-culprit', reason: '193: no culprit' },
       { id: 'bad-money', reason: '193: paidAmount is not a number' },
     ]);
+    expect(parsed.accidents.map((a) => a.id).slice(1)).toEqual(['no-car', 'no-culprit', 'bad-money']);
+    expect(parsed.accidents[1]?.code, 'never an empty column').toBe('بدون كود');
+    expect(parsed.accidents[2]?.culprit, 'nobody wrote down who').toBe(NOT_STATED);
+    expect(parsed.accidents[3]).toMatchObject({
+      paidAmount: null,
+      notes: 'تم الاصلاح · المبلغ المدفوع فى الدفتر القديم: «x»',
+      unreadable: true,
+    });
   });
 });
 

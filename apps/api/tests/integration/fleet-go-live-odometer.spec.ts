@@ -22,6 +22,8 @@ import { branchService } from '../../src/platform/organization';
 import { getDirectoryNameSource } from '../../src/platform/directory';
 import { FleetVehicleModel } from '../../src/modules/fleet/vehicles/vehicle.model';
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
+import { fleetOdometerRepository } from '../../src/modules/fleet/odometer/odometer.repository';
+import { fleetOdometerService } from '../../src/modules/fleet/odometer/odometer.service';
 import { FleetGoLiveRunModel } from '../../src/modules/fleet/go-live/go-live-run.model';
 import { runVehicleGoLive } from '../../src/modules/fleet/go-live/vehicles';
 import { CARS_LOG_FILE, ODOMETER_GO_LIVE_MARK, runOdometerGoLive } from '../../src/modules/fleet/go-live/odometer';
@@ -71,7 +73,13 @@ const BOOK = [
   log({ date: { $date: '2025-11-26T00:00:00.000Z' }, out_num: '1050', in_num: '', driver: 'احتياطى' }),
   log({ date: { $date: '2025-11-27T00:00:00.000Z' }, out_num: '1100', in_num: '0', driver: 'سائق غير موجود' }),
   log({ date: { $date: '2025-11-28T00:00:00.000Z' }, out_num: '', in_num: '1150' }),
-  log({ date: { $date: '2025-11-29T00:00:00.000Z' }, out_num: '9999', in_num: '9999', deleted: 1 }),
+  log({
+    date: { $date: '2025-11-29T00:00:00.000Z' },
+    out_num: '9999',
+    in_num: '9999',
+    deleted: 1,
+    deleted_date: { $date: '2025-12-05T00:00:00.000Z' },
+  }),
   log({ date: { $date: '2025-11-30T00:00:00.000Z' }, out_num: '1150', in_num: '', driver: 'عمرو عنتر', notes: 'اسوان' }),
   // ODO-2: the company has recorded a reading on the new screen AFTER the book — the tail joins it.
   log({ car_code: 'ODO-2', date: { $date: '2025-12-01T00:00:00.000Z' }, out_num: '500', in_num: '' }),
@@ -181,14 +189,16 @@ describe('the run that can proceed', () => {
     expect(doc?.status, 'done').toBe('done');
     expect(doc?.outcome).toMatchObject({
       vehicles: 4,
-      imported: 6,
+      imported: 9, // EVERY row of the book — the deleted one and the conflicting tail included
       alreadyThere: 0,
       namesFilled: 0,
-      skippedDeleted: 1,
+      relinked: 0,
+      keptDeleted: 1,
+      deletedRows: 1,
+      unreadable: [],
       rejected: [],
       unknownCars: ['تويوتا1 (1)'],
-      noOutReading: 1,
-      noOutReadingRows: ['ODO-1 2025-11-28'],
+      openedByPrevious: 1,
       closedByNext: 2,
       badInReading: 1,
       closedByExisting: 1,
@@ -202,7 +212,8 @@ describe('the run that can proceed', () => {
     expect(chain.map((row) => [row.outReading, row.inReading, row.km])).toEqual([
       [1000, 1050, 50],
       [1050, 1100, 50], // closed by the next row's opening reading
-      [1100, 1150, 50], // «0» is no reading — closed the same way
+      [1100, 1100, 0], // «0» is no reading — closed by the row that follows, which opens here
+      [1100, 1150, 50], // the row the book left with NO opening reading, opened where the car was
       [1150, null, null], // the tail stays open
     ]);
     expect(String(chain[0]?.driver1EmployeeId), 'the full name, an exited employee still').toBe(String(employeeIds.full));
@@ -210,6 +221,14 @@ describe('the run that can proceed', () => {
     expect(chain[2]?.driver1EmployeeId, 'a name HR does not have is no employee').toBeNull();
     expect(chain[2]?.driver1Name, '…but the name is KEPT on the row, as text').toBe('سائق غير موجود');
     expect(chain[0]?.driver1Name, 'never beside an employee').toBeNull();
+    // The row the old system had deleted is THERE — off the chain, off the screen, and keeping
+    // the day it was deleted on: «عاوزها موجوده والdeleted 1 زى ما هى».
+    const gone = await FleetOdometerLogModel.find({ vehicleId: await vehicleId('ODO-1'), isDeleted: true })
+      .lean<{ outReading: number; inReading: number | null; deletedAt: Date | null; deletedBy: Types.ObjectId | null }[]>()
+      .exec();
+    expect(gone.map((row) => [row.outReading, row.inReading])).toEqual([[9999, 9999]]);
+    expect(gone[0]?.deletedAt, 'the day the old system deleted it').toEqual(new Date('2025-12-05T00:00:00.000Z'));
+    expect(gone[0]?.deletedBy, 'by somebody this system has no user for').toBeNull();
     // The car the registry never had: its row is kept, by the book's code and no vehicle.
     const orphan = await FleetOdometerLogModel.find({ vehicleId: null, vehicleCode: 'تويوتا1', isDeleted: false })
       .lean<{ outReading: number; inReading: number | null }[]>()
@@ -228,6 +247,24 @@ describe('the run that can proceed', () => {
     ]);
     const conflict = await chainOf('ODO-3');
     expect(conflict.map((row) => [row.outReading, row.inReading]), 'nothing was invented to join them').toEqual([[100, null]]);
+    // …and the book's row is not lost for it: it is written DELETED, so the car keeps its one
+    // open period and the reading is still there to go back to — «بس ميحصلش تعارض».
+    const parked = await FleetOdometerLogModel.find({ vehicleId: await vehicleId('ODO-3'), isDeleted: true })
+      .lean<{ outReading: number; inReading: number | null }[]>()
+      .exec();
+    expect(parked.map((row) => [row.outReading, row.inReading])).toEqual([[700, null]]);
+  });
+
+  it('NOTHING that is deleted reaches a screen — «الداتا اللى ممسوحه متظهرش للمستخدم تبقى فى الداتا بيز فقط»', async () => {
+    // The list the screen reads, unfiltered: every row it can show, for every car.
+    const page = await fleetOdometerService.list({ page: 1, pageSize: 200, sortDir: 'desc' });
+    expect(await FleetOdometerLogModel.countDocuments({}).exec(), 'in the database').toBe(11);
+    expect(await FleetOdometerLogModel.countDocuments({ isDeleted: true }).exec(), 'two of them deleted').toBe(2);
+    expect(page.meta.totalItems, 'and the screen shows neither').toBe(9);
+    expect(page.items.some((row) => row.isDeleted), 'not one deleted row on the page').toBe(false);
+    // The alarm engine measures from the same rows the screen shows — and no others.
+    const latest = await fleetOdometerRepository.latestReadings([String(await vehicleId('ODO-1'))]);
+    expect(latest.get(String(await vehicleId('ODO-1')))?.reading, 'never the deleted row’s 9999').toBe(1150);
   });
 
   it('a later boot writes nothing at all', async () => {
@@ -245,21 +282,28 @@ describe('a run that died is finished by the next boot, without writing a row tw
       { $set: { status: 'running', leaseUntil: new Date(Date.now() - 60_000), finishedAt: null, outcome: null } },
     ).exec();
     // One row removed underneath it — the shape a run killed mid-car leaves behind.
-    await FleetOdometerLogModel.deleteOne({ vehicleId: await vehicleId('ODO-1'), outReading: 1100 }).exec();
-    expect((await chainOf('ODO-1')).length).toBe(3);
+    await FleetOdometerLogModel.deleteOne({
+      vehicleId: await vehicleId('ODO-1'),
+      date: new Date('2025-11-27T00:00:00.000Z'),
+    }).exec();
+    expect((await chainOf('ODO-1')).length).toBe(4);
 
     await runOdometerGoLive(dataDir);
 
-    expect((await chainOf('ODO-1')).map((row) => row.outReading)).toEqual([1000, 1050, 1100, 1150]);
+    expect((await chainOf('ODO-1')).map((row) => row.outReading)).toEqual([1000, 1050, 1100, 1100, 1150]);
     const doc = await run();
     expect(doc?.status).toBe('done');
-    expect(doc?.outcome).toMatchObject({ imported: 1, alreadyThere: 5 });
+    expect(doc?.outcome, 'the deleted row counts as written too, or it would land twice').toMatchObject({
+      imported: 1,
+      alreadyThere: 8,
+    });
   });
 
   it('fills the book’s name into a row an earlier run wrote with the driver empty — and nothing else', async () => {
     // The shape v1 left behind: the row is there, HR did not know the spelling, the driver is empty.
     const [, , third] = await chainOf('ODO-1');
     await FleetOdometerLogModel.updateOne({ _id: third!._id }, { $set: { driver1Name: null } }).exec();
+    expect(third?.outReading, 'the row whose driver HR does not know').toBe(1100);
     await FleetGoLiveRunModel.updateOne(
       { key: ODOMETER_GO_LIVE_MARK },
       { $set: { status: 'running', leaseUntil: new Date(Date.now() - 60_000), finishedAt: null, outcome: null } },
@@ -268,7 +312,7 @@ describe('a run that died is finished by the next boot, without writing a row tw
     await runOdometerGoLive(dataDir);
 
     expect((await chainOf('ODO-1'))[2]?.driver1Name).toBe('سائق غير موجود');
-    expect((await run())?.outcome).toMatchObject({ imported: 0, alreadyThere: 6, namesFilled: 1 });
+    expect((await run())?.outcome).toMatchObject({ imported: 0, alreadyThere: 9, namesFilled: 1 });
   });
 
   it('does NOT take over a lease that is still live', async () => {
@@ -276,11 +320,14 @@ describe('a run that died is finished by the next boot, without writing a row tw
       { key: ODOMETER_GO_LIVE_MARK },
       { $set: { status: 'running', leaseUntil: new Date(Date.now() + 60_000) } },
     ).exec();
-    await FleetOdometerLogModel.deleteOne({ vehicleId: await vehicleId('ODO-1'), outReading: 1100 }).exec();
+    await FleetOdometerLogModel.deleteOne({
+      vehicleId: await vehicleId('ODO-1'),
+      date: new Date('2025-11-27T00:00:00.000Z'),
+    }).exec();
 
     await runOdometerGoLive(dataDir);
 
-    expect((await chainOf('ODO-1')).length, 'nothing was written under a live lease').toBe(3);
+    expect((await chainOf('ODO-1')).length, 'nothing was written under a live lease').toBe(4);
     expect((await run())?.status).toBe('running');
   });
 });

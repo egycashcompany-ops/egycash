@@ -42,8 +42,11 @@ import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 /**
  * The run key — versioned like the vehicles', and for the same reason. v2 keeps the visits of
  * cars the registry never had and the drivers' names HR does not know, as the odometer's v2 does.
+ * v3 leaves NOTHING out — «المهم تضيف كل الداتا ومتسبش داتا فاضيه»: the 133 visits the old system
+ * had deleted, which arrive deleted; the ones that left before they arrived; the ones with no
+ * counter anywhere, written as 0; and the ones whose dates it could not read.
  */
-export const MAINTENANCE_GO_LIVE_MARK = 'go-live:maintenance:v2';
+export const MAINTENANCE_GO_LIVE_MARK = 'go-live:maintenance:v3';
 
 /** The vehicles' lease. 1,800 visits with a counter look-up apiece is well under a minute. */
 export const MAINTENANCE_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -109,18 +112,20 @@ export const runMaintenanceGoLive = async (dataDir?: string): Promise<void> => {
   );
   const plan = planMaintenanceImport(parsed.visits, await fleetVehicleRepository.codeIndex(), drivers.ids);
   const notes = {
-    skippedDeleted: parsed.skippedDeleted,
+    keptDeleted: parsed.keptDeleted,
+    unreadable: parsed.unreadable.slice(0, REPORT_CAP),
     rejected: parsed.rejected.slice(0, REPORT_CAP),
+    deletedRows: plan.deleted,
     unknownCars: plan.unknownCars,
     outBeforeIn: plan.outBeforeIn,
     unmatchedDrivers: drivers.unmatched,
     ambiguousDrivers: drivers.ambiguous,
     placeholders: drivers.placeholders,
   };
-  if (parsed.rejected.length > 0 || plan.unknownCars.length > 0 || plan.outBeforeIn.length > 0 || drivers.unmatched.length > 0) {
+  if (parsed.unreadable.length > 0 || plan.unknownCars.length > 0 || plan.outBeforeIn.length > 0 || drivers.unmatched.length > 0) {
     logger.warn(
-      { rejected: parsed.rejected, unknownCars: plan.unknownCars, outBeforeIn: plan.outBeforeIn, unmatchedDrivers: drivers.unmatched, ambiguousDrivers: drivers.ambiguous },
-      'fleet go-live: rows of the workshop book that name no car, no employee, or no readable date — imported without the driver, or skipped, and listed on the run',
+      { unreadable: parsed.unreadable, unknownCars: plan.unknownCars, outBeforeIn: plan.outBeforeIn, unmatchedDrivers: drivers.unmatched, ambiguousDrivers: drivers.ambiguous },
+      'fleet go-live: rows of the workshop book that name no car, no employee, or no readable date — every one of them imported, the unreadable ones written deleted with the book’s own words in their notes, and all of them listed on the run',
     );
   }
 

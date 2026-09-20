@@ -33,8 +33,11 @@ import {
 /**
  * The run key — versioned like the vehicles', and for the same reason. v2 keeps the rows of cars
  * the registry never had and the drivers' names HR does not know, as the odometer's v2 does.
+ * v3 leaves NOTHING out — «المهم تضيف كل الداتا ومتسبش داتا فاضيه»: the 86 rows the old system
+ * had deleted, which arrive deleted; the statement rows counted zero; and the rows whose type
+ * nobody wrote, filed under «غير محدد».
  */
-export const VIOLATIONS_GO_LIVE_MARK = 'go-live:violations:v2';
+export const VIOLATIONS_GO_LIVE_MARK = 'go-live:violations:v3';
 
 /** The vehicles' lease. A thousand rows in a hundred inserts is seconds. */
 export const VIOLATIONS_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
@@ -95,8 +98,10 @@ export const runViolationsGoLive = async (dataDir?: string): Promise<void> => {
     drivers.ids,
   );
   const notes = {
-    skippedDeleted: parsed.skippedDeleted,
+    keptDeleted: parsed.keptDeleted,
+    unreadable: parsed.unreadable.slice(0, REPORT_CAP),
     rejected: parsed.rejected.slice(0, REPORT_CAP),
+    deletedRows: plan.deleted,
     unknownCars: plan.unknownCars,
     grievancesUnplaced: plan.grievancesUnplaced,
     zeroCount: plan.zeroCount,
@@ -106,9 +111,9 @@ export const runViolationsGoLive = async (dataDir?: string): Promise<void> => {
     ambiguousDrivers: drivers.ambiguous,
     placeholders: drivers.placeholders,
   };
-  if (parsed.rejected.length > 0 || plan.unknownCars.length > 0 || plan.unknownTypes.length > 0 || drivers.unmatched.length > 0) {
+  if (parsed.unreadable.length > 0 || plan.unknownCars.length > 0 || plan.unknownTypes.length > 0 || drivers.unmatched.length > 0) {
     logger.warn(
-      { rejected: parsed.rejected, unknownCars: plan.unknownCars, unknownTypes: plan.unknownTypes, unmatchedDrivers: drivers.unmatched, ambiguousDrivers: drivers.ambiguous },
+      { unreadable: parsed.unreadable, unknownCars: plan.unknownCars, unknownTypes: plan.unknownTypes, unmatchedDrivers: drivers.unmatched, ambiguousDrivers: drivers.ambiguous },
       'fleet go-live: rows of the violations book that name no car, no type on that side, or no employee — imported without the driver, or skipped, and listed on the run',
     );
   }
@@ -129,6 +134,7 @@ export const runViolationsGoLive = async (dataDir?: string): Promise<void> => {
     namesFilled: outcome.namesFilled,
     grievancesWritten: outcome.grievancesWritten,
     grievancesKept: outcome.grievancesKept,
+    typesCreated: outcome.typesCreated,
     ...notes,
   };
   if (outcome.failures.length > 0) {

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   day,
   isPlaceholderDriver,
+  NO_CODE,
   parseCarsLog,
   planOdometerImport,
   type ParsedLogRow,
@@ -37,14 +38,24 @@ describe('reading the export', () => {
         driver: 'امير محمد محمد احمدصالح',
         driver2: null,
         notes: 'اسوان',
+        deletion: { isDeleted: false, deletedAt: null },
+        unreadable: false,
       },
     ]);
   });
 
-  it('skips a row the old system had deleted, and counts it', () => {
-    const parsed = parseCarsLog([legacy({ deleted: 1 }), legacy({ _id: 'b' })]);
-    expect(parsed.skippedDeleted).toBe(1);
-    expect(parsed.rows.map((row) => row.id)).toEqual(['b']);
+  it('KEEPS a row the old system had deleted, carrying its deletion and the day of it', () => {
+    const parsed = parseCarsLog([
+      legacy({ deleted: 1, deleted_date: { $date: '2025-11-30T09:49:22.422Z' } }),
+      legacy({ _id: 'b' }),
+    ]);
+    expect(parsed.keptDeleted).toBe(1);
+    expect(parsed.rows.map((row) => row.id)).toEqual(['6925b5826d45d31087261e9e', 'b']);
+    expect(parsed.rows[0]?.deletion).toEqual({
+      isDeleted: true,
+      deletedAt: new Date('2025-11-30T09:49:22.422Z'),
+    });
+    expect(parsed.rows[1]?.deletion).toEqual({ isDeleted: false, deletedAt: null });
   });
 
   it('a blank reading is NO reading — not zero', () => {
@@ -53,7 +64,7 @@ describe('reading the export', () => {
     expect(row?.in).toBeNull();
   });
 
-  it('REPORTS a row it cannot read, by legacy id, and reads the rest', () => {
+  it('KEEPS a row it cannot read — every one of them — and reports what could not be read', () => {
     const parsed = parseCarsLog([
       legacy({ _id: 'garbage-date', date: { $date: { $numberLong: '-62071747200000' } } }),
       legacy({ _id: 'year-zero', date: '0000-12-31T00:00:00.000Z' }),
@@ -61,9 +72,33 @@ describe('reading the export', () => {
       legacy({ _id: 'not-a-number', out_num: '12a' }),
       legacy({ _id: 'fine' }),
     ]);
-    expect(parsed.rejected.map((r) => r.id)).toEqual(['garbage-date', 'year-zero', 'no-car', 'not-a-number']);
-    expect(parsed.rejected[0]?.reason).toBe('176: the date cannot be read'.replace('176', '150'));
-    expect(parsed.rows.map((row) => row.id)).toEqual(['fine']);
+    expect(parsed.unreadable.map((r) => r.id)).toEqual(['garbage-date', 'year-zero', 'no-car', 'not-a-number']);
+    expect(parsed.unreadable[0]?.reason).toBe('150: the date cannot be read');
+    expect(parsed.rejected, 'only a file that is not a list of rows is refused').toEqual([]);
+    expect(parsed.rows.map((row) => row.id)).toEqual([
+      'garbage-date',
+      'year-zero',
+      'no-car',
+      'not-a-number',
+      'fine',
+    ]);
+  });
+
+  it('a row with no car code still names a car — never an empty column', () => {
+    const [row] = parseCarsLog([legacy({ car_code: '' })]).rows;
+    expect(row?.code).toBe(NO_CODE);
+    expect(row?.unreadable).toBe(true);
+  });
+
+  it('quotes what the book wrote where the model cannot hold it, and falls back to the day the row was added', () => {
+    const [row] = parseCarsLog([
+      legacy({ date: '0000-12-31T00:00:00.000Z', added_date: { $date: '2025-11-25T00:00:00.000Z' }, out_num: '12a', notes: 'اسوان' }),
+    ]).rows;
+    expect(row?.date).toEqual(new Date('2025-11-25T00:00:00.000Z'));
+    expect(row?.out, 'a reading that is not a number is NO reading — the chain supplies one').toBeNull();
+    expect(row?.notes).toBe(
+      'اسوان · التاريخ فى الدفتر القديم: «0000-12-31T00:00:00.000Z» · قراءة الخروج فى الدفتر القديم: «12a»',
+    );
   });
 
   it('refuses a file that is not an array', () => {
@@ -90,6 +125,8 @@ const row = (over: Partial<ParsedLogRow>): ParsedLogRow => ({
   driver: null,
   driver2: null,
   notes: null,
+  deletion: { isDeleted: false, deletedAt: null },
+  unreadable: false,
   ...over,
 });
 
@@ -152,15 +189,72 @@ describe('turning the ledger into a chain', () => {
     expect(plan.closedByNext).toBe(0);
   });
 
-  it('a row with NO opening reading cannot be a period — skipped, counted and named', () => {
+  it('a row with NO opening reading opens at the car’s last known reading, and is counted', () => {
     const plan = planOdometerImport(
-      [row({ id: 'a', out: null, in: 150 }), row({ id: 'b', date: new Date('2025-11-26T00:00:00.000Z'), out: 150, in: 200 })],
+      [
+        row({ id: 'a', out: 100, in: 150 }),
+        row({ id: 'b', date: new Date('2025-11-26T00:00:00.000Z'), out: null, in: 200 }),
+      ],
       REGISTRY,
       new Map(),
     );
-    expect(plan.noOutReading).toBe(1);
-    expect(plan.noOutReadingRows).toEqual(['150 2025-11-25']);
-    expect(plan.vehicles[0]?.rows).toHaveLength(1);
+    expect(plan.vehicles[0]?.rows.map((r) => [r.out, r.in])).toEqual([[100, 150], [150, 200]]);
+    expect(plan.openedByPrevious).toBe(1);
+  });
+
+  it('the FIRST row of a car, with no opening reading, opens at its own closing one — no distance, every other fact kept', () => {
+    const plan = planOdometerImport(
+      [row({ id: 'a', out: null, in: 150, driver: 'سائق', notes: 'اسوان' })],
+      REGISTRY,
+      new Map(),
+    );
+    expect(plan.vehicles[0]?.rows.map((r) => [r.out, r.in])).toEqual([[150, 150]]);
+    expect(plan.vehicles[0]?.rows[0]?.notes).toBe('اسوان');
+    expect(plan.openedByPrevious).toBe(1);
+  });
+
+  it('a row with NO reading at all is still a row — it opens where the car had got to', () => {
+    const plan = planOdometerImport(
+      [
+        row({ id: 'a', out: 100, in: 150 }),
+        row({ id: 'b', date: new Date('2025-11-26T00:00:00.000Z'), out: null, in: null, driver: 'سائق' }),
+        row({ id: 'c', date: new Date('2025-11-27T00:00:00.000Z'), out: 200, in: 260 }),
+      ],
+      REGISTRY,
+      new Map(),
+    );
+    expect(plan.vehicles[0]?.rows.map((r) => [r.out, r.in])).toEqual([[100, 150], [150, 200], [200, 260]]);
+  });
+
+  it('a row the old system deleted is KEPT, off the chain: it hands nothing on and nothing closes it', () => {
+    const plan = planOdometerImport(
+      [
+        row({ id: 'a', out: 100, in: 150 }),
+        row({
+          id: 'gone',
+          date: new Date('2025-11-26T00:00:00.000Z'),
+          out: 500,
+          in: null,
+          deletion: { isDeleted: true, deletedAt: new Date('2025-11-30T00:00:00.000Z') },
+        }),
+        row({ id: 'c', date: new Date('2025-11-27T00:00:00.000Z'), out: 150, in: 200 }),
+      ],
+      REGISTRY,
+      new Map(),
+    );
+    expect(plan.vehicles[0]?.rows.map((r) => [r.out, r.in, r.deleted])).toEqual([
+      [100, 150, false],
+      [500, null, true],
+      [150, 200, false],
+    ]);
+    expect(plan.deleted).toBe(1);
+    expect(plan.vehicles[0]?.rows[1]?.deletion.deletedAt).toEqual(new Date('2025-11-30T00:00:00.000Z'));
+  });
+
+  it('a row the model cannot hold as written is kept the same way — deleted, so it contests nothing', () => {
+    const plan = planOdometerImport([row({ id: 'a', unreadable: true, out: 100, in: null })], REGISTRY, new Map());
+    expect(plan.vehicles[0]?.rows[0]?.deleted).toBe(true);
+    expect(plan.deleted).toBe(1);
   });
 
   it('a car the registry does not have KEEPS its rows, by the book’s code, and is listed with its row count', () => {

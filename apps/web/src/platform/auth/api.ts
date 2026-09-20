@@ -5,12 +5,15 @@ import {
   type SessionDto,
   type UpdateMyPreferences,
 } from '@ecms/contracts';
-import { api, del, patch, post, setAccessToken } from '../../shared/lib/api-client';
+import { api, del, patch, post, setAccessToken, setIdleMinutes } from '../../shared/lib/api-client';
 
 /** Login by ANY enabled identifier — username, employee code, or email (auth design 4.3). */
 export const loginRequest = async (identifier: string, password: string): Promise<LoginResponse> => {
   const response = await post<LoginResponse>('/auth/login', { identifier, password });
-  if (!response.totpRequired) setAccessToken(response.accessToken);
+  if (!response.totpRequired) {
+    setAccessToken(response.accessToken);
+    setIdleMinutes(response.idleMinutes);
+  }
   return response;
 };
 
@@ -19,7 +22,10 @@ export const totpChallengeRequest = async (
   code: string,
 ): Promise<LoginResponse> => {
   const response = await post<LoginResponse>('/auth/totp/challenge', { challengeToken, code });
-  if (!response.totpRequired) setAccessToken(response.accessToken);
+  if (!response.totpRequired) {
+    setAccessToken(response.accessToken);
+    setIdleMinutes(response.idleMinutes);
+  }
   return response;
 };
 
@@ -52,7 +58,10 @@ export const completePortalChallenge = async (
     phone,
     code,
   });
-  if (!response.totpRequired) setAccessToken(response.accessToken);
+  if (!response.totpRequired) {
+    setAccessToken(response.accessToken);
+    setIdleMinutes(response.idleMinutes);
+  }
   return response;
 };
 
@@ -83,8 +92,12 @@ export const logoutRequest = async (): Promise<void> => {
 /** Session bootstrap: try a silent refresh, then load the identity. */
 export const bootstrapSession = async (): Promise<MeDto | null> => {
   try {
-    const { accessToken } = await post<{ accessToken: string }>('/auth/refresh', {});
+    const { accessToken, idleMinutes } = await post<{
+      accessToken: string;
+      idleMinutes: number;
+    }>('/auth/refresh', {});
     setAccessToken(accessToken);
+    setIdleMinutes(idleMinutes);
     return await fetchMe();
   } catch {
     return null;

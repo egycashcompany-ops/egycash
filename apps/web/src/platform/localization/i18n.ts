@@ -4,6 +4,16 @@
 import { type Locale } from '@ecms/contracts';
 
 const en: Record<string, string> = {
+  // The inactivity window (`SESSION_IDLE_MINUTES`). Worded for somebody who stepped away, not
+  // for somebody who did something wrong.
+  'auth.idle.warningTitle': 'Still there?',
+  'auth.idle.warningBody': 'Your session closes in {{seconds}} seconds.',
+  'auth.idle.warningHint':
+    'Sessions close after a while without activity. Anything typed and not saved would be lost, so choose «Stay signed in» to keep going.',
+  'auth.idle.staySignedIn': 'Stay signed in',
+  'auth.idle.signOutNow': 'Sign out now',
+  'auth.idle.signedOutNotice':
+    'Your session was closed after a period of inactivity. Sign in to continue.',
   // Auth / shell (platform)
   'platform.auth.login.title': 'Sign in to ECMS',
   'platform.auth.login.email': 'Email',
@@ -6730,6 +6740,15 @@ const en: Record<string, string> = {
 };
 
 const ar: Record<string, string> = {
+  // مهلة عدم النشاط. الصياغة لواحد قام من مكتبه، مش لواحد عمل غلط.
+  'auth.idle.warningTitle': 'لسه موجود؟',
+  'auth.idle.warningBody': 'الجلسة هتتقفل خلال {{seconds}} ثانية.',
+  'auth.idle.warningHint':
+    'الجلسة بتتقفل بعد فترة من غير نشاط. أي حاجة كاتبها وما حفظتهاش هتضيع، فاضغط «كمّل شغل» عشان تفضل داخل.',
+  'auth.idle.staySignedIn': 'كمّل شغل',
+  'auth.idle.signOutNow': 'اخرج دلوقتي',
+  'auth.idle.signedOutNotice':
+    'الجلسة اتقفلت بعد فترة من غير نشاط. سجّل الدخول عشان تكمّل.',
   // Auth / shell (platform)
   'platform.auth.login.title': 'تسجيل الدخول إلى ECMS',
   'platform.auth.login.email': 'البريد الإلكتروني',

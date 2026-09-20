@@ -2,7 +2,7 @@
 // wordmark, promise) beside a focused sign-in card built from the shared form primitives — so the
 // login speaks the same design language as the rest of the shell, in light or dark, LTR or RTL.
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { QRCodeSVG } from 'qrcode.react';
 import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
@@ -32,6 +32,11 @@ export const LoginPage = (): JSX.Element => {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Why the person is looking at this screen. `?reason=idle` is set by `IdleSessionGuard` when
+  // the inactivity window ran out; without it, being returned to a bare sign-in form reads as
+  // «something went wrong» to somebody who only stepped away.
+  const [searchParams] = useSearchParams();
+  const idleNotice = searchParams.get('reason') === 'idle';
   const [busy, setBusy] = useState(false);
 
   const finish = (me: MeDto): void => {
@@ -144,6 +149,16 @@ export const LoginPage = (): JSX.Element => {
                 </p>
               )}
             </header>
+
+            {error === null && idleNotice && (
+              <div
+                role="status"
+                className="mb-5 flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{t('auth.idle.signedOutNotice')}</span>
+              </div>
+            )}
 
             {error !== null && (
               <div

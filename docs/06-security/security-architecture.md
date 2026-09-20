@@ -31,8 +31,22 @@ sequenceDiagram
 ```
 
 Controls: argon2id hashing · configurable password policy (settings) · per-IP and per-account
-login rate limits · lockout with backoff · session list & revocation UI · every auth event audited.
-Designed-in extension points: TOTP 2FA, OIDC SSO.
+login rate limits · lockout with backoff · session list & revocation UI · **inactivity timeout**
+· every auth event audited. Designed-in extension points: TOTP 2FA, OIDC SSO.
+
+**Inactivity timeout (`SESSION_IDLE_MINUTES`, default 10; `0` switches it off).** A session whose
+`lastUsedAt` is older than the window is **revoked** at its next renewal — not merely refused,
+because a valid cookie that survives the deadline is the hole the control exists to close. The
+reason is recorded (`idle-timeout`) and a `sessionRevoked` row is written, so an administrator
+reading the log can tell «stepped away» from «taken over» (`refresh-reuse`).
+
+The clock is `lastUsedAt`, which the browser keeps fresh by renewing **while somebody is there**
+and stops the moment they are not (`platform/auth/idle-session.ts`): a renewal only happens when
+there has been activity since the previous one, so a working session never times out however long
+it lasts, and an abandoned one is not held open by a timer. The window travels to the browser in
+the refresh response, so the countdown on screen and the rule on the server are the same number,
+and changing the variable is obeyed within one renewal cycle. The last minute is a warning with a
+countdown, which is also what protects unsaved work from vanishing without notice.
 
 ## 2. Authorization
 

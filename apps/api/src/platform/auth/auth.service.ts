@@ -432,6 +432,7 @@ class AuthService {
         accessToken,
         me,
         mustChangePassword: user.security.mustChangePassword ?? false,
+        idleMinutes: env.SESSION_IDLE_MINUTES,
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
@@ -635,6 +636,7 @@ class AuthService {
         accessToken,
         me: await this.buildMe(user),
         mustChangePassword: false,
+        idleMinutes: env.SESSION_IDLE_MINUTES,
       },
       tokens: { accessToken, refreshToken, refreshExpiresAt },
     };
@@ -702,6 +704,31 @@ class AuthService {
       throw new UnauthenticatedError(ErrorCodes.AUTH_TOKEN_EXPIRED, 'Session expired');
     }
 
+    // NOBODY HAS TOUCHED THIS SESSION FOR `SESSION_IDLE_MINUTES` — close it.
+    //
+    // `lastUsedAt` is written by this very method, and the web app renews on a cadence well
+    // inside the window WHILE SOMEBODY IS THERE and stops the moment they are not. So a stale
+    // timestamp is an unattended screen, which is the thing being protected against: the laptop
+    // left open on a desk, not the person who is still typing.
+    //
+    // It is a REVOCATION, not a refusal. The presented token is otherwise perfectly valid, so
+    // leaving the session alive would let anyone holding that cookie carry on as if the window
+    // had never passed — which is the whole control. A separate reason and error code, because
+    // «you stepped away» and «your session was taken over» are different things to be told.
+    const idleMs = env.SESSION_IDLE_MINUTES * 60_000;
+    if (idleMs > 0 && now.getTime() - session.lastUsedAt.getTime() > idleMs) {
+      await this.revokeSession(session, 'idle-timeout');
+      await auditService.record({
+        entityRef: userEntityRef(String(session.userId)),
+        action: 'sessionRevoked',
+        changes: [{ field: 'reason', old: null, new: 'idle-timeout' }],
+      });
+      throw new UnauthenticatedError(
+        ErrorCodes.AUTH_SESSION_IDLE,
+        'Session closed after a period of inactivity',
+      );
+    }
+
     const user = await userService.getById(String(session.userId));
     if (user.status !== 'active') {
       await this.revokeSession(session, 'user-not-active');
@@ -736,6 +763,16 @@ class AuthService {
       user.security.permissionVersion,
     );
     return { accessToken, refreshToken: newRefreshToken, refreshExpiresAt };
+  }
+
+  /**
+   * The inactivity window, for the browser to count down to the same number the server enforces.
+   *
+   * A getter rather than a constant on the client so a deployment that changes the variable is
+   * obeyed without shipping a new bundle.
+   */
+  idleMinutes(): number {
+    return env.SESSION_IDLE_MINUTES;
   }
 
   async logout(ctx: AuthContext): Promise<void> {

@@ -130,10 +130,26 @@ export interface MeDto {
 
 export type LoginResponse =
   | { totpRequired: true; challengeToken: string; enrollmentRequired: boolean }
-  | { totpRequired: false; accessToken: string; me: MeDto; mustChangePassword: boolean };
+  | {
+      totpRequired: false;
+      accessToken: string;
+      me: MeDto;
+      mustChangePassword: boolean;
+      /** How long a session may sit untouched before it is closed. See `RefreshResponse`. */
+      idleMinutes: number;
+    };
 
 export interface RefreshResponse {
   accessToken: string;
+  /**
+   * Minutes of inactivity after which the server closes this session; `0` means never.
+   *
+   * It travels with the token rather than being configured in the browser because the SERVER is
+   * what enforces it: a client counting to a different number either signs the user out while
+   * their session is still good, or leaves a dead session on screen until the next save fails.
+   * Sent on every refresh, so a deployment that changes the window is obeyed within one cycle.
+   */
+  idleMinutes: number;
 }
 
 export interface TotpEnrollmentDto {

@@ -6,11 +6,22 @@
 // changed — same per-unit PUT, same server rules (ADR-032, Gap 1) — only the order the questions
 // are asked in, which is the order the owner asks them in: who, then where, then what.
 //
-// What the manager cannot grant is shown and DISABLED with the reason on it, in both directions: a
-// key outside his ceiling for a unit cannot be ticked, and one somebody with more authority ticked
-// cannot be cleared by him — not by the action, not by the screen box, not by «شيل الكل», not by
-// clearing the whole branch. The server refuses either anyway; the screen only declines to promise
-// what the save would refuse. Every rule is a pure function in `delegation-tree`; this file is the
+// **What the manager cannot grant is not drawn.** «ادام حاجة مليش عليها اكسس مشوفهاش اصلا» — not
+// greyed with a reason on it, not there. A branch he delegates nothing in, a department inside it
+// he holds nothing over, a screen outside his ceiling, an action outside it: each is absent, at
+// its own level, so «أكتوبر» can show four screens and «أسيوط» one and neither is padded out to
+// the size of the registry. The filtering happens in `delegation-tree`, before this file sees a
+// row, because a greyed row can come back two ways and only one of them is a render bug.
+//
+// The one thing that survives the filter is a grant THIS ACCOUNT ALREADY HOLDS that the manager
+// cannot change — made by somebody whose authority reaches further than his. That is not «a place
+// I have no access to»; it is a fact about the person in front of him, and a grant that vanishes
+// because the reader lost the authority to change it reads as a grant that was removed. It is
+// drawn ticked and inert, and says where it came from rather than refusing him.
+//
+// He may not clear it either — not by the action, not by the screen box, not by «شيل الكل», not by
+// clearing the whole branch. The server refuses anyway; the screen only declines to promise what
+// the save would refuse. Every rule is a pure function in `delegation-tree`; this file is the
 // wiring and the disclosure state.
 import { useEffect, useMemo, useState } from 'react';
 import { type Locale } from '@ecms/contracts';
@@ -506,17 +517,17 @@ const ScreenRow = ({
   w: Wiring;
 }): JSX.Element => {
   const label = screen.page === null ? w.t('delegation.other') : screen.page.name[w.locale];
+  // A screen with nothing grantable only reaches this component when the ACCOUNT holds it — the
+  // tree drops the rest before they are ever drawn. So the row explains a grant somebody with more
+  // authority made, which this caller may see and not change; it never says «مش مسموح لك» about a
+  // screen he had no business being shown.
   if (!screen.grantable) {
     return (
       <LockedRow
         label={label}
-        note={
-          screen.on > 0
-            ? w.t('delegation.actionsOn', { on: screen.on, total: screen.total })
-            : w.t('delegation.nothing')
-        }
-        reason={screen.on > 0 ? w.t('delegation.grantedElsewhere') : w.t('delegation.locked')}
-        ticked={screen.on > 0}
+        note={w.t('delegation.actionsOn', { on: screen.on, total: screen.total })}
+        reason={w.t('delegation.grantedElsewhere')}
+        ticked
         tag={null}
       />
     );
@@ -561,13 +572,18 @@ const Actions = ({
     {row.keys.map((key) => {
       const locked = !unit.ceiling.has(key.key);
       const on = unit.selected.has(key.key);
+      // «ادام حاجة مليش عليها اكسس مشوفهاش اصلا», at the last level. An action outside this
+      // caller's ceiling is absent — not a greyed pill he has to read and rule out. The one it
+      // stays for is an action the ACCOUNT already holds: that is a fact about the person, and it
+      // still cannot be unticked here.
+      if (locked && !on) return null;
       return (
         <button
           key={key.key}
           type="button"
           disabled={locked}
           aria-pressed={on}
-          title={locked ? w.t('delegation.locked') : undefined}
+          title={locked ? w.t('delegation.grantedElsewhere') : undefined}
           onClick={() => w.setDraft(unit.unit, toggleKey(unit.selected, key.key, row, unit.ceiling))}
           className={cn(
             'rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors',

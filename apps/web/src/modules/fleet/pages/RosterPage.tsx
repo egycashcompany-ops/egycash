@@ -889,8 +889,10 @@ export const RosterPage = (): JSX.Element => {
       {/* ONE top strip: what narrows the board and what the board adds up to, together.
           The counters used to sit in their own block under the controls, which pushed the table
           down a row for information that is read at a glance and never interacted with. Here the
-          code search and the mission filter sit beside the day's tally, and the whole thing wraps
-          rather than scrolling — which is what keeps it honest at 390px. */}
+          code search and the mission filter sit beside the day's tally, on ONE line: the two
+          selects give up width and the counters' own box takes what is left, scrolling within
+          itself rather than wrapping. The strip still wraps as a whole below about 500px, which
+          is what keeps it honest at 390px — see the counters' box for the rest. */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
         {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES — «كود العربيه ... يكونوا زى شاشه
               الحوادث». It was a free-text box, which asked the reader to know a code before they
@@ -901,13 +903,13 @@ export const RosterPage = (): JSX.Element => {
               already holds every car it reports on, so asking the server again would be a request
               for something on screen. */}
         <VehicleCodeFilter
-          className="w-56 shrink-0"
+          className="w-40 shrink-0"
           fullWidth
           value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
           options={codeOptions}
           onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
         />
-        <div className="w-44">
+        <div className="w-36">
           <CatalogMultiSelect
             kind="missionType"
             value={missions}
@@ -918,12 +920,17 @@ export const RosterPage = (): JSX.Element => {
           />
         </div>
         {/*
-          THE CHIPS WRAP INSIDE THEIR OWN BOX, not inside the strip. `flex-1` gives it the width
-          the two selects and the save pair leave, so however long the mission catalog grows the
-          chips wrap among THEMSELVES and the pair stays on the first line at the strip's end. A
-          bare `ms-auto` on the pair could not promise that: it pushes to the end of the LAST
-          line, so an overflowing strip drops the pair onto a row of its own. The fixed-crew board
-          says the same at greater length — it is where the overflow was actually seen.
+          THE CHIPS LIVE IN THEIR OWN BOX, and NOTHING on this strip wraps. `flex-1` gives the
+          box the width the two selects and the save pair leave, so the pair stays on the first
+          line at the strip's end however long the mission catalog grows; a bare `ms-auto` on the
+          pair could not promise that, because it pushes to the end of the LAST line. The box is
+          `flex-nowrap` and each chip is `shrink-0`, so the row is one line and the width it needs
+          comes out of the two selects — narrowed to 160px and 144px, both still wider than the
+          text they hold. `overflow-x-auto` is the floor: on a screen too narrow for the whole
+          row the box scrolls within itself rather than taking the page sideways.
+
+          The fixed-crew board says all of this at greater length — it is where the overflow was
+          actually seen, and the two boards are kept identical on purpose.
 
           Each counter is a real <button>: it narrows the board, so it must be reachable by
           keyboard and announce its state, which a tinted <span> with an onClick never does.
@@ -934,7 +941,7 @@ export const RosterPage = (): JSX.Element => {
           would trade the one thing the colour is for — telling the six apart at a glance — for a
           state the ring already carries.
         */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1">
           {counters.map((counter) => (
             <button
               key={counter.key}
@@ -944,7 +951,7 @@ export const RosterPage = (): JSX.Element => {
               aria-pressed={counter.active}
               onClick={() => patch(counter.apply)}
               className={[
-                'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+                'flex min-w-[3rem] shrink-0 flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
                 counter.tone,
                 counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',

@@ -1527,7 +1527,9 @@ describe('the standing board wears the daily board’s bar', () => {
     const width = (code: string): string | undefined =>
       /<div className="(w-\d+)">\s*<CatalogMultiSelect\s+kind="missionType"/.exec(code)?.[1];
     expect(width(CODE), 'the same box as the daily board').toBe(width(DAILY));
-    expect(width(CODE)).toBe('w-44');
+    // Narrowed from `w-44` so the sixteen chips fit beside it on ONE line — «حتى لو هتصغر كود
+    // السيارة شويه». 144px still holds «كل المهمات» with room to spare.
+    expect(width(CODE)).toBe('w-36');
   });
 
   it('moves Save out of the page header and onto the end of the strip — on the FIRST line', () => {
@@ -1538,18 +1540,23 @@ describe('the standing board wears the daily board’s bar', () => {
     };
     expect(stripOf(CODE), 'and it saves').toContain("t('common.save')");
 
-    // «عاوز شكل الفلاتر بتوع الطاقم الثابت بزراير حفظ والغاء يكونوا زى شاشه تعيين السيارات».
+    // «عاوز شكل الفلاتر بتوع الطاقم الثابت بزراير حفظ والغاء يكونوا زى شاشه تعيين السيارات»,
+    // then «خلى كله على سطر واحد ... المهم يكونوا كلهم على صف واحد».
     //
     // The pair is held at the far edge by the CHIPS' own `flex-1` box, not by `ms-auto` on the
     // pair itself: `ms-auto` pushes to the end of the LAST line, so a strip that overflows drops
     // the pair onto a row of its own — which is what this board did, carrying one counter more
-    // than the daily one. Pinned on BOTH boards, because the point is that they match.
+    // than the daily one. And the box does not wrap either, or one chip still costs the strip a
+    // second line. Pinned on BOTH boards, because the point is that they match.
     for (const [name, body] of [
       ['fixed', stripOf(CODE)],
       ['daily', stripOf(DAILY)],
     ] as const) {
-      expect(body, `${name}: the chips wrap inside a box of their own`).toContain(
-        'flex min-w-0 flex-1 flex-wrap items-center gap-1.5',
+      expect(body, `${name}: the chips live in a box of their own, and it does not wrap`).toContain(
+        '-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1',
+      );
+      expect(body, `${name}: and a chip gives up no width of its own`).toContain(
+        'min-w-[3rem] shrink-0',
       );
       expect(body, `${name}: nothing in the strip pushes itself to the last line`).not.toContain(
         'className="ms-auto',
@@ -1569,17 +1576,19 @@ describe('the standing board wears the daily board’s bar', () => {
   });
 
   it('gives the car picker the same width the daily board gives it', () => {
-    // «تظبط ابعاد الفلاتر» — one width for one control across the pair.
+    // «تظبط ابعاد الفلاتر» — one width for one control across the pair. Narrowed from `w-56` so
+    // the whole strip holds one line: «حتى لو هتصغر كود السيارة شويه».
     const width = (code: string): string | undefined =>
       code.slice(code.indexOf('<VehicleCodeFilter')).match(/className="([^"]+)"/)?.[1];
     expect(width(CODE)).toBe(width(DAILY));
-    expect(width(CODE)).toContain('w-56');
+    expect(width(CODE)).toContain('w-40');
   });
 
   /**
    * AND THE PICKER FILLS THE WIDTH IT RESERVES — «راعى الابعاد والمسافات».
    *
-   * The wrapper is `w-56` (224px) and `MultiSelect`'s trigger sizes to its own content — 116px,
+   * The wrapper is `w-40` (160px, narrowed from 224px) and `MultiSelect`'s trigger sizes to its
+   * own content — 116px,
    * measured — so 108px inside the box was dead. On the daily board the mission select stood
    * next to it and hid that; here nothing does, and the reader saw 114px of nothing between the
    * box and the first chip while every other pair on the row sat 6px apart. `fullWidth` spends

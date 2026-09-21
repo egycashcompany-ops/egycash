@@ -978,11 +978,14 @@ describe('the next round of reports, as rules the markup carries', () => {
     // a badge, an amount, two icon buttons — so the width they do not need goes to the one column
     // that holds a sentence.
     expect((panel.match(/className: 'w-px/g) ?? []).length).toBeGreaterThanOrEqual(5);
-    // …and that column is capped, so a name kept from the old book with the phone number joined
-    // onto it («محمد الشحات صادق عباس0502302» is ONE token) wraps inside its cell instead of
-    // setting the width of the whole table. `overflow-wrap:anywhere`, not `break-all`: the latter
-    // splits ordinary Arabic words mid-letter.
-    expect(panel, 'the name column is capped').toContain('block w-[6.5rem]');
+    // …and the one column holding a sentence takes ALL of that remainder — «الاسم صغير اوى بالنسبه
+    // للباقى»: a fixed cap folded names into three lines while the board sat half empty beside them.
+    expect(panel, 'the name column takes what the others leave').toContain("className: 'w-full'");
+    expect(panel, 'and is not capped to a fixed width').not.toContain('w-[6.5rem]');
+    // Wide is safe BECAUSE of `overflow-wrap:anywhere`: it drops the cell's min-content width to a
+    // single character, so a name kept from the old book with the phone number joined onto it
+    // («محمد الشحات صادق عباس0502302» is ONE token) still cannot set the width of the table.
+    // Not `break-all`, which splits ordinary Arabic words mid-letter.
     expect(panel).toContain('[overflow-wrap:anywhere]');
     expect(panel, 'and never broken letter by letter').not.toContain('break-all');
 

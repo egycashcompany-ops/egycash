@@ -5538,6 +5538,11 @@ const en: Record<string, string> = {
   'systemAdmin.permissions.noAccess': 'You are not allowed to read the permission registry.',
 
   // Organization placement on an account
+  // The heading over the per-site grant tree inside the Roles tab. Deliberately NOT «Permissions»:
+  // the tab beside it already carries that word, and one screen cannot use it for two things.
+  'systemAdmin.users.directGrants': 'Direct grants — screen by screen',
+  'systemAdmin.users.directGrantsHint':
+    'One or two permissions outside any role, for one site. Use a role when the same list is given to several people.',
   'systemAdmin.users.tabs.roles': 'Roles',
   'systemAdmin.users.tabs.permissions': 'Permissions',
   'systemAdmin.users.fields.section': 'Section',
@@ -12268,6 +12273,11 @@ const ar: Record<string, string> = {
   'systemAdmin.permissions.noAccess': 'غير مسموح لك بقراءة سجل الصلاحيات.',
 
   // موقع الحساب في الهيكل التنظيمي
+  // عنوان شجرة المنح لكل موقع داخل تبويب «الأدوار». وهو عمدًا ليس «الصلاحيات»: التبويب المجاور
+  // يحمل الكلمة نفسها، ولا تصلح كلمة واحدة لشيئين على شاشة واحدة.
+  'systemAdmin.users.directGrants': 'منح مباشرة — شاشة بشاشة',
+  'systemAdmin.users.directGrantsHint':
+    'صلاحية أو اثنتان خارج أي دور، لموقع بعينه. واستعمل دورًا إذا كانت القائمة نفسها تُمنح لعدّة أشخاص.',
   'systemAdmin.users.tabs.roles': 'الأدوار',
   'systemAdmin.users.tabs.permissions': 'الصلاحيات',
   'systemAdmin.users.fields.section': 'القسم',

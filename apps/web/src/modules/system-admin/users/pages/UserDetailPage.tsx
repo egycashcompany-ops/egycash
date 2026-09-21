@@ -161,9 +161,23 @@ export const UserDetailPage = (): JSX.Element => {
               account hold — answered by the other kind of record. */}
           <Can permission="delegation.manage">
             <section>
-              <h2 className="mb-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {t('employees.tabs.permissions')}
+              {/*
+                «الصلاحيات» USED TO NAME TWO DIFFERENT THINGS ON THIS ONE SCREEN.
+
+                This heading carried `employees.tabs.permissions` — «الصلاحيات» — and so does the
+                TAB sitting beside «الأدوار» a few pixels above it. One of the two is where an
+                administrator grants; the other is a read-only audit of what the grants add up to.
+                Somebody looking for the place to grant found the word in both places, and one of
+                them grants nothing: «أنا حاسس إني تايه».
+                So this one says what it is — a direct, per-site grant, screen by screen — and the
+                word «الصلاحيات» is left to the tab alone.
+              */}
+              <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+                {t('systemAdmin.users.directGrants')}
               </h2>
+              <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                {t('systemAdmin.users.directGrantsHint')}
+              </p>
               <DelegationPanel
                 userId={user.id}
                 personName={fullName(user, locale)}

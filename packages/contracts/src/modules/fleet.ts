@@ -1687,6 +1687,23 @@ export interface FleetViolationDto {
   unitValue: number | null;
   /** driver shape */
   date: string | null;
+  /**
+   * WHICH YEAR-BLOCK THIS ROW IS COUNTED IN, when that is not the one its own date says.
+   *
+   * «فى عربيات بتخلص مخالفاتها ٢٠٢٦ وفى سواقين عاملين مخالفاتها سنة ٢٥ ... عاوز يبقوا تبع العربيه
+   * دى». A driver's fine from an earlier year turns up late, after the car's current year has been
+   * worked through; the clerk closing that car needs it in front of them, in that car's block.
+   *
+   * IT IS NOT THE DATE, AND IT NEVER REWRITES IT. `date` is when the fine happened and stays true:
+   * the drivers' board still lists the row on its own day, and the audit trail still has the day it
+   * was filed against. This is an administrative answer to a different question — «which statement
+   * is this being carried on» — and it is `null` for every row nobody has moved, which is almost
+   * all of them.
+   *
+   * On a `vehicle` row it is always `null`: a statement row already STORES its year, so it has
+   * nothing to override and the board's tick reads that stored year directly.
+   */
+  filedYear: number | null;
   driverEmployeeId: string | null;
   /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
   driverName: string | null;
@@ -1751,6 +1768,34 @@ export const UpdateFleetViolationSchema = z
   })
   .strict();
 export type UpdateFleetViolation = z.infer<typeof UpdateFleetViolationSchema>;
+
+/**
+ * MOVE SEVERAL DRIVER FINES INTO ONE CAR'S YEAR-BLOCK — one act, one request.
+ *
+ * The board is worked a car at a time, and the fines that belong with a car arrive in a handful:
+ * a reader ticks four of them and drops them on the group. Sending four `PATCH /:id` calls, each
+ * carrying its own `version`, would let a stale version anywhere leave the move half-applied —
+ * some fines carried onto the statement and some not, with nothing on screen saying which.
+ *
+ * So the ids travel together and the service writes them in ONE transaction: all of them land, or
+ * none does and the reader tries again with the same selection.
+ *
+ * NO `version` HERE, deliberately. Optimistic locking guards a field two people might be editing
+ * at the same moment; this changes only which block a row is counted in, and the row's own facts —
+ * its date, its driver, its amount, whether it is collected — are untouched. Refusing the move
+ * because somebody ticked one of the fines a second ago would be refusing for no reason.
+ */
+export const MoveFleetViolationsSchema = z
+  .object({
+    /** The fines being carried over. Driver rows only — the service refuses a statement row. */
+    ids: z.array(objectId()).min(1).max(MAX_PAGE_SIZE),
+    /** The car whose block they are carried onto. */
+    vehicleId: objectId(),
+    /** The year of that block. `null` puts each fine back under its own date. */
+    filedYear: z.number().int().min(2000).max(2100).nullable(),
+  })
+  .strict();
+export type MoveFleetViolations = z.infer<typeof MoveFleetViolationsSchema>;
 
 /**
  * Mark one violation collected, or put it back. Its own write, not part of the edit dialog:

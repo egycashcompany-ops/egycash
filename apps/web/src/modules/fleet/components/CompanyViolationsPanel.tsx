@@ -35,10 +35,12 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import { saveBlob } from '../../../shared/lib/api-client';
 import {
+  useMoveViolations,
   useRecordVehicleViolation,
   useSetRollupCollected,
   useViolationRollup,
 } from '../api/fleet-queries';
+import { VIOLATION_DRAG_TYPE, canReceive, readDraggedIds } from '../lib/violation-drag';
 import { CatalogSelect } from './CatalogSelect';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
@@ -89,6 +91,7 @@ export const CompanyViolationsPanel = ({
   settled,
   entryVehicleId,
   onEntryVehicleChange,
+  onMoved,
   onYearsChange,
   onSettledChange,
   onVehicleCodesChange,
@@ -118,6 +121,11 @@ export const CompanyViolationsPanel = ({
    */
   entryVehicleId: string;
   onEntryVehicleChange: (next: string) => void;
+  /**
+   * Fines were carried onto a group here. The drivers' half owns the ticks that named them, and a
+   * selection that survived the move would still be pointing at rows the reader has finished with.
+   */
+  onMoved: () => void;
   onSettledChange: (next: string | null) => void;
   onYearsChange: (next: string[]) => void;
   onVehicleCodesChange: (next: string[]) => void;
@@ -291,6 +299,47 @@ export const CompanyViolationsPanel = ({
       });
     } catch {
       toast.error(t('fleet.violations.popupBlocked'));
+    }
+  };
+
+  /*
+   * FINES DROPPED ON A GROUP — «أخدهم دراج وأحطهم دروب على العربية نفسها».
+   *
+   * What moves is which statement the fines are COUNTED on; their dates, their drivers, their
+   * amounts and whether the money is in are all left as they are, and they go on showing in the
+   * drivers' board on the day they happened. That is «يتنقلوا بس مش هيحصل عليهم حاجه».
+   *
+   * `dragging` is the group under the pointer, held so the board can show WHERE a drop would land.
+   * It is counted rather than set/cleared, because `dragleave` fires every time the pointer
+   * crosses between the four rows inside a group and a naive clear would blink the highlight off
+   * mid-hover.
+   */
+  const [over, setOver] = useState<string | null>(null);
+  const move = useMoveViolations();
+  const mayMove = can('fleetViolation.edit');
+  const keyOfGroup = (row: FleetViolationRollupDto): string =>
+    `${row.vehicleId ?? `code:${row.code}`}:${row.year}`;
+
+  const drop = async (row: FleetViolationRollupDto, raw: string): Promise<void> => {
+    setOver(null);
+    const ids = readDraggedIds(raw);
+    if (ids.length === 0 || row.vehicleId === null) return;
+    try {
+      const { moved } = await move.mutateAsync({
+        ids,
+        vehicleId: row.vehicleId,
+        filedYear: row.year,
+      });
+      toast.success(
+        t('fleet.violations.movedToYear', {
+          count: formatNumber(moved, locale),
+          code: row.code,
+          year: String(row.year),
+        }),
+      );
+      onMoved();
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
     }
   };
 
@@ -682,11 +731,46 @@ export const CompanyViolationsPanel = ({
                   // and looked at it; the driver board beside this one has tinted its settled rows
                   // green since it was built, and the two halves have to answer the same question
                   // the same way.
+                  // WHERE THE DRAGGED FINES WOULD LAND. The guard is in the code and not only in
+                  // the styling: withholding `preventDefault` on dragover is what actually refuses
+                  // a drop, and a group from the old book — no car in the registry, so no id any
+                  // write accepts — must refuse rather than promise a 422.
+                  onDragOver={
+                    canReceive(row, mayMove)
+                      ? (e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                          setOver(keyOfGroup(row));
+                        }
+                      : undefined
+                  }
+                  onDragLeave={
+                    canReceive(row, mayMove)
+                      ? (e) => {
+                          // Only when the pointer has left the GROUP, not when it crosses between
+                          // the four rows inside it.
+                          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                            setOver((at) => (at === keyOfGroup(row) ? null : at));
+                          }
+                        }
+                      : undefined
+                  }
+                  onDrop={
+                    canReceive(row, mayMove)
+                      ? (e) => {
+                          e.preventDefault();
+                          void drop(row, e.dataTransfer.getData(VIOLATION_DRAG_TYPE));
+                        }
+                      : undefined
+                  }
+                  data-rollup-droppable={canReceive(row, mayMove) ? 'true' : undefined}
                   className={cn(
                     'border-t border-slate-200 dark:border-slate-800',
                     row.rowCount > 0 &&
                       row.collectedCount === row.rowCount &&
                       'bg-emerald-50 dark:bg-emerald-950/40',
+                    over === keyOfGroup(row) &&
+                      'outline outline-2 -outline-offset-2 outline-brand-500',
                   )}
                 >
                   {TOTAL_ROWS.map((total, line) => (

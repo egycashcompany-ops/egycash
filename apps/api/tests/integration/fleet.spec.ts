@@ -6361,6 +6361,113 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       expect(row?.['driverAmount']).toBe(120);
     });
 
+    it('carries a driver’s OLDER fine onto the car’s current statement, untouched', async () => {
+      // «فى سواق كان عامل مخالفه وهو سايق العربيه سنه ٢٥ ... عاوز يبقوا تبع العربيه دى».
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      const filed = await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2025-11-20',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount: 300,
+        });
+      expect(filed.status).toBe(201);
+      const fine = data<{ id: string }>(filed);
+
+      const moved = await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], vehicleId: v.id, filedYear: 2026 });
+      expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+      expect(data<{ moved: number }>(moved).moved).toBe(1);
+
+      // It is counted on the 2026 statement…
+      const [y2026] = await rollupOf({ year: 2026, vehicleId: v.id });
+      expect(y2026?.['driverAmount']).toBe(300);
+      // …and has stopped being counted on 2025, or a two-year comparison would see it twice.
+      expect(await rollupOf({ year: 2025, vehicleId: v.id })).toEqual([]);
+
+      // THE FINE ITSELF IS UNTOUCHED — «يتنقلوا بس مش هيحصل عليهم حاجه».
+      const [row] = await finesOf(v.id);
+      expect(row?.['date'], 'it still happened when it happened').toContain('2025-11-20');
+      expect(row?.['collected'], 'and nobody was paid because of a drag').toBe(false);
+      expect(row?.['amount']).toBe(300);
+      expect(row?.['filedYear'], 'the board reads this to say which statement it is on').toBe(2026);
+    });
+
+    it('puts them back — the gesture is undoable', async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      const fine = data<{ id: string }>(
+        await request(app)
+          .post('/api/v1/fleet/violations/driver')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            vehicleId: v.id,
+            date: '2025-03-03',
+            driverEmployeeId: employeeId,
+            violationTypeId: driverType,
+            amount: 90,
+          }),
+      );
+      await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], vehicleId: v.id, filedYear: 2026 });
+      const back = await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], vehicleId: v.id, filedYear: null });
+      expect(back.status).toBe(200);
+      expect(await rollupOf({ year: 2026, vehicleId: v.id })).toEqual([]);
+      expect((await rollupOf({ year: 2025, vehicleId: v.id }))[0]?.['driverAmount']).toBe(90);
+    });
+
+    it('REFUSES a selection holding a company statement row — and moves none of it', async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const vehicleType = await violationTypeIdByName('رسوم خدمة');
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      const statement = data<{ id: string }>(
+        await request(app)
+          .post('/api/v1/fleet/violations/vehicle')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ vehicleId: v.id, year: 2025, violationTypeId: vehicleType, count: 1, unitValue: 40 }),
+      );
+      const fine = data<{ id: string }>(
+        await request(app)
+          .post('/api/v1/fleet/violations/driver')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            vehicleId: v.id,
+            date: '2025-06-06',
+            driverEmployeeId: employeeId,
+            violationTypeId: driverType,
+            amount: 70,
+          }),
+      );
+
+      const refused = await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id, statement.id], vehicleId: v.id, filedYear: 2026 });
+      expect(refused.status).toBe(400);
+      expect(JSON.stringify(refused.body)).toContain('carries its own year');
+
+      // ALL OF THEM OR NONE: the driver fine beside it must not have moved on its own.
+      expect((await rollupOf({ year: 2026, vehicleId: v.id })), 'nothing landed in 2026').toEqual([]);
+      expect((await rollupOf({ year: 2025, vehicleId: v.id }))[0]?.['driverAmount']).toBe(70);
+    });
+
     it('narrows by SEVERAL car codes — the filter that used to answer for the whole fleet', async () => {
       const a = data<FleetVehicleDto>(await createVehicle(adminToken));
       const b = data<FleetVehicleDto>(await createVehicle(adminToken));

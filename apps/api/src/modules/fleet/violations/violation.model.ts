@@ -22,6 +22,14 @@ export interface FleetViolationDoc extends BaseDocFields {
   unitValue: number | null;
   /** driver shape */
   date: Date | null;
+  /**
+   * The year-block this fine is COUNTED in, when that is not its own date's.
+   *
+   * `null` on every row nobody has moved — which is almost all of them — and on every `vehicle`
+   * row, since a statement row already stores its year. See the DTO for the whole argument; the
+   * short of it is that `date` stays true and this answers a different question.
+   */
+  filedYear: number | null;
   driverEmployeeId: Types.ObjectId | null;
   /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
   driverName: string | null;
@@ -40,6 +48,7 @@ const violationSchema = new Schema<FleetViolationDoc>(
     count: { type: Number, default: null },
     unitValue: { type: Number, default: null },
     date: { type: Date, default: null },
+    filedYear: { type: Number, default: null },
     driverEmployeeId: { type: Schema.Types.ObjectId, default: null },
     driverName: { type: String, default: null },
     collected: { type: Boolean, required: true, default: false },
@@ -50,6 +59,14 @@ const violationSchema = new Schema<FleetViolationDoc>(
 
 violationSchema.index({ vehicleId: 1, year: 1 }, { name: 'ix_vehicle_year' });
 violationSchema.index({ vehicleId: 1, date: -1 }, { name: 'ix_vehicle_date' });
+// The moved rows, found by the block they were carried onto. Sparse: almost no row has one, and a
+// full index over a column that is null everywhere is a page of nulls the planner reads for
+// nothing. Partial rather than `sparse: true` — the modern spelling, and the one the odometer's
+// own partial indexes use.
+violationSchema.index(
+  { filedYear: 1, vehicleId: 1 },
+  { name: 'ix_filed_year', partialFilterExpression: { filedYear: { $type: 'number' } } },
+);
 violationSchema.index({ driverEmployeeId: 1, date: -1 }, { name: 'ix_driver_date' });
 
 export const FleetViolationModel = model<FleetViolationDoc>(

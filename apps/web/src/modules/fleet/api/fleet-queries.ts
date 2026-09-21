@@ -34,6 +34,7 @@ import {
   type UpdateFleetDriverProfile,
   type UpdateFleetVehicleType,
   type SetFleetViolationCollected,
+  type MoveFleetViolations,
   type SetRollupCollected,
   type UpdateFleetViolation,
   type UpdateFleetMaintenance,
@@ -678,6 +679,8 @@ export const useSetViolationCollected = () =>
   useViolationMutation(({ id, body }: { id: string; body: SetFleetViolationCollected }) =>
     api.setViolationCollected(id, body),
   );
+export const useMoveViolations = () =>
+  useViolationMutation((body: MoveFleetViolations) => api.moveViolations(body));
 export const useSetRollupCollected = () =>
   useViolationMutation((body: SetRollupCollected) => api.setRollupCollected(body));
 export const useUpdateViolation = () =>

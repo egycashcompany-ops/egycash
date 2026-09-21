@@ -13,6 +13,8 @@
 // The second half is the filter that quietly stopped filtering: the rollup took ONE vehicle id,
 // so the board sent nothing the moment two codes were picked and answered for the whole fleet
 // while its chips read «١٥٠، ١٥١ +٢».
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Types } from 'mongoose';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetViolationModel } from './violation.model';
@@ -91,6 +93,58 @@ describe('the two numbers the tick is read from count the COMPANY’s rows', () 
 /** Every `$and` clause the aggregate's `$match` ended up carrying. */
 const andClauses = (match: Record<string, unknown>): Record<string, unknown>[] =>
   (match['$and'] as Record<string, unknown>[] | undefined) ?? [];
+
+describe('a fine carried onto another year is counted THERE, and only there', () => {
+  it('the grouping key asks `filedYear` FIRST, then the stored year, then the date', () => {
+    // «يتنقلوا ... يبقوا تبع العربيه دى». The same order `violationYearBranches` narrows by: a row
+    // that filtered into one block and grouped under another would go missing from both.
+    const repository = readFileSync(join(__dirname, 'violation.repository.ts'), 'utf8');
+    // From the grouping key to the first figure after it. `vehicleCount:` appears earlier as an
+    // aggregate type annotation, so the end is searched FROM the key rather than from the top.
+    const keyAt = repository.indexOf("vehicleCode: { $ifNull: ['$vehicleCode', null] },");
+    const group = repository.slice(keyAt, repository.indexOf('vehicleCount:', keyAt));
+    const filedAt = group.indexOf("'$filedYear'");
+    const storedAt = group.indexOf("'$year'");
+    const dateAt = group.indexOf('$year: { date:');
+    expect(filedAt, 'the carried-onto year is asked').toBeGreaterThan(-1);
+    expect(filedAt, 'before the stored one').toBeLessThan(storedAt);
+    expect(storedAt, 'and that before the event date').toBeLessThan(dateAt);
+  });
+
+  it('the fine itself is untouched — only where it is COUNTED moves', async () => {
+    const updateMany = vi
+      .spyOn(FleetViolationModel, 'updateMany')
+      .mockResolvedValue({ modifiedCount: 2 } as never);
+    await fleetViolationRepository.fileUnder(
+      ['650000000000000000000031', '650000000000000000000032'],
+      VEHICLE,
+      2026,
+      { by: null },
+    );
+    const [filter, update] = updateMany.mock.calls[0] ?? [];
+    // A STATEMENT ROW CANNOT BE CARRIED: it stores its own year, so a second answer beside it
+    // would be a contradiction rather than an override.
+    expect((filter as Record<string, unknown>)['kind']).toBe('driver');
+    const set = (update as { $set: Record<string, unknown> }).$set;
+    expect(Object.keys(set).sort(), 'the car, the block, and who moved it').toEqual(
+      ['filedYear', 'updatedBy', 'vehicleId'].sort(),
+    );
+    for (const untouched of ['date', 'collected', 'amount', 'driverEmployeeId']) {
+      expect(set[untouched], `${untouched} is the fine's own fact`).toBeUndefined();
+    }
+  });
+
+  it('putting them back is the same write with no year — which is what makes it undoable', async () => {
+    const updateMany = vi
+      .spyOn(FleetViolationModel, 'updateMany')
+      .mockResolvedValue({ modifiedCount: 1 } as never);
+    await fleetViolationRepository.fileUnder(['650000000000000000000031'], VEHICLE, null, {
+      by: null,
+    });
+    const set = (updateMany.mock.calls[0]?.[1] as { $set: Record<string, unknown> }).$set;
+    expect(set['filedYear'], 'back under its own date').toBeNull();
+  });
+});
 
 describe('the board can be asked about SEVERAL cars — the filter that stopped filtering', () => {
   it('narrows by every id it was given, not by the first of them', async () => {

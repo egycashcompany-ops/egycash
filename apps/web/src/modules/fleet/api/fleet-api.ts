@@ -51,6 +51,7 @@ import {
   type UpdateFleetVehicle,
   type UpdateFleetVehicleType,
   type SetFleetViolationCollected,
+  type MoveFleetViolations,
   type SetRollupCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
@@ -331,6 +332,14 @@ export const setViolationCollected = (
   body: SetFleetViolationCollected,
 ): Promise<FleetViolationDto> =>
   patch<FleetViolationDto>(`/fleet/violations/${id}/collected`, body);
+/**
+ * Carry several driver fines onto one car's year-block — one request, all of them or none.
+ *
+ * N PATCHes would each carry their own `version`, so a stale one anywhere would leave the move
+ * half-applied with nothing on the screen saying which half.
+ */
+export const moveViolations = (body: MoveFleetViolations): Promise<{ moved: number }> =>
+  patch<{ moved: number }>('/fleet/violations/move', body);
 /** Tick or untick a WHOLE (vehicle, year) — the board's own tick, one request rather than N. */
 export const setRollupCollected = (body: SetRollupCollected): Promise<{ changed: number }> =>
   patch<{ changed: number }>('/fleet/violations/collected', body);

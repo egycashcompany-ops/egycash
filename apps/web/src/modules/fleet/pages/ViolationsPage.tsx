@@ -124,6 +124,13 @@ export const ViolationsPage = (): JSX.Element => {
    * so they can disagree.
    */
   const [entryVehicleId, setEntryVehicleId] = useState('');
+  /**
+   * BUMPED WHEN FINES ARE CARRIED ONTO A GROUP. The drivers' half owns the ticks that named them
+   * and the company's half owns the drop, so the one signal between them is «that happened» — the
+   * drivers' board clears its selection on it, rather than being left pointing at rows the reader
+   * has finished with. `useTableSelection` never prunes its own set, so this has to be explicit.
+   */
+  const [movedAt, setMovedAt] = useState(0);
   const [inspecting, setInspecting] = useState<FleetViolationRollupDto | null>(null);
   const [editing, setEditing] = useState<FleetViolationDto | null>(null);
   const [deleting, setDeleting] = useState<FleetViolationDto | null>(null);
@@ -171,6 +178,7 @@ export const ViolationsPage = (): JSX.Element => {
           settled={companySettled}
           entryVehicleId={entryVehicleId}
           onEntryVehicleChange={setEntryVehicleId}
+          onMoved={() => setMovedAt((n) => n + 1)}
           onSettledChange={(next) => patch({ cset: next })}
           onYearsChange={(next) => patch({ year: writeList(next) })}
           onVehicleCodesChange={(next) =>
@@ -182,6 +190,7 @@ export const ViolationsPage = (): JSX.Element => {
         <DriverViolationsPanel
           entryVehicleId={entryVehicleId}
           onEntryVehicleChange={setEntryVehicleId}
+          movedAt={movedAt}
           sorts={driverSorts}
           onSortChange={(by) => patch({ dsort: writeSorts(clickSort(driverSortParam, DRIVER_DEFAULT_SORT, by)) })}
           vehicleCodes={driverCodes}

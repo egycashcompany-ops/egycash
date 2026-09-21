@@ -186,6 +186,58 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     return result.modifiedCount;
   }
 
+  /**
+   * CARRY SEVERAL DRIVER FINES ONTO ONE CAR'S STATEMENT — one write, inside the caller's
+   * transaction.
+   *
+   * `kind: 'driver'` is in the filter and not merely in the service's guard: a statement row
+   * stores its own year, and setting `filedYear` on one would leave two answers to the same
+   * question with nothing to say which wins. Ids that name a statement row simply do not match,
+   * and the service compares what it asked to move with what moved.
+   *
+   * `null` puts them back under their own dates, which is what makes the gesture undoable.
+   */
+  async fileUnder(
+    ids: readonly string[],
+    vehicleId: string,
+    filedYear: number | null,
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await this.model.updateMany(
+      {
+        _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        isDeleted: false,
+        kind: 'driver',
+      },
+      {
+        $set: {
+          vehicleId: new Types.ObjectId(vehicleId),
+          filedYear,
+          updatedBy: meta.by === null ? null : new Types.ObjectId(meta.by),
+        },
+        $inc: { __v: 1 },
+      },
+      // OMITTED rather than passed as undefined — `exactOptionalPropertyTypes` draws that
+      // distinction and mongoose's update options take a session or no key at all.
+      meta.session === undefined ? {} : { session: meta.session },
+    );
+    return result.modifiedCount;
+  }
+
+  /** The fines named, as they stand — what the move audits against and checks the shape of. */
+  async findByIds(
+    ids: readonly string[],
+    session?: ClientSession,
+  ): Promise<FleetViolationDoc[]> {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .session(session ?? null)
+      .lean<FleetViolationDoc[]>()
+      .exec();
+  }
+
   async yearSums(
     years: readonly number[] | undefined,
     /**
@@ -239,7 +291,16 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
             // The old book's code, for rows whose car the registry never had — so two such cars
             // are two groups and not one group keyed on the value `null`.
             vehicleCode: { $ifNull: ['$vehicleCode', null] },
-            year: { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
+            // WHICH BLOCK THIS ROW IS COUNTED IN, in the order the answer is owed: the year it was
+            // carried onto, else a statement row's own stored year, else the year a driver's event
+            // date falls in. The same order `violationYearBranches` narrows by — a row that
+            // filtered into one block and grouped under another would go missing from both.
+            year: {
+              $ifNull: [
+                '$filedYear',
+                { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
+              ],
+            },
           },
           // WHAT IS STILL OWED, not what was ever fined. A row that has been ticked as collected
           // is settled, and the owner reads these four figures as the outstanding balance —
@@ -366,6 +427,12 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
  * not be adjacent — «٢٠٢٤ و٢٠٢٦» is an ordinary comparison, and a `$gte`/`$lt` span across it
  * would silently include the year between them.
  *
+ * A MOVED ROW ANSWERS WITH `filedYear` AND WITH NOTHING ELSE. A driver's fine carried onto another
+ * year's statement belongs to THAT year and must stop belonging to its date's — so the date branch
+ * is guarded by `filedYear: null` rather than simply joined by a third. Left additive, a fine moved
+ * from 2025 into 2026 would match both years at once, and «٢٠٢٤ و٢٠٢٦» — the very comparison this
+ * helper exists for — would count it twice and sum its money twice.
+ *
  * Exported for its own test: it is pure, and it is where a multi-year filter goes wrong quietly.
  */
 export const violationYearBranches = (
@@ -373,8 +440,12 @@ export const violationYearBranches = (
 ): FilterQuery<FleetViolationDoc>[] =>
   years.flatMap((year) => [
     { kind: 'vehicle', year } as FilterQuery<FleetViolationDoc>,
+    // Carried onto this year's statement, whatever day it happened on.
+    { kind: 'driver', filedYear: year } as FilterQuery<FleetViolationDoc>,
+    // …and the ordinary case: nobody moved it, so its own date says which year it is in.
     {
       kind: 'driver',
+      filedYear: null,
       date: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) },
     } as FilterQuery<FleetViolationDoc>,
   ]);

@@ -11,6 +11,7 @@ import {
   type FleetViolationRollupDto,
   type FleetViolationSide,
   type ListFleetViolationsQuery,
+  type MoveFleetViolations,
   type Paginated,
   type RecordFleetDriverViolation,
   type RecordFleetDriverViolations,
@@ -53,6 +54,9 @@ const snapshot = (doc: FleetViolationDoc) => ({
   count: doc.count,
   unitValue: doc.unitValue,
   date: doc.date,
+  // Which statement this fine is being carried on, when that is not its own date's year. Moving
+  // one is an administrative act on money somebody owes, so the trail has to hold it.
+  filedYear: doc.filedYear,
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
   collected: doc.collected,
 });
@@ -353,7 +357,9 @@ class FleetViolationService {
         throw invalid('count', 'a driver event row has no count/unitValue — its amount is entered');
       }
       // A driver row's period is its DATE; its `year` is null and stays null, so accepting one
-      // here would store a second, competing answer to «which year is this fine in?».
+      // here would store a second, competing answer to «which year is this fine in?». Which
+      // STATEMENT it is carried on is a different question — see `move`, which is where that is
+      // answered, and which leaves `date` alone.
       if (input.year !== undefined) {
         throw invalid('year', 'a driver event row carries an event date, not a year');
       }
@@ -375,6 +381,61 @@ class FleetViolationService {
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
     return updated;
+  }
+
+  /**
+   * CARRY DRIVER FINES ONTO ONE CAR'S YEAR-BLOCK — «يتنقلوا بس مش هيحصل عليهم حاجه».
+   *
+   * What moves is which statement the fine is COUNTED on. What does not move is the fine: its
+   * date, its driver, its amount and whether the money is in are all left exactly as they were,
+   * and the drivers' board goes on listing it on the day it happened.
+   *
+   * ALL OF THEM OR NONE. The gesture is one act — a reader ticks four fines and drops them on a
+   * group — so it is one transaction. A per-row loop could leave two fines carried over and two
+   * not, with nothing on the screen to say which two.
+   *
+   * A STATEMENT ROW CANNOT BE MOVED THIS WAY, and the refusal is the shape's, not the caller's: a
+   * `vehicle` row stores its own year, so a second answer beside it would be a contradiction
+   * rather than an override. The repository's filter names `kind: 'driver'`, and the count it
+   * returns is compared with what was asked, so a mixed selection fails loudly instead of moving
+   * the half it liked.
+   */
+  async move(input: MoveFleetViolations, by: string): Promise<number> {
+    await fleetVehicleRepository.getById(input.vehicleId);
+    const before = await fleetViolationRepository.findByIds(input.ids);
+    if (before.length !== input.ids.length) {
+      throw invalid('ids', 'one of these violations no longer exists');
+    }
+    const statement = before.find((row) => row.kind !== 'driver');
+    if (statement !== undefined) {
+      throw invalid(
+        'ids',
+        'a company statement row carries its own year and cannot be filed under another',
+      );
+    }
+
+    const moved = await unitOfWork(async (session) =>
+      fleetViolationRepository.fileUnder(input.ids, input.vehicleId, input.filedYear, {
+        by,
+        session,
+      }),
+    );
+
+    // One entry per fine, because one fine is what a reader looks up when they ask why a 2025
+    // fine is sitting on a 2026 statement. `diffChanges` over the same snapshot every other write
+    // on this collection uses, so the trail reads alike whoever wrote it.
+    const after = await fleetViolationRepository.findByIds(input.ids);
+    const byId = new Map(after.map((row) => [String(row._id), row]));
+    for (const row of before) {
+      const now = byId.get(String(row._id));
+      if (now === undefined) continue;
+      await auditService.record({
+        entityRef: entityRef(String(row._id)),
+        action: 'update',
+        changes: diffChanges(snapshot(row), snapshot(now)),
+      });
+    }
+    return moved;
   }
 
   async softDelete(id: string, by: string): Promise<void> {

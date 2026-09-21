@@ -8,6 +8,7 @@ import {
   RecordFleetVehicleViolationSchema,
   SetFleetGrievanceSchema,
   SetFleetViolationCollectedSchema,
+  MoveFleetViolationsSchema,
   SetRollupCollectedSchema,
   UpdateFleetViolationSchema,
   objectId,
@@ -23,6 +24,7 @@ import {
   recordDriverViolations,
   recordVehicleViolation,
   setGrievance,
+  moveViolations,
   setRollupCollected,
   setViolationCollected,
   updateViolation,
@@ -68,6 +70,16 @@ export const buildFleetViolationsRouter = (): Router => {
     authorize('fleetViolation.record'),
     validate({ body: RecordFleetDriverViolationsSchema }),
     asyncHandler(recordDriverViolations),
+  );
+  // Carrying driver fines onto a car's statement — a correction of where a fine is COUNTED, so it
+  // is the edit grant rather than the collect one. Declared before `/:id/…`, as the tick is, or
+  // «move» would be read as an id.
+  router.patch(
+    '/move',
+    authenticate,
+    authorize('fleetViolation.edit'),
+    validate({ body: MoveFleetViolationsSchema }),
+    asyncHandler(moveViolations),
   );
   // The GROUP tick: one (vehicle, year) settled in one act. Declared BEFORE `/:id/collected`, or
   // «collected» would be read as an id and rejected as a malformed ObjectId.

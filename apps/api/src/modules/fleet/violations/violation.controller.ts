@@ -8,6 +8,7 @@ import {
   type RecordFleetVehicleViolation,
   type SetFleetGrievance,
   type SetFleetViolationCollected,
+  type MoveFleetViolations,
   type SetRollupCollected,
   type UpdateFleetViolation,
 } from '@ecms/contracts';
@@ -49,6 +50,13 @@ export const recordDriverViolations = async (req: Request, res: Response): Promi
   const { body } = validated<RecordFleetDriverViolations>(req);
   const docs = await fleetViolationService.recordDriverBatch(body, authContext(req).userId);
   created(res, docs.map((doc) => toViolationDto(doc)));
+};
+
+/** Carry several driver fines onto one car's year-block — one act, one transaction. */
+export const moveViolations = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<MoveFleetViolations>(req);
+  const moved = await fleetViolationService.move(body, authContext(req).userId);
+  ok(res, { moved });
 };
 
 export const setRollupCollected = async (req: Request, res: Response): Promise<void> => {

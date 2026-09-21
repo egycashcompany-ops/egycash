@@ -948,20 +948,51 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(markup, 'and it is not a target').not.toContain('data-rollup-droppable');
   });
 
-  it('marks a carried fine on its own row, and the mark is the way back', () => {
-    // «برضو يفضلوا فى جدول السائقيين» — so the row still shows the day it happened, and a reader
-    // looking at a 2025 date needs to know why it is no longer in the 2025 group. The marker is
-    // also the only way out of a drop: pressing it files the fine under its own date again.
-    const markup = page({ drivers: [driverRow({ filedYear: 2026 })] });
-    expect(markup, 'the day it happened is still the row’s date').toContain(
-      formatDate('2026-02-01T00:00:00.000Z', 'ar'),
-    );
-    expect(markup).toContain('data-filed-year="vio-1"');
+  it('gives «محمولة على» its own column, naming the CAR as well as the year', () => {
+    // «مش عاوز يتكتب على 2025 ويسكت، عاوز كمان الكود ... ك عمود». A fine is filed against a car
+    // AND a year, and a year on its own does not say which car's statement it landed on.
+    const markup = page({ drivers: [driverRow({ filedYear: 2026, vehicleCode: '150' })] });
+    expect(markup, 'the column is there').toContain(t('fleet.violations.columns.carriedOnto'));
+    expect(markup, 'and it names both').toContain('150 — 2026');
+    // «برضو يفضلوا فى جدول السائقيين» — the row still shows the day it actually happened.
+    expect(markup).toContain(formatDate('2026-02-01T00:00:00.000Z', 'ar'));
 
+    // …and the marker is the way out of a drop: pressing it files the fine under its own date.
+    expect(markup).toContain('data-filed-year="vio-1"');
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
     expect(panel, 'and it returns the fine to its own year').toContain('filedYear: null');
-    // An unmoved fine carries no marker at all — almost every row is one.
-    expect(page(), 'nothing to say about a fine nobody moved').not.toContain('data-filed-year');
+
+    // An unmoved fine reads «—» in that column — almost every row is one.
+    expect(page(), 'nothing to press on a fine nobody moved').not.toContain('data-filed-year');
+  });
+
+  it('the drivers’ board fits its half of the screen instead of scrolling sideways', () => {
+    // «انا مش عاوز فيه اسكرول تحت عاوز كله يظهر». `DataTable` reserves 7.5rem per column before it
+    // starts scrolling — a floor measured for the wide Fleet registers. This board's columns are a
+    // date, a three-digit code, a chip, a short badge and two icon buttons, and at that floor it
+    // demanded more width than half a screen has.
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel).toContain('minColumnWidth={5}');
+    expect(panel, 'and 8px a column back from the side gutter').toContain('tightGutter');
+    // Every column that holds something of a FIXED size takes only that — a date, a code, a chip,
+    // a badge, an amount, two icon buttons — so the width they do not need goes to the one column
+    // that holds a sentence.
+    expect((panel.match(/className: 'w-px/g) ?? []).length).toBeGreaterThanOrEqual(5);
+    // …and that column is capped, so a name kept from the old book with the phone number joined
+    // onto it («محمد الشحات صادق عباس0502302» is ONE token) wraps inside its cell instead of
+    // setting the width of the whole table. `overflow-wrap:anywhere`, not `break-all`: the latter
+    // splits ordinary Arabic words mid-letter.
+    expect(panel, 'the name column is capped').toContain('block w-[6.5rem]');
+    expect(panel).toContain('[overflow-wrap:anywhere]');
+    expect(panel, 'and never broken letter by letter').not.toContain('break-all');
+
+    const table = readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8');
+    expect(table, 'the floor is a default, not a law').toContain(
+      'Math.max(40, colCount * minColumnWidth)',
+    );
+    expect(table, 'and the tighter gutter costs nothing vertical').toContain(
+      "tightGutter ? 'px-2 py-2' : 'px-3 py-2'",
+    );
   });
 
   it('clears the ticks once the fines have been carried over', () => {

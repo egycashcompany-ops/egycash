@@ -326,35 +326,12 @@ export const DriverViolationsPanel = ({
       key: 'date',
       header: t('fleet.violations.fields.date'),
       sortable: true,
-      /*
-       * THE DAY IT HAPPENED — and, when it is being carried on another year's statement, which.
-       *
-       * A fine moved onto a car's current block is still listed here on its own day, which is the
-       * whole point: «برضو يفضلوا فى جدول السائقيين». But a reader looking at a 2025 date needs to
-       * know why it is no longer in the 2025 group, and needs a way back — so the marker IS the
-       * way back. Pressing it files the fine under its own date again.
-       */
-      render: (row) => (
-        <span className="flex flex-wrap items-center gap-1.5">
-          {formatDate(row.date, locale)}
-          {row.filedYear !== null && (
-            <button
-              type="button"
-              data-filed-year={row.id}
-              disabled={!mayMove || move.isPending}
-              title={
-                mayMove
-                  ? t('fleet.violations.returnToOwnYear')
-                  : t('fleet.violations.carriedOn', { year: String(row.filedYear) })
-              }
-              onClick={() => void returnToOwnYear(row)}
-              className="rounded-md border border-brand-300 bg-brand-50 px-1.5 text-[11px] font-medium tabular-nums text-brand-700 disabled:cursor-default dark:border-brand-900 dark:bg-brand-950/60 dark:text-brand-300"
-            >
-              {t('fleet.violations.carriedOn', { year: String(row.filedYear) })}
-            </button>
-          )}
-        </span>
-      ),
+      /** THE DAY IT HAPPENED, and nothing else — which statement it is carried on is its own column. */
+      // `w-px` is the table trick for «as narrow as your content»: the column stops claiming a
+      // share of the row and the width it gives up goes to the two that can use it.
+      className: 'w-px whitespace-nowrap',
+      headerClassName: 'w-px',
+      render: (row) => <span className="whitespace-nowrap">{formatDate(row.date, locale)}</span>,
     },
     {
       key: 'vehicle',
@@ -364,6 +341,8 @@ export const DriverViolationsPanel = ({
       sortable: true,
       sortKey: 'vehicleCode',
       align: 'center',
+      className: 'w-px whitespace-nowrap',
+      headerClassName: 'w-px',
       render: (row) => (
         <span className="font-mono text-xs" dir="ltr">
           {row.vehicleCode ?? (row.vehicleId === null ? '—' : (codeOf.get(row.vehicleId) ?? '—'))}
@@ -373,11 +352,27 @@ export const DriverViolationsPanel = ({
     {
       key: 'driver',
       header: t('fleet.violations.fields.driver'),
-      render: (row) => <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />,
+      // THE ONE COLUMN THAT MAY WRAP, and the only one holding a sentence. Capped so the board
+      // fits its half of the screen: `break-words` splits a word only when it would otherwise
+      // overflow, which is exactly the case here — a name kept from the old book with the phone
+      // number joined onto it («محمد الشحات صادق عباس0502302») is ONE token, and uncapped it set
+      // the width of the whole table.
+
+      // BREAKABLE. A name kept from the old book often carries the phone number joined onto it —
+      // «محمد الشحات صادق عباس0502302» is one unbreakable token — and one such cell was setting the
+      // width of the whole table and handing the board a sideways scrollbar.
+      render: (row) => (
+        <span className="block w-[6.5rem] [overflow-wrap:anywhere]">
+          <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />
+        </span>
+      ),
     },
     {
       key: 'type',
       header: t('fleet.violations.fields.type'),
+      // A chip is as wide as its word; the width it does not need belongs to the name beside it.
+      className: 'w-px whitespace-nowrap',
+      headerClassName: 'w-px',
       // A CHIP, not text: four kinds of fine in one grey column mean reading every row to see the
       // shape of a day. The name is still written on it — the colour is a hint, never the identity.
       render: (row) => (
@@ -390,9 +385,48 @@ export const DriverViolationsPanel = ({
       ),
     },
     {
+      /*
+       * WHICH STATEMENT THIS FINE IS CARRIED ON — «مش عاوز يتكتب على 2025 ويسكت، عاوز كمان الكود».
+       *
+       * Its own column, not a badge tucked under the date: the fine is filed against a CAR and a
+       * YEAR, and a year on its own does not say which car's statement it landed on. It is also
+       * the way back — pressing it files the fine under its own date again.
+       *
+       * «—» for a fine nobody moved, which is almost all of them.
+       */
+      key: 'filedOn',
+      header: t('fleet.violations.columns.carriedOnto'),
+      align: 'center',
+      className: 'w-px',
+      headerClassName: 'w-px',
+      render: (row) =>
+        row.filedYear === null ? (
+          <span className="text-slate-400">—</span>
+        ) : (
+          <button
+            type="button"
+            data-filed-year={row.id}
+            disabled={!mayMove || move.isPending}
+            title={mayMove ? t('fleet.violations.returnToOwnYear') : undefined}
+            onClick={() => void returnToOwnYear(row)}
+            className="whitespace-nowrap rounded-md border border-brand-300 bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-brand-700 disabled:cursor-default dark:border-brand-900 dark:bg-brand-950/60 dark:text-brand-300"
+            dir="ltr"
+          >
+            {t('fleet.violations.carriedOnto', {
+              code:
+                row.vehicleCode ??
+                (row.vehicleId === null ? '—' : (codeOf.get(row.vehicleId) ?? '—')),
+              year: String(row.filedYear),
+            })}
+          </button>
+        ),
+    },
+    {
       key: 'amount',
       header: t('fleet.violations.fields.amount'),
       align: 'end',
+      className: 'w-px whitespace-nowrap',
+      headerClassName: 'w-px',
       render: (row) => (
         <span className="tabular-nums">{formatMoney(row.amount, 'EGP', locale)}</span>
       ),
@@ -403,6 +437,8 @@ export const DriverViolationsPanel = ({
             key: 'actions',
             header: t('fleet.violations.columns.rowActions'),
             align: 'center' as const,
+            className: 'w-px whitespace-nowrap',
+            headerClassName: 'w-px',
             render: (row: FleetViolationDto) => (
               <span className="flex items-center justify-center gap-1">
                 {mayCollect && (
@@ -973,6 +1009,11 @@ export const DriverViolationsPanel = ({
           onSortChange={onSortChange}
           dense
           stickyHead
+          // A date, a three-digit code, a chip, a short badge and two icon buttons — none of them
+          // is the 7.5rem the default floor reserves, and at that floor this board demanded more
+          // width than half a screen has and scrolled sideways for columns that would have fitted.
+          minColumnWidth={5}
+          tightGutter
           // Ticking is what makes «several fines» a thing a reader can pick up at all.
           {...(mayMove ? { selection } : {})}
           // THE ROW IS THE DRAG SOURCE, and it carries the selection it belongs to. A row that is

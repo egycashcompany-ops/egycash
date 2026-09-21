@@ -4229,6 +4229,8 @@ const en: Record<string, string> = {
   'fleet.violations.carriedOnto': '{{code}} — {{year}}',
   'fleet.violations.columns.carriedOnto': 'Carried on',
   'fleet.violations.returnToOwnYear': 'Return this fine to its own year',
+  // Names the CAR it goes back to, because that is the half of the undo nobody could see.
+  'fleet.violations.returnToCar': 'Return this fine to car {{code}}, under its own year',
   'fleet.violations.returnedToOwnYear': 'Returned to its own year',
   'fleet.violations.movedToYear': 'Carried {{count}} fine(s) onto {{code}} — {{year}}',
   'fleet.violations.collectYear': 'Mark {{code}} {{year}} as collected',
@@ -11003,6 +11005,7 @@ const ar: Record<string, string> = {
   'fleet.violations.carriedOnto': '{{code}} — {{year}}',
   'fleet.violations.columns.carriedOnto': 'محمولة على',
   'fleet.violations.returnToOwnYear': 'رجّع المخالفة لسنتها',
+  'fleet.violations.returnToCar': 'رجّع المخالفة لعربية {{code}} ولسنتها',
   'fleet.violations.returnedToOwnYear': 'رجعت لسنتها',
   'fleet.violations.movedToYear': 'اتنقلت {{count}} مخالفة على {{code}} — {{year}}',
   'fleet.violations.collectYear': 'تحصيل مخالفات {{code}} لسنة {{year}}',

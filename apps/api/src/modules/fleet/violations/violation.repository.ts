@@ -200,7 +200,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
   async fileUnder(
     ids: readonly string[],
     vehicleId: string,
-    filedYear: number | null,
+    filedYear: number,
     meta: { by: string | null; session?: ClientSession },
   ): Promise<number> {
     if (ids.length === 0) return 0;
@@ -210,16 +210,63 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
         isDeleted: false,
         kind: 'driver',
       },
-      {
-        $set: {
-          vehicleId: new Types.ObjectId(vehicleId),
-          filedYear,
-          updatedBy: meta.by === null ? null : new Types.ObjectId(meta.by),
+      // AN AGGREGATION PIPELINE, not a plain `$set`, because one of these values is computed from
+      // the row's own current state: `homeVehicleId` takes the car the fine is leaving, and only
+      // when it is not already set. `$ifNull` says that in one atomic write; reading each row
+      // first and writing it back would race with a second clerk dragging the same fine.
+      [
+        {
+          $set: {
+            // KEEP THE FIRST HOME. A fine carried 150 → 151 and then 151 → 152 goes back to 150,
+            // not to 151: home is where it started, not where it last stopped. Without this guard
+            // the second carry would overwrite 150 with 151 and the way back would stop halfway.
+            homeVehicleId: { $ifNull: ['$homeVehicleId', '$vehicleId'] },
+            vehicleId: new Types.ObjectId(vehicleId),
+            filedYear,
+            updatedBy: meta.by === null ? null : new Types.ObjectId(meta.by),
+            __v: { $add: ['$__v', 1] },
+          },
         },
-        $inc: { __v: 1 },
-      },
+      ],
       // OMITTED rather than passed as undefined — `exactOptionalPropertyTypes` draws that
       // distinction and mongoose's update options take a session or no key at all.
+      meta.session === undefined ? {} : { session: meta.session },
+    );
+    return result.modifiedCount;
+  }
+
+  /**
+   * Put carried fines BACK: onto the car each came from, under its own date again.
+   *
+   * The way out of a drop, and the reason `homeVehicleId` exists. It takes no target car — every
+   * row names its own, which is what makes this an undo rather than a second move to a guess.
+   *
+   * `$ifNull` on the way home covers the rows carried BEFORE this field existed: they have no
+   * home recorded, so they stay where they are rather than being sent to `null` and falling off
+   * every car's board. The backfill script is what gives those rows their home back.
+   */
+  async fileBackHome(
+    ids: readonly string[],
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await this.model.updateMany(
+      {
+        _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        isDeleted: false,
+        kind: 'driver',
+      },
+      [
+        {
+          $set: {
+            vehicleId: { $ifNull: ['$homeVehicleId', '$vehicleId'] },
+            filedYear: null,
+            homeVehicleId: null,
+            updatedBy: meta.by === null ? null : new Types.ObjectId(meta.by),
+            __v: { $add: ['$__v', 1] },
+          },
+        },
+      ],
       meta.session === undefined ? {} : { session: meta.session },
     );
     return result.modifiedCount;

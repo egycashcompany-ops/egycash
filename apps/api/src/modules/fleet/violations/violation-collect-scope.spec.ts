@@ -111,7 +111,11 @@ describe('a fine carried onto another year is counted THERE, and only there', ()
     expect(storedAt, 'and that before the event date').toBeLessThan(dateAt);
   });
 
-  it('the fine itself is untouched — only where it is COUNTED moves', async () => {
+  /** The `$set` stage of a pipeline update — `fileUnder` and `fileBackHome` both write one. */
+  const stageOf = (update: unknown): Record<string, unknown> =>
+    ((update as { $set: Record<string, unknown> }[])[0] as { $set: Record<string, unknown> }).$set;
+
+  it('the fine itself is untouched — only the car it hangs on and the block it counts in move', async () => {
     const updateMany = vi
       .spyOn(FleetViolationModel, 'updateMany')
       .mockResolvedValue({ modifiedCount: 2 } as never);
@@ -125,24 +129,48 @@ describe('a fine carried onto another year is counted THERE, and only there', ()
     // A STATEMENT ROW CANNOT BE CARRIED: it stores its own year, so a second answer beside it
     // would be a contradiction rather than an override.
     expect((filter as Record<string, unknown>)['kind']).toBe('driver');
-    const set = (update as { $set: Record<string, unknown> }).$set;
-    expect(Object.keys(set).sort(), 'the car, the block, and who moved it').toEqual(
-      ['filedYear', 'updatedBy', 'vehicleId'].sort(),
+    const set = stageOf(update);
+    expect(Object.keys(set).sort(), 'the car, where it came from, the block, who, and the version').toEqual(
+      ['__v', 'filedYear', 'homeVehicleId', 'updatedBy', 'vehicleId'].sort(),
     );
+    // WHERE IT CAME FROM, KEPT — and kept only the FIRST time. `$ifNull` is the whole guard: a
+    // fine carried 150 → 151 and then 151 → 152 still goes home to 150, because the second carry
+    // finds a home already recorded and leaves it alone.
+    expect(set['homeVehicleId'], 'home is where it started, not where it last stopped').toEqual({
+      $ifNull: ['$homeVehicleId', '$vehicleId'],
+    });
     for (const untouched of ['date', 'collected', 'amount', 'driverEmployeeId']) {
       expect(set[untouched], `${untouched} is the fine's own fact`).toBeUndefined();
     }
   });
 
-  it('putting them back is the same write with no year — which is what makes it undoable', async () => {
+  it('putting them back sends each fine to the car it came from — «لو رجعتها هتكون 150 زى ما كانت»', async () => {
     const updateMany = vi
       .spyOn(FleetViolationModel, 'updateMany')
       .mockResolvedValue({ modifiedCount: 1 } as never);
-    await fleetViolationRepository.fileUnder(['650000000000000000000031'], VEHICLE, null, {
-      by: null,
+    // NO CAR IS PASSED. Naming one could only name the car it is sitting on NOW — which is the
+    // defect: the badge went away and the fine stayed on 151.
+    await fleetViolationRepository.fileBackHome(['650000000000000000000031'], { by: null });
+    const set = stageOf(updateMany.mock.calls[0]?.[1]);
+    expect(set['vehicleId'], 'back onto the car it left').toEqual({
+      $ifNull: ['$homeVehicleId', '$vehicleId'],
     });
-    const set = (updateMany.mock.calls[0]?.[1] as { $set: Record<string, unknown> }).$set;
     expect(set['filedYear'], 'back under its own date').toBeNull();
+    expect(set['homeVehicleId'], 'and it is home, so it remembers nowhere else').toBeNull();
+  });
+
+  it('a row carried BEFORE any home was recorded stays where it is rather than falling off every board', async () => {
+    // `$ifNull` is doing two jobs at once, and this is the second: a row moved before the field
+    // existed has no home, and sending it to `null` would leave it on no car at all — invisible
+    // on every block. It keeps its current car; the backfill is what gives it 150 back.
+    const updateMany = vi
+      .spyOn(FleetViolationModel, 'updateMany')
+      .mockResolvedValue({ modifiedCount: 1 } as never);
+    await fleetViolationRepository.fileBackHome(['650000000000000000000031'], { by: null });
+    const fallback = (stageOf(updateMany.mock.calls[0]?.[1])['vehicleId'] as {
+      $ifNull: string[];
+    }).$ifNull[1];
+    expect(fallback, 'the fallback is the car it is on, never null').toBe('$vehicleId');
   });
 });
 

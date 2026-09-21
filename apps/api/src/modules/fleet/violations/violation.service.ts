@@ -57,6 +57,8 @@ const snapshot = (doc: FleetViolationDoc) => ({
   // Which statement this fine is being carried on, when that is not its own date's year. Moving
   // one is an administrative act on money somebody owes, so the trail has to hold it.
   filedYear: doc.filedYear,
+  // And the car it is away FROM, so the trail shows both ends of a carry and of the way back.
+  homeVehicleId: doc.homeVehicleId === null ? null : String(doc.homeVehicleId),
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
   collected: doc.collected,
 });
@@ -401,7 +403,7 @@ class FleetViolationService {
    * the half it liked.
    */
   async move(input: MoveFleetViolations, by: string): Promise<number> {
-    await fleetVehicleRepository.getById(input.vehicleId);
+    if (input.vehicleId !== undefined) await fleetVehicleRepository.getById(input.vehicleId);
     const before = await fleetViolationRepository.findByIds(input.ids);
     if (before.length !== input.ids.length) {
       throw invalid('ids', 'one of these violations no longer exists');
@@ -414,11 +416,17 @@ class FleetViolationService {
       );
     }
 
+    // TWO DIRECTIONS, and only one of them takes a car. Carrying is told where to go; returning
+    // reads it off each row, so that pressing «محمولة على» puts the fine back on the car it was
+    // committed on — «لو رجعتها هتكون 150 زى ما كانت» — instead of leaving it stranded on 151
+    // with nothing but the badge gone.
     const moved = await unitOfWork(async (session) =>
-      fleetViolationRepository.fileUnder(input.ids, input.vehicleId, input.filedYear, {
-        by,
-        session,
-      }),
+      input.filedYear === null || input.vehicleId === undefined
+        ? fleetViolationRepository.fileBackHome(input.ids, { by, session })
+        : fleetViolationRepository.fileUnder(input.ids, input.vehicleId, input.filedYear, {
+            by,
+            session,
+          }),
     );
 
     // One entry per fine, because one fine is what a reader looks up when they ask why a 2025

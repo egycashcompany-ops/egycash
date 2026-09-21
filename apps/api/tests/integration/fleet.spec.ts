@@ -6422,13 +6422,109 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         .patch('/api/v1/fleet/violations/move')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ ids: [fine.id], vehicleId: v.id, filedYear: 2026 });
-      const back = await request(app)
+      // NO CAR ON THE WAY BACK — the fine names its own, and the request is refused if it tries.
+      const refused = await request(app)
         .patch('/api/v1/fleet/violations/move')
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ ids: [fine.id], vehicleId: v.id, filedYear: null });
+      expect(refused.status, 'a return takes no vehicle').toBe(400);
+
+      const back = await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], filedYear: null });
       expect(back.status).toBe(200);
       expect(await rollupOf({ year: 2026, vehicleId: v.id })).toEqual([]);
       expect((await rollupOf({ year: 2025, vehicleId: v.id }))[0]?.['driverAmount']).toBe(90);
+    });
+
+    it('sends a carried fine back to the CAR it came from, not the one it was dropped on', async () => {
+      // «لو انا جيت حطيتها على 151 ... لما برجعها المفروض تبقى العربية 150 لا بيخليها 151».
+      // Carrying really does move the fine onto the other car — that is what the drop is for —
+      // so the way back has to know where it started, or the undo undoes only half of it.
+      const home = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const onto = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      const fine = data<{ id: string }>(
+        await request(app)
+          .post('/api/v1/fleet/violations/driver')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            vehicleId: home.id,
+            date: '2025-07-07',
+            driverEmployeeId: employeeId,
+            violationTypeId: driverType,
+            amount: 200,
+          }),
+      );
+
+      const carried = await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], vehicleId: onto.id, filedYear: 2026 });
+      expect(carried.status, JSON.stringify(carried.body)).toBe(200);
+
+      // It IS on the other car now — the board lists it there, which the owner asked for.
+      const [away] = await finesOf(onto.id);
+      expect(away?.['id']).toBe(fine.id);
+      expect(away?.['filedYear']).toBe(2026);
+      expect(away?.['homeVehicleId'], 'and it remembers where it came from').toBe(home.id);
+      expect(await finesOf(home.id), 'and it has left the car it came from').toEqual([]);
+
+      const back = await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], filedYear: null });
+      expect(back.status, JSON.stringify(back.body)).toBe(200);
+
+      // AND IT IS HOME. This is the whole defect: the badge went away and the fine did not.
+      const [returned] = await finesOf(home.id);
+      expect(returned?.['id'], 'back on the car it was committed on').toBe(fine.id);
+      expect(returned?.['filedYear'], 'and under its own date again').toBeNull();
+      expect(returned?.['homeVehicleId'], 'it is home, so it remembers nowhere else').toBeNull();
+      expect(returned?.['date'], 'its own day never moved at all').toContain('2025-07-07');
+      expect(await finesOf(onto.id), 'and nothing is left on the car it was dropped on').toEqual([]);
+    });
+
+    it('carried twice, it still goes home to where it STARTED', async () => {
+      // 150 → 151 → 152. Home is where it began, not the last stop; otherwise the way back
+      // strands the fine on 151, which is the same bug one hop further along.
+      const home = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const first = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const second = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      const fine = data<{ id: string }>(
+        await request(app)
+          .post('/api/v1/fleet/violations/driver')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            vehicleId: home.id,
+            date: '2025-08-08',
+            driverEmployeeId: employeeId,
+            violationTypeId: driverType,
+            amount: 150,
+          }),
+      );
+      for (const car of [first, second]) {
+        const hop = await request(app)
+          .patch('/api/v1/fleet/violations/move')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ ids: [fine.id], vehicleId: car.id, filedYear: 2026 });
+        expect(hop.status, JSON.stringify(hop.body)).toBe(200);
+      }
+      expect((await finesOf(second.id))[0]?.['homeVehicleId'], 'still the first car').toBe(home.id);
+
+      await request(app)
+        .patch('/api/v1/fleet/violations/move')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ ids: [fine.id], filedYear: null });
+      expect((await finesOf(home.id))[0]?.['id'], 'home, in one hop back').toBe(fine.id);
+      expect(await finesOf(first.id)).toEqual([]);
+      expect(await finesOf(second.id)).toEqual([]);
     });
 
     it('REFUSES a selection holding a company statement row — and moves none of it', async () => {

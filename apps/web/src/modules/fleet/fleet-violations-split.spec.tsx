@@ -129,6 +129,7 @@ const driverRow = (over: Partial<FleetViolationDto> = {}): FleetViolationDto => 
   unitValue: null,
   date: '2026-02-01T00:00:00.000Z',
   filedYear: null,
+  homeVehicleId: null,
   driverEmployeeId: E1,
   driverName: null,
   collected: false,
@@ -964,6 +965,23 @@ describe('the next round of reports, as rules the markup carries', () => {
 
     // An unmoved fine reads «—» in that column — almost every row is one.
     expect(page(), 'nothing to press on a fine nobody moved').not.toContain('data-filed-year');
+  });
+
+  it('pressing it sends the fine back to the CAR it came from, and names that car first', () => {
+    // «لو انا جيت حطيتها على 151 ... لما برجعها المفروض تبقى العربية 150 لا بيخليها 151».
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    // NO CAR IS SENT. The only one this screen could name is the car the fine is sitting on NOW,
+    // which is the wrong one — the row remembers where it came from and the server reads it.
+    expect(panel, 'the return names no vehicle').toContain(
+      "move.mutateAsync({ ids: [row.id], filedYear: null })",
+    );
+    expect(panel, 'and it is not the car it was dropped onto').not.toContain(
+      'vehicleId: row.vehicleId, filedYear: null',
+    );
+    // And the reader is told where pressing it goes, which is the half of the undo they cannot
+    // see: the badge shows where the fine IS, never where it would go back to.
+    expect(panel).toContain("t('fleet.violations.returnToCar'");
+    expect(panel).toContain('codeOf.get(row.homeVehicleId)');
   });
 
   it('the drivers’ board fits its half of the screen instead of scrolling sideways', () => {

@@ -287,11 +287,17 @@ export const DriverViolationsPanel = ({
   const selection = useTableSelection(rows.map((row) => row.id));
   const mayMove = can('fleetViolation.edit');
   const move = useMoveViolations();
-  /** Put one fine back under its own date — the way out of a drop, on the row it landed from. */
+  /**
+   * Put one fine back where it came from — the way out of a drop, on the row it landed from.
+   *
+   * NO CAR IS SENT. The fine remembers the one it left («لو رجعتها هتكون 150 زى ما كانت») and the
+   * server reads it off the row; passing the car it is sitting on now would be naming 151, which
+   * is exactly the bug — the badge disappeared and the fine stayed on the wrong car.
+   */
   const returnToOwnYear = async (row: FleetViolationDto): Promise<void> => {
-    if (!mayMove || row.vehicleId === null) return;
+    if (!mayMove) return;
     try {
-      await move.mutateAsync({ ids: [row.id], vehicleId: row.vehicleId, filedYear: null });
+      await move.mutateAsync({ ids: [row.id], filedYear: null });
       toast.success(t('fleet.violations.returnedToOwnYear'));
     } catch (error) {
       toast.error(errorMessage(error, locale));
@@ -408,7 +414,17 @@ export const DriverViolationsPanel = ({
             type="button"
             data-filed-year={row.id}
             disabled={!mayMove || move.isPending}
-            title={mayMove ? t('fleet.violations.returnToOwnYear') : undefined}
+            title={
+              !mayMove
+                ? undefined
+                : row.homeVehicleId === null
+                  ? t('fleet.violations.returnToOwnYear')
+                  : // NAME THE CAR. The badge says where the fine IS; the only thing a reader
+                    // cannot see is where pressing it sends the fine back to.
+                    t('fleet.violations.returnToCar', {
+                      code: codeOf.get(row.homeVehicleId) ?? '—',
+                    })
+            }
             onClick={() => void returnToOwnYear(row)}
             className="whitespace-nowrap rounded-md border border-brand-300 bg-brand-50 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-brand-700 disabled:cursor-default dark:border-brand-900 dark:bg-brand-950/60 dark:text-brand-300"
             dir="ltr"

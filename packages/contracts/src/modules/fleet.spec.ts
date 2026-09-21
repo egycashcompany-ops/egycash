@@ -9,6 +9,7 @@ import {
   FleetEvents,
   ListFleetDriversQuerySchema,
   ListFleetVehiclesQuerySchema,
+  MoveFleetViolationsSchema,
   PlanFleetRosterSchema,
   RecordFleetOdometerSchema,
   RecordFleetVehicleViolationSchema,
@@ -490,5 +491,30 @@ describe('SaveFleetFixedRosterSchema — driver 2 depends on driver 1', () => {
       }).success,
       'and an empty row stays legal, so clearing a day remains expressible',
     ).toBe(true);
+  });
+});
+
+describe('carrying a fine onto another car, and the way back', () => {
+  const IDS = ['650000000000000000000031'];
+  const CAR = '650000000000000000000151';
+
+  it('a CARRY names the car whose block the fines go onto', () => {
+    expect(
+      MoveFleetViolationsSchema.safeParse({ ids: IDS, vehicleId: CAR, filedYear: 2026 }).success,
+    ).toBe(true);
+    expect(
+      MoveFleetViolationsSchema.safeParse({ ids: IDS, filedYear: 2026 }).success,
+      'and a carry with no car has nowhere to go',
+    ).toBe(false);
+  });
+
+  it('a RETURN names none — each fine goes back to the car it came from', () => {
+    expect(MoveFleetViolationsSchema.safeParse({ ids: IDS, filedYear: null }).success).toBe(true);
+    // REFUSED, not ignored. The only car a caller could name on a return is the one the fine is
+    // sitting on NOW — which is exactly the defect: «بيخليها 151 زى ما هى». A field the server
+    // quietly drops is a field that lies to whoever reads the request.
+    expect(
+      MoveFleetViolationsSchema.safeParse({ ids: IDS, vehicleId: CAR, filedYear: null }).success,
+    ).toBe(false);
   });
 });

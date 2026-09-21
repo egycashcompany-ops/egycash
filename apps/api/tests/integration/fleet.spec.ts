@@ -7988,8 +7988,11 @@ describe('violations: two sides, one batch, and a collected flag that persists',
   it('a collected fine leaves the three totals, but not the collected TALLY', async () => {
     // «تخرج من إجمالى الشركة و إجمالى السائقين و إجمالى المخالفات». The board is read as the
     // outstanding balance, so a settled row stops counting toward what is owed — while
-    // rowCount/collectedCount go on counting every row, because they are what the group's tick,
-    // its green tint and the «الحالة» filter are computed from.
+    // rowCount/collectedCount go on counting, because they are what the group's tick, its green
+    // tint and the «الحالة» filter are computed from.
+    //
+    // They count the COMPANY's rows only, and that is the same sentence read twice: they describe
+    // what the group tick SETS, and that tick settles the company's statement alone.
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const driver = await someDriver();
     await mkDriverProfile(driver).catch(() => undefined);
@@ -8034,7 +8037,10 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       'nothing is collected yet, so everything counts',
     ).toEqual([3, 300, 1, 250]);
     expect([before.totalCount, before.totalAmount]).toEqual([4, 550]);
-    expect([before.collectedCount, before.rowCount]).toEqual([0, 2]);
+    // ONE row in the tally, not two: these two are what the board's group tick sets, and that
+    // tick settles the COMPANY's statement rows alone. The driver's fine is money owed by a
+    // person and is counted in `driverCount`/`driverAmount` above, where the board reports it.
+    expect([before.collectedCount, before.rowCount]).toEqual([0, 1]);
 
     // Tick the DRIVER fine only — a partly-settled group is the case a client cannot compute for
     // itself, because the DTO carries no collected money.
@@ -8057,8 +8063,8 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     ]);
     expect(
       [half.collectedCount, half.rowCount],
-      'while the tally still sees both rows — this is what «١ من ٢» is made of',
-    ).toEqual([1, 2]);
+      'and the tally is unmoved: ticking a DRIVER’s fine is not the company collecting anything',
+    ).toEqual([0, 1]);
 
     // Now the statement row too: a fully-settled group owes nothing and says so.
     await request(app)
@@ -8074,8 +8080,8 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     expect([done.totalCount, done.totalAmount]).toEqual([0, 0]);
     expect(
       [done.collectedCount, done.rowCount],
-      'and the group still reports itself fully collected — the green tint depends on it',
-    ).toEqual([2, 2]);
+      'NOW the group reports itself fully collected — the green tint depends on it',
+    ).toEqual([1, 1]);
 
     // UNTICKING brings the money back. A tick is a statement about payment, not a delete.
     const ticked = data<FleetViolationDto[]>(
@@ -8507,8 +8513,10 @@ describe('the violations board, as the screen actually asks it', () => {
       .get('/api/v1/fleet/violations/rollup')
       .query({ year: 2028, vehicleId: v.id })
       .set('Authorization', `Bearer ${adminToken}`);
+    // The tally counts the COMPANY's statement rows — there is one, and the driver's fine beside
+    // it is not in these two because the tick cannot reach it.
     expect(data<{ rowCount: number; collectedCount: number }[]>(before)[0]).toMatchObject({
-      rowCount: 2,
+      rowCount: 1,
       collectedCount: 0,
     });
 
@@ -8517,16 +8525,33 @@ describe('the violations board, as the screen actually asks it', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ vehicleId: v.id, year: 2028, collected: true });
     expect(tick.status).toBe(200);
-    expect(data<{ changed: number }>(tick).changed, 'BOTH shapes, in one act').toBe(2);
+    // «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه بالسواقيين». It used to be 2 — the
+    // statement AND the driver's fine — which settled money owed by a person because somebody
+    // closed off a different account.
+    expect(data<{ changed: number }>(tick).changed, 'the statement row, and only it').toBe(1);
 
     const after = await request(app)
       .get('/api/v1/fleet/violations/rollup')
       .query({ year: 2028, vehicleId: v.id })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(data<{ rowCount: number; collectedCount: number }[]>(after)[0]).toMatchObject({
-      rowCount: 2,
-      collectedCount: 2,
+      rowCount: 1,
+      collectedCount: 1,
     });
+    // …and the driver's fine is still owed, and still reported.
+    const fines = data<{ collected: boolean }[]>(
+      await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(fines.map((f) => f.collected), 'nobody was paid by a tick on the other half').toEqual([
+      false,
+    ]);
+    expect(
+      data<{ driverAmount: number }[]>(after)[0]?.driverAmount,
+      'and the board still says how much',
+    ).toBe(90);
 
     // And untick puts it all back — the tick is a toggle over the group, not a one-way door.
     await request(app)

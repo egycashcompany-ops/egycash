@@ -109,6 +109,28 @@ export const ViolationsPage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
 
+  /**
+   * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — «لما احدد كود عربيه يتحدد فى التانيه تلقائى».
+   *
+   * Held here rather than in either panel, because it belongs to neither: a clerk works a car at
+   * a time, and that car's statement and its drivers' fines are the same sitting. Picking it twice
+   * — once on each side — was two chances to pick two different cars and file half the sitting
+   * against the wrong one.
+   *
+   * NOT in the address bar, where every FILTER on this screen lives. A filter is what somebody
+   * shares in a link or comes back to; a half-filled entry bar is neither, and putting the car
+   * there would make the back button undo a pick and a shared link arrive with a form part-filled.
+   * The two boards keep their own car filters, on purpose — they are read side by side precisely
+   * so they can disagree.
+   */
+  const [entryVehicleId, setEntryVehicleId] = useState('');
+  /**
+   * BUMPED WHEN FINES ARE CARRIED ONTO A GROUP. The drivers' half owns the ticks that named them
+   * and the company's half owns the drop, so the one signal between them is «that happened» — the
+   * drivers' board clears its selection on it, rather than being left pointing at rows the reader
+   * has finished with. `useTableSelection` never prunes its own set, so this has to be explicit.
+   */
+  const [movedAt, setMovedAt] = useState(0);
   const [inspecting, setInspecting] = useState<FleetViolationRollupDto | null>(null);
   const [editing, setEditing] = useState<FleetViolationDto | null>(null);
   const [deleting, setDeleting] = useState<FleetViolationDto | null>(null);
@@ -154,6 +176,9 @@ export const ViolationsPage = (): JSX.Element => {
           years={years}
           vehicleCodes={codes}
           settled={companySettled}
+          entryVehicleId={entryVehicleId}
+          onEntryVehicleChange={setEntryVehicleId}
+          onMoved={() => setMovedAt((n) => n + 1)}
           onSettledChange={(next) => patch({ cset: next })}
           onYearsChange={(next) => patch({ year: writeList(next) })}
           onVehicleCodesChange={(next) =>
@@ -163,6 +188,9 @@ export const ViolationsPage = (): JSX.Element => {
           onInspect={setInspecting}
         />
         <DriverViolationsPanel
+          entryVehicleId={entryVehicleId}
+          onEntryVehicleChange={setEntryVehicleId}
+          movedAt={movedAt}
           sorts={driverSorts}
           onSortChange={(by) => patch({ dsort: writeSorts(clickSort(driverSortParam, DRIVER_DEFAULT_SORT, by)) })}
           vehicleCodes={driverCodes}

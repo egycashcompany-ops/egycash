@@ -30,14 +30,26 @@ const keyOf = (vehicleId: string | null, code: string | null, year: number): str
  * against, so deleting the last fine left a row of four zeroes sitting on the board — «لما مسحت
  * كله فضلت موجوده». There is nothing behind it to open, tick or settle.
  *
- * `rowCount` is the test rather than the money, and the difference matters: a car whose fines are
- * all COLLECTED reports 0 in every amount — that is what excluding collected rows from the sums
- * means — while still holding rows a reader may untick. Dropping on a zero total would take that
- * car off the board with its settled history inside it. A grievance figure that is a real number
- * also keeps its row: the appeal wiped the statement, and the figure IS the history.
+ * `rowCount` is the test rather than the money, and the difference matters: a car whose statement
+ * rows are all COLLECTED reports 0 in every amount — that is what excluding collected rows from
+ * the sums means — while still holding rows a reader may untick. Dropping on a zero total would
+ * take that car off the board with its settled history inside it. A grievance figure that is a
+ * real number also keeps its row: the appeal wiped the statement, and the figure IS the history.
+ *
+ * THE DRIVERS' SIDE NEEDS ITS OWN LIMB, because `rowCount` counts the COMPANY's rows only — it is
+ * what the board's tick sets, and that tick settles the company's statement alone. A year whose
+ * only fines were its drivers' has no statement rows at all, and without this it would vanish from
+ * a board that is still reporting its money in «إجمالي السائقين».
+ *
+ * Such a year leaves the board once every one of those fines is settled: nothing is outstanding,
+ * there is no statement to tick, and this board's tick could not untick them anyway. They are
+ * still on the drivers' board, which lists fines directly and has its own «الحالة» filter.
  */
 const hasSomethingInIt = (row: FleetViolationRollupDto): boolean =>
-  row.rowCount > 0 || row.totalBeforeGrievance !== 0;
+  row.rowCount > 0 ||
+  row.driverCount > 0 ||
+  row.driverAmount !== 0 ||
+  row.totalBeforeGrievance !== 0;
 
 export const assembleRollups = (
   sums: readonly ViolationYearSums[],

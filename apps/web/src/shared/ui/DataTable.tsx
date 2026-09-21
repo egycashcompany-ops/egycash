@@ -1,7 +1,7 @@
 // Generic, RTL-safe data table with built-in loading (skeleton), error (retry), and empty
 // states, optional column sorting, row selection (bulk), and row-click. Presentation only —
 // data fetching/paging is the caller's (a feature api/ hook via TanStack Query).
-import { type ReactNode } from 'react';
+import { type HTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../lib/cn';
 import { hasError } from '../lib/errors';
 import { Skeleton } from './Skeleton';
@@ -105,6 +105,29 @@ export interface DataTableProps<T> {
    * decision.
    */
   textScale?: 'compact' | 'comfortable';
+  /**
+   * KEEP THE HEAD IN VIEW while the rows scroll under it — for a board somebody works down for a
+   * while, where losing the column names forty rows in means scrolling back to read one cell.
+   *
+   * It makes THIS table the thing that scrolls: the wrapper takes the height its parent gives it
+   * (`h-full`, so the caller sizes it — `min-h-0 flex-1` in a column) and scrolls in both axes.
+   * That is not a style preference but the mechanism: `position: sticky` sticks to the nearest
+   * scrolling ancestor, so a head inside a wrapper that does not scroll vertically would simply
+   * ride away with the parent that does.
+   *
+   * The head also turns OPAQUE. It is drawn over the rows, and at `dark:bg-slate-800/60` they show
+   * through it — which reads as a broken header rather than as a translucent one.
+   */
+  stickyHead?: boolean;
+  /**
+   * EXTRA ATTRIBUTES FOR ONE ROW, from the row itself — what a table cannot know and its caller
+   * can: that this row is a drag source, that it carries a hook a test presses it by.
+   *
+   * Deliberately narrow in spirit even though `HTMLAttributes` is wide: it is for a BEHAVIOUR the
+   * caller owns, not for restyling (`rowClassName` is that, and a `className` returned here is
+   * merged with it rather than replacing it). Returning `undefined` leaves the row as it was.
+   */
+  rowProps?: (row: T) => HTMLAttributes<HTMLTableRowElement> | undefined;
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -130,6 +153,8 @@ export const DataTable = <T,>({
   dense = false,
   rowClassName,
   textScale = 'compact',
+  stickyHead = false,
+  rowProps,
 }: DataTableProps<T>): JSX.Element => {
   // One shape inside, whichever shape came in: the single-column callers (every module but Fleet)
   // and the multi-column ones read the same way from here down.
@@ -202,9 +227,13 @@ export const DataTable = <T,>({
     return rows.map((row, index) => {
       const id = rowKey(row);
       const isSelected = selected.has(id);
+      // `className` is pulled out and folded in with the rest below, so a caller adding a drag
+      // hook does not silently drop the table's own row styling.
+      const { className: extraClass, ...extra } = rowProps?.(row) ?? {};
       return (
         <tr
           key={id}
+          {...extra}
           onClick={onRowClick === undefined ? undefined : () => onRowClick(row)}
           className={cn(
             // `group` so a cell can reveal its secondary controls when the pointer is on the row —
@@ -218,6 +247,7 @@ export const DataTable = <T,>({
             isSelected && 'bg-brand-50/60 dark:bg-brand-950/40',
             // Last, so a row that names its own tone wins over the neutral default.
             rowClassName?.(row),
+            extraClass,
           )}
         >
           {isSelectable && (
@@ -255,16 +285,20 @@ export const DataTable = <T,>({
   return (
     <div
       className={cn(
-        'overflow-x-auto',
+        stickyHead ? 'h-full overflow-auto' : 'overflow-x-auto',
         !embedded &&
           'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
       )}
     >
       <table className="w-full border-collapse" style={{ minWidth: `${minTableWidth}rem` }}>
-        <thead>
+        {/* `undefined`, not `cn(false && …)`: that renders `class=""` on every table in the app
+            and turns a plain `<thead>` into one nothing else can match on. */}
+        <thead className={stickyHead ? 'sticky top-0 z-10' : undefined}>
           <tr
             className={cn(
-              'bg-slate-50 uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400',
+              'bg-slate-50 uppercase tracking-wide text-slate-500 dark:text-slate-400',
+              // See-through only where nothing scrolls under it.
+              stickyHead ? 'dark:bg-slate-800' : 'dark:bg-slate-800/60',
               headerText,
             )}
           >

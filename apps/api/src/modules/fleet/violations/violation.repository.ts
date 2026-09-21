@@ -156,7 +156,18 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
    * `driverCount` counts events. Derived at query time — nothing here is ever stored.
    */
   /**
-   * Tick or untick EVERY row of one (vehicle, year).
+   * Tick or untick the COMPANY's rows of one (vehicle, year) — and only those.
+   *
+   * «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه بالسواقيين». This used to set every row of
+   * the group, so ticking the company's statement for a car settled that car's DRIVERS' fines for
+   * the same year in the same click — money owed by a person, marked as received because somebody
+   * closed off a different account. The two halves of the screen are two accounts and are settled
+   * separately: this one, from the company board's group tick, and the drivers' one row at a time
+   * on the board that lists them.
+   *
+   * `kind: 'vehicle'` is the whole of the fix, and it is also why the year needs no `$or` any
+   * more: a statement row STORES its year. The driver branch of `yearClause` existed only to
+   * reach the rows this must never touch.
    *
    * One statement rather than a loop of per-row writes: the board's tick is a single decision about
    * a single group, and a partial failure halfway through a loop would leave a group in exactly the
@@ -167,26 +178,99 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       {
         isDeleted: false,
         vehicleId: new Types.ObjectId(vehicleId),
-        ...FleetViolationRepository.yearClause(year),
+        kind: 'vehicle',
+        year,
       },
       { $set: { collected } },
     );
     return result.modifiedCount;
   }
 
+  /**
+   * CARRY SEVERAL DRIVER FINES ONTO ONE CAR'S STATEMENT — one write, inside the caller's
+   * transaction.
+   *
+   * `kind: 'driver'` is in the filter and not merely in the service's guard: a statement row
+   * stores its own year, and setting `filedYear` on one would leave two answers to the same
+   * question with nothing to say which wins. Ids that name a statement row simply do not match,
+   * and the service compares what it asked to move with what moved.
+   *
+   * `null` puts them back under their own dates, which is what makes the gesture undoable.
+   */
+  async fileUnder(
+    ids: readonly string[],
+    vehicleId: string,
+    filedYear: number | null,
+    meta: { by: string | null; session?: ClientSession },
+  ): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await this.model.updateMany(
+      {
+        _id: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        isDeleted: false,
+        kind: 'driver',
+      },
+      {
+        $set: {
+          vehicleId: new Types.ObjectId(vehicleId),
+          filedYear,
+          updatedBy: meta.by === null ? null : new Types.ObjectId(meta.by),
+        },
+        $inc: { __v: 1 },
+      },
+      // OMITTED rather than passed as undefined — `exactOptionalPropertyTypes` draws that
+      // distinction and mongoose's update options take a session or no key at all.
+      meta.session === undefined ? {} : { session: meta.session },
+    );
+    return result.modifiedCount;
+  }
+
+  /** The fines named, as they stand — what the move audits against and checks the shape of. */
+  async findByIds(
+    ids: readonly string[],
+    session?: ClientSession,
+  ): Promise<FleetViolationDoc[]> {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
+      .session(session ?? null)
+      .lean<FleetViolationDoc[]>()
+      .exec();
+  }
+
   async yearSums(
     years: readonly number[] | undefined,
-    vehicleId?: string,
+    /**
+     * WHICH CARS, if any. `vehicleIds: undefined` means every car; `[]` means the codes the
+     * reader typed matched none of the registry's, which narrows to nothing but the old book's
+     * own rows — `byVehicleOrBookCode` keeps those reachable by the code the book wrote.
+     */
+    scope?: {
+      vehicleIds?: readonly string[] | undefined;
+      vehicleCodes?: readonly string[] | undefined;
+    },
   ): Promise<ViolationYearSums[]> {
+    /*
+     * ONE CLAUSE EACH, UNDER `$and` — never merged into one object.
+     *
+     * Both narrowings speak `$or`: the years ask each shape its own way, and the cars ask the
+     * registry's ids OR the old book's codes. Written as two keys on one object the second would
+     * overwrite the first, and the board would answer for every year the moment a car was picked
+     * — a filter silently widening, which is the failure this whole endpoint has just had.
+     */
+    const clauses: FilterQuery<FleetViolationDoc>[] = [];
+    // No years asked for means EVERY year — the board is read as a history, and «all of them»
+    // is the answer an absent clause gives, not an empty `$or` that would match nothing.
+    if (years !== undefined && years.length > 0) {
+      clauses.push(FleetViolationRepository.yearsClause(years));
+    }
+    if (scope?.vehicleIds !== undefined) {
+      clauses.push(byVehicleOrBookCode(scope.vehicleIds, scope.vehicleCodes));
+    }
     const match: FilterQuery<FleetViolationDoc> = {
       isDeleted: false,
-      // No years asked for means EVERY year — the board is read as a history, and «all of them»
-      // is the answer an empty filter gives, not an empty `$or` that would match nothing.
-      ...(years === undefined || years.length === 0
-        ? {}
-        : FleetViolationRepository.yearsClause(years)),
+      ...(clauses.length === 0 ? {} : { $and: clauses }),
     };
-    if (vehicleId !== undefined) match['vehicleId'] = new Types.ObjectId(vehicleId);
     const rows = await this.model.aggregate<{
       _id: { vehicleId: Types.ObjectId | null; vehicleCode: string | null; year: number };
       vehicleCount: number;
@@ -207,7 +291,16 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
             // The old book's code, for rows whose car the registry never had — so two such cars
             // are two groups and not one group keyed on the value `null`.
             vehicleCode: { $ifNull: ['$vehicleCode', null] },
-            year: { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
+            // WHICH BLOCK THIS ROW IS COUNTED IN, in the order the answer is owed: the year it was
+            // carried onto, else a statement row's own stored year, else the year a driver's event
+            // date falls in. The same order `violationYearBranches` narrows by — a row that
+            // filtered into one block and grouped under another would go missing from both.
+            year: {
+              $ifNull: [
+                '$filedYear',
+                { $ifNull: ['$year', { $year: { date: '$date', timezone: 'UTC' } }] },
+              ],
+            },
           },
           // WHAT IS STILL OWED, not what was ever fined. A row that has been ticked as collected
           // is settled, and the owner reads these four figures as the outstanding balance —
@@ -258,12 +351,22 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
               ],
             },
           },
-          // ROWS, not fines, and EVERY row: a statement row of «×5» is one row that is collected
-          // or not, so the group's tick counts documents rather than the `count` on them — and it
-          // counts them whether they are collected or not, because «٣ من ٥ محصَّلة» is exactly the
-          // question these two answer.
-          rowCount: { $sum: 1 },
-          collectedCount: { $sum: { $cond: ['$collected', 1, 0] } },
+          // ROWS, not fines: a statement row of «×5» is one row that is collected or not, so the
+          // group's tick counts documents rather than the `count` on them — and it counts them
+          // whether they are collected or not, because «٣ من ٥ محصَّلة» is exactly the question
+          // these two answer.
+          //
+          // THE COMPANY'S ROWS ONLY. These two are what the board's tick sets, what its colour is
+          // read from and what the «الحالة» filter sorts on — and that tick now sets the company's
+          // statement rows alone. Counting the drivers' fines here would leave the tick describing
+          // rows it cannot change: a car whose statement is fully settled would still show as
+          // «بعضها» because a driver has not paid, and clicking it again would never turn it green.
+          rowCount: { $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, 1, 0] } },
+          collectedCount: {
+            $sum: {
+              $cond: [{ $and: [{ $eq: ['$kind', 'vehicle'] }, '$collected'] }, 1, 0],
+            },
+          },
         },
       },
     ]);
@@ -296,14 +399,18 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
   /** The grievances of SEVERAL years, ORed — the rollup's other half, narrowed the same way. */
   async forYears(
     years: readonly number[] | undefined,
-    vehicleId?: string,
+    vehicleIds?: readonly string[] | undefined,
   ): Promise<FleetGrievanceDoc[]> {
     const filter: FilterQuery<FleetGrievanceDoc> = {
       isDeleted: false,
       // Nothing ticked is every year, exactly as it is for the sums beside it.
       ...(years === undefined || years.length === 0 ? {} : { year: { $in: [...years] } }),
     };
-    if (vehicleId !== undefined) filter.vehicleId = new Types.ObjectId(vehicleId);
+    // A grievance is a figure about a car the REGISTRY has — it carries no book code — so an
+    // empty list is an honest "none of them", not a filter to drop.
+    if (vehicleIds !== undefined) {
+      filter.vehicleId = { $in: vehicleIds.map((id) => new Types.ObjectId(id)) };
+    }
     return this.model.find(filter).lean<FleetGrievanceDoc[]>().exec();
   }
 }
@@ -320,6 +427,12 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
  * not be adjacent — «٢٠٢٤ و٢٠٢٦» is an ordinary comparison, and a `$gte`/`$lt` span across it
  * would silently include the year between them.
  *
+ * A MOVED ROW ANSWERS WITH `filedYear` AND WITH NOTHING ELSE. A driver's fine carried onto another
+ * year's statement belongs to THAT year and must stop belonging to its date's — so the date branch
+ * is guarded by `filedYear: null` rather than simply joined by a third. Left additive, a fine moved
+ * from 2025 into 2026 would match both years at once, and «٢٠٢٤ و٢٠٢٦» — the very comparison this
+ * helper exists for — would count it twice and sum its money twice.
+ *
  * Exported for its own test: it is pure, and it is where a multi-year filter goes wrong quietly.
  */
 export const violationYearBranches = (
@@ -327,8 +440,12 @@ export const violationYearBranches = (
 ): FilterQuery<FleetViolationDoc>[] =>
   years.flatMap((year) => [
     { kind: 'vehicle', year } as FilterQuery<FleetViolationDoc>,
+    // Carried onto this year's statement, whatever day it happened on.
+    { kind: 'driver', filedYear: year } as FilterQuery<FleetViolationDoc>,
+    // …and the ordinary case: nobody moved it, so its own date says which year it is in.
     {
       kind: 'driver',
+      filedYear: null,
       date: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) },
     } as FilterQuery<FleetViolationDoc>,
   ]);

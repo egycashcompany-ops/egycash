@@ -1687,6 +1687,23 @@ export interface FleetViolationDto {
   unitValue: number | null;
   /** driver shape */
   date: string | null;
+  /**
+   * WHICH YEAR-BLOCK THIS ROW IS COUNTED IN, when that is not the one its own date says.
+   *
+   * «فى عربيات بتخلص مخالفاتها ٢٠٢٦ وفى سواقين عاملين مخالفاتها سنة ٢٥ ... عاوز يبقوا تبع العربيه
+   * دى». A driver's fine from an earlier year turns up late, after the car's current year has been
+   * worked through; the clerk closing that car needs it in front of them, in that car's block.
+   *
+   * IT IS NOT THE DATE, AND IT NEVER REWRITES IT. `date` is when the fine happened and stays true:
+   * the drivers' board still lists the row on its own day, and the audit trail still has the day it
+   * was filed against. This is an administrative answer to a different question — «which statement
+   * is this being carried on» — and it is `null` for every row nobody has moved, which is almost
+   * all of them.
+   *
+   * On a `vehicle` row it is always `null`: a statement row already STORES its year, so it has
+   * nothing to override and the board's tick reads that stored year directly.
+   */
+  filedYear: number | null;
   driverEmployeeId: string | null;
   /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
   driverName: string | null;
@@ -1751,6 +1768,34 @@ export const UpdateFleetViolationSchema = z
   })
   .strict();
 export type UpdateFleetViolation = z.infer<typeof UpdateFleetViolationSchema>;
+
+/**
+ * MOVE SEVERAL DRIVER FINES INTO ONE CAR'S YEAR-BLOCK — one act, one request.
+ *
+ * The board is worked a car at a time, and the fines that belong with a car arrive in a handful:
+ * a reader ticks four of them and drops them on the group. Sending four `PATCH /:id` calls, each
+ * carrying its own `version`, would let a stale version anywhere leave the move half-applied —
+ * some fines carried onto the statement and some not, with nothing on screen saying which.
+ *
+ * So the ids travel together and the service writes them in ONE transaction: all of them land, or
+ * none does and the reader tries again with the same selection.
+ *
+ * NO `version` HERE, deliberately. Optimistic locking guards a field two people might be editing
+ * at the same moment; this changes only which block a row is counted in, and the row's own facts —
+ * its date, its driver, its amount, whether it is collected — are untouched. Refusing the move
+ * because somebody ticked one of the fines a second ago would be refusing for no reason.
+ */
+export const MoveFleetViolationsSchema = z
+  .object({
+    /** The fines being carried over. Driver rows only — the service refuses a statement row. */
+    ids: z.array(objectId()).min(1).max(MAX_PAGE_SIZE),
+    /** The car whose block they are carried onto. */
+    vehicleId: objectId(),
+    /** The year of that block. `null` puts each fine back under its own date. */
+    filedYear: z.number().int().min(2000).max(2100).nullable(),
+  })
+  .strict();
+export type MoveFleetViolations = z.infer<typeof MoveFleetViolationsSchema>;
 
 /**
  * Mark one violation collected, or put it back. Its own write, not part of the edit dialog:
@@ -1880,6 +1925,21 @@ export const FleetViolationRollupQuerySchema = z
      * has stopped narrowing anything.
      */
     year: listQuery(z.coerce.number().int().min(2000).max(2100), 20),
+    /**
+     * SEVERAL cars, BY CODE — what the board's picker has always written, and what it could not
+     * send.
+     *
+     * The rollup used to take ONE `vehicleId`, so the screen resolved a single picked code and
+     * sent nothing at all when the reader picked two or more. The chips said «١٥٠، ١٥١ +٢» and
+     * the table quietly answered for the whole fleet — the filter reading as broken rather than
+     * as absent, which is the worse of the two failures.
+     *
+     * Codes rather than ids, as on every other board: the code is what a reader calls a car, and
+     * resolving it server-side is what lets a (code, year) kept from the old book — on a car the
+     * registry never had — still be found by the code the book wrote.
+     */
+    vehicleCodes: vehicleCodesQuery(),
+    /** @deprecated One car, by id — still honoured for links saved before the codes existed. */
     vehicleId: objectId().optional(),
   })
   .strict();
@@ -1899,11 +1959,17 @@ export interface FleetViolationRollupDto {
   totalAmount: number;
   totalBeforeGrievance: number;
   /**
-   * How many of this (vehicle, year)'s rows exist, and how many have been collected.
+   * How many of this (vehicle, year)'s COMPANY rows exist, and how many have been collected.
    *
    * The board's tick is a GROUP's state, and a group is only «collected» when every row in it is.
    * Two numbers rather than a boolean because the third state — some collected, some not — is the
    * one a reader most needs to see, and a boolean cannot carry it.
+   *
+   * THE DRIVERS' FINES ARE NOT IN THESE. «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه
+   * بالسواقيين» — the company board's tick settles the company's statement rows and nothing else,
+   * so these two count exactly what that tick sets. A group with no statement rows at all — a car
+   * whose only fines that year were its drivers' — has `rowCount: 0`, and the board draws no tick
+   * on it, because there is nothing there for the company to collect.
    */
   rowCount: number;
   collectedCount: number;

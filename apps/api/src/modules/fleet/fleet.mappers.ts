@@ -212,6 +212,9 @@ export const toViolationDto = (
   count: doc.count,
   unitValue: doc.unitValue,
   date: doc.date === null ? null : iso(doc.date),
+  // The statement this fine is carried on, when that is not its own date's year — `null` on every
+  // row nobody has moved. The board needs it to draw «محمولة على ٢٠٢٦» beside a 2025 date.
+  filedYear: doc.filedYear ?? null,
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
   driverName: doc.driverName ?? null,
   collected: doc.collected,

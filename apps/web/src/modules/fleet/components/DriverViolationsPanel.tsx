@@ -11,7 +11,7 @@
 // One save, one request: `POST /violations/driver/batch` is a transaction, so a stack of tickets
 // is filed whole or not at all — five stored fines out of six is the outcome this shape exists to
 // make impossible.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type DragEvent } from 'react';
 import { MAX_PAGE_SIZE, type FleetViolationDto, type Locale, type PageMeta } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -31,10 +31,13 @@ import {
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
 import { violationsLoadState } from '../lib/violations-paging';
 import { errorMessage } from '../../../shared/lib/errors';
+import { useTableSelection } from '../../../shared/ui/useTableSelection';
+import { VIOLATION_DRAG_TYPE, draggedIds } from '../lib/violation-drag';
 import { saveBlob } from '../../../shared/lib/api-client';
 import {
   useFleetCatalog,
   useRecordDriverViolations,
+  useMoveViolations,
   useSetViolationCollected,
   useVehicles,
   useViolationsPages,
@@ -88,6 +91,9 @@ export const DriverViolationsPanel = ({
   settled,
   sorts,
   onSortChange,
+  entryVehicleId,
+  onEntryVehicleChange,
+  movedAt,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
@@ -105,6 +111,18 @@ export const DriverViolationsPanel = ({
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
+  /**
+   * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves. Held by the page; the
+   * company's bar beside this one reads the same value. See `CompanyViolationsPanel` for why.
+   */
+  entryVehicleId: string;
+  onEntryVehicleChange: (next: string) => void;
+  /**
+   * Bumped by the page when fines were carried onto a group on the other half. The ticks that
+   * named them are this panel's, and `useTableSelection` never prunes its own set, so the clear
+   * has to be explicit — otherwise the reader is left holding a selection they have finished with.
+   */
+  movedAt: number;
   /**
    * The columns the ledger is read in, and what a click on a header means.
    *
@@ -177,7 +195,9 @@ export const DriverViolationsPanel = ({
   // The car is held as an ID, because it is PICKED. It used to be the typed code, resolved
   // through `idOf` on every render — which meant a code no car carries produced `undefined` and
   // a permanently disabled Save, with nothing on screen saying why.
-  const [formVehicleId, setFormVehicleId] = useState('');
+  // Held by the PAGE: the company's bar files against the same car — see `entryVehicleId`.
+  const formVehicleId = entryVehicleId;
+  const setFormVehicleId = onEntryVehicleChange;
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [cards, setCards] = useState<DriverEntryCard[]>([]);
   const record = useRecordDriverViolations();
@@ -205,7 +225,10 @@ export const DriverViolationsPanel = ({
       // the reader re-tries the same stack rather than working out what got through.
       setCounts({});
       setCards([]);
-      setFormVehicleId('');
+      // The CAR stays. It is the sitting's subject and the company's bar is filing against it too,
+      // so clearing it here would empty the other half of the screen as well — and a clerk filing
+      // a car's fines is usually not finished with that car.
+
       toast.success(t('fleet.violations.batchSaved', { count: String(cards.length) }));
     } catch (error) {
       toast.error(errorMessage(error, locale));
@@ -250,6 +273,35 @@ export const DriverViolationsPanel = ({
   const loadState = violationsLoadState(meta, rows.length);
   const collect = useSetViolationCollected();
 
+  /*
+   * TICKED, THEN DRAGGED — «ممكن أعمل مالتي تشيك على أكتر من سواق وأخدهم دراج».
+   *
+   * The selection is over the rows IN HAND, which on this board is every page loaded so far: the
+   * hook derives what the caller sees as the intersection with the ids it is given, so «تحميل
+   * المزيد» keeps a selection and a change of filter empties it — which is the honest behaviour,
+   * because the rows it named are no longer on screen.
+   *
+   * It is cleared explicitly after a move: the hook's internal set is never pruned, so ids that
+   * left the view come back selected if the same rows return.
+   */
+  const selection = useTableSelection(rows.map((row) => row.id));
+  const mayMove = can('fleetViolation.edit');
+  const move = useMoveViolations();
+  /** Put one fine back under its own date — the way out of a drop, on the row it landed from. */
+  const returnToOwnYear = async (row: FleetViolationDto): Promise<void> => {
+    if (!mayMove || row.vehicleId === null) return;
+    try {
+      await move.mutateAsync({ ids: [row.id], vehicleId: row.vehicleId, filedYear: null });
+      toast.success(t('fleet.violations.returnedToOwnYear'));
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
+    }
+  };
+  const clearSelection = selection.clear;
+  useEffect(() => {
+    if (movedAt > 0) clearSelection();
+  }, [movedAt, clearSelection]);
+
   const toggleCollected = async (row: FleetViolationDto): Promise<void> => {
     try {
       await collect.mutateAsync({
@@ -274,7 +326,35 @@ export const DriverViolationsPanel = ({
       key: 'date',
       header: t('fleet.violations.fields.date'),
       sortable: true,
-      render: (row) => formatDate(row.date, locale),
+      /*
+       * THE DAY IT HAPPENED — and, when it is being carried on another year's statement, which.
+       *
+       * A fine moved onto a car's current block is still listed here on its own day, which is the
+       * whole point: «برضو يفضلوا فى جدول السائقيين». But a reader looking at a 2025 date needs to
+       * know why it is no longer in the 2025 group, and needs a way back — so the marker IS the
+       * way back. Pressing it files the fine under its own date again.
+       */
+      render: (row) => (
+        <span className="flex flex-wrap items-center gap-1.5">
+          {formatDate(row.date, locale)}
+          {row.filedYear !== null && (
+            <button
+              type="button"
+              data-filed-year={row.id}
+              disabled={!mayMove || move.isPending}
+              title={
+                mayMove
+                  ? t('fleet.violations.returnToOwnYear')
+                  : t('fleet.violations.carriedOn', { year: String(row.filedYear) })
+              }
+              onClick={() => void returnToOwnYear(row)}
+              className="rounded-md border border-brand-300 bg-brand-50 px-1.5 text-[11px] font-medium tabular-nums text-brand-700 disabled:cursor-default dark:border-brand-900 dark:bg-brand-950/60 dark:text-brand-300"
+            >
+              {t('fleet.violations.carriedOn', { year: String(row.filedYear) })}
+            </button>
+          )}
+        </span>
+      ),
     },
     {
       key: 'vehicle',
@@ -875,8 +955,13 @@ export const DriverViolationsPanel = ({
       </FilterBar>
 
       {/* The BOARD scrolls, not the page — the filters above it and the totals below it stay put,
-          which is what makes this half readable beside the other one. */}
-      <div className="min-h-0 flex-1 overflow-auto">
+          which is what makes this half readable beside the other one.
+
+          The scrolling is the TABLE's own (`stickyHead`), not this box's, so the head can stay in
+          view while the rows move under it — «عاوز اثبت راس الجدول بتاع السواقيين». A wrapper that
+          scrolled here instead would carry the head away with it, whatever the head was told to
+          do: sticky sticks to the nearest scrolling ancestor, and that would be this div. */}
+      <div className="min-h-0 flex-1">
         <DataTable
           columns={columns}
           rows={rows}
@@ -887,6 +972,25 @@ export const DriverViolationsPanel = ({
           sort={sorts}
           onSortChange={onSortChange}
           dense
+          stickyHead
+          // Ticking is what makes «several fines» a thing a reader can pick up at all.
+          {...(mayMove ? { selection } : {})}
+          // THE ROW IS THE DRAG SOURCE, and it carries the selection it belongs to. A row that is
+          // not ticked drags only itself and leaves the ticks alone — see `violation-drag`.
+          {...(mayMove
+            ? {
+                rowProps: (row: FleetViolationDto) => ({
+                  draggable: true,
+                  'data-violation-drag': row.id,
+                  onDragStart: (e: DragEvent<HTMLTableRowElement>) => {
+                    const ids = draggedIds(row.id, selection.selectedIds);
+                    e.dataTransfer.setData(VIOLATION_DRAG_TYPE, JSON.stringify(ids));
+                    e.dataTransfer.effectAllowed = 'move';
+                  },
+                  className: 'cursor-grab active:cursor-grabbing',
+                }),
+              }
+            : {})}
           // Collected is a STATE OF THE ROW, so the row carries it — the tick is where you change
           // it, the tint is how the board reads at a glance.
           rowClassName={(row) =>

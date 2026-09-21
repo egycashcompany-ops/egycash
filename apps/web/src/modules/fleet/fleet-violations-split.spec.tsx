@@ -33,7 +33,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
-import { formatNumber } from '../../shared/lib/format';
+import { formatDate, formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
@@ -128,6 +128,7 @@ const driverRow = (over: Partial<FleetViolationDto> = {}): FleetViolationDto => 
   count: null,
   unitValue: null,
   date: '2026-02-01T00:00:00.000Z',
+  filedYear: null,
   driverEmployeeId: E1,
   driverName: null,
   collected: false,
@@ -207,9 +208,10 @@ const page = ({
         'fleet',
         'violations',
         'rollup',
-        // The YEARS, as the one string the key carries — several years are one question and one
-        // cache entry, and a fresh array each render would otherwise mint a new key every time.
-        { year: year === undefined ? '' : year, vehicleId: undefined },
+        // The YEARS and the CODES, as the one string each carries — several of either are one
+        // question and one cache entry, and a fresh array each render would otherwise mint a new
+        // key every time.
+        { year: year === undefined ? '' : year, vehicleCodes: '' },
       ],
       rollup,
     );
@@ -834,6 +836,143 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(source, 'and the value is a single vehicle id').toContain(
       'onChange: (vehicleId: string) => void',
     );
+  });
+
+  it('ONE car for both entry bars — picking it on either side files against the same one', () => {
+    // «لما احدد كود عربيه يتحدد فى التانيه تلقائى». A clerk works a car at a time: the company's
+    // statement and that car's drivers' fines are the same sitting, and picking it twice was two
+    // chances to pick two different cars and file half the sitting against the wrong one.
+    const pageSrc = readFileSync(join(HERE, 'pages/ViolationsPage.tsx'), 'utf8');
+    expect(pageSrc, 'the page owns it').toContain("const [entryVehicleId, setEntryVehicleId] = useState('')");
+    // Handed to BOTH halves, and to nothing else: the two BOARDS keep their own car filters.
+    expect((pageSrc.match(/entryVehicleId=\{entryVehicleId\}/g) ?? []).length).toBe(2);
+    expect((pageSrc.match(/onEntryVehicleChange=\{setEntryVehicleId\}/g) ?? []).length).toBe(2);
+    for (const file of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+      const panel = readFileSync(join(HERE, file), 'utf8');
+      expect(panel, `${file} reads the shared car`).toContain('const formVehicleId = entryVehicleId;');
+      expect(panel, `${file} writes the shared car`).toContain(
+        'const setFormVehicleId = onEntryVehicleChange;',
+      );
+      expect(panel, `${file} keeps no car of its own`).not.toContain(
+        "const [formVehicleId, setFormVehicleId] = useState('')",
+      );
+    }
+    // …and a saved driver batch no longer empties it, which would have emptied the other bar too.
+    const driverPanel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(driverPanel).not.toContain("setFormVehicleId('')");
+  });
+
+  it('neither board’s head is see-through, and the drivers’ head stays put', () => {
+    // «راس الجدول بايظ المفروض ميكونش شفاف» · «عاوز اثبت راس الجدول بتاع السواقيين». A sticky head
+    // is drawn OVER the rows, so a 60%-opaque one lets them through it and reads as broken.
+    const company = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const head = company.slice(company.indexOf('<thead'), company.indexOf('</thead>'));
+    expect(head, 'the company head is pinned').toContain('sticky top-0');
+    expect(head, 'and opaque').toContain('dark:bg-slate-800');
+    expect(head, 'not 60% of it').not.toContain('dark:bg-slate-800/60');
+
+    // The drivers' board is a `DataTable`, so its head is pinned through the table's own prop —
+    // and the wrapper must NOT scroll, or sticky would stick to the wrapper and ride away with it.
+    const driver = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(driver).toContain('stickyHead');
+    expect(driver, 'the table scrolls, not the box around it').toContain(
+      '<div className="min-h-0 flex-1">',
+    );
+    const table = readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8');
+    expect(table, 'sticky makes the table itself the scroll port').toContain(
+      "stickyHead ? 'h-full overflow-auto' : 'overflow-x-auto'",
+    );
+    expect(table, 'and turns the head opaque').toContain(
+      "stickyHead ? 'dark:bg-slate-800' : 'dark:bg-slate-800/60'",
+    );
+  });
+
+  it('the company board asks about EVERY car the picker holds, not one of them', () => {
+    // The rollup took a single `vehicleId`, so the board resolved a lone code and sent NOTHING the
+    // moment a second was picked: the chips read «١٥٠، ١٥١ +٢» while the table answered for the
+    // whole fleet. A filter that silently stops filtering cannot be told from one that is absent.
+    const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    expect(panel, 'no "only when exactly one" left anywhere').not.toContain('soleVehicleId');
+    expect(panel, 'every picked code travels').toContain('useViolationRollup(');
+    expect(panel).toContain('askedCodes');
+    // …and it no longer reads the whole registry just to turn one code into one id.
+    expect(panel, 'the server resolves the codes now').not.toContain('useVehicles(');
+
+    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
+    const call = api.slice(api.indexOf('export const violationRollup'));
+    expect(call.slice(0, 700), 'the codes are what the endpoint is asked').toContain('vehicleCodes');
+  });
+
+  it('ticks the drivers’ fines and lets the ticked set be dragged as ONE', () => {
+    // «ممكن أعمل مالتي تشيك على أكتر من سواق وأخدهم دراج وأحطهم دروب على العربية نفسها».
+    const markup = page();
+    expect(markup, 'a tick box per fine').toContain('aria-label="select row"');
+
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel, 'the shared selection model, not a new one').toContain('useTableSelection(');
+    expect(panel, 'and the row is the drag source').toContain('draggable: true');
+    expect(panel, 'carrying the whole ticked set').toContain(
+      'draggedIds(row.id, selection.selectedIds)',
+    );
+    expect(panel, 'on its own transfer type').toContain('VIOLATION_DRAG_TYPE');
+    // Ticking and dragging are a WRITE's gesture, so both are behind the edit grant.
+    expect(panel).toContain("const mayMove = can('fleetViolation.edit')");
+  });
+
+  it('draws no tick box and nothing draggable without the grant', () => {
+    const markup = page({ permissions: ['fleetViolation.view'] });
+    expect(markup, 'no selection column').not.toContain('aria-label="select row"');
+    expect(markup, 'and no drag hook').not.toContain('data-violation-drag');
+  });
+
+  it('the car’s group is the drop target, and refuses what it cannot take', () => {
+    const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    // The <tbody> is the only element spanning a whole (vehicle, year) group.
+    const group = panel.slice(panel.indexOf('<tbody'), panel.indexOf('{TOTAL_ROWS.map'));
+    for (const handler of ['onDragOver', 'onDragLeave', 'onDrop']) {
+      expect(group, `the group handles ${handler}`).toContain(handler);
+    }
+    // The refusal is in the CODE, not only in the styling: withholding `preventDefault` on
+    // dragover is what actually refuses a drop.
+    expect((group.match(/canReceive\(row, mayMove\)/g) ?? []).length).toBeGreaterThanOrEqual(3);
+    // …and what it does with the drop: carries them onto THIS group's year, and nothing else.
+    expect(panel).toContain('filedYear: row.year');
+    expect(panel, 'no tick is set by a drag').not.toContain('collected: true,\n        vehicleId');
+  });
+
+  it('a group from the OLD BOOK takes no drop at all', () => {
+    // It is named by the code the book wrote and has no car behind it, so accepting would be
+    // promising a 422 the reader can do nothing about.
+    const markup = page({ rollup: [rollupRow({ vehicleId: null, code: 'كوستر' })] });
+    expect(markup).toContain('data-rollup-group="كوستر:2026"');
+    expect(markup, 'and it is not a target').not.toContain('data-rollup-droppable');
+  });
+
+  it('marks a carried fine on its own row, and the mark is the way back', () => {
+    // «برضو يفضلوا فى جدول السائقيين» — so the row still shows the day it happened, and a reader
+    // looking at a 2025 date needs to know why it is no longer in the 2025 group. The marker is
+    // also the only way out of a drop: pressing it files the fine under its own date again.
+    const markup = page({ drivers: [driverRow({ filedYear: 2026 })] });
+    expect(markup, 'the day it happened is still the row’s date').toContain(
+      formatDate('2026-02-01T00:00:00.000Z', 'ar'),
+    );
+    expect(markup).toContain('data-filed-year="vio-1"');
+
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel, 'and it returns the fine to its own year').toContain('filedYear: null');
+    // An unmoved fine carries no marker at all — almost every row is one.
+    expect(page(), 'nothing to say about a fine nobody moved').not.toContain('data-filed-year');
+  });
+
+  it('clears the ticks once the fines have been carried over', () => {
+    // `useTableSelection` never prunes its own set, so a selection that survived the move would
+    // leave the reader holding rows they have finished with.
+    const pageSrc = readFileSync(join(HERE, 'pages/ViolationsPage.tsx'), 'utf8');
+    expect(pageSrc).toContain('const [movedAt, setMovedAt] = useState(0)');
+    expect(pageSrc).toContain('onMoved={() => setMovedAt((n) => n + 1)}');
+    expect(pageSrc).toContain('movedAt={movedAt}');
+    const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(panel).toContain('if (movedAt > 0) clearSelection();');
   });
 
   it('the drivers bar wraps rather than scrolling, so the code list is not clipped', () => {

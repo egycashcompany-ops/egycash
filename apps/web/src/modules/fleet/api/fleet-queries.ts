@@ -34,6 +34,7 @@ import {
   type UpdateFleetDriverProfile,
   type UpdateFleetVehicleType,
   type SetFleetViolationCollected,
+  type MoveFleetViolations,
   type SetRollupCollected,
   type UpdateFleetViolation,
   type UpdateFleetMaintenance,
@@ -640,14 +641,20 @@ export const useViolationsPages = (params: Omit<FleetListParams, 'page'>) =>
 /** `year` omitted = every year, one row per (vehicle, year). */
 export const useViolationRollup = (
   years?: readonly number[],
-  vehicleId?: string,
+  /** The cars the picker holds — SEVERAL, and by code. See the endpoint for why it is not an id. */
+  vehicleCodes?: readonly string[],
   enabled = true,
 ) =>
   useQuery({
-    // The years are part of the KEY as a string: a fresh array each render would mint a new key
-    // every time and the board would refetch on every keystroke elsewhere on the screen.
-    queryKey: [MODULE, 'violations', 'rollup', { year: (years ?? []).join(','), vehicleId }],
-    queryFn: () => api.violationRollup(years, vehicleId),
+    // The years and the codes are part of the KEY as strings: a fresh array each render would mint
+    // a new key every time and the board would refetch on every keystroke elsewhere on the screen.
+    queryKey: [
+      MODULE,
+      'violations',
+      'rollup',
+      { year: (years ?? []).join(','), vehicleCodes: (vehicleCodes ?? []).join(',') },
+    ],
+    queryFn: () => api.violationRollup(years, vehicleCodes),
     placeholderData: (prev) => prev,
     enabled,
   });
@@ -672,6 +679,8 @@ export const useSetViolationCollected = () =>
   useViolationMutation(({ id, body }: { id: string; body: SetFleetViolationCollected }) =>
     api.setViolationCollected(id, body),
   );
+export const useMoveViolations = () =>
+  useViolationMutation((body: MoveFleetViolations) => api.moveViolations(body));
 export const useSetRollupCollected = () =>
   useViolationMutation((body: SetRollupCollected) => api.setRollupCollected(body));
 export const useUpdateViolation = () =>

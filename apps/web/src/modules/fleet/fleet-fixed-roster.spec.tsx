@@ -1530,12 +1530,31 @@ describe('the standing board wears the daily board’s bar', () => {
     expect(width(CODE)).toBe('w-44');
   });
 
-  it('moves Save out of the page header and onto the end of the strip', () => {
+  it('moves Save out of the page header and onto the end of the strip — on the FIRST line', () => {
     expect(CODE, 'the header carries no actions now').not.toMatch(/actions=\{\s*mayPlan/);
-    const strip = CODE.slice(CODE.indexOf('className="mb-4 flex flex-wrap items-center gap-1.5"'));
-    const end = strip.indexOf('<DataTable');
-    expect(strip.slice(0, end), 'pinned to the far edge like the daily board').toContain('ms-auto');
-    expect(strip.slice(0, end), 'and it saves').toContain("t('common.save')");
+    const stripOf = (code: string): string => {
+      const from = code.slice(code.indexOf('className="mb-4 flex flex-wrap items-center gap-1.5"'));
+      return from.slice(0, from.indexOf('<DataTable'));
+    };
+    expect(stripOf(CODE), 'and it saves').toContain("t('common.save')");
+
+    // «عاوز شكل الفلاتر بتوع الطاقم الثابت بزراير حفظ والغاء يكونوا زى شاشه تعيين السيارات».
+    //
+    // The pair is held at the far edge by the CHIPS' own `flex-1` box, not by `ms-auto` on the
+    // pair itself: `ms-auto` pushes to the end of the LAST line, so a strip that overflows drops
+    // the pair onto a row of its own — which is what this board did, carrying one counter more
+    // than the daily one. Pinned on BOTH boards, because the point is that they match.
+    for (const [name, body] of [
+      ['fixed', stripOf(CODE)],
+      ['daily', stripOf(DAILY)],
+    ] as const) {
+      expect(body, `${name}: the chips wrap inside a box of their own`).toContain(
+        'flex min-w-0 flex-1 flex-wrap items-center gap-1.5',
+      );
+      expect(body, `${name}: nothing in the strip pushes itself to the last line`).not.toContain(
+        'className="ms-auto',
+      );
+    }
   });
 
   it('carries the daily board’s reset, offered only when there is something to undo', () => {

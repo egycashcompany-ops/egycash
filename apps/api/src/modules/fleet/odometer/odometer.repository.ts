@@ -368,43 +368,6 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
   }
 
   /**
-   * WHAT THE FILTER MATCHED — which cars, and how far they went — over the WHOLE filtered set.
-   *
-   * Two figures from one pass, because they are two questions about the same rows. The cars are
-   * the step that turns «the readings the filter matched» into «the cars the filter is about»,
-   * which is what the summary's reading is a maximum over. The km is the distance those rows
-   * account for, and it is a genuine SUM: `km` is a distance and distances add, where a counter is
-   * a position and may only be maximised (`highest-reading.ts` says why at length).
-   *
-   * One `$group`, no paging: a page cannot change a number the query never learned about.
-   *
-   * Rows kept from the old book on a car the registry never had carry no `vehicleId`, and they
-   * drop out of the CARS — such a row is on no chain and the registry has no car to answer for.
-   * Their distance still counts, because the reader is looking at those rows in the table and the
-   * kilometres on them were driven whatever the old book called the car.
-   */
-  async vehicleIdsMatching(
-    filter: FilterQuery<FleetOdometerLogDoc>,
-  ): Promise<{ vehicleIds: string[]; km: number }> {
-    const rows = await this.model.aggregate<{
-      _id: null;
-      vehicleIds: (Types.ObjectId | null)[];
-      km: number;
-    }>([
-      { $match: this.baseFilter(undefined, filter) },
-      // `$sum` skips a missing or non-numeric value, so a day recorded without a reading and an
-      // open period — both `km: null` — add nothing rather than breaking the total.
-      { $group: { _id: null, vehicleIds: { $addToSet: '$vehicleId' }, km: { $sum: '$km' } } },
-    ]);
-    const matched = rows[0];
-    if (matched === undefined) return { vehicleIds: [], km: 0 };
-    return {
-      vehicleIds: matched.vehicleIds.filter((id) => id !== null).map((id) => String(id)),
-      km: matched.km,
-    };
-  }
-
-  /**
    * HOW MANY DAYS THIS CAR WAS DRIVEN WITH NOBODY WRITING THE COUNTER — per vehicle, each counted
    * from its OWN date, in one query for the whole fleet.
    *

@@ -874,15 +874,9 @@ export const FleetOdometerBracketQuerySchema = z
   .strict();
 export type FleetOdometerBracketQuery = z.infer<typeof FleetOdometerBracketQuerySchema>;
 
-/**
- * WHAT NARROWS THE SET, on its own — the filters, and nothing about which page of it is wanted.
- *
- * Extracted so the list and the summary CANNOT drift: the figures above the table describe the
- * whole filtered set, and the only way to keep that true is for both questions to be asked in
- * the same words. The summary schema is `.strict()` and simply has no `page`, so a request that
- * tried to page a total would be refused at the door rather than answered with one page's worth.
- */
-const odometerFilters = {
+export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   /** Single vehicle — kept because the vehicle profile links here with it. */
   vehicleId: objectId().optional(),
   /**
@@ -906,56 +900,8 @@ const odometerFilters = {
    * the vehicles first and then the readings — the thresholds stay in settings, never here.
    */
   alerts: listQuery(FleetAlarmLevelSchema),
-} as const;
-
-export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
-  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
-  sort: fleetSortQuery(),
-  ...odometerFilters,
 }).strict();
 export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema>;
-
-/** The SAME filters as the list, and deliberately no paging — see `odometerFilters`. */
-export const FleetOdometerSummaryQuerySchema = z.object(odometerFilters).strict();
-export type FleetOdometerSummaryQuery = z.infer<typeof FleetOdometerSummaryQuerySchema>;
-
-/**
- * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — THE HIGHEST ODOMETER READING ANY CAR IN
- * THE FILTER HAS REACHED.
- *
- * A counter is a POSITION on an instrument, not a distance, so the figure that answers this is a
- * MAXIMUM and never a sum: adding two cars' odometers gives a number that exists on no dashboard
- * in the fleet, and adding one car's readings to each other counts the same measured instant
- * twice over, because `inReading` of one row IS `outReading` of the next.
- *
- * It is the car's CURRENT reading — «وصلتها العربية» — taken from the same place the alarm engine
- * takes it, so the odometer screen, the workshop screen and the alarms board cannot disagree
- * about where a car is. Narrowing by date narrows WHICH CARS are in view, not which of their
- * readings counts: a car is at the reading it is at.
- */
-export interface FleetHighestReadingDto {
-  /** `null` = no car in this filter has a reading at all. */
-  reading: number | null;
-  /** The car holding it — a bare maximum over several cars names none of them. */
-  vehicleId: string | null;
-  code: string | null;
-  /** The day that reading was taken. */
-  at: string | null;
-  /** How many cars the filter matched — the set the reading is the highest of. */
-  vehicles: number;
-  /**
-   * THE DISTANCE THE FILTERED ROWS ACCOUNT FOR — and the one figure here that IS a sum.
-   *
-   * A counter is a position and may only be maximised; `km` is a distance, and distances add. The
-   * two live side by side because they answer the two different questions a reader has about a
-   * filtered set: how far the cars have got, and how far they went inside it.
-   *
-   * `null` = this screen does not measure distance. Only the readings register holds a row per
-   * period with its own km; the workshop register and the alarms board are about visits and
-   * levels, and a figure invented for them would be a different number under the same word.
-   */
-  km: number | null;
-}
 
 // ── Maintenance alarm (FR-3 — derived, never stored) ────────────────────────
 
@@ -1220,8 +1166,9 @@ export const UpdateFleetMaintenanceSchema = z
   .strict();
 export type UpdateFleetMaintenance = z.infer<typeof UpdateFleetMaintenanceSchema>;
 
-/** What narrows the set, on its own — see `odometerFilters` for why this is extracted. */
-const maintenanceFilters = {
+export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
+  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
+  sort: fleetSortQuery(),
   vehicleId: objectId().optional(),
   /**
    * «حالة الصيانة» — the visit's ONE state: `true` = in the workshop (`outDate` null), `false` =
@@ -1260,18 +1207,8 @@ const maintenanceFilters = {
   /** Check-OUT date window — a different question from the one above, so a different pair. */
   outFrom: z.coerce.date().optional(),
   outTo: z.coerce.date().optional(),
-} as const;
-
-export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
-  /** Several columns at once — see `parseFleetSort`. `sortBy`/`sortDir` still carry the first. */
-  sort: fleetSortQuery(),
-  ...maintenanceFilters,
 }).strict();
 export type ListFleetMaintenanceQuery = z.infer<typeof ListFleetMaintenanceQuerySchema>;
-
-/** The SAME filters as the list, and deliberately no paging — see `odometerFilters`. */
-export const FleetMaintenanceSummaryQuerySchema = z.object(maintenanceFilters).strict();
-export type FleetMaintenanceSummaryQuery = z.infer<typeof FleetMaintenanceSummaryQuerySchema>;
 
 /**
  * An id, settled to its CANONICAL spelling at the boundary — shared by both assignment boards.

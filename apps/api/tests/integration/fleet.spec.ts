@@ -18,7 +18,6 @@ import {
   type FleetDriverRowDto,
   type FleetDriverUnavailabilityDto,
   type FleetMaintenanceVisitDto,
-  type FleetHighestReadingDto,
   type FleetOdometerLogDto,
   type FleetVehicleDto,
   type FleetVehicleTypeDto,
@@ -1630,131 +1629,6 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
       .send({ outReading: 1400, version: 0 });
     expect(refused.status).toBe(400);
     expect(JSON.stringify(refused.body)).toContain('record the reading for that date');
-  });
-
-  /*
-   * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figure above the table.
-   *
-   * It is a MAXIMUM over the cars the filter matched, never a sum: a counter is a position on an
-   * instrument, and adding two of them gives a number that exists on no dashboard in the fleet.
-   * What these pin is that it describes the whole filtered SET — paging cannot reach it and is
-   * refused outright — and that it answers about the CARS rather than about the matched rows.
-   */
-  const summary = (query: Record<string, unknown>) =>
-    request(app)
-      .get('/api/v1/fleet/odometer/summary')
-      .query(query)
-      .set('Authorization', `Bearer ${adminToken}`);
-
-  it('answers the highest reading any car in the filter has reached, and names the car', async () => {
-    const a = data<FleetVehicleDto>(await createVehicle(adminToken));
-    const b = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(a.id, 1000, '2026-07-09');
-    await record(a.id, 4000, '2026-07-12');
-    await record(b.id, 9000, '2026-07-10');
-
-    const one = data<FleetHighestReadingDto>(await summary({ vehicleId: a.id }));
-    expect(one.reading, 'car A is at 4,000 — NOT 1,000 + 4,000').toBe(4000);
-    expect(one.code).toBe(a.code);
-    expect(one.vehicles).toBe(1);
-
-    const both = data<FleetHighestReadingDto>(
-      await summary({ vehicleCodes: [a.code, b.code].join(',') }),
-    );
-    expect(both.reading, 'the highest of the two, not their total').toBe(9000);
-    expect(both.code, 'and it says whose').toBe(b.code);
-    expect(both.vehicles).toBe(2);
-  });
-
-  it('REFUSES to be paged — a page cannot change a figure about the whole set', async () => {
-    const refused = await summary({ page: 1, pageSize: 10 });
-    expect(refused.status).toBe(400);
-  });
-
-  it('narrowing by DATE narrows which cars are in view, not which of their readings counts', async () => {
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(v.id, 1000, '2026-07-09');
-    await record(v.id, 4000, '2026-09-20');
-
-    // A window that contains only the EARLY reading. The car is still at 4,000 — «وصلتها
-    // العربية» asks where the car is, and a car is at the reading it is at.
-    const early = data<FleetHighestReadingDto>(
-      await summary({ vehicleId: v.id, from: '2026-07-01', to: '2026-07-31' }),
-    );
-    expect(early.reading).toBe(4000);
-    expect(early.vehicles, 'the car is in view, because a reading of its matched').toBe(1);
-  });
-
-  it('answers with nothing — never a zero — when the filter matches no car', async () => {
-    const empty = data<FleetHighestReadingDto>(await summary({ vehicleCodes: 'NO-SUCH-CODE' }));
-    expect(empty).toMatchObject({ reading: null, code: null, at: null, vehicles: 0 });
-  });
-
-  it('a day recorded with NO reading does not become the highest, or the lowest', async () => {
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(v.id, 1000, '2026-07-09');
-    await record(v.id, 4000, '2026-07-12');
-    await recordNoReading(v.id, '2026-07-11');
-
-    const answer = data<FleetHighestReadingDto>(await summary({ vehicleId: v.id }));
-    expect(answer.reading, 'the empty day is on no chain and moves no figure').toBe(4000);
-  });
-
-  it('adds up the DISTANCE beside it — the one figure on the strip that is a sum', async () => {
-    // A counter is a position and may only be maximised; km is a distance, and distances add.
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(v.id, 1000, '2026-07-09');
-    await record(v.id, 1600, '2026-07-12'); // closes 07-09 with 600 km
-    await record(v.id, 1900, '2026-07-14'); // closes 07-12 with 300 km
-    await recordNoReading(v.id, '2026-07-13'); // a day nobody measured adds nothing
-
-    const answer = data<FleetHighestReadingDto>(await summary({ vehicleId: v.id }));
-    expect(answer.reading, 'where the car is — a maximum').toBe(1900);
-    expect(answer.km, 'how far it went — a sum, and the open period contributes nothing').toBe(900);
-  });
-
-  it('the DATE window cuts the distance, because a distance is a property of the rows', async () => {
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(v.id, 1000, '2026-07-09');
-    await record(v.id, 1600, '2026-07-12');
-    await record(v.id, 1900, '2026-07-14');
-
-    // «وصلتها العربية» asks where the car is and is unmoved by the window; «إجمالي الكيلومترات»
-    // asks how far it went INSIDE it, and only the 07-09 row is in this one.
-    const early = data<FleetHighestReadingDto>(
-      await summary({ vehicleId: v.id, from: '2026-07-09', to: '2026-07-10' }),
-    );
-    expect(early.reading).toBe(1900);
-    expect(early.km).toBe(600);
-  });
-
-  it('the workshop register and the alarms board measure NO distance, and say so', async () => {
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(v.id, 7000, '2026-07-09');
-
-    const answer = data<FleetHighestReadingDto>(
-      await request(app)
-        .get('/api/v1/fleet/maintenance/summary')
-        .query({ vehicleId: v.id })
-        .set('Authorization', `Bearer ${adminToken}`),
-    );
-    // A register of VISITS holds no row per period, so there is nothing there to add up — and a
-    // zero under «إجمالي الكيلومترات» would be a different number under the same word.
-    expect(answer.km).toBeNull();
-  });
-
-  it('the workshop register answers the same figure, from the same place', async () => {
-    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
-    await record(v.id, 7000, '2026-07-09');
-
-    const answer = data<FleetHighestReadingDto>(
-      await request(app)
-        .get('/api/v1/fleet/maintenance/summary')
-        .query({ vehicleId: v.id })
-        .set('Authorization', `Bearer ${adminToken}`),
-    );
-    // No visit for this car, so no car is in view — and the honest answer is nothing, not 7,000.
-    expect(answer).toMatchObject({ reading: null, vehicles: 0 });
   });
 
   it('the owner’s own example: Thursday, Sunday, then Saturday, then Friday', async () => {

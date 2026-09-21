@@ -892,7 +892,7 @@ export const RosterPage = (): JSX.Element => {
           code search and the mission filter sit beside the day's tally, and the whole thing wraps
           rather than scrolling — which is what keeps it honest at 390px. */}
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES — «كود العربيه ... يكونوا زى شاشه
+        {/* THE SAME CAR PICKER THE ACCIDENTS BOARD USES — «كود العربيه ... يكونوا زى شاشه
               الحوادث». It was a free-text box, which asked the reader to know a code before they
               could narrow by one and offered no way to see what the board actually holds. This
               offers the codes on the board and takes several at once; `matchesVehicleCode` already
@@ -900,13 +900,13 @@ export const RosterPage = (): JSX.Element => {
               written. Options come from the rows in hand rather than the registry: this board
               already holds every car it reports on, so asking the server again would be a request
               for something on screen. */}
-          <VehicleCodeFilter
-            className="w-56 shrink-0"
-            fullWidth
-            value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
-            options={codeOptions}
-            onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
-          />
+        <VehicleCodeFilter
+          className="w-56 shrink-0"
+          fullWidth
+          value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
+          options={codeOptions}
+          onChange={(next) => patch({ q: next.length === 0 ? null : next.join(',') })}
+        />
         <div className="w-44">
           <CatalogMultiSelect
             kind="missionType"
@@ -918,6 +918,13 @@ export const RosterPage = (): JSX.Element => {
           />
         </div>
         {/*
+          THE CHIPS WRAP INSIDE THEIR OWN BOX, not inside the strip. `flex-1` gives it the width
+          the two selects and the save pair leave, so however long the mission catalog grows the
+          chips wrap among THEMSELVES and the pair stays on the first line at the strip's end. A
+          bare `ms-auto` on the pair could not promise that: it pushes to the end of the LAST
+          line, so an overflowing strip drops the pair onto a row of its own. The fixed-crew board
+          says the same at greater length — it is where the overflow was actually seen.
+
           Each counter is a real <button>: it narrows the board, so it must be reachable by
           keyboard and announce its state, which a tinted <span> with an onClick never does.
           `aria-pressed` is the announcement — this is a view being applied, not a navigation.
@@ -927,25 +934,27 @@ export const RosterPage = (): JSX.Element => {
           would trade the one thing the colour is for — telling the six apart at a glance — for a
           state the ring already carries.
         */}
-        {counters.map((counter) => (
-          <button
-            key={counter.key}
-            type="button"
-            data-counter={counter.key}
-            data-active={counter.active ? 'true' : undefined}
-            aria-pressed={counter.active}
-            onClick={() => patch(counter.apply)}
-            className={[
-              'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
-              counter.tone,
-              counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
-            ].join(' ')}
-          >
-            <span className="truncate">{counter.label}</span>
-            <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
-          </button>
-        ))}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {counters.map((counter) => (
+            <button
+              key={counter.key}
+              type="button"
+              data-counter={counter.key}
+              data-active={counter.active ? 'true' : undefined}
+              aria-pressed={counter.active}
+              onClick={() => patch(counter.apply)}
+              className={[
+                'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+                counter.tone,
+                counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
+              ].join(' ')}
+            >
+              <span className="truncate">{counter.label}</span>
+              <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Offered only when there is something to undo — a reset beside no filters is one more
             control to read and nothing to press. Clears the three view filters together; the day
@@ -965,10 +974,11 @@ export const RosterPage = (): JSX.Element => {
         )}
 
         {/* «حفظ» lives at the END of the filter row, not under the table and not in a footer of
-            its own. It belongs to the strip that says what the day currently IS, and `ms-auto`
-            pins it to the far edge so it is in the same place whatever the counters add up to. */}
+            its own. It belongs to the strip that says what the day currently IS, and the chips'
+            own `flex-1` box above holds it at the far edge — on the FIRST line — whatever the
+            counters add up to. */}
         {mayPlan && (
-          <div className="ms-auto flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {dirty && (
               <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
                 {t('fleet.roster.unsaved')}

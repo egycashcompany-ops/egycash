@@ -695,9 +695,13 @@ describe('the filter bar', () => {
     // The container stops wrapping once the viewport is wide enough to hold the whole row, and
     // not one pixel before: `flex-nowrap` does not shorten a row that will not fit, it pushes it
     // off the page. Below that it still wraps — the fallback for a screen too narrow for five.
+    //
+    // 1440, not the 1400 measured for the bare five filters: the count badge beside the reset is
+    // width the old figure did not know about, and a threshold left below where the row fits
+    // trades a tidy wrap for a horizontally scrolling page.
     const open = html.slice(html.indexOf('<div class="flex flex-wrap items-center gap-2'));
     expect(open.slice(0, open.indexOf('>')), 'one row on a desktop').toContain(
-      'min-[1400px]:flex-nowrap',
+      'min-[1440px]:flex-nowrap',
     );
     expect(open.slice(0, open.indexOf('>')), 'wrap is the narrow-screen fallback').toContain(
       'flex-wrap',
@@ -885,13 +889,16 @@ describe('the filter bar', () => {
     expect(source).not.toContain('items.filter(');
   });
 
-  it('asks the SERVER for the figure above the table, with the filters and no page', () => {
-    // «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام». The figure describes the whole filtered
-    // set; a page cannot change a number the query was never told about.
+  it('the count beside the filters is the WHOLE set, never the page', () => {
+    // «رقم الاجمالى الموجود فى الجدول بعد الفلاتر ... زى دا اللى فى شاشه مخالفات» — one badge on
+    // the filter bar, carrying one number. `meta.totalItems` is the count the server matched;
+    // `rows.length` is how many of them fit on this page, and using it would make the figure jump
+    // on the last page of every filter.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
-    expect(source).toContain('useOdometerTotals(filters)');
-    expect(source, 'never the paged params').not.toContain('useOdometerTotals(params)');
-    expect(source).toContain('<HighestReadingStrip');
+    expect(source).toContain('<FilteredCount value={data?.meta.totalItems} />');
+    expect(source, 'a page is not an answer about the set').not.toContain(
+      '<FilteredCount value={rows.length}',
+    );
   });
 
   it('the backend accepts every one of them', () => {

@@ -37,7 +37,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { HighestReadingStrip } from '../components/HighestReadingStrip';
+import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -59,7 +59,6 @@ import {
   useDeleteMaintenance,
   useFleetCatalog,
   useMaintenanceAlarms,
-  useMaintenanceTotals,
   useMaintenanceVisits,
   useReopenMaintenance,
 } from '../api/fleet-queries';
@@ -163,11 +162,7 @@ export const MaintenancePage = (): JSX.Element => {
   // Ids picked off the registry need no resolving and can only name people this table can show.
   const mayFilterByDriver = can('employee.view');
 
-  /**
-   * WHAT THE READER IS LOOKING AT — the filters, and only the filters. Split from `params` so the
-   * figure above the table can describe THIS set: the summary endpoint has no `page` field and
-   * would refuse a request that carried one. See the odometer register, which splits the same way.
-   */
+  /** WHAT THE READER IS LOOKING AT — the filters, and only the filters. */
   const filters = useMemo(
     () => ({
       from: from || undefined,
@@ -188,7 +183,6 @@ export const MaintenancePage = (): JSX.Element => {
     [filters, page, pageSize, sorts],
   );
   const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(params);
-  const highest = useMaintenanceTotals(filters);
   const rows = data?.items ?? [];
 
   /**
@@ -549,6 +543,8 @@ export const MaintenancePage = (): JSX.Element => {
               state: null,
             })
           }
+          // How many visits the filter matched, over the WHOLE set — see the odometer register.
+          trailing={<FilteredCount value={data?.meta.totalItems} />}
         >
           {/* One bound, not a range: the screen asks "checked in from this date". */}
           <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
@@ -621,9 +617,6 @@ export const MaintenancePage = (): JSX.Element => {
             <option value="closed">{t('fleet.maintenance.leftWorkshop')}</option>
           </Select>
         </FilterBar>
-
-        {/* The same figure the odometer register shows, from the same place — see the strip. */}
-        <HighestReadingStrip data={highest.data} loading={highest.isPending} />
 
         <DataTable
           columns={columns}

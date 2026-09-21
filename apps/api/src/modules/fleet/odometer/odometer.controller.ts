@@ -4,7 +4,6 @@ import { type Request, type Response } from 'express';
 import {
   type CorrectFleetOdometer,
   type FleetOdometerBracketQuery,
-  type FleetOdometerSummaryQuery,
   type FleetVehicleIdQuery,
   type ListFleetOdometerQuery,
   type RecordFleetOdometer,
@@ -20,12 +19,6 @@ export const listOdometerLogs = async (req: Request, res: Response): Promise<voi
   const { query } = validated<never, ListFleetOdometerQuery>(req);
   const page = await fleetOdometerService.list(query);
   okPage(res, page, (doc) => toOdometerLogDto(doc, page.codes.get(String(doc.vehicleId)) ?? null));
-};
-
-/** The highest reading any car in the CURRENT FILTER has reached — never one page's worth. */
-export const odometerSummary = async (req: Request, res: Response): Promise<void> => {
-  const { query } = validated<never, FleetOdometerSummaryQuery>(req);
-  ok(res, await fleetOdometerService.summary(query));
 };
 
 export const recordOdometer = async (req: Request, res: Response): Promise<void> => {

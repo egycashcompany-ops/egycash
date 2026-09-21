@@ -17,7 +17,8 @@ import { type PermissionDto, type RoleDto } from '@ecms/contracts';
 import { duplicateBlocker, duplicateName, duplicatePayload } from './role-duplication';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const DIALOG = readFileSync(resolve(HERE, '../components/RoleFormDialog.tsx'), 'utf8');
+// The form moved out of a dialog and onto its own page; the rule it carries did not move.
+const FORM = readFileSync(resolve(HERE, '../pages/RoleEditorPage.tsx'), 'utf8');
 const PAGE = readFileSync(resolve(HERE, '../pages/RoleDetailPage.tsx'), 'utf8');
 
 const permission = (key: string): PermissionDto => ({
@@ -38,7 +39,8 @@ const role = (permissionKeys: string[], over: Partial<RoleDto> = {}): RoleDto =>
   name: { ar: 'مسؤول الحسابات', en: 'Account admin' },
   description: 'Looks after accounts',
   isSystem: false,
-  departmentCatalogId: null,
+  group: null,
+  holderCount: 0,
   managed: 'none',
   permissionKeys,
   version: 3,
@@ -163,25 +165,30 @@ describe('duplicatePayload — what travels, and what cannot', () => {
 // ── The wiring, which is the part that could quietly go wrong ────────────────
 
 describe('a duplicate is a CREATE, and goes through every guard one does', () => {
-  it('opens the form with role={null}, so the submit path is createRole', () => {
-    expect(PAGE).toContain('role={null}');
-    expect(PAGE).toContain('duplicateOf={role}');
+  it('opens the CREATE route with a source to copy, never an edit or a duplicate path', () => {
+    // The form left the dialog for a route of its own, so «open it as a create» is now a URL
+    // rather than a prop. The rule is unchanged: duplicating lands on the create page with a
+    // source to pre-fill from, and there is no `id` on it to make the editor think it is editing.
+    expect(PAGE).toContain('/system/roles/new?from=${role.id}');
+    expect(FORM).toContain("const duplicateOfId = sp.get('from');");
+    expect(FORM).toContain('const isCreate = role === null;');
+    expect(FORM).toContain('const isDuplicate = isCreate && duplicateOf !== null;');
     // No duplicate endpoint, no duplicate mutation — the copy reuses the create path entirely.
     expect(PAGE).not.toMatch(/duplicateRole|\/duplicate/);
-    expect(DIALOG).not.toMatch(/duplicateRole|\/duplicate/);
+    expect(FORM).not.toMatch(/duplicateRole|\/duplicate/);
   });
 
   it('sends the same CreateRole body a hand-built role sends', () => {
-    expect(DIALOG).toContain('const body: CreateRole = {');
-    expect(DIALOG).toContain('create.mutate(body, {');
+    expect(FORM).toContain('const body: CreateRole = {');
+    expect(FORM).toContain('create.mutate(body, {');
     // Nothing about assignments reaches the create.
-    expect(DIALOG).not.toMatch(/assignment/i);
+    expect(FORM).not.toMatch(/assignment/i);
   });
 
   it('never trims the key list before sending — the server refuses the whole copy', () => {
     // `keys` is seeded from the payload and sent as-is; no filter on `canGrant` sits between them.
-    expect(DIALOG).toContain('copied?.permissionKeys ?? role?.permissionKeys ?? []');
-    expect(DIALOG).not.toMatch(/permissionKeys:\s*keys\.filter/);
+    expect(FORM).toContain('copied?.permissionKeys ?? role?.permissionKeys ?? []');
+    expect(FORM).not.toMatch(/permissionKeys:\s*keys\.filter/);
   });
 
   it('refuses before opening, naming the reason, rather than after the server answers', () => {

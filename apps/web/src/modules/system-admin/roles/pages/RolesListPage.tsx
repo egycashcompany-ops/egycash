@@ -37,12 +37,11 @@ import {
   LoadingState,
   Pagination,
   SearchInput,
-  Select,
 } from '../../../../shared/ui';
+import { Input, Select } from '../../../../shared/ui/form';
 import { PlusIcon } from '../../../../shared/ui/icons';
 import { ManagedRoleBadge } from '../components/ManagedRoleBadge';
-import { RoleFormDialog } from '../components/RoleFormDialog';
-import { useDepartmentCatalog, useRoles } from '../api/role-queries';
+import { useMoveRoleToGroup, useRenameRoleGroup, useRoles } from '../api/role-queries';
 import { type RoleListParams } from '../api/role-api';
 import { useRememberedFilters } from '../../../../shared/lib/useRememberedFilters';
 
@@ -57,20 +56,60 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
+/**
+ * A heading's name, edited in place.
+ *
+ * Its own component so the input keeps its own draft: lifting it into the page would re-render
+ * every group on each keystroke, and committing on every change would fire a rename per letter.
+ * Enter commits, Escape and blur abandon — the same contract every inline field on this app has.
+ */
+const GroupNameInput = ({
+  initial,
+  busy,
+  onSubmit,
+  onCancel,
+}: {
+  initial: string;
+  busy: boolean;
+  onSubmit: (next: string) => void;
+  onCancel: () => void;
+}): JSX.Element => {
+  const [value, setValue] = useState(initial);
+  const commit = (): void => {
+    const next = value.trim();
+    if (next === '') onCancel();
+    else onSubmit(next);
+  };
+  return (
+    <Input
+      autoFocus
+      value={value}
+      disabled={busy}
+      aria-label={initial}
+      className="w-auto max-w-56 font-semibold"
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+        if (e.key === 'Escape') onCancel();
+      }}
+    />
+  );
+};
+
 export const RolesListPage = (): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
-  const [creating, setCreating] = useState(false);
 
   const search = sp.get('q') ?? '';
   const managed = sp.get('managed') ?? '';
   const unassigned = sp.get('unassigned') === 'true';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
-  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'departmentCatalogId:asc').split(':');
+  const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'group:asc').split(':');
   const sort = { by: sortByRaw ?? 'createdAt', dir: sortDirRaw === 'asc' ? 'asc' : 'desc' } as {
     by: string;
     dir: 'asc' | 'desc';
@@ -104,34 +143,59 @@ export const RolesListPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useRoles(params);
   const rows = data?.items ?? [];
 
-  const { data: catalog = [] } = useDepartmentCatalog();
-  const departmentName = (id: string | null): string =>
-    id === null
-      ? t('systemAdmin.roles.noDepartment')
-      : (catalog.find((d) => d.id === id)?.name[locale] ?? t('systemAdmin.roles.noDepartment'));
+  const rename = useRenameRoleGroup();
+  const move = useMoveRoleToGroup();
+  const [renaming, setRenaming] = useState<string | null>(null);
+  /**
+   * Headings the administrator has just made, before any role sits under one.
+   *
+   * A group is not a record — it exists because roles name it (see `RenameRoleGroupSchema`) — so a
+   * brand-new one has nowhere to be stored until it has a member. Keeping it here rather than
+   * pretending it saved is the honest rendering: the heading appears, says it is empty, and the
+   * first role moved into it is what commits it.
+   */
+  const [pending, setPending] = useState<string[]>([]);
+
+  /** A fresh heading, named so it is unique on sight and editable on the spot. */
+  const addGroup = (): void => {
+    const taken = new Set([...rows.map((r) => r.group), ...pending]);
+    let n = 1;
+    let name = t('systemAdmin.roles.newGroupName', { n });
+    while (taken.has(name)) {
+      n += 1;
+      name = t('systemAdmin.roles.newGroupName', { n });
+    }
+    setPending((p) => [...p, name]);
+    setRenaming(name);
+  };
 
   /**
-   * The page's roles, in department order, with the unfiled ones last.
+   * The page's roles under their headings, unfiled ones last.
    *
-   * Grouped from what the page actually returned rather than asked for per department: one read,
-   * and a group can never disagree with the rows under it.
+   * Grouped from what the page actually returned rather than asked for per heading: one read, and
+   * a heading can never disagree with the rows under it.
    */
   const groups = useMemo(() => {
     const by = new Map<string | null, RoleDto[]>();
+    for (const name of pending) by.set(name, []);
     for (const role of rows) {
-      const key = role.departmentCatalogId;
+      const key = role.group;
       by.set(key, [...(by.get(key) ?? []), role]);
     }
     return [...by.entries()]
-      .sort(([a], [b]) =>
-        a === null ? 1 : b === null ? -1 : departmentName(a).localeCompare(departmentName(b), locale),
-      )
-      .map(([id, roles]) => ({
-        id,
-        name: departmentName(id),
+      .sort(([a], [b]) => (a === null ? 1 : b === null ? -1 : a.localeCompare(b, locale)))
+      .map(([name, roles]) => ({
+        name,
+        label: name ?? t('systemAdmin.roles.noGroup'),
         roles: [...roles].sort((x, y) => x.name[locale].localeCompare(y.name[locale], locale)),
       }));
-  }, [rows, catalog, locale]);
+  }, [rows, pending, locale, t]);
+
+  /** Every heading a role may be moved to — «عام» included, which is how a role leaves one. */
+  const groupNames = useMemo(
+    () => groups.map((g) => g.name).filter((n): n is string => n !== null),
+    [groups],
+  );
 
   return (
     <PageContainer>
@@ -140,25 +204,22 @@ export const RolesListPage = (): JSX.Element => {
         breadcrumbs={[{ label: t('systemAdmin.module.title') }, { label: t('systemAdmin.roles.title') }]}
         actions={
           <Can permission="role.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCreating(true)}
-            >
-              {t('systemAdmin.roles.actions.create')}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" onClick={addGroup}>
+                {t('systemAdmin.roles.actions.newGroup')}
+              </Button>
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => navigate('new')}
+              >
+                {t('systemAdmin.roles.actions.create')}
+              </Button>
+            </div>
           </Can>
         }
       />
 
-      {creating && (
-        <RoleFormDialog
-          open
-          role={null}
-          onClose={() => setCreating(false)}
-          onCreated={(created) => navigate(created.id)}
-        />
-      )}
 
       <div className="space-y-4">
         <FilterBar>
@@ -193,37 +254,109 @@ export const RolesListPage = (): JSX.Element => {
         )}
 
         {groups.map((group) => (
-          <Card key={group.id ?? 'none'}>
-            <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
-              <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                {group.name}
-              </h3>
+          <Card key={group.name ?? 'none'}>
+            <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3 dark:border-slate-800">
+              {renaming === group.name && group.name !== null ? (
+                <GroupNameInput
+                  initial={group.name}
+                  busy={rename.isPending}
+                  onCancel={() => setRenaming(null)}
+                  onSubmit={(next) => {
+                    setRenaming(null);
+                    if (next === group.name) return;
+                    // A heading nobody has filed a role under yet lives only in this component,
+                    // so renaming it is renaming the draft — there is nothing on the server yet.
+                    if (group.roles.length === 0) {
+                      setPending((p) => p.map((n) => (n === group.name ? next : n)));
+                      return;
+                    }
+                    rename.mutate(
+                      { from: group.name, to: next },
+                      { onSuccess: () => setPending((p) => p.filter((n) => n !== group.name)) },
+                    );
+                  }}
+                />
+              ) : (
+                <>
+                  <h3 className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                    {group.label}
+                  </h3>
+                  {group.name !== null && (
+                    <Can permission="role.edit">
+                      <Button size="sm" variant="ghost" onClick={() => setRenaming(group.name)}>
+                        {t('systemAdmin.roles.actions.renameGroup')}
+                      </Button>
+                    </Can>
+                  )}
+                </>
+              )}
               <span className="text-xs text-slate-400">
                 {t('systemAdmin.roles.groupCount', { count: group.roles.length })}
               </span>
+              {group.roles.length === 0 && (
+                <Badge size="sm" tone="warning">
+                  {t('systemAdmin.roles.groupUnsaved')}
+                </Badge>
+              )}
             </div>
             <CardBody padded={false}>
-              <ul>
-                {group.roles.map((role) => (
-                  <li key={role.id} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
-                    <button
-                      type="button"
-                      onClick={() => navigate(role.id)}
-                      className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 dark:hover:bg-slate-800/50"
+              {group.roles.length === 0 ? (
+                <p className="px-5 py-3 text-sm text-slate-500 dark:text-slate-400">
+                  {t('systemAdmin.roles.groupEmptyHint')}
+                </p>
+              ) : (
+                <ul>
+                  {group.roles.map((role) => (
+                    <li
+                      key={role.id}
+                      className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-3 last:border-b-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50"
                     >
-                      <span className="min-w-0 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                      <button
+                        type="button"
+                        onClick={() => navigate(role.id)}
+                        className="min-w-0 flex-1 truncate text-start text-sm font-medium text-slate-800 dark:text-slate-100"
+                      >
                         {role.name[locale]}
-                      </span>
+                      </button>
                       <ManagedRoleBadge managed={role.managed} />
-                      <span className="ms-auto shrink-0">
-                        <Badge size="sm" tone="neutral">
-                          {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
-                        </Badge>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                      {/* The one fact that tells «الموارد البشرية» from «الموارد البشرية Test». */}
+                      <Badge size="sm" tone={role.holderCount === 0 ? 'warning' : 'neutral'}>
+                        {role.holderCount === 0
+                          ? t('systemAdmin.roles.heldByNobody')
+                          : t('systemAdmin.roles.heldBy', { count: role.holderCount })}
+                      </Badge>
+                      <Badge size="sm" tone="neutral">
+                        {t('systemAdmin.roles.permissionCount', { count: role.permissionKeys.length })}
+                      </Badge>
+                      <Can permission="role.edit">
+                        <Select
+                          value={role.group ?? ''}
+                          aria-label={t('systemAdmin.roles.moveToGroup')}
+                          className="w-auto"
+                          disabled={move.isPending}
+                          onChange={(e) => {
+                            const next = e.target.value === '' ? null : e.target.value;
+                            move.mutate(
+                              { id: role.id, group: next, version: role.version },
+                              {
+                                onSuccess: () =>
+                                  setPending((p) => p.filter((n) => n !== next)),
+                              },
+                            );
+                          }}
+                        >
+                          <option value="">{t('systemAdmin.roles.noGroup')}</option>
+                          {groupNames.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </Select>
+                      </Can>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardBody>
           </Card>
         ))}

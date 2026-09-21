@@ -1,4 +1,5 @@
 import { Types, type FilterQuery, type PipelineStage } from 'mongoose';
+import { type LocalizedString } from '@ecms/contracts';
 import { BaseRepository } from '../../shared/base/base.repository';
 import { PermissionModel, type PermissionDoc } from './permission.model';
 import { RoleModel, type RoleDoc } from './role.model';
@@ -47,6 +48,49 @@ class RoleRepository extends BaseRepository<RoleDoc> {
     return {
       $or: [{ 'name.ar': pattern }, { 'name.en': pattern }, { permissionKeys: pattern }],
     };
+  }
+
+  /**
+   * Every heading in use, once each, sorted.
+   *
+   * A `distinct` rather than a page of roles: the editor needs the NAMES, and asking for a hundred
+   * roles to read a handful of strings off them is the «raise the page size to avoid paging»
+   * pattern ADR-019 rule 5 forbids — and it would quietly miss a heading the moment the company
+   * has more roles than the page.
+   */
+  async distinctGroups(): Promise<string[]> {
+    const rows = await this.model.distinct('group', { isDeleted: false }).exec();
+    return (rows as (string | null)[])
+      .filter((g): g is string => typeof g === 'string' && g !== '')
+      .sort((a, b) => a.localeCompare(b));
+  }
+
+  /**
+   * Set a seeded role's display name — a system write, with no version to check.
+   *
+   * Optimistic concurrency is for two administrators editing one row. Nobody edits a system role's
+   * name: the seed declares it and the screen refuses it, so there is no second writer to conflict
+   * with, and demanding a version here would only make the boot step re-read a row it just read.
+   */
+  async renameSystemRole(id: string, name: LocalizedString): Promise<RoleDoc | null> {
+    return this.model
+      .findByIdAndUpdate(new Types.ObjectId(id), { $set: { name } }, { new: true })
+      .lean<RoleDoc>()
+      .exec();
+  }
+
+  /**
+   * Rewrite one group name across every role that carries it, in one write.
+   *
+   * `null` on either side is «no group»: renaming FROM null files the ungrouped roles under a
+   * heading, and renaming TO null empties the heading, which is how a group is deleted. There is
+   * no group record to delete — see `RenameRoleGroupSchema`.
+   */
+  async renameGroup(from: string | null, to: string | null): Promise<number> {
+    const result = await this.model
+      .updateMany({ group: from, isDeleted: false }, { $set: { group: to } })
+      .exec();
+    return result.modifiedCount;
   }
 
   async findGrantingPermission(permissionKey: string): Promise<RoleDoc[]> {
@@ -181,6 +225,37 @@ class RoleAssignmentRepository extends BaseRepository<RoleAssignmentDoc> {
       } as FilterQuery<RoleAssignmentDoc>)
       .lean<RoleAssignmentDoc[]>()
       .exec();
+  }
+
+  /**
+   * How many live assignments each of `roleIds` carries, as a map — roles with none are absent.
+   *
+   * One aggregate for the whole page rather than a count per row: the list shows tens of roles and
+   * a count each would be tens of round trips for a badge. Absent-means-zero rather than a filled
+   * map, because the caller defaults anyway and materializing the zeros buys nothing.
+   */
+  async countActiveByRole(roleIds: Types.ObjectId[]): Promise<Map<string, number>> {
+    if (roleIds.length === 0) return new Map();
+    const now = new Date();
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; n: number }>([
+        {
+          $match: {
+            roleId: { $in: roleIds },
+            isDeleted: false,
+            $and: [
+              { $or: [{ validFrom: null }, { validFrom: { $lte: now } }] },
+              { $or: [{ validTo: null }, { validTo: { $gt: now } }] },
+            ],
+          },
+        },
+        // By USER, not by row: two grants of one role to one person — «الحركة» in two branches —
+        // are one holder, and counting rows would report two people where there is one.
+        { $group: { _id: { roleId: '$roleId', userId: '$userId' } } },
+        { $group: { _id: '$_id.roleId', n: { $sum: 1 } } },
+      ])
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.n]));
   }
 
   /**

@@ -10,6 +10,7 @@ import {
   type CreateRoleAssignment,
   type ListRoleAssignmentsQuery,
   type ListRolesQuery,
+  type RenameRoleGroup,
   type UpdateRole,
   type UpdateRoleAssignment,
 } from '@ecms/contracts';
@@ -29,8 +30,19 @@ export const listPermissions = async (_req: Request, res: Response): Promise<voi
 
 export const listRoles = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListRolesQuery>(req);
-  const page = await rbacService.listRoles(query);
-  okPage(res, page, (doc) => rbacService.toRoleDto(doc));
+  // Already DTOs — the holder count is part of a row on this screen, so the service fills it in
+  // one aggregate rather than the controller counting per row.
+  const page = await rbacService.listRoleDtos(query);
+  okPage(res, page, (dto) => dto);
+};
+
+export const listRoleGroups = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await rbacService.listRoleGroups());
+};
+
+export const renameRoleGroup = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<RenameRoleGroup>(req);
+  ok(res, { moved: await rbacService.renameRoleGroup(body, authContext(req)) });
 };
 
 export const getRole = async (req: Request, res: Response): Promise<void> => {

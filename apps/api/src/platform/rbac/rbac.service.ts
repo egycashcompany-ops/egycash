@@ -26,12 +26,13 @@ import {
   type RoleManagement,
   type UpdateRole,
   type UpdateRoleAssignment,
+  type RenameRoleGroup,
   type PageDef,
   type PageDto,
   type PermissionCatalogDto,
   validatePageRegistry,
 } from '@ecms/contracts';
-import { BusinessRuleError, NotFoundError } from '../../shared/errors';
+import { BusinessRuleError, ConflictError, NotFoundError } from '../../shared/errors';
 import { scopeSelector, touchedBranches, type AuthContext, type ScopeSelector, type UnitReach } from '../../shared/types';
 import { HR_ONLY_ROLE_KEY_PREFIX, isDerivedHrRoleKey } from '../../hr-only-policy';
 import { getCache } from '../../infrastructure/redis/cache';
@@ -701,10 +702,7 @@ class RbacService {
         name: input.name,
         description: input.description ?? null,
         isSystem: false,
-        departmentCatalogId:
-          input.departmentCatalogId === undefined || input.departmentCatalogId === null
-            ? null
-            : new Types.ObjectId(input.departmentCatalogId),
+        group: input.group ?? null,
         permissionKeys: [...new Set(input.permissionKeys)],
       },
       { by },
@@ -729,10 +727,7 @@ class RbacService {
     const set: Record<string, unknown> = {};
     if (input.name !== undefined) set.name = input.name;
     if (input.description !== undefined) set.description = input.description;
-    if (input.departmentCatalogId !== undefined) {
-      set.departmentCatalogId =
-        input.departmentCatalogId === null ? null : new Types.ObjectId(input.departmentCatalogId);
-    }
+    if (input.group !== undefined) set.group = input.group;
     if (input.permissionKeys !== undefined) {
       this.assertKnownPermissionKeys(input.permissionKeys);
       // Only what the edit ADDS is checked. Removing a grant is a narrowing and always allowed, and
@@ -785,6 +780,67 @@ class RbacService {
    * — so this is how an administrator finds the roles that are currently off. It is computed from
    * the assignments rather than stored, which is why it cannot go stale.
    */
+  /**
+   * The roles page, with each row's holder count filled in.
+   *
+   * Its own method rather than the controller stitching two calls together, because the count is
+   * part of what a role IS on this screen — «الموارد البشرية Test» with 173 permissions and nobody
+   * holding it is the leftover of an experiment, and the list is where that has to be visible.
+   */
+  /** Every heading in use — what the role editor offers, and nothing more. */
+  async listRoleGroups(): Promise<string[]> {
+    return roleRepository.distinctGroups();
+  }
+
+  async listRoleDtos(query: ListRolesQuery): Promise<Paginated<RoleDto>> {
+    const page = await this.listRoles(query);
+    const counts = await roleAssignmentRepository.countActiveByRole(
+      page.items.map((doc) => new Types.ObjectId(String(doc._id))),
+    );
+    return {
+      ...page,
+      items: page.items.map((doc) => ({
+        ...this.toRoleDto(doc),
+        holderCount: counts.get(String(doc._id)) ?? 0,
+      })),
+    };
+  }
+
+  /**
+   * Rename one group across every role carrying it — or clear it, which deletes the group.
+   *
+   * Refuses to merge two headings by accident: renaming «الحركة» onto an existing «الموارد
+   * البشرية» would silently fold two groups into one, and an administrator who meant that can
+   * still do it by moving the roles one at a time, where each move is visible.
+   */
+  async renameRoleGroup(input: RenameRoleGroup, actor: AuthContext): Promise<number> {
+    const from = input.from === null || input.from === '' ? null : input.from;
+    const to = input.to === null || input.to === '' ? null : input.to;
+    if (from === to) return 0;
+    if (to !== null) {
+      const taken = await roleRepository.list({
+        filter: { group: to },
+        page: 1,
+        pageSize: 1,
+        sortableFields: [],
+      });
+      if (taken.items.length > 0) throw new ConflictError('systemAdmin.roles.groupExists');
+    }
+    const moved = await roleRepository.renameGroup(from, to);
+    if (moved > 0) {
+      await auditService.record({
+        entityRef: { moduleId: 'platform', entityType: 'roleGroup', entityId: to ?? from ?? 'none' },
+        action: 'update',
+        changes: [
+          { field: 'group', old: from, new: to },
+          { field: 'roles', old: null, new: String(moved) },
+        ],
+        actor: { userId: actor.userId, ip: null, userAgent: null },
+      });
+    }
+    return moved;
+  }
+
   async listRoles(query: ListRolesQuery): Promise<Paginated<RoleDoc>> {
     const filter: Record<string, unknown> = {};
     if (query.search !== undefined)
@@ -808,10 +864,10 @@ class RbacService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      // `departmentCatalogId` is sortable so the grouped list can keep a department's roles
-      // CONTIGUOUS across pages. Without it, grouping a page would split «الحركة» into two
-      // headings with the same name on two pages, which reads as two departments.
-      sortableFields: ['createdAt', 'name.en', 'departmentCatalogId'],
+      // `group` is sortable so a heading's roles stay CONTIGUOUS across pages. Without it,
+      // grouping a page would split «الحركة» into two headings with the same name on two pages,
+      // which reads as two groups.
+      sortableFields: ['createdAt', 'name.en', 'group'],
     });
   }
 
@@ -1343,9 +1399,12 @@ class RbacService {
       description: doc.description,
       isSystem: doc.isSystem,
       managed: this.managementOf(doc),
-      // Lean rows from before the field existed carry none — «no department», which groups the
-      // role under «عام» and is exactly what it was.
-      departmentCatalogId: (doc.departmentCatalogId ?? null) === null ? null : String(doc.departmentCatalogId),
+      // Lean rows from before the field existed carry none, which files the role under «عام» —
+      // exactly where it sat when the field was a department reference nobody had set.
+      group: doc.group ?? null,
+      // Filled by `listRoles`, which counts them all in one read. A single role fetched on its own
+      // reports 0 rather than paying for a count nothing on that screen shows.
+      holderCount: 0,
       permissionKeys: doc.permissionKeys,
       version: doc.__v,
       createdAt: doc.createdAt.toISOString(),
@@ -1443,13 +1502,38 @@ class RbacService {
     return missing.length;
   }
 
+  /**
+   * A seeded, protected role — created on a fresh database, and kept in step on an existing one.
+   *
+   * The NAME is re-asserted, not just the existence. It used to return an existing role untouched,
+   * which meant a rename in the seed reached a fresh install and no other: every database that had
+   * already booted kept the old name forever, and the code and the screen disagreed with no way to
+   * tell from either. A system role's name is declared here and nowhere else — an administrator
+   * cannot edit one — so the declaration is the only truth there is, and bringing the row back to
+   * it is the same discipline `ensureKeyedRole` applies to grants.
+   *
+   * Grants are deliberately NOT re-asserted here; the boot sync owns those, and `super-admin` in
+   * particular is kept equal to the live registry, which this call cannot know.
+   */
   async ensureSystemRole(
     key: 'super-admin' | 'platform-admin' | 'employee-self-service',
     name: { ar: string; en: string },
     permissionKeys: string[],
   ): Promise<RoleDoc> {
     const existing = await roleRepository.findByKey(key);
-    if (existing !== null) return existing;
+    if (existing !== null) {
+      if (existing.name.ar === name.ar && existing.name.en === name.en) return existing;
+      const renamed = await roleRepository.renameSystemRole(String(existing._id), name);
+      await auditService.record({
+        entityRef: roleEntityRef(String(existing._id)),
+        action: 'update',
+        changes: [
+          { field: 'name', old: existing.name.ar, new: name.ar },
+          { field: 'reason', old: null, new: 'system role renamed in the seed' },
+        ],
+      });
+      return renamed ?? existing;
+    }
     return roleRepository.create(
       { key, name, description: null, isSystem: true, permissionKeys },
       { by: null },

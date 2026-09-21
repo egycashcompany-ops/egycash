@@ -18,6 +18,7 @@ import { UsersListPage } from './users/pages/UsersListPage';
 import { UserDetailPage } from './users/pages/UserDetailPage';
 import { RolesListPage } from './roles/pages/RolesListPage';
 import { RoleDetailPage } from './roles/pages/RoleDetailPage';
+import { RoleEditorPage } from './roles/pages/RoleEditorPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
 import { ApprovalWorkflowsPage } from './approvals/pages/ApprovalWorkflowsPage';
 import { SettingsPage } from './settings/pages/SettingsPage';
@@ -53,7 +54,25 @@ export default function SystemAdminRoutes(): JSX.Element {
           }
         >
           <Route index element={<RolesListPage />} />
+          {/* Before `:id` — «new» is not a role id, and a router that met `:id` first would send
+              the create page off to fetch a role called «new» and show «not found». */}
+          <Route
+            path="new"
+            element={
+              <RequirePermission permission="role.create">
+                <RoleEditorPage />
+              </RequirePermission>
+            }
+          />
           <Route path=":id" element={<RoleDetailPage />} />
+          <Route
+            path=":id/edit"
+            element={
+              <RequirePermission permission="role.edit">
+                <RoleEditorPage />
+              </RequirePermission>
+            }
+          />
         </Route>
 
         {/* The registry is read-only and gated by its own permission — an administrator may be

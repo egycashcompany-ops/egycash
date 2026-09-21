@@ -12,6 +12,7 @@ import {
   type Paginated,
   type PermissionCatalogDto,
   type RoleAssignmentDto,
+  type RenameRoleGroup,
   type RoleDto,
   type UpdateRole,
   type UpdateRoleAssignment,
@@ -23,6 +24,7 @@ import {
   getPage,
   patch,
   post,
+  put,
   type QueryParams,
 } from '../../../../shared/lib/api-client';
 
@@ -40,6 +42,18 @@ export const updateRole = (id: string, body: UpdateRole): Promise<RoleDto> =>
   patch<RoleDto>(`/platform/roles/${id}`, body);
 
 export const deleteRole = (id: string): Promise<void> => del<void>(`/platform/roles/${id}`);
+
+/** Every heading in use. A distinct read — never a page of roles scanned for their names. */
+export const listRoleGroups = (): Promise<string[]> => get<string[]>('/platform/roles/groups');
+
+/**
+ * Rename one heading across every role carrying it — or clear it, which deletes the heading.
+ *
+ * One call rather than a PATCH per role: a rename is a single act, and a client loop that lost the
+ * network halfway would leave the company with two headings where it meant to have one.
+ */
+export const renameRoleGroup = (body: RenameRoleGroup): Promise<{ moved: number }> =>
+  put<{ moved: number }>('/platform/roles/groups', body);
 
 /**
  * The whole registry. Not a catalog read of the kind ADR-019 forbids: this endpoint exists to

@@ -20,7 +20,7 @@ const source = (over: Partial<EffectivePermissionSourceDto> = {}): EffectivePerm
   roleId: 'r1',
   roleName: { ar: 'مدير الحركة', en: 'Operations Manager' },
   roleKey: null,
-  roleManaged: 'custom',
+  roleManaged: 'none',
   branch: null,
   department: null,
   scope: 'department',

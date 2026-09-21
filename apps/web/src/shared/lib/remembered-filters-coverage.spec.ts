@@ -257,6 +257,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/system-admin/notification-templates/pages/TemplateDetailPage.tsx'],
   ['modules/system-admin/roles/pages/RoleDetailPage.tsx', '`tab` and `page` on one role, on a :id route'],
   ['modules/system-admin/users/pages/UserDetailPage.tsx'],
+  ['platform/account/MyPermissionsPage.tsx'],
   ['platform/account/PreferencesPage.tsx'],
   ['platform/account/SecurityPage.tsx'],
   ['platform/app/pages/ForbiddenPage.tsx'],

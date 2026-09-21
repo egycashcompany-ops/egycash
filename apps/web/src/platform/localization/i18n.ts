@@ -5543,8 +5543,14 @@ const en: Record<string, string> = {
   'systemAdmin.users.directGrants': 'Direct grants — screen by screen',
   'systemAdmin.users.directGrantsHint':
     'One or two permissions outside any role, for one site. Use a role when the same list is given to several people.',
-  'systemAdmin.users.tabs.roles': 'Roles',
-  'systemAdmin.users.tabs.permissions': 'Permissions',
+  // THE TWO TABS ARE NAMED AFTER WHAT THEY DO, which is what stopped «الصلاحيات» from naming
+  // two different things on one screen. The first is where an administrator WRITES — the roles he
+  // assigns and the per-site grants he makes. The second is the RESULT of those records after
+  // reach and validity windows are applied, and it is read-only. Calling either of them
+  // «Permissions» left a reader looking for the place to grant finding the word twice, once on a
+  // tab that grants nothing.
+  'systemAdmin.users.tabs.roles': 'Roles & grants',
+  'systemAdmin.users.tabs.permissions': 'What it can actually do',
   'systemAdmin.users.fields.section': 'Section',
   'systemAdmin.users.placement.searchDepartment': 'Search departments',
   'systemAdmin.users.placement.searchSection': 'Search sections',
@@ -5559,7 +5565,7 @@ const en: Record<string, string> = {
   'systemAdmin.users.placement.inactiveBranch': 'Current branch (no longer active)',
 
   // SA-4 — effective permissions, explained
-  'systemAdmin.effective.title': 'Effective permissions',
+  'systemAdmin.effective.title': 'Where each permission comes from',
   'systemAdmin.effective.hint':
     'Everything this account may do, and where each permission comes from. Grants that have lapsed or not yet started are kept — that is usually the answer.',
   'systemAdmin.effective.count': '{{count}} permissions',
@@ -12278,8 +12284,11 @@ const ar: Record<string, string> = {
   'systemAdmin.users.directGrants': 'منح مباشرة — شاشة بشاشة',
   'systemAdmin.users.directGrantsHint':
     'صلاحية أو اثنتان خارج أي دور، لموقع بعينه. واستعمل دورًا إذا كانت القائمة نفسها تُمنح لعدّة أشخاص.',
-  'systemAdmin.users.tabs.roles': 'الأدوار',
-  'systemAdmin.users.tabs.permissions': 'الصلاحيات',
+  // التبويبان مسمّيان بما يفعلانه، وهو ما أنهى تسمية «الصلاحيات» لشيئين على شاشة واحدة. الأول
+  // موضع ما يكتبه المسؤول بيده — الأدوار التي يمنحها والمنح المباشرة لكل موقع. والثاني حاصلُ تلك
+  // السجلّات بعد حساب المدى والتواريخ، وهو للقراءة فقط.
+  'systemAdmin.users.tabs.roles': 'الأدوار والمنح',
+  'systemAdmin.users.tabs.permissions': 'ما يستطيعه فعلًا',
   'systemAdmin.users.fields.section': 'القسم',
   'systemAdmin.users.placement.searchDepartment': 'ابحث في الإدارات',
   'systemAdmin.users.placement.searchSection': 'ابحث في الأقسام',
@@ -12294,7 +12303,7 @@ const ar: Record<string, string> = {
   'systemAdmin.users.placement.inactiveBranch': 'الفرع الحالي (لم يعد نشطًا)',
 
   // SA-4 — الصلاحيات الفعلية وتفسيرها
-  'systemAdmin.effective.title': 'الصلاحيات الفعلية',
+  'systemAdmin.effective.title': 'من أين جاءت كل صلاحية',
   'systemAdmin.effective.hint':
     'كل ما يستطيع هذا الحساب فعله، ومن أين تأتي كل صلاحية. المنح المنتهية أو التي لم تبدأ بعد تبقى ظاهرة — وهي غالبًا الإجابة.',
   'systemAdmin.effective.count': '{{count}} صلاحية',

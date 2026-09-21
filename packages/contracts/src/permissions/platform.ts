@@ -250,6 +250,35 @@ export const delegationPermissions = declarePermissions(
   'platform.delegation',
 );
 
+/**
+ * Approval chains: who configures them, and who may step around one.
+ *
+ * `override` is deliberately its own key rather than a property of seniority. The owner allowed a
+ * general manager to decide a rung that is not his — «نعم، لكن دي لازم تكون Permission/Delegation
+ * واضحة» — and a permission is the only shape that makes «he was entitled to» a fact the audit log
+ * can carry, rather than an inference from a title.
+ */
+export const approvalPermissions = declarePermissions(
+  P,
+  'approval',
+  { en: 'approval workflows', ar: 'مسارات الموافقة' },
+  [],
+  [
+    {
+      action: 'configure',
+      name: { en: 'Configure approval chains', ar: 'إعداد مسارات الموافقة' },
+    },
+    {
+      action: 'override',
+      name: {
+        en: 'Decide an approval step that is not yours',
+        ar: 'يقرّر خطوة موافقة مش بتاعته',
+      },
+    },
+  ],
+  'platform.approvals',
+);
+
 export const platformPermissions: PermissionDef[] = [
   ...userPermissions,
   ...rolePermissions,
@@ -270,6 +299,7 @@ export const platformPermissions: PermissionDef[] = [
   ...fileCategoryPermissions,
   ...notificationTemplatePermissions,
   ...delegationPermissions,
+  ...approvalPermissions,
 ];
 
 /**
@@ -406,6 +436,13 @@ export const platformPages: PageDef[] = [
     name: { en: 'Permissions (delegation)', ar: 'الصلاحيات' },
     // Not a screen of its own: the tab on a colleague's profile, reached from a manager's team.
     sortOrder: 25,
+  },
+  {
+    id: 'platform.approvals',
+    moduleId: P,
+    name: { en: 'Approval workflows', ar: 'مسارات الموافقة' },
+    route: '/system/approvals',
+    sortOrder: 26,
   },
 ];
 

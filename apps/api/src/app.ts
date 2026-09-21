@@ -41,6 +41,7 @@ import {
   buildAuditLogsRouter,
   buildTimelineRouter,
 } from './platform/audit';
+import { buildApprovalsRouter } from './platform/approvals';
 import { buildDirectoryRouter } from './platform/directory';
 import { buildScheduledTasksRouter } from './platform/scheduler';
 import { buildFileCategoriesRouter, buildFilesRouter } from './platform/files';
@@ -163,6 +164,7 @@ export const buildApp = (): Express => {
   api.use('/platform/role-assignments', buildRoleAssignmentsRouter());
   api.use('/platform/permissions', buildPermissionsRouter());
   api.use('/platform/delegations', buildDelegationsRouter());
+  api.use('/platform/approvals', buildApprovalsRouter());
   api.use('/platform/organization', buildOrganizationRouter());
   api.use('/platform/branches', buildBranchesRouter());
   // The company-wide catalogs, mounted BEFORE the per-branch units so the more specific path wins

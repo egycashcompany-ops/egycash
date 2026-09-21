@@ -17,6 +17,46 @@ class DelegatedGrantRepository extends BaseRepository<DelegatedGrantDoc> {
       .exec();
   }
 
+  /**
+   * Every live grant carrying one key in one branch — the whole-branch rows and the department
+   * rows together, because which of the two a row is decides which approval rung its holder
+   * stands on, and that is the caller's rule to apply.
+   */
+  async findByKeyInBranch(permissionKey: string, branchId: string): Promise<DelegatedGrantDoc[]> {
+    return this.model
+      .find({
+        branchId: new Types.ObjectId(branchId),
+        permissionKeys: permissionKey,
+        isDeleted: false,
+      })
+      .lean<DelegatedGrantDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Every live grant carrying one key over one company-wide department, in every branch.
+   *
+   * Its own read rather than a widening of the one above, because this shape has no branch to look
+   * under: a deputy handed «الحركة في كل الفروع» is stored once, not once per branch, so a query
+   * scoped to a branch cannot see him however it is written. Missing him is not a slow answer but
+   * a wrong one — the rung reads empty, the chain steps over it, and the request goes to HR past
+   * the man it was meant to stop at.
+   */
+  async findByKeyForDepartmentEverywhere(
+    permissionKey: string,
+    departmentCatalogId: string,
+  ): Promise<DelegatedGrantDoc[]> {
+    return this.model
+      .find({
+        departmentCatalogId: new Types.ObjectId(departmentCatalogId),
+        allBranches: true,
+        permissionKeys: permissionKey,
+        isDeleted: false,
+      })
+      .lean<DelegatedGrantDoc[]>()
+      .exec();
+  }
+
   /** The one live grant for an account over a unit — a department in a branch, or the whole branch. */
   async findForUserInUnit(
     userId: string,

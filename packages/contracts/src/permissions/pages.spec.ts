@@ -140,8 +140,8 @@ describe('the platform registry as it actually stands', () => {
 
   // ADR-032 added the delegation page and its one key.
   it('declares 16 pages for 65 permissions', () => {
-    expect(platformPages).toHaveLength(16);
-    expect(platformPermissions).toHaveLength(65);
+    expect(platformPages).toHaveLength(17);
+    expect(platformPermissions).toHaveLength(67);
   });
 
   // The unassigned set is an explicit answer, not a gap, so it is pinned by name. Adding a

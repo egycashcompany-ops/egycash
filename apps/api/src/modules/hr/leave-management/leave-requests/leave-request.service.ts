@@ -17,6 +17,7 @@ import {
   type LeaveRuleViolationDto,
   type ListLeaveRequestsQuery,
   type Paginated,
+  type ApprovalTrailDto,
   type ReturnLeaveRequest,
   type UnreconciledLeaveDto,
 } from '@ecms/contracts';
@@ -31,6 +32,13 @@ import { auditService } from '../../../../platform/audit';
 import { emit } from '../../../../platform/kernel/event-bus';
 import { logger } from '../../../../infrastructure/logging/logger';
 import { notificationsService } from '../../../../platform/notifications';
+import {
+  approvalService,
+  registerApprovalRequestType,
+  type DecidedEntry,
+  type Unit,
+} from '../../../../platform/approvals';
+import { departmentRepository } from '../../../../platform/organization/departments/department.repository';
 import { settingsService } from '../../../../platform/settings';
 import { fileService, type UploadedBinary } from '../../../../platform/files';
 import { employeeRepository, type EmployeeDoc } from '../../employee-management/employees';
@@ -44,6 +52,23 @@ import { LeaveRequestModel, type LeaveRequestDoc, type LeaveRequestEntity } from
 import { leaveRequestRepository } from './leave-request.repository';
 
 const ORG_SUBJECT = { userId: null, branchId: null };
+
+/**
+ * The engine's name for this kind of request, and the keys a chain may be built from.
+ *
+ * Declared here rather than in the platform because the platform must not know what a leave
+ * request is — the same reason the permission registry works this way. `leave.approve` is the key
+ * every rung of a leave chain names; what CHANGES from rung to rung is the level it is held at:
+ * «مدير حركة الفرع» holds it over one unit, «مدير عام الحركة» over that department everywhere,
+ * «الموارد البشرية» company-wide. One key, three desks, no titles anywhere.
+ */
+export const LEAVE_REQUEST_TYPE = 'hr.leave';
+registerApprovalRequestType({
+  key: LEAVE_REQUEST_TYPE,
+  moduleId: 'hr',
+  name: { ar: 'طلبات الإجازة', en: 'Leave requests' },
+  permissionKeys: ['leave.approve'],
+});
 const requestRef = (id: string) => ({ moduleId: 'hr', entityType: 'leaveRequest', entityId: id });
 
 /** Caller capabilities computed by the controller from effective permissions (R9). */
@@ -63,6 +88,26 @@ class LeaveRequestService {
       throw new BusinessRuleError('your account is not linked to an employee record');
     }
     return employee;
+  }
+
+  /**
+   * Where a request sits, in the two coordinates a chain is written against.
+   *
+   * The DEPARTMENT is the company-wide one (ADR-031), not this branch's copy, because a chain
+   * written for «الحركة» must answer for الحركة in every branch — that is the whole point of
+   * configuring it once. The branch copy travels too, because a grant written before the catalog
+   * existed names it directly.
+   */
+  private async unitOf(employee: EmployeeDoc): Promise<Unit> {
+    const departmentId = employee.departmentId === null ? null : String(employee.departmentId);
+    const department =
+      departmentId === null ? null : await departmentRepository.findById(departmentId);
+    return {
+      branchId: employee.branchId === null ? null : String(employee.branchId),
+      departmentCatalogId:
+        department?.catalogId == null ? null : String(department.catalogId),
+      departmentId,
+    };
   }
 
   private async isSubjectManager(employee: EmployeeDoc, userId: string): Promise<boolean> {
@@ -237,7 +282,22 @@ class LeaveRequestService {
       );
     }
 
-    const initialStatus = employee.employment.managerId !== null ? 'pendingManager' : 'pendingHr';
+    // Which machine runs this request is decided ONCE, here, and never revisited: a request that
+    // starts on the two-desk rails finishes on them even if somebody writes a chain tomorrow, and
+    // a request that starts on a chain keeps that chain's shape. Switching a live request between
+    // the two would leave a trail that reads as neither.
+    //
+    // And the engine takes over only where a chain was actually configured for this employee's
+    // place. That is what makes this change migrate nothing: until an administrator writes a
+    // chain, every leave request behaves exactly as it did yesterday.
+    const unit = await this.unitOf(employee);
+    const chain = await approvalService.chainFor(LEAVE_REQUEST_TYPE, unit);
+    const onEngine = chain.steps.length > 0;
+    const initialStatus = onEngine
+      ? 'pendingApproval'
+      : employee.employment.managerId !== null
+        ? 'pendingManager'
+        : 'pendingHr';
     const doc = await leaveRequestRepository.create(
       {
         employeeId: employee._id,
@@ -339,6 +399,13 @@ class LeaveRequestService {
       startDate: dateOnlyIso(doc.startDate),
       days: String(doc.days),
     };
+    // A request on the engine is told to the rung it is actually waiting on. Falling through to
+    // the company-wide branch below would mail every HR account about a request sitting on «مدير
+    // حركة المهندسين» — and would leave the man it is waiting for hearing nothing at all.
+    if (doc.status === 'pendingApproval') {
+      await this.notifyChainApprovers(doc, await this.unitOf(employee));
+      return;
+    }
     const to =
       doc.status === 'pendingManager' && employee.employment.managerId !== null
         ? { userIds: [String(employee.employment.managerId)] }
@@ -377,6 +444,14 @@ class LeaveRequestService {
     if (employee.userId !== null && String(employee.userId) === ctx.userId) {
       throw new ForbiddenError('you cannot decide your own leave request');
     }
+    // A request the engine is running takes the engine's path whole: who may decide, which rung he
+    // decides, and what that cancels are all its answers, and none of the two-desk checks below
+    // apply to it. They are not merely redundant there — `isSubjectManager` would let the
+    // employee's line manager decide a rung the chain never gave him.
+    if (request.status === 'pendingApproval') {
+      return this.decideOnChain(ctx, request, employee, verdict, input);
+    }
+
     const isManager = await this.isSubjectManager(employee, ctx.userId);
     const hasScopedApprove = await this.approveCoversEmployee(employee, flags);
     if (request.status === 'pendingManager' && !isManager && !hasScopedApprove) {
@@ -458,6 +533,181 @@ class LeaveRequestService {
       }
     }
     return (await leaveRequestRepository.findRawById(id)) ?? updated;
+  }
+
+  /**
+   * One decision on a request the configured chain is running.
+   *
+   * The same certificate gate and the same post-decision work as the two-desk path — a request
+   * does not stop needing its attachment because the routing changed — but every question about
+   * WHO may decide, and what his decision does to the rungs below him, is the engine's.
+   *
+   * The write is conditional on the trail the decision was computed against (`approvalSteps` of
+   * exactly that length), which is the same guard `status` gives the older path: two managers
+   * pressing approve at the same moment must not both append a rung.
+   */
+  private async decideOnChain(
+    ctx: AuthContext,
+    request: LeaveRequestDoc,
+    employee: EmployeeDoc,
+    verdict: 'approved' | 'rejected',
+    input: DecideLeaveRequest,
+  ): Promise<LeaveRequestDoc> {
+    const unit = await this.unitOf(employee);
+    const decisions: DecidedEntry[] = request.approvalSteps.map((entry) => ({
+      stepIndex: entry.stepIndex,
+      outcome: entry.outcome,
+      deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
+      decidedAt: entry.decidedAt,
+      comment: entry.comment,
+      overriddenWith: entry.overriddenWith,
+    }));
+
+    const type = await leaveTypeService.getById(String(request.typeId));
+    // The certificate gate, unchanged in meaning: a `requiresAttachment` type never reaches
+    // APPROVED without one, and an `atSubmission` type holds EVERY rung until it is attached.
+    // «Would this decision finish the chain» is the engine's question, so it is asked first.
+    const outcome = await approvalService.decide(
+      { requestType: LEAVE_REQUEST_TYPE, unit, decisions },
+      ctx,
+      { decision: verdict, comment: input.comment ?? null },
+    );
+    if (
+      type.requiresAttachment &&
+      request.attachments.length === 0 &&
+      (outcome.status === 'approved' || type.attachmentStage === 'atSubmission')
+    ) {
+      throw new BusinessRuleError('an attachment is required before approval');
+    }
+
+    const nextStatus =
+      outcome.status === 'approved'
+        ? 'approved'
+        : outcome.status === 'rejected'
+          ? 'rejected'
+          : 'pendingApproval';
+    const updated = await LeaveRequestModel.findOneAndUpdate(
+      {
+        _id: request._id,
+        status: 'pendingApproval',
+        [`approvalSteps.${request.approvalSteps.length}`]: { $exists: false },
+        isDeleted: false,
+      },
+      {
+        $set: { status: nextStatus },
+        $push: {
+          approvalSteps: {
+            $each: outcome.entries.map((entry) => ({
+              ...entry,
+              deciderUserId:
+                entry.deciderUserId === null ? null : new Types.ObjectId(entry.deciderUserId),
+            })),
+          },
+        },
+        $inc: { __v: 1 },
+      },
+      { new: true },
+    ).exec();
+    if (updated === null) throw new ConflictError('the request was already decided');
+
+    await auditService.record({
+      entityRef: requestRef(String(request._id)),
+      action: 'leaveDecision',
+      changes: [
+        { field: 'step', old: null, new: String(outcome.stepIndex) },
+        { field: 'decision', old: null, new: verdict },
+        { field: 'status', old: request.status, new: nextStatus },
+      ],
+    });
+    await emit(HrLeaveEvents.Decided, {
+      requestId: String(request._id),
+      employeeId: String(request.employeeId),
+      step: String(outcome.stepIndex),
+      decision: verdict,
+    });
+
+    if (nextStatus === 'rejected') {
+      await this.releaseAll(updated, type, ctx.userId, 'request rejected');
+      await this.notifyEmployee(updated, employee, HrLeaveTemplates.RequestRejected);
+      return updated;
+    }
+    if (nextStatus === 'pendingApproval') {
+      await this.notifyChainApprovers(updated, unit);
+      return updated;
+    }
+    await this.notifyEmployee(updated, employee, HrLeaveTemplates.RequestApproved);
+    // R4 — synchronous catch-up, exactly as on the other path: a late approval and a backdated
+    // span transition immediately rather than waiting for the nightly drive.
+    const today = cairoToday();
+    if (toDateOnly(updated.startDate).getTime() <= today.getTime()) {
+      const activated = await this.activate(updated, ctx.userId);
+      if (activated !== null && toDateOnly(updated.endDate).getTime() < today.getTime()) {
+        await this.complete(activated, null);
+      }
+    }
+    return (await leaveRequestRepository.findRawById(String(request._id))) ?? updated;
+  }
+
+  /**
+   * The configured chain behind one request, and what THIS reader may do about it.
+   *
+   * Null for a request the two-desk machine is running — not an empty trail, because those are
+   * different facts and a screen must not draw an empty chain over a request that never had one.
+   */
+  async trailFor(request: LeaveRequestDoc, ctx: AuthContext): Promise<ApprovalTrailDto | null> {
+    if (request.approvalSteps.length === 0 && request.status !== 'pendingApproval') return null;
+    const employee = await employeeRepository.findById(String(request.employeeId));
+    if (employee === null) return null;
+    return approvalService.trailFor(
+      {
+        requestType: LEAVE_REQUEST_TYPE,
+        unit: await this.unitOf(employee),
+        decisions: request.approvalSteps.map((entry) => ({
+          stepIndex: entry.stepIndex,
+          outcome: entry.outcome,
+          deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
+          decidedAt: entry.decidedAt,
+          comment: entry.comment,
+          overriddenWith: entry.overriddenWith,
+        })),
+      },
+      ctx,
+    );
+  }
+
+  /** Whoever is standing on the rung the request now waits for — read live, never stored. */
+  private async notifyChainApprovers(request: LeaveRequestDoc, unit: Unit): Promise<void> {
+    const decisions: DecidedEntry[] = request.approvalSteps.map((entry) => ({
+      stepIndex: entry.stepIndex,
+      outcome: entry.outcome,
+      deciderUserId: entry.deciderUserId === null ? null : String(entry.deciderUserId),
+      decidedAt: entry.decidedAt,
+      comment: entry.comment,
+      overriddenWith: entry.overriddenWith,
+    }));
+    const userIds = await approvalService.currentApprovers({
+      requestType: LEAVE_REQUEST_TYPE,
+      unit,
+      decisions,
+    });
+    // Nobody to tell is not an error here: the engine has already established that the rung is
+    // staffed, and a lookup that comes back empty a moment later means somebody just left. The
+    // request stays where it is and the screen still shows it; a thrown error would lose the
+    // decision that was just written.
+    if (userIds.length === 0) return;
+    await notificationsService
+      .notify({
+        template: HrLeaveTemplates.RequestSubmitted,
+        to: { userIds },
+        data: {
+          employeeCode: request.employeeCode,
+          typeCode: request.typeCode,
+          startDate: dateOnlyIso(request.startDate),
+          days: String(request.days),
+        },
+        entityRef: requestRef(String(request._id)),
+      })
+      .catch(() => undefined);
   }
 
   private async approveCoversEmployee(employee: EmployeeDoc, flags: LeaveCallerFlags): Promise<boolean> {

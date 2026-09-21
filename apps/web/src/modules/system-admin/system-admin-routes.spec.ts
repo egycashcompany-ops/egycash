@@ -36,6 +36,7 @@ describe('System Administration routes', () => {
         'users',
         'roles',
         'permissions',
+        'approvals',
         'settings',
         'notification-templates',
         'audit',
@@ -115,7 +116,7 @@ describe('System Administration routes', () => {
     );
     for (const permission of used) {
       expect(permission, 'SA routes gate on a platform RBAC resource').toMatch(
-        /^(user|role|permission|setting|notificationTemplate|auditLog|activityLog)\./,
+        /^(user|role|permission|approval|setting|notificationTemplate|auditLog|activityLog)\./,
       );
     }
   });
@@ -139,6 +140,7 @@ describe('System Administration navigation matches the routes that exist', () =>
       '/system/users',
       '/system/roles',
       '/system/permissions',
+      '/system/approvals',
       '/system/settings',
       '/system/notification-templates',
       '/system/audit',

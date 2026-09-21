@@ -219,13 +219,20 @@ describe('the roles client calls endpoints the RBAC routers declare', () => {
         .map((s) => s.trim().replace(/'/g, '')),
     );
     expect(declaredSorts.size, 'the scan found no sortable fields').toBeGreaterThan(0);
+    // The list is GROUPED by department rather than sorted by a clickable header, so it declares no
+    // sortable columns at all — the check below therefore guards two things: any column that ever
+    // comes back must be one the API can sort by, AND the sort the page actually sends must be.
     const sortableColumns = [
       ...ROLES_LIST_PAGE.matchAll(/key: '([a-zA-Z.]+)',\s*\n\s*header:[^\n]*\n\s*sortable: true/g),
     ].flatMap((m) => (m[1] === undefined ? [] : [m[1]]));
-    expect(sortableColumns.length, 'the scan itself must not match nothing').toBeGreaterThan(0);
     for (const key of sortableColumns) {
       expect(declaredSorts, `${key} is not sortable on the API`).toContain(key);
     }
+    const defaultSort = /sp\.get\('sort'\) \?\? '([a-zA-Z.]+):/.exec(ROLES_LIST_PAGE)?.[1];
+    expect(defaultSort, 'the page must name the sort it sends').toBeDefined();
+    expect(declaredSorts, `the default sort ${defaultSort ?? ''} is not sortable on the API`).toContain(
+      defaultSort,
+    );
   });
 
   // ADR-019 rule 5 again — the roles catalogue grows with every module and every administrator, so
@@ -409,5 +416,78 @@ describe('an account cannot be created without a way to sign in', () => {
 
   it('states the same rule in the form before the round-trip', () => {
     expect(FORM).toContain('identifierRequired');
+  });
+});
+
+// ── Approval chains (Gap 2) ──────────────────────────────────────────────────
+//
+// The same seam, for a screen whose whole output is a configuration nothing else validates at run
+// time: a chain written against a path the API does not serve fails silently — the list comes back
+// empty, which looks exactly like «no chain configured yet», which is a state the screen is
+// supposed to show.
+
+describe('the approval-chain screen calls the approvals router', () => {
+  const APPROVAL_CLIENT = readFileSync(resolve(HERE, 'approvals/api/approval-api.ts'), 'utf8');
+  const APPROVAL_PAGE = readFileSync(
+    resolve(HERE, 'approvals/pages/ApprovalWorkflowsPage.tsx'),
+    'utf8',
+  );
+  const APPROVAL_ROUTES = read('platform/approvals/approval.routes.ts');
+  const APPROVALS_CONTRACT = readFileSync(
+    resolve(HERE, '../../../../../packages/contracts/src/platform/approvals.ts'),
+    'utf8',
+  );
+
+  it('is mounted where the client points', () => {
+    expect(APP).toContain("api.use('/platform/approvals', buildApprovalsRouter())");
+    expect(APPROVAL_CLIENT).toContain("get<ApprovalWorkflowDto[]>('/platform/approvals')");
+    expect(APPROVAL_CLIENT).toContain("'/platform/approvals/request-types'");
+  });
+
+  it('uses the verbs the router declares', () => {
+    // The save is a PUT to the collection, not a POST or a PATCH by id, because it writes «the
+    // chain for THIS place» — which may or may not already exist, and the client does not know.
+    expect(APPROVAL_ROUTES).toMatch(/router\.put\(\s*'\/'/);
+    expect(APPROVAL_CLIENT).toContain("put<ApprovalWorkflowDto>('/platform/approvals', body)");
+    expect(APPROVAL_ROUTES).toMatch(/router\.delete\(\s*'\/:id'/);
+    expect(APPROVAL_CLIENT).toContain('del<void>(`/platform/approvals/${id}`)');
+  });
+
+  it('gates every route on the one key the screen is routed behind', () => {
+    const gates = [...APPROVAL_ROUTES.matchAll(/authorize\('([^']+)'\)/g)].map((m) => m[1]);
+    expect(gates.length).toBeGreaterThan(0);
+    expect([...new Set(gates)]).toEqual(['approval.configure']);
+  });
+
+  it('sends the body the schema accepts, field for field', () => {
+    const schema = /export const SetApprovalWorkflowSchema = z[\s\S]*?\.strict\(\)/.exec(
+      APPROVALS_CONTRACT,
+    )?.[0];
+    expect(schema, 'SetApprovalWorkflowSchema not found').toBeDefined();
+    for (const field of ['requestType', 'departmentCatalogId', 'branchId', 'steps', 'isActive']) {
+      expect(schema).toContain(field);
+      expect(APPROVAL_PAGE).toContain(`${field}:`);
+    }
+    // `.strict()` is what makes «the screen sends one extra key» a rejection rather than a silent
+    // drop — and a silently dropped `branchId` writes the company default over an exception.
+    expect(schema).toContain('.strict()');
+  });
+
+  it('offers only the levels the engine can resolve', () => {
+    // A free-text level would typecheck as a string and resolve to «nobody holds this», which is
+    // SKIPPED — a chain that looks configured and approves everything.
+    expect(APPROVAL_PAGE).toContain('APPROVAL_LEVELS.map');
+    expect(APPROVALS_CONTRACT).toContain(
+      "export const APPROVAL_LEVELS = ['unit', 'department', 'branch', 'organization'] as const",
+    );
+  });
+
+  it('offers only the permission keys the request type declares', () => {
+    // Same failure, one axis over: a key no module declares is nobody's, so the rung is skipped.
+    // The server refuses it too; the screen simply never offers it.
+    expect(APPROVAL_PAGE).toContain('keysFor(draft.requestType).map');
+    expect(read('platform/approvals/approval.service.ts')).toContain(
+      "throw new BusinessRuleError('approvals.unknownPermissionKey')",
+    );
   });
 });

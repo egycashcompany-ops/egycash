@@ -64,14 +64,17 @@ const PAGES: PageDto[] = [
 const CATALOG: PermissionDto[] = [
   permission('employee.view', 'hr', 'hr.employees'),
   permission('employee.edit', 'hr', 'hr.employees'),
-  // The locked row every case turns on, deliberately on a DIFFERENT page from the two above.
-  permission('employee.delete', 'hr', 'hr.contracts'),
+  // The out-of-reach row every case turns on, deliberately the ONLY one on its page: when the
+  // editor cannot reach it, the Contracts page has nothing left to draw and goes with it.
+  permission('contract.view', 'hr', 'hr.contracts'),
   // Known to the registry and deliberately unplaced — fleet's Other / Unassigned group.
   permission('fleetVehicle.view', 'fleet', null),
 ];
 
-/** The actor holds everything except `employee.delete` — the locked row every case turns on. */
+/** The actor holds everything except `contract.view` — the out-of-reach row every case turns on. */
 const HELD = ['employee.view', 'employee.edit', 'fleetVehicle.view'];
+/** An administrator who holds the whole registry — nothing is filtered out of his editor. */
+const EVERYTHING = ['employee.view', 'employee.edit', 'contract.view', 'fleetVehicle.view'];
 
 const me = (permissions: string[]): MeDto => ({
   id: 'u1',
@@ -106,7 +109,11 @@ const render = (
   return renderToStaticMarkup(<Provider store={store}>{node}</Provider>);
 };
 
-const editable = (selected: string[], locale: Locale = 'en'): string =>
+const editable = (
+  selected: string[],
+  locale: Locale = 'en',
+  permissions: string[] = HELD,
+): string =>
   render(
     <RolePermissionMatrix
       catalog={CATALOG}
@@ -116,8 +123,15 @@ const editable = (selected: string[], locale: Locale = 'en'): string =>
       onToggle={() => undefined}
       onBulkChange={() => undefined}
     />,
-    { locale },
+    { locale, permissions },
   );
+
+/** The same editor, opened by somebody who holds everything — nothing is filtered away. */
+const fullReach = (selected: string[]): string => editable(selected, 'en', EVERYTHING);
+
+/** Reading the role rather than editing it: no `onToggle`, and the whole registry is drawn. */
+const reading = (selected: string[] = []): string =>
+  render(<RolePermissionMatrix catalog={CATALOG} pages={PAGES} selected={selected} managed="none" />);
 
 /** Every checkbox `<input>` in render order, as raw tags. */
 const checkboxes = (markup: string): string[] =>
@@ -144,29 +158,37 @@ describe('the matrix renders labels that exist in both locales', () => {
     });
   }
 
-  it('shows the counter over the WHOLE registry, not the visible slice', () => {
-    // 4 permissions in the catalog, 1 selected.
-    expect(editable(['employee.view'])).toContain('Selected: 1 / 4');
+  it('counts over everything DRAWN, not the search’s visible slice', () => {
+    // While editing, what is drawn is what this actor can act on: the 3 he holds. The 4th is a
+    // permission he neither holds nor the role carries, and it is not on the screen to be counted.
+    expect(editable(['employee.view'])).toContain('Selected: 1 / 3');
   });
 
   it('counts an orphan key the role still carries', () => {
     const markup = editable(['employee.view', 'retired.view']);
-    expect(markup).toContain('Selected: 2 / 5');
+    expect(markup).toContain('Selected: 2 / 4');
     expect(markup).toContain('retired.view');
   });
 });
 
-describe('a permission the actor does not hold is locked in the DOM', () => {
-  it('renders that checkbox disabled and every other one enabled', () => {
+describe('what the editor cannot act on is not drawn', () => {
+  // «ادام حاجة مليش عليها اكسس مشوفهاش اصلا» — the owner's rule, and the reason this describe block
+  // no longer reads «is locked in the DOM». A greyed row with a reason on it was the screen making
+  // the reader prove a negative on every visit.
+  it('leaves out a permission the actor neither holds nor the role carries', () => {
     const markup = editable([]);
     const boxes = checkboxes(markup);
-    // select-all + 2 modules + 3 pages (hr.employees, hr.contracts, fleet's Other) + 4 permissions.
-    expect(boxes).toHaveLength(10);
-    expect(boxes.filter((box) => box.includes('disabled'))).toHaveLength(1);
+    // select-all + 2 modules + 2 pages + the 3 permissions he holds. The 4th is absent, and so is
+    // the page that existed only to carry it.
+    expect(boxes).toHaveLength(8);
+    expect(boxes.filter((box) => box.includes('disabled'))).toHaveLength(0);
+    expect(markup).not.toContain('contract.view');
   });
 
-  it('says why, in words rather than by shading alone', () => {
-    expect(editable([])).toContain('You do not hold this');
+  it('draws the whole registry when READING the role, because that question is different', () => {
+    // No `onToggle` — the reader's mode. A reader asking what a role carries must be told all of it,
+    // including the parts he could not have granted himself.
+    expect(reading(['contract.view'])).toContain('contract.view');
   });
 
   // The rule the file header states — "still ticked, and still removable" — was not what the code
@@ -174,17 +196,23 @@ describe('a permission the actor does not hold is locked in the DOM', () => {
   // cleaned up. These two assertions are the difference, at the DOM.
   it('renders an unknown key ticked and NOT disabled, so it can be removed', () => {
     const markup = editable(['employee.view', 'retired.view']);
-    // select-all + 3 modules (hr, fleet, unknown) + 4 pages + 4 permissions + the orphan.
-    expect(checkboxes(markup)).toHaveLength(13);
+    // select-all + 3 modules (hr, fleet, unknown) + 3 pages + the 3 he holds + the orphan.
+    expect(checkboxes(markup)).toHaveLength(11);
     const orphanBox = checkboxLabelled(markup, 'retired.view');
     expect(orphanBox, 'the orphan checkbox was not rendered').toBeDefined();
     expect(orphanBox).toContain('checked');
     expect(orphanBox).not.toContain('disabled');
   });
 
-  it('still locks the permission the actor does not hold, alongside it', () => {
-    const boxes = checkboxes(editable(['employee.view', 'retired.view']));
-    expect(boxes.filter((box) => box.includes('disabled'))).toHaveLength(1);
+  it('lets the role SHED a permission its editor could never have granted', () => {
+    // The server checks only what an edit ADDS, so removing one is allowed — and the screen used to
+    // be stricter than the rule it exists to explain, leaving an administrator looking at a
+    // permission he was allowed to remove and unable to.
+    const markup = editable(['contract.view']);
+    const box = checkboxLabelled(markup, 'contract.view');
+    expect(box, 'the carried permission was not rendered').toBeDefined();
+    expect(box).toContain('checked');
+    expect(box).not.toContain('disabled');
   });
 
   it('locks every box when the role is managed, bulk controls included', () => {
@@ -279,14 +307,28 @@ describe('the payload shape is untouched', () => {
 
 describe('the page layer reaches the DOM', () => {
   it('draws a group for each page, and one for the deliberately unassigned', () => {
-    const markup = editable([]);
+    // Read mode, because that is the mode that draws the whole registry. An EDITOR is shown the
+    // pages he can act on, and this actor can act on nothing the Contracts page holds.
+    const markup = reading();
     expect(markup).toContain('Employees');
     expect(markup).toContain('Contracts');
     expect(markup).toContain('Other / Unassigned');
-    // Each page panel is independently expandable, so each carries its own controls.
+    // Each page panel is independently expandable, so each carries its own controls — and it does
+    // so while reading too, where there is no checkbox to hang them on.
     expect(markup).toContain('aria-controls="page-hr-hr-employees"');
     expect(markup).toContain('aria-controls="page-hr-hr-contracts"');
     expect(markup).toContain('aria-controls="page-fleet-"');
+  });
+
+  it('drops a whole page when the editor can reach nothing on it', () => {
+    // «ادام حاجة مليش عليها اكسس مشوفهاش اصلا», one level up: the page existed to carry
+    // `contract.view`, so with that row gone the heading is not left standing over an empty list.
+    const markup = editable([]);
+    expect(markup).toContain('aria-controls="page-hr-hr-employees"');
+    expect(markup).not.toContain('aria-controls="page-hr-hr-contracts"');
+    expect(markup).not.toContain('Contracts');
+    // …and the module above it stays, because its other page still has rows.
+    expect(markup).toContain('aria-controls="module-hr"');
   });
 
   it('names the Other bucket in Arabic too, rather than falling back to a key', () => {
@@ -305,7 +347,9 @@ describe('the page layer reaches the DOM', () => {
 
   // The state a flat matrix could not express: one page complete, its module still partial.
   it('announces a full page and a partial module at the same time', () => {
-    const markup = editable(['employee.view', 'employee.edit']);
+    // An actor who holds everything, so the tree is the whole registry and the two levels can
+    // disagree: the Employees page is complete while HR still has `contract.view` untouched.
+    const markup = fullReach(['employee.view', 'employee.edit']);
     const employeesPage = checkboxLabelled(markup, 'Employees');
     const hrModule = checkboxLabelled(markup, 'HR');
     expect(employeesPage).toContain('checked');
@@ -320,17 +364,30 @@ describe('the page layer reaches the DOM', () => {
   });
 
   it('counts at both levels over the whole group, not the visible slice', () => {
-    const markup = editable(['employee.view']);
+    const markup = fullReach(['employee.view']);
     // hr: 1 of 3 across two pages · the Employees page alone: 1 of 2 · overall: 1 of 4.
     expect(markup).toContain('Selected: 1 / 3');
     expect(markup).toContain('Selected: 1 / 2');
     expect(markup).toContain('Selected: 1 / 4');
   });
 
-  it('keeps a locked permission locked inside its page', () => {
-    // `employee.delete` sits on hr.contracts and the actor does not hold it.
-    const locked = checkboxLabelled(editable([]), 'Permission employee.delete');
-    expect(locked).toContain('disabled');
+  it('keeps a row’s own editability intact inside its page', () => {
+    // The page layer neither loosens nor tightens the row rule. `contract.view` is out of this
+    // actor's reach, so the role CARRYING it is the only way it is drawn at all — and then it is
+    // live, because he is allowed to take it away (the server checks what an edit adds, not what
+    // it drops). The page comes back with it, and the page's own counter says 1 / 1.
+    const markup = editable(['contract.view']);
+    expect(markup).toContain('aria-controls="page-hr-hr-contracts"');
+    const box = checkboxLabelled(markup, 'Permission contract.view');
+    expect(box, 'the carried permission was not drawn in its page').toBeDefined();
+    expect(box).toContain('checked');
+    expect(box).not.toContain('disabled');
+    expect(markup).toContain('Selected: 1 / 1');
+  });
+
+  it('draws that same row inert when the role is only being read', () => {
+    const box = checkboxLabelled(reading(['contract.view']), 'Permission contract.view');
+    expect(box).toContain('disabled');
   });
 
   it('offers no page checkbox at all on a managed role', () => {

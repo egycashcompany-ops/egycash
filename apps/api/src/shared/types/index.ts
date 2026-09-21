@@ -27,6 +27,16 @@ export type ExternalSubject = ExternalSubjectDto;
 export interface UnitReach {
   branchIds: string[];
   departments: { id: string; branchId: string }[];
+  /**
+   * Company-wide departments (ADR-031) held in EVERY branch, by catalog id.
+   *
+   * `departments` above already lists the copies, so nothing READS through this to find data — the
+   * copies are what a query filters on. It is here for the one question the resolved copies cannot
+   * answer: is this «الحركة everywhere», or «الحركة in the five branches that happen to exist»?
+   * The two look identical today and differ the morning somebody opens a sixth. Only the first may
+   * be handed to a deputy as «كل الفروع», so the ceiling has to be able to tell them apart.
+   */
+  everywhere?: string[];
 }
 
 /** Every branch a reach touches at all — wholly, or through one of its departments. */
@@ -173,6 +183,27 @@ export const keyCoversUnit = (
       ? [ctx.departmentId]
       : [];
   return copies.includes(departmentId);
+};
+
+/**
+ * Whether the caller holds `permissionKey` over one company-wide department IN EVERY BRANCH.
+ *
+ * The ceiling for the widest thing a manager may hand down: his own reach, «الحركة في كل الفروع».
+ * Deliberately NOT satisfied by holding that department in every branch that exists right now —
+ * that is a coincidence of today's org chart, and a deputy granted «كل الفروع» on the strength of
+ * it would outreach his granter the morning a new branch opens.
+ *
+ * An organization-wide holder passes: every department everywhere is inside «everything».
+ */
+export const keyCoversDepartmentEverywhere = (
+  ctx: AuthContext,
+  permissionKey: string,
+  departmentCatalogId: string,
+): boolean => {
+  const held = ctx.permissions[permissionKey];
+  if (held === undefined || held === 'own' || held === 'section') return false;
+  if (held === 'organization') return true;
+  return (reachOfKey(ctx, permissionKey).everywhere ?? []).includes(departmentCatalogId);
 };
 
 /** Whether the caller holds `permissionKey` over the WHOLE of `branchId`. */

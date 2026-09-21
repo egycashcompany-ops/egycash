@@ -1,6 +1,6 @@
 // Roles are DATA (admin-managed bundles of permissions); system roles are seeded
 // and protected (ADR-004).
-import { Schema, model } from 'mongoose';
+import { Schema, model, type Types } from 'mongoose';
 import { type LocalizedString } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../shared/base/base.model';
 
@@ -10,6 +10,13 @@ export interface RoleDoc extends BaseDocFields {
   name: LocalizedString;
   description: string | null;
   isSystem: boolean;
+  /**
+   * The company-wide department this role belongs to (ADR-031), or null.
+   *
+   * Organizational only — nothing in the authorization path reads it. It exists so the roles
+   * screen can be grouped instead of being one flat list of everything the company has.
+   */
+  departmentCatalogId: Types.ObjectId | null;
   permissionKeys: string[];
 }
 
@@ -18,6 +25,7 @@ const roleSchema = new Schema<RoleDoc>(
     key: { type: String, default: null },
     name: { ar: { type: String, required: true }, en: { type: String, required: true } },
     description: { type: String, default: null },
+    departmentCatalogId: { type: Schema.Types.ObjectId, default: null },
     isSystem: { type: Boolean, default: false },
     permissionKeys: { type: [String], required: true },
     ...baseFields,

@@ -33,7 +33,7 @@ let app: Express;
  * `src/seed-navigation.spec.ts` pins the same number against the DECLARATIONS and needs no
  * database, so adding a row fails there first — on the author's machine, naming the number.
  */
-const SEEDED_APPLICATIONS = 116;
+const SEEDED_APPLICATIONS = 117;
 
 const resolveMongoUri = async (): Promise<string> => {
   const external = process.env.MONGO_TEST_URI;
@@ -259,10 +259,12 @@ describe('seed → password login (regression)', () => {
     expect(routes).toContain('/notification-rules');
     // P-HR-REQ — the request to hire, beside the offer it may end in.
     expect(routes).toContain('/job-requisitions');
-    // 26 (HR) + 15 (Operations) + 13 (IT) + 12 (Fleet) + 12 (Gold Vault) + 10 (ATM)
-    //   + 9 (Administration) + 6 (Organization). Counted from `seed-navigation.ts` rather than
-    //   carried forward: the previous breakdown had drifted from the file by two rows and was
-    //   being kept to add up by a pair of trailing `+1`s that named nothing checkable.
+    // 38 (HR) + 15 (Operations) + 13 (IT) + 13 (Fleet) + 12 (Gold Vault) + 10 (ATM)
+    //   + 10 (Administration) + 6 (Organization) = 117. Re-counted from `seed-navigation.ts`,
+    //   because the previous breakdown said 103 while the constant beside it said 116 — it had
+    //   drifted by fourteen rows and nothing added it up, which is the exact failure the note
+    //   above it was written about. A breakdown that does not sum to the constant is worse than
+    //   no breakdown: it reads like a check and is not one.
     expect(routes).toHaveLength(SEEDED_APPLICATIONS);
   });
 

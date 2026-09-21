@@ -19,6 +19,7 @@ import { UserDetailPage } from './users/pages/UserDetailPage';
 import { RolesListPage } from './roles/pages/RolesListPage';
 import { RoleDetailPage } from './roles/pages/RoleDetailPage';
 import { PermissionCatalogPage } from './roles/pages/PermissionCatalogPage';
+import { ApprovalWorkflowsPage } from './approvals/pages/ApprovalWorkflowsPage';
 import { SettingsPage } from './settings/pages/SettingsPage';
 import { TemplatesListPage } from './notification-templates/pages/TemplatesListPage';
 import { TemplateDetailPage } from './notification-templates/pages/TemplateDetailPage';
@@ -62,6 +63,17 @@ export default function SystemAdminRoutes(): JSX.Element {
           element={
             <RequirePermission permission="permission.view">
               <PermissionCatalogPage />
+            </RequirePermission>
+          }
+        />
+
+        {/* Gap 2. One key for reading and writing a chain, deliberately: a chain is a map of who
+            may decide what, and handing that out is handing out the org's decision structure. */}
+        <Route
+          path="approvals"
+          element={
+            <RequirePermission permission="approval.configure">
+              <ApprovalWorkflowsPage />
             </RequirePermission>
           }
         />

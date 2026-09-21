@@ -129,18 +129,26 @@ export type RowEditability = 'editable' | 'removeOnly' | 'locked';
  * completely inert — while treating it as ordinary would let it be handed back out after removal,
  * granting an authority nothing in the system defines any more. So it comes OFF and never back ON.
  *
- * `held` is the actor's own grant. A permission they do not hold is locked in both directions: the
- * server refuses to hand out an authority the caller lacks, and a role may legitimately carry one
- * its editor cannot grant — stripping that from this screen would be a way around the lock rather
- * than a shortcut through it.
+ * `held` is the actor's own grant, and it answers ADDING only — which is exactly what the server
+ * checks. `updateRole` tests the keys an edit ADDS against the editor's own grants and lets every
+ * removal through, because narrowing a role is not handing out an authority. So a key the editor
+ * cannot grant, on a role that already carries it, comes OFF and never back ON — the same answer
+ * the retired-key case gets, for the same reason. Locking it in both directions was the screen
+ * being stricter than the rule it exists to explain, and it left an administrator looking at a
+ * permission he was allowed to remove and unable to.
+ *
+ * A key he can neither grant nor remove — not held, not carried — is not drawn at all; see the
+ * matrix. This function still answers `locked` for it, because a caller that does draw it must not
+ * make it live.
  */
 export const rowEditability = (
   row: MatrixRow,
-  { held, readOnly }: { held: boolean; readOnly: boolean },
+  { held, readOnly, selected = false }: { held: boolean; readOnly: boolean; selected?: boolean },
 ): RowEditability => {
   if (readOnly) return 'locked';
   if (row.definition === undefined) return 'removeOnly';
-  return held ? 'editable' : 'locked';
+  if (held) return 'editable';
+  return selected ? 'removeOnly' : 'locked';
 };
 
 /** Does this row accept being toggled to `next`? The one call the checkbox makes before reporting. */

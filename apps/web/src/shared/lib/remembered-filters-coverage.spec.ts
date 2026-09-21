@@ -159,6 +159,7 @@ const MIGRATION_PENDING: readonly string[] = [];
  */
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
+  ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
   ['modules/atm/pages/MailTicketsPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],
   ['modules/fleet/pages/FleetDashboardPage.tsx'],

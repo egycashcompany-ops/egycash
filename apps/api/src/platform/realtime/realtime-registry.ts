@@ -184,6 +184,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'platform.notificationTemplate': { permission: 'notificationTemplate.view' },
   'platform.file': { permission: 'file.view' },
   'platform.fileCategory': { permission: 'fileCategory.manage' },
+  'platform.approvalWorkflow': { permission: 'approval.configure' },
   'platform.auditLog': { permission: 'auditLog.view' },
   'platform.activityLog': { permission: 'activityLog.view' },
 };
@@ -210,4 +211,9 @@ export const REALTIME_EXCLUDED_ENTITIES: Readonly<Record<string, string>> = {
   // AT-D3's enrolment map is the same shape and leaves at the same moment: it is administered
   // from the device screen, so it has no surface of its own to react.
   'hr.attendanceEnrollment': 'no screen until AT-D4 builds device health',
+  // A decision is audited on the CHAIN, whose id is «type:rung» and not a record anybody lists.
+  // The screen that has to refresh is the request's own — a leave request, a regularization — and
+  // that request's entity topic already fires from the same decision, because deciding writes the
+  // request too. A second topic here would refresh nothing the first one did not.
+  'platform.approval': 'the request’s own topic carries the decision',
 };

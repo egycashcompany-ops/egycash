@@ -1,16 +1,27 @@
 // A role's grants, against the whole registry, as a tree: module → page → permission.
 //
-// Three things this component refuses to hide, because each one is a decision an administrator has
-// to be able to see:
+// **Editing shows only what this administrator can act on.** «ادام حاجة مليش عليها اكسس مشوفهاش
+// اصلا» — a permission he neither holds nor the role carries is not drawn greyed with a reason on
+// it; it is not drawn. The earlier rendering made him read every row to find the few that were his,
+// and made the screen argue with him about the rest. What is left after the filter is live, and a
+// page or module that has nothing left goes with its rows rather than standing over an empty list.
 //
-//   • **A grant the actor does not hold is DISABLED, with the reason on it.** The server refuses it
-//     anyway (nobody hands out an authority they lack), so a checkbox that looked available would
-//     be a promise the save breaks. Disabled-and-explained is the honest rendering.
+// READING a role is the other mode and keeps the whole registry, because the two questions differ:
+// «what may I change here» is not «what does this role carry», and the second must be answered in
+// full, including the parts the reader could never have granted himself.
+//
+// Two things the filter does not remove, because each one is a decision an administrator has to be
+// able to see and to undo:
+//
 //   • **A key the registry does not know is shown as Unknown**, still ticked, and still removable.
 //     Roles keep keys a retired module used to declare; pretending they are not there would make an
 //     administrator unable to clean them up, and dropping them silently on save would be worse.
-//   • **A managed role is read-only throughout.** Editing a `hr-only:*` derivative is not merely
-//     unwise — the next boot restores it — so the whole matrix is inert rather than lying.
+//   • **A key the role carries that its editor could not grant** stays, ticked and live, and comes
+//     OFF but never back ON. The server checks only what an edit ADDS, so narrowing the role is his
+//     to do; locking it in both directions was the screen being stricter than the rule.
+//
+// **A managed role is read-only throughout.** Editing a `hr-only:*` derivative is not merely unwise
+// — the next boot restores it — so the whole matrix is inert rather than lying.
 //
 // **The page layer (P7-B).** Two hundred checkboxes under four module headings was a list with
 // section breaks, not a structure: an administrator looking for "what can they do on the employees
@@ -23,17 +34,19 @@
 // turn — exactly what the module checkbox already was. `route` renders as a link because knowing
 // which screen a page means is useful; nothing resolves it and no decision reads it.
 //
-// **Bulk selection.** Both levels are shortcuts for clicking the individual boxes, and neither may
-// do anything an administrator could not do that way: a locked permission is not selected by them,
-// and — the half that is easy to miss — not CLEARED by them either. A role can carry a key its
-// editor lacks; that key's own box is locked, and a bulk clear that stripped it would be a way
-// around the lock rather than a shortcut through it. The server's S1/S2 guards remain the authority
-// (ADR-026); this is only the screen refusing to promise what the save would refuse.
+// **Bulk selection.** Both levels are shortcuts, and they act only on keys the actor can grant: a
+// permission he does not hold is not selected by them, and — the half that is easy to miss — not
+// CLEARED by them either. The second half is now a narrow case, since the only unheld key still on
+// the screen is one the role already carries. Its own box removes it, deliberately, one row at a
+// time; a sweep over a page does not, because «شيل الكل» is aimed at the page, not at that key, and
+// dropping an authority its editor cannot describe should take a decision rather than a side
+// effect. The server's S1/S2 guards remain the authority (ADR-026); this is only the screen
+// refusing to promise what the save would refuse.
 //
-// Every group's checkbox reports state over EVERY row it owns, not only the reachable ones, so a
-// page with a locked unselected permission lands on indeterminate after "select all" — which is the
-// truth, and the counter beside it is what makes that legible rather than puzzling. The same holds
-// one level up: a module whose every page is full reads `all`; a module with one page full and
+// Every group's checkbox reports state over EVERY row it owns — including a carried-but-unheld one,
+// which a bulk clear may not strip — so a group can land on indeterminate after "select all", which
+// is the truth, and the counter beside it is what makes that legible rather than puzzling. The same
+// holds one level up: a module whose every page is full reads `all`; a module with one page full and
 // another empty reads `some`, which a flat matrix could not express.
 //
 // Search filters what is DRAWN and nothing else, at every level. The bulk controls deliberately
@@ -91,8 +104,24 @@ export const RolePermissionMatrix = ({
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  const tree = useMemo(() => buildMatrixTree(catalog, pages, selected), [catalog, pages, selected]);
   const readOnly = onToggle === undefined || managed !== 'none';
+  /**
+   * While EDITING, the matrix draws only what this administrator can act on: the permissions he
+   * holds, plus the ones the role already carries — which he may take away even when he could not
+   * hand them out, because that is what the server allows.
+   *
+   * «ادام حاجة مليش عليها اكسس مشوفهاش اصلا». A permission he can neither grant nor remove is not
+   * greyed out with a reason on it; it is absent. Reading the role is the other mode, and there the
+   * whole catalog stays, because a reader asking what a role carries must be told all of it.
+   */
+  const editable = useMemo(
+    () =>
+      readOnly
+        ? catalog
+        : catalog.filter((p) => can(p.key) || selected.includes(p.key)),
+    [catalog, selected, readOnly],
+  );
+  const tree = useMemo(() => buildMatrixTree(editable, pages, selected), [editable, pages, selected]);
   const chosen = useMemo(() => new Set(selected), [selected]);
   const allRows = useMemo(() => tree.flatMap((module) => module.rows), [tree]);
 
@@ -328,7 +357,11 @@ export const RolePermissionMatrix = ({
                               // Grantable only when the actor holds it — the same rule the server
                               // applies. An unknown key is the exception in one direction only:
                               // removable, never re-addable. `rowEditability` is where both live.
-                              const editability = rowEditability(row, { held, readOnly });
+                              const editability = rowEditability(row, {
+                                held,
+                                readOnly,
+                                selected: chosen.has(row.key),
+                              });
                               const disabled = editability === 'locked';
                               return (
                                 <li
@@ -364,6 +397,9 @@ export const RolePermissionMatrix = ({
                                         {t('systemAdmin.roles.breakGlass')}
                                       </Badge>
                                     )}
+                                    {/* Only ever a carried key its editor could not have granted:
+                                        everything else he cannot grant was filtered out above. The
+                                        badge says why this one is tick-off-only. */}
                                     {!readOnly && !held && !unknown && (
                                       <Badge size="sm" tone="neutral">
                                         {t('systemAdmin.roles.notHeld')}

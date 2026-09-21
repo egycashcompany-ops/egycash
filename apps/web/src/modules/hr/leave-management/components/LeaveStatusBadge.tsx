@@ -5,6 +5,7 @@ import { Badge, type Tone } from '../../../../shared/ui';
 const TONE: Record<LeaveRequestStatus, Tone> = {
   pendingManager: 'warning',
   pendingHr: 'warning',
+  pendingApproval: 'warning',
   approved: 'info',
   active: 'success',
   completed: 'neutral',

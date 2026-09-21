@@ -118,6 +118,22 @@ export interface DataTableProps<T> {
    * The head also turns OPAQUE. It is drawn over the rows, and at `dark:bg-slate-800/60` they show
    * through it — which reads as a broken header rather than as a translucent one.
    */
+  /**
+   * The per-column floor, in rem — how narrow a column is allowed to get before the table stops
+   * squeezing and starts scrolling. 7.5 by default; see `minTableWidth` for what that number is.
+   *
+   * Lower it for a table whose columns genuinely hold LESS than that — a three-digit code, a
+   * chip, two icon buttons — and which has to live inside half a screen. The default would make
+   * such a table demand more width than its panel has and hand the reader a sideways scrollbar
+   * for columns that would have fitted.
+   */
+  minColumnWidth?: number;
+  /**
+   * Trim the side gutter by 8px a column. For a board that has to live inside half a screen: it
+   * buys back the width that decides between «everything is visible» and a sideways scrollbar,
+   * and it costs nothing vertical — the row height and the type size are untouched.
+   */
+  tightGutter?: boolean;
   stickyHead?: boolean;
   /**
    * EXTRA ATTRIBUTES FOR ONE ROW, from the row itself — what a table cannot know and its caller
@@ -153,6 +169,8 @@ export const DataTable = <T,>({
   dense = false,
   rowClassName,
   textScale = 'compact',
+  minColumnWidth = 7.5,
+  tightGutter = false,
   stickyHead = false,
   rowProps,
 }: DataTableProps<T>): JSX.Element => {
@@ -160,7 +178,10 @@ export const DataTable = <T,>({
   // and the multi-column ones read the same way from here down.
   const sorts: readonly SortState[] = sort === undefined ? [] : Array.isArray(sort) ? sort : [sort];
   const roomy = textScale === 'comfortable';
-  const cellPadding = dense ? 'px-3 py-2' : roomy ? 'px-4 py-3.5' : 'px-4 py-3';
+  // `tight` trims the SIDE gutter only — the row keeps its height, so nothing gets harder to hit
+  // or to read; what it gives back is the 8px per column that decides whether a board of eight
+  // columns fits inside half a screen or hands the reader a sideways scrollbar.
+  const cellPadding = dense ? (tightGutter ? 'px-2 py-2' : 'px-3 py-2') : roomy ? 'px-4 py-3.5' : 'px-4 py-3';
   const cellText = roomy ? 'text-base' : 'text-sm';
   const headerText = roomy ? 'text-sm' : 'text-xs';
   // One prop wins; the loose props remain as the deprecated form.
@@ -184,10 +205,14 @@ export const DataTable = <T,>({
    * minimum, so every table of five columns or fewer is exactly as wide as it was today and only
    * the ones that outgrew the wrapper start using it.
    *
+   * A table that holds narrower things than that says so with `minColumnWidth` — the floor is a
+   * default, not a law, and a board living inside half a screen is exactly the case where the
+   * default asks for more room than the panel has.
+   *
    * Inline rather than a class because Tailwind cannot build a class name from a count, and the
    * alternative — a handful of fixed buckets — would be the same arithmetic with worse rounding.
    */
-  const minTableWidth = Math.max(40, colCount * 7.5);
+  const minTableWidth = Math.max(40, colCount * minColumnWidth);
   const allSelected = rows.length > 0 && rows.every((r) => selected.has(rowKey(r)));
   const someSelected = rows.some((r) => selected.has(rowKey(r)));
 

@@ -19,6 +19,7 @@
     "seed:fleet-vocabulary": "tsx --env-file=../../.env src/fleet-vocabulary.cli.ts",
     "atm:import": "tsx --env-file=../../.env src/atm-import.cli.ts",
     "fleet:fix-crew-mission": "tsx --env-file=../../.env src/fleet-fixed-crew-mission.cli.ts",
+    "fleet:violation-homes": "tsx --env-file=../../.env src/fleet-violation-homes.cli.ts",
     "import:workforce": "tsx --env-file=../../.env src/import-workforce.cli.ts",
     "import:vehicles": "tsx --env-file=../../.env src/fleet-vehicles-import.cli.ts",
     "reset:workforce": "tsx --env-file=../../.env src/reset-workforce.cli.ts",

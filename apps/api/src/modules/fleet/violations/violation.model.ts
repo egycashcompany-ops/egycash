@@ -30,6 +30,15 @@ export interface FleetViolationDoc extends BaseDocFields {
    * short of it is that `date` stays true and this answers a different question.
    */
   filedYear: number | null;
+  /**
+   * The car this fine came from, while it is being carried on another one's statement.
+   *
+   * `vehicleId` really does become the other car — the board lists the fine there, and that is
+   * what the drop is for. This is what makes the drop UNDOABLE: without it, pressing the badge
+   * cleared the year and left the fine on a car it was never committed on. Written on the FIRST
+   * carry only, so 150 → 151 → 152 still goes home to 150; cleared on the way back.
+   */
+  homeVehicleId: Types.ObjectId | null;
   driverEmployeeId: Types.ObjectId | null;
   /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
   driverName: string | null;
@@ -49,6 +58,7 @@ const violationSchema = new Schema<FleetViolationDoc>(
     unitValue: { type: Number, default: null },
     date: { type: Date, default: null },
     filedYear: { type: Number, default: null },
+    homeVehicleId: { type: Schema.Types.ObjectId, default: null },
     driverEmployeeId: { type: Schema.Types.ObjectId, default: null },
     driverName: { type: String, default: null },
     collected: { type: Boolean, required: true, default: false },

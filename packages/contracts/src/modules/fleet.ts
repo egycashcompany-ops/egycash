@@ -1704,6 +1704,20 @@ export interface FleetViolationDto {
    * nothing to override and the board's tick reads that stored year directly.
    */
   filedYear: number | null;
+  /**
+   * THE CAR THIS FINE CAME FROM, while it is being carried on another one's statement.
+   *
+   * «لو كانت على 150 واتنقلت ف الكود هيكون بتاع العربيه الجديدة ... طب لو رجعتها هتكون 150 زى ما
+   * كانت». Carrying a fine DOES move it onto the other car — `vehicleId` becomes 151 and the board
+   * lists it there, which is the whole point. But the move has to be undoable, and an overwrite
+   * with nothing kept is not: pressing «محمولة على» cleared the year and left the fine stranded on
+   * a car it was never committed on.
+   *
+   * So this holds where it came from, for exactly as long as it is away. It is `null` on every row
+   * that is not carried, and it is written ONLY on the first carry — a fine carried 150 → 151 and
+   * then 151 → 152 still remembers 150, because home is where it started, not the last stop.
+   */
+  homeVehicleId: string | null;
   driverEmployeeId: string | null;
   /** The driver's NAME as the old book wrote it, where HR has no employee — see the odometer log. */
   driverName: string | null;
@@ -1789,12 +1803,35 @@ export const MoveFleetViolationsSchema = z
   .object({
     /** The fines being carried over. Driver rows only — the service refuses a statement row. */
     ids: z.array(objectId()).min(1).max(MAX_PAGE_SIZE),
-    /** The car whose block they are carried onto. */
-    vehicleId: objectId(),
-    /** The year of that block. `null` puts each fine back under its own date. */
+    /**
+     * The car whose block they are carried onto — CARRYING ONLY.
+     *
+     * A return has no target to name: each fine goes back to the car it came from, which the row
+     * itself remembers in `homeVehicleId`, and a caller passing one could only be guessing. So
+     * this is required when `filedYear` is a year and refused when it is `null`, rather than
+     * accepted and ignored — a field the server ignores is a field that lies to whoever reads it.
+     */
+    vehicleId: objectId().optional(),
+    /** The year of that block. `null` puts each fine back on its own car, under its own date. */
     filedYear: z.number().int().min(2000).max(2100).nullable(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.filedYear === null && value.vehicleId !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vehicleId'],
+        message: 'a return takes no vehicle — each fine goes back to the car it came from',
+      });
+    }
+    if (value.filedYear !== null && value.vehicleId === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['vehicleId'],
+        message: 'name the car whose block these fines are carried onto',
+      });
+    }
+  });
 export type MoveFleetViolations = z.infer<typeof MoveFleetViolationsSchema>;
 
 /**

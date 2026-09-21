@@ -30,7 +30,7 @@ export const listViolations = async (req: Request, res: Response): Promise<void>
 
 export const getViolationRollup = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, FleetViolationRollupQuery>(req);
-  ok(res, await fleetViolationService.rollup(query.year, query.vehicleId));
+  ok(res, await fleetViolationService.rollup(query.year, query.vehicleId, query.vehicleCodes));
 };
 
 export const recordVehicleViolation = async (req: Request, res: Response): Promise<void> => {

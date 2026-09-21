@@ -438,10 +438,39 @@ class FleetViolationService {
   async rollup(
     years: readonly number[] | undefined,
     vehicleId?: string,
+    vehicleCodes?: readonly string[],
   ): Promise<FleetViolationRollupDto[]> {
+    /*
+     * WHICH CARS the board is asking about — several, and by CODE.
+     *
+     * The picker has always taken several codes; the rollup took one id, so the screen resolved a
+     * lone code and sent NOTHING when two or more were picked. The chips said «١٥٠، ١٥١ +٢» while
+     * the table answered for the whole fleet.
+     *
+     * The codes are resolved against the registry here, where it is reachable, and the repository
+     * stays a query over its own documents. `[]` — codes that match no car — narrows to NOTHING
+     * rather than being dropped: the codes themselves still reach the query, so a (code, year)
+     * kept from the old book on a car the registry never had is found by the code the book wrote.
+     *
+     * The deprecated single `vehicleId` is folded in beside them, so a link saved before the
+     * codes existed still narrows to the car it names.
+     */
+    const asked =
+      vehicleCodes === undefined
+        ? undefined
+        : await fleetVehicleRepository.idsByCodes(vehicleCodes);
+    const vehicleIds =
+      asked === undefined
+        ? vehicleId === undefined
+          ? undefined
+          : [vehicleId]
+        : vehicleId === undefined
+          ? asked
+          : [...new Set([...asked, vehicleId])];
+    const scope = { vehicleIds, vehicleCodes } as const;
     const [sums, grievances] = await Promise.all([
-      fleetViolationRepository.yearSums(years, vehicleId),
-      fleetGrievanceRepository.forYears(years, vehicleId),
+      fleetViolationRepository.yearSums(years, scope),
+      fleetGrievanceRepository.forYears(years, vehicleIds),
     ]);
     // Cars the registry has; a (code, year) kept from the old book carries its code itself.
     const ids = [

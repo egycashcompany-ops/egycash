@@ -88,6 +88,8 @@ export const DriverViolationsPanel = ({
   settled,
   sorts,
   onSortChange,
+  entryVehicleId,
+  onEntryVehicleChange,
   onVehicleCodesChange,
   onDriverChange,
   onTypeChange,
@@ -105,6 +107,12 @@ export const DriverViolationsPanel = ({
   amount: string;
   /** '' = both, 'true' = settled, 'false' = still outstanding. */
   settled: string;
+  /**
+   * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves. Held by the page; the
+   * company's bar beside this one reads the same value. See `CompanyViolationsPanel` for why.
+   */
+  entryVehicleId: string;
+  onEntryVehicleChange: (next: string) => void;
   /**
    * The columns the ledger is read in, and what a click on a header means.
    *
@@ -177,7 +185,9 @@ export const DriverViolationsPanel = ({
   // The car is held as an ID, because it is PICKED. It used to be the typed code, resolved
   // through `idOf` on every render — which meant a code no car carries produced `undefined` and
   // a permanently disabled Save, with nothing on screen saying why.
-  const [formVehicleId, setFormVehicleId] = useState('');
+  // Held by the PAGE: the company's bar files against the same car — see `entryVehicleId`.
+  const formVehicleId = entryVehicleId;
+  const setFormVehicleId = onEntryVehicleChange;
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [cards, setCards] = useState<DriverEntryCard[]>([]);
   const record = useRecordDriverViolations();
@@ -205,7 +215,10 @@ export const DriverViolationsPanel = ({
       // the reader re-tries the same stack rather than working out what got through.
       setCounts({});
       setCards([]);
-      setFormVehicleId('');
+      // The CAR stays. It is the sitting's subject and the company's bar is filing against it too,
+      // so clearing it here would empty the other half of the screen as well — and a clerk filing
+      // a car's fines is usually not finished with that car.
+
       toast.success(t('fleet.violations.batchSaved', { count: String(cards.length) }));
     } catch (error) {
       toast.error(errorMessage(error, locale));
@@ -875,8 +888,13 @@ export const DriverViolationsPanel = ({
       </FilterBar>
 
       {/* The BOARD scrolls, not the page — the filters above it and the totals below it stay put,
-          which is what makes this half readable beside the other one. */}
-      <div className="min-h-0 flex-1 overflow-auto">
+          which is what makes this half readable beside the other one.
+
+          The scrolling is the TABLE's own (`stickyHead`), not this box's, so the head can stay in
+          view while the rows move under it — «عاوز اثبت راس الجدول بتاع السواقيين». A wrapper that
+          scrolled here instead would carry the head away with it, whatever the head was told to
+          do: sticky sticks to the nearest scrolling ancestor, and that would be this div. */}
+      <div className="min-h-0 flex-1">
         <DataTable
           columns={columns}
           rows={rows}
@@ -887,6 +905,7 @@ export const DriverViolationsPanel = ({
           sort={sorts}
           onSortChange={onSortChange}
           dense
+          stickyHead
           // Collected is a STATE OF THE ROW, so the row carries it — the tick is where you change
           // it, the tint is how the board reads at a glance.
           rowClassName={(row) =>

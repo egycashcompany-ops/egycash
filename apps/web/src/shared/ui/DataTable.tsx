@@ -105,6 +105,20 @@ export interface DataTableProps<T> {
    * decision.
    */
   textScale?: 'compact' | 'comfortable';
+  /**
+   * KEEP THE HEAD IN VIEW while the rows scroll under it — for a board somebody works down for a
+   * while, where losing the column names forty rows in means scrolling back to read one cell.
+   *
+   * It makes THIS table the thing that scrolls: the wrapper takes the height its parent gives it
+   * (`h-full`, so the caller sizes it — `min-h-0 flex-1` in a column) and scrolls in both axes.
+   * That is not a style preference but the mechanism: `position: sticky` sticks to the nearest
+   * scrolling ancestor, so a head inside a wrapper that does not scroll vertically would simply
+   * ride away with the parent that does.
+   *
+   * The head also turns OPAQUE. It is drawn over the rows, and at `dark:bg-slate-800/60` they show
+   * through it — which reads as a broken header rather than as a translucent one.
+   */
+  stickyHead?: boolean;
 }
 
 const alignClass: Record<'start' | 'center' | 'end', string> = {
@@ -130,6 +144,7 @@ export const DataTable = <T,>({
   dense = false,
   rowClassName,
   textScale = 'compact',
+  stickyHead = false,
 }: DataTableProps<T>): JSX.Element => {
   // One shape inside, whichever shape came in: the single-column callers (every module but Fleet)
   // and the multi-column ones read the same way from here down.
@@ -255,16 +270,20 @@ export const DataTable = <T,>({
   return (
     <div
       className={cn(
-        'overflow-x-auto',
+        stickyHead ? 'h-full overflow-auto' : 'overflow-x-auto',
         !embedded &&
           'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
       )}
     >
       <table className="w-full border-collapse" style={{ minWidth: `${minTableWidth}rem` }}>
-        <thead>
+        {/* `undefined`, not `cn(false && …)`: that renders `class=""` on every table in the app
+            and turns a plain `<thead>` into one nothing else can match on. */}
+        <thead className={stickyHead ? 'sticky top-0 z-10' : undefined}>
           <tr
             className={cn(
-              'bg-slate-50 uppercase tracking-wide text-slate-500 dark:bg-slate-800/60 dark:text-slate-400',
+              'bg-slate-50 uppercase tracking-wide text-slate-500 dark:text-slate-400',
+              // See-through only where nothing scrolls under it.
+              stickyHead ? 'dark:bg-slate-800' : 'dark:bg-slate-800/60',
               headerText,
             )}
           >

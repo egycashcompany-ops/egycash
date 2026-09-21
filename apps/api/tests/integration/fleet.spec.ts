@@ -6244,13 +6244,153 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         totalCount: 4,
         totalAmount: 450,
         totalBeforeGrievance: 600,
-        // TWO documents in this group — one statement row of «×3» and one driver event — and
-        // neither has been collected. The tick on the board reads these: a group is settled only
-        // when every row in it is, and `rowCount` counts DOCUMENTS, not the `count` on them.
-        rowCount: 2,
+        // ONE document counted here — the statement row of «×3». The driver event beside it is
+        // in `driverCount`/`driverAmount` above and NOT in these two, because these two are what
+        // the company board's tick sets and is coloured from, and that tick settles the company's
+        // rows alone. `rowCount` counts DOCUMENTS, not the `count` on them.
+        rowCount: 1,
         collectedCount: 0,
       },
     ]);
+  });
+
+  /*
+   * TWO ACCOUNTS, SETTLED SEPARATELY — «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه
+   * بالسواقيين».
+   *
+   * The group tick used to set every row of a (vehicle, year), so closing off a car's statement
+   * marked that car's DRIVERS' fines as received in the same click. Nothing on the screen said so,
+   * and the only way back was to find each fine and untick it one at a time.
+   */
+  describe('the company board’s tick and the drivers’ fines', () => {
+    const rollupOf = async (query: Record<string, unknown>): Promise<Record<string, unknown>[]> => {
+      const res = await request(app)
+        .get('/api/v1/fleet/violations/rollup')
+        .query(query)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<Record<string, unknown>[]>(res);
+    };
+
+    const finesOf = async (vehicleId: string): Promise<Record<string, unknown>[]> => {
+      const res = await request(app)
+        .get('/api/v1/fleet/violations')
+        .query({ vehicleId, kind: 'driver', pageSize: 100 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status, JSON.stringify(res.body)).toBe(200);
+      return data<Record<string, unknown>[]>(res);
+    };
+
+    it('settles the STATEMENT and leaves the drivers’ fines — this year’s and an older one', async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const vehicleType = await violationTypeIdByName('رسوم خدمة');
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+
+      await request(app)
+        .post('/api/v1/fleet/violations/vehicle')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year: 2026, violationTypeId: vehicleType, count: 2, unitValue: 50 });
+      // One driver fine INSIDE the year being ticked…
+      await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2026-03-01',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount: 200,
+        });
+      // …and one from an EARLIER year on the same car, entered late. «وفى سواق كان عامل مخالفه وهو
+      // سايق العربيه سنه ٢٥ بس مضفتش ساعتها».
+      await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2025-11-20',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount: 300,
+        });
+
+      const ticked = await request(app)
+        .patch('/api/v1/fleet/violations/collected')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year: 2026, collected: true });
+      expect(ticked.status).toBe(200);
+      expect(data<{ changed: number }>(ticked).changed, 'the statement row, and only it').toBe(1);
+
+      const fines = await finesOf(v.id);
+      expect(fines).toHaveLength(2);
+      expect(
+        fines.map((f) => f['collected']),
+        'neither the 2026 fine nor the 2025 one was touched',
+      ).toEqual([false, false]);
+
+      // …and the board now reads the car's 2026 statement as settled, on its own.
+      const [year2026] = await rollupOf({ year: 2026, vehicleId: v.id });
+      expect(year2026?.['rowCount']).toBe(1);
+      expect(year2026?.['collectedCount']).toBe(1);
+      expect(year2026?.['driverAmount'], 'the fine is still owed, and still reported').toBe(200);
+    });
+
+    it('a year whose only fines are the drivers’ offers the company nothing to tick', async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const driverType = await violationTypeIdByName('تليفون');
+      const employeeId = await mkEmployee();
+      await mkDriverProfile(employeeId);
+      await request(app)
+        .post('/api/v1/fleet/violations/driver')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          date: '2024-05-05',
+          driverEmployeeId: employeeId,
+          violationTypeId: driverType,
+          amount: 120,
+        });
+
+      const [row] = await rollupOf({ year: 2024, vehicleId: v.id });
+      // The board draws no tick on a group with no statement rows — there is nothing there for
+      // the company to collect, and a tick that set nothing would be a promise it cannot keep.
+      expect(row?.['rowCount']).toBe(0);
+      expect(row?.['collectedCount']).toBe(0);
+      expect(row?.['driverAmount']).toBe(120);
+    });
+
+    it('narrows by SEVERAL car codes — the filter that used to answer for the whole fleet', async () => {
+      const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const c = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const vehicleType = await violationTypeIdByName('رسوم خدمة');
+      for (const car of [a, b, c]) {
+        await request(app)
+          .post('/api/v1/fleet/violations/vehicle')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({
+            vehicleId: car.id,
+            year: 2023,
+            violationTypeId: vehicleType,
+            count: 1,
+            unitValue: 10,
+          });
+      }
+
+      const two = await rollupOf({ year: 2023, vehicleCodes: [a.code, b.code].join(',') });
+      expect(
+        two.map((r) => r['code']).sort(),
+        'two codes are two cars — not none, and not every car in the fleet',
+      ).toEqual([a.code, b.code].sort());
+
+      const one = await rollupOf({ year: 2023, vehicleCodes: a.code });
+      expect(one.map((r) => r['code'])).toEqual([a.code]);
+
+      // A code the registry does not carry narrows to NOTHING rather than dropping the filter.
+      expect(await rollupOf({ year: 2023, vehicleCodes: 'NO-SUCH-CODE' })).toEqual([]);
+    });
   });
 
   // ── The accident list's filters, and the figures under it ────────────────────

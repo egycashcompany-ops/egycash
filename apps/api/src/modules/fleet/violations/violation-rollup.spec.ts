@@ -190,6 +190,23 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
     expect(rows[0]?.rowCount).toBe(4);
   });
 
+  it('KEEPS a year whose only fines are the DRIVERS’ — the board still reports their money', () => {
+    // `rowCount` counts the COMPANY's rows only, because it is what the board's tick sets. A year
+    // with no statement rows has `rowCount: 0` and would vanish from a board that is showing its
+    // «إجمالي السائقين» in the same breath.
+    const rows = assembleRollups(sums({ driverCount: 1, driverAmount: 120 }), [], codes);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.rowCount, 'and there is nothing here for the company to tick').toBe(0);
+    expect(rows[0]?.driverAmount).toBe(120);
+  });
+
+  it('…and drops it once every one of those fines is settled', () => {
+    // Settled fines are excluded from the sums, so both figures read 0: nothing outstanding, no
+    // statement to tick, and this board's tick could not untick them anyway. They are still on the
+    // drivers' board, which lists fines directly and has its own «الحالة» filter.
+    expect(assembleRollups(sums(), [], codes)).toEqual([]);
+  });
+
   it('KEEPS a grievance-only car when the figure is real — the appeal wiped the statement', () => {
     const rows = assembleRollups([], [{ vehicleId: 'v2', year: 2025, totalBeforeGrievance: 900 }], codes);
     expect(rows).toHaveLength(1);

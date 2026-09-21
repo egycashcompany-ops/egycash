@@ -1880,6 +1880,21 @@ export const FleetViolationRollupQuerySchema = z
      * has stopped narrowing anything.
      */
     year: listQuery(z.coerce.number().int().min(2000).max(2100), 20),
+    /**
+     * SEVERAL cars, BY CODE — what the board's picker has always written, and what it could not
+     * send.
+     *
+     * The rollup used to take ONE `vehicleId`, so the screen resolved a single picked code and
+     * sent nothing at all when the reader picked two or more. The chips said «١٥٠، ١٥١ +٢» and
+     * the table quietly answered for the whole fleet — the filter reading as broken rather than
+     * as absent, which is the worse of the two failures.
+     *
+     * Codes rather than ids, as on every other board: the code is what a reader calls a car, and
+     * resolving it server-side is what lets a (code, year) kept from the old book — on a car the
+     * registry never had — still be found by the code the book wrote.
+     */
+    vehicleCodes: vehicleCodesQuery(),
+    /** @deprecated One car, by id — still honoured for links saved before the codes existed. */
     vehicleId: objectId().optional(),
   })
   .strict();
@@ -1899,11 +1914,17 @@ export interface FleetViolationRollupDto {
   totalAmount: number;
   totalBeforeGrievance: number;
   /**
-   * How many of this (vehicle, year)'s rows exist, and how many have been collected.
+   * How many of this (vehicle, year)'s COMPANY rows exist, and how many have been collected.
    *
    * The board's tick is a GROUP's state, and a group is only «collected» when every row in it is.
    * Two numbers rather than a boolean because the third state — some collected, some not — is the
    * one a reader most needs to see, and a boolean cannot carry it.
+   *
+   * THE DRIVERS' FINES ARE NOT IN THESE. «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه
+   * بالسواقيين» — the company board's tick settles the company's statement rows and nothing else,
+   * so these two count exactly what that tick sets. A group with no statement rows at all — a car
+   * whose only fines that year were its drivers' — has `rowCount: 0`, and the board draws no tick
+   * on it, because there is nothing there for the company to collect.
    */
   rowCount: number;
   collectedCount: number;

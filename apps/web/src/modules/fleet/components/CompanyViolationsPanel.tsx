@@ -13,7 +13,7 @@
 // one spanning car cell, and `DataTable` renders exactly one `<tr>` per row with no rowSpan seam.
 // The precedent is `FleetDashboardPage`, whose classes these copy so the two boards match.
 import { useMemo, useState } from 'react';
-import { MAX_PAGE_SIZE, type FleetViolationRollupDto, type Locale } from '@ecms/contracts';
+import { type FleetViolationRollupDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -37,7 +37,6 @@ import { saveBlob } from '../../../shared/lib/api-client';
 import {
   useRecordVehicleViolation,
   useSetRollupCollected,
-  useVehicles,
   useViolationRollup,
 } from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
@@ -88,6 +87,8 @@ export const CompanyViolationsPanel = ({
   years,
   vehicleCodes,
   settled,
+  entryVehicleId,
+  onEntryVehicleChange,
   onYearsChange,
   onSettledChange,
   onVehicleCodesChange,
@@ -104,6 +105,19 @@ export const CompanyViolationsPanel = ({
   vehicleCodes: string[];
   /** '' = both, 'true' = fully settled, 'false' = anything still outstanding. */
   settled: string;
+  /**
+   * THE CAR BOTH ENTRY BARS ARE FILING AGAINST — one pick, both halves.
+   *
+   * «لما احدد كود عربيه يتحدد فى التانيه تلقائى». A clerk works a car at a time: the company's
+   * statement and that car's drivers' fines are the same sitting, and picking 150 twice — once on
+   * each side of the screen — was two chances to pick two different cars and file half a sitting
+   * against the wrong one.
+   *
+   * It is the entry bars' car and ONLY theirs. The two boards keep their own filters, on purpose:
+   * they are read side by side precisely so they can disagree.
+   */
+  entryVehicleId: string;
+  onEntryVehicleChange: (next: string) => void;
   onSettledChange: (next: string | null) => void;
   onYearsChange: (next: string[]) => void;
   onVehicleCodesChange: (next: string[]) => void;
@@ -131,20 +145,28 @@ export const CompanyViolationsPanel = ({
     [thisYear],
   );
 
-  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
-  const idOf = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of vehicles.data?.items ?? []) map.set(v.code, v.id);
-    return map;
-  }, [vehicles.data]);
-  // One car chosen narrows the board to it; several (or none) leave it whole — the rollup takes
-  // a single vehicle, and pretending otherwise would silently show the first of a multi-select.
-  const soleVehicleId = vehicleCodes.length === 1 ? idOf.get(vehicleCodes[0] as string) : undefined;
+  /*
+   * EVERY CAR THE PICKER HOLDS, not the one the endpoint used to take.
+   *
+   * The rollup accepted a single `vehicleId`, so this resolved a lone picked code and sent
+   * NOTHING the moment a second was picked: the chips read «١٥٠، ١٥١ +٢» while the table answered
+   * for the whole fleet. A filter that silently stops filtering is worse than one that refuses,
+   * because the reader has no way to tell the two apart.
+   *
+   * The codes travel as codes and are resolved server-side, as on every other board — which is
+   * also what keeps a (code, year) from the old book, on a car the registry never had, reachable
+   * by the code the book wrote.
+   */
+  const codesKey = vehicleCodes.join(',');
+  const askedCodes = useMemo(
+    () => (vehicleCodes.length === 0 ? undefined : vehicleCodes),
+    [codesKey],
+  );
 
   const yearNumbers = useMemo(() => years.map((y) => Number(y)), [years.join(',')]);
   const rollup = useViolationRollup(
     yearNumbers.length === 0 ? undefined : yearNumbers,
-    soleVehicleId,
+    askedCodes,
   );
   // «الحالة», applied IN HAND. The rollup arrives whole — that is what lets this half count its
   // own groups — so narrowing it here asks the server nothing extra and keeps the totals below
@@ -157,15 +179,21 @@ export const CompanyViolationsPanel = ({
     settled === ''
       ? allRows
       : allRows.filter((row) => {
-          const done = row.rowCount > 0 && row.collectedCount === row.rowCount;
+          // `rowCount === 0` is a year whose only fines were the DRIVERS' — there is nothing here
+          // for the company to collect, so it is neither outstanding nor settled and belongs to
+          // neither half of this filter. It is still shown when «الكل» is chosen.
+          if (row.rowCount === 0) return false;
+          const done = row.collectedCount === row.rowCount;
           return settled === 'true' ? done : !done;
         });
 
   // ── the entry bar ─────────────────────────────────────────────────────────
   const [formYear, setFormYear] = useState(String(thisYear));
   // The car is now held as an ID, because it is PICKED rather than typed — there is no longer a
-  // code to resolve, and so no longer a way to have typed one that resolves to nothing.
-  const [formVehicleId, setFormVehicleId] = useState('');
+  // code to resolve, and so no longer a way to have typed one that resolves to nothing. It is
+  // held by the PAGE, because the drivers' bar files against the same car — see the prop.
+  const formVehicleId = entryVehicleId;
+  const setFormVehicleId = onEntryVehicleChange;
   const [formType, setFormType] = useState('');
   const [formValue, setFormValue] = useState('');
   const [formCount, setFormCount] = useState('');
@@ -627,7 +655,9 @@ export const CompanyViolationsPanel = ({
               reader working down forty groups can still see which column is which. */}
           <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
             <table data-company-table className="w-full min-w-[38rem] border-collapse">
-              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800/60">
+              {/* A sticky head is drawn OVER the rows, so it has to be opaque. `bg-slate-800/60`
+                  let them through it — «راس الجدول بايظ المفروض ميكونش شفاف». */}
+              <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
                 <tr>
                   <th className={head}>{t('fleet.violations.fields.year')}</th>
                   <th className={head}>{t('fleet.odometer.columns.vehicle')}</th>

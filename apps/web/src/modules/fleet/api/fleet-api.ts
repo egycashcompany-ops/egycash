@@ -301,13 +301,14 @@ export const listViolations = (params: FleetListParams): Promise<Paginated<Fleet
 export const violationRollup = (
   /** SEVERAL years, ORed — one comma-separated `year` parameter, which is what the API parses. */
   years: readonly number[] | undefined,
-  vehicleId?: string,
+  /** SEVERAL cars, by the code the picker writes — resolved against the registry server-side. */
+  vehicleCodes?: readonly string[],
 ): Promise<FleetViolationRollupDto[]> =>
   get<FleetViolationRollupDto[]>(
     `/fleet/violations/rollup${buildQuery({
       // Comma-separated, which is the shape `listQuery` parses on the other side.
       year: years === undefined ? undefined : years.map(String),
-      vehicleId,
+      vehicleCodes: vehicleCodes === undefined ? undefined : [...vehicleCodes],
     })}`,
   );
 export const recordVehicleViolation = (

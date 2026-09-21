@@ -207,9 +207,10 @@ const page = ({
         'fleet',
         'violations',
         'rollup',
-        // The YEARS, as the one string the key carries — several years are one question and one
-        // cache entry, and a fresh array each render would otherwise mint a new key every time.
-        { year: year === undefined ? '' : year, vehicleId: undefined },
+        // The YEARS and the CODES, as the one string each carries — several of either are one
+        // question and one cache entry, and a fresh array each render would otherwise mint a new
+        // key every time.
+        { year: year === undefined ? '' : year, vehicleCodes: '' },
       ],
       rollup,
     );
@@ -834,6 +835,71 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(source, 'and the value is a single vehicle id').toContain(
       'onChange: (vehicleId: string) => void',
     );
+  });
+
+  it('ONE car for both entry bars — picking it on either side files against the same one', () => {
+    // «لما احدد كود عربيه يتحدد فى التانيه تلقائى». A clerk works a car at a time: the company's
+    // statement and that car's drivers' fines are the same sitting, and picking it twice was two
+    // chances to pick two different cars and file half the sitting against the wrong one.
+    const pageSrc = readFileSync(join(HERE, 'pages/ViolationsPage.tsx'), 'utf8');
+    expect(pageSrc, 'the page owns it').toContain("const [entryVehicleId, setEntryVehicleId] = useState('')");
+    // Handed to BOTH halves, and to nothing else: the two BOARDS keep their own car filters.
+    expect((pageSrc.match(/entryVehicleId=\{entryVehicleId\}/g) ?? []).length).toBe(2);
+    expect((pageSrc.match(/onEntryVehicleChange=\{setEntryVehicleId\}/g) ?? []).length).toBe(2);
+    for (const file of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+      const panel = readFileSync(join(HERE, file), 'utf8');
+      expect(panel, `${file} reads the shared car`).toContain('const formVehicleId = entryVehicleId;');
+      expect(panel, `${file} writes the shared car`).toContain(
+        'const setFormVehicleId = onEntryVehicleChange;',
+      );
+      expect(panel, `${file} keeps no car of its own`).not.toContain(
+        "const [formVehicleId, setFormVehicleId] = useState('')",
+      );
+    }
+    // …and a saved driver batch no longer empties it, which would have emptied the other bar too.
+    const driverPanel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(driverPanel).not.toContain("setFormVehicleId('')");
+  });
+
+  it('neither board’s head is see-through, and the drivers’ head stays put', () => {
+    // «راس الجدول بايظ المفروض ميكونش شفاف» · «عاوز اثبت راس الجدول بتاع السواقيين». A sticky head
+    // is drawn OVER the rows, so a 60%-opaque one lets them through it and reads as broken.
+    const company = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const head = company.slice(company.indexOf('<thead'), company.indexOf('</thead>'));
+    expect(head, 'the company head is pinned').toContain('sticky top-0');
+    expect(head, 'and opaque').toContain('dark:bg-slate-800');
+    expect(head, 'not 60% of it').not.toContain('dark:bg-slate-800/60');
+
+    // The drivers' board is a `DataTable`, so its head is pinned through the table's own prop —
+    // and the wrapper must NOT scroll, or sticky would stick to the wrapper and ride away with it.
+    const driver = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    expect(driver).toContain('stickyHead');
+    expect(driver, 'the table scrolls, not the box around it').toContain(
+      '<div className="min-h-0 flex-1">',
+    );
+    const table = readFileSync(join(HERE, '../../shared/ui/DataTable.tsx'), 'utf8');
+    expect(table, 'sticky makes the table itself the scroll port').toContain(
+      "stickyHead ? 'h-full overflow-auto' : 'overflow-x-auto'",
+    );
+    expect(table, 'and turns the head opaque').toContain(
+      "stickyHead ? 'dark:bg-slate-800' : 'dark:bg-slate-800/60'",
+    );
+  });
+
+  it('the company board asks about EVERY car the picker holds, not one of them', () => {
+    // The rollup took a single `vehicleId`, so the board resolved a lone code and sent NOTHING the
+    // moment a second was picked: the chips read «١٥٠، ١٥١ +٢» while the table answered for the
+    // whole fleet. A filter that silently stops filtering cannot be told from one that is absent.
+    const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    expect(panel, 'no "only when exactly one" left anywhere').not.toContain('soleVehicleId');
+    expect(panel, 'every picked code travels').toContain('useViolationRollup(');
+    expect(panel).toContain('askedCodes');
+    // …and it no longer reads the whole registry just to turn one code into one id.
+    expect(panel, 'the server resolves the codes now').not.toContain('useVehicles(');
+
+    const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
+    const call = api.slice(api.indexOf('export const violationRollup'));
+    expect(call.slice(0, 700), 'the codes are what the endpoint is asked').toContain('vehicleCodes');
   });
 
   it('the drivers bar wraps rather than scrolling, so the code list is not clipped', () => {

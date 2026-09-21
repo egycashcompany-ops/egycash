@@ -13,7 +13,7 @@ import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
 import { cn } from '../../shared/lib/cn';
 import { NotificationBell } from '../notifications/NotificationBell';
 import { BrandMark } from '../../shared/ui';
-import { BadgeIcon, CogIcon, LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
+import { BadgeIcon, CogIcon, KeyIcon, LogOutIcon, ShieldIcon, MenuIcon, SearchIcon } from '../../shared/ui/icons';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageToggle } from './LanguageToggle';
 import { NavLayoutToggle } from './NavLayoutToggle';
@@ -111,6 +111,30 @@ const UserMenu = (): JSX.Element => {
             <ShieldIcon className="h-4 w-4" />
             {t('platform.shell.security')}
           </button>
+          {/*
+            «صلاحياتي» — under «الأمان», because what a person may do is a fact about their account
+            and not a preference of it.
+
+            Drawn only for an account that holds something. An employee with no permissions has no
+            answer to read, and a menu entry leading to «ليست لديك أي صلاحية» is worse than no entry:
+            it invites the click and then reports nothing. The test is the session's own permission
+            set — already in the store from `GET /me` — so deciding whether to draw the row costs no
+            request, and the row appears the moment an administrator grants the first key.
+          */}
+          {Object.keys(me.permissions).length > 0 && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); navigate('/account/permissions'); }}
+              className={cn(
+                'flex w-full items-center gap-2 px-4 py-2 text-start text-sm text-slate-700 hover:bg-slate-50',
+                'dark:text-slate-200 dark:hover:bg-slate-700',
+              )}
+            >
+              <KeyIcon className="h-4 w-4" />
+              {t('account.permissions.title')}
+            </button>
+          )}
           <button
             type="button"
             role="menuitem"

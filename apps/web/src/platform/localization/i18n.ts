@@ -32,6 +32,25 @@ const en: Record<string, string> = {
   'platform.shell.security': 'Security',
   'account.security.title': 'Security',
   'account.security.subtitle': 'Password, authenticator app, and active sessions for your account.',
+  // «صلاحياتي» — the account's own authority, read by the person who holds it. Under Security in
+  // the account menu, and drawn there only when the account holds something to read.
+  'account.permissions.title': 'My permissions',
+  'account.permissions.count': '{{count}} permission(s)',
+  'account.permissions.inThisScreen': '{{count}} on this screen',
+  'account.permissions.otherScreens': 'Not tied to a screen',
+  'account.permissions.from': 'Granted by:',
+  'account.permissions.breakGlass': 'Emergency permission',
+  'account.permissions.empty': 'You hold no permission at the moment.',
+  'account.permissions.emptyHint':
+    'Ask the person responsible for your department to grant you what your work requires.',
+  'account.permissions.evaluatedAt': 'Evaluated at {{at}}',
+  // The reach, as a sentence rather than a noun: what a permission covers is the difference
+  // between a manager and a clerk, and «Department» alone does not say it.
+  'account.permissions.scope.own': 'On your own records',
+  'account.permissions.scope.section': 'Across your section',
+  'account.permissions.scope.department': 'Across your department',
+  'account.permissions.scope.branch': 'Across your branch',
+  'account.permissions.scope.organization': 'Across the whole company',
   // P9-B — self-service preferences. Stored on the account, so they follow the user to any device.
   'account.preferences.title': 'Preferences',
   'account.preferences.subtitle':
@@ -6858,6 +6877,24 @@ const ar: Record<string, string> = {
   'platform.shell.security': 'الأمان',
   'account.security.title': 'الأمان',
   'account.security.subtitle': 'كلمة المرور وتطبيق المصادقة والجلسات النشطة لحسابك.',
+  // «صلاحياتي» — صلاحيات الحساب كما يقرؤها صاحبه. تقع أسفل «الأمان» في قائمة الاسم، ولا تظهر
+  // إلا إذا كان الحساب يملك ما يُقرأ.
+  'account.permissions.title': 'صلاحياتي',
+  'account.permissions.count': '{{count}} صلاحية',
+  'account.permissions.inThisScreen': '{{count}} في هذه الشاشة',
+  'account.permissions.otherScreens': 'صلاحيات غير مرتبطة بشاشة',
+  'account.permissions.from': 'ممنوحة من:',
+  'account.permissions.breakGlass': 'صلاحية طارئة',
+  'account.permissions.empty': 'لا تملك أي صلاحية في الوقت الحالي.',
+  'account.permissions.emptyHint': 'راجع المسؤول عن إدارتك ليمنحك ما يقتضيه عملك.',
+  'account.permissions.evaluatedAt': 'محسوبة في {{at}}',
+  // المدى مكتوب جملةً لا اسمًا: الفرق بين «على بياناتي وحدها» و«على إدارتي» هو الفرق بين موظف
+  // ومدير، وكلمة «إدارة» وحدها لا تقوله.
+  'account.permissions.scope.own': 'على بياناتك وحدها',
+  'account.permissions.scope.section': 'على قسمك',
+  'account.permissions.scope.department': 'على إدارتك',
+  'account.permissions.scope.branch': 'على فرعك',
+  'account.permissions.scope.organization': 'على الشركة كلها',
   // P9-B — التفضيلات الشخصية. محفوظة على الحساب، فتتبع المستخدم إلى أي جهاز.
   'account.preferences.title': 'التفضيلات',
   'account.preferences.subtitle':

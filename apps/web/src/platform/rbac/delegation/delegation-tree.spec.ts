@@ -321,6 +321,60 @@ describe('what the branch-level clear may take', () => {
   });
 });
 
+// ── «ادام حاجة مليش عليها اكسس مشوفهاش اصلا» ─────────────────────────────────
+//
+// The owner's rule, stated twice and in the strongest terms he used all session: «انا مش عايز
+// الادارات مقفوله… ما يقوليش انت مش مسموح لك… ولا لونه رمادي… ما تظهرش اصلا». His own example is
+// the shape of this block — «عندي مثلا فرع اكتوبر في اربع شاشات، يظهر اربع شاشات؛ ما يظهرليش بقى
+// بقيه الشاشات ويقول لي اصل مش مسموح لك».
+//
+// It is pinned HERE, on the tree, rather than only on the panel, because a greyed row can come
+// back two ways: by the panel drawing one again, and by the tree handing it one to draw. The
+// second is the one that would slip through a render test that only checks what is on the screen.
+
+describe('what the caller cannot reach is not in the tree at all', () => {
+  it('gives a department only the screens its own ceiling covers', () => {
+    // B·d3 holds vehicle.* and setting.manage — the Vehicles screen and the no-page bucket. The
+    // Employees screen belongs to a module this caller cannot grant here, and is absent.
+    const d3 = branchOf(tree(), 'B').departments[0];
+    expect(d3?.screensTotal).toBe(2);
+    const names = d3?.modules.flatMap((m) => m.screens.map((sc) => sc.page?.name.en ?? 'other'));
+    expect(names).toEqual(['Vehicles', 'other']);
+    expect(names).not.toContain('Employees');
+  });
+
+  it('gives a different department a different number of screens, in the same tree', () => {
+    // A·d1 inherits the branch's employee.* and nothing else: one screen, where B·d3 had two.
+    // Two departments, two counts, and neither padded out to the size of the registry.
+    const d1 = branchOf(tree(), 'A').departments[0];
+    expect(d1?.screensTotal).toBe(1);
+    expect(d1?.modules.flatMap((m) => m.screens.map((sc) => sc.page?.name.en))).toEqual([
+      'Employees',
+    ]);
+  });
+
+  it('draws not one row the caller may not act on', () => {
+    for (const branch of tree()) {
+      for (const unit of [branch.whole, ...branch.departments]) {
+        for (const screen of unit.modules.flatMap((m) => m.screens)) {
+          // Everything drawn is either his to grant, or something the account already holds.
+          expect(screen.grantable || screen.on > 0 || screen.savedOn > 0).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('leaves no unit reporting rows it does not draw', () => {
+    // The counts beside a row are the only thing making a filtered list legible rather than
+    // puzzling, so they count the VISIBLE screens — a total that included the hidden ones would
+    // read «1 of 70» and send the manager looking for sixty-nine rows that are not there.
+    const d3 = branchOf(tree(), 'B').departments[0];
+    const drawn = d3?.modules.flatMap((m) => m.screens).length;
+    expect(drawn).toBe(d3?.screensTotal);
+    expect(d3?.actionsTotal).toBe(3);
+  });
+});
+
 describe('units the caller cannot reach', () => {
   const grant = (branchId: string, departmentId: string | null): DelegationDto => ({
     id: `g-${branchId}-${departmentId ?? 'all'}`,
@@ -343,16 +397,37 @@ describe('units the caller cannot reach', () => {
     expect(c.departments[0]?.actionsOn).toBe(1);
   });
 
-  it('pins the account’s own placement even when nothing was ever granted there', () => {
+  it('leaves the account’s own placement OUT when there is nothing there for this caller', () => {
+    // «طب أنا إيه لازمتها تظهر لي وأنا مش مسموح لي بحاجة؟» — the home unit is folded into the
+    // catalog so a grant written there is never lost, but where the caller can grant nothing and
+    // the account holds nothing, the row would say only «مش مسموح لك». That is the greyed row the
+    // owner threw out, wearing a location for a label.
     const merged = withSavedUnits(CATALOG, [], {
       branchId: 'D',
       departmentId: 'd8',
       branchName: { ar: 'المعادي', en: 'Maadi' },
       departmentName: { ar: 'العمليات', en: 'Operations' },
     });
-    const d = branchOf(tree({}, {}, merged), 'D');
-    expect(d.name.en).toBe('Maadi');
-    expect(d.departments.map((x) => x.name.en)).toEqual(['Operations']);
+    // Still merged into the CATALOG — dropping it there would lose a grant written later…
+    expect(merged.catalog.branches.map((b) => b.id)).toContain('D');
+    // …and still absent from the TREE, which is what the screen draws.
+    expect(tree({}, {}, merged).map((b) => b.id)).not.toContain('D');
+  });
+
+  it('keeps that same placement the moment the account holds anything there', () => {
+    // The other half of the rule, and the reason the fold-in exists at all: this is not «a place I
+    // have no access to», it is a grant on the person in front of the reader.
+    const merged = withSavedUnits(CATALOG, [grant('D', 'd8')], {
+      branchId: 'D',
+      departmentId: 'd8',
+      branchName: { ar: 'المعادي', en: 'Maadi' },
+      departmentName: { ar: 'العمليات', en: 'Operations' },
+    });
+    const d = branchOf(tree({}, { 'D:d8': ['employee.view'] }, merged), 'D');
+    expect(d.departments.map((x) => x.id)).toEqual(['d8']);
+    expect(d.departments[0]?.actionsOn).toBe(1);
+    // …and it is still not the caller's to change, which is a different fact from not drawing it.
+    expect(d.departments[0]?.editable).toBe(false);
   });
 
   it('gives a unit it invented nothing to grant, whatever its branch offers', () => {

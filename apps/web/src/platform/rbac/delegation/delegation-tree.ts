@@ -126,6 +126,14 @@ export interface UnitNode {
   everything: boolean;
   /** Ticked, and nothing but «view» — the one shape worth naming, because it is the common one. */
   viewOnly: boolean;
+  /**
+   * Nothing here is drawable — the caller can grant nothing and the account holds nothing.
+   *
+   * Distinct from `editable`, which says only that the CEILING is empty. A unit can be uneditable
+   * and still worth drawing, because the account holds a grant in it that somebody with more
+   * authority made. This one means the node has no rows at all, and the level above drops it.
+   */
+  empty: boolean;
 }
 
 export interface DepartmentNode extends UnitNode {
@@ -197,6 +205,23 @@ const groupByModule = (screens: readonly ScreenNode[]): ModuleNode[] => {
   return ordered;
 };
 
+/**
+ * The screens this unit actually puts on the screen.
+ *
+ * «ادام حاجة مليش عليها اكسس مشوفهاش اصلا». A screen the caller cannot grant here is not drawn
+ * greyed with a reason on it — it is not drawn. The earlier rendering made him read every row in
+ * the registry to find the four that were his, and argued with him about the rest: «أكتوبر فيه
+ * أربع شاشات، يظهروا الأربعة؛ ما يظهرش باقي الشاشات ويقولّي مش مسموح لك».
+ *
+ * One exception, and it is not a softening of the rule: a screen THIS ACCOUNT ALREADY HOLDS stays,
+ * even when the caller cannot grant it. That is not «a thing I have no access to» — it is a thing
+ * the person in front of him HAS, and a grant that vanishes because the reader lacks the authority
+ * to change it reads as a grant that was removed. The same asymmetry the role editor applies to a
+ * key a role carries that its editor could not have granted.
+ */
+const visibleScreens = (screens: readonly ScreenNode[]): ScreenNode[] =>
+  screens.filter((s) => s.grantable || s.on > 0 || s.savedOn > 0);
+
 const buildUnit = (
   cat: DelegationCatalogDto,
   unit: Unit,
@@ -206,10 +231,10 @@ const buildUnit = (
 ): UnitNode => {
   const ceiling = readOnly.has(unitKey(unit)) ? new Set<string>() : ceilingOf(cat, unit);
   const rows = buildRows(cat, ceiling, saved);
-  const screens = rows.map((row) => screenOf(row, selected, ceiling, saved));
+  const screens = visibleScreens(rows.map((row) => screenOf(row, selected, ceiling, saved)));
   const actionsOn = screens.reduce((n, s) => n + s.on, 0);
   const actionsTotal = screens.reduce((n, s) => n + s.total, 0);
-  const ticked = rows.flatMap((row) => row.keys.filter((k) => selected.has(k.key)));
+  const ticked = screens.flatMap((s) => s.row.keys.filter((k) => selected.has(k.key)));
   return {
     unit,
     ceiling,
@@ -226,6 +251,9 @@ const buildUnit = (
     editable: ceiling.size > 0,
     everything: actionsTotal > 0 && actionsOn === actionsTotal,
     viewOnly: ticked.length > 0 && ticked.every((k) => k.action === VIEW_ACTION),
+    // Nothing survived the filter, so there is nothing here to show OR to explain. The level above
+    // drops the whole node rather than drawing a heading over an empty list.
+    empty: screens.length === 0,
   };
 };
 
@@ -315,35 +343,47 @@ export const buildTree = (
   savedOf: (unit: Unit) => Selection,
   readOnly: ReadonlySet<string> = new Set(),
 ): BranchNode[] =>
-  cat.branches.map((branch) => {
-    const wholeUnit: Unit = { branchId: branch.id, departmentId: null };
-    const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit), readOnly);
-    const departments = branch.departments.map((department): DepartmentNode => {
-      const unit: Unit = { branchId: branch.id, departmentId: department.id };
-      const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit), readOnly);
-      return {
-        ...node,
-        id: department.id,
-        name: department.name,
-        coveredByBranch: carries(whole, node),
+  cat.branches
+    .map((branch) => {
+      const wholeUnit: Unit = { branchId: branch.id, departmentId: null };
+      const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit), readOnly);
+      const departments = branch.departments
+        .map((department): DepartmentNode => {
+          const unit: Unit = { branchId: branch.id, departmentId: department.id };
+          const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit), readOnly);
+          return {
+            ...node,
+            id: department.id,
+            name: department.name,
+            coveredByBranch: carries(whole, node),
+          };
+        })
+        // A department whose every screen was filtered away is dropped whole. The rule reads the
+        // same one level up as it does one level down: «اللي مسموح لي يظهر لي بس». A heading left
+        // standing over an empty list is the greyed row wearing a different hat — it still makes
+        // the reader open something to find out there was nothing behind it.
+        .filter((department) => !department.empty);
+      const departmentsOn = departments.filter((d) => d.state !== 'none').length;
+      const node: BranchNode = {
+        id: branch.id,
+        name: branch.name,
+        whole,
+        departments,
+        state:
+          whole.state === 'all'
+            ? 'all'
+            : whole.state !== 'none' || departmentsOn > 0
+              ? 'some'
+              : 'none',
+        departmentsOn,
+        departmentsTotal: departments.length,
       };
-    });
-    const departmentsOn = departments.filter((d) => d.state !== 'none').length;
-    return {
-      id: branch.id,
-      name: branch.name,
-      whole,
-      departments,
-      state:
-        whole.state === 'all'
-          ? 'all'
-          : whole.state !== 'none' || departmentsOn > 0
-            ? 'some'
-            : 'none',
-      departmentsOn,
-      departmentsTotal: departments.length,
-    };
-  });
+      return node;
+    })
+    // And a branch with no departments left AND nothing on its own record is not a branch this
+    // caller works in at all. «طب أنا إيه لازمتها تظهر لي فرع المهندسين وأسيوط وطنطا وأنا مش
+    // مسموح لي بحاجة؟»
+    .filter((branch) => branch.departments.length > 0 || !branch.whole.empty);
 
 /**
  * Does the branch record carry this department whole — nothing left here to decide?

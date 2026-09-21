@@ -204,8 +204,11 @@ describe('the counters', () => {
     expect(html).not.toContain('{{');
   });
 
-  it('counts a screen the caller cannot reach as locked, not as one of his', () => {
+  it('counts a screen held from above apart from the ones that are his', () => {
+    // The count no longer means «refused to you» — nothing refused is drawn at all now. What is
+    // left to count is a grant somebody with wider authority made, which he may see and not touch.
     const html = render({ grants: GRANTS });
-    expect(html).toContain('1 not yours to grant');
+    expect(html).toContain('1 granted from above');
+    expect(html).not.toContain('not yours to grant');
   });
 });

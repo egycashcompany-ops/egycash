@@ -927,7 +927,9 @@ export const RosterPage = (): JSX.Element => {
           `flex-nowrap` and each chip is `shrink-0`, so the row is one line and the width it needs
           comes out of the two selects — narrowed to 160px and 144px, both still wider than the
           text they hold. `overflow-x-auto` is the floor: on a screen too narrow for the whole
-          row the box scrolls within itself rather than taking the page sideways.
+          row the box scrolls within itself rather than taking the page sideways — and `py-1`
+          with `-my-1`, plus `pr-1`, keep that scroll box from clipping the ring on a chip at
+          its edge.
 
           The fixed-crew board says all of this at greater length — it is where the overflow was
           actually seen, and the two boards are kept identical on purpose.
@@ -941,7 +943,7 @@ export const RosterPage = (): JSX.Element => {
           would trade the one thing the colour is for — telling the six apart at a glance — for a
           state the ring already carries.
         */}
-        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1">
+        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 pr-1">
           {counters.map((counter) => (
             <button
               key={counter.key}

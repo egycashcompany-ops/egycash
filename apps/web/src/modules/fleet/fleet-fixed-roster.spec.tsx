@@ -1553,7 +1553,7 @@ describe('the standing board wears the daily board’s bar', () => {
       ['daily', stripOf(DAILY)],
     ] as const) {
       expect(body, `${name}: the chips live in a box of their own, and it does not wrap`).toContain(
-        '-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1',
+        '-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 pr-1',
       );
       expect(body, `${name}: and a chip gives up no width of its own`).toContain(
         'min-w-[3rem] shrink-0',

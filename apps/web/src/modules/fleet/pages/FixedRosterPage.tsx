@@ -1017,14 +1017,16 @@ export const FixedRosterPage = (): JSX.Element => {
             never taken sideways with it, which is what wrapping was avoiding in the first place.
             The `py-1`/`-my-1` pair is that scroll box paying for itself: `overflow-x` computes
             `overflow-y` to `auto` too, which would clip a focused chip's 3px ring, so the box
-            carries room for it and gives the height straight back to the strip.
+            carries room for it and gives the height straight back to the strip. `pr-1` is the
+            same debt on the other axis — the first chip sits flush against the box's right edge,
+            and «إجمالي» is the one that is active (and ringed) on an unfiltered board.
 
             Each counter is a real <button>, as on the daily board: it narrows the table, so it
             must be reachable by keyboard and announce its state, which a tinted <span> with an
             onClick never does. `aria-pressed` is the announcement. The colour belongs to the
             CATEGORY and stays put whether or not the chip is the one applied; the active state
             is a ring drawn on top. */}
-        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1">
+        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1 pr-1">
           {counters.map((counter) => (
             <button
               key={counter.key}

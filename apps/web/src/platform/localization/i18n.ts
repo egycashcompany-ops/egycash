@@ -5558,7 +5558,11 @@ const en: Record<string, string> = {
   'systemAdmin.effective.hint':
     'Everything this account may do, and where each permission comes from. Grants that have lapsed or not yet started are kept — that is usually the answer.',
   'systemAdmin.effective.count': '{{count}} permissions',
-  'systemAdmin.effective.sourceCount': '{{count}} sources',
+  // Counts by state — on the account's own line and on each closed module, because «why CAN'T
+  // they» is what brings a reader here and «4 of these ended» is very often the answer.
+  'systemAdmin.effective.activeCount': '{{count}} in force',
+  'systemAdmin.effective.pendingCount': '{{count}} not started',
+  'systemAdmin.effective.expiredCount': '{{count}} ended',
   'systemAdmin.effective.empty': 'No permission matches this view.',
   'systemAdmin.effective.noAccess':
     'Reading an account’s permissions needs both “view users” and “view roles”.',
@@ -12284,7 +12288,11 @@ const ar: Record<string, string> = {
   'systemAdmin.effective.hint':
     'كل ما يستطيع هذا الحساب فعله، ومن أين تأتي كل صلاحية. المنح المنتهية أو التي لم تبدأ بعد تبقى ظاهرة — وهي غالبًا الإجابة.',
   'systemAdmin.effective.count': '{{count}} صلاحية',
-  'systemAdmin.effective.sourceCount': '{{count}} مصدر',
+  // أعداد بحسب الحالة — على سطر الحساب نفسه وعلى كل وحدة مغلقة، لأن «لماذا لا يستطيع؟» هو ما
+  // يأتي بالقارئ إلى هنا، و«أربعٌ منها انتهت» هو الجواب في كثير من الأحيان.
+  'systemAdmin.effective.activeCount': '{{count}} سارية',
+  'systemAdmin.effective.pendingCount': '{{count}} لم تبدأ',
+  'systemAdmin.effective.expiredCount': '{{count}} انتهت',
   'systemAdmin.effective.empty': 'لا توجد صلاحية مطابقة لهذا العرض.',
   'systemAdmin.effective.noAccess':
     'قراءة صلاحيات حساب تتطلب «عرض المستخدمين» و«عرض الأدوار» معًا.',

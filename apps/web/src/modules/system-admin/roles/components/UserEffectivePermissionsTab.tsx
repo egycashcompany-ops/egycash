@@ -11,6 +11,22 @@
 // bounded by the registry that ships with the deployment (about two hundred keys at most, for an
 // account that holds everything), so a round trip per keystroke would buy nothing. The filters live
 // in the URL so a support conversation can link to exactly what it is talking about.
+//
+// **NOTHING HIDDEN, AND NOT EVERYTHING AT ONCE.** Those are different promises, and the screen used
+// to keep the first by breaking the second: an account holding three hundred keys drew three
+// hundred two-line rows, each with four badges, across eight cards with every one of them open.
+// Every fact was on the screen and the screen was unreadable — «مش شايف ليها لازمة وشكلها كده».
+// Three rules fix that without dropping a single row:
+//
+//   • A MODULE OPENS WHEN ASKED. Closed it is one line carrying its own counts, so eight headers
+//     answer «which area is this about» before three hundred rows answer anything. A search opens
+//     every module that matched, because a reader who typed «إجازة» has already asked.
+//   • A ROW IS ONE LINE. The raw key moved into the detail panel with the sources: it is what a
+//     support conversation quotes, not what an administrator scans, and as a second line under
+//     every name it doubled the height of the whole screen. A row whose key the registry no longer
+//     names keeps it inline, because there it IS the name.
+//   • A BADGE THAT IS ON EVERY ROW IS NOT A BADGE. «سارٍ» on three hundred rows says nothing and
+//     hides the four that say «انتهت». State is drawn only when it is not `active`.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -55,12 +71,31 @@ const byModule = (rows: EffectivePermissionRowDto[]): [string, EffectivePermissi
   );
 };
 
+/**
+ * How many of a set are in force, and how many are not.
+ *
+ * Printed on a closed module's own line, and again at the top for the whole account, because the
+ * question that brings anybody to this screen is «why CAN'T they» — and the first useful answer to
+ * it is «four of these ended». A reader who has to open eight modules to discover that is a reader
+ * the screen sent looking.
+ */
+const countStates = (
+  rows: readonly EffectivePermissionRowDto[],
+): { active: number; pending: number; expired: number } => ({
+  active: rows.filter((r) => r.state === 'active').length,
+  pending: rows.filter((r) => r.state === 'pending').length,
+  expired: rows.filter((r) => r.state === 'expired').length,
+});
+
 export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const can = useCan();
   const [sp, setSp] = useSearchParams();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Which module cards the reader opened. Not in the URL: it is a way of LOOKING at the answer,
+  // not a place a support conversation links to — the filters beside it are the part worth linking.
+  const [openModules, setOpenModules] = useState<Set<string>>(new Set());
 
   // The endpoint needs both; without either it answers 403, and an error panel is a worse way to
   // say "you may not read this" than saying it.
@@ -109,6 +144,10 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
   }, [rows, moduleFilter, stateFilter, search]);
 
   const shown = groups.reduce((sum, [, group]) => sum + group.length, 0);
+  // A reader who typed something has already asked to see it, so every module that survived the
+  // filter opens. Clearing the box puts the cards back the way he left them.
+  const filtering = search !== '' || moduleFilter !== '' || stateFilter !== '';
+  const totals = countStates(rows);
 
   if (!mayRead) {
     return (
@@ -125,6 +164,15 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
   if (isError || data === undefined) {
     return <ErrorState error={error} onRetry={() => void refetch()} />;
   }
+
+  const toggleModule = (moduleId: string): void => {
+    setOpenModules((previous) => {
+      const next = new Set(previous);
+      if (next.has(moduleId)) next.delete(moduleId);
+      else next.add(moduleId);
+      return next;
+    });
+  };
 
   const toggle = (key: string): void => {
     setExpanded((previous) => {
@@ -159,6 +207,24 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
               the next validity boundary, so this projection and what the account can do right this
               second can differ for a bounded moment. Saying which moment is described is the
               difference between a report and a claim. */}
+          {/* The account in one line, before any of the rows. Almost every visit here starts from
+              «why CAN'T they do X», and «four of these ended» is the answer often enough that
+              making the reader open eight modules to find it is the screen sending him looking. */}
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Badge size="sm" tone="success">
+              {t('systemAdmin.effective.activeCount', { count: totals.active })}
+            </Badge>
+            {totals.pending > 0 && (
+              <Badge size="sm" tone="warning">
+                {t('systemAdmin.effective.pendingCount', { count: totals.pending })}
+              </Badge>
+            )}
+            {totals.expired > 0 && (
+              <Badge size="sm" tone="danger">
+                {t('systemAdmin.effective.expiredCount', { count: totals.expired })}
+              </Badge>
+            )}
+          </div>
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {t('systemAdmin.effective.evaluatedAt', {
               at: formatDateTime(data.evaluatedAt, locale),
@@ -213,14 +279,45 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
 
       {shown === 0 && <EmptyState title={t('systemAdmin.effective.empty')} />}
 
-      {groups.map(([moduleId, group]) => (
+      {groups.map(([moduleId, group]) => {
+        const moduleOpen = filtering || openModules.has(moduleId);
+        const modulePanel = `module-${moduleId.replace(/\W/g, '-')}`;
+        const counts = countStates(group);
+        return (
         <Card key={moduleId}>
-          <CardHeader
-            title={t(`systemAdmin.roles.module.${moduleId}`)}
-            description={t('systemAdmin.roles.moduleCount', { count: group.length })}
-          />
+          {/* The module header is the disclosure. Closed, it is one line that already answers
+              «which area, how many, and are any of them dead» — which is as far as most readers
+              need to get before they know which card to open. */}
+          <button
+            type="button"
+            onClick={() => toggleModule(moduleId)}
+            aria-expanded={moduleOpen}
+            aria-controls={modulePanel}
+            className="flex w-full items-center gap-3 px-5 py-3 text-start hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800/60"
+          >
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+              {t(`systemAdmin.roles.module.${moduleId}`)}
+            </span>
+            <span className="shrink-0 text-xs text-slate-500 dark:text-slate-400">
+              {t('systemAdmin.roles.moduleCount', { count: group.length })}
+            </span>
+            {counts.expired > 0 && (
+              <Badge size="sm" tone="danger">
+                {t('systemAdmin.effective.expiredCount', { count: counts.expired })}
+              </Badge>
+            )}
+            {counts.pending > 0 && (
+              <Badge size="sm" tone="warning">
+                {t('systemAdmin.effective.pendingCount', { count: counts.pending })}
+              </Badge>
+            )}
+            <ChevronIcon
+              className={cn('h-4 w-4 shrink-0 text-slate-400 transition-transform', moduleOpen && 'rotate-180')}
+            />
+          </button>
+          {moduleOpen && (
           <CardBody>
-            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+            <ul id={modulePanel} className="divide-y divide-slate-100 dark:divide-slate-800">
               {group.map((row) => {
                 const open = expanded.has(row.key);
                 const panelId = `sources-${row.key.replace(/\W/g, '-')}`;
@@ -231,18 +328,15 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
                       onClick={() => toggle(row.key)}
                       aria-expanded={open}
                       aria-controls={panelId}
-                      className="flex w-full items-start justify-between gap-3 rounded-md p-1 text-start hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800/60"
+                      className="flex w-full items-center justify-between gap-3 rounded-md p-1 text-start hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800/60"
                     >
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium text-slate-800 dark:text-slate-100">
-                          {row.name?.[locale] ?? row.key}
-                        </span>
-                        <span
-                          className="block truncate font-mono text-[11px] text-slate-400"
-                          dir="ltr"
-                        >
-                          {row.key}
-                        </span>
+                      {/* ONE LINE. The key used to sit under every name in monospace, which is
+                          three hundred extra lines on an account that holds three hundred keys —
+                          and it is what a support conversation quotes, not what an administrator
+                          scans. It moved into the detail below. A key the registry no longer names
+                          keeps it here, because there the key IS the name. */}
+                      <span className="min-w-0 truncate text-sm font-medium text-slate-800 dark:text-slate-100">
+                        {row.name?.[locale] ?? row.key}
                       </span>
                       <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                         {row.breakGlass && (
@@ -256,10 +350,9 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
                           </Badge>
                         )}
                         {row.scope !== null && <AssignmentScopeBadge scope={row.scope} />}
-                        <PermissionStateBadge state={row.state} />
-                        <Badge size="sm" tone="neutral">
-                          {t('systemAdmin.effective.sourceCount', { count: row.sources.length })}
-                        </Badge>
+                        {/* Only when it is NOT in force. «سارٍ» on every row is three hundred
+                            identical badges hiding the four that say «انتهت». */}
+                        {row.state !== 'active' && <PermissionStateBadge state={row.state} />}
                         <ChevronIcon
                           className={cn(
                             'h-4 w-4 text-slate-400 transition-transform',
@@ -269,7 +362,10 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
                       </span>
                     </button>
                     {open && (
-                      <div className="ms-1 mt-2">
+                      <div className="ms-1 mt-2 space-y-2">
+                        <p className="truncate font-mono text-[11px] text-slate-400" dir="ltr">
+                          {row.key}
+                        </p>
                         <EffectiveSourceList sources={row.sources} id={panelId} />
                       </div>
                     )}
@@ -278,8 +374,10 @@ export const UserEffectivePermissionsTab = ({ user }: { user: UserDto }): JSX.El
               })}
             </ul>
           </CardBody>
+          )}
         </Card>
-      ))}
+        );
+      })}
     </div>
   );
 };

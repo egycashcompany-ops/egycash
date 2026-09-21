@@ -1,4 +1,10 @@
-// The branch a caller has narrowed themselves to, read off the request.
+// The branches a caller has narrowed themselves to, read off the request.
+//
+// BRANCHES, PLURAL. «كل الشاشات دي موجودة عند كل الفروع، الداتا بس اللي بتتغير» — the screens do
+// not change from one site to the next, the rows do; so somebody who looks after several sites is
+// comparing them, and being made to choose exactly one at a time is being made to do the comparing
+// in his head. The header therefore carries a LIST, and one id is simply a list of one, which is
+// what every client that predates this sends.
 //
 // One control in the command bar, one header, one rule: **it can only narrow**. The caller's
 // granted scope is the ceiling, so a branch-placed employee is unaffected no matter what they send,
@@ -14,8 +20,14 @@
 import { branchRepository } from '../organization';
 import { getCache } from '../../infrastructure/redis/cache';
 
-/** The header the web client sends. `all` — or nothing — means the whole company. */
+/**
+ * The header the web client sends: one branch id, several separated by commas, or `all` — and
+ * `all`, an empty value or no header at all all mean the whole company.
+ */
 export const ACTIVE_BRANCH_HEADER = 'x-active-branch';
+
+/** More than this in one header is somebody probing, not somebody comparing sites. */
+const MAX_SELECTED = 50;
 
 const CACHE_KEY = 'platform:active-branch:v1';
 const TTL_SECONDS = 300;
@@ -43,25 +55,57 @@ const activeBranchIds = async (): Promise<Set<string>> => {
  * Anything unrecognisable — a malformed id, a branch that no longer exists, `all` — resolves to
  * null, which is the unnarrowed view the caller would have had anyway.
  */
-export const resolveActiveBranch = async (
+/**
+ * The header, parsed and held to the caller's ceiling — everything the rule decides, decided.
+ *
+ * Separate from the lookup below, and deliberately: this is the half that says what a caller MAY
+ * narrow to, so it is the half worth proving, and a pure function proves it without a database.
+ * What remains after it is only «does this branch still exist».
+ */
+export const selectableBranches = (
   raw: string | undefined,
   /**
    * The branches the caller's grants reach, when they reach more than one. A multi-branch account
-   * may narrow only to one of THOSE — the reach is the ceiling, exactly as the organization-wide
-   * grant is for everybody else — so a value outside it resolves to null, the unnarrowed view.
+   * may narrow only to those — the reach is the ceiling, exactly as the organization-wide grant is
+   * for everybody else — so anything outside it is dropped rather than refused: a stale id left in
+   * a browser after a grant was narrowed must not take the branches beside it down with it.
    */
   reach?: readonly string[],
-): Promise<string | null> => {
-  if (raw === undefined || raw === '' || raw === 'all') return null;
-  if (!isObjectId(raw)) return null;
-  if (reach !== undefined && reach.length > 0 && !reach.includes(raw)) return null;
-  if ((await activeBranchIds()).has(raw)) return raw;
+): string[] => {
+  if (raw === undefined || raw === '' || raw === 'all') return [];
+  return [...new Set(raw.split(',').map((part) => part.trim()).filter((part) => part !== ''))]
+    .slice(0, MAX_SELECTED)
+    .filter(isObjectId)
+    .filter((id) => reach === undefined || reach.length === 0 || reach.includes(id));
+};
 
-  // A MISS is re-checked against the database before it is refused. Without this, a branch created
+export const resolveActiveBranches = async (
+  raw: string | undefined,
+  reach?: readonly string[],
+): Promise<string[]> => {
+  const asked = selectableBranches(raw, reach);
+  if (asked.length === 0) return [];
+
+  const known = await activeBranchIds();
+  const hits = asked.filter((id) => known.has(id));
+  if (hits.length === asked.length) return hits;
+
+  // A MISS is re-checked against the database before it is dropped. Without this, a branch created
   // a minute ago is offered by the picker — which reads the live list — and then silently ignored
-  // here until the cache expires, which reads as "the switcher does nothing". A hit is the steady
-  // state and stays one cached read; a miss costs one query and then caches the new answer.
+  // here until the cache expires, which reads as "the switcher does nothing". A full hit is the
+  // steady state and stays one cached read; a miss costs one query and then caches the new answer.
   const fresh = await readActiveBranchIds();
   await getCache().set(CACHE_KEY, JSON.stringify(fresh), TTL_SECONDS);
-  return fresh.includes(raw) ? raw : null;
+  return asked.filter((id) => fresh.includes(id));
 };
+
+/**
+ * The single branch the caller is narrowed to, or null.
+ *
+ * Kept because one question genuinely has one answer — «which branch does this NEW document belong
+ * to» — and a caller comparing three sites has not answered it. Several selected is therefore the
+ * same as none here, and `currentBranchId` falls through to his placement, exactly as it does for
+ * a caller who has chosen nothing at all.
+ */
+export const singleActiveBranch = (ids: readonly string[]): string | null =>
+  ids.length === 1 ? (ids[0] ?? null) : null;

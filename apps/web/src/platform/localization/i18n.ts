@@ -411,6 +411,9 @@ const en: Record<string, string> = {
   // Navigation system (shell bar, module rail/panel, command palette)
   'nav.search': 'Search or jump to…',
   'nav.branchSwitcher.label': 'Viewing',
+  // Several ticked at once: three site names do not fit in a command bar, and a truncated list
+  // of them is worse than a number — a count is true at any width.
+  'nav.branchSwitcher.count': '{{count}} branches',
   'nav.branchSwitcher.all': 'The whole company',
   'nav.branchSwitcher.mine': 'All my sites',
   // Delegated grants (ADR-032): the «Permissions» tab a manager sees on a colleague.
@@ -7267,6 +7270,9 @@ const ar: Record<string, string> = {
   // Navigation system (shell bar, module rail/panel, command palette)
   'nav.search': 'ابحث أو انتقل…',
   'nav.branchSwitcher.label': 'المعروض الآن',
+  // عدّة فروع مُعلَّمة معًا: ثلاثة أسماء لا تتّسع لها قائمة الأوامر، وقائمةٌ مبتورة منها أسوأ
+  // من عدد — والعدد صادق عند أي عرض.
+  'nav.branchSwitcher.count': '{{count}} فروع',
   'nav.branchSwitcher.all': 'الشركة كلها',
   'nav.branchSwitcher.mine': 'كل فروعي',
   // توزيع الصلاحيات (ADR-032): تبويب «الصلاحيات» اللي المدير بيشوفه على زميله.

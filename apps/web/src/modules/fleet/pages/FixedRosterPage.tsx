@@ -972,7 +972,7 @@ export const FixedRosterPage = (): JSX.Element => {
             already reads a list, so what narrows the rows is unchanged; the options come from
             the draft, which is every car this board reports on. */}
         <VehicleCodeFilter
-          className="w-56 shrink-0"
+          className="w-40 shrink-0"
           fullWidth
           value={search === '' ? [] : search.split(',').filter((code) => code !== '')}
           options={codeOptions}
@@ -981,7 +981,7 @@ export const FixedRosterPage = (): JSX.Element => {
         {/* THE DAILY BOARD'S MISSION FILTER, at the daily board's width, on the same catalog
             the mission column and the mission chips read. `mission` is ONE parameter: the
             chip below writes it, this select shows it, and the table narrows on it. */}
-        <div className="w-44">
+        <div className="w-36">
           <CatalogMultiSelect
             kind="missionType"
             value={missions}
@@ -1002,17 +1002,29 @@ export const FixedRosterPage = (): JSX.Element => {
             line — dropped the pair onto a second row by itself.
 
             Giving the chips a `flex-1` box of their own settles it whatever the counter list
-            grows to: the box takes the width the selects and the buttons leave, the chips wrap
-            INSIDE it, and the pair stays on the first line at the strip's end. Where everything
-            already fits — the daily board today — the box is simply wider than its chips and
-            nothing moves, which is why both screens now share this shape.
+            grows to: the box takes the width the selects and the buttons leave, and the pair
+            stays on the first line at the strip's end.
+
+            AND THE CHIPS THEMSELVES DO NOT WRAP EITHER — «خلى كله على سطر واحد حتى لو هتصغر كود
+            السيارة شويه، المهم يكونوا كلهم على صف واحد». Wrapping inside the box still cost the
+            strip a second line, for one chip. So the box is `flex-nowrap` and the width comes out
+            of the two selects instead, which have it to give: the car picker drops 224px → 160px
+            and the mission picker 176px → 144px, both still wider than the text they hold. A chip
+            is `shrink-0` so the row gives up width in the one place the reader is not reading.
+
+            `overflow-x-auto` is the floor, not the plan. On a screen too narrow for sixteen chips
+            the box scrolls sideways within itself — the strip stays ONE line and the page is
+            never taken sideways with it, which is what wrapping was avoiding in the first place.
+            The `py-1`/`-my-1` pair is that scroll box paying for itself: `overflow-x` computes
+            `overflow-y` to `auto` too, which would clip a focused chip's 3px ring, so the box
+            carries room for it and gives the height straight back to the strip.
 
             Each counter is a real <button>, as on the daily board: it narrows the table, so it
             must be reachable by keyboard and announce its state, which a tinted <span> with an
             onClick never does. `aria-pressed` is the announcement. The colour belongs to the
             CATEGORY and stays put whether or not the chip is the one applied; the active state
             is a ring drawn on top. */}
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+        <div className="-my-1 flex min-w-0 flex-1 flex-nowrap items-center gap-1.5 overflow-x-auto py-1">
           {counters.map((counter) => (
             <button
               key={counter.key}
@@ -1022,7 +1034,7 @@ export const FixedRosterPage = (): JSX.Element => {
               aria-pressed={counter.active}
               onClick={() => patch(counter.apply)}
               className={[
-                'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+                'flex min-w-[3rem] shrink-0 flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
                 counter.tone,
                 counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',

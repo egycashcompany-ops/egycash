@@ -5931,6 +5931,83 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
     expect(data<{ amountCollected: number }>(edit).amountCollected).toBe(750);
   });
 
+  /*
+   * SEARCHING THE NOTE — «عاوز اقدر ابحث فى الملاحظات».
+   *
+   * The note is where everything the screen has no column for ends up, and past a few hundred
+   * files it is the only way back to one of them. It is asked of the SERVER, over the whole
+   * filtered set, and the totals are measured over the same narrowing — a figure that described
+   * more files than the table shows would be worse than no figure.
+   */
+  describe('searching the accident note', () => {
+    const fileWith = async (notes: string | null, statement: string): Promise<string> => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const res = await request(app)
+        .post('/api/v1/fleet/accidents')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          vehicleId: v.id,
+          occurredAt: '2026-06-15',
+          culprit: 'طرف ثالث',
+          statement,
+          companyCost: 100,
+          amountCollected: 0,
+          paidAmount: 0,
+          ...(notes === null ? {} : { notes }),
+        });
+      expect(res.status).toBe(201);
+      return data<{ id: string }>(res).id;
+    };
+
+    const foundBy = async (notes: string): Promise<string[]> => {
+      const res = await request(app)
+        .get('/api/v1/fleet/accidents')
+        .query({ pageSize: 100, notes })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      return data<{ id: string }[]>(res).map((row) => row.id);
+    };
+
+    it('finds the file by PART of its note, whatever the case, and leaves the others', async () => {
+      const garage = await fileWith('اتصلح فى ورشة الجيزة', 'اصطدام');
+      const cheque = await fileWith('شيك مؤجل ٣ شهور', 'اصطدام');
+      const silent = await fileWith(null, 'اصطدام');
+
+      const hits = await foundBy('ورشة');
+      expect(hits).toContain(garage);
+      expect(hits, 'a different note is not a match').not.toContain(cheque);
+      expect(hits, 'and a file with no note is not one either').not.toContain(silent);
+    });
+
+    it('is a search box, not a regex console — `.*` matches the characters typed', async () => {
+      const literal = await fileWith('رقم a.*b فى الدفتر', 'اصطدام');
+      const other = await fileWith('axxxb', 'اصطدام');
+      const hits = await foundBy('a.*b');
+      expect(hits).toContain(literal);
+      expect(hits, 'an unescaped wildcard would have matched this too').not.toContain(other);
+    });
+
+    it('the totals under the table are measured over the SAME narrowing', async () => {
+      await fileWith('ورشة الجيزة', 'اصطدام');
+      const res = await request(app)
+        .get('/api/v1/fleet/accidents/summary')
+        .query({ notes: 'ورشة' })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(res.status).toBe(200);
+      const totals = data<{ count: number }>(res);
+      const rows = await foundBy('ورشة');
+      expect(totals.count, 'the sum counts exactly the files the page shows').toBe(rows.length);
+    });
+
+    it('REFUSES to be paged — the summary answers about the whole set', async () => {
+      const refused = await request(app)
+        .get('/api/v1/fleet/accidents/summary')
+        .query({ notes: 'ورشة', page: 1 })
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(refused.status).toBe(400);
+    });
+  });
+
   // ── The vehicle-code picker, on violations ─────────────────────────────────
   //
   // This screen had a single-car dropdown and no code filter at all. It now asks the same question

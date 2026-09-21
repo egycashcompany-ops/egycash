@@ -89,6 +89,7 @@ class FleetAccidentService {
       vehicleCodes: query.vehicleCodes,
       culprit: query.culprit,
       culpritEmployeeId: query.culpritEmployeeId,
+      notes: query.notes,
       status: query.status,
       from: query.from,
       to: query.to,

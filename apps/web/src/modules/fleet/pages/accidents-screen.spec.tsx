@@ -411,17 +411,18 @@ describe('the screen is laid out to be read, not scanned', () => {
 
   it('sizes the filter controls to match, and keeps them on ONE row on desktop', () => {
     const html = render();
-    // The threshold is this bar's own, measured: seven controls at this size do not fit at 1400.
-    expect(html).toContain('min-[1440px]:flex-nowrap');
-    expect(html).not.toContain('min-[1400px]:flex-nowrap');
+    // The threshold is this bar's own, measured, and it moves with the bar: the note search is
+    // one control more than the 1440 was measured at.
+    expect(html).toContain('min-[1536px]:flex-nowrap');
+    expect(html).not.toContain('min-[1440px]:flex-nowrap');
     const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2 rounded-lg'));
     const controls = [...bar.matchAll(/<(?:input|select)[^>]*class="([^"]*)"/g)].map(
       (m) => m[1] ?? '',
     );
-    // Three now. The code box and the vehicle dropdown collapsed into ONE vehicle-code picker,
-    // and the culprit's free-text box became the drivers picker — both are buttons rather than
-    // inputs, and are counted separately below.
-    expect(controls.length, 'from, to, status').toBe(3);
+    // Four. The code box and the vehicle dropdown collapsed into ONE vehicle-code picker, and
+    // the culprit's free-text box became the drivers picker — both are buttons rather than
+    // inputs, and are counted separately below. The note search is the fourth.
+    expect(controls.length, 'from, to, notes, status').toBe(4);
     for (const cls of controls) expect(cls, cls).toContain('text-base');
   });
 
@@ -469,6 +470,7 @@ describe('the filter bar', () => {
       'اسم السائق أو كود الموظف',
       'accidents-from',
       'accidents-to',
+      'بحث في الملاحظات',
       'كل الحالات',
     ];
     let at = -1;
@@ -487,6 +489,7 @@ describe('the filter bar', () => {
       '/fleet/accidents?status=open',
       '/fleet/accidents?from=2026-01-01',
       '/fleet/accidents?to=2026-12-31',
+      '/fleet/accidents?notes=%D9%88%D8%B1%D8%B4%D8%A9',
     ]) {
       expect(render({ path }), path).toContain('مسح عوامل التصفية');
     }
@@ -510,6 +513,22 @@ describe('the filter bar', () => {
       }),
     });
     expect(html).toContain('كلاهما مطبق');
+  });
+
+  it('sends the NOTE search to the server — «عاوز اقدر ابحث فى الملاحظات»', () => {
+    // Over the whole filtered set, not the page in hand: the note that would find a file is
+    // usually on a page nobody is looking at, so a browser-side `rows.filter` would answer «لا
+    // يوجد» about a file that exists. Seeded ONLY under the `notes` key, so a page that filtered
+    // in the browser — or sent a different parameter — would look for another key and render
+    // nothing. The totals carry it too, or the sums would describe a wider set than the table.
+    const html = render({
+      path: '/fleet/accidents?notes=%D9%88%D8%B1%D8%B4%D8%A9',
+      seed: withRows([accident({ statement: 'اتفلتر بالملاحظة' })], {
+        list: { notes: 'ورشة' },
+        summary: { notes: 'ورشة' },
+      }),
+    });
+    expect(html).toContain('اتفلتر بالملاحظة');
   });
 
   it('sends the culprit — as an EMPLOYEE, not a typed name — and the date range to the server', () => {

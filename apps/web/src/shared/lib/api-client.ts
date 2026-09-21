@@ -43,17 +43,23 @@ export const originOf = (baseUrl: string, documentOrigin: string): string => {
 export const apiOrigin = (): string => originOf(BASE_URL, window.location.origin);
 
 /**
- * The branch the command bar's switcher has narrowed to, sent on every request.
+ * The branches the command bar's switcher has narrowed to, sent on every request.
  *
  * A header rather than a query parameter because it applies to EVERY call the application makes,
  * and threading it through each one would be a change nobody could keep up to date. The server
  * treats it as a narrowing of the caller's own grants and never as a widening, so it carries no
  * authority — a request that omits it simply sees everything the account may see.
+ *
+ * SEVERAL, comma-separated: the screens are the same at every site and only the rows differ, so
+ * somebody who looks after three branches is comparing them. One branch is a list of one, which is
+ * exactly what this sent before, so nothing on either side changed for the single case.
  */
 let activeBranch: string | null = null;
 
-export const setActiveBranch = (branchId: string | null): void => {
-  activeBranch = branchId;
+export const setActiveBranch = (branchIds: string | readonly string[] | null): void => {
+  if (branchIds === null) activeBranch = null;
+  else if (typeof branchIds === 'string') activeBranch = branchIds === '' ? null : branchIds;
+  else activeBranch = branchIds.length === 0 ? null : branchIds.join(',');
 };
 
 // Definitive auth loss (refresh failed mid-session): the app registers ONE handler here

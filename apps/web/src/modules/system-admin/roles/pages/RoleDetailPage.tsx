@@ -32,7 +32,6 @@ import {
 import { cn } from '../../../../shared/lib/cn';
 import { formatDate } from '../../../../shared/lib/format';
 import { ManagedRoleBadge } from '../components/ManagedRoleBadge';
-import { RoleFormDialog } from '../components/RoleFormDialog';
 import { RolePermissionMatrix } from '../components/RolePermissionMatrix';
 import { AssignmentScopeBadge } from '../components/AssignmentScopeBadge';
 import {
@@ -58,8 +57,6 @@ export const RoleDetailPage = (): JSX.Element => {
   const can = useCan();
   const { id = '' } = useParams<{ id: string }>();
   const [sp, setSp] = useSearchParams();
-  const [editing, setEditing] = useState(false);
-  const [duplicating, setDuplicating] = useState(false);
   const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [revokingAll, setRevokingAll] = useState(false);
@@ -216,7 +213,7 @@ export const RoleDetailPage = (): JSX.Element => {
                 and an `hr-only:*` derivative is restored by the next boot. */}
             {role.managed === 'none' && (
               <Can permission="role.edit">
-                <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>
+                <Button size="sm" variant="secondary" onClick={() => navigate(`/system/roles/${role.id}/edit`)}>
                   {t('systemAdmin.roles.actions.edit')}
                 </Button>
               </Can>
@@ -242,7 +239,7 @@ export const RoleDetailPage = (): JSX.Element => {
                         { keys: blocker.keys.join(', ') },
                       )
                 }
-                onClick={() => setDuplicating(true)}
+                onClick={() => navigate(`/system/roles/new?from=${role.id}`)}
               >
                 {t('systemAdmin.roles.actions.duplicate')}
               </Button>
@@ -267,27 +264,6 @@ export const RoleDetailPage = (): JSX.Element => {
         }
       />
 
-      {editing && (
-        <RoleFormDialog
-          key={`${role.id}:${String(role.version)}`}
-          open
-          role={role}
-          onClose={() => setEditing(false)}
-        />
-      )}
-
-      {/* `role={null}` is the whole point: this is a CREATE, pre-filled. It goes to `createRole`
-          and through every guard a hand-built role passes. */}
-      {duplicating && (
-        <RoleFormDialog
-          key={`duplicate:${role.id}:${String(role.version)}`}
-          open
-          role={null}
-          duplicateOf={role}
-          onClose={() => setDuplicating(false)}
-          onCreated={(created) => navigate(`/system/roles/${created.id}`)}
-        />
-      )}
 
       <div
         className="mb-6 flex flex-wrap gap-1 border-b border-slate-200 dark:border-slate-800"

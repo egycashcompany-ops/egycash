@@ -292,7 +292,7 @@ describe('the payload shape is untouched', () => {
     // `onBulkChange` is typed `(next: string[]) => void`; the form assigns it straight to the
     // `permissionKeys` state that the API has always received.
     expect(SOURCE).toContain('onBulkChange?: ((next: string[]) => void) | undefined;');
-    const form = readFileSync(resolve(HERE, 'RoleFormDialog.tsx'), 'utf8');
+    const form = readFileSync(resolve(HERE, '../pages/RoleEditorPage.tsx'), 'utf8');
     expect(form).toContain('const replaceKeys = (next: string[]): void => setKeys(next);');
     expect(form).toContain('permissionKeys: keys');
   });

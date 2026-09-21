@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   type CreateRole,
   type CreateRoleAssignment,
+  type RenameRoleGroup,
   type UpdateRole,
   type UpdateRoleAssignment,
 } from '@ecms/contracts';
@@ -69,6 +70,27 @@ export const useUpdateRole = (id: string) =>
   useRoleWrite((body: UpdateRole) => api.updateRole(id, body));
 
 export const useDeleteRole = (id: string) => useRoleWrite(() => api.deleteRole(id));
+
+/**
+ * Move one role to a heading — the list's own write, keyed by role rather than bound to one.
+ *
+ * `useUpdateRole` is built for a screen editing ONE role and closes over its id; the list moves
+ * whichever row the administrator touched, so the id travels with the call.
+ */
+export const useMoveRoleToGroup = () =>
+  useRoleWrite((args: { id: string; group: string | null; version: number }) =>
+    api.updateRole(args.id, { group: args.group, version: args.version }),
+  );
+
+/**
+ * The headings in use. Long-lived: they change only when a role is filed or renamed, and both of
+ * those invalidate the roles subtree this key lives under.
+ */
+export const useRoleGroups = () =>
+  useQuery({ queryKey: [MODULE, ROLES, 'groups'], queryFn: api.listRoleGroups, staleTime: 60_000 });
+
+export const useRenameRoleGroup = () =>
+  useRoleWrite((body: RenameRoleGroup) => api.renameRoleGroup(body));
 
 // ── Assignments ─────────────────────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { SetDelegationSchema, objectId } from '@ecms/contracts';
+import { RenameRoleGroupSchema, SetDelegationSchema, objectId } from '@ecms/contracts';
 import { asyncHandler } from '../../infrastructure/http/async-handler';
 import { validate } from '../../infrastructure/http/validate';
 import { authenticate } from '../auth';
@@ -20,7 +20,9 @@ import {
   getRole,
   listAssignments,
   listPermissions,
+  listRoleGroups,
   listRoles,
+  renameRoleGroup,
   revokeAssignment,
   updateAssignment,
   updateRole,
@@ -50,6 +52,16 @@ export const buildRolesRouter = (): Router => {
     authorize('role.view'),
     validate({ params: IdParamSchema }),
     asyncHandler(getRole),
+  );
+  router.get('/groups', authenticate, authorize('role.view'), asyncHandler(listRoleGroups));
+  // Before `/:id` — «groups» is not an id, and a router that met `/:id` first would answer this
+  // with «role not found» for a request that never named a role.
+  router.put(
+    '/groups',
+    authenticate,
+    authorize('role.edit'),
+    validate({ body: RenameRoleGroupSchema }),
+    asyncHandler(renameRoleGroup),
   );
   router.post(
     '/',

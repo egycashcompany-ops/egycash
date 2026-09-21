@@ -356,6 +356,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['system-admin', 'assignments'],
   ],
   'platform.role': [['system-admin']],
+  // A rename rewrites the heading on every role carrying it, so the list AND the distinct-names
+  // read the editor offers are both stale — and they are two different query keys under one
+  // subtree, which is why this maps the subtree rather than either one.
+  'platform.roleGroup': [['system-admin', 'roles']],
   // A chain is read on one screen and nowhere else, so one key is the whole answer — and it is the
   // feature key rather than a list key, because the editor writes by PLACE, not by id: a save can
   // create a row the list does not have yet.

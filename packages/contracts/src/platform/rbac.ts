@@ -9,30 +9,65 @@ import {
 } from '../common/index.js';
 import { PermissionKeySchema } from '../permissions/def.js';
 
+/**
+ * The list heading a role is filed under — a name the administrator writes, not an id.
+ *
+ * It replaces the department reference this field used to be, and the replacement is the point.
+ * A department could only ever name a department, so «أدوار النظام» and «البوابات الخارجية» had
+ * nowhere to go and every role in the company piled up under «عام» — which is exactly what the
+ * owner was looking at when he asked for this: «عاوز اقدر اجمع الادوار فى مجموعات واسميها».
+ *
+ * Purely organizational. Nothing authorizes on it, exactly as `pageId` organizes permissions
+ * without authorizing on them, and two roles in the same group have nothing in common beyond
+ * sitting under one heading.
+ *
+ * A group exists only because some role names it: there is no separate record, so renaming one is
+ * renaming it on every role that carries it, and it disappears when the last of them leaves.
+ */
+export const ROLE_GROUP_MAX = 60;
+const RoleGroupSchema = z
+  .string()
+  .trim()
+  .max(ROLE_GROUP_MAX)
+  // An empty string and «no group» are the same fact, and storing both would split one heading in
+  // two — «عام» once for null and once for ''.
+  .transform((value) => (value === '' ? null : value))
+  .nullable()
+  .optional();
+
 export const CreateRoleSchema = z
   .object({
     name: LocalizedStringSchema,
     description: z.string().max(500).optional(),
-    /**
-     * The company-wide department this role belongs to (ADR-031), or null for one that belongs to
-     * no department in particular.
-     *
-     * Purely organizational — nothing authorizes on it, exactly as `pageId` organizes permissions
-     * without authorizing on them. It exists because a flat list of every role in the company is
-     * unreadable by the time there are thirty of them: «انا مش عاوز الادوار سايحه على بعض انا عاوز
-     * تنظيم فى الادوار على حسب الادارات».
-     */
-    departmentCatalogId: objectId().nullable().optional(),
+    group: RoleGroupSchema,
     permissionKeys: z.array(z.string()).min(1),
   })
   .strict();
 export type CreateRole = z.infer<typeof CreateRoleSchema>;
 
+/**
+ * Rename one heading across every role that carries it.
+ *
+ * Its own endpoint rather than a loop of role updates on the client, because a rename is one act
+ * and a loop is not: a client that PATCHed eight roles and lost the network after five would leave
+ * the company with two headings where it had one, and no way to tell which was meant.
+ *
+ * `to: null` ungroups them — the same act as clearing the field on each, which is how a heading is
+ * deleted. There is nothing else to delete: a group is a name roles carry, not a record.
+ */
+export const RenameRoleGroupSchema = z
+  .object({
+    from: z.string().trim().max(ROLE_GROUP_MAX).nullable(),
+    to: z.string().trim().max(ROLE_GROUP_MAX).nullable(),
+  })
+  .strict();
+export type RenameRoleGroup = z.infer<typeof RenameRoleGroupSchema>;
+
 export const UpdateRoleSchema = z
   .object({
     name: LocalizedStringSchema.optional(),
     description: z.string().max(500).nullable().optional(),
-    departmentCatalogId: objectId().nullable().optional(),
+    group: RoleGroupSchema,
     permissionKeys: z.array(z.string()).min(1).optional(),
     version: z.number().int().min(0),
   })
@@ -65,14 +100,17 @@ export interface RoleDto {
   isSystem: boolean;
   /** Derived from `isSystem` + `key` — the single answer to "may I edit this?". */
   managed: RoleManagement;
+  /** The heading the list files this role under; null files it under «عام». */
+  group: string | null;
   /**
-   * The company-wide department the list groups this role under; null groups it under «عام».
+   * How many live assignments carry this role.
    *
-   * The ID alone, not the name: the screen that groups on it already loads the department catalog
-   * to offer it in the form, so resolving the name here would be a second read of the same list
-   * for every role on the page.
+   * On the list because it answers the question the list cannot otherwise answer. Two roles named
+   * «الموارد البشرية» and «الموارد البشرية Test» are indistinguishable by name and permission
+   * count; that one of them is held by nobody is the fact that tells an administrator which is the
+   * leftover of an experiment.
    */
-  departmentCatalogId: string | null;
+  holderCount: number;
   permissionKeys: string[];
   version: number;
   createdAt: string;

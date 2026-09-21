@@ -274,18 +274,6 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     };
   }
 
-  /**
-   * WHICH CARS the visits matching this filter belong to — distinct, over the WHOLE filtered set.
-   * The odometer register does the same, for the same figure; see `vehicleIdsMatching` there.
-   */
-  async vehicleIdsMatching(filter: FilterQuery<FleetMaintenanceVisitDoc>): Promise<string[]> {
-    const rows = await this.model.aggregate<{ _id: Types.ObjectId | null }>([
-      { $match: this.baseFilter(undefined, filter) },
-      { $group: { _id: '$vehicleId' } },
-    ]);
-    return rows.filter((row) => row._id !== null).map((row) => String(row._id));
-  }
-
   visitFilter(query: {
     vehicleId?: string | undefined;
     vehicleIds?: readonly string[] | undefined;

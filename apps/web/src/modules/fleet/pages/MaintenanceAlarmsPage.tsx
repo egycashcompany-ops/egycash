@@ -14,7 +14,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
-import { HighestReadingStrip } from '../components/HighestReadingStrip';
+import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -115,37 +115,6 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
         (a.remainingKm ?? Number.POSITIVE_INFINITY) - (b.remainingKm ?? Number.POSITIVE_INFINITY),
     );
   }, [alarmsQuery.data, levels.join(','), vehicleCodes.join(','), sortParam]);
-
-  /*
-   * «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the same figure the two registers show,
-   * computed HERE rather than asked of a summary endpoint, and that is not an exception to the
-   * rule those two follow. The rule is «the figure describes the whole filtered set, never one
-   * page», and this board holds the whole set: it has no paging at all and its two filters run
-   * in the browser over every row. Asking a server for a maximum over rows already in hand would
-   * be a second, slower copy of the same arithmetic — and one that could disagree with the table
-   * beneath it, because the board filters by code and level in ways the endpoint has no words for.
-   *
-   * The READING it maximises is still the server's: `latestReading` is the very number this row's
-   * `sinceServiceKm` was measured from, so the strip and the row cannot drift apart.
-   */
-  const highest = useMemo(() => {
-    let best: (typeof rows)[number] | null = null;
-    for (const alarm of rows) {
-      if (alarm.latestReading === null) continue;
-      if (best === null || alarm.latestReading > (best.latestReading as number)) best = alarm;
-    }
-    return {
-      reading: best?.latestReading ?? null,
-      vehicleId: best?.vehicleId ?? null,
-      code: best?.code ?? null,
-      // The board carries no date for the reading — it is a projection of levels, not of the log.
-      at: null,
-      vehicles: rows.length,
-      // And no distance: it holds one row per CAR, not one per period, so there is nothing here
-      // to add up. The strip leaves the cell out rather than showing a zero.
-      km: null,
-    };
-  }, [rows]);
 
   // Ascending, then descending, then out of the order altogether — and a column the table
   // is NOT sorted by joins the end of it rather than replacing what is there.
@@ -280,6 +249,10 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
         <FilterBar
           hasActiveFilters={levels.length > 0 || vehicleCodes.length > 0}
           onClear={() => patch({ level: null, vehicleCodes: null })}
+          // This board holds the WHOLE set — it has no paging at all and both its filters run in
+          // the browser over every row — so the rows in hand ARE the answer, and the badge says
+          // the same thing here as on the two registers.
+          trailing={<FilteredCount value={alarmsQuery.isPending ? undefined : rows.length} />}
         >
           {/* The same control as every other screen — but fed from the BOARD it already holds
               rather than a registry search, because this page is the whole fleet's alarms, not a
@@ -299,10 +272,6 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
             onChange={(next) => patch({ level: next.length === 0 ? null : next.join(',') })}
           />
         </FilterBar>
-
-        {/* The same figure the two registers show — see the strip, and the memo above for why
-            this board computes it instead of asking for it. */}
-        <HighestReadingStrip data={highest} loading={alarmsQuery.isPending} />
 
         <DataTable
           columns={columns}

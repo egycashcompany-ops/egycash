@@ -527,10 +527,7 @@ export const FixedRosterPage = (): JSX.Element => {
    * board, `useDraftBoard` resets the draft against it, and a draft equal to the baseline has no
    * changed rows. The same reset is what makes «إلغاء» clear the tint too.
    */
-  const unsavedIds = useMemo(
-    () => new Set(pending.map((row) => row.vehicleId)),
-    [pending],
-  );
+  const unsavedIds = useMemo(() => new Set(pending.map((row) => row.vehicleId)), [pending]);
 
   // «نوع المهمة» is a reference to the fleet's own vocabulary — the SAME `missionType` catalog
   // the DAILY roster reads (أنواع المهمات), through the same cached hook, so the two boards
@@ -995,30 +992,47 @@ export const FixedRosterPage = (): JSX.Element => {
           />
         </div>
 
-        {/* Each counter is a real <button>, as on the daily board: it narrows the table, so it
+        {/* THE CHIPS WRAP INSIDE THEIR OWN BOX, not inside the strip — «عاوز شكل الفلاتر بتوع
+            الطاقم الثابت بزراير حفظ والغاء يكونوا زى شاشه تعيين السيارات».
+
+            Both boards laid the selects, the chips and the save pair out as one wrapping row with
+            `ms-auto` on the pair. That reads as the daily board's single line only while the row
+            happens to fit: this board carries one counter more («بلا طقم» beside «بطقم»), so on
+            the same screen it overflowed and `ms-auto` — which pushes to the end of the LAST
+            line — dropped the pair onto a second row by itself.
+
+            Giving the chips a `flex-1` box of their own settles it whatever the counter list
+            grows to: the box takes the width the selects and the buttons leave, the chips wrap
+            INSIDE it, and the pair stays on the first line at the strip's end. Where everything
+            already fits — the daily board today — the box is simply wider than its chips and
+            nothing moves, which is why both screens now share this shape.
+
+            Each counter is a real <button>, as on the daily board: it narrows the table, so it
             must be reachable by keyboard and announce its state, which a tinted <span> with an
             onClick never does. `aria-pressed` is the announcement. The colour belongs to the
             CATEGORY and stays put whether or not the chip is the one applied; the active state
             is a ring drawn on top. */}
-        {counters.map((counter) => (
-          <button
-            key={counter.key}
-            type="button"
-            data-counter={counter.key}
-            data-active={counter.active ? 'true' : undefined}
-            aria-pressed={counter.active}
-            onClick={() => patch(counter.apply)}
-            className={[
-              'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
-              'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
-              counter.tone,
-              counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
-            ].join(' ')}
-          >
-            <span className="truncate">{counter.label}</span>
-            <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
-          </button>
-        ))}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {counters.map((counter) => (
+            <button
+              key={counter.key}
+              type="button"
+              data-counter={counter.key}
+              data-active={counter.active ? 'true' : undefined}
+              aria-pressed={counter.active}
+              onClick={() => patch(counter.apply)}
+              className={[
+                'flex min-w-[3.5rem] flex-col items-center rounded-md px-2 py-1 text-xs font-medium transition-shadow',
+                'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1',
+                counter.tone,
+                counter.active ? 'ring-2 ring-offset-1 dark:ring-offset-slate-900' : 'ring-0',
+              ].join(' ')}
+            >
+              <span className="truncate">{counter.label}</span>
+              <span className="text-sm font-bold">{formatNumber(counter.value, locale)}</span>
+            </button>
+          ))}
+        </div>
 
         {/* Offered only when there is something to undo — the daily board's rule and its
             button, down to the hue. Clears the three view filters together. */}
@@ -1037,10 +1051,10 @@ export const FixedRosterPage = (): JSX.Element => {
         )}
 
         {/* «حفظ» at the END of the strip, where the daily board keeps it — not in the page
-            header. It belongs beside the tally that says what the board currently IS, and
-            `ms-auto` pins it to the far edge whatever the chips add up to. */}
+            header. It belongs beside the tally that says what the board currently IS, and the
+            chips' own box above holds it there, on the FIRST line, whatever they add up to. */}
         {mayPlan && (
-          <div className="ms-auto flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {dirty && (
               <span data-unsaved="true" className="text-xs text-amber-700 dark:text-amber-300">
                 {t('fleet.fixedRoster.unsaved')}
@@ -1054,7 +1068,12 @@ export const FixedRosterPage = (): JSX.Element => {
             >
               {t('common.cancel')}
             </Button>
-            <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => void commit()}>
+            <Button
+              size="sm"
+              disabled={!dirty}
+              loading={save.isPending}
+              onClick={() => void commit()}
+            >
               {t('common.save')}
             </Button>
           </div>

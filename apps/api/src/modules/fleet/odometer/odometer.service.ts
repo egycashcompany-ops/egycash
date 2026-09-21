@@ -10,8 +10,6 @@ import {
   FleetEvents,
   parseFleetSort,
   type CorrectFleetOdometer,
-  type FleetHighestReadingDto,
-  type FleetOdometerSummaryQuery,
   type ListFleetOdometerQuery,
   type Paginated,
   type RecordFleetOdometer,
@@ -26,7 +24,6 @@ import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { computeAlarms } from '../maintenance/maintenance-alarm';
 import { alarmSortsFor } from '../maintenance/alarm-sort';
 import { fleetOdometerRepository } from './odometer.repository';
-import { highestReadingAmong } from './highest-reading';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
 import { type FleetOdometerLogDoc } from './odometer.model';
 
@@ -403,15 +400,9 @@ class FleetOdometerService {
     return { ...page, codes };
   }
 
-  /**
-   * THE FILTER, BUILT ONCE — what the page is cut from, and what the summary is measured over.
-   *
-   * The figures above the table describe the whole filtered set, and the only way to keep that
-   * true as either question grows a filter is for both to be asked in the same words. The
-   * summary's schema shares this one's fields for the same reason, and has no `page` at all.
-   */
+  /** What the page is cut from — the two resolved filters `list` describes, folded into one. */
   private async filterFor(
-    query: ListFleetOdometerQuery | FleetOdometerSummaryQuery,
+    query: ListFleetOdometerQuery,
   ): Promise<FilterQuery<FleetOdometerLogDoc>> {
     let vehicleIds: string[] | undefined;
 
@@ -439,23 +430,6 @@ class FleetOdometerService {
       // reading kept from the old book on a car the registry never had has no alarm level.
       vehicleCodes: query.alerts === undefined ? query.vehicleCodes : undefined,
     });
-  }
-
-  /**
-   * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the highest reading any car in the
-   * filter has reached, over the WHOLE filtered set and never over one page.
-   *
-   * Two steps, and the first is why there are two: the readings the filter matched name their
-   * cars, and the answer is about the CARS. A maximum over the matched ROWS would answer a
-   * different question — «the biggest number written inside this date window» — and a car is at
-   * the reading it is at, not at the one it happened to be at last month.
-   */
-  async summary(query: FleetOdometerSummaryQuery): Promise<FleetHighestReadingDto> {
-    const filter = await this.filterFor(query);
-    const { vehicleIds, km } = await fleetOdometerRepository.vehicleIdsMatching(filter);
-    // The distance comes from the same pass that named the cars, so the two figures above the
-    // table are always about the same set of rows — they cannot be one filter apart.
-    return { ...(await highestReadingAmong(vehicleIds)), km };
   }
 
   /**

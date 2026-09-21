@@ -33,8 +33,8 @@ import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
-import { useMaintenanceAlarms, useOdometerLogs, useOdometerTotals } from '../api/fleet-queries';
-import { HighestReadingStrip } from '../components/HighestReadingStrip';
+import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
+import { FilteredCount } from '../components/FilteredCount';
 import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
@@ -121,13 +121,7 @@ export const OdometerPage = (): JSX.Element => {
   // requires a driving test, so every offer is a driver this table could actually show.
   const mayFilterByDriver = can('employee.view');
 
-  /**
-   * WHAT THE READER IS LOOKING AT — the filters, and only the filters.
-   *
-   * Split from `params` because the figure above the table describes THIS set and paging cannot
-   * reach it: the summary endpoint has no `page` field at all and would refuse a request that
-   * carried one. The accidents screen splits its state for the same reason, in the same words.
-   */
+  /** WHAT THE READER IS LOOKING AT — the filters, and only the filters. */
   const filters = useMemo(
     () => ({
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
@@ -143,7 +137,6 @@ export const OdometerPage = (): JSX.Element => {
     [filters, page, pageSize, sorts],
   );
   const { data, isLoading, isError, error, refetch } = useOdometerLogs(params);
-  const highest = useOdometerTotals(filters);
   const rows = data?.items ?? [];
 
   /**
@@ -390,10 +383,17 @@ export const OdometerPage = (): JSX.Element => {
       <div className="space-y-4">
         <FilterBar
           singleRow
+          // 1400 was measured for this bar plus its reset; the count badge beside them is new
+          // width, and `singleRow` does not SHORTEN a row that will not fit — it pushes it off
+          // the page. So the threshold moves up with the row rather than staying where it was.
+          singleRowFrom={1440}
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
             patch({ vehicleCodes: null, from: null, to: null, drv: null, alerts: null })
           }
+          // How many readings the filter matched, over the WHOLE set — `totalItems`, not the
+          // page's length, so turning a page never moves it.
+          trailing={<FilteredCount value={data?.meta.totalItems} />}
         >
           {/* One row on a desktop, in the order the question is asked: which cars, over which
               days, driven by whom, in what state. Every filter is `shrink-0` and sized to what it
@@ -480,11 +480,6 @@ export const OdometerPage = (): JSX.Element => {
             onChange={(next) => patch({ alerts: next.length === 0 ? null : next.join(',') })}
           />
         </FilterBar>
-
-        {/* «لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the figure describes THIS filter, not
-            this page: it is asked of the server with the filters alone, and turning a page
-            neither refetches it nor changes it. */}
-        <HighestReadingStrip data={highest.data} loading={highest.isPending} distance />
 
         <DataTable
           columns={columns}

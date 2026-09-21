@@ -5,8 +5,6 @@ import {
   parseFleetSort,
   type CheckInFleetMaintenance,
   type CheckOutFleetMaintenance,
-  type FleetHighestReadingDto,
-  type FleetMaintenanceSummaryQuery,
   type ListFleetMaintenanceQuery,
   type Paginated,
   type UpdateFleetMaintenance,
@@ -27,7 +25,6 @@ import {
 } from './maintenance.repository';
 import { type FleetMaintenanceVisitDoc } from './maintenance.model';
 import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
-import { highestReadingAmong } from '../odometer/highest-reading';
 
 /**
  * A page of visits plus the registry codes for exactly the vehicles ON that page — one lookup,
@@ -407,9 +404,7 @@ class FleetMaintenanceService {
    * them, and paginating what survived — a page cut from a bounded fetch, so a driver with more
    * history than that bound would silently lose the rest. It belongs in the pipeline.
    */
-  private async vehicleScope(
-    query: ListFleetMaintenanceQuery | FleetMaintenanceSummaryQuery,
-  ): Promise<string[] | undefined> {
+  private async vehicleScope(query: ListFleetMaintenanceQuery): Promise<string[] | undefined> {
     if (query.vehicleCodes === undefined) return undefined;
     const matched = await fleetVehicleRepository.list({
       filter: { code: { $in: [...query.vehicleCodes] } },
@@ -420,11 +415,11 @@ class FleetMaintenanceService {
   }
 
   /**
-   * THE FILTER, BUILT ONCE — what the page is cut from, and what the summary is measured over.
-   * The odometer register does the same, for the same reason; see `filterFor` there.
+   * THE FILTER, BUILT ONCE — the vehicle scope and the driver clause folded in together, so the
+   * page is cut from exactly what the reader asked for. The odometer register does the same.
    */
   private async filterFor(
-    query: ListFleetMaintenanceQuery | FleetMaintenanceSummaryQuery,
+    query: ListFleetMaintenanceQuery,
   ): Promise<FilterQuery<FleetMaintenanceVisitDoc>> {
     const vehicleIds = await this.vehicleScope(query);
     return fleetMaintenanceRepository.withDriverFilter(
@@ -434,16 +429,6 @@ class FleetMaintenanceService {
       }),
       query.driverEmployeeIds,
     );
-  }
-
-  /**
-   * «عاوز لما اعمل فلتر يجبلى العداد فى حالة الفلتر كام» — the highest reading any car in the
-   * filter has reached. The visits name their cars; the figure is about the cars, and comes from
-   * the same one place every other screen's copy of it comes from.
-   */
-  async summary(query: FleetMaintenanceSummaryQuery): Promise<FleetHighestReadingDto> {
-    const filter = await this.filterFor(query);
-    return highestReadingAmong(await fleetMaintenanceRepository.vehicleIdsMatching(filter));
   }
 
   async list(query: ListFleetMaintenanceQuery): Promise<MaintenanceVisitPage> {

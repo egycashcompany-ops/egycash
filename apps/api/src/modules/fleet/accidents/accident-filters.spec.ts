@@ -153,6 +153,41 @@ describe('the culprit search', () => {
   });
 });
 
+describe('the note search — «عاوز اقدر ابحث فى الملاحظات»', () => {
+  // The note is where everything this screen has no column for ends up: which garage, which
+  // cheque, what the other side promised. Past a few hundred files it is the only way back to
+  // one of them, so it is asked of the SERVER — the table holds one page, and the note that
+  // would have found the file is usually on a page nobody is looking at.
+  it('matches part of the note, case-insensitively', async () => {
+    const clauses = clausesOf(await filterFor({ notes: 'ورشة' }));
+    const rx = clauses[0]?.['notes'] as RegExp;
+    expect(rx).toBeInstanceOf(RegExp);
+    expect(rx.flags).toContain('i');
+    expect(rx.test('اتصلح فى ورشة الجيزة')).toBe(true);
+    expect(rx.test('شيك مؤجل')).toBe(false);
+  });
+
+  it('ESCAPES what the reader typed, exactly as the name search does', async () => {
+    const rx = clausesOf(await filterFor({ notes: 'a.*b' }))[0]?.['notes'] as RegExp;
+    expect(rx.test('a.*b'), 'the literal text still matches itself').toBe(true);
+    expect(rx.test('axxxb'), 'but it is not a wildcard').toBe(false);
+    expect(rx.source).toBe('a\\.\\*b');
+  });
+
+  it('is its OWN clause — it narrows beside every other filter, never instead of one', async () => {
+    const clauses = clausesOf(await filterFor({ notes: 'ورشة', status: 'open' }));
+    expect(clauses).toHaveLength(2);
+  });
+
+  it('the totals are measured over it too, or the sums would describe a different set', async () => {
+    await fleetAccidentService.summary({ notes: 'ورشة' } as Parameters<
+      typeof fleetAccidentService.summary
+    >[0]);
+    const rx = clausesOf(captured)[0]?.['notes'] as RegExp;
+    expect(rx, 'the summary asks the same question').toBeInstanceOf(RegExp);
+  });
+});
+
 describe('the remaining filters', () => {
   it('narrows by status', async () => {
     expect(clausesOf(await filterFor({ status: 'closed' }))).toEqual([{ status: 'closed' }]);
@@ -172,13 +207,14 @@ describe('the remaining filters', () => {
         code: '21',
         vehicleId: oid('b1'),
         culprit: 'اشرف',
+        notes: 'ورشة',
         status: 'open',
         from: new Date('2026-01-01T00:00:00.000Z'),
         to: new Date('2026-12-31T00:00:00.000Z'),
       }),
     );
-    // Six filters, six clauses: none of them absorbed, replaced or dropped by another.
-    expect(clauses).toHaveLength(6);
+    // Seven filters, seven clauses: none of them absorbed, replaced or dropped by another.
+    expect(clauses).toHaveLength(7);
   });
 });
 

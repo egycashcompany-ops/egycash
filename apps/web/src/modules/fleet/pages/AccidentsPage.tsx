@@ -59,6 +59,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 const REMEMBERED_FILTERS = [
   'culpritBy',
   'from',
+  'notes',
   'status',
   'to',
   'vehicleCodes',
@@ -87,6 +88,10 @@ export const AccidentsPage = (): JSX.Element => {
   // WHICH drivers, exactly — where the name box above is a guess that matches anyone sharing a
   // first name, and is the only way to find a third party.
   const culpritBy = splitVehicleCodeList(sp.get('culpritBy') ?? '');
+  // «عاوز اقدر ابحث فى الملاحظات» — part of the note, matched server-side over the WHOLE set.
+  // Not a filter the browser could apply: the table holds one page, and the note that would have
+  // found the file is usually on a page nobody is looking at.
+  const notes = sp.get('notes') ?? '';
   const status = sp.get('status') ?? '';
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
@@ -131,6 +136,7 @@ export const AccidentsPage = (): JSX.Element => {
     () => ({
       vehicleCodes: vehicleCodes.length === 0 ? undefined : vehicleCodes,
       culpritEmployeeId: culpritBy.length === 0 ? undefined : culpritBy.join(','),
+      notes: notes || undefined,
       status: status || undefined,
       from: from || undefined,
       to: to || undefined,
@@ -146,11 +152,16 @@ export const AccidentsPage = (): JSX.Element => {
   const summary = useAccidentSummary(filters);
 
   const clearFilters = (): void =>
-    // ONE update, all six keys. The code search and the vehicle pick go together — leaving either
+    // ONE update, every key. The code search and the vehicle pick go together — leaving either
     // behind would hand back a "cleared" bar that is still filtering.
-    patch({ vehicleCodes: null, culpritBy: null, status: null, from: null, to: null });
+    patch({ vehicleCodes: null, culpritBy: null, notes: null, status: null, from: null, to: null });
   const hasFilters =
-    vehicleCodes.length > 0 || culpritBy.length > 0 || status !== '' || from !== '' || to !== '';
+    vehicleCodes.length > 0 ||
+    culpritBy.length > 0 ||
+    notes !== '' ||
+    status !== '' ||
+    from !== '' ||
+    to !== '';
 
   // Unfiltered registry map so files of retired vehicles still resolve to their codes.
   const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
@@ -428,7 +439,11 @@ export const AccidentsPage = (): JSX.Element => {
         */}
         <FilterBar
           singleRow
-          singleRowFrom={1440}
+          // One control wider than the 1440 this was measured at. The note box shares the row's
+          // slack rather than claiming a width of its own, so the bar needs the next notch up and
+          // no more — `flex-nowrap` does not shorten a row that will not fit, it pushes it off
+          // the page.
+          singleRowFrom={1536}
           hasActiveFilters={hasFilters}
           onClear={clearFilters}
         >
@@ -479,6 +494,18 @@ export const AccidentsPage = (): JSX.Element => {
                 textScale="comfortable"
               />
             </div>
+          </div>
+          {/* THE NOTE, SEARCHED — «عاوز اقدر ابحث فى الملاحظات». A SHARED child, like the driver
+              picker beside it: it takes a share of whatever the row has left rather than
+              demanding its own width, so adding it cannot push the bar off the page. */}
+          <div className="min-w-[8rem] flex-1">
+            <Input
+              aria-label={t('fleet.odometer.columns.notes')}
+              placeholder={t('fleet.maintenance.notesFilter')}
+              value={notes}
+              onChange={(e) => patch({ notes: e.target.value || null })}
+              textScale="comfortable"
+            />
           </div>
           <div className="w-32 shrink-0">
             <Select

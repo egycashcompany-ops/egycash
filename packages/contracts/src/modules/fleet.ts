@@ -1595,6 +1595,15 @@ const accidentFilters = {
   /** The drivers asked about, ORed — exact, where the name search is a guess. */
   culpritEmployeeId: listQuery(objectId()),
   status: FleetAccidentStatusSchema.optional(),
+  /**
+   * Part of the file's own NOTE, matched case-insensitively — «عاوز اقدر ابحث فى الملاحظات».
+   *
+   * The note is where the things this screen has no column for end up: which garage, which
+   * cheque, what the other side promised. Once a fleet has a few hundred files, the only way
+   * back to one of them is the sentence somebody wrote on it. The workshop register searches
+   * its own note the same way, with the same bound.
+   */
+  notes: z.string().trim().min(1).max(100).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
 };

@@ -150,6 +150,8 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
     culprit?: string | undefined;
     /** Which drivers, ORed. `[]` narrows to nothing, as every id list on this module does. */
     culpritEmployeeId?: readonly string[] | undefined;
+    /** Part of the file's own note. */
+    notes?: string | undefined;
     status?: string | undefined;
     from?: Date | undefined;
     to?: Date | undefined;
@@ -174,6 +176,11 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
       clauses.push({
         culprit: new RegExp(query.culprit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
       });
+    }
+    // Escaped for the same reason the name search is: what the reader typed, not a pattern they
+    // did not write. A file with no note simply does not match — `null` is not a substring.
+    if (query.notes !== undefined) {
+      clauses.push({ notes: new RegExp(query.notes.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
     }
     if (query.status !== undefined) clauses.push({ status: query.status });
     if (query.from !== undefined) clauses.push({ occurredAt: { $gte: query.from } });

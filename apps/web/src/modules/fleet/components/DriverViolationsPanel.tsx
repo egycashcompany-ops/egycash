@@ -352,17 +352,18 @@ export const DriverViolationsPanel = ({
     {
       key: 'driver',
       header: t('fleet.violations.fields.driver'),
-      // THE ONE COLUMN THAT MAY WRAP, and the only one holding a sentence. Capped so the board
-      // fits its half of the screen: `break-words` splits a word only when it would otherwise
-      // overflow, which is exactly the case here — a name kept from the old book with the phone
-      // number joined onto it («محمد الشحات صادق عباس0502302») is ONE token, and uncapped it set
-      // the width of the whole table.
-
-      // BREAKABLE. A name kept from the old book often carries the phone number joined onto it —
-      // «محمد الشحات صادق عباس0502302» is one unbreakable token — and one such cell was setting the
-      // width of the whole table and handing the board a sideways scrollbar.
+      // THE COLUMN THAT TAKES WHAT IS LEFT. Every other column asks for `w-px` and settles for its
+      // own content, so `w-full` here claims the whole remainder — «الاسم صغير اوى بالنسبه للباقى»
+      // was a 6.5rem cap folding names into three lines while the board sat half empty beside them.
+      //
+      // Wide is safe BECAUSE of `[overflow-wrap:anywhere]`: it lets the browser break inside a word,
+      // which drops this cell's min-content width to a single character. A name kept from the old
+      // book with the phone number joined onto it — «محمد الشحات صادق عباس0502302», one unbreakable
+      // token — therefore cannot set the width of the table, with or without a cap. `break-words`
+      // would not do: it breaks only after layout, and min-content stays the whole token.
+      className: 'w-full',
       render: (row) => (
-        <span className="block w-[6.5rem] [overflow-wrap:anywhere]">
+        <span className="block [overflow-wrap:anywhere]">
           <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />
         </span>
       ),

@@ -8,11 +8,11 @@ import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
 import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
+import { loginFailureKey } from './login-failure';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
-import { ApiError } from '../../shared/lib/api-client';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
 
 interface Enrollment {
@@ -59,12 +59,10 @@ export const LoginPage = (): JSX.Element => {
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
     } catch (e) {
-      // §15.3: a not-yet-activated account needs its setup link, not a retry.
-      setError(
-        e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVATED'
-          ? t('platform.auth.login.notActivated')
-          : t('platform.auth.login.failed'),
-      );
+      // The server names most of these — a locked account, a suspended one, too many attempts —
+      // and so does the browser for a dead connection. `loginFailureKey` is where each becomes a
+      // sentence; printing one generic line for all of them is what this replaces.
+      setError(t(loginFailureKey(e, navigator.onLine)));
     } finally {
       setBusy(false);
     }
@@ -77,8 +75,10 @@ export const LoginPage = (): JSX.Element => {
     try {
       const response = await totpChallengeRequest(step.challengeToken, code);
       if (!response.totpRequired) finish(response.me);
-    } catch {
-      setError(t('platform.auth.login.failed'));
+    } catch (e) {
+      // A wrong six-digit code is the common case here and now says so, instead of reading as
+      // though the password that already passed had been rejected.
+      setError(t(loginFailureKey(e, navigator.onLine)));
     } finally {
       setBusy(false);
     }

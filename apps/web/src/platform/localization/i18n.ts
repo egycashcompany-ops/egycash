@@ -345,6 +345,24 @@ const en: Record<string, string> = {
     'Your account requires two-factor authentication. Scan this QR code with Microsoft Authenticator (or any authenticator app), then enter the 6-digit code.',
   'platform.auth.login.enrollQrAlt': 'Two-factor setup QR code',
   'platform.auth.login.enrollManual': "Can't scan? Enter this key manually",
+  // Why the sign-in did not work. The server already names most of these; the screen used to
+  // print the generic line for all of them. `badCredentials` stays deliberately vague about
+  // WHICH half was wrong — see `login-failure.ts`.
+  'platform.auth.login.badCredentials':
+    'The sign-in details are not correct. Check the password, and that the first box holds your email, username or employee code.',
+  'platform.auth.login.locked':
+    'This account is locked for a short while after too many failed attempts. Wait a few minutes and try again, or ask an administrator to unlock it.',
+  'platform.auth.login.notActive':
+    'This account is not active. An administrator has suspended it, so signing in will not work until they enable it again.',
+  'platform.auth.login.badCode': 'The authentication code is not correct. Check it and enter it again.',
+  'platform.auth.login.tooMany':
+    'Too many attempts from this device. Wait a few minutes before trying again.',
+  'platform.auth.login.serverDown':
+    'The server answered with an error. This is not something you did — try again shortly, and tell IT if it continues.',
+  'platform.auth.login.offline':
+    'This device is not connected to the internet. Check the connection and try again.',
+  'platform.auth.login.unreachable':
+    'The server could not be reached. Your connection may have dropped, or the service may be restarting — try again shortly.',
   'platform.auth.login.failed': 'Sign-in failed',
   'platform.auth.login.notActivated':
     'This account is not activated yet. Open the setup link you received, or ask HR to resend it.',
@@ -7247,6 +7265,21 @@ const ar: Record<string, string> = {
     'حسابك يتطلب مصادقة ثنائية. امسح رمز QR بتطبيق Microsoft Authenticator (أو أي تطبيق مصادقة) ثم أدخل الرمز المكوّن من 6 أرقام.',
   'platform.auth.login.enrollQrAlt': 'رمز QR لإعداد المصادقة الثنائية',
   'platform.auth.login.enrollManual': 'لا يمكنك المسح؟ أدخل هذا المفتاح يدويًا',
+  // سبب فشل الدخول. السيرفر بيقول أغلبها، والشاشة كانت بترمي السبب وتعرض جملة عامة.
+  // `badCredentials` بتفضل مبهمة عن أنهي نص غلط بالتحديد — الشرح في `login-failure.ts`.
+  'platform.auth.login.badCredentials':
+    'بيانات الدخول مش صح. راجع كلمة المرور، وإن الخانة الأولى فيها البريد أو اسم المستخدم أو الكود الوظيفي.',
+  'platform.auth.login.locked':
+    'الحساب مقفول لفترة قصيرة بعد محاولات دخول كتير فاشلة. استنى كام دقيقة وجرّب تاني، أو اطلب من المسؤول يفتحه.',
+  'platform.auth.login.notActive':
+    'الحساب ده موقوف. المسؤول أوقفه، فالدخول مش هيشتغل لحد ما يرجّعه شغال.',
+  'platform.auth.login.badCode': 'كود التحقق مش صح. راجعه وادخله تاني.',
+  'platform.auth.login.tooMany': 'محاولات كتير من الجهاز ده. استنى كام دقيقة قبل ما تجرّب تاني.',
+  'platform.auth.login.serverDown':
+    'السيرفر ردّ بخطأ. المشكلة مش منك — جرّب كمان شوية، ولو فضلت كلّم الدعم الفني.',
+  'platform.auth.login.offline': 'الجهاز ده مش متصل بالإنترنت. راجع الاتصال وجرّب تاني.',
+  'platform.auth.login.unreachable':
+    'مش قادر يوصل للسيرفر. يمكن الاتصال قطع، أو الخدمة بتعيد التشغيل — جرّب كمان شوية.',
   'platform.auth.login.failed': 'فشل تسجيل الدخول',
   'platform.auth.login.notActivated':
     'هذا الحساب غير مُفعّل بعد. افتح رابط التفعيل الذي وصلك، أو اطلب من الموارد البشرية إعادة إرساله.',

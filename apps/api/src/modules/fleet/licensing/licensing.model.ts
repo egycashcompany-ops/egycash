@@ -8,6 +8,11 @@
 // A row is written the first time one of its four squares is ticked. A vehicle with no row is a
 // vehicle with nothing done yet, and reads as four falses — so the board never has to create a
 // row for a car merely to look at it.
+//
+// AND IT IS RETIRED WHEN THE CAR LEAVES THE BOARD — «لو رجعت كل العلامات تتشال». Soft-deleted,
+// not blanked: what a clerk did stays in the database and leaves the screen, and because both
+// the unique index and the tick's upsert filter on `isDeleted: false`, a car that comes back
+// simply starts a new row beside the retired one.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 

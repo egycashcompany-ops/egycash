@@ -71,6 +71,31 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * Which of these vehicles point at one of these licence classes — a membership question, asked
+   * about a known set of ids and answered without loading the registry.
+   *
+   * Unscoped and not `isDeleted`-filtered, deliberately: the caller (the licensing board's sweep)
+   * is asking «is this car still on the board at all», which is a fact about the fleet rather than
+   * about who is looking. Answered under a scope it would report every other branch's cars as
+   * gone, and the sweep would retire their marks.
+   */
+  async idsOfClasses(
+    vehicleIds: readonly string[],
+    classIds: readonly string[],
+  ): Promise<Set<string>> {
+    if (vehicleIds.length === 0 || classIds.length === 0) return new Set();
+    const rows = await this.model
+      .find({
+        _id: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+        licenseClassId: { $in: classIds.map((id) => new Types.ObjectId(id)) },
+      })
+      .select({ _id: 1 })
+      .lean<{ _id: Types.ObjectId }[]>()
+      .exec();
+    return new Set(rows.map((row) => String(row._id)));
+  }
+
+  /**
    * Codes for a KNOWN set of ids, in one query — for the screens that print a code beside a row
    * whose vehicle they hold only by id.
    *

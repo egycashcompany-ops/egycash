@@ -2417,8 +2417,13 @@ export interface FleetGoLiveRunsDto {
 // a stored copy would be a second answer to «هل العربية دى بتترخص؟» and would go stale the first
 // time an admin renamed a class.
 //
-// The marks themselves are NOT deleted when a car leaves the board. They are what the clerk did,
-// and a car that comes back to «ت» comes back with its own history rather than a blank line.
+// A CAR THAT LEAVES THE BOARD LOSES ITS TICKS — «لو رجعت كل العلامات تتشال». The ticks record
+// papers handed to a particular office for a particular licence, so once the licence has moved
+// they describe an errand that no longer applies, and a car coming back to «ت» that arrived
+// already half-done would be telling the clerk work was finished that nobody did.
+//
+// They are retired rather than erased: the row is soft-deleted, so what was done stays in the
+// database and simply leaves the screen, and the returning car starts on a fresh row.
 
 /** The four ticks a row carries — two papers, each handed in and collected back. */
 export const FLEET_LICENSING_MARKS = [

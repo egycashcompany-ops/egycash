@@ -8,6 +8,7 @@ import {
   type FleetLicensingRowDto,
   type SetFleetLicensingMark,
 } from '@ecms/contracts';
+import { Types } from 'mongoose';
 import { NotFoundError } from '../../../shared/errors';
 import { type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
@@ -45,6 +46,18 @@ class FleetLicensingService {
     // be a query nobody needs to run.
     if (classes.length === 0) return [];
     const classNames = new Map(classes.map((item) => [String(item._id), item.name.ar]));
+
+    // OFF THE BOARD IS OFF THE RECORD — «لو رجعت كل العلامات تتشال». Swept here, on the read,
+    // because the way a car leaves the board without anybody touching the CAR is an admin
+    // renaming its licence class from «برقاش ت» to «برقاش م»: that write is on the catalog item
+    // and there is nothing about the vehicle for a hook to fire on. The car whose own
+    // `licenseClassId` was changed is voided at that write instead — see the vehicle service —
+    // so between the two, a mark can never outlive the licence it was made under.
+    //
+    // Unscoped on purpose. It asks «is this car still on the board at all», which is a fact about
+    // the fleet and not about who is looking: run under a branch-scoped read it would void every
+    // other branch's marks, because from that reader's side their cars are not there either.
+    await this.sweepVoided([...classNames.keys()]);
 
     const vehicles = await this.vehiclesOfClasses([...classNames.keys()], scope);
     const marks = await fleetVehicleLicensingRepository.findForVehicles(
@@ -103,6 +116,23 @@ class FleetLicensingService {
     });
   }
 
+  /**
+   * Retire the marks of every car that is no longer on the board.
+   *
+   * Driven from the MARKS rather than from the registry: the rows that hold marks are a handful,
+   * and walking them asks the registry one question about a known set of ids instead of loading
+   * the fleet to find the few that matter.
+   */
+  private async sweepVoided(boardClassIds: readonly string[]): Promise<void> {
+    const marked = await fleetVehicleLicensingRepository.markedVehicleIds();
+    if (marked.length === 0) return;
+    const stillOn = await fleetVehicleRepository.idsOfClasses(marked, boardClassIds);
+    const gone = marked.filter((id) => !stillOn.has(id));
+    // `null` rather than a user id: nobody asked for this, the rule did — and attributing it to
+    // whoever happened to open the screen would put their name on a delete they never made.
+    await fleetVehicleLicensingRepository.voidForVehicles(gone, null);
+  }
+
   /** Every vehicle pointing at one of these classes, in code order, scope-aware. */
   private async vehiclesOfClasses(
     classIds: readonly string[],
@@ -111,7 +141,11 @@ class FleetLicensingService {
     const vehicles: FleetVehicleDoc[] = [];
     for (let page = 1; ; page += 1) {
       const batch = await fleetVehicleRepository.listVehicles({
-        filter: { licenseClassId: { $in: [...classIds] } },
+        // ObjectIds, not the strings they came back as. A plain `find` would have cast them, but
+        // the same filter reaches an aggregation `$match` the moment this list is ordered by a
+        // derived key — and `$match` casts nothing, so a string here would quietly answer with an
+        // empty board rather than with an error.
+        filter: { licenseClassId: { $in: classIds.map((id) => new Types.ObjectId(id)) } },
         page,
         pageSize: PAGE,
         sortBy: 'code',

@@ -75,6 +75,51 @@ class FleetVehicleLicensingRepository extends BaseRepository<FleetVehicleLicensi
       .exec();
     return doc;
   }
+
+  /**
+   * VOID a car's papers — «لو رجعت كل العلامات تتشال».
+   *
+   * A soft delete rather than four `false`s. The row is what a clerk DID, and the house rule is
+   * that deleted data leaves the screen and stays in the database («الداتا اللى ممسوحه متظهرش
+   * للمستخدم تبقى فى الداتا بيز فقط»); flipping the booleans would overwrite the record of a
+   * completed errand with something indistinguishable from an errand never started.
+   *
+   * It is also what makes a return to the board start CLEAN without any special case: the unique
+   * index is partial on `isDeleted: false` and so is the upsert's filter, so the next tick writes
+   * a brand-new row beside the retired one rather than reviving it.
+   *
+   * Returns how many rows it retired, so callers can stay silent when there was nothing to void —
+   * which is the ordinary case for a car nobody had ticked anything for.
+   */
+  async voidForVehicles(vehicleIds: readonly string[], by: string | null): Promise<number> {
+    if (vehicleIds.length === 0) return 0;
+    const result = await this.model
+      .updateMany(
+        {
+          isDeleted: false,
+          vehicleId: { $in: vehicleIds.map((id) => new Types.ObjectId(id)) },
+        },
+        {
+          $set: {
+            isDeleted: true,
+            deletedAt: new Date(),
+            deletedBy: by === null ? null : new Types.ObjectId(by),
+          },
+        },
+      )
+      .exec();
+    return result.modifiedCount;
+  }
+
+  /** The vehicles that still hold live marks — the sweep's candidates, and nothing else. */
+  async markedVehicleIds(): Promise<string[]> {
+    const rows = await this.model
+      .find({ isDeleted: false })
+      .select({ vehicleId: 1 })
+      .lean<{ vehicleId: Types.ObjectId }[]>()
+      .exec();
+    return rows.map((row) => String(row.vehicleId));
+  }
 }
 
 export const fleetVehicleLicensingRepository = new FleetVehicleLicensingRepository();

@@ -481,7 +481,13 @@ const auditActionsOf = async (userId: string): Promise<string[]> => {
 };
 
 describe('activation hardening + enterprise completeness (§15/§16)', () => {
-  it('answers login attempts without leaking accounts: unknown identifier ≡ wrong password (§16.6)', async () => {
+  // WAS «unknown identifier ≡ wrong password (§16.6)», and is deliberately no longer that. The
+  // merge existed so that nobody could learn which accounts exist by trying addresses here; the
+  // owner weighed it against staff who could not tell which of the two boxes they had got wrong,
+  // and chose to name each. What carries the weight instead is the route's rate limit and the
+  // audit row every attempt leaves — see the note in `auth.service.login()`. This test now pins
+  // the new answer, so that reverting the service silently is not possible.
+  it('names WHICH half was wrong: an unknown identifier and a wrong password differ', async () => {
     const spy = captureToken();
     const emp = await regEmployee({});
     expect((await activate(lastToken(spy))).status).toBe(204);
@@ -496,11 +502,16 @@ describe('activation hardening + enterprise completeness (§15/§16)', () => {
     expect(unknown.status).toBe(401);
     expect(wrongPassword.status).toBe(401);
     expect((unknown.body as { error: { code: string } }).error.code).toBe(
-      'AUTH_INVALID_CREDENTIALS',
+      'AUTH_IDENTIFIER_UNKNOWN',
     );
     expect((wrongPassword.body as { error: { code: string } }).error.code).toBe(
       'AUTH_INVALID_CREDENTIALS',
     );
+
+    // STILL 401, and still audited. Naming the cause to the person at the keyboard is not the
+    // same as relaxing the refusal: neither attempt is told anything about the account beyond
+    // whether the identifier resolves, and both leave the trail that makes probing visible.
+    expect(await auditActionsOf(String(emp.userId))).toContain('loginFailed');
   });
 
   it('an employee EXIT kills the never-used setup link and locks the account (§15.5)', async () => {

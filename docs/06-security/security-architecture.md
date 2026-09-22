@@ -34,6 +34,20 @@ Controls: argon2id hashing · configurable password policy (settings) · per-IP 
 login rate limits · lockout with backoff · session list & revocation UI · **inactivity timeout**
 · every auth event audited. Designed-in extension points: TOTP 2FA, OIDC SSO.
 
+**Sign-in failures are named, not merged (owner's decision).** The login endpoint used to answer
+an unknown identifier and a wrong password identically, so that nobody could learn which accounts
+exist by trying addresses at the login page. It no longer does: `AUTH_IDENTIFIER_UNKNOWN` and
+`AUTH_INVALID_CREDENTIALS` are distinct, and the screen tells the person which of the two boxes
+was wrong. The owner weighed the enumeration risk against staff who could not tell why they were
+refused, and chose to name it.
+
+What carries the weight instead: the route's rate limit (**ten attempts per five minutes per
+address**, `strictLimit('auth-login')`), an audit row and an `AuthLoginFailed` event for every
+attempt, and account lockout with backoff after repeated failures. Every other account state
+(locked, suspended, never activated) already had its own code and has only become visible in the
+UI. **Revisit this if the login page is ever reachable from outside the company network**, where
+the enumeration the merge prevented becomes cheap to run at scale.
+
 **Inactivity timeout (`SESSION_IDLE_MINUTES`, default 10; `0` switches it off).** A session whose
 `lastUsedAt` is older than the window is **revoked** at its next renewal — not merely refused,
 because a valid cookie that survives the deadline is the hole the control exists to close. The

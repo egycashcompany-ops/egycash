@@ -326,7 +326,20 @@ class AuthService {
         actor: actorOf(null),
       });
       await emit(PlatformEvents.AuthLoginFailed, { email: identifier, reason: 'unknown-user' });
-      throw new UnauthenticatedError(ErrorCodes.AUTH_INVALID_CREDENTIALS, 'Invalid credentials');
+      // NAMED, BY THE OWNER'S DECISION, and the trade-off is written here rather than argued
+      // again later. This used to answer exactly like a wrong password so that nobody could
+      // discover which accounts exist by trying addresses at the login page. The owner weighed
+      // that against staff who cannot tell whether they mistyped their address or their
+      // password — «حدد الايميل لوحده والباسورد لوحده» — and chose to name it.
+      //
+      // What still limits the abuse: the rate limit on this route is ten attempts per five
+      // minutes per address (`strictLimit('auth-login')`), and every attempt leaves an audit row
+      // and an `AuthLoginFailed` event naming who sent it. Worth revisiting together if this
+      // login page is ever reachable from outside the company.
+      throw new UnauthenticatedError(
+        ErrorCodes.AUTH_IDENTIFIER_UNKNOWN,
+        'No account matches that identifier',
+      );
     }
 
     if (user.security.lockedUntil !== null && user.security.lockedUntil > new Date()) {

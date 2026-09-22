@@ -326,7 +326,31 @@ const en: Record<string, string> = {
     'Your account requires two-factor authentication. Scan this QR code with Microsoft Authenticator (or any authenticator app), then enter the 6-digit code.',
   'platform.auth.login.enrollQrAlt': 'Two-factor setup QR code',
   'platform.auth.login.enrollManual': "Can't scan? Enter this key manually",
-  'platform.auth.login.failed': 'Sign-in failed',
+  // Why the sign-in did not work. Each cause has its own sentence, and none of them is vague:
+  // an unknown identifier and a wrong password are named separately by the owner's decision, and
+  // the last-resort message carries the reference number. See `login-failure.ts`.
+  'platform.auth.login.unknownIdentifier':
+    'No account is registered under these details. Please check the email address, username or employee code, then try again.',
+  'platform.auth.login.wrongPassword':
+    'The password is incorrect. Please re-enter it, and note that repeated failed attempts will lock the account temporarily.',
+  'platform.auth.login.locked':
+    'This account has been locked temporarily following repeated failed sign-in attempts. Please try again in a few minutes, or contact the system administrator to unlock it.',
+  'platform.auth.login.notActive':
+    'This account is currently suspended. Sign-in will remain unavailable until the system administrator reactivates it.',
+  'platform.auth.login.badCode':
+    'The verification code is incorrect. Please check the code in your authenticator app and enter it again.',
+  'platform.auth.login.tooMany':
+    'Too many sign-in attempts have been made from this device. Please wait a few minutes before trying again.',
+  'platform.auth.login.serverError':
+    'The server returned an error while processing the request. Please try again shortly, and contact technical support if the problem persists.',
+  'platform.auth.login.offline':
+    'This device is not connected to the internet. Please check the connection and try again.',
+  'platform.auth.login.unreachable':
+    'The server could not be reached. The connection may have been interrupted, or the service may be restarting. Please try again shortly.',
+  'platform.auth.login.unexpected':
+    'Sign-in could not be completed due to an unexpected error. Please try again, and contact technical support if the problem persists.',
+  'platform.auth.login.unexpectedWithRef':
+    'Sign-in could not be completed due to an unexpected error. Please try again, and quote reference {{requestId}} to technical support if the problem persists.',
   'platform.auth.login.notActivated':
     'This account is not activated yet. Open the setup link you received, or ask HR to resend it.',
   'platform.auth.activate.title': 'Activate your account',
@@ -7172,7 +7196,31 @@ const ar: Record<string, string> = {
     'حسابك يتطلب مصادقة ثنائية. امسح رمز QR بتطبيق Microsoft Authenticator (أو أي تطبيق مصادقة) ثم أدخل الرمز المكوّن من 6 أرقام.',
   'platform.auth.login.enrollQrAlt': 'رمز QR لإعداد المصادقة الثنائية',
   'platform.auth.login.enrollManual': 'لا يمكنك المسح؟ أدخل هذا المفتاح يدويًا',
-  'platform.auth.login.failed': 'فشل تسجيل الدخول',
+  // سبب تعذّر تسجيل الدخول. لكل سبب رسالة تخصّه، ولا شيء منها مبهم: البريد غير المسجَّل وكلمة
+  // المرور غير الصحيحة رسالتان منفصلتان بقرار المالك، ورسالة الملاذ الأخير تحمل الرقم المرجعي.
+  // الشرح في `login-failure.ts`.
+  'platform.auth.login.unknownIdentifier':
+    'لا يوجد حساب مسجَّل بهذه البيانات. يُرجى التحقق من البريد الإلكتروني أو اسم المستخدم أو الكود الوظيفي ثم المحاولة مرة أخرى.',
+  'platform.auth.login.wrongPassword':
+    'كلمة المرور غير صحيحة. يُرجى إعادة إدخالها، مع العلم بأن تكرار المحاولات الخاطئة يؤدي إلى قفل الحساب مؤقتًا.',
+  'platform.auth.login.locked':
+    'تم قفل هذا الحساب مؤقتًا بعد تكرار محاولات الدخول الخاطئة. يُرجى المحاولة بعد عدة دقائق، أو التواصل مع مسؤول النظام لإلغاء القفل.',
+  'platform.auth.login.notActive':
+    'هذا الحساب موقوف حاليًا. لن يكون تسجيل الدخول متاحًا حتى يقوم مسؤول النظام بإعادة تفعيله.',
+  'platform.auth.login.badCode':
+    'رمز التحقق غير صحيح. يُرجى مراجعة الرمز في تطبيق المصادقة وإدخاله مرة أخرى.',
+  'platform.auth.login.tooMany':
+    'تم تنفيذ عدد كبير من محاولات الدخول من هذا الجهاز. يُرجى الانتظار عدة دقائق قبل المحاولة مرة أخرى.',
+  'platform.auth.login.serverError':
+    'تعذّر على الخادم إتمام الطلب وأرجع خطأ. يُرجى المحاولة بعد قليل، والتواصل مع الدعم الفني إذا استمرت المشكلة.',
+  'platform.auth.login.offline':
+    'هذا الجهاز غير متصل بالإنترنت. يُرجى التحقق من الاتصال والمحاولة مرة أخرى.',
+  'platform.auth.login.unreachable':
+    'تعذّر الوصول إلى الخادم. قد يكون الاتصال قد انقطع، أو تكون الخدمة قيد إعادة التشغيل. يُرجى المحاولة بعد قليل.',
+  'platform.auth.login.unexpected':
+    'تعذّر إتمام تسجيل الدخول بسبب خطأ غير متوقع. يُرجى المحاولة مرة أخرى، والتواصل مع الدعم الفني إذا استمرت المشكلة.',
+  'platform.auth.login.unexpectedWithRef':
+    'تعذّر إتمام تسجيل الدخول بسبب خطأ غير متوقع. يُرجى المحاولة مرة أخرى، وإبلاغ الدعم الفني بالرقم المرجعي {{requestId}} إذا استمرت المشكلة.',
   'platform.auth.login.notActivated':
     'هذا الحساب غير مُفعّل بعد. افتح رابط التفعيل الذي وصلك، أو اطلب من الموارد البشرية إعادة إرساله.',
   'platform.auth.activate.title': 'تفعيل حسابك',

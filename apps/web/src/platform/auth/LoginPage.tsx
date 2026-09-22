@@ -8,11 +8,11 @@ import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
 import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
+import { loginFailure } from './login-failure';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input, PasswordInput } from '../../shared/ui';
 import { AlertIcon } from '../../shared/ui/icons';
-import { ApiError } from '../../shared/lib/api-client';
 import { loginRequest, totpChallengeRequest, totpEnrollWithChallengeRequest } from './api';
 
 interface Enrollment {
@@ -59,12 +59,12 @@ export const LoginPage = (): JSX.Element => {
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
     } catch (e) {
-      // §15.3: a not-yet-activated account needs its setup link, not a retry.
-      setError(
-        e instanceof ApiError && e.code === 'AUTH_ACCOUNT_NOT_ACTIVATED'
-          ? t('platform.auth.login.notActivated')
-          : t('platform.auth.login.failed'),
-      );
+      // The server names each of these — an unregistered identifier, a wrong password, a locked
+      // account, a suspended one, too many attempts — and the browser names a dead connection.
+      // `loginFailure` is where each becomes its own sentence; one generic line for all of them
+      // is what this replaces.
+      const failure = loginFailure(e, navigator.onLine);
+      setError(t(failure.key, failure.params));
     } finally {
       setBusy(false);
     }
@@ -77,8 +77,11 @@ export const LoginPage = (): JSX.Element => {
     try {
       const response = await totpChallengeRequest(step.challengeToken, code);
       if (!response.totpRequired) finish(response.me);
-    } catch {
-      setError(t('platform.auth.login.failed'));
+    } catch (e) {
+      // A wrong six-digit code is the common case here and now says so, instead of reading as
+      // though the password that already passed had been rejected.
+      const failure = loginFailure(e, navigator.onLine);
+      setError(t(failure.key, failure.params));
     } finally {
       setBusy(false);
     }

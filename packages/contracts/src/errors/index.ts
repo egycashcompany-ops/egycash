@@ -4,6 +4,9 @@
 export const ErrorCodes = {
   // auth
   AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  /** No account matches the identifier that was typed. Distinct from a wrong password by the
+   * owner's decision — see the note in `auth.service.login()`. */
+  AUTH_IDENTIFIER_UNKNOWN: 'AUTH_IDENTIFIER_UNKNOWN',
   AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
   AUTH_TOKEN_INVALID: 'AUTH_TOKEN_INVALID',
   AUTH_SESSION_REVOKED: 'AUTH_SESSION_REVOKED',

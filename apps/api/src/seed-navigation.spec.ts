@@ -60,3 +60,51 @@ describe('the seeded navigation catalog', () => {
     expect(rows).toHaveLength(117);
   });
 });
+
+describe('the Fleet rail reads as the work the company actually does', () => {
+  // «ظبط الايقونات بتاعت شاشات الحركه على حسب المهام اللى بتقوم بيها الشركه». A rail is read at a
+  // glance, by shape before word — so a glyph that says the wrong thing, or the same thing twice,
+  // costs a reader the moment the rail exists to save. None of this fails at boot; it just
+  // quietly misleads.
+  const fleet = NAVIGATION_CATALOG.find((category) => category.en === 'Fleet');
+  const iconOf = (route: string): string | undefined =>
+    fleet?.apps.find((app) => app.route === route)?.icon;
+
+  it('gives every screen its own glyph', () => {
+    const icons = (fleet?.apps ?? []).map((app) => app.icon);
+    // السائقون and الطقم الثابت both wore `users`, which told a reader the two screens held the
+    // same thing. Two rows, two shapes — no exceptions, or the rule is not a rule.
+    const repeated = icons.filter((icon, i) => icons.indexOf(icon) !== i);
+    expect(repeated, 'no glyph appears on two Fleet rows').toEqual([]);
+  });
+
+  it('puts the hazard triangle on the crashes, not on the maintenance alarms', () => {
+    // A حادث is a hazard — the triangle is what a road sign uses for exactly this. An إنذار is a
+    // thing that RINGS at you, which is a bell. They had these the other way round, and the
+    // accidents row wore a shield-with-a-tick, which reads «protected» — the opposite of a crash.
+    expect(iconOf('/fleet/accidents')).toBe('alert');
+    expect(iconOf('/fleet/maintenance-alarms')).toBe('bell');
+    expect(iconOf('/fleet/accidents'), 'never the shield again').not.toBe('shield');
+  });
+
+  it('keeps the glyphs that were already right', () => {
+    // The meter, the spanner and the truck each name their screen exactly; a tidy-up that moves
+    // them is a tidy-up that costs a reader something for nothing.
+    expect(iconOf('/fleet/odometer')).toBe('gauge');
+    expect(iconOf('/fleet/maintenance')).toBe('wrench');
+    expect(iconOf('/fleet/vehicles')).toBe('truck');
+    expect(iconOf('/fleet/drivers')).toBe('users');
+    expect(iconOf('/fleet')).toBe('home');
+  });
+
+  it('corrects a live installation only while it still wears the old default', () => {
+    // `syncNavigationCatalog` does not rewrite rows that exist — rightly, since an admin may have
+    // chosen the icon in the Applications catalog. `previousIcon` is what makes the correction
+    // safe: it is compared before anything is written, so a deliberate choice survives the boot.
+    const corrected = (fleet?.apps ?? []).filter((app) => app.previousIcon !== undefined);
+    expect(corrected.length, 'the rows this change touches').toBe(4);
+    for (const app of corrected) {
+      expect(app.previousIcon, `${app.route} must actually change`).not.toBe(app.icon);
+    }
+  });
+});

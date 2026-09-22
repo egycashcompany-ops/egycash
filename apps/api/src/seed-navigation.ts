@@ -26,6 +26,16 @@ interface AppDef {
   route: string;
   icon: string;
   /**
+   * The icon this row shipped with BEFORE, where the glyph has been corrected since.
+   *
+   * `syncNavigationCatalog` never rewrites a row that already exists, which is right — the
+   * Applications catalog is admin-editable and a boot that stamped its own opinion over a
+   * deliberate choice would be a boot that quietly undoes people's work. This is the narrow
+   * exception: the icon is corrected only while it still holds the exact value this seed used to
+   * ship, so an installation gets the fix and an admin's own choice is left alone.
+   */
+  previousIcon?: string;
+  /**
    * The permission opening this page requires — the SAME key the client route guard checks.
    *
    * REQUIRED. Navigation is the set of applications whose key the caller holds, so a row without one
@@ -428,7 +438,10 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         en: 'Maintenance Alarms',
         ar: 'إنذارات الصيانة',
         route: '/fleet/maintenance-alarms',
-        icon: 'alert',
+        // An إنذار is a thing that RINGS at you. The hazard triangle it used to wear belongs to
+        // the accidents row below, which is where a hazard on the road actually is.
+        icon: 'bell',
+        previousIcon: 'alert',
         permission: 'fleetOdometer.view',
       },
       {
@@ -444,21 +457,32 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         en: 'Fixed Crew',
         ar: 'الطقم الثابت',
         route: '/fleet/fixed-roster',
-        icon: 'users',
+        // Not `users` — that is السائقون three rows up, and two identical glyphs in one rail tell
+        // a reader the two screens are the same thing. «ثابت» is the whole distinction: this crew
+        // is PINNED to its car, where the daily board beside it is planned a day at a time.
+        icon: 'pin',
+        previousIcon: 'users',
         permission: 'fleetRoster.view',
       },
       {
         en: 'Accidents',
         ar: 'حوادث السيارات',
         route: '/fleet/accidents',
-        icon: 'shield',
+        // The shield carries a TICK — it reads «protected, verified», which is the opposite of
+        // what this screen holds. A crash is a hazard, and the triangle is what a road sign uses.
+        icon: 'alert',
+        previousIcon: 'shield',
         permission: 'fleetAccident.view',
       },
       {
         en: 'Violations',
         ar: 'مخالفات السيارات',
         route: '/fleet/violations',
-        icon: 'tag',
+        // «خلى شاشة المخالفات x». A tag is a label on a thing — which is قوائم الحركة two rows
+        // down, not a fine. A مخالفة is a mark AGAINST the car, and the cross says that without
+        // anyone having to be taught it.
+        icon: 'x',
+        previousIcon: 'tag',
         permission: 'fleetViolation.view',
       },
       {
@@ -1118,6 +1142,25 @@ const ensureApplication = async (
  * left entirely alone. A row outside this catalog and still null stays invisible until somebody
  * gives it a key, which is the fail-closed half of the same rule.
  */
+/**
+ * Correct a row's icon — and ONLY while it still wears the one this seed used to ship.
+ *
+ * Unlike the permission backfill below, the field being corrected is not empty: it holds a value
+ * somebody may have chosen. Comparing against `previousIcon` is what keeps this a correction
+ * rather than an overwrite, so an admin who picked a different glyph in the Applications catalog
+ * keeps it, and an installation still carrying the old default gets the fix on the next boot.
+ */
+const backfillApplicationIcon = async (def: AppDef, by: string): Promise<void> => {
+  if (def.previousIcon === undefined) return;
+  const existing = await applicationRepository.findOne({ route: def.route });
+  if (existing === null || existing.icon !== def.previousIcon) return;
+  await applicationService.update(
+    String(existing._id),
+    { icon: def.icon, version: existing.__v },
+    by,
+  );
+};
+
 const backfillApplicationPermission = async (def: AppDef, by: string): Promise<void> => {
   const existing = await applicationRepository.findOne({ route: def.route });
   if (existing === null || (existing.permissionKey ?? null) !== null) return;
@@ -1174,7 +1217,10 @@ export const syncNavigationCatalog = async (): Promise<void> => {
   if (actor === undefined) return; // pre-seed boot (no admin yet) — the dev seed covers it
   for (const category of NAVIGATION_CATALOG) {
     await backfillCategoryIcon(category, actor);
-    for (const app of category.apps) await backfillApplicationPermission(app, actor);
+    for (const app of category.apps) {
+      await backfillApplicationPermission(app, actor);
+      await backfillApplicationIcon(app, actor);
+    }
     // Resolve the whole group up front: where a new row belongs depends on the stored order of
     // the next EXISTING neighbour, which a forward-only walk cannot see yet.
     const rows = await Promise.all(

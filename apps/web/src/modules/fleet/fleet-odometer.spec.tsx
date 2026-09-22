@@ -630,6 +630,21 @@ describe('the filter bar', () => {
     }
     expect(html).toContain('id="odometer-from"');
     expect(html).toContain('id="odometer-to"');
+    // …and the note, which the table already shows as a column. A column a reader can see but
+    // cannot search is one they scroll past, and this register runs to thousands of rows.
+    expect(html, 'the note box').toContain(`placeholder="${t('fleet.maintenance.notesFilter')}"`);
+    expect(html).toContain(`aria-label="${t('fleet.odometer.columns.notes')}"`);
+  });
+
+  it('sends the typed note to the SERVER, and forgets it with the rest', () => {
+    // The table holds one page; the reading the note would find is usually on a page nobody is
+    // looking at. So it goes in the query — and out again on «مسح الفلاتر», or the reset would
+    // leave the list narrowed by a box that now looks empty.
+    const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(source, 'it reaches the query').toContain('notes: notes || undefined');
+    expect(source, 'and the reset clears it').toContain('notes: null');
+    expect(source, 'and it survives a visit, like every other filter').toContain("'notes',");
+    expect(source, 'and a typed note counts as a narrowing').toContain("notes !== ''");
   });
 
   it('stacks NO label above any filter — each one is named on its own line', () => {
@@ -689,7 +704,7 @@ describe('the filter bar', () => {
     expect(bar).toContain(t('fleet.odometer.columns.alert'));
   });
 
-  it('lines all five filters up on ONE row, none of them taking the leftover space', () => {
+  it('lines the sized filters up on ONE row, with only the note box taking the leftover', () => {
     const html = render();
     const bar = filterBar(html);
     // The container stops wrapping once the viewport is wide enough to hold the whole row, and
@@ -706,15 +721,19 @@ describe('the filter bar', () => {
     expect(open.slice(0, open.indexOf('>')), 'wrap is the narrow-screen fallback').toContain(
       'flex-wrap',
     );
-    // Nothing in the bar may grow into the space the others leave. (`w-full` is not the test:
-    // `Input` carries it at its base and merely fills the fixed-width wrapper it sits in.)
-    expect(bar, 'no filter takes the leftover space').not.toContain('flex-1');
-    expect(bar, 'no filter grows').not.toMatch(/\bgrow\b/);
-    expect(bar, 'no filter is sized by the row').not.toMatch(/\bbasis-/);
-    // Every filter holds its own width instead of being squeezed by its neighbours.
-    expect(bar.match(/shrink-0/g)?.length ?? 0, 'each filter is shrink-0').toBeGreaterThanOrEqual(
-      5,
-    );
+    // EXACTLY ONE control takes the leftover space, and it is the note box — «خلى في انبوت يسمح
+    // ان ابحث بالملاحظات». Every SIZED filter still holds its own width instead of being squeezed
+    // by its neighbours; the flexible one is how a sixth control was added without moving the
+    // threshold above, because it shrinks into whatever the row has rather than demanding its own.
+    // (`w-full` is not the test: `Input` carries it at its base and merely fills its wrapper.)
+    expect(bar.match(/flex-1/g)?.length ?? 0, 'one, and only one, flexible control').toBe(1);
+    expect(bar, 'and it is the note box').toContain('min-w-[8rem] flex-1');
+    expect(bar, 'nothing else grows').not.toMatch(/\bgrow\b/);
+    expect(bar, 'nothing is sized by the row').not.toMatch(/\bbasis-/);
+    expect(
+      bar.match(/shrink-0/g)?.length ?? 0,
+      'each sized filter is shrink-0',
+    ).toBeGreaterThanOrEqual(5);
     // The date bounds are the narrow ones — a date needs ten characters, not a share of the row.
     expect(bar.match(/class="w-36"/g)?.length ?? 0, 'both dates are narrow').toBe(2);
     // …and the driver picker is the medium one — wider than a date, because it draws a NAME.

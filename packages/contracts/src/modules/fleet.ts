@@ -900,6 +900,17 @@ export const ListFleetOdometerQuerySchema = PaginationQuerySchema.extend({
    * the vehicles first and then the readings — the thresholds stay in settings, never here.
    */
   alerts: listQuery(FleetAlarmLevelSchema),
+  /**
+   * Part of the reading's own NOTE, matched case-insensitively — «خلى في انبوت يسمح ان ابحث
+   * بالملاحظات».
+   *
+   * The log already SHOWS «ملاحظات» as a column, which is where the things this screen has no
+   * field for end up: why the counter jumped, which trip it was, who took the car out without
+   * signing. A column you can read but not search is a column you scroll past — and this register
+   * runs to thousands of rows. Bounded and matched exactly as the accidents file and the workshop
+   * visit search their own notes, so the three read alike.
+   */
+  notes: z.string().trim().min(1).max(100).optional(),
 }).strict();
 export type ListFleetOdometerQuery = z.infer<typeof ListFleetOdometerQuerySchema>;
 

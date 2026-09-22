@@ -47,8 +47,9 @@ import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterField } from '../../../shared/ui/FilterField';
-import { toCsv, exportFilename } from '../lib/violations-export';
-import { printViolations } from '../lib/violations-print';
+import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { useReportSignatories } from '../lib/use-report-signatories';
+import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 
 /** The four lines every group shows, in the order the business reads them. */
 const TOTAL_ROWS = [
@@ -143,6 +144,7 @@ export const CompanyViolationsPanel = ({
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const signatories = useReportSignatories();
   const mayRecord = can('fleetViolation.record');
   const hasActiveFilters = years.length > 0 || vehicleCodes.length > 0 || settled !== '';
 
@@ -241,61 +243,109 @@ export const CompanyViolationsPanel = ({
     [rows],
   );
 
-  // What the export and the print sheet SAY they cover. Several years read as «٢٠٢٤، ٢٠٢٥» —
-  // the same words the trigger shows — so a printed sheet names exactly the filter it was made
-  // under rather than the first year of it.
-  const scope = `${years.length === 0 ? t('fleet.violations.allYears') : years.join('، ')}${
-    vehicleCodes.length === 0 ? '' : ` · ${vehicleCodes.join(', ')}`
-  }`;
   const exportRows = (): string[][] =>
     rows.map((r) => [
       String(r.year),
       r.code,
       String(r.vehicleCount),
-      String(r.vehicleAmount),
+      reportMoney(r.vehicleAmount),
       String(r.driverCount),
-      String(r.driverAmount),
-      String(r.totalBeforeGrievance),
+      reportMoney(r.driverAmount),
       String(r.totalCount),
-      String(r.totalAmount),
+      reportMoney(r.totalAmount),
     ]);
+  /**
+   * THE FORM'S OWN HEADINGS, word for word — not the board's column labels.
+   *
+   * The screen names a column for somebody reading it live («مبلغ السيارة»); the signed sheet names
+   * it the way the company's form names it («إجمالى السيارة (القيمة)»). They are two audiences and
+   * two vocabularies, and borrowing one for the other is how a document stops looking like itself.
+   *
+   * These are also the columns the form HAS, and no others: «إجمالى السيارة قبل التظلم» is a
+   * working figure the board shows while a grievance is being argued, and the sheet omits it.
+   */
   const exportHeader = [
-    t('fleet.violations.fields.year'),
-    t('fleet.odometer.columns.vehicle'),
-    t('fleet.violations.rollup.vehicleCount'),
-    t('fleet.violations.rollup.vehicleAmount'),
-    t('fleet.violations.rollup.driverCount'),
-    t('fleet.violations.rollup.driverAmount'),
-    t('fleet.violations.rollup.totalBeforeGrievance'),
-    t('fleet.violations.rollup.totalCount'),
-    t('fleet.violations.rollup.totalAmount'),
+    t('fleet.violations.report.year'),
+    t('fleet.violations.report.vehicleCode'),
+    t('fleet.violations.report.companyCount'),
+    t('fleet.violations.report.companyAmount'),
+    t('fleet.violations.report.driversCount'),
+    t('fleet.violations.report.driversAmount'),
+    t('fleet.violations.report.vehicleCount'),
+    t('fleet.violations.report.vehicleAmount'),
   ];
 
+  /**
+   * The three figures under the table, in the order the signed sheet prints them — and the same
+   * three the workbook's bottom row carries, so the two documents cannot disagree.
+   */
+  const reportTotals = [
+    { label: t('fleet.violations.report.companyLine'), value: reportMoney(totals.company) },
+    { label: t('fleet.violations.report.driversLine'), value: reportMoney(totals.drivers) },
+    { label: t('fleet.violations.report.allLine'), value: reportMoney(totals.all) },
+  ];
+
+  /**
+   * The same rows, TYPED — a count is a number and money is a number.
+   *
+   * The printed sheet wants them formatted; a workbook wants them summable. Exporting «507.50» as
+   * text gives the reader a column Excel will not add up, which is the one thing they opened it
+   * for. Same order as `exportRows`, so the two documents stay the same document.
+   */
+  const sheetRows = (): XlsxCell[][] =>
+    rows.map((r) => [
+      r.year,
+      r.code,
+      r.vehicleCount,
+      r.vehicleAmount,
+      r.driverCount,
+      r.driverAmount,
+      r.totalCount,
+      r.totalAmount,
+    ]);
+
   const onExport = (): void => {
-    const blob = new Blob([toCsv(exportHeader, exportRows())], {
-      type: 'text/csv;charset=utf-8',
+    // A REAL WORKBOOK, not a CSV named after one: the sheet is titled in Arabic, «م» runs down the
+    // edge and the totals sit on the bottom row — none of which a CSV can carry.
+    const blob = buildXlsx({
+      name: t('fleet.violations.report.companySheet'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: exportHeader,
+      rows: sheetRows(),
+      // The three money columns, shown to two decimals and still summable.
+      moneyColumns: [3, 5, 7],
+      // Laid out under the columns it belongs to: the money under each money column, and the word
+      // «الإجمالى» where the car code is — which is where a reader's eye goes looking for it.
+      totals: [
+        '',
+        t('fleet.violations.report.grandTotal'),
+        '',
+        totals.company,
+        '',
+        totals.drivers,
+        '',
+        totals.all,
+      ],
     });
-    saveBlob(blob, exportFilename('company-violations', new Date().toISOString().slice(0, 10)));
+    saveBlob(
+      blob,
+      xlsxFilename(t('fleet.violations.report.companySheet'), new Date().toISOString().slice(0, 10)),
+    );
   };
   const onPrint = (): void => {
     try {
-      printViolations({
-        title: t('fleet.violations.companyTitle'),
-        subtitle: scope,
+      printFleetReport({
+        title: t('fleet.violations.report.companyTitle'),
+        department: t('fleet.violations.report.department'),
+        // NO SUBTITLE. The sent form has none — a line under the title saying «كل السنوات» is the
+        // screen explaining itself, and a signed document does not explain itself.
+        subtitle: '',
         header: exportHeader,
         rows: exportRows(),
-        totals: [
-          {
-            label: t('fleet.violations.lines.company'),
-            value: formatMoney(totals.company, 'EGP', locale),
-          },
-          {
-            label: t('fleet.violations.lines.drivers'),
-            value: formatMoney(totals.drivers, 'EGP', locale),
-          },
-          { label: t('fleet.violations.totalAll'), value: formatMoney(totals.all, 'EGP', locale) },
-        ],
-        rtl: locale === 'ar',
+        totals: reportTotals,
+        signatories,
+        serialHeader: t('fleet.violations.report.serial'),
+        emptyLabel: t('fleet.violations.report.empty'),
       });
     } catch {
       toast.error(t('fleet.violations.popupBlocked'));

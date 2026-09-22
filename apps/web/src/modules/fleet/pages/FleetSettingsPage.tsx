@@ -39,8 +39,25 @@ const NUMBER_KEYS = [
   FleetSettingKeys.DriverLicenseWarnDays,
 ] as const;
 
-/** Free-text settings. Only one today: the branch NAME the new-vehicle form preselects (§2.1). */
-const TEXT_KEYS = [FleetSettingKeys.DefaultBranchName] as const;
+/**
+ * Free-text settings: the branch NAME the new-vehicle form preselects (§2.1), and the six lines of
+ * the signature block every printed Fleet report carries.
+ *
+ * The signatories are here because they are PEOPLE — «في إعدادات الحركة». A printed report goes up
+ * for signature and into a binder, so it names who prepared it, who approves it and who endorses
+ * the totals; freezing those in a print template would mean a release every time one of them was
+ * promoted. The titles sit beside the names for the same reason: an office can be renamed too, and
+ * a literal title beside an editable name drifts apart from it the first time that happens.
+ */
+const TEXT_KEYS = [
+  FleetSettingKeys.DefaultBranchName,
+  FleetSettingKeys.ReportPreparedByTitle,
+  FleetSettingKeys.ReportPreparedByName,
+  FleetSettingKeys.ReportApprovedByTitle,
+  FleetSettingKeys.ReportApprovedByName,
+  FleetSettingKeys.ReportEndorsementNote,
+  FleetSettingKeys.ReportEndorsedByName,
+] as const;
 
 const SETTING_LABELS: Record<string, string> = {
   [FleetSettingKeys.AlarmYellowKm]: 'fleet.settings.keys.alarmYellowKm',
@@ -49,6 +66,12 @@ const SETTING_LABELS: Record<string, string> = {
   [FleetSettingKeys.VehicleLicenseWarnDays]: 'fleet.settings.keys.vehicleLicenseWarnDays',
   [FleetSettingKeys.DriverLicenseWarnDays]: 'fleet.settings.keys.driverLicenseWarnDays',
   [FleetSettingKeys.DefaultBranchName]: 'fleet.settings.keys.defaultBranchName',
+  [FleetSettingKeys.ReportPreparedByTitle]: 'fleet.settings.keys.reportPreparedByTitle',
+  [FleetSettingKeys.ReportPreparedByName]: 'fleet.settings.keys.reportPreparedByName',
+  [FleetSettingKeys.ReportApprovedByTitle]: 'fleet.settings.keys.reportApprovedByTitle',
+  [FleetSettingKeys.ReportApprovedByName]: 'fleet.settings.keys.reportApprovedByName',
+  [FleetSettingKeys.ReportEndorsementNote]: 'fleet.settings.keys.reportEndorsementNote',
+  [FleetSettingKeys.ReportEndorsedByName]: 'fleet.settings.keys.reportEndorsedByName',
 };
 
 const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JSX.Element => {

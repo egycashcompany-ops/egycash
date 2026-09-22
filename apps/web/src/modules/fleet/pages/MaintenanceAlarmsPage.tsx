@@ -23,7 +23,7 @@ import { saveSheet } from '../lib/fleet-sheet';
 import { Button } from '../../../shared/ui/Button';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
-import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
+import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { AlarmBadge, RemainingKm, alarmRowTint, alarmText } from '../components/AlarmBadge';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
@@ -129,7 +129,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   // keeping a selected-but-unreported code lives beside its own test, because a closed dropdown
   // renders no options and an inline version could not be asserted.
   const vehicleOptions = useMemo(
-    () => alarmVehicleOptions(alarmsQuery.data ?? [], vehicleCodes),
+    () => boardVehicleOptions(alarmsQuery.data ?? [], vehicleCodes),
     [alarmsQuery.data, vehicleCodes.join(',')],
   );
 

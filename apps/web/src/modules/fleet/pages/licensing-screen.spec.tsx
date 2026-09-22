@@ -257,9 +257,34 @@ describe('the filters narrow the board', () => {
     expect(shown(render({ rows: fleet }))).toEqual(['150', '151', '214']);
   });
 
-  it('narrows by vehicle code — a PART of it, as the registry\u2019s own box does', () => {
-    expect(shown(render({ rows: fleet, path: '/fleet/licensing?code=15' }))).toEqual(['150', '151']);
-    expect(shown(render({ rows: fleet, path: '/fleet/licensing?code=214' }))).toEqual(['214']);
+  it('narrows by the cars PICKED, several at once', () => {
+    // «عاوز ينزل العربيات زى شاشة المخالفات» — the codes are chosen from a list, so they match
+    // exactly. The substring box this replaces made `15` quietly mean 150 AND 151 AND 215.
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=150' }))).toEqual([
+      '150',
+    ]);
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=150,214' })),
+      'the board keeps its own order, not the order they were picked',
+    ).toEqual(['150', '214']);
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=15' })),
+      'and a code nothing carries matches nothing',
+    ).toEqual([]);
+  });
+
+  it('asks «which cars?» with the PICKER, not a text box', () => {
+    // A closed dropdown renders no options, so what a markup test can prove is which CONTROL is
+    // there: a listbox trigger rather than an input. WHICH cars it offers — this board's, never
+    // the whole registry, because a «برقاش م» pick would empty the board with nothing to say why
+    // — is `boardVehicleOptions`' own rule and is proved in its spec.
+    const html = render({ rows: fleet });
+    const bar = html.slice(0, html.indexOf('<table'));
+    const at = bar.indexOf('aria-label="كود السيارة"');
+    expect(at, 'the car control is on the bar').toBeGreaterThan(-1);
+    const control = bar.slice(bar.lastIndexOf('<', at), bar.indexOf('>', at));
+    expect(control, 'a dropdown').toContain('aria-haspopup="listbox"');
+    expect(control, 'and not an input').not.toContain('<input');
   });
 
   it('narrows by plate and by chassis, each on its own column', () => {
@@ -277,10 +302,10 @@ describe('the filters narrow the board', () => {
     ).toEqual(['214']);
   });
 
-  it('combines the boxes — every one of them has to be satisfied', () => {
-    expect(shown(render({ rows: fleet, path: '/fleet/licensing?code=15&chassis=BBB' }))).toEqual([
-      '151',
-    ]);
+  it('combines the controls — every one of them has to be satisfied', () => {
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=150,151&chassis=BBB' })),
+    ).toEqual(['151']);
   });
 
   it('picks the cars whose insurance «تسليم» is done, and only those', () => {
@@ -305,7 +330,7 @@ describe('the filters narrow the board', () => {
   it('says «no match» rather than explaining the «ت» rule when a FILTER emptied the board', () => {
     // The two empties are different answers: one sends the reader to fix a filter, the other to
     // the catalogs screen. Showing the licence-class hint here would send them to the wrong one.
-    const html = render({ rows: fleet, path: '/fleet/licensing?code=zzz' });
+    const html = render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=zzz' });
     expect(html).toContain('مفيش سيارة مطابقة');
     expect(html, 'the membership rule is not the answer here').not.toContain('برقاش ت');
   });
@@ -339,11 +364,15 @@ describe('the count beside the filters', () => {
     // On the vehicles screen it is the server's `totalItems` for the filtered query. Same
     // question, same answer, whichever screen asked it.
     expect(counter(render({ rows: fleet, path: '/fleet/licensing?ins=handover' }))).toContain('١');
-    expect(counter(render({ rows: fleet, path: '/fleet/licensing?code=15' }))).toContain('٢');
+    expect(
+      counter(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=150,151' })),
+    ).toContain('٢');
   });
 
   it('says nought when a filter matched nothing', () => {
-    expect(counter(render({ rows: fleet, path: '/fleet/licensing?code=zzz' }))).toContain('٠');
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=zzz' }))).toContain(
+      '٠',
+    );
   });
 });
 

@@ -25,7 +25,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { MaintenanceAlarmsPage } from './pages/MaintenanceAlarmsPage';
-import { alarmVehicleOptions } from './lib/alarm-vehicle-options';
+import { boardVehicleOptions } from './lib/board-vehicle-options';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SOURCE = readFileSync(join(HERE, 'pages/MaintenanceAlarmsPage.tsx'), 'utf8');
@@ -289,7 +289,7 @@ describe('searching the car picker', () => {
     expect(control, 'the box is unconditional').toContain('searchThreshold={0}');
 
     const small = [alarm('150', 'red'), alarm('151', 'yellow'), alarm('152', 'none')];
-    expect(alarmVehicleOptions(small, []).length, 'a board too small for the default').toBeLessThan(
+    expect(boardVehicleOptions(small, []).length, 'a board too small for the default').toBeLessThan(
       7,
     );
     expect(shown(render({ qc: client(small) })), 'and the screen still works').toEqual([

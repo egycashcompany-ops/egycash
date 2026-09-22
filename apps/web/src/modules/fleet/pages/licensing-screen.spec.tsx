@@ -311,46 +311,39 @@ describe('the filters narrow the board', () => {
   });
 });
 
-describe('the count and the total beside the filters', () => {
+describe('the count beside the filters', () => {
   const fleet = [
     row({ vehicleId: 'v1', code: '150' }),
     row({ vehicleId: 'v2', code: '151', insuranceHandover: true }),
     row({ vehicleId: 'v3', code: '214' }),
   ];
-  const figure = (html: string, marker: string): string => {
-    const at = html.indexOf(marker);
-    expect(at, `${marker} is on the bar`).toBeGreaterThan(-1);
+  const counter = (html: string): string => {
+    const at = html.indexOf('data-licensing-count');
+    expect(at, 'the count is on the bar').toBeGreaterThan(-1);
     return html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
   };
-  const shown = (html: string) => figure(html, 'data-licensing-count');
-  const total = (html: string) => figure(html, 'data-licensing-total');
 
-  it('shows BOTH figures with nothing filtered — «واعمل الاجمالى جمب العداد»', () => {
-    // Both always, not the total only once a filter is on: a number that appears is a number the
-    // reader has to notice arriving.
+  it('is ONE number, worded and dressed like the registry’s own', () => {
+    // «خليهم رقم بس يكون زى اللى فى باقى شاشات الحركه زى شاشه السيارات». A rail of screens is read
+    // by recognition, so the count here has to be the same object as the count there — not a pair
+    // of labelled figures no other Fleet screen has.
     const html = render({ rows: fleet });
-    expect(shown(html)).toContain('٣');
-    expect(total(html)).toContain('٣');
+    expect(counter(html)).toContain('٣');
+    expect(html, 'the vehicles screen’s own phrasing').toContain('سيارة');
+    expect(html, 'and its own weight').toContain('text-xs font-medium text-slate-500');
+    expect(html, 'nothing is labelled any more').not.toContain('المعروض');
+    expect(html).not.toContain('الإجمالى');
   });
 
-  it('moves the COUNT under a filter and leaves the total alone', () => {
-    const html = render({ rows: fleet, path: '/fleet/licensing?ins=handover' });
-    expect(shown(html), 'one car matched').toContain('١');
-    expect(total(html), 'out of three on the board').toContain('٣');
+  it('counts what the FILTER matched, which is what that number means everywhere else', () => {
+    // On the vehicles screen it is the server's `totalItems` for the filtered query. Same
+    // question, same answer, whichever screen asked it.
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?ins=handover' }))).toContain('١');
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?code=15' }))).toContain('٢');
   });
 
-  it('counts the WHOLE board in the total, even when the filter matched nothing', () => {
-    // Derived from the narrowed list the pair would read «١ من ١» under every filter — a number
-    // that can never say anything.
-    const html = render({ rows: fleet, path: '/fleet/licensing?code=zzz' });
-    expect(shown(html)).toContain('٠');
-    expect(total(html)).toContain('٣');
-  });
-
-  it('names each figure, because two bare numbers side by side name neither', () => {
-    const html = render({ rows: fleet });
-    expect(html).toContain('المعروض');
-    expect(html).toContain('الإجمالى');
+  it('says nought when a filter matched nothing', () => {
+    expect(counter(render({ rows: fleet, path: '/fleet/licensing?code=zzz' }))).toContain('٠');
   });
 });
 

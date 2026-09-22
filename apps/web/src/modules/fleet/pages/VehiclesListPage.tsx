@@ -23,6 +23,9 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { fetchFilteredRows, filtersOnly, saveSheet, sheetDay } from '../lib/fleet-sheet';
+import * as fleetApi from '../api/fleet-api';
 import { migrateLegacyVehicleCodeParam } from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
@@ -363,6 +366,66 @@ export const VehiclesListPage = (): JSX.Element => {
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE FILTER'S WHOLE ANSWER, not the page's. `params` carries the reader's filters AND their
+   * page; the page is dropped here and `fetchFilteredRows` walks every one of them, so a reader
+   * who narrows to three hundred cars gets three hundred rows rather than the fifty in front of
+   * them. A file that is silently short is the worst kind of wrong, because it looks complete.
+   *
+   * The columns are the table's, resolved the way the table resolves them — names, not ids — and
+   * the code cell is SPLIT. On screen it carries three facts at once: the code, the lifecycle
+   * status and the in-workshop pill. A spreadsheet cell cannot stack three things, so each gets a
+   * column; folding them back into one would drop two facts the register has always shown.
+   *
+   * The sort goes with the filters, untouched: the file opens in the order the reader is looking
+   * at, which is the order they will look for a row in.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const filters = filtersOnly(params);
+    const all = await fetchFilteredRows((pageNo, size) =>
+      fleetApi.listVehicles({ ...filters, page: pageNo, pageSize: size }),
+    );
+    saveSheet(
+      {
+        name: t('fleet.nav.vehicles'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.vehicles.columns.type'),
+          t('fleet.vehicles.columns.code'),
+          t('fleet.vehicles.columns.status'),
+          t('fleet.vehicles.inWorkshop'),
+          t('fleet.vehicles.columns.plate'),
+          t('fleet.vehicles.columns.chassis'),
+          t('fleet.vehicles.columns.motor'),
+          t('fleet.vehicles.columns.joinedAt'),
+          t('fleet.vehicles.columns.license'),
+          t('fleet.vehicles.columns.licenseClass'),
+          t('fleet.vehicles.columns.branch'),
+          t('fleet.vehicles.columns.operation'),
+          t('fleet.vehicles.columns.insurance'),
+        ],
+        rows: all.map((v) => [
+          typeName.get(v.typeId) ?? '',
+          v.code,
+          t(`fleet.vehicles.status.${v.status}`),
+          v.inWorkshop ? t('common.yes') : t('common.no'),
+          v.plateNumber,
+          v.chassisNumber,
+          v.motorNumber,
+          formatDate(v.joinedAt, locale),
+          formatDate(v.licenseExpiresAt, locale),
+          (v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)) ?? '',
+          (v.branchId === null ? undefined : branchName.get(v.branchId)) ?? '',
+          (v.operationId === null ? undefined : operationName.get(v.operationId)) ?? '',
+          (v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)) ?? '',
+        ]),
+      },
+      sheetDay(new Date()),
+    );
+  };
+
   // The frozen §7 order. The lifecycle status and the DERIVED in-workshop pill ride with the code
   // rather than taking a fifteenth column: dropping them would lose real information the registry
   // has always shown, and the column list did not ask for them to go.
@@ -547,6 +610,8 @@ export const VehiclesListPage = (): JSX.Element => {
           { label: t('fleet.nav.vehicles') },
         ]}
         actions={
+          <>
+            <ExportSheetButton name="vehicles" onExport={exportSheet} />
           <Can permission="fleetVehicle.create">
             <Button
               size="sm"
@@ -559,6 +624,7 @@ export const VehiclesListPage = (): JSX.Element => {
               {t('fleet.vehicles.create')}
             </Button>
           </Can>
+          </>
         }
       />
 

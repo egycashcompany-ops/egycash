@@ -47,9 +47,9 @@ import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterField } from '../../../shared/ui/FilterField';
-import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { buildXlsx, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
-import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
+import { printFleetReport, reportMoney, signatureRows } from '../lib/fleet-report-print';
 
 /** The four lines every group shows, in the order the business reads them. */
 const TOTAL_ROWS = [
@@ -189,9 +189,11 @@ export const CompanyViolationsPanel = ({
     settled === ''
       ? allRows
       : allRows.filter((row) => {
-          // `rowCount === 0` is a year whose only fines were the DRIVERS' — there is nothing here
-          // for the company to collect, so it is neither outstanding nor settled and belongs to
-          // neither half of this filter. It is still shown when «الكل» is chosen.
+          // `rowCount === 0` is a group with nothing in it at all — a grievance figure whose
+          // violations were deleted. Neither outstanding nor settled, so it belongs to neither
+          // half of this filter; it is still shown when «الكل» is chosen. A year whose only fines
+          // are the DRIVERS' is not this case any more: those rows are what the tick settles, so
+          // they count, and the group sorts under «محصلة» or «لسه» like any other.
           if (row.rowCount === 0) return false;
           const done = row.collectedCount === row.rowCount;
           return settled === 'true' ? done : !done;
@@ -314,6 +316,9 @@ export const CompanyViolationsPanel = ({
       rows: sheetRows(),
       // The three money columns, shown to two decimals and still summable.
       moneyColumns: [3, 5, 7],
+      // THE SAME BLOCK THE PAGE CARRIES, inside the sheet — this is a document somebody
+      // prints and signs, not a dump of the table.
+      trailer: signatureRows(signatories, signatureColumns(9), t('fleet.violations.report.signLine')),
       // Laid out under the columns it belongs to: the money under each money column, and the word
       // «الإجمالى» where the car code is — which is where a reader's eye goes looking for it.
       totals: [

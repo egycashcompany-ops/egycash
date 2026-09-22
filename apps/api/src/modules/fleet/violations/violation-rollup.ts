@@ -36,20 +36,16 @@ const keyOf = (vehicleId: string | null, code: string | null, year: number): str
  * take that car off the board with its settled history inside it. A grievance figure that is a
  * real number also keeps its row: the appeal wiped the statement, and the figure IS the history.
  *
- * THE DRIVERS' SIDE NEEDS ITS OWN LIMB, because `rowCount` counts the COMPANY's rows only — it is
- * what the board's tick sets, and that tick settles the company's statement alone. A year whose
- * only fines were its drivers' has no statement rows at all, and without this it would vanish from
- * a board that is still reporting its money in «إجمالي السائقين».
+ * `rowCount` NOW COUNTS THE WHOLE GROUP — the statement rows and the drivers' fines on the same
+ * car and year — because that is what the board's tick reaches. So a year whose only fines were
+ * its drivers' stays on the board, and it stays there after they are all settled too: the tick
+ * can untick them, and a row a reader may still act on is a row that has something in it.
  *
- * Such a year leaves the board once every one of those fines is settled: nothing is outstanding,
- * there is no statement to tick, and this board's tick could not untick them anyway. They are
- * still on the drivers' board, which lists fines directly and has its own «الحالة» filter.
+ * The grievance limb remains its own: an appeal can wipe the statement and leave the figure, and
+ * that figure IS the history.
  */
 const hasSomethingInIt = (row: FleetViolationRollupDto): boolean =>
-  row.rowCount > 0 ||
-  row.driverCount > 0 ||
-  row.driverAmount !== 0 ||
-  row.totalBeforeGrievance !== 0;
+  row.rowCount > 0 || row.totalBeforeGrievance !== 0;
 
 export const assembleRollups = (
   sums: readonly ViolationYearSums[],

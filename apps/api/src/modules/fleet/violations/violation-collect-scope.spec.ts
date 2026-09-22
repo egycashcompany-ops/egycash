@@ -1,14 +1,16 @@
-// WHAT THE COMPANY BOARD'S TICK IS ALLOWED TO TOUCH, and what the board is allowed to be asked.
+// WHAT THE BOARD'S TICK REACHES, and what the board is allowed to be asked.
 //
-// «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه بالسواقيين». The violations collection holds
-// two discriminated shapes — the company's yearly statement rows (`kind: 'vehicle'`) and the
-// drivers' per-event fines (`kind: 'driver'`) — and they are TWO ACCOUNTS. The screen shows them
-// side by side for exactly that reason, and the owner settles each on its own side.
+// «عاوز لما اعمل علامه صح على عربيه يعملى صح برضو على كل السواقيين اللى موجودين على نفس العربيه».
+// The violations collection holds two discriminated shapes — the company's yearly statement rows
+// (`kind: 'vehicle'`) and the drivers' per-event fines (`kind: 'driver'`) — and the screen shows
+// them side by side. The tick does NOT: closing a car for a year closes what the car owes and what
+// its drivers owe on it, in one act, because that is how the work is actually done.
 //
-// The group tick used to set EVERY row of a (vehicle, year), so closing off a car's statement
-// marked that car's drivers' fines as received in the same click: money owed by a person, written
-// off because somebody finished with a different account. Nothing on the screen said it had
-// happened, and the only way back was to find each fine and untick it.
+// It was scoped to the statement rows for a release, and the drivers' half then had to be ticked
+// one fine at a time on the board below. These tests pin the two things that has to get right: the
+// tick reaches every row of the (vehicle, year) and NOTHING outside it — a fine belonging to
+// another year on the same car is another year's business — and the two numbers the board's colour
+// is read from count exactly the rows the tick sets.
 //
 // The second half is the filter that quietly stopped filtering: the rollup took ONE vehicle id,
 // so the board sent nothing the moment two codes were picked and answered for the whole fleet
@@ -18,7 +20,7 @@ import { join } from 'node:path';
 import { Types } from 'mongoose';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetViolationModel } from './violation.model';
-import { fleetViolationRepository } from './violation.repository';
+import { fleetViolationRepository, violationYearBranches } from './violation.repository';
 
 const VEHICLE = '650000000000000000000001';
 
@@ -35,21 +37,32 @@ const tickFilter = async (): Promise<Record<string, unknown>> => {
   return (updateMany.mock.calls[0]?.[0] ?? {}) as Record<string, unknown>;
 };
 
-describe('the company board’s tick settles the COMPANY’s rows and nothing else', () => {
-  it('names the company shape explicitly — the drivers’ fines are not in the filter', async () => {
+describe('the company board’s tick settles the WHOLE group — «يعملى صح برضو على كل السواقيين»', () => {
+  it('reaches the car’s statement rows AND the drivers’ fines on it, for that year', async () => {
+    // Closing a car for a year closes what the car owes and what its drivers owe on it, together.
+    // It was scoped to the statement rows for a while, and that made the clerk settle the drivers'
+    // half one row at a time on the board below — the same decision, asked twice.
     const filter = await tickFilter();
-    expect(filter['kind'], 'the statement rows, by name').toBe('vehicle');
-    expect(filter['year'], 'of that one year').toBe(2026);
     expect(String(filter['vehicleId']), 'of that one car').toBe(VEHICLE);
+    const branches = filter['$or'] as Record<string, unknown>[];
+    expect(branches, 'both shapes are named').toHaveLength(3);
+    expect(branches[0]).toEqual({ kind: 'vehicle', year: 2026 });
+    expect(branches[1], 'carried ONTO this year, whatever its date').toEqual({
+      kind: 'driver',
+      filedYear: 2026,
+    });
+    expect(branches[2]?.['kind'], 'and the ordinary case, by its own date').toBe('driver');
+    expect(branches[2]?.['filedYear'], 'unless it was carried away').toBeNull();
   });
 
-  it('asks the year the way a STATEMENT row carries it — no date branch at all', async () => {
-    // The `$or` that used to be here had two branches: a stored `year` for the statement rows and
-    // a date range for the drivers' events. The second branch existed only to reach the rows this
-    // must never touch, so keeping it would be keeping the bug in a filter that says it is fixed.
+  it('asks the year the way the BOARD asks it, so the tick cannot reach a row the group omits', async () => {
+    // Which fines belong to a (car, year) is not a date range: one carried onto this statement
+    // belongs to it however old it is, and one carried away does not whatever its date says.
+    // `violationYearBranches` is that rule, and the group's own figures are summed through it —
+    // so using anything else here would let the tick settle a row the reader cannot see, or skip
+    // one they can.
     const filter = await tickFilter();
-    expect(filter['$or'], 'a driver branch is how the fines got settled').toBeUndefined();
-    expect(JSON.stringify(filter), 'and no date window either').not.toContain('date');
+    expect(filter['$or']).toEqual(violationYearBranches([2026]));
   });
 
   it('writes only `collected`, and writes it as it was asked', async () => {
@@ -72,18 +85,19 @@ const sumsPipeline = async (
   return (aggregate.mock.calls[0]?.[0] ?? []) as unknown as Record<string, unknown>[];
 };
 
-describe('the two numbers the tick is read from count the COMPANY’s rows', () => {
-  it('counts a statement row and skips a driver fine, collected or not', async () => {
+describe('the two numbers the tick is read from count EVERY row the tick reaches', () => {
+  it('counts the whole group, statement rows and drivers’ fines alike', async () => {
     const group = (await sumsPipeline())[1]?.['$group'] as Record<string, unknown>;
-    // Were the drivers' fines counted here, a car whose statement was fully settled would still
-    // report «بعضها» because a driver had not paid — and clicking the tick could never turn it
-    // green, because the tick cannot reach those rows any more.
-    expect(JSON.stringify(group['rowCount'])).toContain('"$kind","vehicle"');
-    expect(JSON.stringify(group['collectedCount'])).toContain('"$kind","vehicle"');
+    // These two are the tick's colour and the «الحالة» filter, so they have to count exactly what
+    // the tick sets. Counting less would leave a fully settled group reporting «بعضها» for ever;
+    // counting more would leave one that can never turn green.
+    expect(group['rowCount']).toEqual({ $sum: 1 });
+    expect(JSON.stringify(group['rowCount']), 'no shape is singled out').not.toContain('$kind');
     expect(JSON.stringify(group['collectedCount'])).toContain('$collected');
+    expect(JSON.stringify(group['collectedCount']), 'nor here').not.toContain('$kind');
   });
 
-  it('still sums the DRIVERS’ money — the board reports it, it just does not tick it', async () => {
+  it('still sums the two halves SEPARATELY — one tick, but two lines on the board', async () => {
     const group = (await sumsPipeline())[1]?.['$group'] as Record<string, unknown>;
     expect(JSON.stringify(group['driverAmount'])).toContain('"$kind","driver"');
     expect(JSON.stringify(group['driverCount'])).toContain('"$kind","driver"');

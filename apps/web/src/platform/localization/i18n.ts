@@ -4254,6 +4254,7 @@ const en: Record<string, string> = {
   'fleet.violations.report.companyLine': 'Company total',
   'fleet.violations.report.driversLine': 'Drivers total',
   'fleet.violations.report.allLine': 'Violations total',
+  'fleet.violations.report.signLine': 'Signature / ',
   'fleet.violations.returnToOwnYear': 'Return this fine to its own year',
   // Names the CAR it goes back to, because that is the half of the undo nobody could see.
   'fleet.violations.returnToCar': 'Return this fine to car {{code}}, under its own year',
@@ -11061,6 +11062,7 @@ const ar: Record<string, string> = {
   'fleet.violations.report.companyLine': 'إجمالى الشركة',
   'fleet.violations.report.driversLine': 'إجمالى السائقين',
   'fleet.violations.report.allLine': 'إجمالى المخالفات',
+  'fleet.violations.report.signLine': 'التوقيع / ',
   'fleet.violations.returnToOwnYear': 'رجّع المخالفة لسنتها',
   'fleet.violations.returnToCar': 'رجّع المخالفة لعربية {{code}} ولسنتها',
   'fleet.violations.returnedToOwnYear': 'رجعت لسنتها',

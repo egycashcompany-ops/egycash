@@ -112,6 +112,12 @@ const rollupRow = (over: Partial<FleetViolationRollupDto> = {}): FleetViolationR
   driverAmount: 0,
   totalCount: 4,
   totalAmount: 2040.15,
+  // Nothing ticked, so what is outstanding IS what the year came to. A test that wants a settled
+  // car overrides these three and leaves the figures above alone — which is the whole point of
+  // there being two sets.
+  outstandingVehicleAmount: 2040.15,
+  outstandingDriverAmount: 0,
+  outstandingTotalAmount: 2040.15,
   rowCount: 4,
   collectedCount: 0,
   totalBeforeGrievance: 0,
@@ -282,6 +288,36 @@ describe('the two halves offer their OWN violation types, and only those', () =>
       markup.indexOf('data-violations-panel="company"'),
       'company is first in the DOM, which is the right in RTL',
     ).toBeLessThan(markup.indexOf('data-violations-panel="driver"'));
+  });
+
+  it('keeps a settled car’s FIGURES on its line and takes its money out of the totals', () => {
+    // «كل الارقام بتاعت العربيه تفضل موجوده متتحولش ل صفر بس الاجماليات بتاعت الجدول العربيه اللى
+    // خلصت تتطرح من الجدول» — the drivers' half's own behaviour, asked for on the company half.
+    const settled = page({
+      rollup: [
+        rollupRow({
+          code: '150',
+          vehicleAmount: 500,
+          totalAmount: 500,
+          collectedCount: 4,
+          outstandingVehicleAmount: 0,
+          outstandingTotalAmount: 0,
+        }),
+      ],
+    });
+    // The LINE still says what the year came to…
+    expect(settled, 'the figure is still on the row').toContain('500');
+    // …and the FOOTER has nothing left to chase, because its three figures read the outstanding
+    // half. A footer summing the column above it would still be reporting 500 owed on a car
+    // somebody has just been paid for.
+    const source = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const block = source.slice(source.indexOf('const totals = useMemo'), source.indexOf('[rows],'));
+    expect(block).toContain('r.outstandingVehicleAmount');
+    expect(block).toContain('r.outstandingDriverAmount');
+    expect(block).toContain('r.outstandingTotalAmount');
+    expect(block, 'and never the full figures, which are the row’s business').not.toContain(
+      'r.vehicleAmount',
+    );
   });
 
   it('offers company types in the company form and NEVER a driver type', () => {

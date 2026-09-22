@@ -22,6 +22,15 @@ export interface ViolationYearSums {
   vehicleAmount: number;
   driverCount: number;
   driverAmount: number;
+  /**
+   * The part of each half still owed — the four above minus what has been ticked.
+   *
+   * The figures above are what the year CAME TO and stay put when a row is settled; these are
+   * what is still outstanding, and they are what the board's footer adds up. Two answers because
+   * the screen asks two questions at once.
+   */
+  outstandingVehicleAmount: number;
+  outstandingDriverAmount: number;
   /** Documents in the group, and how many of them are ticked — the board's group tick reads these. */
   rowCount: number;
   collectedCount: number;
@@ -329,6 +338,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       vehicleAmount: number;
       driverCount: number;
       driverAmount: number;
+      outstandingVehicleAmount: number;
+      outstandingDriverAmount: number;
       rowCount: number;
       collectedCount: number;
     }>([
@@ -354,33 +365,48 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
               ],
             },
           },
-          // WHAT IS STILL OWED, not what was ever fined. A row that has been ticked as collected
-          // is settled, and the owner reads these four figures as the outstanding balance —
-          // «تخرج من إجمالى الشركة و إجمالى السائقين و إجمالى المخالفات». So the tick takes the
-          // row out of all four here, at the one place violation money is summed; every other
-          // consumer (the group lines, the panel footers, the CSV and the print sheet) is a
-          // re-rendering of these fields and follows for free, which is what keeps screen, export
-          // and print from disagreeing.
+          // WHAT THE YEAR ACTUALLY HOLDS — collected or not. «عاوز لما اعمل على عربيه صح كل
+          // الارقام بتاعت العربيه تفضل موجوده متتحولش ل صفر».
           //
-          // MONEY AND COUNTS MOVE TOGETHER, deliberately: they sit in the same table row, so
-          // excluding only the amount would print «٣ مخالفات · ٠٫٠٠ ج.م» — a line that contradicts
-          // itself.
+          // These four used to drop a row the moment it was ticked, so settling a car turned its
+          // whole line to zeroes and the reader lost the figures they had just agreed. A tick is
+          // a statement about PAYMENT, not a delete: the line keeps saying what the year came to,
+          // and the green tint is what says it is paid.
           //
-          // The exclusion is a $cond INSIDE the group, never a `collected: false` in the $match.
-          // Matching would have been the shorter edit and would take the settled rows out of
-          // `rowCount`/`collectedCount` too — and those two are what the board's three-state tick,
-          // its green tint and the «الحالة» filter are all computed from, so a fully-collected
-          // group would stop reporting that it is collected at all.
+          // The outstanding balance did not go away — it moved to `outstanding*` below, which is
+          // what the board's footer adds up. Two sets of figures because the screen asks two
+          // questions at once: what is this car's year, and how much is still owed across the
+          // board. It is the drivers' half's own behaviour, which the owner pointed at: «المبلغ
+          // موجود عادى 400 او 700 ... بس الخلفية خضرا والاجمالى بتاع السواقيين بينقص».
+          //
+          // MONEY AND COUNTS MOVE TOGETHER, deliberately: they sit in the same table row, so a
+          // count that excluded what the amount included would print «٣ مخالفات · ٠٫٠٠ ج.م» — a
+          // line that contradicts itself.
           vehicleCount: {
-            $sum: {
-              $cond: [
-                { $and: [{ $eq: ['$kind', 'vehicle'] }, { $not: ['$collected'] }] },
-                { $ifNull: ['$count', 0] },
-                0,
-              ],
-            },
+            $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, { $ifNull: ['$count', 0] }, 0] },
           },
           vehicleAmount: {
+            $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, '$amount', 0] },
+          },
+          driverCount: {
+            $sum: { $cond: [{ $eq: ['$kind', 'driver'] }, 1, 0] },
+          },
+          driverAmount: {
+            $sum: { $cond: [{ $eq: ['$kind', 'driver'] }, '$amount', 0] },
+          },
+          // …AND WHAT IS STILL OWED, which is what the footer adds up: «الاجماليات بتاعت الجدول
+          // العربيه اللى خلصت تتطرح من الجدول». Summed per ROW rather than per group, so a car
+          // half-settled contributes the half it still owes — the same arithmetic the drivers'
+          // board does in hand, and the reason its total moves the moment one fine is ticked.
+          //
+          // Computed here, beside the figures it is the complement of, rather than subtracted on
+          // the client: a footer that derived it from a rounded column would drift from the rows.
+          //
+          // The exclusion is a $cond INSIDE the group, never a `collected: false` in the $match.
+          // Matching would take the settled rows out of `rowCount`/`collectedCount` too, and those
+          // two are what the board's three-state tick, its green tint and the «الحالة» filter are
+          // computed from — a fully-collected group would stop reporting that it is collected.
+          outstandingVehicleAmount: {
             $sum: {
               $cond: [
                 { $and: [{ $eq: ['$kind', 'vehicle'] }, { $not: ['$collected'] }] },
@@ -389,12 +415,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
               ],
             },
           },
-          driverCount: {
-            $sum: {
-              $cond: [{ $and: [{ $eq: ['$kind', 'driver'] }, { $not: ['$collected'] }] }, 1, 0],
-            },
-          },
-          driverAmount: {
+          outstandingDriverAmount: {
             $sum: {
               $cond: [
                 { $and: [{ $eq: ['$kind', 'driver'] }, { $not: ['$collected'] }] },
@@ -426,6 +447,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       vehicleAmount: row.vehicleAmount,
       driverCount: row.driverCount,
       driverAmount: row.driverAmount,
+      outstandingVehicleAmount: row.outstandingVehicleAmount,
+      outstandingDriverAmount: row.outstandingDriverAmount,
       rowCount: row.rowCount,
       collectedCount: row.collectedCount,
     }));

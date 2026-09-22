@@ -6243,6 +6243,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         driverAmount: 150,
         totalCount: 4,
         totalAmount: 450,
+        // Nothing is ticked yet, so what is outstanding IS what the year came to. The two sets
+        // part company the moment a row is settled: the line above holds still and these fall.
+        outstandingVehicleAmount: 300,
+        outstandingDriverAmount: 150,
+        outstandingTotalAmount: 450,
         totalBeforeGrievance: 600,
         // TWO documents counted here — the statement row of «×3» and the driver event beside it.
         // These two are what the board's tick sets and is coloured from, and that tick settles the
@@ -6255,11 +6260,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
   });
 
   /*
-   * TWO ACCOUNTS, SETTLED SEPARATELY — «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه
-   * بالسواقيين».
+   * ONE TICK, THE WHOLE GROUP — «عاوز لما اعمل علامه صح على عربيه يعملى صح برضو على كل السواقيين
+   * اللى موجودين على نفس العربيه».
    *
-   * The group tick used to set every row of a (vehicle, year), so closing off a car's statement
-   * marked that car's DRIVERS' fines as received in the same click. Nothing on the screen said so,
+   * For one release the group tick set the company's statement rows alone, so the drivers' half
+   * had to be settled one fine at a time on the board below. Nothing on the screen said so,
    * and the only way back was to find each fine and untick it one at a time.
    */
   describe('the company board’s tick and the drivers’ fines', () => {
@@ -6281,7 +6286,7 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       return data<Record<string, unknown>[]>(res);
     };
 
-    it('settles the STATEMENT and leaves the drivers’ fines — this year’s and an older one', async () => {
+    it('settles the whole 2026 block and leaves an OLDER year’s fine on the same car', async () => {
       const v = data<FleetVehicleDto>(await createVehicle(adminToken));
       const vehicleType = await violationTypeIdByName('رسوم خدمة');
       const driverType = await violationTypeIdByName('تليفون');
@@ -6339,7 +6344,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       const [year2026] = await rollupOf({ year: 2026, vehicleId: v.id });
       expect(year2026?.['rowCount']).toBe(2);
       expect(year2026?.['collectedCount']).toBe(2);
-      expect(year2026?.['driverAmount'], 'nothing outstanding on the drivers’ side').toBe(0);
+      expect(year2026?.['driverAmount'], 'the 2026 line still says what it came to').toBe(200);
+      expect(
+        year2026?.['outstandingDriverAmount'],
+        'and nothing outstanding on the drivers’ side',
+      ).toBe(0);
       // And 2025 is untouched: its fine is still owed and still reported.
       const [year2025] = await rollupOf({ year: 2025, vehicleId: v.id });
       expect(year2025?.['driverAmount']).toBe(300);
@@ -6377,7 +6386,8 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       expect(data<{ changed: number }>(ticked).changed).toBe(1);
       const [settled] = await rollupOf({ year: 2024, vehicleId: v.id });
       expect(settled?.['collectedCount'], 'and the group goes green').toBe(1);
-      expect(settled?.['driverAmount']).toBe(0);
+      expect(settled?.['driverAmount'], 'the line still says what the year came to').toBe(120);
+      expect(settled?.['outstandingDriverAmount'], 'and nothing is owed on it now').toBe(0);
     });
 
     it('carries a driver’s OLDER fine onto the car’s current statement, untouched', async () => {
@@ -8164,17 +8174,19 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .send({ collected: true, version: fine.version });
 
     const half = await group();
+    // THE LINE IS UNMOVED — «كل الارقام بتاعت العربيه تفضل موجوده متتحولش ل صفر». A tick is a
+    // statement about payment, not a delete, so the row goes on saying what the year came to.
     expect(
-      [half.driverCount, half.driverAmount],
-      'the settled fine is out of the drivers’ figures',
-    ).toEqual([0, 0]);
+      [half.vehicleCount, half.vehicleAmount, half.driverCount, half.driverAmount],
+      'the figures on the row do not move when a fine is ticked',
+    ).toEqual([3, 300, 1, 250]);
+    expect([half.totalCount, half.totalAmount]).toEqual([4, 550]);
+    // …and the OUTSTANDING half, which is what the board's footer adds up, drops by that fine
+    // alone — per row, not per car, which is why a half-settled group still owes its other half.
     expect(
-      [half.vehicleCount, half.vehicleAmount],
-      'and the statement row it did not touch is untouched',
-    ).toEqual([3, 300]);
-    expect([half.totalCount, half.totalAmount], 'the total follows the two halves').toEqual([
-      3, 300,
-    ]);
+      [half.outstandingVehicleAmount, half.outstandingDriverAmount, half.outstandingTotalAmount],
+      'only the settled fine leaves the running totals',
+    ).toEqual([300, 0, 300]);
     expect(
       [half.collectedCount, half.rowCount],
       'one of the two is settled, which is what «بعضها» on the board means',
@@ -8189,9 +8201,13 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     const done = await group();
     expect(
       [done.vehicleCount, done.vehicleAmount, done.driverCount, done.driverAmount],
-      'every money line is zero',
-    ).toEqual([0, 0, 0, 0]);
-    expect([done.totalCount, done.totalAmount]).toEqual([0, 0]);
+      'the car’s own figures are exactly what they always were',
+    ).toEqual([3, 300, 1, 250]);
+    expect([done.totalCount, done.totalAmount]).toEqual([4, 550]);
+    expect(
+      [done.outstandingVehicleAmount, done.outstandingDriverAmount, done.outstandingTotalAmount],
+      'and NOW there is nothing left to chase — the footer loses the car entirely',
+    ).toEqual([0, 0, 0]);
     expect(
       [done.collectedCount, done.rowCount],
       'NOW the group reports itself fully collected — the green tint depends on it',
@@ -8210,9 +8226,14 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ collected: false, version: again?.version ?? 1 });
     const back = await group();
-    expect([back.vehicleCount, back.vehicleAmount], 'the statement is owed again').toEqual([
-      3, 300,
-    ]);
+    expect(
+      [back.vehicleCount, back.vehicleAmount],
+      'the row never changed, so there is nothing to bring back there',
+    ).toEqual([3, 300]);
+    expect(
+      back.outstandingVehicleAmount,
+      'and the statement is owed again — untick is what the footer answers to',
+    ).toBe(300);
   });
 
   it('moves a filed statement row to another CAR and another YEAR', async () => {
@@ -8661,7 +8682,11 @@ describe('the violations board, as the screen actually asks it', () => {
     expect(fines.map((f) => f.collected), 'the drivers’ half went green too').toEqual([true]);
     expect(
       data<{ driverAmount: number }[]>(after)[0]?.driverAmount,
-      'so the board reports nothing outstanding on that side either',
+      'the line still reports what the drivers were fined',
+    ).toBe(90);
+    expect(
+      data<{ outstandingDriverAmount: number }[]>(after)[0]?.outstandingDriverAmount,
+      'and the board has nothing outstanding on that side either',
     ).toBe(0);
 
     // And untick puts it all back — the tick is a toggle over the group, not a one-way door.

@@ -33,6 +33,8 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { saveSheet } from '../lib/fleet-sheet';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -637,6 +639,33 @@ export const FixedRosterPage = (): JSX.Element => {
     [boardQuery.data, draft],
   );
 
+  /**
+   * What the table SHOWS — the draft, narrowed by code AND mission AND state, through the rule
+   * module the daily board reads. The code goes through the same parser every filter bar in the
+   * application reads a code box with, so `150 - 151` names two cars here too.
+   *
+   * DISPLAY ONLY. `draft`, the counters, the pool and what «حفظ» sends all read the whole board
+   * and never this — a filter is a way of looking at the board, not a way of editing it.
+   *
+   * Computed ABOVE the driver pool's search index rather than below it, because that index
+   * now covers these rows' SEATED drivers as well as the free ones — see the note on `records`.
+   */
+  const rows = useMemo(
+    // Narrowed first, then ordered, with the code closing every tie — which is the order this
+    // board arrives in, so a reader who has clicked nothing sees what they saw before.
+    () =>
+      sortRows(
+        visibleFixedRows(draft, { term: search, missions, view }),
+        sorts,
+        fixedSortValue,
+        (a, b) => a.code.localeCompare(b.code),
+      ),
+    [draft, search, missionsKey, view, sortParam],
+  );
+  const filtered = search !== '' || missions.length > 0 || view !== null;
+  /** «إعادة ضبط» — every filter off in ONE update, the daily board's three keys. */
+  const resetFilters = (): void => patch({ q: null, mission: null, view: null });
+
   // ── finding somebody in the pool ──────────────────────────────────────────
   //
   // Panel-local state, not a URL parameter: this filters a side list, it does not select what
@@ -644,9 +673,29 @@ export const FixedRosterPage = (): JSX.Element => {
   // shows — a thing worth sharing in a link. Which driver you were hunting for is not.
   const [driverSearch, setDriverSearch] = useState('');
 
-  // The records the cards already load, read once here so the whole pool can be searched. Same
-  // query keys, so this subscribes to the existing entries rather than fetching a second time.
-  const records = useEmployeeRecords(useMemo(() => pool.map((d) => d.employeeId), [pool]));
+  /**
+   * The records the cards already load, read once here so the whole pool can be searched. Same
+   * query keys, so this subscribes to the existing entries rather than fetching a second time.
+   *
+   * THE SEATED DRIVERS RIDE ALONG IN THE SAME MAP. The pool is only the people nobody has, and
+   * the Excel export has to name the ones who are ON the cars — so the one map this page builds
+   * answers both questions rather than the export growing a second one beside it. It costs
+   * nothing: every seated driver on a visible row already has a `DriverChip` asking for that
+   * exact record under that exact key, so this subscribes to requests the board has already paid
+   * for. Keyed on `rows` and not on `draft` for that very reason — a row the filter hides draws
+   * no chip, and asking for its driver would be a request the screen never needed.
+   */
+  const records = useEmployeeRecords(
+    useMemo(
+      () => [
+        ...pool.map((d) => d.employeeId),
+        ...rows.flatMap((row) =>
+          [row.driver1EmployeeId, row.driver2EmployeeId].filter((id): id is string => id !== null),
+        ),
+      ],
+      [pool, rows],
+    ),
+  );
   const searchIndex = useMemo(() => {
     const index = new Map<string, DriverSearchRecord>();
     for (const [employeeId, employee] of records) {
@@ -667,28 +716,14 @@ export const FixedRosterPage = (): JSX.Element => {
   );
 
   /**
-   * What the table SHOWS — the draft, narrowed by code AND mission AND state, through the rule
-   * module the daily board reads. The code goes through the same parser every filter bar in the
-   * application reads a code box with, so `150 - 151` names two cars here too.
-   *
-   * DISPLAY ONLY. `draft`, the counters, the pool and what «حفظ» sends all read the whole board
-   * and never this — a filter is a way of looking at the board, not a way of editing it.
+   * A seated driver as the CHIP spells them — the name HR knows, or the id's tail where it does
+   * not (no `employee.view`, or the record has not landed). Never a raw id, and never a name the
+   * board is not showing: one resolution, read by the cell and by the file alike.
    */
-  const rows = useMemo(
-    // Narrowed first, then ordered, with the code closing every tie — which is the order this
-    // board arrives in, so a reader who has clicked nothing sees what they saw before.
-    () =>
-      sortRows(
-        visibleFixedRows(draft, { term: search, missions, view }),
-        sorts,
-        fixedSortValue,
-        (a, b) => a.code.localeCompare(b.code),
-      ),
-    [draft, search, missionsKey, view, sortParam],
-  );
-  const filtered = search !== '' || missions.length > 0 || view !== null;
-  /** «إعادة ضبط» — every filter off in ONE update, the daily board's three keys. */
-  const resetFilters = (): void => patch({ q: null, mission: null, view: null });
+  const driverName = (employeeId: string | null): string =>
+    employeeId === null
+      ? ''
+      : (records.get(employeeId)?.personal.fullNameAr ?? employeeId.slice(-8));
 
   // Ascending, then descending, then out of the order altogether — the daily board's rule.
   const changeSort = (by: string): void => {
@@ -781,6 +816,54 @@ export const FixedRosterPage = (): JSX.Element => {
         notes: row.notes,
       }),
     );
+
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THIS BOARD IS NOT PAGED, so there is nothing to walk. `useFixedRoster` answers with every
+   * car that can carry a standing crew in one reply — no `meta`, no page parameter, no second
+   * page — which is why this does not reach for `fetchFilteredRows` the way the paged registers
+   * do: `rows` IS the filter's whole answer, already narrowed by the car picker, the mission
+   * filter and the view chips, and already in the order the reader has clicked the board into.
+   *
+   * It writes the DRAFT, not the server's board: what is on screen, unsaved edits included. The
+   * «غير محفوظ» banner is what says so, and a file that disagreed with the board it was taken
+   * from would be the more surprising of the two.
+   *
+   * «الحالة» is SPLIT across two columns. On screen the cell stacks two badges — the workshop
+   * pill and the crewed/uncrewed verdict — and a spreadsheet cell cannot stack anything, so each
+   * badge gets a column of its own rather than two facts being folded into one. The actions
+   * column is left out: it is buttons, not facts about a car.
+   */
+  const exportSheet = (): Promise<void> => {
+    saveSheet(
+      {
+        name: t('fleet.nav.fixedRoster'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.odometer.columns.vehicle'),
+          t('fleet.vehicles.inWorkshop'),
+          t('fleet.vehicles.columns.status'),
+          t('fleet.roster.fields.mission'),
+          t('fleet.odometer.fields.driver1'),
+          t('fleet.odometer.fields.driver2'),
+          t('fleet.attendance.fields.notes'),
+        ],
+        rows: rows.map((row) => [
+          row.code,
+          row.inMaintenance ? t('common.yes') : t('common.no'),
+          hasDriver(row) ? t('fleet.roster.assigned') : t('fleet.fixedRoster.unassigned'),
+          missionTypeName(row.missionTypeId) ?? '',
+          driverName(row.driver1EmployeeId),
+          driverName(row.driver2EmployeeId),
+          row.notes ?? '',
+        ]),
+        // No money on this board — a standing crew is people, a car and a note.
+      },
+    );
+    // Nothing is awaited: the rows are already in hand, and the button's contract is a promise.
+    return Promise.resolve();
+  };
 
   /**
    * The seven columns, in the daily roster's own order and idiom (§4.5's board, minus its date).
@@ -953,6 +1036,10 @@ export const FixedRosterPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.fixedRoster') },
         ]}
+        // «حفظ» and «إلغاء» stay down in the filter strip, beside the tally they answer to.
+        // Excel is not one of that pair — it writes nothing and undoes nothing — so it sits in
+        // the header, where every other Fleet list screen keeps it.
+        actions={<ExportSheetButton name="fixed-roster" onExport={exportSheet} />}
       />
 
       {/* THE DAILY BOARD'S STRIP, in the daily board's PLACE.

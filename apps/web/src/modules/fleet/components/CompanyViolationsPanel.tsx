@@ -236,11 +236,23 @@ export const CompanyViolationsPanel = ({
   };
 
   // ── what the panel's own footer adds up ───────────────────────────────────
+  /**
+   * The three figures under the board — WHAT IS STILL OWED, not what was ever fined.
+   *
+   * «كل الارقام بتاعت العربيه تفضل موجوده متتحولش ل صفر بس الاجماليات بتاعت الجدول العربيه اللى
+   * خلصت تتطرح من الجدول». Each LINE goes on saying what its year came to; these add up only the
+   * part nobody has ticked yet, so settling a car takes its money out of the running totals while
+   * its own row is unchanged but green.
+   *
+   * The server computes the outstanding half beside the full one, row by row, so a car settled
+   * halfway contributes the half it still owes — the arithmetic the drivers' board has always
+   * done in hand, and the reason its total moves the moment one fine is ticked.
+   */
   const totals = useMemo(
     () => ({
-      company: rows.reduce((sum, r) => sum + r.vehicleAmount, 0),
-      drivers: rows.reduce((sum, r) => sum + r.driverAmount, 0),
-      all: rows.reduce((sum, r) => sum + r.totalAmount, 0),
+      company: rows.reduce((sum, r) => sum + r.outstandingVehicleAmount, 0),
+      drivers: rows.reduce((sum, r) => sum + r.outstandingDriverAmount, 0),
+      all: rows.reduce((sum, r) => sum + r.outstandingTotalAmount, 0),
     }),
     [rows],
   );

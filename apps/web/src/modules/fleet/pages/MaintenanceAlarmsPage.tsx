@@ -18,11 +18,13 @@ import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { saveSheet } from '../lib/fleet-sheet';
 import { Button } from '../../../shared/ui/Button';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { useMaintenanceAlarms } from '../api/fleet-queries';
 import { alarmVehicleOptions } from '../lib/alarm-vehicle-options';
-import { AlarmBadge, RemainingKm, alarmRowTint } from '../components/AlarmBadge';
+import { AlarmBadge, RemainingKm, alarmRowTint, alarmText } from '../components/AlarmBadge';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
 import { sortRows } from '../lib/sort-rows';
@@ -139,6 +141,59 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
     { value: 'none', label: t('fleet.vehicle.alarmNone') },
   ];
 
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE ROWS IN HAND ARE THE WHOLE ANSWER HERE, which is why this export does not fetch.
+   * FR-3 takes no query and returns one row per vehicle for the entire fleet — there is no
+   * `meta`, no page and no second request to walk. Both filters and the sort run in the browser
+   * over every row the projection sent, so `rows` already IS «اللى الفلتر عامله»: the file and
+   * the board hold the same set, in the same triage order the reader is looking at.
+   *
+   * THE LEVEL CELL IS SPLIT. On screen one badge says two different things depending on the car:
+   * the alarm's level, or — when the projection could not compute one — the guard that stopped
+   * it. Folding both into a single spreadsheet column would mix two vocabularies under one
+   * heading and make «المستوى» unfilterable. So the level always carries its own word and the
+   * reason gets a column of its own, empty on every car whose alarm actually ran.
+   *
+   * THE THREE FIGURES GO IN AS NUMBERS, not as the sentences the table draws. `formatNumber`
+   * renders Arabic-Indic digits under `ar` and `RemainingKm` wraps a negative distance in
+   * «متأخر … كم»; either would land in the sheet as text that Excel cannot sort or sum, which is
+   * the one thing a reader opens this file to do. The unit is already in the heading, and the
+   * sign keeps its meaning — a negative «المتبقي» is exactly the overdue distance.
+   */
+  const exportSheet = async (): Promise<void> => {
+    saveSheet(
+      {
+        name: t('fleet.nav.maintenanceAlarms'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.odometer.columns.vehicle'),
+          t('fleet.alarms.columns.level'),
+          t('fleet.vehicle.statusReason'),
+          t('fleet.alarms.columns.sinceService'),
+          t('fleet.alarms.columns.daysWithoutReading'),
+          t('fleet.alarms.columns.remaining'),
+          t('fleet.vehicle.lastService'),
+        ],
+        rows: rows.map((alarm) => [
+          alarm.code,
+          // The screen's OWN vocabulary, read from the very list the filter dropdown is built
+          // from — one table of the three words, not a second copy that could drift from it.
+          levelOptions.find((option) => option.value === alarm.level)?.label ?? '',
+          // AND THE REASON IN THE BADGE'S OWN WORDS. No page writes this text: the server names
+          // the guard that stopped the calculation and `AlarmBadge` is the one place that turns
+          // it into a sentence, so the sheet and the cell beside it cannot say different things.
+          alarm.noAlarmReason === null ? '' : alarmText(t, 'none', alarm.noAlarmReason),
+          alarm.sinceServiceKm ?? '',
+          alarm.daysWithoutReading,
+          alarm.remainingKm ?? '',
+          alarm.lastServiceAt === null ? '' : formatDate(alarm.lastServiceAt, locale),
+        ]),
+      },
+    );
+  };
+
   const columns: Column<FleetMaintenanceAlarmDto>[] = [
     {
       key: 'code',
@@ -234,14 +289,21 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
           { label: t('fleet.nav.maintenanceAlarms') },
         ]}
         actions={
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={alarmsQuery.isFetching}
-            onClick={() => void alarmsQuery.refetch()}
-          >
-            {t('fleet.alarms.refresh')}
-          </Button>
+          <>
+            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
+                told the reader it has no data reads as a way out of the failure, and the
+                file behind it would be empty or short. Disabling is not enough — it still
+                draws. */}
+            {!alarmsQuery.isError && <ExportSheetButton name="maintenance-alarms" onExport={exportSheet} />}
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={alarmsQuery.isFetching}
+              onClick={() => void alarmsQuery.refetch()}
+            >
+              {t('fleet.alarms.refresh')}
+            </Button>
+          </>
         }
       />
 

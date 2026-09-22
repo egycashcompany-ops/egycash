@@ -18,6 +18,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           vehicleAmount: 500,
           driverCount: 2,
           driverAmount: 150,
+          outstandingVehicleAmount: 500,
+          outstandingDriverAmount: 150,
           rowCount: 3,
           collectedCount: 1,
         },
@@ -36,6 +38,9 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
         driverAmount: 150,
         totalCount: 7,
         totalAmount: 650,
+        outstandingVehicleAmount: 500,
+        outstandingDriverAmount: 150,
+        outstandingTotalAmount: 650,
         totalBeforeGrievance: 900,
         rowCount: 3,
         collectedCount: 1,
@@ -54,6 +59,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           vehicleAmount: 300,
           driverCount: 0,
           driverAmount: 0,
+          outstandingVehicleAmount: 300,
+          outstandingDriverAmount: 0,
           rowCount: 3,
           collectedCount: 0,
         },
@@ -84,6 +91,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           vehicleAmount: 10,
           driverCount: 0,
           driverAmount: 0,
+          outstandingVehicleAmount: 10,
+          outstandingDriverAmount: 0,
           rowCount: 1,
           collectedCount: 0,
         },
@@ -95,6 +104,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           vehicleAmount: 10,
           driverCount: 0,
           driverAmount: 0,
+          outstandingVehicleAmount: 10,
+          outstandingDriverAmount: 0,
           rowCount: 1,
           collectedCount: 0,
         },
@@ -118,6 +129,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           vehicleAmount: 200,
           driverCount: 0,
           driverAmount: 0,
+          outstandingVehicleAmount: 200,
+          outstandingDriverAmount: 0,
           rowCount: 2,
           collectedCount: 2,
         },
@@ -129,6 +142,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           vehicleAmount: 500,
           driverCount: 1,
           driverAmount: 100,
+          outstandingVehicleAmount: 500,
+          outstandingDriverAmount: 100,
           rowCount: 6,
           collectedCount: 0,
         },
@@ -169,6 +184,8 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
       vehicleAmount: 0,
       driverCount: 0,
       driverAmount: 0,
+      outstandingVehicleAmount: 0,
+      outstandingDriverAmount: 0,
       rowCount: 0,
       collectedCount: 0,
       ...over,
@@ -181,13 +198,47 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
     );
   });
 
-  it('KEEPS a car whose fines are all collected — zero money, but rows to untick', () => {
-    // The distinction the fix turns on. Excluding collected rows from the sums makes every amount
-    // 0; dropping on a zero total would take a settled car off the board with its history inside.
-    const rows = assembleRollups(sums({ rowCount: 4, collectedCount: 4 }), [], codes);
+  it('KEEPS a car whose fines are all collected — and keeps its FIGURES', () => {
+    // «كل الارقام بتاعت العربيه تفضل موجوده متتحولش ل صفر». A tick is a statement about payment,
+    // not a delete: the line goes on saying what the year came to, and only the outstanding
+    // figures — the ones the footer adds up — fall to nothing.
+    const rows = assembleRollups(
+      sums({
+        vehicleCount: 4,
+        vehicleAmount: 400,
+        rowCount: 4,
+        collectedCount: 4,
+        outstandingVehicleAmount: 0,
+        outstandingDriverAmount: 0,
+      }),
+      [],
+      codes,
+    );
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.totalAmount).toBe(0);
+    expect(rows[0]?.totalAmount, 'the line still says what the year came to').toBe(400);
+    expect(rows[0]?.outstandingTotalAmount, 'and nothing is still owed').toBe(0);
     expect(rows[0]?.rowCount).toBe(4);
+  });
+
+  it('a HALF-settled car owes the half it has not paid — per row, not per car', () => {
+    // The drivers' half's own arithmetic, which is where this rule comes from: ticking one fine
+    // moves the total by that fine, not by the whole car.
+    const rows = assembleRollups(
+      sums({
+        vehicleCount: 2,
+        vehicleAmount: 300,
+        driverCount: 1,
+        driverAmount: 100,
+        rowCount: 3,
+        collectedCount: 1,
+        outstandingVehicleAmount: 100,
+        outstandingDriverAmount: 100,
+      }),
+      [],
+      codes,
+    );
+    expect(rows[0]?.totalAmount, 'the line is unmoved').toBe(400);
+    expect(rows[0]?.outstandingTotalAmount, 'the footer sees only what is left').toBe(200);
   });
 
   it('KEEPS a year whose only fines are the DRIVERS’ — the board still reports their money', () => {
@@ -200,11 +251,17 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   });
 
   it('…and KEEPS it once they are settled too, because the tick can put them back', () => {
-    // Settled fines are excluded from the SUMS, so the money reads 0 — but the rows are still
-    // there and still tickable, and a row a reader may act on is a row that has something in it.
-    const rows = assembleRollups(sums({ rowCount: 1, collectedCount: 1 }), [], codes);
+    // The money is still ON the line — that is the change — and what has gone to nothing is the
+    // outstanding figure. The row is still there and still tickable, and a row a reader may act
+    // on is a row that has something in it.
+    const rows = assembleRollups(
+      sums({ driverCount: 1, driverAmount: 120, rowCount: 1, collectedCount: 1 }),
+      [],
+      codes,
+    );
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.driverAmount).toBe(0);
+    expect(rows[0]?.driverAmount, 'the fine is still reported').toBe(120);
+    expect(rows[0]?.outstandingDriverAmount, 'and it is no longer owed').toBe(0);
   });
 
   it('drops a (vehicle, year) with genuinely nothing behind it', () => {
@@ -233,6 +290,8 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
           vehicleAmount: 1000,
           driverCount: 0,
           driverAmount: 0,
+          outstandingVehicleAmount: 1000,
+          outstandingDriverAmount: 0,
           rowCount: 2,
           collectedCount: 0,
         },

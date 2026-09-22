@@ -2005,6 +2005,24 @@ export interface FleetViolationRollupDto {
   driverAmount: number;
   totalCount: number;
   totalAmount: number;
+  /**
+   * THE SAME THREE HALVES, MINUS WHAT HAS BEEN TICKED — what is still owed.
+   *
+   * «عاوز لما اعمل على عربيه صح كل الارقام بتاعت العربيه تفضل موجوده متتحولش ل صفر بس الاجماليات
+   * بتاعت الجدول العربيه اللى خلصت تتطرح من الجدول».
+   *
+   * The figures above are what the year CAME TO and do not move when a row is settled — a tick is
+   * a statement about payment, not a delete, and a line that zeroed itself took away the figures
+   * the reader had just agreed. These three are what the board's FOOTER adds up, so settling a car
+   * takes its money out of the running totals while its own line goes on saying what it was.
+   *
+   * Per ROW, not per group: a car half-settled contributes the half it still owes. That is the
+   * drivers' half's own behaviour, which is where the rule comes from — «المبلغ موجود عادى ٤٠٠ او
+   * ٧٠٠ ... بس الخلفية خضرا والاجمالى بتاع السواقيين بينقص».
+   */
+  outstandingVehicleAmount: number;
+  outstandingDriverAmount: number;
+  outstandingTotalAmount: number;
   totalBeforeGrievance: number;
   /**
    * How many of this (vehicle, year)'s COMPANY rows exist, and how many have been collected.
@@ -2013,11 +2031,10 @@ export interface FleetViolationRollupDto {
    * Two numbers rather than a boolean because the third state — some collected, some not — is the
    * one a reader most needs to see, and a boolean cannot carry it.
    *
-   * THE DRIVERS' FINES ARE NOT IN THESE. «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه
-   * بالسواقيين» — the company board's tick settles the company's statement rows and nothing else,
-   * so these two count exactly what that tick sets. A group with no statement rows at all — a car
-   * whose only fines that year were its drivers' — has `rowCount: 0`, and the board draws no tick
-   * on it, because there is nothing there for the company to collect.
+   * EVERY ROW OF THE GROUP IS IN THESE — the statement rows and the drivers' fines alike, because
+   * «عاوز لما اعمل علامه صح على عربيه يعملى صح برضو على كل السواقيين» and the tick now settles the
+   * whole block. They must count exactly what that tick sets: counting less would leave a settled
+   * group reporting «بعضها» for ever, counting more one that can never turn green.
    */
   rowCount: number;
   collectedCount: number;

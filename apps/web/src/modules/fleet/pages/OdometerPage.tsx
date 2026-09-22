@@ -11,6 +11,7 @@
 // resolved through HR's own endpoint first (the same two-step join the drivers registry uses).
 // Nothing is filtered out of a fetched page.
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_ALARM_LEVELS,
@@ -23,6 +24,10 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import { fetchEmployeeNames, personCell } from '../lib/fleet-people';
+import * as fleetApi from '../api/fleet-api';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -73,6 +78,8 @@ export const OdometerPage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  // The shared query cache, for the export's driver names — see `driverNames` below.
+  const queryClient = useQueryClient();
 
   const vehicleCodes = (sp.get('vehicleCodes') ?? '').split(',').filter((c) => c !== '');
   // What the URL asks for, and what is actually sent. They differ only on arrival: with neither
@@ -208,6 +215,101 @@ export const OdometerPage = (): JSX.Element => {
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
+
+  /**
+   * THE DRIVERS' NAMES FOR A WHOLE EXPORT, through the very cache the table's cells fill.
+   *
+   * A driver column on screen is a `DriverName`, and for an employee-backed row that is an HR
+   * read: `driver1Name` is set only where HR has no employee for the spelling, so the register
+   * itself carries an ID and nothing else for everyone still on the payroll. The export cannot
+   * call the cell's hook — it runs in a callback, over rows that were never rendered — so it asks
+   * for the same records by the SAME query key, fetcher and staleTime `useEmployeeRecord` uses.
+   * That is not a second cache and not a second map: a name a cell already fetched is served from
+   * the entry that cell filled, and a name fetched here makes the next cell free.
+   *
+   * Asked once per DISTINCT employee, not once per row — a month of readings is the same handful
+   * of drivers over and over — and in small batches so a wide filter does not open three hundred
+   * connections at once. Without `employee.view` nothing is asked and the map stays empty, which
+   * is the same degradation the cells make rather than a failed export.
+   */
+  const driverNames = async (
+    logs: readonly FleetOdometerLogDto[],
+  ): Promise<Map<string, string>> =>
+    can('employee.view')
+      ? fetchEmployeeNames(
+          queryClient,
+          logs
+            .flatMap((log) => [log.driver1EmployeeId, log.driver2EmployeeId])
+            .filter((id): id is string => id !== null),
+        )
+      : new Map();
+
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE FILTER'S WHOLE ANSWER, not the page's. `params` carries the reader's filters, their sort
+   * AND their page; `filtersOnly` drops the last of the three and `fetchFilteredRows` walks every
+   * page, so a reader who narrows to a month of three hundred readings gets three hundred rows
+   * rather than the twenty-five in front of them. A file that is silently short is the worst kind
+   * of wrong, because it looks complete. The sort rides along untouched: the file opens in the
+   * order the reader is looking at, which is the order they will look for a row in.
+   *
+   * TWO CELLS ARE SPLIT, because a spreadsheet cell cannot stack a value and a badge. The
+   * maintenance cell shows the distance since the last counting service AND the alarm level it
+   * has reached; each takes a column. The reading columns keep their WORDS — «بدون قراءة» and the
+   * open period are facts about the day, not blanks, and the column says so exactly as the table
+   * does. Every genuine number goes in as a number, so the sheet stays summable; nothing here is
+   * money, so there are no money columns. The row's correct action is a control, so it is left out.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const all = await fetchFilteredRows((pageNo, size) =>
+      fleetApi.listOdometerLogs({ ...filtersOnly(params), page: pageNo, pageSize: size }),
+    );
+    const names = await driverNames(all);
+    saveSheet(
+      {
+        name: t('fleet.nav.odometer'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.odometer.fields.date'),
+          t('fleet.odometer.columns.vehicle'),
+          t('fleet.odometer.columns.driver1'),
+          t('fleet.odometer.columns.driver2'),
+          t('fleet.odometer.columns.outReading'),
+          t('fleet.odometer.columns.inReading'),
+          t('fleet.odometer.columns.km'),
+          t('fleet.odometer.columns.notes'),
+          t('fleet.odometer.columns.sinceService'),
+          t('fleet.odometer.columns.alert'),
+        ],
+        rows: all.map((log) => {
+          // The same join the maintenance column makes, and the same refusal: a car with no rule,
+          // no service on file or no registry row prints nothing rather than a computed distance
+          // the projection deliberately withheld.
+          const alarm = log.vehicleId === null ? undefined : alarmByVehicle.get(log.vehicleId);
+          const measured = alarm === undefined || alarm.sinceServiceKm === null ? undefined : alarm;
+          return [
+            formatDate(log.date, locale),
+            log.vehicleCode ?? '',
+            personCell(log.driver1EmployeeId, log.driver1Name, names),
+            personCell(log.driver2EmployeeId, log.driver2Name, names),
+            log.outReading ?? t('fleet.odometer.noReading'),
+            // A day nobody wrote a counter down for closes nothing, so it is not the open period
+            // either — the column is empty there, as the table's dash is.
+            log.outReading === null ? '' : (log.inReading ?? t('fleet.odometer.openPeriod')),
+            log.km ?? '',
+            log.notes ?? '',
+            measured?.sinceServiceKm ?? '',
+            measured === undefined
+              ? ''
+              : measured.level === 'none'
+                ? t('fleet.vehicle.alarmNone')
+                : t(`fleet.dashboard.level.${measured.level}`),
+          ];
+        }),
+      },
+    );
+  };
 
   const columns: Column<FleetOdometerLogDto>[] = [
     {
@@ -382,15 +484,22 @@ export const OdometerPage = (): JSX.Element => {
           { label: t('fleet.nav.odometer') },
         ]}
         actions={
-          <Can permission="fleetOdometer.record">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setRecordOpen(true)}
-            >
-              {t('fleet.odometer.record')}
-            </Button>
-          </Can>
+          <>
+            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
+                told the reader it has no data reads as a way out of the failure, and the
+                file behind it would be empty or short. Disabling is not enough — it still
+                draws. */}
+            {!isError && <ExportSheetButton name="odometer" onExport={exportSheet} />}
+            <Can permission="fleetOdometer.record">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setRecordOpen(true)}
+              >
+                {t('fleet.odometer.record')}
+              </Button>
+            </Can>
+          </>
         }
       />
 

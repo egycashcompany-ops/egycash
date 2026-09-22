@@ -71,6 +71,25 @@ export const alarmCellTint = (level: FleetAlarmLevel | undefined): string | unde
  * the client: the interval lives on the vehicle type, and the reading and its date are not in
  * this projection. A screen guessing from what it happens to hold would state a wrong cause.
  */
+/**
+ * The same answer as a STRING, for a document — a sheet has no room for a badge.
+ *
+ * Here rather than in the export that wanted it, because this file is the one place allowed to
+ * put the reason into words: a screen and a spreadsheet disagreeing about why a car has no alarm
+ * is exactly the confusion the reason was added to end. `t` is passed in so this stays pure and
+ * callable from a callback, where a hook cannot go.
+ */
+export const alarmText = (
+  t: (key: string) => string,
+  level: FleetAlarmLevel,
+  noAlarmReason: FleetNoAlarmReason | null = null,
+): string => {
+  if (level !== 'none') return t(`fleet.dashboard.level.${level}`);
+  return noAlarmReason === null
+    ? t('fleet.vehicle.alarmNone')
+    : t(`fleet.alarms.noAlarmReason.${noAlarmReason}`);
+};
+
 export const AlarmBadge = ({
   level,
   noAlarmReason = null,
@@ -97,7 +116,7 @@ export const AlarmBadge = ({
   if (level === 'none') {
     // A computed `none` is a healthy car: it keeps the word it has always had, and says no more.
     if (noAlarmReason === null) return <Badge tone="neutral">{t('fleet.vehicle.alarmNone')}</Badge>;
-    const reason = t(`fleet.alarms.noAlarmReason.${noAlarmReason}`);
+    const reason = alarmText(t, level, noAlarmReason);
     if (reasonDisplay === 'text') return <Badge tone="neutral">{reason}</Badge>;
     // Wrapped rather than passed to `Badge`: a `title` prop on the design system's pill would
     // widen a component every feature shares, for one screen's layout problem.

@@ -25,6 +25,7 @@
 // What IS about the row is `lastServiceVisitId`: the visit that set the current baseline is marked,
 // so a reader can see which service the countdown is measured from.
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
   type FleetCatalogItemDto,
@@ -37,6 +38,11 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import * as fleetApi from '../api/fleet-api';
+import { detailKey } from '../../../shared/lib/query-keys';
+import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
 import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -107,6 +113,8 @@ export const MaintenancePage = (): JSX.Element => {
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  // The shared query cache, for the export's driver names — see `driverNames` below.
+  const queryClient = useQueryClient();
 
   const from = sp.get('from') ?? '';
   const outFrom = sp.get('outFrom') ?? '';
@@ -253,6 +261,138 @@ export const MaintenancePage = (): JSX.Element => {
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
   const dash = <span className="text-slate-400">—</span>;
+
+  /**
+   * The drivers' NAMES for the export, out of the SAME cache the cells read.
+   *
+   * A driver cell resolves its employee through `useEmployeeRecord`, which is a HOOK — the export
+   * runs in a callback, over rows that were never rendered, so it cannot call it. It asks for the
+   * same records by the SAME query key, fetcher and staleTime instead. That is not a second cache
+   * and not a second map: a name a cell already fetched is served from the entry that cell filled,
+   * and a name fetched here makes the next cell free.
+   *
+   * Asked once per DISTINCT employee, not once per row — a month of visits is the same handful of
+   * drivers over and over — and in small batches so a wide filter does not open three hundred
+   * connections at once. Without `employee.view` nothing is asked and the map stays empty, which
+   * is the same degradation the cells make rather than a failed export.
+   */
+  const driverNames = async (
+    visits: readonly FleetMaintenanceVisitDto[],
+  ): Promise<Map<string, string>> => {
+    const names = new Map<string, string>();
+    if (!can('employee.view')) return names;
+    const ids = [
+      ...new Set(
+        visits
+          .flatMap((visit) => [visit.driverInEmployeeId, visit.driverOutEmployeeId])
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const batch = 10;
+    for (let i = 0; i < ids.length; i += batch) {
+      await Promise.all(
+        ids.slice(i, i + batch).map(async (id) => {
+          try {
+            const employee = await queryClient.fetchQuery({
+              queryKey: detailKey('hr', 'employees', id),
+              queryFn: () => getEmployee(id),
+              staleTime: 5 * 60_000,
+            });
+            names.set(id, employee.personal.fullNameAr);
+          } catch {
+            // One unreadable record is not a failed export: that driver falls back to the same
+            // id tail the cell prints, and every other row keeps its name.
+          }
+        }),
+      );
+    }
+    return names;
+  };
+
+  /** One driver cell, resolved as the column resolves it — see `DriverName`. */
+  const driverCell = (
+    employeeId: string | null,
+    legacyName: string | null,
+    names: Map<string, string>,
+  ): string =>
+    employeeId === null ? (legacyName ?? '') : (names.get(employeeId) ?? employeeId.slice(-8));
+
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE FILTER'S WHOLE ANSWER, not the page's. `params` carries the reader's filters, their sort
+   * AND their page; `filtersOnly` drops the last of the three and `fetchFilteredRows` walks every
+   * page, so a reader who narrows to three hundred visits gets three hundred rows rather than the
+   * twenty-five in front of them. A file that is silently short is the worst kind of wrong,
+   * because it looks complete. The sort rides along untouched: the file opens in the order the
+   * reader is looking at, which is the order they will look for a row in.
+   *
+   * THE PARTS CELL IS SPLIT, because a spreadsheet cell cannot stack two records of one thing.
+   * On screen the catalog parts and the words an older visit recorded as free text sit one above
+   * the other under one heading; here each takes a column, so «مسجلة كنص» stays readable as what
+   * it is instead of being run together with names the catalog knows.
+   *
+   * The exit column keeps its WORD. An open visit has no exit date and the table says «في الورشة»
+   * rather than leaving the cell blank — that is a fact about the visit, not a missing value, and
+   * a blank there would read as data nobody entered. The green row tint says the same thing twice
+   * and carries nothing the word does not.
+   *
+   * Every genuine figure goes in as a NUMBER so the sheet stays summable — the counter, and the
+   * two alarm distances, whose headings already say «كم». A negative remainder is the overdue
+   * distance, exactly as `RemainingKm` reads it. Nothing here is money, so there are no money
+   * columns. The row's buttons are controls, not facts, so they are left out.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const all = await fetchFilteredRows((pageNo, size) =>
+      fleetApi.listMaintenanceVisits({ ...filtersOnly(params), page: pageNo, pageSize: size }),
+    );
+    const names = await driverNames(all);
+    saveSheet(
+      {
+        name: t('fleet.nav.maintenance'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.maintenance.fields.inDate'),
+          t('fleet.maintenance.fields.outDate'),
+          t('fleet.odometer.columns.vehicle'),
+          t('fleet.maintenance.fields.driverIn'),
+          t('fleet.maintenance.fields.driverOut'),
+          t('fleet.maintenance.fields.workshop'),
+          t('fleet.maintenance.fields.workType'),
+          t('fleet.maintenance.fields.spareParts'),
+          t('fleet.maintenance.legacyParts'),
+          t('fleet.maintenance.fields.odometerAtService'),
+          t('fleet.alarms.columns.sinceService'),
+          t('fleet.alarms.columns.remaining'),
+          t('fleet.odometer.columns.notes'),
+        ],
+        rows: all.map((visit) => {
+          // The same join the two alarm columns make, and the same refusal: a car the projection
+          // cannot answer for prints nothing rather than a distance it deliberately withheld.
+          const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
+          return [
+            formatDate(visit.inDate, locale),
+            visit.outDate === null
+              ? t('fleet.maintenance.open')
+              : formatDate(visit.outDate, locale),
+            visit.vehicleCode ?? '',
+            driverCell(visit.driverInEmployeeId, visit.driverInName, names),
+            driverCell(visit.driverOutEmployeeId, visit.driverOutName, names),
+            catalogName.get(visit.workshopId) ?? '',
+            catalogName.get(visit.workTypeId) ?? '',
+            // An id the catalog cannot name is printed as the id, exactly as the cell prints it —
+            // a part that was deleted from the list is still what this visit had fitted.
+            visit.sparePartIds.map((id) => catalogName.get(id) ?? id).join('، '),
+            visit.spareParts.join('، '),
+            visit.odometerAtService,
+            alarm?.sinceServiceKm ?? '',
+            alarm?.remainingKm ?? '',
+            visit.notes ?? '',
+          ];
+        }),
+      },
+    );
+  };
 
   const columns: Column<FleetMaintenanceVisitDto>[] = [
     {
@@ -506,15 +646,22 @@ export const MaintenancePage = (): JSX.Element => {
           { label: t('fleet.nav.maintenance') },
         ]}
         actions={
-          <Can permission="fleetMaintenance.checkIn">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setCheckInOpen(true)}
-            >
-              {t('fleet.maintenance.checkIn')}
-            </Button>
-          </Can>
+          <>
+            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
+                told the reader it has no data reads as a way out of the failure, and the
+                file behind it would be empty or short. Disabling is not enough — it still
+                draws. */}
+            {!isError && <ExportSheetButton name="maintenance" onExport={exportSheet} />}
+            <Can permission="fleetMaintenance.checkIn">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setCheckInOpen(true)}
+              >
+                {t('fleet.maintenance.checkIn')}
+              </Button>
+            </Can>
+          </>
         }
       />
 

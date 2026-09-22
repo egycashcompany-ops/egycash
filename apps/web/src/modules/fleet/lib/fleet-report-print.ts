@@ -79,13 +79,42 @@ const esc = (value: string): string =>
     .replaceAll('"', '&quot;');
 
 /**
- * The tiny script the document carries so it prints once the LOGO has decoded.
+ * The tiny script the document carries so it opens the print dialog by itself.
+ *
+ * NOT `window.onload` — «مش بعرف اطبع الpdf بيفتح شاشه وخلاص». This document is written into an
+ * already-open window with `document.write`, and that window's load event is not a thing this
+ * script can count on: it may have fired before the handler was assigned, and where it has not,
+ * it still waits on the web font, which comes over the network and may never arrive. Either way
+ * the reader gets a page and no dialog, which is exactly what they reported.
+ *
+ * So nothing here waits on `load`. It waits on the LOGO, which is a data URI and needs no network
+ * at all, and a timer catches every other case — a blocked font, a logo that errors, a browser
+ * that fires nothing. Whichever happens first, the dialog opens; `printed` makes sure it opens
+ * once. A page that prints with a fallback font beats a page that does not print.
  *
  * The closing tag is assembled from two pieces on purpose — writing the literal `</script>` in
  * this module would end the tag early if the bundle were ever inlined into an HTML page. Same
  * reasoning, and the same spelling, as `gold-print.ts`.
  */
-const PRINT_ON_LOAD = `<script>window.onload = () => { window.setTimeout(() => window.print(), 250); };</${'script'}>`;
+const PRINT_ON_LOAD = `<script>
+(function () {
+  var printed = false;
+  var go = function () {
+    if (printed) return;
+    printed = true;
+    window.focus();
+    window.print();
+  };
+  var logo = document.images[0];
+  if (logo && !logo.complete) {
+    logo.addEventListener('load', go);
+    logo.addEventListener('error', go);
+  } else {
+    window.setTimeout(go, 80);
+  }
+  window.setTimeout(go, 1500);
+})();
+</${'script'}>`;
 
 const FONTS =
   "@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap');";

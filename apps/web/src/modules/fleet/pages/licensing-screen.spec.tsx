@@ -18,7 +18,7 @@ import { type FleetLicensingRowDto, type Locale, type MeDto } from '@ecms/contra
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
-import { LicensingPage, paperStage } from './LicensingPage';
+import { LicensingPage, matchesPaper, paperStage } from './LicensingPage';
 
 /** The two tints the board paints, as the cell writes them — never the bare shade. */
 const AMBER = 'bg-amber-50 dark:bg-amber-950/40';
@@ -61,11 +61,14 @@ const render = ({
   locale = 'ar',
   permissions = ['fleetLicensing.view', 'fleetLicensing.mark'],
   rows = [row()],
+  path = '/fleet/licensing',
 }: {
   locale?: Locale;
   permissions?: string[];
   /** `null` = seed nothing, so the query is genuinely pending rather than empty. */
   rows?: FleetLicensingRowDto[] | null;
+  /** The address bar, filters and all — the only place this screen's filters live. */
+  path?: string;
 } = {}): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
@@ -82,7 +85,7 @@ const render = ({
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={['/fleet/licensing']}>
+        <MemoryRouter initialEntries={[path]}>
           <Routes>
             <Route path="/fleet/licensing" element={<LicensingPage />} />
           </Routes>
@@ -223,5 +226,154 @@ describe('an empty board explains itself', () => {
     const html = render({ rows: [] });
     expect(html).toContain('لا توجد سيارات');
     expect(html).toContain('برقاش ت');
+  });
+});
+
+describe('the filters narrow the board', () => {
+  const fleet = [
+    row({ vehicleId: 'v1', code: '150', plateNumber: 'س ص ١٥٠', chassisNumber: 'AAA111' }),
+    row({
+      vehicleId: 'v2',
+      code: '151',
+      plateNumber: 'ط ن ١٥١',
+      chassisNumber: 'BBB222',
+      insuranceHandover: true,
+    }),
+    row({
+      vehicleId: 'v3',
+      code: '214',
+      plateNumber: 'ل م ٢١٤',
+      chassisNumber: 'AAA333',
+      taxHandover: true,
+      taxReceipt: true,
+    }),
+  ];
+
+  /** Which cars the board is showing, by the row marker each one carries. */
+  const shown = (html: string): string[] =>
+    [...html.matchAll(/data-licensing-row="([^"]+)"/g)].map((m) => m[1] as string);
+
+  it('shows everything when nothing is asked', () => {
+    expect(shown(render({ rows: fleet }))).toEqual(['150', '151', '214']);
+  });
+
+  it('narrows by vehicle code — a PART of it, as the registry\u2019s own box does', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?code=15' }))).toEqual(['150', '151']);
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?code=214' }))).toEqual(['214']);
+  });
+
+  it('narrows by plate and by chassis, each on its own column', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?plate=%D8%B7%20%D9%86' }))).toEqual([
+      '151',
+    ]);
+    // Two cars share the chassis PREFIX — the filter is a contains, not an equals.
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?chassis=AAA' }))).toEqual([
+      '150',
+      '214',
+    ]);
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?chassis=aaa333' })),
+      'and case does not matter',
+    ).toEqual(['214']);
+  });
+
+  it('combines the boxes — every one of them has to be satisfied', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?code=15&chassis=BBB' }))).toEqual([
+      '151',
+    ]);
+  });
+
+  it('picks the cars whose insurance «تسليم» is done, and only those', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?ins=handover' }))).toEqual(['151']);
+  });
+
+  it('keeps the two papers apart — «الضرائب» asks about its own squares', () => {
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?tax=handover' }))).toEqual(['214']);
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?ins=handover&tax=handover' })),
+      'and together they narrow to nothing here — no car has both',
+    ).toEqual([]);
+  });
+
+  it('reads several squares of one paper as ANY of them', () => {
+    // «مالتى تشوز تسليم او استلام» — and the same reading every other multi-select in this app has.
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?tax=handover,receipt' }))).toEqual([
+      '214',
+    ]);
+  });
+
+  it('says «no match» rather than explaining the «ت» rule when a FILTER emptied the board', () => {
+    // The two empties are different answers: one sends the reader to fix a filter, the other to
+    // the catalogs screen. Showing the licence-class hint here would send them to the wrong one.
+    const html = render({ rows: fleet, path: '/fleet/licensing?code=zzz' });
+    expect(html).toContain('مفيش سيارة مطابقة');
+    expect(html, 'the membership rule is not the answer here').not.toContain('برقاش ت');
+  });
+});
+
+describe('the count and the total beside the filters', () => {
+  const fleet = [
+    row({ vehicleId: 'v1', code: '150' }),
+    row({ vehicleId: 'v2', code: '151', insuranceHandover: true }),
+    row({ vehicleId: 'v3', code: '214' }),
+  ];
+  const figure = (html: string, marker: string): string => {
+    const at = html.indexOf(marker);
+    expect(at, `${marker} is on the bar`).toBeGreaterThan(-1);
+    return html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
+  };
+  const shown = (html: string) => figure(html, 'data-licensing-count');
+  const total = (html: string) => figure(html, 'data-licensing-total');
+
+  it('shows BOTH figures with nothing filtered — «واعمل الاجمالى جمب العداد»', () => {
+    // Both always, not the total only once a filter is on: a number that appears is a number the
+    // reader has to notice arriving.
+    const html = render({ rows: fleet });
+    expect(shown(html)).toContain('٣');
+    expect(total(html)).toContain('٣');
+  });
+
+  it('moves the COUNT under a filter and leaves the total alone', () => {
+    const html = render({ rows: fleet, path: '/fleet/licensing?ins=handover' });
+    expect(shown(html), 'one car matched').toContain('١');
+    expect(total(html), 'out of three on the board').toContain('٣');
+  });
+
+  it('counts the WHOLE board in the total, even when the filter matched nothing', () => {
+    // Derived from the narrowed list the pair would read «١ من ١» under every filter — a number
+    // that can never say anything.
+    const html = render({ rows: fleet, path: '/fleet/licensing?code=zzz' });
+    expect(shown(html)).toContain('٠');
+    expect(total(html)).toContain('٣');
+  });
+
+  it('names each figure, because two bare numbers side by side name neither', () => {
+    const html = render({ rows: fleet });
+    expect(html).toContain('المعروض');
+    expect(html).toContain('الإجمالى');
+  });
+});
+
+describe('matchesPaper — the multi-select\u2019s reading', () => {
+  const insurance = {
+    key: 'insurance',
+    label: 'fleet.licensing.columns.insurance',
+    handover: 'insuranceHandover',
+    receipt: 'insuranceReceipt',
+  } as const;
+
+  it('asks nothing when nothing is picked', () => {
+    expect(matchesPaper(row(), insurance, [])).toBe(true);
+  });
+
+  it('is ANY of the picked squares, not all of them', () => {
+    const half = row({ insuranceHandover: true });
+    expect(matchesPaper(half, insurance, ['handover'])).toBe(true);
+    expect(matchesPaper(half, insurance, ['receipt'])).toBe(false);
+    expect(matchesPaper(half, insurance, ['handover', 'receipt'])).toBe(true);
+  });
+
+  it('refuses a row with neither', () => {
+    expect(matchesPaper(row(), insurance, ['handover', 'receipt'])).toBe(false);
   });
 });

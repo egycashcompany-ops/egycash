@@ -3602,6 +3602,7 @@ const en: Record<string, string> = {
   'fleet.licensing.empty': 'No vehicle is on the licensing board.',
   'fleet.licensing.emptyHint':
     'A vehicle appears here when its licence class ends with «ت» — «برقاش ت», «العجوزة ت».',
+  'fleet.licensing.noMatches': 'No vehicle matches these filters.',
   'fleet.licensing.mark': '{{paper}} · {{step}} — vehicle {{code}}',
   'fleet.nav.catalogs': 'Fleet Catalogs',
   'fleet.nav.settings': 'Fleet Settings',
@@ -10410,6 +10411,7 @@ const ar: Record<string, string> = {
   'fleet.licensing.columns.licenseClass': 'الترخيص',
   'fleet.licensing.empty': 'لا توجد سيارات فى لوحة التراخيص.',
   'fleet.licensing.emptyHint': 'السيارة بتظهر هنا لما يكون الترخيص بتاعها آخره «ت» — «برقاش ت»، «العجوزة ت».',
+  'fleet.licensing.noMatches': 'مفيش سيارة مطابقة للفلاتر.',
   'fleet.licensing.mark': '{{paper}} · {{step}} — السيارة {{code}}',
   'fleet.nav.catalogs': 'قوائم الحركة',
   'fleet.nav.settings': 'إعدادات الحركة',

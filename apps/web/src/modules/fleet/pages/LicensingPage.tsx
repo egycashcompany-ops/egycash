@@ -9,10 +9,17 @@
 // admin makes that class «برقاش م». «لما العربيه تبقى اخرها م زى برقاش م تتشال من الجدول خالص ...
 // اخرها ت تتحط ت من جديد». The server decides it on every read, so this screen has no membership
 // rule of its own to fall out of step.
+import { useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { type FleetLicensingMark, type FleetLicensingRowDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { FilterBar } from '../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { Input } from '../../../shared/ui/form';
+import { readList, writeList } from '../../../shared/lib/list-param';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Skeleton } from '../../../shared/ui/Skeleton';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
@@ -50,6 +57,35 @@ const PAPERS = [
 type Paper = (typeof PAPERS)[number];
 
 /**
+ * The filters this screen keeps, and their names in the address bar.
+ *
+ * Remembered across visits like every other Fleet list's: a clerk works one office's cars for an
+ * afternoon, and retyping the same narrowing after every trip to another screen is the complaint
+ * `useRememberedFilters` exists to answer. No `page` — this board has none.
+ */
+const REMEMBERED_FILTERS = ['code', 'plate', 'chassis', 'ins', 'tax'] as const;
+
+/** A text filter, matched the way the registry's own boxes match: contains, case-insensitively. */
+const contains = (haystack: string, needle: string): boolean =>
+  needle === '' || haystack.toLocaleLowerCase().includes(needle.toLocaleLowerCase());
+
+/**
+ * Does this row satisfy a paper's chosen squares?
+ *
+ * ANY of them, not all — «مالتى تشوز تسليم او استلام». Picking «تسليم» asks for the cars whose
+ * تسليم is done; picking both asks for the cars that have EITHER, which is the same reading every
+ * other multi-select in this application has. Picking neither asks nothing at all.
+ */
+export const matchesPaper = (
+  row: FleetLicensingRowDto,
+  paper: Paper,
+  chosen: readonly string[],
+): boolean => {
+  if (chosen.length === 0) return true;
+  return chosen.some((step) => (step === 'handover' ? row[paper.handover] : row[paper.receipt]));
+};
+
+/**
  * HOW FAR THIS PAPER HAS GOT, which is the only thing the colour says.
  *
  * «لما اعمل صح على تسليم فى التأمينات يبقى العمودين بتوع تسليم واستلام بتوع التأمينات يتعمله الصف
@@ -84,11 +120,60 @@ export const LicensingPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
   const board = useLicensingBoard();
   const mark = useSetLicensingMark();
   const mayMark = can('fleetLicensing.mark');
 
-  const rows = board.data ?? [];
+  const code = sp.get('code') ?? '';
+  const plate = sp.get('plate') ?? '';
+  const chassis = sp.get('chassis') ?? '';
+  const insurance = readList(sp, 'ins');
+  const tax = readList(sp, 'tax');
+
+  const patch = (updates: Record<string, string | null>): void => {
+    const next = new URLSearchParams(sp);
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') next.delete(key);
+      else next.set(key, val);
+    }
+    setSp(next);
+  };
+  // ONE update, every key. Clearing them one call at a time would build each next URL from the
+  // params THIS render was given, so the last write would put the others back — the defect the
+  // violations screen's own `onClear` carries a comment about.
+  const clearFilters = (): void =>
+    patch({ code: null, plate: null, chassis: null, ins: null, tax: null });
+  const hasFilters =
+    code !== '' || plate !== '' || chassis !== '' || insurance.length > 0 || tax.length > 0;
+
+  const all = board.data ?? [];
+  /**
+   * NARROWED IN HAND, not by the server.
+   *
+   * The board arrives WHOLE — it is unpaginated by design, because which cars are on it is the
+   * registry's answer rather than the reader's — so a server-side filter would be asking the
+   * server to answer again what it has just answered. It also keeps the filter honest: what a
+   * reader sees narrowed is exactly the rows they were already looking at.
+   */
+  const rows = useMemo(
+    () =>
+      all.filter(
+        (row) =>
+          contains(row.code, code) &&
+          contains(row.plateNumber, plate) &&
+          contains(row.chassisNumber, chassis) &&
+          matchesPaper(row, PAPERS[0], insurance) &&
+          matchesPaper(row, PAPERS[1], tax),
+      ),
+    [all, code, plate, chassis, insurance.join(','), tax.join(',')],
+  );
+
+  const stepOptions = [
+    { value: 'handover', label: t('fleet.licensing.columns.handover') },
+    { value: 'receipt', label: t('fleet.licensing.columns.receipt') },
+  ];
 
   const toggle = async (
     row: FleetLicensingRowDto,
@@ -139,14 +224,75 @@ export const LicensingPage = (): JSX.Element => {
         ]}
       />
 
+      {/* The module's own filter strip. `singleRow` because five controls fit one line at the width
+          this screen is read at, and a bar that wrapped would push the board itself below the
+          fold on the very screen whose point is seeing the whole list at once. */}
+      <FilterBar singleRow hasActiveFilters={hasFilters} onClear={clearFilters}>
+        <div className="min-w-[8rem] flex-1">
+          <Input
+            aria-label={t('fleet.licensing.columns.vehicle')}
+            placeholder={t('fleet.licensing.columns.vehicle')}
+            value={code}
+            onChange={(e) => patch({ code: e.target.value || null })}
+            textScale="comfortable"
+          />
+        </div>
+        <div className="min-w-[8rem] flex-1">
+          <Input
+            aria-label={t('fleet.licensing.columns.plate')}
+            placeholder={t('fleet.licensing.columns.plate')}
+            value={plate}
+            onChange={(e) => patch({ plate: e.target.value || null })}
+            textScale="comfortable"
+          />
+        </div>
+        <div className="min-w-[8rem] flex-1">
+          <Input
+            aria-label={t('fleet.licensing.columns.chassis')}
+            placeholder={t('fleet.licensing.columns.chassis')}
+            value={chassis}
+            onChange={(e) => patch({ chassis: e.target.value || null })}
+            textScale="comfortable"
+          />
+        </div>
+        {/* Each paper picks among its OWN two squares. Two controls rather than one list of four,
+            because «تسليم» means a different column in each — one list would ask the reader to
+            tell two identically-named entries apart by their position. */}
+        <div className="w-40 shrink-0">
+          <MultiSelect
+            label={t('fleet.licensing.columns.insurance')}
+            options={stepOptions}
+            value={insurance}
+            onChange={(next) => patch({ ins: writeList(next) })}
+            density="tight"
+            fullWidth
+          />
+        </div>
+        <div className="w-40 shrink-0">
+          <MultiSelect
+            label={t('fleet.licensing.columns.tax')}
+            options={stepOptions}
+            value={tax}
+            onChange={(next) => patch({ tax: writeList(next) })}
+            density="tight"
+            fullWidth
+          />
+        </div>
+      </FilterBar>
+
       {board.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : board.isError ? (
         <ErrorState error={board.error} onRetry={() => void board.refetch()} />
       ) : rows.length === 0 ? (
-        // The hint is the whole of why a board can be empty on a fleet of two hundred cars, and
-        // without it an empty screen reads as a fault rather than as a rule nobody has met yet.
-        <EmptyState title={t('fleet.licensing.empty')} description={t('fleet.licensing.emptyHint')} />
+        // TWO EMPTIES, and they are not the same answer. A board with no «… ت» car on it needs the
+        // rule explained — the hint is the whole of why a fleet of two hundred cars can show an
+        // empty screen. A board whose FILTERS matched nothing needs the opposite: saying «اخرها ت»
+        // there would send the reader to the catalogs screen to fix a filter.
+        <EmptyState
+          title={hasFilters ? t('fleet.licensing.noMatches') : t('fleet.licensing.empty')}
+          {...(hasFilters ? {} : { description: t('fleet.licensing.emptyHint') })}
+        />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
           <table data-licensing-table className="w-full border-collapse">

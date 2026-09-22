@@ -32,25 +32,6 @@ const en: Record<string, string> = {
   'platform.shell.security': 'Security',
   'account.security.title': 'Security',
   'account.security.subtitle': 'Password, authenticator app, and active sessions for your account.',
-  // «صلاحياتي» — the account's own authority, read by the person who holds it. Under Security in
-  // the account menu, and drawn there only when the account holds something to read.
-  'account.permissions.title': 'My permissions',
-  'account.permissions.count': '{{count}} permission(s)',
-  'account.permissions.inThisScreen': '{{count}} on this screen',
-  'account.permissions.otherScreens': 'Not tied to a screen',
-  'account.permissions.from': 'Granted by:',
-  'account.permissions.breakGlass': 'Emergency permission',
-  'account.permissions.empty': 'You hold no permission at the moment.',
-  'account.permissions.emptyHint':
-    'Ask the person responsible for your department to grant you what your work requires.',
-  'account.permissions.evaluatedAt': 'Evaluated at {{at}}',
-  // The reach, as a sentence rather than a noun: what a permission covers is the difference
-  // between a manager and a clerk, and «Department» alone does not say it.
-  'account.permissions.scope.own': 'On your own records',
-  'account.permissions.scope.section': 'Across your section',
-  'account.permissions.scope.department': 'Across your department',
-  'account.permissions.scope.branch': 'Across your branch',
-  'account.permissions.scope.organization': 'Across the whole company',
   // P9-B — self-service preferences. Stored on the account, so they follow the user to any device.
   'account.preferences.title': 'Preferences',
   'account.preferences.subtitle':
@@ -414,14 +395,6 @@ const en: Record<string, string> = {
   'nav.branchSwitcher.all': 'The whole company',
   'nav.branchSwitcher.mine': 'All my sites',
   // Delegated grants (ADR-032): the «Permissions» tab a manager sees on a colleague.
-  // The narrowing bar and the nesting labels — see DelegationPanel for why each exists.
-  'delegation.searchPlaceholder': 'Search a screen or an action…',
-  'delegation.grantedOnly': 'Granted only',
-  'delegation.noMatches': 'Nothing here matches what you typed.',
-  'delegation.noneGranted': 'This account has been granted nothing yet.',
-  'delegation.nothingYet': 'nothing yet',
-  'delegation.departmentsHeading': 'Departments of this branch',
-  'delegation.moduleScreens': '{{module}} screens',
   'delegation.treeIntro': 'Open a branch, choose the departments this person works in, then the screens he sees in each.',
   'delegation.clearBranch': 'Clear this branch',
   'delegation.noLogin': 'This person has no login account yet, so there is nothing to grant.',
@@ -5580,19 +5553,8 @@ const en: Record<string, string> = {
   'systemAdmin.permissions.noAccess': 'You are not allowed to read the permission registry.',
 
   // Organization placement on an account
-  // The heading over the per-site grant tree inside the Roles tab. Deliberately NOT «Permissions»:
-  // the tab beside it already carries that word, and one screen cannot use it for two things.
-  'systemAdmin.users.directGrants': 'Direct grants — screen by screen',
-  'systemAdmin.users.directGrantsHint':
-    'One or two permissions outside any role, for one site. Use a role when the same list is given to several people.',
-  // THE TWO TABS ARE NAMED AFTER WHAT THEY DO, which is what stopped «الصلاحيات» from naming
-  // two different things on one screen. The first is where an administrator WRITES — the roles he
-  // assigns and the per-site grants he makes. The second is the RESULT of those records after
-  // reach and validity windows are applied, and it is read-only. Calling either of them
-  // «Permissions» left a reader looking for the place to grant finding the word twice, once on a
-  // tab that grants nothing.
-  'systemAdmin.users.tabs.roles': 'Roles & grants',
-  'systemAdmin.users.tabs.permissions': 'What it can actually do',
+  'systemAdmin.users.tabs.roles': 'Roles',
+  'systemAdmin.users.tabs.permissions': 'Permissions',
   'systemAdmin.users.fields.section': 'Section',
   'systemAdmin.users.placement.searchDepartment': 'Search departments',
   'systemAdmin.users.placement.searchSection': 'Search sections',
@@ -5607,15 +5569,11 @@ const en: Record<string, string> = {
   'systemAdmin.users.placement.inactiveBranch': 'Current branch (no longer active)',
 
   // SA-4 — effective permissions, explained
-  'systemAdmin.effective.title': 'Where each permission comes from',
+  'systemAdmin.effective.title': 'Effective permissions',
   'systemAdmin.effective.hint':
     'Everything this account may do, and where each permission comes from. Grants that have lapsed or not yet started are kept — that is usually the answer.',
   'systemAdmin.effective.count': '{{count}} permissions',
-  // Counts by state — on the account's own line and on each closed module, because «why CAN'T
-  // they» is what brings a reader here and «4 of these ended» is very often the answer.
-  'systemAdmin.effective.activeCount': '{{count}} in force',
-  'systemAdmin.effective.pendingCount': '{{count}} not started',
-  'systemAdmin.effective.expiredCount': '{{count}} ended',
+  'systemAdmin.effective.sourceCount': '{{count}} sources',
   'systemAdmin.effective.empty': 'No permission matches this view.',
   'systemAdmin.effective.noAccess':
     'Reading an account’s permissions needs both “view users” and “view roles”.',
@@ -6942,24 +6900,6 @@ const ar: Record<string, string> = {
   'platform.shell.security': 'الأمان',
   'account.security.title': 'الأمان',
   'account.security.subtitle': 'كلمة المرور وتطبيق المصادقة والجلسات النشطة لحسابك.',
-  // «صلاحياتي» — صلاحيات الحساب كما يقرؤها صاحبه. تقع أسفل «الأمان» في قائمة الاسم، ولا تظهر
-  // إلا إذا كان الحساب يملك ما يُقرأ.
-  'account.permissions.title': 'صلاحياتي',
-  'account.permissions.count': '{{count}} صلاحية',
-  'account.permissions.inThisScreen': '{{count}} في هذه الشاشة',
-  'account.permissions.otherScreens': 'صلاحيات غير مرتبطة بشاشة',
-  'account.permissions.from': 'ممنوحة من:',
-  'account.permissions.breakGlass': 'صلاحية طارئة',
-  'account.permissions.empty': 'لا تملك أي صلاحية في الوقت الحالي.',
-  'account.permissions.emptyHint': 'راجع المسؤول عن إدارتك ليمنحك ما يقتضيه عملك.',
-  'account.permissions.evaluatedAt': 'محسوبة في {{at}}',
-  // المدى مكتوب جملةً لا اسمًا: الفرق بين «على بياناتي وحدها» و«على إدارتي» هو الفرق بين موظف
-  // ومدير، وكلمة «إدارة» وحدها لا تقوله.
-  'account.permissions.scope.own': 'على بياناتك وحدها',
-  'account.permissions.scope.section': 'على قسمك',
-  'account.permissions.scope.department': 'على إدارتك',
-  'account.permissions.scope.branch': 'على فرعك',
-  'account.permissions.scope.organization': 'على الشركة كلها',
   // P9-B — التفضيلات الشخصية. محفوظة على الحساب، فتتبع المستخدم إلى أي جهاز.
   'account.preferences.title': 'التفضيلات',
   'account.preferences.subtitle':
@@ -7312,55 +7252,47 @@ const ar: Record<string, string> = {
   'nav.branchSwitcher.all': 'الشركة كلها',
   'nav.branchSwitcher.mine': 'كل فروعي',
   // توزيع الصلاحيات (ADR-032): تبويب «الصلاحيات» اللي المدير بيشوفه على زميله.
-  // شريط التضييق وعناوين التداخل — انظر DelegationPanel لسبب كل واحد منها.
-  'delegation.searchPlaceholder': 'ابحث عن شاشة أو إجراء…',
-  'delegation.grantedOnly': 'الممنوح فقط',
-  'delegation.noMatches': 'لا شيء هنا يطابق ما كتبته.',
-  'delegation.noneGranted': 'لم يُمنح هذا الحساب شيئًا بعد.',
-  'delegation.nothingYet': 'لم يُمنح شيء',
-  'delegation.departmentsHeading': 'إدارات هذا الفرع',
-  'delegation.moduleScreens': 'شاشات {{module}}',
-  'delegation.treeIntro': 'افتح الفرع، ثم اختر الإدارات التي يعمل فيها هذا الشخص، ثم حدّد الشاشات التي يراها في كل إدارة.',
-  'delegation.clearBranch': 'إزالة صلاحيات الفرع',
-  'delegation.noLogin': 'لا يملك هذا الشخص حساب دخول بعد، فلا توجد صلاحيات تُمنح.',
+  'delegation.treeIntro': 'افتح الفرع، اختار الإدارات اللي الشخص ده شغّال فيها، وبعدين حدّد الشاشات اللي يشوفها في كل إدارة.',
+  'delegation.clearBranch': 'شيل صلاحيات الفرع',
+  'delegation.noLogin': 'الشخص ده ملوش حساب دخول لسه، فمفيش صلاحيات تتوزّع.',
   'delegation.noReach': 'أنت لا توزّع صلاحيات في أي وحدة.',
   'delegation.homeTag': 'وحدته',
   'delegation.wholeBranch': 'الفرع كله',
   'delegation.other': 'أخرى',
-  'delegation.readOnly': 'لا تمنح في هذه الوحدة؛ معروضة للاطّلاع فقط.',
+  'delegation.readOnly': 'أنت لا توزّع في الوحدة دي؛ معروضة للاطلاع فقط.',
   'delegation.save': 'حفظ',
   'delegation.saved': 'تم حفظ الصلاحيات.',
   'delegation.failed': 'تعذّر حفظ الصلاحيات.',
   'delegation.unsaved': 'غير محفوظ',
   'delegation.unsavedUnits': '{{count}} غير محفوظة',
   'delegation.nothing': 'لا شيء',
-  'delegation.summary': '{{screens}} شاشة · {{actions}} إجراء',
+  'delegation.summary': '{{screens}} شاشة · {{actions}} أكشن',
   'delegation.departments': '{{count}} إدارة',
   'delegation.departmentsOn': '{{on}} من {{total}} إدارة',
-  'delegation.noDepartments': 'لا توجد إدارات مسجّلة في هذا الفرع بعد.',
+  'delegation.noDepartments': 'مفيش إدارات متسجّلة في الفرع ده لسه.',
   'delegation.wholeTitle': 'الفرع كله كوحدة واحدة',
-  'delegation.wholeHint': 'كل إدارات الفرع — القائمة الآن والتي تُفتح لاحقًا. وهو منح مستقل، لا زرّ «تحديد الكل».',
-  'delegation.wholeLockedHint': 'يُمنح هذا من حساب تبلغ صلاحيته الفرع كله، وصلاحيتك أنت على إدارة.',
+  'delegation.wholeHint': 'كل الإدارات في الفرع — الموجودة دلوقتي واللي هتتفتح بعدين. ده منح مستقل، مش زرار «علّم الكل».',
+  'delegation.wholeLockedHint': 'ده بيتدي من حساب صلاحيته على الفرع كله. صلاحيتك أنت على إدارة.',
   'delegation.covered': 'داخلة في منح الفرع',
-  'delegation.coveredHint': 'مشمولة في منح «الفرع كله». وما سُجّل عليها وحدها لم يُمَسّ، ويعود إن أزلت منح الفرع.',
+  'delegation.coveredHint': 'مشمولة في منح «الفرع كله». اللي متسجّل عليها لوحدها ما اتمسّش، وهيرجع لو شِلت منح الفرع.',
   'delegation.screens': '{{count}} شاشة',
   'delegation.screensOn': '{{on}} من {{total}} شاشة',
-  'delegation.actionsAll': 'كل الإجراءات',
-  'delegation.actionsOn': '{{on}} من {{total}} إجراء',
-  'delegation.tickAll': 'تحديد الكل',
-  'delegation.clearAll': 'إلغاء التحديد',
-  'delegation.unticked': '{{count}} غير محدّدة',
-  'delegation.lockedScreens': '{{count}} مُنحت من سلطة أعلى — تراها ولا تغيّرها',
-  'delegation.grantedElsewhere': 'مُنحت من حساب صلاحيته أوسع من صلاحيتك.',
-  'delegation.expand': 'إظهار',
-  'delegation.collapse': 'إخفاء',
-  'delegation.willSee': 'ما سيراه هذا الشخص',
-  'delegation.willSeeNamed': 'ما سيراه {{name}}',
-  'delegation.noneYet': 'لم يُحدَّد شيء بعد.',
-  'delegation.lineWholeBranch': '{{branch}} كله — كل الإدارات، القائمة والتي تُفتح لاحقًا',
-  'delegation.lineAll': '{{department}} في {{branch}} — {{screens}} شاشة، كل الإجراءات',
-  'delegation.lineView': '{{department}} في {{branch}} — {{screens}} شاشة، اطّلاع فقط',
-  'delegation.lineSome': '{{department}} في {{branch}} — {{screens}} شاشة، {{actions}} إجراء',
+  'delegation.actionsAll': 'كل الأكشنز',
+  'delegation.actionsOn': '{{on}} من {{total}} أكشن',
+  'delegation.tickAll': 'علّم الكل',
+  'delegation.clearAll': 'شيل الكل',
+  'delegation.unticked': '{{count}} مش متعلّمة',
+  'delegation.lockedScreens': '{{count}} اتمنحت من فوق — تشوفها بس ما تغيّرهاش',
+  'delegation.grantedElsewhere': 'اتمنحت من حد صلاحيته أوسع من صلاحيتك.',
+  'delegation.expand': 'فتح',
+  'delegation.collapse': 'قفل',
+  'delegation.willSee': 'الشخص ده هيشوف',
+  'delegation.willSeeNamed': '{{name}} هيشوف',
+  'delegation.noneYet': 'لسه مفيش حاجة متعلّمة.',
+  'delegation.lineWholeBranch': '{{branch}} كله — كل الإدارات، الحالية واللي هتتفتح بعدين',
+  'delegation.lineAll': '{{department}} في {{branch}} — {{screens}} شاشة، كل الأكشنز',
+  'delegation.lineView': '{{department}} في {{branch}} — {{screens}} شاشة، عرض بس',
+  'delegation.lineSome': '{{department}} في {{branch}} — {{screens}} شاشة، {{actions}} أكشن',
   'employees.tabs.permissions': 'الصلاحيات',
   'systemAdmin.effective.delegated': 'صلاحية مباشرة',
   'nav.branchSwitcher.none': 'لا توجد فروع بعد',
@@ -8313,22 +8245,22 @@ const ar: Record<string, string> = {
   'approvals.outcome.approved': 'تمت الموافقة',
   'approvals.outcome.rejected': 'مرفوضة',
   'approvals.outcome.pending': 'في الانتظار',
-  'approvals.outcome.skipped': 'لا أحد يشغل هذه الخطوة',
-  'approvals.outcome.covered': 'أُلغيت بقرار أعلى منها',
-  'approvals.outcome.unreached': 'لم يبلغها الطلب',
-  'approvals.waitingHere': 'الطلب متوقف هنا الآن',
-  'approvals.yourStep': 'هذه الخطوة خطوتك',
-  'approvals.willCancel': 'موافقتك هنا تُلغي {{n}} خطوة تحتها',
-  'approvals.overrideNotice': 'لستَ على هذا المسار. سيُسجَّل القرار باسم صلاحية التجاوز التي تملكها.',
+  'approvals.outcome.skipped': 'مفيش حد على الخطوة دي',
+  'approvals.outcome.covered': 'اتلغت بقرار أعلى منها',
+  'approvals.outcome.unreached': 'الطلب ما وصلهاش',
+  'approvals.waitingHere': 'الطلب واقف هنا دلوقتي',
+  'approvals.yourStep': 'الخطوة دي بتاعتك',
+  'approvals.willCancel': 'موافقتك هنا هتلغي {{n}} خطوة تحتها',
+  'approvals.overrideNotice': 'إنت مش على المسار ده. القرار هيتسجّل باسم صلاحية التجاوز بتاعتك.',
   'approvals.decidedBy': 'بواسطة {{name}}',
-  'approvals.noChain': 'لا يوجد مسار موافقة مضبوط لهذا الطلب.',
+  'approvals.noChain': 'مفيش مسار موافقة متظبّط للطلب ده.',
   'approvals.page.title': 'مسارات الموافقة',
   'approvals.page.description':
-    'تحدّد الخطوة صلاحيةً ومدى ما يجب أن تبلغه سلطة صاحبها — لا مسمًّى وظيفيًّا. والصلاحية الواحدة على ثلاث مسافات مختلفة هي مدير الفرع والمدير العام والموارد البشرية؛ فإذا تُرقّي أحدهم تغيّر من يوافق دون تعديل شيء هنا.',
+    'الخطوة بتحدد صلاحية، ولحد فين لازم توصل سلطة صاحبها — مش مسمى وظيفي. نفس الصلاحية على تلات مسافات مختلفة هي مدير الفرع والمدير العام والموارد البشرية، فلما حد يترقّى بيتغيّر اللي بيوافق من غير ما يتعدّل حاجة هنا.',
   'approvals.page.add': 'مسار جديد',
-  'approvals.page.empty': 'لا يوجد مسار مضبوط بعد — ويسير كل طلب على الافتراضي الخاص بوحدته.',
+  'approvals.page.empty': 'مفيش مسار متظبّط لسه — كل طلب ماشي على الافتراضي بتاع الموديول بتاعه.',
   'approvals.place.default': 'الافتراضي على مستوى الشركة',
-  'approvals.place.defaultHint': 'يُطبَّق في كل موضع لم يُكتب له ما هو أخصّ منه',
+  'approvals.place.defaultHint': 'بيطبّق في أي مكان مش مكتوبله حاجة أخص',
   'approvals.inactive': 'موقوف',
   'approvals.editor.title': 'مسار الموافقة',
   'approvals.editor.requestType': 'نوع الطلب',
@@ -8337,10 +8269,10 @@ const ar: Record<string, string> = {
   'approvals.editor.anyDepartment': 'كل الإدارات',
   'approvals.editor.anyBranch': 'كل الفروع',
   'approvals.editor.placeHint':
-    'اترك الحقلين على «كل» ليكون هذا هو الافتراضي على مستوى الشركة. والأخصّ هو الغالب: إدارةٌ وفرعٌ معًا يغلبان كلًّا منهما وحده.',
+    'سيب الاتنين «كل» عشان يبقى الافتراضي على مستوى الشركة. الأخص هو اللي بيكسب: إدارة وفرع مع بعض بيغلبوا أي واحد منهم لوحده.',
   'approvals.editor.steps': 'الخطوات بالترتيب',
   'approvals.editor.stepsHint':
-    'الخطوة التي لا يستطيع أحد في الشركة أن يقف عليها تُتخطّى ولا توقف الطلب، ويبيّن المسار أنها تُخطّيت.',
+    'الخطوة اللي مفيش حد في الشركة يقدر يقف عليها بتتخطّى مش بتوقّف الطلب، والمسار بيبيّن إنها اتخطّت.',
   'approvals.editor.addStep': 'إضافة خطوة',
   'leave.status.approved': 'معتمدة',
   'leave.status.active': 'في إجازة',
@@ -12357,16 +12289,8 @@ const ar: Record<string, string> = {
   'systemAdmin.permissions.noAccess': 'غير مسموح لك بقراءة سجل الصلاحيات.',
 
   // موقع الحساب في الهيكل التنظيمي
-  // عنوان شجرة المنح لكل موقع داخل تبويب «الأدوار». وهو عمدًا ليس «الصلاحيات»: التبويب المجاور
-  // يحمل الكلمة نفسها، ولا تصلح كلمة واحدة لشيئين على شاشة واحدة.
-  'systemAdmin.users.directGrants': 'منح مباشرة — شاشة بشاشة',
-  'systemAdmin.users.directGrantsHint':
-    'صلاحية أو اثنتان خارج أي دور، لموقع بعينه. واستعمل دورًا إذا كانت القائمة نفسها تُمنح لعدّة أشخاص.',
-  // التبويبان مسمّيان بما يفعلانه، وهو ما أنهى تسمية «الصلاحيات» لشيئين على شاشة واحدة. الأول
-  // موضع ما يكتبه المسؤول بيده — الأدوار التي يمنحها والمنح المباشرة لكل موقع. والثاني حاصلُ تلك
-  // السجلّات بعد حساب المدى والتواريخ، وهو للقراءة فقط.
-  'systemAdmin.users.tabs.roles': 'الأدوار والمنح',
-  'systemAdmin.users.tabs.permissions': 'ما يستطيعه فعلًا',
+  'systemAdmin.users.tabs.roles': 'الأدوار',
+  'systemAdmin.users.tabs.permissions': 'الصلاحيات',
   'systemAdmin.users.fields.section': 'القسم',
   'systemAdmin.users.placement.searchDepartment': 'ابحث في الإدارات',
   'systemAdmin.users.placement.searchSection': 'ابحث في الأقسام',
@@ -12381,15 +12305,11 @@ const ar: Record<string, string> = {
   'systemAdmin.users.placement.inactiveBranch': 'الفرع الحالي (لم يعد نشطًا)',
 
   // SA-4 — الصلاحيات الفعلية وتفسيرها
-  'systemAdmin.effective.title': 'من أين جاءت كل صلاحية',
+  'systemAdmin.effective.title': 'الصلاحيات الفعلية',
   'systemAdmin.effective.hint':
     'كل ما يستطيع هذا الحساب فعله، ومن أين تأتي كل صلاحية. المنح المنتهية أو التي لم تبدأ بعد تبقى ظاهرة — وهي غالبًا الإجابة.',
   'systemAdmin.effective.count': '{{count}} صلاحية',
-  // أعداد بحسب الحالة — على سطر الحساب نفسه وعلى كل وحدة مغلقة، لأن «لماذا لا يستطيع؟» هو ما
-  // يأتي بالقارئ إلى هنا، و«أربعٌ منها انتهت» هو الجواب في كثير من الأحيان.
-  'systemAdmin.effective.activeCount': '{{count}} سارية',
-  'systemAdmin.effective.pendingCount': '{{count}} لم تبدأ',
-  'systemAdmin.effective.expiredCount': '{{count}} انتهت',
+  'systemAdmin.effective.sourceCount': '{{count}} مصدر',
   'systemAdmin.effective.empty': 'لا توجد صلاحية مطابقة لهذا العرض.',
   'systemAdmin.effective.noAccess':
     'قراءة صلاحيات حساب تتطلب «عرض المستخدمين» و«عرض الأدوار» معًا.',

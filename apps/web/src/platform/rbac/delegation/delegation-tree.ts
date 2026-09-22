@@ -222,32 +222,16 @@ const groupByModule = (screens: readonly ScreenNode[]): ModuleNode[] => {
 const visibleScreens = (screens: readonly ScreenNode[]): ScreenNode[] =>
   screens.filter((s) => s.grantable || s.on > 0 || s.savedOn > 0);
 
-/**
- * The reader's own narrowing, applied on top of the entitlement filter — never instead of it.
- *
- * An owner delegating for a colleague sees every branch, every department in it, and the whole
- * registry inside each: eighteen departments times ninety-three screens is a true answer to «what
- * may I grant here» and an unusable one to «where is the leave screen». So the panel hands down a
- * predicate — a search, or «granted only» — and it runs AFTER `visibleScreens`, so narrowing can
- * only ever remove rows the caller was already entitled to see. Everything downstream follows for
- * free: a department whose screens all fail the predicate goes `empty`, and `buildTree` already
- * drops an empty department and a branch left with none.
- */
-export type ScreenFilter = (screen: ScreenNode) => boolean;
-
 const buildUnit = (
   cat: DelegationCatalogDto,
   unit: Unit,
   selected: Selection,
   saved: Selection,
   readOnly: ReadonlySet<string>,
-  filter: ScreenFilter,
 ): UnitNode => {
   const ceiling = readOnly.has(unitKey(unit)) ? new Set<string>() : ceilingOf(cat, unit);
   const rows = buildRows(cat, ceiling, saved);
-  const screens = visibleScreens(rows.map((row) => screenOf(row, selected, ceiling, saved))).filter(
-    filter,
-  );
+  const screens = visibleScreens(rows.map((row) => screenOf(row, selected, ceiling, saved)));
   const actionsOn = screens.reduce((n, s) => n + s.on, 0);
   const actionsTotal = screens.reduce((n, s) => n + s.total, 0);
   const ticked = screens.flatMap((s) => s.row.keys.filter((k) => selected.has(k.key)));
@@ -358,16 +342,15 @@ export const buildTree = (
   selectedOf: (unit: Unit) => Selection,
   savedOf: (unit: Unit) => Selection,
   readOnly: ReadonlySet<string> = new Set(),
-  filter: ScreenFilter = () => true,
 ): BranchNode[] =>
   cat.branches
     .map((branch) => {
       const wholeUnit: Unit = { branchId: branch.id, departmentId: null };
-      const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit), readOnly, filter);
+      const whole = buildUnit(cat, wholeUnit, selectedOf(wholeUnit), savedOf(wholeUnit), readOnly);
       const departments = branch.departments
         .map((department): DepartmentNode => {
           const unit: Unit = { branchId: branch.id, departmentId: department.id };
-          const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit), readOnly, filter);
+          const node = buildUnit(cat, unit, selectedOf(unit), savedOf(unit), readOnly);
           return {
             ...node,
             id: department.id,

@@ -375,57 +375,6 @@ export interface EffectivePermissionsDto {
   rows: EffectivePermissionRowDto[];
 }
 
-// ── «صلاحياتي» — the account's own answer (self-service) ────────────────────
-//
-// The administration projection above is about SOMEBODY ELSE: it is gated on `user.view` and
-// `role.view`, it keeps every grant that ever applied — pending and expired alike — and it names
-// the assignment ids an administrator would act on. None of that belongs to a clerk asking the one
-// question this view exists for: «أنا مسموح لي بإيه؟».
-//
-// So this is the same computation reduced to what the holder himself may read:
-//   • only what is in force RIGHT NOW — a grant that opens next month is not an authority he has,
-//     and a grant that closed is not one he lost the right to be told about on a different screen,
-//   • grouped by the SCREEN it opens, because a person thinks in screens and not in module ids,
-//   • the source named, never identified — «دور: مدير الحركة» or «تفويض · أكتوبر · الحركة», with
-//     no assignment id to act on, because there is no action here to take.
-//
-// It carries no permission gate for the same reason the effective-applications resolver carries
-// none: the answer is scoped to the caller by construction. It is served for the CALLER only —
-// there is no `:id` on the route — so it can never become a way to read another account.
-
-/** Where one of the caller's permissions comes from, named rather than identified. */
-export interface MyPermissionSourceDto {
-  kind: 'role' | 'delegation';
-  /** The role's name, or the fixed label a delegated grant carries. */
-  name: { ar: string; en: string };
-  /** The site a delegation is for — «أكتوبر · الحركة». Null for a role. */
-  where: { ar: string; en: string } | null;
-}
-
-export interface MyPermissionDto {
-  key: string;
-  /** From the registry; null for a key no module declares any more. */
-  name: { ar: string; en: string } | null;
-  moduleId: string | null;
-  /** The administration surface it belongs to — what this view groups on. */
-  pageId: string | null;
-  breakGlass: boolean;
-  /** Always a real scope: a row with none in force is not in this list at all. */
-  scope: DataScope;
-  sources: MyPermissionSourceDto[];
-}
-
-/**
- * `pages` rides along so the client can print a screen's NAME without reading the full catalog,
- * which `permission.view` guards and an ordinary account does not hold. Only the surfaces the rows
- * actually reference are sent.
- */
-export interface MyPermissionsDto {
-  evaluatedAt: string;
-  rows: MyPermissionDto[];
-  pages: PageDto[];
-}
-
 // ── Delegated grants (ADR-032) ──────────────────────────────────────────────
 //
 // A manager hands out, per UNIT, permissions they hold there — to people they reach. No role in

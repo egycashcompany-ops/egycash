@@ -117,7 +117,7 @@ describe('the tree the manager walks down', () => {
   });
 
   it('names the person in the summary', () => {
-    expect(render({ locale: 'ar' })).toContain('ما سيراه صلاح');
+    expect(render({ locale: 'ar' })).toContain('صلاح هيشوف');
   });
 
   it('draws «the branch as one unit» as its own block, locked for a department-level manager', () => {
@@ -189,38 +189,9 @@ describe('a module the dictionary has no name for', () => {
     };
     const html = render({ catalog });
     expect(html).not.toContain('systemAdmin.roles.module.');
-    expect(html).toContain('>zzz screens<');
+    expect(html).toContain('>zzz<');
     // The modules that DO have a name still get it.
-    expect(html).toContain('>Fleet screens<');
-  });
-
-  // A module and a department are named after the same work — «الحركة» is both — and nested one
-  // inside the other as plain rows they read as two levels of the same kind of thing. The heading
-  // has to say what it groups, or the tree reads as «الحركة، and inside it الحركة».
-  it('heads a module with what it groups, so it cannot be read as another department', () => {
-    // Two modules, so the heading is drawn at all — with one it is suppressed, since a manager
-    // delegating fleet screens should not open a group called «الحركة» to reach his only screen.
-    const twoModules: DelegationCatalogDto = {
-      ...CATALOG,
-      branches: [
-        {
-          ...(CATALOG.branches[0] as DelegationCatalogDto['branches'][number]),
-          departments: [
-            {
-              id: 'd1',
-              name: { ar: 'الحركة', en: 'Fleet' },
-              permissionKeys: ['vehicle.view', 'employee.view'],
-            },
-          ],
-        },
-      ],
-      permissions: [...CATALOG.permissions, p('employee.view', 'hr', 'hr.employees')],
-    };
-    const html = render({ catalog: twoModules });
-    // The department is «Fleet»; the module heading beneath it must not be the same string.
     expect(html).toContain('>Fleet<');
-    expect(html).toContain('>Fleet screens<');
-    expect(html.indexOf('>Fleet<')).toBeLessThan(html.indexOf('>Fleet screens<'));
   });
 });
 
@@ -228,15 +199,9 @@ describe('the counters', () => {
   it('count what is drawn beneath them, and leave no placeholder unfilled', () => {
     const html = render();
     expect(html).toContain('1 departments');
+    // One grantable screen in the open department, nothing ticked on it.
+    expect(html).toContain('1 screens');
     expect(html).not.toContain('{{');
-  });
-
-  // An owner's ceiling is the whole registry in every department, so the old fallback printed the
-  // same «93 screens» on eighteen rows — a number that says nothing about the row it is on and
-  // buries the two rows that carry a grant. A department with nothing says so in words.
-  it('says a department holds nothing rather than repeating the registry total', () => {
-    const html = render();
-    expect(html).toContain('nothing yet');
   });
 
   it('counts a screen held from above apart from the ones that are his', () => {

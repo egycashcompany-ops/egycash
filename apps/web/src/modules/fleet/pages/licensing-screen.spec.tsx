@@ -311,35 +311,46 @@ describe('the filters narrow the board', () => {
   });
 });
 
-describe('the count beside the filters', () => {
+describe('the count and the total beside the filters', () => {
   const fleet = [
     row({ vehicleId: 'v1', code: '150' }),
     row({ vehicleId: 'v2', code: '151', insuranceHandover: true }),
     row({ vehicleId: 'v3', code: '214' }),
   ];
-  const counter = (html: string): string => {
-    const at = html.indexOf('data-licensing-count');
-    expect(at, 'the count is on the bar').toBeGreaterThan(-1);
+  const figure = (html: string, marker: string): string => {
+    const at = html.indexOf(marker);
+    expect(at, `${marker} is on the bar`).toBeGreaterThan(-1);
     return html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
   };
+  const shown = (html: string) => figure(html, 'data-licensing-count');
+  const total = (html: string) => figure(html, 'data-licensing-total');
 
-  it('says how many cars are on the board', () => {
-    expect(counter(render({ rows: fleet }))).toContain('٣');
+  it('shows BOTH figures with nothing filtered — «واعمل الاجمالى جمب العداد»', () => {
+    // Both always, not the total only once a filter is on: a number that appears is a number the
+    // reader has to notice arriving.
+    const html = render({ rows: fleet });
+    expect(shown(html)).toContain('٣');
+    expect(total(html)).toContain('٣');
   });
 
-  it('says BOTH numbers once a filter is on — what was found, and among how many', () => {
-    // «٤ من ١٣٧». A narrowed count showing only the narrowed number hides the thing a filter is
-    // judged by, which is how much of the board it took away.
+  it('moves the COUNT under a filter and leaves the total alone', () => {
     const html = render({ rows: fleet, path: '/fleet/licensing?ins=handover' });
-    expect(counter(html)).toContain('١');
-    expect(counter(html), 'and the whole board beside it').toContain('٣');
+    expect(shown(html), 'one car matched').toContain('١');
+    expect(total(html), 'out of three on the board').toContain('٣');
   });
 
-  it('counts the WHOLE board, not the rows the filter left', () => {
-    // The total is `all`, not `rows` — computed from the narrowed list it would print «١ من ١»
-    // for every filter, which is a number that can never say anything.
+  it('counts the WHOLE board in the total, even when the filter matched nothing', () => {
+    // Derived from the narrowed list the pair would read «١ من ١» under every filter — a number
+    // that can never say anything.
     const html = render({ rows: fleet, path: '/fleet/licensing?code=zzz' });
-    expect(counter(html)).toContain('٣');
+    expect(shown(html)).toContain('٠');
+    expect(total(html)).toContain('٣');
+  });
+
+  it('names each figure, because two bare numbers side by side name neither', () => {
+    const html = render({ rows: fleet });
+    expect(html).toContain('المعروض');
+    expect(html).toContain('الإجمالى');
   });
 });
 

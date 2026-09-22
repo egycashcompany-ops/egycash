@@ -232,25 +232,25 @@ export const LicensingPage = (): JSX.Element => {
         singleRow
         hasActiveFilters={hasFilters}
         onClear={clearFilters}
-        // HOW MANY CARS ARE ON THE BOARD, beside the controls that decide it — «عدد اجمالى اللى ف
-        // الجدول جمب الفلاتر برضو». `trailing` rather than a last child, so it stays at the end of
-        // the row whether or not the reset button is showing and does not jump sideways the moment
-        // a filter is cleared.
+        // HOW MANY ARE SHOWN, AND HOW MANY THERE ARE — «واعمل الاجمالى جمب العداد ... جمب
+        // الفلاتر». Two figures, both named and both ALWAYS on the bar: a count that appeared only
+        // once a filter was on would be a number the reader has to notice arriving, and the
+        // «الإجمالى» beside it is the one that says how much of the board a filter took away.
         //
-        // TWO READINGS, because a narrowed count that showed only the narrowed number would hide
-        // the very thing a filter is judged by: «٤ من ١٣٧» says both what was found and what it
-        // was found among. Unfiltered there is nothing to compare against, so it says one number.
+        // `trailing` rather than a last child, so the pair sits at the end of the row whether or
+        // not the reset button is showing and does not jump sideways the moment a filter clears.
+        //
+        // The total is the WHOLE board, never the narrowed list: derived from `rows` it would read
+        // «المعروض ١ · الإجمالى ١» under every filter, which is a number that can never say
+        // anything.
         trailing={
-          <span
-            data-licensing-count
-            className="whitespace-nowrap text-sm text-slate-500 dark:text-slate-400"
-          >
-            {hasFilters
-              ? t('fleet.licensing.countOf', {
-                  shown: formatNumber(rows.length, locale),
-                  total: formatNumber(all.length, locale),
-                })
-              : t('fleet.licensing.count', { count: formatNumber(all.length, locale) })}
+          <span className="flex items-center gap-3 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
+            <span data-licensing-count>
+              {t('fleet.licensing.shownCount', { count: formatNumber(rows.length, locale) })}
+            </span>
+            <span data-licensing-total className="font-semibold text-slate-700 dark:text-slate-200">
+              {t('fleet.licensing.totalCount', { count: formatNumber(all.length, locale) })}
+            </span>
           </span>
         }
       >

@@ -311,6 +311,38 @@ describe('the filters narrow the board', () => {
   });
 });
 
+describe('the count beside the filters', () => {
+  const fleet = [
+    row({ vehicleId: 'v1', code: '150' }),
+    row({ vehicleId: 'v2', code: '151', insuranceHandover: true }),
+    row({ vehicleId: 'v3', code: '214' }),
+  ];
+  const counter = (html: string): string => {
+    const at = html.indexOf('data-licensing-count');
+    expect(at, 'the count is on the bar').toBeGreaterThan(-1);
+    return html.slice(html.indexOf('>', at) + 1, html.indexOf('</span>', at));
+  };
+
+  it('says how many cars are on the board', () => {
+    expect(counter(render({ rows: fleet }))).toContain('٣');
+  });
+
+  it('says BOTH numbers once a filter is on — what was found, and among how many', () => {
+    // «٤ من ١٣٧». A narrowed count showing only the narrowed number hides the thing a filter is
+    // judged by, which is how much of the board it took away.
+    const html = render({ rows: fleet, path: '/fleet/licensing?ins=handover' });
+    expect(counter(html)).toContain('١');
+    expect(counter(html), 'and the whole board beside it').toContain('٣');
+  });
+
+  it('counts the WHOLE board, not the rows the filter left', () => {
+    // The total is `all`, not `rows` — computed from the narrowed list it would print «١ من ١»
+    // for every filter, which is a number that can never say anything.
+    const html = render({ rows: fleet, path: '/fleet/licensing?code=zzz' });
+    expect(counter(html)).toContain('٣');
+  });
+});
+
 describe('matchesPaper — the multi-select\u2019s reading', () => {
   const insurance = {
     key: 'insurance',

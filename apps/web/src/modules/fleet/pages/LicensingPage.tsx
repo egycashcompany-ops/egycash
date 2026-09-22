@@ -28,6 +28,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { useAppSelector } from '../../../store';
 import { type Locale } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
+import { formatNumber } from '../../../shared/lib/format';
 import { CheckIcon } from '../../../shared/ui/icons';
 import { useLicensingBoard, useSetLicensingMark } from '../api/fleet-queries';
 
@@ -227,7 +228,32 @@ export const LicensingPage = (): JSX.Element => {
       {/* The module's own filter strip. `singleRow` because five controls fit one line at the width
           this screen is read at, and a bar that wrapped would push the board itself below the
           fold on the very screen whose point is seeing the whole list at once. */}
-      <FilterBar singleRow hasActiveFilters={hasFilters} onClear={clearFilters}>
+      <FilterBar
+        singleRow
+        hasActiveFilters={hasFilters}
+        onClear={clearFilters}
+        // HOW MANY CARS ARE ON THE BOARD, beside the controls that decide it — «عدد اجمالى اللى ف
+        // الجدول جمب الفلاتر برضو». `trailing` rather than a last child, so it stays at the end of
+        // the row whether or not the reset button is showing and does not jump sideways the moment
+        // a filter is cleared.
+        //
+        // TWO READINGS, because a narrowed count that showed only the narrowed number would hide
+        // the very thing a filter is judged by: «٤ من ١٣٧» says both what was found and what it
+        // was found among. Unfiltered there is nothing to compare against, so it says one number.
+        trailing={
+          <span
+            data-licensing-count
+            className="whitespace-nowrap text-sm text-slate-500 dark:text-slate-400"
+          >
+            {hasFilters
+              ? t('fleet.licensing.countOf', {
+                  shown: formatNumber(rows.length, locale),
+                  total: formatNumber(all.length, locale),
+                })
+              : t('fleet.licensing.count', { count: formatNumber(all.length, locale) })}
+          </span>
+        }
+      >
         <div className="min-w-[8rem] flex-1">
           <Input
             aria-label={t('fleet.licensing.columns.vehicle')}

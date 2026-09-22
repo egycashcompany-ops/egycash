@@ -39,7 +39,30 @@ export interface XlsxSheet {
    * column has to be at once, and only a format gives both.
    */
   moneyColumns?: readonly number[];
+  /**
+   * Rows written UNDER the table, after a blank line — the signature block.
+   *
+   * The sent workbooks carry it inside the sheet, not only on the printed page: «القائم بالأعمال»,
+   * «مدير إدارة الحركة» and the endorsement, each over its name and its «التوقيع /», laid across
+   * the columns. That is what makes the file a document somebody prints and signs rather than a
+   * dump of the table, and leaving it out was the whole of what was missing.
+   *
+   * Plain rows: no border, no fill, not bold — exactly as they read in the sent files.
+   */
+  trailer?: readonly (readonly XlsxCell[])[];
 }
+
+/**
+ * Where the three signature columns sit, for a sheet this many columns wide (the serial included).
+ *
+ * Thirds, which is where the sent company sheet has them — A, D and G across its nine. Exported
+ * so the callers cannot each invent their own spacing and drift apart.
+ */
+export const signatureColumns = (columns: number): [number, number, number] => [
+  0,
+  Math.round(columns / 3),
+  Math.round((columns * 2) / 3),
+];
 
 const esc = (value: string): string =>
   value
@@ -78,7 +101,7 @@ const cellXml = (value: XlsxCell, col: number, row: number, style: number): stri
 };
 
 /** Style ids, in the order `styles.xml` below declares them. */
-const S = { body: 0, head: 1, total: 2, money: 3, moneyTotal: 4 } as const;
+const S = { body: 0, head: 1, total: 2, money: 3, moneyTotal: 4, plain: 5 } as const;
 
 const sheetXml = (sheet: XlsxSheet): string => {
   const head = [sheet.serialHeader, ...sheet.header];
@@ -103,6 +126,17 @@ const sheetXml = (sheet: XlsxSheet): string => {
       .join('');
     rows.push(`<row r="${String(n)}">${cells}</row>`);
   }
+  // THE SIGNATURE BLOCK, one blank line below the table. Written with the plain style — no border
+  // and no fill — because a grid drawn round a person's name would read as another table.
+  if (sheet.trailer !== undefined) {
+    // The last row the table used, plus the blank one.
+    let n = sheet.rows.length + (sheet.totals === undefined ? 1 : 2) + 2;
+    for (const line of sheet.trailer) {
+      const cells = line.map((cell, c) => cellXml(cell, c, n, S.plain)).join('');
+      rows.push(`<row r="${String(n)}">${cells}</row>`);
+      n += 1;
+    }
+  }
   // `rightToLeft` on the VIEW, so column A is on the right where an Arabic reader expects it —
   // the sheet reads the way the screen it came from reads.
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -116,7 +150,7 @@ const WORKBOOK = (name: string): string => `<?xml version="1.0" encoding="UTF-8"
 // total. Excel requires the two zero-index built-ins (`fonts[0]`, `fills[0]`, `fills[1]`) to be
 // present and in that order, whether or not anything uses them.
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;

@@ -47,9 +47,9 @@ import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterField } from '../../../shared/ui/FilterField';
-import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { buildXlsx, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
-import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
+import { printFleetReport, reportMoney, signatureRows } from '../lib/fleet-report-print';
 
 /** The four lines every group shows, in the order the business reads them. */
 const TOTAL_ROWS = [
@@ -314,6 +314,9 @@ export const CompanyViolationsPanel = ({
       rows: sheetRows(),
       // The three money columns, shown to two decimals and still summable.
       moneyColumns: [3, 5, 7],
+      // THE SAME BLOCK THE PAGE CARRIES, inside the sheet — this is a document somebody
+      // prints and signs, not a dump of the table.
+      trailer: signatureRows(signatories, signatureColumns(9), t('fleet.violations.report.signLine')),
       // Laid out under the columns it belongs to: the money under each money column, and the word
       // «الإجمالى» where the car code is — which is where a reader's eye goes looking for it.
       totals: [

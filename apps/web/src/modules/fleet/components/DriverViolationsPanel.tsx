@@ -64,9 +64,9 @@ import {
   type DriverEntryCard,
   type DriverEntryType,
 } from '../lib/driver-violation-entry';
-import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { buildXlsx, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
-import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
+import { printFleetReport, reportMoney, signatureRows } from '../lib/fleet-report-print';
 
 // The filter bar's rhythm, shared by all four fields — see `FilterField` for why the name sits
 // above the control and why every control is the same width.
@@ -576,6 +576,9 @@ export const DriverViolationsPanel = ({
       rows: sheetRows(),
       // «القيمة» — two decimals on the face of it, a number underneath.
       moneyColumns: [4],
+      // THE SAME BLOCK THE PAGE CARRIES, inside the sheet — this is a document somebody
+      // prints and signs, not a dump of the table.
+      trailer: signatureRows(signatories, signatureColumns(6), t('fleet.violations.report.signLine')),
       // The total sits under «المبلغ», where the column it sums is.
       totals: ['', '', t('fleet.violations.report.grandTotal'), '', pageTotal],
     });

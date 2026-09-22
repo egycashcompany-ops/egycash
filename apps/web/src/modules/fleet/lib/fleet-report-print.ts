@@ -198,3 +198,32 @@ export const printFleetReport = (doc: FleetReport): void => {
  * «7344.40». The separator goes too, for the same reason it is not on them.
  */
 export const reportMoney = (value: number): string => value.toFixed(2);
+
+/**
+ * The signature block as SHEET ROWS — the same three columns the printed page carries.
+ *
+ * The sent workbooks hold it inside the sheet, under the table, not only on the printed page: it
+ * is what makes the file something a reader prints and signs rather than a dump of the table. One
+ * builder for both halves, so the two workbooks cannot drift apart from each other or from the
+ * page, and `at` comes from `signatureColumns` so the spacing is not invented twice.
+ */
+export const signatureRows = (
+  s: ReportSignatories,
+  at: readonly [number, number, number],
+  signLabel: string,
+): string[][] => {
+  const line = (...values: [string, string, string]): string[] => {
+    const row: string[] = [];
+    at.forEach((column, i) => {
+      row[column] = values[i] ?? '';
+    });
+    // The gaps between the three are real empty cells, not missing ones.
+    for (let i = 0; i < row.length; i += 1) row[i] ??= '';
+    return row;
+  };
+  return [
+    line(s.preparedByTitle, s.approvedByTitle, s.endorsementNote),
+    line(s.preparedByName, s.approvedByName, s.endorsedByName),
+    line(signLabel, signLabel, signLabel),
+  ];
+};

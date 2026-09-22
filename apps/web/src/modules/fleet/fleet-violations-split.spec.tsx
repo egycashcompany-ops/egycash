@@ -47,8 +47,8 @@ import {
   type DriverEntryCard,
 } from './lib/driver-violation-entry';
 import { buildFleetReportHtml, type ReportSignatories } from './lib/fleet-report-print';
-import { buildXlsx, sheetName, xlsxFilename } from './lib/fleet-xlsx';
-import { reportMoney } from './lib/fleet-report-print';
+import { buildXlsx, sheetName, signatureColumns, xlsxFilename } from './lib/fleet-xlsx';
+import { reportMoney, signatureRows } from './lib/fleet-report-print';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const t = (key: string): string => translate('ar', key);
@@ -1405,6 +1405,40 @@ describe('the «Excel» button produces a real workbook', () => {
     );
     expect(text, 'the format is declared').toContain('numFmtId="2"');
     expect(text, 'and the cell is still a value').toContain('<v>507.5</v>');
+  });
+
+  it('carries the SIGNATURE BLOCK inside the sheet, under the table', async () => {
+    // This is what the sent workbooks have and what was missing: the file is a document somebody
+    // prints and signs, not a dump of the table. A blank line under the totals, then the three
+    // offices across the columns, each over its name and its «التوقيع /».
+    const text = new TextDecoder().decode(
+      new Uint8Array(
+        await book({
+          totals: ['الإجمالى', 900],
+          trailer: signatureRows(SIGN, signatureColumns(3), 'التوقيع / '),
+        }).arrayBuffer(),
+      ),
+    );
+    for (const line of Object.values(SIGN)) expect(text, line).toContain(line);
+    // Three signature lines, exactly as on the printed page.
+    expect((text.match(/التوقيع \//g) ?? []).length).toBe(3);
+    // A BLANK LINE between the total and the block: rows are 1 header + 2 data + 1 total = 4, so
+    // the block starts at 6 and never at 5. Otherwise a name sits on the table's bottom border.
+    expect(text, 'the block starts after a gap').toContain('<row r="6">');
+    expect(text, 'and not straight under the total').not.toContain('<row r="5"><c r="A5"');
+  });
+
+  it('spreads the three signatures across the sheet rather than stacking them in column A', () => {
+    // Thirds — A, D and G on the nine-column company sheet, which is where the sent file has them.
+    expect(signatureColumns(9)).toEqual([0, 3, 6]);
+    const rows = signatureRows(SIGN, signatureColumns(9), 'التوقيع / ');
+    expect(rows[0]?.[0]).toBe(SIGN.preparedByTitle);
+    expect(rows[0]?.[3]).toBe(SIGN.approvedByTitle);
+    expect(rows[0]?.[6]).toBe(SIGN.endorsementNote);
+    // The gaps are real empty cells, not holes an XML writer would skip past.
+    expect(rows[0]?.[1]).toBe('');
+    expect(rows[1]?.[0]).toBe(SIGN.preparedByName);
+    expect(rows[2]?.[0]).toBe('التوقيع / ');
   });
 
   it('cleans a sheet name Excel would refuse rather than handing over a broken file', () => {

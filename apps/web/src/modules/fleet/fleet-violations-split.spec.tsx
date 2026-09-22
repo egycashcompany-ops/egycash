@@ -695,6 +695,27 @@ describe('the eight reported defects, as rules the markup carries', () => {
     expect(partial, 'some is not all').not.toContain('data-rollup-settled="true"');
   });
 
+  it('and EVERY line of that group is green — the zebra stripe does not cancel the tint', () => {
+    // «عاوز الصف بتاع العربيه اللى فى مخالفات الشركه هو كمان بالاخضر». The group's green is on
+    // the tbody and the stripe is on the rows inside it, so a slate stripe paints straight over
+    // the tint: measured in a browser, two of the four lines came back rgba(30,41,59,.3) — plain
+    // slate — leaving a settled car reading as two green lines with two grey ones between them.
+    const settled = page({ rollup: [rollupRow({ rowCount: 3, collectedCount: 3 })] });
+    const from = settled.indexOf('data-rollup-settled="true"');
+    const group = settled.slice(from, settled.indexOf('</tbody>', from));
+    expect(group, 'no slate is painted over the green').not.toContain('bg-slate-50/60');
+    expect(group, 'the stripe is green too').toContain('bg-emerald-100/60');
+
+    // …and an UNSETTLED group keeps the slate rhythm it has always had: the alternation is how
+    // this board separates «الشركة» from «السائقين», and dropping it would be a second change
+    // nobody asked for.
+    const open = page({ rollup: [rollupRow({ rowCount: 3, collectedCount: 0 })] });
+    const at = open.indexOf('data-rollup-group=');
+    expect(open.slice(at, open.indexOf('</tbody>', at)), 'still striped').toContain(
+      'bg-slate-50/60',
+    );
+  });
+
   it('every filter field takes an EQUAL share of its row', () => {
     // `flex-1 basis-0` is the whole of «الفلاتر مش مظبوطة»: without it the share of the row a
     // control gets depends on how long its own words happen to be.

@@ -79,6 +79,18 @@ const TOTAL_ROWS = [
   },
 ] as const;
 
+/**
+ * A GROUP IS SETTLED WHEN EVERY ROW IN IT IS TICKED — the company's statement rows and the
+ * drivers' fines alike, which is exactly what the board's group tick reaches.
+ *
+ * Read in one place because four things depend on it — the flag the tests and the print sheet
+ * look for, the group's green, the zebra stripe drawn over that green, and the tick's own three
+ * states — and a group that was green but not flagged, or flagged but not green, is a row the
+ * reader cannot act on with any confidence.
+ */
+const isSettled = (row: FleetViolationRollupDto): boolean =>
+  row.rowCount > 0 && row.collectedCount === row.rowCount;
+
 const YEAR_SPAN = 20;
 
 // The filter bar's rhythm, shared with the driver half — see `FilterField`.
@@ -789,9 +801,7 @@ export const CompanyViolationsPanel = ({
                 <tbody
                   key={`${row.vehicleId ?? `code:${row.code}`}:${row.year}`}
                   data-rollup-group={`${row.code}:${row.year}`}
-                  data-rollup-settled={
-                    row.rowCount > 0 && row.collectedCount === row.rowCount ? 'true' : undefined
-                  }
+                  data-rollup-settled={isSettled(row) ? 'true' : undefined}
                   // SETTLED IS A STATE OF THE GROUP, so the group carries it — the tick is where
                   // it is changed, the tint is how the board reads at a glance. The tick already
                   // changed colour on its own, which told a reader nothing until they had found
@@ -833,9 +843,7 @@ export const CompanyViolationsPanel = ({
                   data-rollup-droppable={canReceive(row, mayMove) ? 'true' : undefined}
                   className={cn(
                     'border-t border-slate-200 dark:border-slate-800',
-                    row.rowCount > 0 &&
-                      row.collectedCount === row.rowCount &&
-                      'bg-emerald-50 dark:bg-emerald-950/40',
+                    isSettled(row) && 'bg-emerald-50 dark:bg-emerald-950/40',
                     over === keyOfGroup(row) &&
                       'outline outline-2 -outline-offset-2 outline-brand-500',
                   )}
@@ -843,7 +851,23 @@ export const CompanyViolationsPanel = ({
                   {TOTAL_ROWS.map((total, line) => (
                     <tr
                       key={total.key}
-                      className={line % 2 === 0 ? 'bg-slate-50/60 dark:bg-slate-800/30' : ''}
+                      // THE STRIPE IS DRAWN OVER THE GROUP'S GREEN, so on a settled group it has
+                      // to be green too — «عاوز الصف بتاع العربيه اللى فى مخالفات الشركه هو كمان
+                      // بالاخضر». A slate stripe is opaque enough to cancel the tint underneath
+                      // it, which left a settled car reading as two green lines with two grey
+                      // ones between them: the same four figures the reader had just ticked,
+                      // half of them still looking outstanding.
+                      //
+                      // The rhythm is kept rather than dropped — four lines of one flat colour
+                      // are harder to read across than four that alternate, and the alternation
+                      // is how this board has always separated «الشركة» from «السائقين».
+                      className={
+                        line % 2 !== 0
+                          ? ''
+                          : isSettled(row)
+                            ? 'bg-emerald-100/60 dark:bg-emerald-900/30'
+                            : 'bg-slate-50/60 dark:bg-slate-800/30'
+                      }
                     >
                       {line === 0 && (
                         <>

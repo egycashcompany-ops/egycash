@@ -486,6 +486,16 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetViolation.view',
       },
       {
+        en: 'Licensing',
+        ar: 'التراخيص',
+        route: '/fleet/licensing',
+        // A licence is a CREDENTIAL the authority issues for the car — the badge is the glyph the
+        // rail already uses for that idea, and it is the one shape on this rail that is neither a
+        // document (`clipboard`, الطقم الثابت) nor a folder of lists two rows down.
+        icon: 'badge',
+        permission: 'fleetLicensing.view',
+      },
+      {
         en: 'Fleet Catalogs',
         ar: 'قوائم الحركة',
         route: '/fleet/catalogs',

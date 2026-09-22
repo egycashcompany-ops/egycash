@@ -46,6 +46,7 @@ import { FleetAccidentModel } from './accidents/accident.model';
 import { FleetViolationModel, FleetGrievanceModel } from './violations/violation.model';
 import { FleetSweepMarkModel } from './sweeps/sweep-mark.model';
 import { FleetGoLiveRunModel } from './go-live/go-live-run.model';
+import { FleetVehicleLicensingModel } from './licensing/licensing.model';
 
 /**
  * Every Fleet collection, listed once.
@@ -71,6 +72,7 @@ export const fleetIndexedModels = (): { collection: string; model: Model<never> 
       FleetGrievanceModel,
       FleetSweepMarkModel,
       FleetGoLiveRunModel,
+      FleetVehicleLicensingModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model }));
 

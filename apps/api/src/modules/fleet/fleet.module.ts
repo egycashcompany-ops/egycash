@@ -18,6 +18,7 @@ import { buildFleetOdometerRouter } from './odometer/odometer.routes';
 import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
 import { buildFleetRosterRouter } from './roster/roster.routes';
 import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes';
+import { buildFleetLicensingRouter } from './licensing/licensing.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
 import { buildFleetViolationsRouter } from './violations/violation.routes';
 import { licenseExpirySweep, maintenanceAlarmSweep } from './sweeps/fleet-sweeps';
@@ -181,6 +182,31 @@ const violationPermissions = declarePermissions(
   'fleet.violations',
 );
 
+/**
+ * The licensing board (التراخيص) — «تسليم/استلام» for the insurance papers and the tax papers.
+ *
+ * Its own grants rather than the vehicle registry's: the registry's `edit` is the power to
+ * rewrite a car's identity — its plate, its chassis, its branch — and handing that to whoever
+ * walks the papers to the licensing office would be a far larger grant than the job needs.
+ *
+ * `mark` is separated from `view` for the reason `collect` is separated on the violations board:
+ * reading which papers are outstanding is a supervisor's question, and ticking one is the act of
+ * the person who carried them.
+ */
+const licensingPermissions = declarePermissions(
+  'fleet',
+  'fleetLicensing',
+  { en: 'licensing', ar: 'تراخيص السيارات' },
+  ['view'],
+  [
+    {
+      action: 'mark',
+      name: { en: 'Tick a licensing paper', ar: 'تعليم تسليم أو استلام' },
+    },
+  ],
+  'fleet.licensing',
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
@@ -192,6 +218,7 @@ export const fleetPermissions: PermissionDef[] = [
   ...rosterPermissions,
   ...accidentPermissions,
   ...violationPermissions,
+  ...licensingPermissions,
 ];
 
 /**
@@ -258,6 +285,13 @@ export const fleetPages: PageDef[] = [
     sortOrder: 80,
   },
   {
+    id: 'fleet.licensing',
+    moduleId: 'fleet',
+    name: { en: 'Licensing', ar: 'التراخيص' },
+    route: '/fleet/licensing',
+    sortOrder: 85,
+  },
+  {
     id: 'fleet.catalogs',
     moduleId: 'fleet',
     name: { en: 'Fleet catalogs', ar: 'قوائم الحركة' },
@@ -294,6 +328,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/fixed-roster', router: buildFleetFixedRosterRouter() },
     { prefix: '/fleet/accidents', router: buildFleetAccidentsRouter() },
     { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
+    { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
   ],
   collections: [
     'fleet_vehicles',
@@ -309,6 +344,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_accidents',
     'fleet_violations',
     'fleet_violation_grievances',
+    'fleet_vehicle_licensing',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is

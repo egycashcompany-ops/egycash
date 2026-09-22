@@ -54,6 +54,8 @@ import {
   type MoveFleetViolations,
   type SetRollupCollected,
   type UpdateFleetViolation,
+  type FleetLicensingRowDto,
+  type SetFleetLicensingMark,
 } from '@ecms/contracts';
 import {
   api,
@@ -353,3 +355,18 @@ export const deleteViolation = (id: string): Promise<void> => del<void>(`/fleet/
  */
 export const getFleetGoLiveRuns = (): Promise<FleetGoLiveRunsDto> =>
   get<FleetGoLiveRunsDto>('/fleet/go-live');
+
+// ── Licensing board (التراخيص) ────────────────────────────────────────────────
+
+/**
+ * Every car whose licence class is a «… ت» one, its four papers beside it.
+ *
+ * Unpaginated: the board is a checklist read top to bottom, and which cars are on it is decided
+ * by the registry rather than by anything the reader typed — so there is no page to ask for.
+ */
+export const licensingBoard = (): Promise<FleetLicensingRowDto[]> =>
+  get<FleetLicensingRowDto[]>('/fleet/licensing');
+
+/** Tick or untick ONE square. Answers with the refreshed board — the pair colours together. */
+export const setLicensingMark = (body: SetFleetLicensingMark): Promise<FleetLicensingRowDto[]> =>
+  post<FleetLicensingRowDto[]>('/fleet/licensing/mark', body);

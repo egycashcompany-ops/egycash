@@ -40,6 +40,7 @@ import {
   type UpdateFleetMaintenance,
   type UpdateFleetUnavailability,
   type UpdateFleetVehicle,
+  type SetFleetLicensingMark,
 } from '@ecms/contracts';
 import { nextViolationsPage } from '../lib/violations-paging';
 import { fetchWholeCatalog } from '../lib/whole-catalog';
@@ -64,6 +65,7 @@ const fleetKeys = {
   roster: featureKey(MODULE, 'roster'),
   accidents: featureKey(MODULE, 'accidents'),
   violations: featureKey(MODULE, 'violations'),
+  licensing: featureKey(MODULE, 'licensing'),
 } as const;
 
 // ── Registry + rules ────────────────────────────────────────────────────────
@@ -704,3 +706,31 @@ export const useFleetGoLiveRuns = (enabled: boolean) =>
     staleTime: 30_000,
     enabled,
   });
+
+// ── Licensing board (التراخيص) ────────────────────────────────────────────────
+
+/**
+ * The board. `staleTime: 0` on purpose — which cars are on it is DERIVED from the registry, so an
+ * admin renaming «برقاش ت» to «برقاش م» must take the car off this screen on the next look rather
+ * than at the end of a cache window.
+ */
+export const useLicensingBoard = (enabled = true) =>
+  useQuery({
+    queryKey: fleetKeys.licensing,
+    queryFn: api.licensingBoard,
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * One square. The server answers with the whole refreshed board and it is written straight into
+ * the cache: the endpoint has just recomputed membership, so a car that left the board while the
+ * clerk was working disappears with the same round trip rather than on a later refetch.
+ */
+export const useSetLicensingMark = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetFleetLicensingMark) => api.setLicensingMark(body),
+    onSuccess: (rows) => qc.setQueryData(fleetKeys.licensing, rows),
+  });
+};

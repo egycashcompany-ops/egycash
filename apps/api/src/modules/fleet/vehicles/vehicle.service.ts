@@ -30,6 +30,7 @@ import {
 } from './vehicle.repository';
 import { resolveVehicleDocsCategoryId } from './vehicle-files';
 import { canTransitionVehicle, isVehicleWritable } from './vehicle-status';
+import { fleetVehicleLicensingRepository } from '../licensing/licensing.repository';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'vehicle', entityId: id });
@@ -273,6 +274,22 @@ class FleetVehicleService {
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
+    // A NEW LICENCE IS NEW PAPERWORK — «لو رجعت كل العلامات تتشال».
+    //
+    // The licensing board's ticks record papers handed to a particular licensing office for a
+    // particular licence. Move the car to another class — «برقاش ت» to «برقاش م», or back — and
+    // those ticks describe an errand that no longer applies; left standing, a car returning to
+    // the board would arrive already half-done.
+    //
+    // The REPOSITORY is called rather than the licensing service, because that service reads this
+    // one: going through it would close an import cycle. Nothing here needs its rules — the rule
+    // is simply "these marks are void", and the row is a row.
+    if (
+      input.licenseClassId !== undefined &&
+      String(before.licenseClassId ?? '') !== String(updated.licenseClassId ?? '')
+    ) {
+      await fleetVehicleLicensingRepository.voidForVehicles([id], by);
+    }
     await emit(FleetEvents.VehicleUpdated, eventPayload(updated));
     return updated;
   }

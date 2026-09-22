@@ -2403,3 +2403,61 @@ export interface FleetGoLiveRunDto {
 export interface FleetGoLiveRunsDto {
   runs: FleetGoLiveRunDto[];
 }
+
+// ── Licensing board (التراخيص) ────────────────────────────────────────────────
+//
+// The paperwork half of a licence renewal: the insurance papers and the tax papers, each handed
+// in and then collected back. The board carries no money and no dates — it is a checklist a clerk
+// works down, and «تسليم/استلام» is the whole of what it records.
+//
+// WHICH CARS ARE ON IT IS NOT A CHOICE ANYBODY MAKES HERE. A vehicle appears because its licence
+// class is one whose name ends «ت» — «برقاش ت», «العجوزة ت» — and disappears the moment that
+// class becomes «برقاش م». «لما العربيه تبقى اخرها م زى برقاش م تتشال من الجدول خالص ... اخرها ت
+// تتحط ت من جديد». So membership is DERIVED at read time from the registry, never stored here:
+// a stored copy would be a second answer to «هل العربية دى بتترخص؟» and would go stale the first
+// time an admin renamed a class.
+//
+// The marks themselves are NOT deleted when a car leaves the board. They are what the clerk did,
+// and a car that comes back to «ت» comes back with its own history rather than a blank line.
+
+/** The four ticks a row carries — two papers, each handed in and collected back. */
+export const FLEET_LICENSING_MARKS = [
+  'insuranceHandover',
+  'insuranceReceipt',
+  'taxHandover',
+  'taxReceipt',
+] as const;
+export const FleetLicensingMarkSchema = z.enum(FLEET_LICENSING_MARKS);
+export type FleetLicensingMark = z.infer<typeof FleetLicensingMarkSchema>;
+
+export interface FleetLicensingRowDto {
+  vehicleId: string;
+  code: string;
+  plateNumber: string;
+  chassisNumber: string;
+  /**
+   * The licence class the car is on the board FOR, as the admin named it («برقاش ت»). Shown
+   * because a board whose membership rule is invisible is a board whose absences cannot be
+   * explained — a clerk looking for a car that is not there needs to see what the others have.
+   */
+  licenseClass: string | null;
+  insuranceHandover: boolean;
+  insuranceReceipt: boolean;
+  taxHandover: boolean;
+  taxReceipt: boolean;
+}
+
+/**
+ * One tick, named. No `version`: a tick is a statement about a single square that the clerk can
+ * make and unmake at will, and the row it lands on may not exist yet — there is nothing for two
+ * writers to disagree about, and an optimistic check would only refuse the second clerk for no
+ * gain. It is the same reasoning the violations board's group tick is written under.
+ */
+export const SetFleetLicensingMarkSchema = z
+  .object({
+    vehicleId: objectId(),
+    mark: FleetLicensingMarkSchema,
+    value: z.boolean(),
+  })
+  .strict();
+export type SetFleetLicensingMark = z.infer<typeof SetFleetLicensingMarkSchema>;

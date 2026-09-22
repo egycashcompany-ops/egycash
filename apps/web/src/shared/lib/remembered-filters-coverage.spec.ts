@@ -164,6 +164,12 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/fleet/pages/DriverProfilePage.tsx'],
   ['modules/fleet/pages/FleetDashboardPage.tsx'],
   ['modules/fleet/pages/FleetSettingsPage.tsx'],
+  [
+    'modules/fleet/pages/LicensingPage.tsx',
+    // The licensing board has NO filter to remember. Which cars are on it is decided by the
+    // registry — a licence class whose name ends «ت» — so there is nothing for a reader to
+    // narrow and nothing a URL could carry that the server would honour.
+  ],
   ['modules/fleet/pages/VehicleDetailPage.tsx'],
   ['modules/gold/pages/GoldDashboardPage.tsx'],
   ['modules/gold/pages/GoldReportsPage.tsx'],

@@ -48,6 +48,7 @@ import {
 } from './lib/driver-violation-entry';
 import { buildFleetReportHtml, type ReportSignatories } from './lib/fleet-report-print';
 import { buildXlsx, sheetName, xlsxFilename } from './lib/fleet-xlsx';
+import { reportMoney } from './lib/fleet-report-print';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const t = (key: string): string => translate('ar', key);
@@ -1275,6 +1276,49 @@ describe('the printed report is a company document, not a screenshot', () => {
     expect(html).toContain('<tr class="trow"><th colspan="2">إجمالى السائقين</th><td>2900.00</td>');
   });
 
+  it('speaks the FORM\u2019s vocabulary, not the board\u2019s', () => {
+    // The screen names a column for somebody reading it live — «المبلغ», «السائق». The sheet that
+    // goes up for signature names it the way the company's form names it — «القيمة», «اسم السائـق».
+    // Two audiences, two vocabularies, and borrowing one for the other is how a document stops
+    // looking like itself.
+    const drivers = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const company = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const headerOf = (source: string): string =>
+      source.slice(
+        source.indexOf('const exportHeader = ['),
+        source.indexOf('];', source.indexOf('const exportHeader = [')),
+      );
+    for (const header of [headerOf(drivers), headerOf(company)]) {
+      // Every heading comes from the report's own namespace, and none from the board's.
+      expect(header, 'the report names its own columns').toContain("t('fleet.violations.report.");
+      expect(header, 'and borrows none from the table').not.toContain("fleet.violations.fields.");
+      expect(header, 'nor from the odometer').not.toContain('fleet.odometer.columns');
+      expect(header, 'nor from the rollup').not.toContain('fleet.violations.rollup');
+    }
+    // …and the titles are the form's, not the panel headings above the boards.
+    expect(drivers).toContain("t('fleet.violations.report.driverTitle')");
+    expect(company).toContain("t('fleet.violations.report.companyTitle')");
+  });
+
+  it('prints money the way a form prints it — two decimals, and nothing else', () => {
+    // Not `formatMoney`: «7,344.40 ج.م.» is the screen telling a reader what the number is. A form
+    // does not need telling — the column is headed «القيمة» and every figure on it is money.
+    expect(reportMoney(507.5)).toBe('507.50');
+    expect(reportMoney(7344.4)).toBe('7344.40');
+    expect(reportMoney(2900), 'no thousands separator').toBe('2900.00');
+    expect(reportMoney(0)).toBe('0.00');
+    for (const panel of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+      const source = readFileSync(join(HERE, panel), 'utf8');
+      const at = source.indexOf('printFleetReport({');
+      expect(at, `${panel} prints the form`).toBeGreaterThan(-1);
+      const printCall = source.slice(at, source.indexOf('});', at));
+      expect(printCall, `${panel} spends no currency on the form`).not.toContain('formatMoney');
+      // NO SUBTITLE either: a line reading «كل السنوات» under the title is the screen explaining
+      // itself, and the sent forms carry none.
+      expect(printCall).toContain("subtitle: ''");
+    }
+  });
+
   it('escapes the document rather than letting a name close a tag', () => {
     const html = report({ header: ['<b>h</b>'], rows: [['a & b']], totals: [{ label: '"q"', value: '1' }] });
     expect(html).toContain('&lt;b&gt;h&lt;/b&gt;');
@@ -1350,6 +1394,17 @@ describe('the «Excel» button produces a real workbook', () => {
     );
     expect(text).toContain('<t xml:space="preserve">م</t>');
     expect(text, 'the total is the last row').toContain('<v>907.5</v>');
+  });
+
+  it('shows money to two decimals WITHOUT turning it into text', async () => {
+    // The two things a money column has to be at once: it reads «507.50» the way the sent
+    // workbooks do, and it is still a number Excel will sum. Only a number FORMAT gives both —
+    // rounding it to a string would take the second away to buy the first.
+    const text = new TextDecoder().decode(
+      new Uint8Array(await book({ moneyColumns: [1] }).arrayBuffer()),
+    );
+    expect(text, 'the format is declared').toContain('numFmtId="2"');
+    expect(text, 'and the cell is still a value').toContain('<v>507.5</v>');
   });
 
   it('cleans a sheet name Excel would refuse rather than handing over a broken file', () => {

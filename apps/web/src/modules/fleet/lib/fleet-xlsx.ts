@@ -31,6 +31,14 @@ export interface XlsxSheet {
   totals?: readonly XlsxCell[];
   /** The serial column's heading — «م». The numbers themselves are generated. */
   serialHeader: string;
+  /**
+   * Which of `header`'s columns hold MONEY, by index — shown to two decimals.
+   *
+   * A number format, not rounded text: the cell stays a number Excel will sum, and it still reads
+   * «507.50» rather than «507.5» the way the sent workbooks do. Those are the two things a money
+   * column has to be at once, and only a format gives both.
+   */
+  moneyColumns?: readonly number[];
 }
 
 const esc = (value: string): string =>
@@ -70,10 +78,12 @@ const cellXml = (value: XlsxCell, col: number, row: number, style: number): stri
 };
 
 /** Style ids, in the order `styles.xml` below declares them. */
-const S = { body: 0, head: 1, total: 2 } as const;
+const S = { body: 0, head: 1, total: 2, money: 3, moneyTotal: 4 } as const;
 
 const sheetXml = (sheet: XlsxSheet): string => {
   const head = [sheet.serialHeader, ...sheet.header];
+  // Shifted by one, because column 0 is the serial the caller does not pass.
+  const money = new Set((sheet.moneyColumns ?? []).map((index) => index + 1));
   const rows: string[] = [
     `<row r="1">${head.map((h, i) => cellXml(h, i, 1, S.head)).join('')}</row>`,
   ];
@@ -81,12 +91,16 @@ const sheetXml = (sheet: XlsxSheet): string => {
     const n = i + 2;
     // The serial is GENERATED — it numbers the sheet so a reader can point at a line, and it is
     // never a row id: re-sort the screen and the same fine gets a different «م».
-    const cells = [i + 1, ...row].map((cell, c) => cellXml(cell, c, n, S.body)).join('');
+    const cells = [i + 1, ...row]
+      .map((cell, c) => cellXml(cell, c, n, money.has(c) ? S.money : S.body))
+      .join('');
     rows.push(`<row r="${String(n)}">${cells}</row>`);
   });
   if (sheet.totals !== undefined) {
     const n = sheet.rows.length + 2;
-    const cells = ['', ...sheet.totals].map((cell, c) => cellXml(cell, c, n, S.total)).join('');
+    const cells = ['', ...sheet.totals]
+      .map((cell, c) => cellXml(cell, c, n, money.has(c) ? S.moneyTotal : S.total))
+      .join('');
     rows.push(`<row r="${String(n)}">${cells}</row>`);
   }
   // `rightToLeft` on the VIEW, so column A is on the right where an Arabic reader expects it —
@@ -102,7 +116,7 @@ const WORKBOOK = (name: string): string => `<?xml version="1.0" encoding="UTF-8"
 // total. Excel requires the two zero-index built-ins (`fonts[0]`, `fills[0]`, `fills[1]`) to be
 // present and in that order, whether or not anything uses them.
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
@@ -137,6 +151,20 @@ interface Entry {
 }
 
 /**
+ * 1980-01-01, packed the way DOS packs a date: `(year - 1980) << 9 | month << 5 | day`.
+ *
+ * NOT a zero, which is what this wrote first and which is not a date at all — day 0 of month 0.
+ * Python's zipfile and openpyxl both read that file happily; LibreOffice refused to open it with
+ * «source file could not be loaded», and Excel would have been within its rights to do the same.
+ * The one that caught it is the one that matters, so the stamp is now a real date.
+ *
+ * FIXED rather than `Date.now()`, deliberately: the same report exported twice is then byte for
+ * byte the same file, and a document that is diffable is a document a reader can trust. The day a
+ * workbook was taken is on its NAME, where a reader can see it.
+ */
+const DOS_DATE = (1 << 5) | 1;
+
+/**
  * A stored (uncompressed) ZIP over the parts, as one `Blob`.
  *
  * Every offset and length here is little-endian and fixed-width — this is the format, not a
@@ -159,6 +187,8 @@ const zip = (entries: readonly Entry[]): Blob => {
     u32(lv, 0, 0x04034b50);
     u16(lv, 4, 20); // version needed
     u16(lv, 8, 0); // stored
+    u16(lv, 10, 0); // modified time — midnight
+    u16(lv, 12, DOS_DATE);
     u32(lv, 14, crc);
     u32(lv, 18, entry.bytes.length);
     u32(lv, 22, entry.bytes.length);
@@ -172,6 +202,8 @@ const zip = (entries: readonly Entry[]): Blob => {
     u16(dv, 4, 20); // version made by
     u16(dv, 6, 20); // version needed
     u16(dv, 10, 0); // stored
+    u16(dv, 12, 0); // modified time — midnight
+    u16(dv, 14, DOS_DATE);
     u32(dv, 16, crc);
     u32(dv, 20, entry.bytes.length);
     u32(dv, 24, entry.bytes.length);

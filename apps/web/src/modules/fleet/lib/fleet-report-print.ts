@@ -188,3 +188,13 @@ export const printFleetReport = (doc: FleetReport): void => {
   win.document.close();
   win.focus();
 };
+
+/**
+ * Money on a Fleet report: two decimals, and NOTHING else.
+ *
+ * Not `formatMoney`. That is the screen's format and it is right there — «7,344.40 ج.م.» tells a
+ * reader glancing at a board what the number is. A form does not need telling: the column is
+ * already headed «القيمة», every figure on the page is money, and the sent documents print
+ * «7344.40». The separator goes too, for the same reason it is not on them.
+ */
+export const reportMoney = (value: number): string => value.toFixed(2);

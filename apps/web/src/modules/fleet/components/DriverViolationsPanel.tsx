@@ -66,7 +66,7 @@ import {
 } from '../lib/driver-violation-entry';
 import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
-import { printFleetReport } from '../lib/fleet-report-print';
+import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 
 // The filter bar's rhythm, shared by all four fields — see `FilterField` for why the name sits
 // above the control and why every control is the same width.
@@ -513,15 +513,20 @@ export const DriverViolationsPanel = ({
       : []),
   ];
 
-  // THE COLUMNS THE FORM HAS, and no others. The document the owner signs carries the date, the
-  // car, the driver, the type and the money — «المحصل» is a working state on the board, not a line
-  // on a report that goes into a binder, and a column the form does not have does not belong here.
+  /**
+   * THE FORM'S OWN HEADINGS, word for word — «اسم السائـق» and «القيمة», not the board's «السائق»
+   * and «المبلغ». The screen names a column for somebody reading it live; the signed sheet names it
+   * the way the company's form does.
+   *
+   * And these are the columns the form HAS: «المحصل» is working state — whether the money is in —
+   * not a line on a document that goes into a binder.
+   */
   const exportHeader = [
-    t('fleet.violations.fields.date'),
-    t('fleet.odometer.columns.vehicle'),
-    t('fleet.violations.fields.driver'),
-    t('fleet.violations.fields.type'),
-    t('fleet.violations.fields.amount'),
+    t('fleet.violations.report.date'),
+    t('fleet.violations.report.vehicleCode'),
+    t('fleet.violations.report.driverName'),
+    t('fleet.violations.report.type'),
+    t('fleet.violations.report.value'),
   ];
   /**
    * THE DRIVER'S NAME, not their id. The board draws it through `DriverName`, which resolves each
@@ -546,7 +551,7 @@ export const DriverViolationsPanel = ({
       row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? '')),
       driverOf(row),
       typeName.get(row.violationTypeId) ?? '',
-      String(row.amount),
+      reportMoney(row.amount),
     ]);
 
   /**
@@ -569,6 +574,8 @@ export const DriverViolationsPanel = ({
       serialHeader: t('fleet.violations.report.serial'),
       header: exportHeader,
       rows: sheetRows(),
+      // «القيمة» — two decimals on the face of it, a number underneath.
+      moneyColumns: [4],
       // The total sits under «المبلغ», where the column it sums is.
       totals: ['', '', t('fleet.violations.report.grandTotal'), '', pageTotal],
     });
@@ -580,18 +587,18 @@ export const DriverViolationsPanel = ({
   const onPrint = (): void => {
     try {
       printFleetReport({
-        title: t('fleet.violations.driverTitle'),
+        title: t('fleet.violations.report.driverTitle'),
         department: t('fleet.violations.report.department'),
-        subtitle:
-          vehicleCodes.length === 0 ? t('fleet.violations.allVehicles') : vehicleCodes.join(', '),
+        // NO SUBTITLE — the sent form has none. See the company panel for the whole of it.
+        subtitle: '',
         header: exportHeader,
         rows: exportRows(),
         // The drivers' sheet carries its total INSIDE the table, on the last line — which is where
         // the signed copies put it, and where the workbook puts it too.
         totals: [],
         totalRow: {
-          label: t('fleet.violations.lines.drivers'),
-          value: formatMoney(pageTotal, 'EGP', locale),
+          label: t('fleet.violations.report.driversLine'),
+          value: reportMoney(pageTotal),
         },
         signatories,
         serialHeader: t('fleet.violations.report.serial'),

@@ -9,65 +9,30 @@ import {
 } from '../common/index.js';
 import { PermissionKeySchema } from '../permissions/def.js';
 
-/**
- * The list heading a role is filed under — a name the administrator writes, not an id.
- *
- * It replaces the department reference this field used to be, and the replacement is the point.
- * A department could only ever name a department, so «أدوار النظام» and «البوابات الخارجية» had
- * nowhere to go and every role in the company piled up under «عام» — which is exactly what the
- * owner was looking at when he asked for this: «عاوز اقدر اجمع الادوار فى مجموعات واسميها».
- *
- * Purely organizational. Nothing authorizes on it, exactly as `pageId` organizes permissions
- * without authorizing on them, and two roles in the same group have nothing in common beyond
- * sitting under one heading.
- *
- * A group exists only because some role names it: there is no separate record, so renaming one is
- * renaming it on every role that carries it, and it disappears when the last of them leaves.
- */
-export const ROLE_GROUP_MAX = 60;
-const RoleGroupSchema = z
-  .string()
-  .trim()
-  .max(ROLE_GROUP_MAX)
-  // An empty string and «no group» are the same fact, and storing both would split one heading in
-  // two — «عام» once for null and once for ''.
-  .transform((value) => (value === '' ? null : value))
-  .nullable()
-  .optional();
-
 export const CreateRoleSchema = z
   .object({
     name: LocalizedStringSchema,
     description: z.string().max(500).optional(),
-    group: RoleGroupSchema,
+    /**
+     * The company-wide department this role belongs to (ADR-031), or null for one that belongs to
+     * no department in particular.
+     *
+     * Purely organizational — nothing authorizes on it, exactly as `pageId` organizes permissions
+     * without authorizing on them. It exists because a flat list of every role in the company is
+     * unreadable by the time there are thirty of them: «انا مش عاوز الادوار سايحه على بعض انا عاوز
+     * تنظيم فى الادوار على حسب الادارات».
+     */
+    departmentCatalogId: objectId().nullable().optional(),
     permissionKeys: z.array(z.string()).min(1),
   })
   .strict();
 export type CreateRole = z.infer<typeof CreateRoleSchema>;
 
-/**
- * Rename one heading across every role that carries it.
- *
- * Its own endpoint rather than a loop of role updates on the client, because a rename is one act
- * and a loop is not: a client that PATCHed eight roles and lost the network after five would leave
- * the company with two headings where it had one, and no way to tell which was meant.
- *
- * `to: null` ungroups them — the same act as clearing the field on each, which is how a heading is
- * deleted. There is nothing else to delete: a group is a name roles carry, not a record.
- */
-export const RenameRoleGroupSchema = z
-  .object({
-    from: z.string().trim().max(ROLE_GROUP_MAX).nullable(),
-    to: z.string().trim().max(ROLE_GROUP_MAX).nullable(),
-  })
-  .strict();
-export type RenameRoleGroup = z.infer<typeof RenameRoleGroupSchema>;
-
 export const UpdateRoleSchema = z
   .object({
     name: LocalizedStringSchema.optional(),
     description: z.string().max(500).nullable().optional(),
-    group: RoleGroupSchema,
+    departmentCatalogId: objectId().nullable().optional(),
     permissionKeys: z.array(z.string()).min(1).optional(),
     version: z.number().int().min(0),
   })
@@ -100,17 +65,14 @@ export interface RoleDto {
   isSystem: boolean;
   /** Derived from `isSystem` + `key` — the single answer to "may I edit this?". */
   managed: RoleManagement;
-  /** The heading the list files this role under; null files it under «عام». */
-  group: string | null;
   /**
-   * How many live assignments carry this role.
+   * The company-wide department the list groups this role under; null groups it under «عام».
    *
-   * On the list because it answers the question the list cannot otherwise answer. Two roles named
-   * «الموارد البشرية» and «الموارد البشرية Test» are indistinguishable by name and permission
-   * count; that one of them is held by nobody is the fact that tells an administrator which is the
-   * leftover of an experiment.
+   * The ID alone, not the name: the screen that groups on it already loads the department catalog
+   * to offer it in the form, so resolving the name here would be a second read of the same list
+   * for every role on the page.
    */
-  holderCount: number;
+  departmentCatalogId: string | null;
   permissionKeys: string[];
   version: number;
   createdAt: string;
@@ -373,57 +335,6 @@ export interface EffectivePermissionsDto {
   /** Why. A privileged account is one holding a system role or a break-glass key (Review R13). */
   privilegedBecause: { systemRoles: string[]; breakGlassKeys: string[] };
   rows: EffectivePermissionRowDto[];
-}
-
-// ── «صلاحياتي» — the account's own answer (self-service) ────────────────────
-//
-// The administration projection above is about SOMEBODY ELSE: it is gated on `user.view` and
-// `role.view`, it keeps every grant that ever applied — pending and expired alike — and it names
-// the assignment ids an administrator would act on. None of that belongs to a clerk asking the one
-// question this view exists for: «أنا مسموح لي بإيه؟».
-//
-// So this is the same computation reduced to what the holder himself may read:
-//   • only what is in force RIGHT NOW — a grant that opens next month is not an authority he has,
-//     and a grant that closed is not one he lost the right to be told about on a different screen,
-//   • grouped by the SCREEN it opens, because a person thinks in screens and not in module ids,
-//   • the source named, never identified — «دور: مدير الحركة» or «تفويض · أكتوبر · الحركة», with
-//     no assignment id to act on, because there is no action here to take.
-//
-// It carries no permission gate for the same reason the effective-applications resolver carries
-// none: the answer is scoped to the caller by construction. It is served for the CALLER only —
-// there is no `:id` on the route — so it can never become a way to read another account.
-
-/** Where one of the caller's permissions comes from, named rather than identified. */
-export interface MyPermissionSourceDto {
-  kind: 'role' | 'delegation';
-  /** The role's name, or the fixed label a delegated grant carries. */
-  name: { ar: string; en: string };
-  /** The site a delegation is for — «أكتوبر · الحركة». Null for a role. */
-  where: { ar: string; en: string } | null;
-}
-
-export interface MyPermissionDto {
-  key: string;
-  /** From the registry; null for a key no module declares any more. */
-  name: { ar: string; en: string } | null;
-  moduleId: string | null;
-  /** The administration surface it belongs to — what this view groups on. */
-  pageId: string | null;
-  breakGlass: boolean;
-  /** Always a real scope: a row with none in force is not in this list at all. */
-  scope: DataScope;
-  sources: MyPermissionSourceDto[];
-}
-
-/**
- * `pages` rides along so the client can print a screen's NAME without reading the full catalog,
- * which `permission.view` guards and an ordinary account does not hold. Only the surfaces the rows
- * actually reference are sent.
- */
-export interface MyPermissionsDto {
-  evaluatedAt: string;
-  rows: MyPermissionDto[];
-  pages: PageDto[];
 }
 
 // ── Delegated grants (ADR-032) ──────────────────────────────────────────────

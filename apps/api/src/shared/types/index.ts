@@ -103,15 +103,6 @@ export interface AuthContext {
    * to say which branch a new document belonged to.
    */
   activeBranchId?: string | null;
-  /**
-   * The full selection, when the caller has narrowed to SEVERAL branches at once.
-   *
-   * The screens are the same at every site and only the rows differ, so somebody who looks after
-   * three branches is comparing them — and one-at-a-time makes him do the comparing in his head.
-   * `activeBranchId` stays the single answer to «where does a NEW document belong», and is null
-   * whenever this names more than one: that question has one answer or none.
-   */
-  activeBranchIds?: readonly string[];
 }
 
 export const hasPermission = (ctx: AuthContext, key: string): boolean =>
@@ -229,30 +220,24 @@ export const keyReachesBranch = (ctx: AuthContext, permissionKey: string, branch
  */
 export const scopeSelector = (ctx: AuthContext, permissionKey: string): ScopeSelector => {
   const scope = ctx.permissions[permissionKey] ?? 'own';
-  // The switcher's choice, as a SET. One branch is a set of one, which is why nothing below needs
-  // a second code path for the single case — and `branchIds` on the selector is already what the
-  // repository layer filters on, so several narrows exactly as one does.
-  const chosen = ctx.activeBranchIds ?? (ctx.activeBranchId === null || ctx.activeBranchId === undefined ? [] : [ctx.activeBranchId]);
+  const active = ctx.activeBranchId ?? null;
   const home = {
     userId: ctx.userId,
     branchId: ctx.branchId,
     departmentId: ctx.departmentId,
     sectionId: ctx.sectionId,
   };
-  if (scope === 'organization' && chosen.length > 0) {
-    return chosen.length === 1
-      ? { scope: 'branch', ...home, branchId: chosen[0] ?? null }
-      : { scope: 'branch', ...home, branchIds: [...chosen] };
+  if (scope === 'organization' && active !== null) {
+    return { scope: 'branch', ...home, branchId: active };
   }
   const reach = reachOfKey(ctx, permissionKey);
   const beyondHome = reach.branchIds.length > 0 || reach.departments.length > 0;
   if ((scope === 'branch' || scope === 'department') && beyondHome) {
-    // Narrowing to the chosen branches keeps only the units inside them. A choice that names
-    // nothing this key reaches is ignored, as before: the caller then sees everything it covers.
-    const within = new Set(chosen.filter((id) => touchedBranches(reach).includes(id)));
-    const narrow = within.size > 0;
-    const branchIds = narrow ? reach.branchIds.filter((id) => within.has(id)) : reach.branchIds;
-    const departments = narrow ? reach.departments.filter((d) => within.has(d.branchId)) : reach.departments;
+    // Narrowing to a chosen branch keeps only the units inside it. A choice outside the reach is
+    // ignored, as before: the caller then sees everything their key covers.
+    const narrow = active !== null && touchedBranches(reach).includes(active);
+    const branchIds = narrow ? reach.branchIds.filter((id) => id === active) : reach.branchIds;
+    const departments = narrow ? reach.departments.filter((d) => d.branchId === active) : reach.departments;
     return {
       scope,
       ...home,
@@ -308,9 +293,6 @@ export const reachesBranch = (ctx: AuthContext, branchId: string): boolean =>
  * other branch in the header is still filed into their own.
  */
 export const currentBranchId = (ctx: AuthContext): string | null => {
-  // The SINGLE form deliberately. A caller comparing three sites has not said which one a new
-  // document belongs to, and the middleware leaves `activeBranchId` null for exactly that case —
-  // so he falls through to his placement, as a caller who chose nothing already does.
   const active = ctx.activeBranchId ?? null;
   const reach = touchedBranches(ctx.reach);
   if (active !== null && reach.includes(active)) return active;

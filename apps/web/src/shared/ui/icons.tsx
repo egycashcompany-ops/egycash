@@ -188,15 +188,6 @@ export const LockIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
-/** A key — what an account HOLDS, as against the padlock, which is what stands in its way. */
-export const KeyIcon = (p: IconProps): JSX.Element => (
-  <Base {...p}>
-    <circle cx="8" cy="15" r="4" />
-    <path d="M10.9 12.1L20 3" />
-    <path d="M17 6l2.5 2.5" />
-  </Base>
-);
-
 /** A map pin — a branch that has a location on it. */
 export const PinIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>

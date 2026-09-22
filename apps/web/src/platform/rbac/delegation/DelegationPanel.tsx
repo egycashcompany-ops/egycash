@@ -27,7 +27,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { type Locale } from '@ecms/contracts';
 import { useT } from '../../localization/useT';
 import { useAppSelector } from '../../../store';
-import { Badge, Button, Card, CardBody, ErrorState, LoadingState, SearchInput, toast } from '../../../shared/ui';
+import { Badge, Button, Card, CardBody, ErrorState, LoadingState, toast } from '../../../shared/ui';
 import { Checkbox } from '../../../shared/ui/form';
 import { ChevronIcon, LockIcon } from '../../../shared/ui/icons';
 import { ApiError } from '../../../shared/lib/api-client';
@@ -48,7 +48,6 @@ import {
   type GrantLine,
   type ScreenNode,
   type TickState,
-  type ScreenFilter,
   type Unit,
   type UnitNode,
 } from './delegation-tree';
@@ -71,15 +70,6 @@ interface Wiring {
   clearDrafts: (units: readonly Unit[]) => void;
   isDirty: (unit: Unit) => boolean;
   homeKey: string | null;
-  /**
-   * A search or «granted only» is narrowing the tree right now.
-   *
-   * Every level reads it, because a filtered tree that arrives collapsed has answered the question
-   * and then hidden the answer: the reader searched for «إجازة», four departments survived, and he
-   * still has to open all four to find out which. So while a filter is on, a level opens unless he
-   * closed it himself — and goes back to its own default the moment he clears the box.
-   */
-  filtering: boolean;
 }
 
 const homeOpen = (branchId: string | null, departmentId: string | null): string[] =>
@@ -117,11 +107,6 @@ export const DelegationPanel = ({
   const [open, setOpen] = useState<string[]>(() => homeOpen(homeBranch, homeDepartment));
   const [closed, setClosed] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  // The reader's own narrowing. Not in the URL: it is a way of LOOKING at the draft in front of
-  // him, not a place a support conversation links to, and the drafts it filters over are not in
-  // the URL either — a link that restored the search and not the work would restore half a screen.
-  const [query, setQuery] = useState('');
-  const [grantedOnly, setGrantedOnly] = useState(false);
   // Deliberately keyed on the PERSON alone. `homeUnit` comes from the parent's own query, so
   // including it would discard a manager's unsaved work the moment that query returned a changed
   // placement — or filled in a department that first arrived as null. Both mounts have the record
@@ -130,8 +115,6 @@ export const DelegationPanel = ({
     setDrafts({});
     setOpen(homeOpen(homeBranch, homeDepartment));
     setClosed([]);
-    setQuery('');
-    setGrantedOnly(false);
   }, [userId]);
 
   const saved = useMemo(
@@ -161,39 +144,13 @@ export const DelegationPanel = ({
     const draft = drafts[unitKey(unit)];
     return draft === undefined ? savedOf(unit) : new Set(draft);
   };
-  // Matched on the screen's own name and on its ACTIONS' names, in the reader's locale: «اعتماد»
-  // is a word he looks for, and it names an action rather than a screen. The raw permission key is
-  // searched too — it is what a support conversation quotes.
-  const needle = query.trim().toLowerCase();
-  const filtering = needle !== '' || grantedOnly;
-  const screenFilter: ScreenFilter = (screen) => {
-    if (grantedOnly && screen.on === 0 && screen.savedOn === 0) return false;
-    if (needle === '') return true;
-    const label = screen.page === null ? '' : screen.page.name[locale];
-    if (label.toLowerCase().includes(needle)) return true;
-    return screen.row.keys.some(
-      (k) => k.name[locale].toLowerCase().includes(needle) || k.key.toLowerCase().includes(needle),
-    );
-  };
-  // TWO TREES, and the difference between them is the whole safety of the filter.
-  //
-  // `whole` is the tree with nothing narrowed away: it is what the catalog offers, so it decides
-  // which drafts are real, what the footer counts, and what the summary says this person will end
-  // up with. `tree` is the same tree with the reader's search applied, and it decides only what is
-  // PAINTED. Reading the save set off the filtered one would mean a manager who ticks a department,
-  // then types in the search box, has silently discarded that tick — the unit is no longer drawn,
-  // so it is no longer dirty, so the save never writes it. A filter is a way of looking; it must
-  // not be a way of losing work.
-  const whole = buildTree(merged.catalog, selectedOf, savedOf, merged.readOnly);
-  const tree = filtering
-    ? buildTree(merged.catalog, selectedOf, savedOf, merged.readOnly, screenFilter)
-    : whole;
-  // Only units the catalog actually offers. A draft for a unit that has since left it — the
+  const tree = buildTree(merged.catalog, selectedOf, savedOf, merged.readOnly);
+  // Only units the tree actually draws. A draft for a unit that has since left the catalog — the
   // department was deleted, or a refetch narrowed the caller's own reach — would otherwise be
   // counted in the footer, drawn nowhere, and PUT on save, where the server refuses it and takes
   // the rest of the save down with it.
   const drawn = new Set(
-    whole.flatMap((b) => [unitKey(b.whole.unit), ...b.departments.map((d) => unitKey(d.unit))]),
+    tree.flatMap((b) => [unitKey(b.whole.unit), ...b.departments.map((d) => unitKey(d.unit))]),
   );
   const dirty = Object.keys(drafts).filter(
     (key) => drawn.has(key) && !sameSelection(new Set(drafts[key] ?? []), savedOf(parseUnit(key))),
@@ -203,7 +160,7 @@ export const DelegationPanel = ({
     t,
     locale,
     isOpen: (id, byDefault = false) =>
-      closed.includes(id) ? false : open.includes(id) ? true : filtering || byDefault,
+      closed.includes(id) ? false : open.includes(id) ? true : byDefault,
     setOpen: (id, next) => {
       setOpen((cur) => (next ? [...cur.filter((x) => x !== id), id] : cur.filter((x) => x !== id)));
       setClosed((cur) => (next ? cur.filter((x) => x !== id) : [...cur.filter((x) => x !== id), id]));
@@ -217,7 +174,6 @@ export const DelegationPanel = ({
       }),
     isDirty: (unit) => dirty.includes(unitKey(unit)),
     homeKey: homeUnit === null ? null : unitKey(homeUnit),
-    filtering,
   };
 
   const reset = (): void => setDrafts({});
@@ -251,54 +207,15 @@ export const DelegationPanel = ({
     );
   }
 
-  // The summary answers «what will this person end up with», which the reader's search does not
-  // change — so it is read off the unfiltered tree, and a search never makes a grant disappear
-  // from the list of grants.
-  const lines = grantLines(whole);
+  const lines = grantLines(tree);
   return (
     <div className="space-y-4">
       <p className="text-xs text-slate-500 dark:text-slate-400">{t('delegation.treeIntro')}</p>
-
-      {/*
-        THE NARROWING BAR.
-
-        An owner delegating for a colleague is shown every branch, every department in it, and the
-        whole registry inside each — eighteen departments of ninety-three screens is a true answer
-        to «what may I grant here» and a useless one to «where is the leave screen». The tree cannot
-        be made shorter without lying about what he may grant, so the reader is given a way to ask
-        a narrower question instead. Both controls only ever REMOVE rows, and both are forgotten
-        the moment he leaves: nothing here is a grant, a draft, or a setting.
-      */}
-      <div className="flex flex-wrap items-center gap-3">
-        <SearchInput
-          value={query}
-          onChange={setQuery}
-          placeholder={t('delegation.searchPlaceholder')}
-          className="min-w-52 flex-1"
-        />
-        <Checkbox
-          label={t('delegation.grantedOnly')}
-          checked={grantedOnly}
-          onChange={(e) => setGrantedOnly(e.target.checked)}
-          className="shrink-0 text-sm"
-        />
-      </div>
 
       <div className="space-y-3">
         {tree.map((branch) => (
           <BranchCard key={branch.id} branch={branch} w={wiring} />
         ))}
-        {/* Filtered down to nothing. The distinction matters: «لا شيء يطابق بحثك» is a statement
-            about the search, while the panel-level «no reach» message above is a statement about
-            the reader's authority, and answering the first with the second would tell him he may
-            grant nothing when in fact he mistyped. */}
-        {tree.length === 0 && (
-          <p className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            {grantedOnly && needle === ''
-              ? t('delegation.noneGranted')
-              : t('delegation.noMatches')}
-          </p>
-        )}
       </div>
 
       <Card>
@@ -369,16 +286,7 @@ const BranchCard = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX.Eleme
         <h3 className="min-w-0 truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
           {branch.name[w.locale]}
         </h3>
-        <span
-          className={cn(
-            'truncate text-xs',
-            branch.state === 'none'
-              ? 'text-slate-500 dark:text-slate-400'
-              : 'font-medium text-brand-700 dark:text-brand-300',
-          )}
-        >
-          {count}
-        </span>
+        <span className="truncate text-xs text-slate-500 dark:text-slate-400">{count}</span>
         {clearable > 0 && (
           <Button size="sm" variant="ghost" onClick={() => w.setDrafts(clearBranch(branch))}>
             {w.t('delegation.clearBranch')}
@@ -389,19 +297,9 @@ const BranchCard = ({ branch, w }: { branch: BranchNode; w: Wiring }): JSX.Eleme
       {open && (
         <div id={panelId(id)} className="space-y-2 border-t border-slate-100 px-4 py-3 dark:border-slate-800">
           <WholeBranchBlock branch={branch} w={w} />
-          {/* The departments hang off a rail, so the eye can see at a glance where the branch's own
-              record ends and its departments begin — the two were flat siblings before, which is
-              most of why the tree read as one long list rather than as a tree. */}
-          {branch.departments.length > 0 && (
-            <div className="ms-1 space-y-2 border-s-2 border-slate-200 ps-3 dark:border-slate-700">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                {w.t('delegation.departmentsHeading')}
-              </p>
-              {branch.departments.map((department) => (
-                <DepartmentRow key={department.id} branch={branch} department={department} w={w} />
-              ))}
-            </div>
-          )}
+          {branch.departments.map((department) => (
+            <DepartmentRow key={department.id} branch={branch} department={department} w={w} />
+          ))}
           {branch.departments.length === 0 && (
             <p className="text-xs text-slate-500 dark:text-slate-400">{w.t('delegation.noDepartments')}</p>
           )}
@@ -538,19 +436,10 @@ const DepartmentRow = ({
           className="min-w-0 font-medium text-slate-800 dark:text-slate-100"
         />
         {isHome && <Badge tone="neutral">{w.t('delegation.homeTag')}</Badge>}
-        {/*
-          A COUNT THAT IS THE SAME ON EVERY ROW IS NOISE.
-
-          An owner's ceiling is the whole registry in every department, so the old fallback printed
-          «٩٣ شاشة» eighteen times down one branch — a number that says nothing about the row it is
-          on and buries the two rows that do carry a grant. What the reader is scanning for is
-          «which of these has anything», so a department with nothing says so in words, and the
-          total appears only where there is something to measure it against.
-        */}
         <span className="truncate text-xs text-slate-500 dark:text-slate-400">
           {department.screensOn > 0
             ? w.t('delegation.screensOn', { on: department.screensOn, total: department.screensTotal })
-            : w.t('delegation.nothingYet')}
+            : w.t('delegation.screens', { count: department.screensTotal })}
         </span>
         {w.isDirty(department.unit) && <Badge tone="warning">{w.t('delegation.unsaved')}</Badge>}
         <Disclosure id={id} open={open} w={w} className="ms-auto" />
@@ -576,45 +465,21 @@ const ScreenList = ({ unit, nodeId, w }: { unit: UnitNode; nodeId: string; w: Wi
         const open = single || w.isOpen(id, group.openByDefault);
         return (
           <div key={group.moduleId ?? 'other'}>
-            {/*
-              A MODULE IS NOT A DEPARTMENT, and this heading is where that stopped being obvious.
-
-              The registry's modules are named after the work they serve — «الحركة», «الموارد
-              البشرية», «الذهب» — and so are the company's departments. Nested one inside the other
-              in rows of the same size and weight, the tree read as «الحركة، وجوّاها الحركة»: the
-              owner opened the department «الحركة» and found what looked like eight more departments
-              inside it, one of them called «الحركة» again.
-
-              Two changes, and neither invents a level. The heading now says what it groups —
-              «شاشات الموارد البشرية», a list of screens, which a department is not — and it is
-              drawn as a label over a rule rather than as a row: no box, no checkbox, smaller and
-              letter-spaced, so the eye reads it as a caption and never as another unit.
-            */}
             {!single && (
-              <div className="flex items-center gap-2 pb-0.5 pt-2">
-                <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  {w.t('delegation.moduleScreens', { module: moduleLabel(w, group.moduleId) })}
+              <div className="flex items-center gap-2 py-1">
+                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  {moduleLabel(w, group.moduleId)}
                 </span>
-                <span className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
                   {group.on > 0
                     ? w.t('delegation.screensOn', { on: group.on, total: group.total })
                     : w.t('delegation.screens', { count: group.total })}
                 </span>
-                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" aria-hidden />
-                <Disclosure id={id} open={open} w={w} className="shrink-0" />
+                <Disclosure id={id} open={open} w={w} className="ms-auto" />
               </div>
             )}
             {open && (
-              <div
-                id={panelId(id)}
-                // The rail is the answer to «what is inside what». Every level below a branch sits
-                // against one, and it is the only thing on the screen that says a screen belongs to
-                // this module and not to the department's own list.
-                className={cn(
-                  'space-y-1',
-                  !single && 'ms-1 border-s border-slate-200 ps-3 dark:border-slate-700',
-                )}
-              >
+              <div id={panelId(id)} className={cn('space-y-1', !single && 'ps-3')}>
                 {group.screens.map((screen) => (
                   <ScreenRow key={screen.id} unit={unit} screen={screen} nodeId={nodeId} w={w} />
                 ))}

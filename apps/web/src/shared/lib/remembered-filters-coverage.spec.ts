@@ -160,10 +160,6 @@ const MIGRATION_PENDING: readonly string[] = [];
 const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/atm/pages/AtmOverviewPage.tsx'],
   ['modules/system-admin/approvals/pages/ApprovalWorkflowsPage.tsx'],
-  [
-    'modules/system-admin/roles/pages/RoleEditorPage.tsx',
-    'a form, not a list: its one query param is `?from=<id>`, the role a duplicate copies — remembering it would re-open the editor pre-filled from a role the administrator finished with, and the selects on it edit the role rather than filter anything',
-  ],
   ['modules/atm/pages/MailTicketsPage.tsx'],
   ['modules/fleet/pages/DriverProfilePage.tsx'],
   ['modules/fleet/pages/FleetDashboardPage.tsx'],
@@ -257,7 +253,6 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/system-admin/notification-templates/pages/TemplateDetailPage.tsx'],
   ['modules/system-admin/roles/pages/RoleDetailPage.tsx', '`tab` and `page` on one role, on a :id route'],
   ['modules/system-admin/users/pages/UserDetailPage.tsx'],
-  ['platform/account/MyPermissionsPage.tsx'],
   ['platform/account/PreferencesPage.tsx'],
   ['platform/account/SecurityPage.tsx'],
   ['platform/app/pages/ForbiddenPage.tsx'],

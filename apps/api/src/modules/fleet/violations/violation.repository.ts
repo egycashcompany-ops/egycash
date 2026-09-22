@@ -156,18 +156,20 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
    * `driverCount` counts events. Derived at query time — nothing here is ever stored.
    */
   /**
-   * Tick or untick the COMPANY's rows of one (vehicle, year) — and only those.
+   * Tick or untick EVERY row of one (vehicle, year) — the statement and the drivers' fines alike.
    *
-   * «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه بالسواقيين». This used to set every row of
-   * the group, so ticking the company's statement for a car settled that car's DRIVERS' fines for
-   * the same year in the same click — money owed by a person, marked as received because somebody
-   * closed off a different account. The two halves of the screen are two accounts and are settled
-   * separately: this one, from the company board's group tick, and the drivers' one row at a time
-   * on the board that lists them.
+   * ONE TICK SETTLES THE WHOLE GROUP — «عاوز لما اعمل علامه صح على عربيه يعملى صح برضو على كل
+   * السواقيين اللى موجودين على نفس العربيه اللى عملت عليها صح».
    *
-   * `kind: 'vehicle'` is the whole of the fix, and it is also why the year needs no `$or` any
-   * more: a statement row STORES its year. The driver branch of `yearClause` existed only to
-   * reach the rows this must never touch.
+   * It was scoped to the statement rows for a while, so that the drivers' fines had to be ticked
+   * one at a time on the board below. That is the clerk's own account of the work: closing a car
+   * for a year closes what the car owes and what its drivers owe on it together, and asking for
+   * the same decision twice is asking them to remember the second half.
+   *
+   * WHICH driver fines is not a question this can answer with a date range alone: a fine carried
+   * onto this year's statement belongs to it however old it is, and one carried AWAY from it does
+   * not, whatever its date says. `violationYearBranches` holds that rule, and using it here is
+   * what keeps the tick reaching exactly the rows the group's own figures are summed from.
    *
    * One statement rather than a loop of per-row writes: the board's tick is a single decision about
    * a single group, and a partial failure halfway through a loop would leave a group in exactly the
@@ -178,8 +180,11 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       {
         isDeleted: false,
         vehicleId: new Types.ObjectId(vehicleId),
-        kind: 'vehicle',
-        year,
+        // EVERY ROW IN THE BLOCK — the statement rows AND the drivers' fines sitting on the same
+        // car in the same year. `violationYearBranches` is what decides which year a driver's fine
+        // belongs to, and it is the SAME helper the board's own figures are grouped by, so the
+        // tick can never reach a row the group does not show or miss one it does.
+        $or: violationYearBranches([year]),
       },
       { $set: { collected } },
     );
@@ -403,17 +408,13 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
           // whether they are collected or not, because «٣ من ٥ محصَّلة» is exactly the question
           // these two answer.
           //
-          // THE COMPANY'S ROWS ONLY. These two are what the board's tick sets, what its colour is
-          // read from and what the «الحالة» filter sorts on — and that tick now sets the company's
-          // statement rows alone. Counting the drivers' fines here would leave the tick describing
-          // rows it cannot change: a car whose statement is fully settled would still show as
-          // «بعضها» because a driver has not paid, and clicking it again would never turn it green.
-          rowCount: { $sum: { $cond: [{ $eq: ['$kind', 'vehicle'] }, 1, 0] } },
-          collectedCount: {
-            $sum: {
-              $cond: [{ $and: [{ $eq: ['$kind', 'vehicle'] }, '$collected'] }, 1, 0],
-            },
-          },
+          // EVERY ROW IN THE GROUP. These two are what the board's tick sets, what its colour is
+          // read from and what the «الحالة» filter sorts on, so they must count exactly what that
+          // tick reaches — and it reaches the whole block now, the statement rows and the drivers'
+          // fines on the same car and year alike. Counting less would leave a fully settled group
+          // reporting «بعضها» for ever; counting more would leave one that can never turn green.
+          rowCount: { $sum: 1 },
+          collectedCount: { $sum: { $cond: ['$collected', 1, 0] } },
         },
       },
     ]);

@@ -6244,11 +6244,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         totalCount: 4,
         totalAmount: 450,
         totalBeforeGrievance: 600,
-        // ONE document counted here — the statement row of «×3». The driver event beside it is
-        // in `driverCount`/`driverAmount` above and NOT in these two, because these two are what
-        // the company board's tick sets and is coloured from, and that tick settles the company's
-        // rows alone. `rowCount` counts DOCUMENTS, not the `count` on them.
-        rowCount: 1,
+        // TWO documents counted here — the statement row of «×3» and the driver event beside it.
+        // These two are what the board's tick sets and is coloured from, and that tick settles the
+        // whole block. `rowCount` counts DOCUMENTS, not the `count` on them, which is why a
+        // statement of «×3» is one.
+        rowCount: 2,
         collectedCount: 0,
       },
     ]);
@@ -6321,23 +6321,30 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         .set('Authorization', `Bearer ${adminToken}`)
         .send({ vehicleId: v.id, year: 2026, collected: true });
       expect(ticked.status).toBe(200);
-      expect(data<{ changed: number }>(ticked).changed, 'the statement row, and only it').toBe(1);
+      // THE YEAR IS THE LINE, not the shape. The statement row and the 2026 fine are settled
+      // together — that is what «يعملى صح برضو على كل السواقيين» asks for — and the 2025 fine on
+      // the same car is NOT, because it belongs to 2025's block and nobody carried it over.
+      expect(data<{ changed: number }>(ticked).changed, 'the statement and the 2026 fine').toBe(2);
 
       const fines = await finesOf(v.id);
       expect(fines).toHaveLength(2);
       expect(
         fines.map((f) => f['collected']),
-        'neither the 2026 fine nor the 2025 one was touched',
-      ).toEqual([false, false]);
+        'the 2026 fine went with the tick; the 2025 one is another year’s business',
+      ).toEqual([true, false]);
 
-      // …and the board now reads the car's 2026 statement as settled, on its own.
+      // …and the board reads the car's 2026 block as settled, both halves of it.
       const [year2026] = await rollupOf({ year: 2026, vehicleId: v.id });
-      expect(year2026?.['rowCount']).toBe(1);
-      expect(year2026?.['collectedCount']).toBe(1);
-      expect(year2026?.['driverAmount'], 'the fine is still owed, and still reported').toBe(200);
+      expect(year2026?.['rowCount']).toBe(2);
+      expect(year2026?.['collectedCount']).toBe(2);
+      expect(year2026?.['driverAmount'], 'nothing outstanding on the drivers’ side').toBe(0);
+      // And 2025 is untouched: its fine is still owed and still reported.
+      const [year2025] = await rollupOf({ year: 2025, vehicleId: v.id });
+      expect(year2025?.['driverAmount']).toBe(300);
+      expect(year2025?.['collectedCount']).toBe(0);
     });
 
-    it('a year whose only fines are the drivers’ offers the company nothing to tick', async () => {
+    it('a year whose only fines are the drivers’ is tickable too — they ARE the group', async () => {
       const v = data<FleetVehicleDto>(await createVehicle(adminToken));
       const driverType = await violationTypeIdByName('تليفون');
       const employeeId = await mkEmployee();
@@ -6354,11 +6361,21 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         });
 
       const [row] = await rollupOf({ year: 2024, vehicleId: v.id });
-      // The board draws no tick on a group with no statement rows — there is nothing there for
-      // the company to collect, and a tick that set nothing would be a promise it cannot keep.
-      expect(row?.['rowCount']).toBe(0);
+      // There is no statement row, and the group is still tickable: the fine is what the car owes
+      // for that year, and the tick settles what the block holds rather than one shape of it.
+      expect(row?.['rowCount']).toBe(1);
       expect(row?.['collectedCount']).toBe(0);
       expect(row?.['driverAmount']).toBe(120);
+
+      const ticked = await request(app)
+        .patch('/api/v1/fleet/violations/collected')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ vehicleId: v.id, year: 2024, collected: true });
+      expect(ticked.status).toBe(200);
+      expect(data<{ changed: number }>(ticked).changed).toBe(1);
+      const [settled] = await rollupOf({ year: 2024, vehicleId: v.id });
+      expect(settled?.['collectedCount'], 'and the group goes green').toBe(1);
+      expect(settled?.['driverAmount']).toBe(0);
     });
 
     it('carries a driver’s OLDER fine onto the car’s current statement, untouched', async () => {
@@ -8133,10 +8150,9 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       'nothing is collected yet, so everything counts',
     ).toEqual([3, 300, 1, 250]);
     expect([before.totalCount, before.totalAmount]).toEqual([4, 550]);
-    // ONE row in the tally, not two: these two are what the board's group tick sets, and that
-    // tick settles the COMPANY's statement rows alone. The driver's fine is money owed by a
-    // person and is counted in `driverCount`/`driverAmount` above, where the board reports it.
-    expect([before.collectedCount, before.rowCount]).toEqual([0, 1]);
+    // BOTH rows in the tally: these two are what the board's group tick sets, and that tick
+    // settles the whole block — the statement row and the driver's fine on the same car and year.
+    expect([before.collectedCount, before.rowCount]).toEqual([0, 2]);
 
     // Tick the DRIVER fine only — a partly-settled group is the case a client cannot compute for
     // itself, because the DTO carries no collected money.
@@ -8159,8 +8175,8 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     ]);
     expect(
       [half.collectedCount, half.rowCount],
-      'and the tally is unmoved: ticking a DRIVER’s fine is not the company collecting anything',
-    ).toEqual([0, 1]);
+      'one of the two is settled, which is what «بعضها» on the board means',
+    ).toEqual([1, 2]);
 
     // Now the statement row too: a fully-settled group owes nothing and says so.
     await request(app)
@@ -8177,7 +8193,7 @@ describe('violations: two sides, one batch, and a collected flag that persists',
     expect(
       [done.collectedCount, done.rowCount],
       'NOW the group reports itself fully collected — the green tint depends on it',
-    ).toEqual([1, 1]);
+    ).toEqual([2, 2]);
 
     // UNTICKING brings the money back. A tick is a statement about payment, not a delete.
     const ticked = data<FleetViolationDto[]>(
@@ -8609,10 +8625,9 @@ describe('the violations board, as the screen actually asks it', () => {
       .get('/api/v1/fleet/violations/rollup')
       .query({ year: 2028, vehicleId: v.id })
       .set('Authorization', `Bearer ${adminToken}`);
-    // The tally counts the COMPANY's statement rows — there is one, and the driver's fine beside
-    // it is not in these two because the tick cannot reach it.
+    // The tally counts every row the tick reaches: the statement row AND the driver's fine.
     expect(data<{ rowCount: number; collectedCount: number }[]>(before)[0]).toMatchObject({
-      rowCount: 1,
+      rowCount: 2,
       collectedCount: 0,
     });
 
@@ -8621,33 +8636,31 @@ describe('the violations board, as the screen actually asks it', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ vehicleId: v.id, year: 2028, collected: true });
     expect(tick.status).toBe(200);
-    // «لما اعمل علامه صح فى الصف بتاع الشركه ملوش علاقه بالسواقيين». It used to be 2 — the
-    // statement AND the driver's fine — which settled money owed by a person because somebody
-    // closed off a different account.
-    expect(data<{ changed: number }>(tick).changed, 'the statement row, and only it').toBe(1);
+    // «عاوز لما اعمل علامه صح على عربيه يعملى صح برضو على كل السواقيين اللى موجودين على نفس
+    // العربيه». BOTH shapes, in one act: closing a car for a year closes what the car owes and
+    // what its drivers owe on it, which is how the work is actually done.
+    expect(data<{ changed: number }>(tick).changed, 'the statement row AND the fine').toBe(2);
 
     const after = await request(app)
       .get('/api/v1/fleet/violations/rollup')
       .query({ year: 2028, vehicleId: v.id })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(data<{ rowCount: number; collectedCount: number }[]>(after)[0]).toMatchObject({
-      rowCount: 1,
-      collectedCount: 1,
+      rowCount: 2,
+      collectedCount: 2,
     });
-    // …and the driver's fine is still owed, and still reported.
+    // …and the driver's fine is settled with it, which is the whole of the change.
     const fines = data<{ collected: boolean }[]>(
       await request(app)
         .get('/api/v1/fleet/violations')
         .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
         .set('Authorization', `Bearer ${adminToken}`),
     );
-    expect(fines.map((f) => f.collected), 'nobody was paid by a tick on the other half').toEqual([
-      false,
-    ]);
+    expect(fines.map((f) => f.collected), 'the drivers’ half went green too').toEqual([true]);
     expect(
       data<{ driverAmount: number }[]>(after)[0]?.driverAmount,
-      'and the board still says how much',
-    ).toBe(90);
+      'so the board reports nothing outstanding on that side either',
+    ).toBe(0);
 
     // And untick puts it all back — the tick is a toggle over the group, not a one-way door.
     await request(app)

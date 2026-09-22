@@ -191,19 +191,24 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
   });
 
   it('KEEPS a year whose only fines are the DRIVERS’ — the board still reports their money', () => {
-    // `rowCount` counts the COMPANY's rows only, because it is what the board's tick sets. A year
-    // with no statement rows has `rowCount: 0` and would vanish from a board that is showing its
-    // «إجمالي السائقين» in the same breath.
-    const rows = assembleRollups(sums({ driverCount: 1, driverAmount: 120 }), [], codes);
+    // `rowCount` counts the whole group now, drivers' fines included, because that is what the
+    // board's tick reaches. A driver-only year therefore has rows to tick and belongs on the board.
+    const rows = assembleRollups(sums({ rowCount: 1, driverCount: 1, driverAmount: 120 }), [], codes);
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.rowCount, 'and there is nothing here for the company to tick').toBe(0);
+    expect(rows[0]?.rowCount, 'and the tick can settle them from here').toBe(1);
     expect(rows[0]?.driverAmount).toBe(120);
   });
 
-  it('…and drops it once every one of those fines is settled', () => {
-    // Settled fines are excluded from the sums, so both figures read 0: nothing outstanding, no
-    // statement to tick, and this board's tick could not untick them anyway. They are still on the
-    // drivers' board, which lists fines directly and has its own «الحالة» filter.
+  it('…and KEEPS it once they are settled too, because the tick can put them back', () => {
+    // Settled fines are excluded from the SUMS, so the money reads 0 — but the rows are still
+    // there and still tickable, and a row a reader may act on is a row that has something in it.
+    const rows = assembleRollups(sums({ rowCount: 1, collectedCount: 1 }), [], codes);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.driverAmount).toBe(0);
+  });
+
+  it('drops a (vehicle, year) with genuinely nothing behind it', () => {
+    // No rows of any shape and no grievance figure: «لما مسحت كله فضلت موجوده» was this row.
     expect(assembleRollups(sums(), [], codes)).toEqual([]);
   });
 

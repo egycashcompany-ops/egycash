@@ -176,7 +176,15 @@ describe('a paper colours as a PAIR', () => {
 });
 
 describe('paperStage — the one reading behind the colour', () => {
-  const insurance = { key: 'insurance', label: 'x', handover: 'insuranceHandover', receipt: 'insuranceReceipt' } as const;
+  // The REAL entry, spelled out: `paperStage` takes one of the two papers the page declares, so a
+  // stand-in with a made-up label is a different type — and a cast to get past that would be
+  // testing a shape the page never passes.
+  const insurance = {
+    key: 'insurance',
+    label: 'fleet.licensing.columns.insurance',
+    handover: 'insuranceHandover',
+    receipt: 'insuranceReceipt',
+  } as const;
 
   it('answers none / open / done and nothing else', () => {
     expect(paperStage(row(), insurance)).toBe('none');

@@ -50,6 +50,9 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import * as fleetApi from '../api/fleet-api';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
@@ -245,6 +248,67 @@ export const AccidentsPage = (): JSX.Element => {
     figure('remaining', figures?.remaining, asMoney),
   ];
 
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE FILTER'S WHOLE ANSWER, not the page's. `params` carries the reader's filters, their sort
+   * AND their page; `filtersOnly` drops the last of the three and `fetchFilteredRows` walks every
+   * page, so a reader who narrows to four hundred files gets four hundred rows rather than the
+   * twenty-five in front of them. A file that is silently short is the worst kind of wrong,
+   * because it looks complete. The sort rides along untouched: the workbook opens in the order
+   * the reader is looking at, which is the order they will look for a row in.
+   *
+   * THE CODE CELL IS SPLIT. On screen it carries two facts — the car's code and, for anyone the
+   * green tint does not reach, the open/closed state. This screen deliberately has no Status
+   * column; a spreadsheet has neither the tint nor the action button, so the state has to become
+   * a column of its own or the workbook would lose it altogether.
+   *
+   * THE FOUR SUMS GO IN AS NUMBERS, never as `formatMoney` strings, so the reader can total a
+   * filtered set in the sheet itself — `moneyColumns` is what gives them their two decimals.
+   * «إجمالي المتبقي» is computed by the CONTRACT's own formula, the same one the column prints
+   * and the server sums for the strip above, so cell and total stay one statement.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const sheetFilters = filtersOnly(params);
+    const all = await fetchFilteredRows((pageNo, size) =>
+      fleetApi.listAccidents({ ...sheetFilters, page: pageNo, pageSize: size }),
+    );
+    saveSheet(
+      {
+        name: t('fleet.nav.accidents'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.vehicles.columns.code'),
+          t('fleet.vehicles.columns.status'),
+          t('fleet.accidents.fields.occurredAt'),
+          t('fleet.accidents.fields.culprit'),
+          t('fleet.accidents.fields.statement'),
+          t('fleet.accidents.fields.amountCollected'),
+          t('fleet.accidents.fields.companyCost'),
+          t('fleet.accidents.fields.paidAmount'),
+          t('fleet.accidents.fields.remaining'),
+          t('fleet.accidents.fields.notes'),
+        ],
+        // `codeOf` is the table's own resolver, reused rather than repeated: it prefers the code
+        // the server joined in and falls back to the registry map this screen already holds, so a
+        // file kept from the old book reads in the sheet exactly as it reads on screen.
+        rows: all.map((r) => [
+          codeOf(r),
+          t(`fleet.accidents.status.${r.status}`),
+          formatDate(r.occurredAt, locale),
+          r.culprit,
+          r.statement,
+          r.amountCollected,
+          r.companyCost,
+          r.paidAmount,
+          fleetAccidentRemaining(r),
+          r.notes ?? '',
+        ]),
+        moneyColumns: [5, 6, 7, 8],
+      },
+    );
+  };
+
   const columns: Column<FleetAccidentDto>[] = [
     {
       key: 'vehicle',
@@ -391,15 +455,22 @@ export const AccidentsPage = (): JSX.Element => {
           { label: t('fleet.nav.accidents') },
         ]}
         actions={
-          <Can permission="fleetAccident.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setRecordOpen(true)}
-            >
-              {t('fleet.accidents.record')}
-            </Button>
-          </Can>
+          <>
+            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
+                told the reader it has no data reads as a way out of the failure, and the
+                file behind it would be empty or short. Disabling is not enough — it still
+                draws. */}
+            {!isError && <ExportSheetButton name="accidents" onExport={exportSheet} />}
+            <Can permission="fleetAccident.create">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setRecordOpen(true)}
+              >
+                {t('fleet.accidents.record')}
+              </Button>
+            </Can>
+          </>
         }
       />
 

@@ -28,6 +28,7 @@
 // There is no "add driver" action: enrolment left the UI. The create endpoint still exists for the
 // API's own consumers; nothing on this screen reaches it.
 import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -52,13 +53,18 @@ import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { EditIcon, EyeIcon, UploadIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
+import { detailKey } from '../../../shared/lib/query-keys';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
+import * as fleetApi from '../api/fleet-api';
 import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
+import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
 import {
   useBranches,
   useDrivingJobTitles,
 } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
 import { DriverFormDialog } from '../components/DriverFormDialog';
@@ -147,6 +153,19 @@ const useCatalogNames = (kind: FleetCatalogKind, locale: Locale): ReadonlyMap<st
 };
 
 /**
+ * The address this screen READS off an employee — the official one when there is one.
+ *
+ * Named once because it is read twice now, by the column and by the exported file, and the two
+ * must not drift: a sheet that picked the current address where the table shows the official one
+ * would disagree with the screen it was exported from.
+ */
+const hrAddress = (employee: EmployeeDto): { line: string; governorate: string } | null => {
+  const address = employee.personal.officialAddress ?? employee.personal.currentAddress;
+  if (address == null) return null;
+  return { line: [address.line1, address.city].join('، '), governorate: address.governorate };
+};
+
+/**
  * One HR-owned cell.
  *
  * Every instance shares ONE cached query per employee (same key as the HR profile page), so a row
@@ -176,11 +195,22 @@ const EmployeeFact = ({
  */
 const DEFAULT_SORT = 'createdAt:desc';
 
+/**
+ * How many HR records the export asks for at once.
+ *
+ * The file needs the person behind every row the filter matched, and HR answers one employee per
+ * request — the same request the table's own cells make, so most of a read page costs nothing.
+ * Firing all of them together would put a thousand requests in the browser's queue at once on a
+ * wide filter; a small batch keeps the export a steady walk instead.
+ */
+const HR_LOOKUP_BATCH = 8;
+
 export const DriversListPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
@@ -359,6 +389,119 @@ export const DriversListPage = (): JSX.Element => {
     return <span>{name}</span>;
   };
 
+  /**
+   * The HR records behind a set of rows, gathered for the FILE rather than for the screen.
+   *
+   * The table reads one employee per cell through `useEmployeeRecord`, and a hook cannot run over
+   * rows that were never rendered — which is most of what the export carries. So the very same
+   * cache is asked imperatively, with the SAME key, fetcher and freshness the hook uses: this is
+   * not a second copy of HR's records, it is the one the table already fills. The page in front of
+   * the reader therefore costs nothing, and only the rows they have not seen go out.
+   *
+   * Reading HR is HR's own permission. Without it nothing is fetched and the map comes back empty,
+   * so the seven HR columns land blank — exactly the dash the table draws — rather than the export
+   * leaking a raw employee id in place of a name. A single record that fails to load degrades the
+   * same way instead of failing the whole file: one unreachable person must not cost the other
+   * three hundred their sheet.
+   */
+  const employeeRecords = async (ids: readonly string[]): Promise<Map<string, EmployeeDto>> => {
+    const found = new Map<string, EmployeeDto>();
+    if (!mayFilterByHr) return found;
+    const unique = [...new Set(ids)].filter((id) => id !== '');
+    for (let at = 0; at < unique.length; at += HR_LOOKUP_BATCH) {
+      const batch = unique.slice(at, at + HR_LOOKUP_BATCH);
+      const records = await Promise.all(
+        batch.map(async (employeeId) => {
+          try {
+            return await queryClient.fetchQuery({
+              queryKey: detailKey('hr', 'employees', employeeId),
+              queryFn: () => getEmployee(employeeId),
+              staleTime: 5 * 60_000,
+            });
+          } catch {
+            return undefined;
+          }
+        }),
+      );
+      for (const [index, record] of records.entries()) {
+        const id = batch[index];
+        if (id !== undefined && record !== undefined) found.set(id, record);
+      }
+    }
+    return found;
+  };
+
+  /** A catalog reference as the table resolves it: the item's own name, blank when nobody chose one. */
+  const catalogText = (id: string | null, names: ReadonlyMap<string, string>): string =>
+    (id === null ? undefined : names.get(id)) ?? '';
+
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE FILTER'S WHOLE ANSWER, not the page's. `params` carries the reader's filters AND their
+   * page; the page is dropped here and `fetchFilteredRows` walks every one of them, so a reader
+   * who narrows to three hundred drivers gets three hundred rows rather than the twenty-five in
+   * front of them. A file that is silently short is the worst kind of wrong, because it looks
+   * complete. The sort goes with the filters untouched, so the file opens in the order the reader
+   * is looking at.
+   *
+   * THE COLUMNS ARE THE TABLE'S, from all three of its sources, resolved the way the table
+   * resolves them — HR's facts through the shared employee cache, the three catalogs through the
+   * same id → name maps the cells read, and never an id. The licence-scan column is a CONTROL on
+   * screen, so what the sheet carries is the fact behind it: whether a scan is on file at all.
+   *
+   * A driver with no profile yet is blank in Fleet's own columns rather than carrying «لم يُسجَّل»
+   * across five cells: an empty cell is how a spreadsheet says "nothing recorded", and it is what
+   * the reader will filter and sort on.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const filters = filtersOnly(params);
+    const all = await fetchFilteredRows((pageNo, size) =>
+      fleetApi.listDrivers({ ...filters, page: pageNo, pageSize: size }),
+    );
+    const people = await employeeRecords(all.map((d) => d.employeeId));
+    saveSheet(
+      {
+        name: t('fleet.nav.drivers'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.drivers.columns.driver'),
+          t('fleet.drivers.columns.employeeCode'),
+          t('fleet.drivers.columns.jobTitle'),
+          t('fleet.drivers.columns.branch'),
+          t('fleet.drivers.columns.address'),
+          t('fleet.drivers.columns.governorate'),
+          t('fleet.drivers.columns.phone'),
+          t('fleet.drivers.columns.hiredAt'),
+          t('fleet.drivers.columns.specialization'),
+          t('fleet.drivers.columns.licenseType'),
+          t('fleet.drivers.columns.licenseExpiresAt'),
+          t('fleet.drivers.columns.licenseImage'),
+        ],
+        rows: all.map((d) => {
+          const employee = people.get(d.employeeId);
+          const address = employee === undefined ? null : hrAddress(employee);
+          const { profile } = d;
+          const expiry = profile?.licenseExpiresAt ?? null;
+          return [
+            employee?.personal.fullNameAr ?? '',
+            employee?.code ?? '',
+            profile === null ? '' : catalogText(profile.jobId, jobName),
+            employee === undefined ? '' : (branchName.get(employee.employment.branchId) ?? ''),
+            address?.line ?? '',
+            address?.governorate ?? '',
+            employee?.personal.contact.primaryPhone ?? '',
+            employee === undefined ? '' : formatDate(employee.hiredAt, locale),
+            profile === null ? '' : catalogText(profile.specializationId, specializationName),
+            profile === null ? '' : catalogText(profile.licenseTypeId, licenseTypeName),
+            expiry === null ? '' : formatDate(expiry, locale),
+            profile !== null && profile.licenseImage !== null ? t('common.yes') : t('common.no'),
+          ];
+        }),
+      },
+    );
+  };
+
   const columns: Column<FleetDriverRowDto>[] = [
     {
       key: 'driver',
@@ -399,13 +542,7 @@ export const DriversListPage = (): JSX.Element => {
       key: 'address',
       header: t('fleet.drivers.columns.address'),
       render: (d) => (
-        <EmployeeFact
-          employeeId={d.employeeId}
-          pick={(e) => {
-            const address = e.personal.officialAddress ?? e.personal.currentAddress;
-            return address == null ? null : [address.line1, address.city].join('، ');
-          }}
-        />
+        <EmployeeFact employeeId={d.employeeId} pick={(e) => hrAddress(e)?.line ?? null} />
       ),
     },
     {
@@ -413,12 +550,7 @@ export const DriversListPage = (): JSX.Element => {
       header: t('fleet.drivers.columns.governorate'),
       sortable: true,
       render: (d) => (
-        <EmployeeFact
-          employeeId={d.employeeId}
-          pick={(e) =>
-            (e.personal.officialAddress ?? e.personal.currentAddress)?.governorate ?? null
-          }
-        />
+        <EmployeeFact employeeId={d.employeeId} pick={(e) => hrAddress(e)?.governorate ?? null} />
       ),
     },
     {
@@ -591,6 +723,19 @@ export const DriversListPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.drivers') },
         ]}
+        // OFFERED ONLY WHEN THE SCREEN HAS AN ANSWER TO EXPORT. The three states that hold the
+        // table back hold the file back too, and for a sharper reason: `employeeIds` is how this
+        // screen's HR half narrows the list, and an EMPTY or absent one travels as no filter at
+        // all (`buildQuery` drops an empty list). Exporting under a blocked or empty HR match
+        // would hand the reader the WHOLE registry under the name of a filter that matched
+        // nobody — a file that lies, which is worse than no file.
+        actions={
+          <ExportSheetButton
+            name="drivers"
+            onExport={exportSheet}
+            disabled={blocked || emptyMatch}
+          />
+        }
       />
 
       <div className="space-y-4">

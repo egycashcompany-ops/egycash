@@ -30,7 +30,15 @@ import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { AccidentsPage } from './AccidentsPage';
 
-const GREEN = 'bg-emerald-50';
+/**
+ * The settled-row TINT, as the row writes it — not the bare shade.
+ *
+ * `bg-emerald-50` on its own is a substring of any emerald hover on the page (the Excel button in
+ * the header carries one), so a screen-wide search for it answers «green» for a control that is
+ * not a row. The rule here is about ROWS: a closed file is tinted, an open one is not, and a
+ * failed fetch tints nothing. Pinning the pair the row actually sets says that and nothing else.
+ */
+const GREEN = 'bg-emerald-50 hover:bg-emerald-100/70';
 /** Arabic renders MONEY in Latin digits (`moneyLocale`), to two places; counts stay Arabic-Indic. */
 const MONEY_TOTALS = ['22,005.00', '87,835.00', '174,710.00', '240,540.00'];
 

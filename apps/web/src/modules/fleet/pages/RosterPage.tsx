@@ -45,6 +45,8 @@ import { useFleetCatalog, usePlanRoster, useRosterDay } from '../api/fleet-queri
 import { EmployeeName, useEmployeeRecords } from '../components/EmployeeName';
 import { InWorkshopBadge } from '../components/VehicleStatusBadge';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { saveSheet, sheetDay } from '../lib/fleet-sheet';
 import { RosterAssignDialog } from '../components/RosterAssignDialog';
 import { CatalogSelect } from '../components/CatalogSelect';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
@@ -559,8 +561,22 @@ export const RosterPage = (): JSX.Element => {
   // rather than fetching anything new.
   const records = useEmployeeRecords(
     useMemo(
-      () => [...pool.map((d) => d.employeeId), ...unavailable.map((d) => d.employeeId)],
-      [pool, unavailable],
+      () => [
+        ...pool.map((d) => d.employeeId),
+        ...unavailable.map((d) => d.employeeId),
+        // ...AND THE DRIVERS ALREADY SEATED. They are in neither list by construction — `pool`
+        // is what the day has LEFT, so a driver stops being in it the moment somebody drops him
+        // on a car — and until now nothing outside a `DriverChip` needed their names. The export
+        // does: it writes a name into a cell rather than rendering a chip. Widened here rather
+        // than given a second map of its own, so there is exactly one place this screen resolves
+        // a driver's name and the file cannot spell one differently from the board. It costs
+        // nothing: same query keys the seated chips already render, so this subscribes to the
+        // entries in hand instead of fetching them again.
+        ...shown.flatMap((row) =>
+          [row.driver1EmployeeId, row.driver2EmployeeId].filter((id): id is string => id !== null),
+        ),
+      ],
+      [pool, unavailable, shown],
     ),
   );
   const searchIndex = useMemo(() => {
@@ -589,6 +605,77 @@ export const RosterPage = (): JSX.Element => {
     () => filterDrivers(unavailable, searchIndex, unavailableSearch),
     [unavailable, searchIndex, unavailableSearch],
   );
+
+  /** The board's own name for a driver — the very name the chip in the cell prints. */
+  const driverName = (employeeId: string | null): string => {
+    if (employeeId === null) return '';
+    // `fullNameAr`, because that is what `useEmployeeName` gives every chip on this screen. The
+    // id's tail is the same stand-in the chip falls back to when the record is out of reach
+    // (no `employee.view`, or not landed yet) — a seat that is taken must not read as empty.
+    const record = records.get(employeeId);
+    return record?.personal.fullNameAr ?? employeeId.slice(-8);
+  };
+
+  /**
+   * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».
+   *
+   * THE ROWS IN HAND ARE THE WHOLE ANSWER HERE, which is why this export does not fetch. The
+   * board is a DAY, not a page of one: `useRosterDay` returns every vehicle on the date in a
+   * single response, and the code search, the mission filter and the state view all run in the
+   * browser over that whole set. `rows` is therefore already «اللى الفلتر عامله», in the
+   * order the reader is looking at it — there is no second page for a walk to go and find.
+   *
+   * It exports what is ON SCREEN in the other sense too: `rows` reads the DRAFT on a plannable
+   * day and the server's board on a past one. A dispatcher who has spent the morning arranging
+   * a day and presses Excel means the arrangement in front of them, saved or not.
+   *
+   * THE STATE CELL IS SPLIT. On screen it stacks two independent badges — the workshop's verdict
+   * for the date, and whether anybody is on the car — and a spreadsheet cell cannot stack. Folded
+   * into one column they would answer each other's question wrongly: a car can be in the workshop
+   * AND still carry yesterday's crew, and «معيّنة» alone would hide the first fact.
+   *
+   * The actions column is not here: it is two buttons, not data.
+   */
+  const exportSheet = async (): Promise<void> => {
+    // THE DAY THE ROSTER IS FOR, not the day it was downloaded. Every other Fleet export names
+    // its file after today because today is the only day those screens are about; this one is
+    // about whichever date the stepper is on, and a file holding yesterday's crew under today's
+    // name is a file nobody can identify a week later. `date` comes off the URL, so a hand-typed
+    // one can be nonsense — checked, because an unparseable day would otherwise throw inside the
+    // download and report itself as a failed export rather than a bad address.
+    const day = new Date(`${date}T00:00:00Z`);
+    saveSheet(
+      {
+        name: t('fleet.nav.roster'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: [
+          t('fleet.odometer.columns.vehicle'),
+          t('fleet.vehicles.inWorkshop'),
+          t('fleet.roster.assigned'),
+          t('fleet.roster.fields.mission'),
+          t('fleet.odometer.fields.driver1'),
+          t('fleet.odometer.fields.driver2'),
+          t('fleet.attendance.fields.notes'),
+        ],
+        rows: rows.map((row) => [
+          row.code,
+          row.inMaintenance ? t('common.yes') : t('common.no'),
+          // `hasDriver`, exactly as the badge asks it — a mission with nobody on it is an
+          // intention, not an assignment, and `carriesPlan` (the counter's question) would
+          // answer a wider one than the column the reader is comparing this file against.
+          hasDriver(row) ? t('common.yes') : t('common.no'),
+          // Empty stays EMPTY. `missionName` draws a dash for the reader's eye; in a sheet that
+          // dash is a value, and a column of them cannot be filtered on «has no mission».
+          row.missionTypeId === null ? '' : missionName(row.missionTypeId),
+          driverName(row.driver1EmployeeId),
+          driverName(row.driver2EmployeeId),
+          row.notes ?? '',
+        ]),
+        // No money on this board, so no `moneyColumns`.
+      },
+      sheetDay(Number.isNaN(day.getTime()) ? new Date() : day),
+    );
+  };
 
   const [editing, setEditing] = useState<string | null>(null);
   const [clearing, setClearing] = useState<FleetRosterRowDto | null>(null);
@@ -834,42 +921,49 @@ export const RosterPage = (): JSX.Element => {
           { label: t('fleet.nav.roster') },
         ]}
         actions={
-          // The day itself, as ONE control: a stepper with the picker between its two arrows.
-          // Grouped in a single bordered shell so the three read as one thing rather than three
-          // loose buttons, and given `whitespace-nowrap` + `shrink-0` so the picker cannot be
-          // squeezed into a second line beside the page title on a narrow header.
-          <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={t('fleet.roster.prevDay')}
-              title={t('fleet.roster.prevDay')}
-              // Stepping back is READING, and reading yesterday is exactly what this arrow is
-              // for. What the past cannot do is change, and that is `editable`'s job.
-              onClick={() => patch({ date: shiftDay(date, -1) })}
-            >
-              <ChevronStartIcon className="h-4 w-4" />
-            </Button>
-            <Input
-              type="date"
-              aria-label={t('fleet.roster.date')}
-              value={date}
-              onChange={(e) => patch({ date: e.target.value || null })}
-              // `w-auto` alone let the native picker set its own width and sit a pixel or two
-              // off the arrows' baseline; a fixed width and no border of its own keep the three
-              // aligned inside the shell.
-              className="w-[10.5rem] border-0 bg-transparent text-center text-sm font-medium tabular-nums shadow-none focus:ring-0 dark:bg-transparent"
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              aria-label={t('fleet.roster.nextDay')}
-              title={t('fleet.roster.nextDay')}
-              onClick={() => patch({ date: shiftDay(date, 1) })}
-            >
-              <ChevronEndIcon className="h-4 w-4" />
-            </Button>
-          </div>
+          <>
+            <ExportSheetButton name="roster" onExport={exportSheet} />
+            {/* The day itself, as ONE control: a stepper with the picker between its two arrows.
+                Grouped in a single bordered shell so the three read as one thing rather than
+                three loose buttons, and given `whitespace-nowrap` + `shrink-0` so the picker
+                cannot be squeezed into a second line beside the page title on a narrow header.
+
+                Excel sits BEFORE it, at the header's leading edge, the same place every other
+                Fleet list keeps it — the stepper is what this screen is about and stays the
+                control the eye lands on last, next to the table it drives. */}
+            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t('fleet.roster.prevDay')}
+                title={t('fleet.roster.prevDay')}
+                // Stepping back is READING, and reading yesterday is exactly what this arrow is
+                // for. What the past cannot do is change, and that is `editable`'s job.
+                onClick={() => patch({ date: shiftDay(date, -1) })}
+              >
+                <ChevronStartIcon className="h-4 w-4" />
+              </Button>
+              <Input
+                type="date"
+                aria-label={t('fleet.roster.date')}
+                value={date}
+                onChange={(e) => patch({ date: e.target.value || null })}
+                // `w-auto` alone let the native picker set its own width and sit a pixel or two
+                // off the arrows' baseline; a fixed width and no border of its own keep the three
+                // aligned inside the shell.
+                className="w-[10.5rem] border-0 bg-transparent text-center text-sm font-medium tabular-nums shadow-none focus:ring-0 dark:bg-transparent"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t('fleet.roster.nextDay')}
+                title={t('fleet.roster.nextDay')}
+                onClick={() => patch({ date: shiftDay(date, 1) })}
+              >
+                <ChevronEndIcon className="h-4 w-4" />
+              </Button>
+            </div>
+          </>
         }
       />
 

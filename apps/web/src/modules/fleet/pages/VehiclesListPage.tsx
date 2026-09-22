@@ -24,7 +24,7 @@ import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { ExportSheetButton } from '../components/ExportSheetButton';
-import { fetchFilteredRows, filtersOnly, saveSheet, sheetDay } from '../lib/fleet-sheet';
+import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import * as fleetApi from '../api/fleet-api';
 import { migrateLegacyVehicleCodeParam } from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
@@ -422,7 +422,6 @@ export const VehiclesListPage = (): JSX.Element => {
           (v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)) ?? '',
         ]),
       },
-      sheetDay(new Date()),
     );
   };
 
@@ -611,7 +610,11 @@ export const VehiclesListPage = (): JSX.Element => {
         ]}
         actions={
           <>
-            <ExportSheetButton name="vehicles" onExport={exportSheet} />
+            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
+                told the reader it has no data reads as a way out of the failure, and the
+                file behind it would be empty or short. Disabling is not enough — it still
+                draws. */}
+            {!isError && <ExportSheetButton name="vehicles" onExport={exportSheet} />}
           <Can permission="fleetVehicle.create">
             <Button
               size="sm"

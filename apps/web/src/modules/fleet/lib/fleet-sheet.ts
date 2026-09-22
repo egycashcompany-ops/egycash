@@ -49,6 +49,16 @@ export const filtersOnly = <T extends { page?: unknown; pageSize?: unknown }>(
   return rest as Omit<T, 'page' | 'pageSize'>;
 };
 
+/**
+ * Today, as the file name spells it.
+ *
+ * `saveSheet` defaults to it, so a caller never has to reach for a clock — which matters on the
+ * fixed-crew board, whose whole point is that it has no date: the screen must not so much as
+ * mention one, and the file still wants to say which day it was taken. Exported and taking its
+ * `now` so the arithmetic stays testable.
+ */
+export const sheetDay = (now: Date): string => now.toISOString().slice(0, 10);
+
 export interface SheetExport {
   /** The sheet's name and the file's stem — Arabic, and what the screen is called. */
   name: string;
@@ -66,7 +76,7 @@ export interface SheetExport {
  * folder for last week's register finds it by the file, and a row of metadata above the header
  * is a row every formula below it then has to be told to skip.
  */
-export const saveSheet = (sheet: SheetExport, today: string): void => {
+export const saveSheet = (sheet: SheetExport, today: string = sheetDay(new Date())): void => {
   saveBlob(
     buildXlsx({
       name: sheet.name,
@@ -78,6 +88,3 @@ export const saveSheet = (sheet: SheetExport, today: string): void => {
     xlsxFilename(sheet.name, today),
   );
 };
-
-/** Today, as the file name spells it. Passed in by the caller so this module stays pure. */
-export const sheetDay = (now: Date): string => now.toISOString().slice(0, 10);

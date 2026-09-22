@@ -8,7 +8,7 @@ import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
 import { signedIn } from '../../store/authSlice';
 import { useT } from '../localization/useT';
-import { loginFailureKey } from './login-failure';
+import { loginFailure } from './login-failure';
 import { ThemeToggle } from '../layout/ThemeToggle';
 import { LanguageToggle } from '../layout/LanguageToggle';
 import { BrandMark, Button, Field, Form, Input, PasswordInput } from '../../shared/ui';
@@ -59,10 +59,12 @@ export const LoginPage = (): JSX.Element => {
       }
       setStep({ kind: 'totp', challengeToken: response.challengeToken, enroll });
     } catch (e) {
-      // The server names most of these — a locked account, a suspended one, too many attempts —
-      // and so does the browser for a dead connection. `loginFailureKey` is where each becomes a
-      // sentence; printing one generic line for all of them is what this replaces.
-      setError(t(loginFailureKey(e, navigator.onLine)));
+      // The server names each of these — an unregistered identifier, a wrong password, a locked
+      // account, a suspended one, too many attempts — and the browser names a dead connection.
+      // `loginFailure` is where each becomes its own sentence; one generic line for all of them
+      // is what this replaces.
+      const failure = loginFailure(e, navigator.onLine);
+      setError(t(failure.key, failure.params));
     } finally {
       setBusy(false);
     }
@@ -78,7 +80,8 @@ export const LoginPage = (): JSX.Element => {
     } catch (e) {
       // A wrong six-digit code is the common case here and now says so, instead of reading as
       // though the password that already passed had been rejected.
-      setError(t(loginFailureKey(e, navigator.onLine)));
+      const failure = loginFailure(e, navigator.onLine);
+      setError(t(failure.key, failure.params));
     } finally {
       setBusy(false);
     }

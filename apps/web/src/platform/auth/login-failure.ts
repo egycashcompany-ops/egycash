@@ -1,48 +1,60 @@
-// Why the sign-in did not work, in words the person can act on.
+// Why the sign-in did not work, named precisely, in the register the rest of the product uses.
 //
-// The screen used to say «فشل تسجيل الدخول» to everything — a wrong password, a suspended
-// account, a locked one, a dead Wi-Fi, a server that was down. One sentence for six situations,
-// five of which the SERVER had already named: the API answers `AUTH_ACCOUNT_LOCKED`,
-// `AUTH_ACCOUNT_NOT_ACTIVE`, `RATE_LIMITED` and the rest, and the login screen threw the code
-// away and printed the generic line. This is the mapping it should have had.
+// The screen used to answer «فشل تسجيل الدخول» to everything: a mistyped address, a wrong
+// password, a locked account, a suspended one, a dead connection, a server that was down. Most of
+// those the SERVER had already named — `AUTH_IDENTIFIER_UNKNOWN`, `AUTH_ACCOUNT_LOCKED`,
+// `AUTH_ACCOUNT_NOT_ACTIVE`, `RATE_LIMITED` and the rest — and the login screen read the code,
+// ignored it, and printed the one generic line. This is the mapping it should have had.
 //
-// ONE THING STAYS DELIBERATELY VAGUE, and it is not an oversight. «هذا البريد غير موجود» and
-// «كلمة المرور غير صحيحة» are the same answer here, because telling them apart tells ANYBODY who
-// can reach the login page which accounts exist. That is how an attacker builds a list of real
-// employees to attack, and it is why `auth.service.login()` answers `AUTH_INVALID_CREDENTIALS`
-// for an unknown identifier, a wrong password and an account whose password was just cleared by
-// an administrator — three different truths, one answer, on purpose.
+// NOTHING HERE IS VAGUE, BY THE OWNER'S INSTRUCTION. An unknown identifier and a wrong password
+// are two different sentences, not one. That was a deliberate merge once — answering identically
+// meant nobody could discover which accounts exist by trying addresses at the login page — and
+// the owner weighed it against staff who could not tell which of the two boxes they had got
+// wrong, and decided. The trade-off, and what still limits the abuse (the route's ten-per-five-
+// minutes rate limit, and an audit row for every attempt), is recorded where the server makes
+// the decision, in `auth.service.login()`.
 //
-// What CAN be improved without leaking is the wording: «البيانات غير صحيحة» plus a reminder of
-// what may be typed in the first box beats «فشل تسجيل الدخول», and helps the honest person who
-// typed their email into a system expecting their employee code.
+// Even the last-resort message names something: it carries the request id the API returned, so
+// «حاول مرة أخرى» is not the end of the conversation with the support desk.
 //
-// Pure on purpose: there is no jsdom in this suite, so the decision lives here where it can be
-// tested against every code, and the screen only renders what it returns.
+// Pure on purpose: there is no jsdom in this suite, so the decision lives here where every code
+// can be asserted by name, and the screen only renders what it returns.
 
-/** The shape this reads off an `ApiError` without importing it (it is a class, this is data). */
+/** The shape this reads off an `ApiError` without importing it (it is a class; this is data). */
 export interface FailureLike {
   code?: unknown;
   status?: unknown;
+  requestId?: unknown;
 }
 
-/** Every message this can ask for. The guard spec checks each one exists in ar and en. */
+/** What the screen needs to print one failure. */
+export interface LoginFailure {
+  key: string;
+  /** Filled for the last-resort message only, where the reference number is the actionable part. */
+  params?: Record<string, string>;
+}
+
+/** Every message this can ask for. The spec checks each one exists in ar and en. */
 export const LOGIN_FAILURE_KEYS = [
-  'platform.auth.login.failed',
-  'platform.auth.login.badCredentials',
+  'platform.auth.login.unexpected',
+  'platform.auth.login.unexpectedWithRef',
+  'platform.auth.login.unknownIdentifier',
+  'platform.auth.login.wrongPassword',
   'platform.auth.login.locked',
   'platform.auth.login.notActivated',
   'platform.auth.login.notActive',
   'platform.auth.login.badCode',
   'platform.auth.login.tooMany',
-  'platform.auth.login.serverDown',
+  'platform.auth.login.serverError',
   'platform.auth.login.offline',
   'platform.auth.login.unreachable',
 ] as const;
 
 const BY_CODE: Readonly<Record<string, string>> = {
-  // Three different truths, one answer — see the note at the top of this file.
-  AUTH_INVALID_CREDENTIALS: 'platform.auth.login.badCredentials',
+  // The two the owner asked to be told apart.
+  AUTH_IDENTIFIER_UNKNOWN: 'platform.auth.login.unknownIdentifier',
+  AUTH_INVALID_CREDENTIALS: 'platform.auth.login.wrongPassword',
+
   AUTH_ACCOUNT_LOCKED: 'platform.auth.login.locked',
   AUTH_ACCOUNT_NOT_ACTIVATED: 'platform.auth.login.notActivated',
   AUTH_ACCOUNT_NOT_ACTIVE: 'platform.auth.login.notActive',
@@ -51,34 +63,41 @@ const BY_CODE: Readonly<Record<string, string>> = {
   RATE_LIMITED: 'platform.auth.login.tooMany',
 };
 
+/** The last resort, which still hands over a reference number when the API sent one. */
+const unexpected = (requestId: unknown): LoginFailure =>
+  typeof requestId === 'string' && requestId !== ''
+    ? { key: 'platform.auth.login.unexpectedWithRef', params: { requestId } }
+    : { key: 'platform.auth.login.unexpected' };
+
 /**
- * The message key for a failed sign-in attempt.
+ * Why this sign-in attempt failed.
  *
  * `online` is passed in rather than read from `navigator` so this stays a pure function: the
- * caller hands it `navigator.onLine`, the tests hand it either answer. It matters because the two
- * failures look identical to `fetch` and need opposite advice — «شوف النت بتاعك» is useless to
- * somebody whose connection is fine and whose server is down.
+ * screen hands it `navigator.onLine`, the tests hand it either answer. It matters because a dead
+ * connection and an unreachable server are indistinguishable to `fetch` and need opposite
+ * instructions — telling somebody to check a connection that is working wastes their time.
  */
-export const loginFailureKey = (error: unknown, online: boolean): string => {
+export const loginFailure = (error: unknown, online: boolean): LoginFailure => {
   // NOTHING CAME BACK. `fetch` rejects with a TypeError for a dead connection, a refused socket
   // and a DNS failure alike, so the browser's own idea of being online is what separates them.
-  if (!online) return 'platform.auth.login.offline';
-  if (error instanceof TypeError) return 'platform.auth.login.unreachable';
+  if (!online) return { key: 'platform.auth.login.offline' };
+  if (error instanceof TypeError) return { key: 'platform.auth.login.unreachable' };
 
   // SOMETHING CAME BACK, BUT NOT OURS. `response.json()` throws a SyntaxError when a proxy or a
-  // restarting container answers with an HTML error page instead of the API envelope — which is
-  // a server problem, and reads to the user as one rather than as a rejected password.
-  if (error instanceof SyntaxError) return 'platform.auth.login.serverDown';
+  // restarting container answers with an HTML error page instead of the API envelope. That is a
+  // server fault, and must not read to the person as though their password had been refused.
+  if (error instanceof SyntaxError) return { key: 'platform.auth.login.serverError' };
 
-  if (typeof error !== 'object' || error === null) return 'platform.auth.login.failed';
-  const { code, status } = error as FailureLike;
+  if (typeof error !== 'object' || error === null) return unexpected(undefined);
+  const { code, status, requestId } = error as FailureLike;
 
   if (typeof code === 'string' && code in BY_CODE) {
-    return BY_CODE[code] ?? 'platform.auth.login.failed';
+    const key = BY_CODE[code];
+    if (key !== undefined) return { key };
   }
-  // A 5xx is the server's fault whatever it called the code, so it never reads as the user's.
-  if (typeof status === 'number' && status >= 500) return 'platform.auth.login.serverDown';
-  if (status === 429) return 'platform.auth.login.tooMany';
+  // A 5xx is the server's fault whatever it called the code, so it never reads as the person's.
+  if (typeof status === 'number' && status >= 500) return { key: 'platform.auth.login.serverError' };
+  if (status === 429) return { key: 'platform.auth.login.tooMany' };
 
-  return 'platform.auth.login.failed';
+  return unexpected(requestId);
 };

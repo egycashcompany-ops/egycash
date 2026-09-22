@@ -12,8 +12,8 @@ its entry here in the same PR.
 ### Fixed
 
 - **The sign-in screen says WHY it refused.** «فشل تسجيل الدخول» was the answer to everything:
-  a wrong password, a locked account, a suspended one, a dead Wi-Fi, a server that was down. Five
-  of those the SERVER had already named — `AUTH_ACCOUNT_LOCKED`, `AUTH_ACCOUNT_NOT_ACTIVE`,
+  a mistyped address, a wrong password, a locked account, a suspended one, a dead connection, a
+  server that was down. Most of those the SERVER had already named — `AUTH_ACCOUNT_LOCKED`, `AUTH_ACCOUNT_NOT_ACTIVE`,
   `RATE_LIMITED` and the rest — and the screen read the code, ignored it, and printed the generic
   line. Each now has its own sentence, in both languages, and each says what to do about it: wait,
   ask an administrator, check the connection, or try again shortly.
@@ -23,17 +23,24 @@ its entry here in the same PR.
   gateway's HTML error page — which used to surface as a rejected password, because parsing it
   threw — now reads as the server problem it is.
 
-  **One pair stays deliberately merged.** An unknown account and a wrong password give the same
-  answer, because telling them apart tells anyone who can reach the login page which accounts
-  exist, which is the list an attacker wants before they start. `auth.service.login()` has always
-  answered `AUTH_INVALID_CREDENTIALS` to both (and to an account whose password an administrator
-  just cleared), and that stays. What changed is the wording: «بيانات الدخول مش صح» with a
-  reminder that the first box takes an email, a username or an employee code, which is the help
-  the honest person needed and none of the help the prober wanted.
+  **An unregistered identifier and a wrong password are now two answers, by the owner's
+  decision.** They were one on purpose: answering identically meant nobody could learn which
+  accounts exist by trying addresses at the login page. Weighed against staff who could not tell
+  which of the two boxes they had got wrong, the owner chose to name them — so the server gained
+  `AUTH_IDENTIFIER_UNKNOWN` beside `AUTH_INVALID_CREDENTIALS`, «لا يوجد حساب مسجَّل بهذه
+  البيانات» reads differently from «كلمة المرور غير صحيحة», and the wrong-password message warns
+  that repeating it locks the account. What carries the weight instead is unchanged and now
+  written down in the security document: ten attempts per five minutes per address, an audit row
+  and an `AuthLoginFailed` event for every attempt, and lockout with backoff. Worth revisiting if
+  the login page is ever reachable from outside the company network.
+
+  **The wording is formal in both languages**, and nothing is left vague — even the last-resort
+  message names the reference number the API returned, so «حاول مرة أخرى» is not the end of the
+  conversation with the support desk.
 
   The decision is one pure function (`platform/auth/login-failure.ts`) with a spec over every
-  code, both no-response cases, the 5xx family, the unrecognised fallback, and an assertion that
-  the credentials message never contains wording that confirms an account exists.
+  code, both no-response cases, the 5xx family, the reference-number fallback, and a check that
+  no message slips back into colloquial Arabic.
 
 
 ### Added

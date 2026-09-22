@@ -47,8 +47,9 @@ import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FilterField } from '../../../shared/ui/FilterField';
-import { toCsv, exportFilename } from '../lib/violations-export';
-import { printViolations } from '../lib/violations-print';
+import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { useReportSignatories } from '../lib/use-report-signatories';
+import { printFleetReport } from '../lib/fleet-report-print';
 
 /** The four lines every group shows, in the order the business reads them. */
 const TOTAL_ROWS = [
@@ -143,6 +144,7 @@ export const CompanyViolationsPanel = ({
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const signatories = useReportSignatories();
   const mayRecord = can('fleetViolation.record');
   const hasActiveFilters = years.length > 0 || vehicleCodes.length > 0 || settled !== '';
 
@@ -255,10 +257,11 @@ export const CompanyViolationsPanel = ({
       String(r.vehicleAmount),
       String(r.driverCount),
       String(r.driverAmount),
-      String(r.totalBeforeGrievance),
       String(r.totalCount),
       String(r.totalAmount),
     ]);
+  // THE COLUMNS THE FORM HAS, and no others — «إجمالى السيارة قبل التظلم» is a working figure the
+  // board shows while a grievance is being argued, and the signed sheet does not carry it.
   const exportHeader = [
     t('fleet.violations.fields.year'),
     t('fleet.odometer.columns.vehicle'),
@@ -266,36 +269,77 @@ export const CompanyViolationsPanel = ({
     t('fleet.violations.rollup.vehicleAmount'),
     t('fleet.violations.rollup.driverCount'),
     t('fleet.violations.rollup.driverAmount'),
-    t('fleet.violations.rollup.totalBeforeGrievance'),
     t('fleet.violations.rollup.totalCount'),
     t('fleet.violations.rollup.totalAmount'),
   ];
 
+  /**
+   * The three figures under the table, in the order the signed sheet prints them — and the same
+   * three the workbook's bottom row carries, so the two documents cannot disagree.
+   */
+  const reportTotals = [
+    { label: t('fleet.violations.lines.company'), value: formatMoney(totals.company, 'EGP', locale) },
+    { label: t('fleet.violations.lines.drivers'), value: formatMoney(totals.drivers, 'EGP', locale) },
+    { label: t('fleet.violations.totalAll'), value: formatMoney(totals.all, 'EGP', locale) },
+  ];
+
+  /**
+   * The same rows, TYPED — a count is a number and money is a number.
+   *
+   * The printed sheet wants them formatted; a workbook wants them summable. Exporting «507.50» as
+   * text gives the reader a column Excel will not add up, which is the one thing they opened it
+   * for. Same order as `exportRows`, so the two documents stay the same document.
+   */
+  const sheetRows = (): XlsxCell[][] =>
+    rows.map((r) => [
+      r.year,
+      r.code,
+      r.vehicleCount,
+      r.vehicleAmount,
+      r.driverCount,
+      r.driverAmount,
+      r.totalCount,
+      r.totalAmount,
+    ]);
+
   const onExport = (): void => {
-    const blob = new Blob([toCsv(exportHeader, exportRows())], {
-      type: 'text/csv;charset=utf-8',
+    // A REAL WORKBOOK, not a CSV named after one: the sheet is titled in Arabic, «م» runs down the
+    // edge and the totals sit on the bottom row — none of which a CSV can carry.
+    const blob = buildXlsx({
+      name: t('fleet.violations.report.companySheet'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: exportHeader,
+      rows: sheetRows(),
+      // Laid out under the columns it belongs to: the money under each money column, and the word
+      // «الإجمالى» where the car code is — which is where a reader's eye goes looking for it.
+      totals: [
+        '',
+        t('fleet.violations.report.grandTotal'),
+        '',
+        totals.company,
+        '',
+        totals.drivers,
+        '',
+        totals.all,
+      ],
     });
-    saveBlob(blob, exportFilename('company-violations', new Date().toISOString().slice(0, 10)));
+    saveBlob(
+      blob,
+      xlsxFilename(t('fleet.violations.report.companySheet'), new Date().toISOString().slice(0, 10)),
+    );
   };
   const onPrint = (): void => {
     try {
-      printViolations({
+      printFleetReport({
         title: t('fleet.violations.companyTitle'),
+        department: t('fleet.violations.report.department'),
         subtitle: scope,
         header: exportHeader,
         rows: exportRows(),
-        totals: [
-          {
-            label: t('fleet.violations.lines.company'),
-            value: formatMoney(totals.company, 'EGP', locale),
-          },
-          {
-            label: t('fleet.violations.lines.drivers'),
-            value: formatMoney(totals.drivers, 'EGP', locale),
-          },
-          { label: t('fleet.violations.totalAll'), value: formatMoney(totals.all, 'EGP', locale) },
-        ],
-        rtl: locale === 'ar',
+        totals: reportTotals,
+        signatories,
+        serialHeader: t('fleet.violations.report.serial'),
+        emptyLabel: t('fleet.violations.report.empty'),
       });
     } catch {
       toast.error(t('fleet.violations.popupBlocked'));

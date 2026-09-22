@@ -4,7 +4,7 @@
 // administrator could reach: every assertion covering it was a source scan or a pure-function test,
 // each one true, and the control was unreachable in the states the page is actually in. A regex
 // proving a `<Can>` wrapper sits near a label cannot see that the wrapper is nested inside a branch
-// that removes it. So the claims that matter here — *all twenty-nine appear*, *without the edit
+// that removes it. So the claims that matter here — *all thirty-six appear*, *without the edit
 // permission every control is disabled*, *each input is labelled* — are made against the markup the
 // component actually produces.
 //
@@ -35,7 +35,7 @@ import { authSlice } from '../../../../store/authSlice';
 import { SettingsPage } from './SettingsPage';
 
 /**
- * The twenty-nine, with the type and default each is declared with in the API.
+ * The thirty-six, with the type and default each is declared with in the API.
  *
  * The KEYS are not written here — they come from the contracts objects the declarations themselves
  * use, so a setting added to the platform cannot quietly miss this screen. The type and default are
@@ -77,6 +77,22 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   [FleetSettingKeys.VehicleLicenseWarnDays]: { type: 'number', defaultValue: 30 },
   [FleetSettingKeys.DriverLicenseWarnDays]: { type: 'number', defaultValue: 30 },
   [FleetSettingKeys.DefaultBranchName]: { type: 'string', defaultValue: 'المهندسين' },
+  // The signature block on a printed Fleet report — six lines, editable because they are people.
+  [FleetSettingKeys.ReportPreparedByTitle]: { type: 'string', defaultValue: 'القائم بالأعمال' },
+  [FleetSettingKeys.ReportPreparedByName]: { type: 'string', defaultValue: 'م / محمد حسين محمد' },
+  [FleetSettingKeys.ReportApprovedByTitle]: { type: 'string', defaultValue: 'مدير إدارة الحركة' },
+  [FleetSettingKeys.ReportApprovedByName]: {
+    type: 'string',
+    defaultValue: 'عميد / إيهاب عبد السلام سليمان',
+  },
+  [FleetSettingKeys.ReportEndorsementNote]: {
+    type: 'string',
+    defaultValue: 'يرجى المراجعة والتصديق على اجمالى المصروفات',
+  },
+  [FleetSettingKeys.ReportEndorsedByName]: {
+    type: 'string',
+    defaultValue: 'لواء أ ح / جمال أحمد أبواسماعيل - المدير العام التنفيذى - شركة ايجى كاش للحلول النقدية',
+  },
 };
 
 /** Every key the contracts declare, which is what the API registers at boot. */
@@ -190,9 +206,9 @@ const isDisabled = (tag: string): boolean => tag.includes('disabled=""');
 const cardsOnly = (markup: string): string => markup.slice(markup.lastIndexOf('</select>'));
 
 describe('the fixture tracks the real registry', () => {
-  it('covers every declared setting key, and there are twenty-nine of them', () => {
-    expect(DECLARED_KEYS).toHaveLength(30);
-    expect(new Set(DECLARED_KEYS).size).toBe(30);
+  it('covers every declared setting key, and there are thirty-six of them', () => {
+    expect(DECLARED_KEYS).toHaveLength(36);
+    expect(new Set(DECLARED_KEYS).size).toBe(36);
     const uncovered = DECLARED_KEYS.filter((key) => SHAPES[key] === undefined);
     expect(uncovered, 'a setting was declared without a shape in this fixture').toEqual([]);
   });
@@ -203,14 +219,14 @@ describe('every setting reaches the screen', () => {
 
   // The claim the whole slice exists for. Twenty-four of these could previously be changed only by
   // editing the database.
-  it('renders all twenty-nine keys', () => {
+  it('renders all thirty-six keys', () => {
     const missing = DECLARED_KEYS.filter((key) => !markup.includes(key));
     expect(missing, 'a setting is declared but not on screen').toEqual([]);
   });
 
   it('renders one editable control per setting', () => {
     // 30 settings + the search box = 31 inputs. The owner filter is a <select>, not an input.
-    expect(inputs(markup)).toHaveLength(31);
+    expect(inputs(markup)).toHaveLength(37);
   });
 
   it('groups them under their owners', () => {
@@ -246,7 +262,7 @@ describe('every setting reaches the screen', () => {
   });
 
   it('shows a count of what is displayed against the total', () => {
-    expect(markup).toContain('Showing 30 of 30');
+    expect(markup).toContain('Showing 36 of 36');
   });
 });
 
@@ -324,7 +340,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
     const markup = render({ permissions: ['setting.view'] });
     // The search box stays usable — reading is what this actor may do.
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(30);
+    expect(controls).toHaveLength(36);
     const enabled = controls.filter((tag) => !isDisabled(tag));
     expect(enabled, 'a setting control is editable without setting.edit').toEqual([]);
   });
@@ -338,7 +354,7 @@ describe('editing is gated on setting.edit, in the markup and not only in the so
   it('leaves the controls enabled for an actor who holds setting.edit', () => {
     const markup = render();
     const controls = inputs(markup).filter((tag) => !tag.includes('type="search"'));
-    expect(controls).toHaveLength(30);
+    expect(controls).toHaveLength(36);
     expect(controls.filter(isDisabled)).toEqual([]);
     expect(markup).not.toContain('do not hold the edit-settings permission');
   });
@@ -446,14 +462,14 @@ describe('the filters are addressable', () => {
     const markup = render({ search: '?q=lockout' });
     expect(markup).toContain(SettingKeys.LockoutMaxAttempts);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 2 of 30');
+    expect(markup).toContain('Showing 2 of 36');
   });
 
   it('reads the owner filter from the URL', () => {
     const markup = render({ search: '?owner=fleet' });
     expect(markup).toContain(FleetSettingKeys.AlarmRedKm);
     expect(markup).not.toContain(SettingKeys.PasswordMinLength);
-    expect(markup).toContain('Showing 6 of 30');
+    expect(markup).toContain('Showing 12 of 36');
   });
 
   it('says so plainly when the filters match nothing', () => {

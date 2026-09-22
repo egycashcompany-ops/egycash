@@ -46,8 +46,8 @@ import {
   toBatchPayload,
   type DriverEntryCard,
 } from './lib/driver-violation-entry';
-import { toCsv, exportFilename } from './lib/violations-export';
-import { buildViolationsPrintHtml } from './lib/violations-print';
+import { buildFleetReportHtml, type ReportSignatories } from './lib/fleet-report-print';
+import { buildXlsx, sheetName, xlsxFilename } from './lib/fleet-xlsx';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const t = (key: string): string => translate('ar', key);
@@ -1186,8 +1186,38 @@ describe('loading, empty and error are each said differently', () => {
 });
 
 // ── 6 · what the two document buttons produce ───────────────────────────────
+//
+// «مكان الاكسيل والالpdf اعمل نفس دول بالظبط», against the four documents the owner sent back as
+// the spec. What leaves this screen is not a screenshot of a table: it is a company document that
+// goes up for signature and into a binder, and a workbook somebody adds a column up in.
 
-describe('print and CSV carry exactly what is on screen', () => {
+const SIGN: ReportSignatories = {
+  preparedByTitle: 'القائم بالأعمال',
+  preparedByName: 'م / محمد حسين محمد',
+  approvedByTitle: 'مدير إدارة الحركة',
+  approvedByName: 'عميد / إيهاب عبد السلام سليمان',
+  endorsementNote: 'يرجى المراجعة والتصديق على اجمالى المصروفات',
+  endorsedByName: 'لواء أ ح / جمال أحمد أبواسماعيل',
+};
+
+const report = (over: Partial<Parameters<typeof buildFleetReportHtml>[0]> = {}) =>
+  buildFleetReportHtml({
+    title: 'مخالفات تتحملهـا الشركــــة',
+    department: 'إدارة الـحــركـــة',
+    subtitle: '',
+    header: ['السنة', 'كود السيارة'],
+    rows: [
+      ['2026', '150'],
+      ['2026', '152'],
+    ],
+    totals: [{ label: 'إجمالى الشركة', value: '7344.40' }],
+    signatories: SIGN,
+    serialHeader: 'م',
+    emptyLabel: 'لا توجد بيانات',
+    ...over,
+  });
+
+describe('the printed report is a company document, not a screenshot', () => {
   it('offers both actions on both halves', () => {
     const markup = page();
     for (const half of ['company', 'driver']) {
@@ -1196,55 +1226,144 @@ describe('print and CSV carry exactly what is on screen', () => {
     }
   });
 
-  it('quotes a field that would otherwise split a column', () => {
-    const csv = toCsv(
-      ['a', 'b'],
-      [
-        ['plain', 'has,comma'],
-        ['has"quote', 'has\nnewline'],
-      ],
-    );
-    const lines = csv.split('\n');
-    expect(lines[0], 'BOM so Excel reads Arabic').toBe('﻿a,b');
-    expect(lines[1]).toBe('plain,"has,comma"');
-    expect(csv, 'a quote is doubled').toContain('"has""quote"');
+  it('opens with the letterhead — the logo, the company, the department', () => {
+    const html = report();
+    expect(html, 'the EGYCASH mark').toContain('data:image/png;base64');
+    expect(html).toContain('ايجى كاش للحلول النقدية');
+    expect(html).toContain('إدارة الـحــركـــة');
+    expect(html, 'and it reads right to left').toContain('dir="rtl"');
   });
 
-  it('names the file by what it is and the day it was taken', () => {
-    expect(exportFilename('driver-violations', '2026-09-06')).toBe(
-      'driver-violations-2026-09-06.csv',
-    );
+  it('numbers the rows down the page, generated rather than carried', () => {
+    // «م» exists so a reader signing the sheet can point at a line. It is not a row id: it counts
+    // the printed page, 1, 2, 3, and the same fine gets a different one after a re-sort.
+    const html = report();
+    expect(html).toContain('<th>م</th>');
+    expect(html).toContain('<td class="ser">1</td>');
+    expect(html).toContain('<td class="ser">2</td>');
+  });
+
+  it('carries the signature block it goes up for, in the order the form has it', () => {
+    const html = report();
+    for (const line of Object.values(SIGN)) expect(html, line).toContain(line);
+    // Three signature lines: prepared, approved, and the executive who endorses the totals.
+    expect((html.match(/التوقيع \//g) ?? []).length).toBe(3);
+    // «القائم بالأعمال» comes FIRST in the markup, which on an RTL page puts it on the right —
+    // where the sent form has it. Printed the other way round the two offices swap sides, and a
+    // document people sign by position is a document signed in the wrong box.
+    expect(html.indexOf(SIGN.preparedByTitle)).toBeLessThan(html.indexOf(SIGN.approvedByTitle));
+  });
+
+  it('carries the columns the FORM has, and no working ones the board keeps', () => {
+    // «انا ببعتلك الشكل عشان تعمل زى ما انا عاوز». «المحصل» on the drivers' board and «إجمالى
+    // السيارة قبل التظلم» on the company's are both working state — a reader watching a grievance
+    // being argued, or money coming in. Neither is on the sheet that goes up for signature.
+    const company = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const drivers = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
+    const headerOf = (source: string): string =>
+      source.slice(source.indexOf('const exportHeader = ['), source.indexOf('];', source.indexOf('const exportHeader = [')));
+    expect(headerOf(company), 'eight columns, as sent').not.toContain('totalBeforeGrievance');
+    expect(headerOf(drivers), 'five columns, as sent').not.toContain('violations.collected');
+  });
+
+  it('puts the drivers’ total INSIDE the table, where the signed copy has it', () => {
+    const html = report({
+      totals: [],
+      totalRow: { label: 'إجمالى السائقين', value: '2900.00' },
+    });
+    // Spanning every column but the last, so the figure lands in the money column it sums.
+    expect(html).toContain('<tr class="trow"><th colspan="2">إجمالى السائقين</th><td>2900.00</td>');
   });
 
   it('escapes the document rather than letting a name close a tag', () => {
-    const html = buildViolationsPrintHtml({
-      title: 'T',
-      subtitle: 'S',
-      header: ['<b>h</b>'],
-      rows: [['a & b']],
-      totals: [{ label: '"q"', value: '1' }],
-      rtl: true,
-    });
+    const html = report({ header: ['<b>h</b>'], rows: [['a & b']], totals: [{ label: '"q"', value: '1' }] });
     expect(html).toContain('&lt;b&gt;h&lt;/b&gt;');
     expect(html).toContain('a &amp; b');
     expect(html).toContain('&quot;q&quot;');
-    expect(html, 'right to left, because the board is').toContain('dir="rtl"');
   });
 
   it('prints an empty board as a result rather than a blank sheet', () => {
-    const html = buildViolationsPrintHtml({
-      title: 'T',
-      subtitle: 'S',
-      header: ['h'],
-      rows: [],
-      totals: [],
-      rtl: false,
-    });
+    const html = report({ rows: [] });
     expect(html).toContain('class="empty"');
     expect(html, 'no table headers over nothing').not.toContain('<tbody></tbody>');
+    expect(html, 'and it still goes up for signature').toContain(SIGN.approvedByName);
+  });
+
+  it('never names a signatory itself — they come from Fleet settings', () => {
+    // «في إعدادات الحركة». A name frozen in the template means a release every time somebody is
+    // promoted, and this is the test that notices one creeping back in.
+    const source = readFileSync(join(HERE, 'lib/fleet-report-print.ts'), 'utf8');
+    for (const line of Object.values(SIGN)) {
+      expect(source, `${line} is not in the template`).not.toContain(line);
+    }
   });
 });
 
+describe('the «Excel» button produces a real workbook', () => {
+  const book = (over: Partial<Parameters<typeof buildXlsx>[0]> = {}) =>
+    buildXlsx({
+      name: 'ملخص المخالفات',
+      serialHeader: 'م',
+      header: ['السنة', 'المبلغ'],
+      rows: [
+        [2026, 507.5],
+        [2026, 400],
+      ],
+      ...over,
+    });
+
+  it('is a ZIP holding the parts a workbook is made of', async () => {
+    // It was a CSV named «Excel» for a long time, which opens but carries no sheet name, no
+    // formatting and no second row of meaning. This is the real thing.
+    const bytes = new Uint8Array(await book().arrayBuffer());
+    expect([bytes[0], bytes[1]], 'PK — the ZIP signature').toEqual([0x50, 0x4b]);
+    const text = new TextDecoder().decode(bytes);
+    for (const part of [
+      '[Content_Types].xml',
+      '_rels/.rels',
+      'xl/workbook.xml',
+      'xl/_rels/workbook.xml.rels',
+      'xl/styles.xml',
+      'xl/worksheets/sheet1.xml',
+    ]) {
+      expect(text, part).toContain(part);
+    }
+  });
+
+  it('names the sheet in Arabic and reads it right to left', async () => {
+    const text = new TextDecoder().decode(new Uint8Array(await book().arrayBuffer()));
+    expect(text).toContain('name="ملخص المخالفات"');
+    expect(text, 'column A on the right, as the screen has it').toContain('rightToLeft="1"');
+  });
+
+  it('keeps a number a NUMBER, so the column adds up', async () => {
+    // The whole point of opening it in Excel. A money column exported as text is a column the
+    // spreadsheet will not sum, and a reader has to retype it.
+    const text = new TextDecoder().decode(new Uint8Array(await book().arrayBuffer()));
+    expect(text, 'the amount is a value').toContain('<v>507.5</v>');
+    expect(text, 'not text that looks like one').not.toContain('<t xml:space="preserve">507.5</t>');
+  });
+
+  it('numbers the rows and carries the total on the bottom line', async () => {
+    const text = new TextDecoder().decode(
+      new Uint8Array(await book({ totals: ['الإجمالى', 907.5] }).arrayBuffer()),
+    );
+    expect(text).toContain('<t xml:space="preserve">م</t>');
+    expect(text, 'the total is the last row').toContain('<v>907.5</v>');
+  });
+
+  it('cleans a sheet name Excel would refuse rather than handing over a broken file', () => {
+    // Excel rejects the WHOLE workbook over a sheet name — with a repair prompt that does not say
+    // which sheet — so the caller must not have to know the rule.
+    expect(sheetName('a/b:c*d?e[f]g')).toBe('a b c d e f g');
+    expect(sheetName('  ')).toBe('Sheet1');
+    expect(sheetName('x'.repeat(40))).toHaveLength(31);
+  });
+
+  it('names the file by what it is and the day it was taken', () => {
+    expect(xlsxFilename('مخالفات السائقين', '2026-09-22')).toBe('مخالفات السائقين-2026-09-22.xlsx');
+  });
+});
 
 // ── the car's own ledger ────────────────────────────────────────────────────
 //

@@ -2326,6 +2326,25 @@ export const FleetSettingKeys = {
    * has to work in dev, staging and production without a per-environment code change.
    */
   DefaultBranchName: 'fleet.vehicle.defaultBranchName',
+  /**
+   * THE SIGNATURE BLOCK every Fleet report is printed with — six lines, all admin-editable.
+   *
+   * A printed Fleet table is not a screenshot: it is a company document that goes up for signature
+   * and into a binder, so it carries who prepared it, who approves it and who endorses the totals.
+   * Those are PEOPLE, and people move — «في إعدادات الحركة» is where they belong, because the
+   * alternative is a code change and a release every time somebody is promoted.
+   *
+   * Titles are settings too, not literals beside them: «مدير إدارة الحركة» is an office whose name
+   * the company may restructure, and a title frozen in source beside an editable name would drift
+   * apart from it the first time that happened.
+   */
+  ReportPreparedByTitle: 'fleet.report.preparedByTitle',
+  ReportPreparedByName: 'fleet.report.preparedByName',
+  ReportApprovedByTitle: 'fleet.report.approvedByTitle',
+  ReportApprovedByName: 'fleet.report.approvedByName',
+  /** The line asking for endorsement, above the executive who gives it. */
+  ReportEndorsementNote: 'fleet.report.endorsementNote',
+  ReportEndorsedByName: 'fleet.report.endorsedByName',
 } as const;
 export type FleetSettingKey = (typeof FleetSettingKeys)[keyof typeof FleetSettingKeys];
 

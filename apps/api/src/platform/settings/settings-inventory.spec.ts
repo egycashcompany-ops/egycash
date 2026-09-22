@@ -85,18 +85,18 @@ afterEach(() => {
 });
 
 describe('the settings inventory the screen renders', () => {
-  it('declares thirty-three settings, and no key twice', () => {
+  it('declares forty settings, and no key twice', () => {
     registerAll();
     const keys = listSettingDeclarations().map((declaration) => declaration.key);
-    expect(keys).toHaveLength(34);
-    expect(new Set(keys).size).toBe(34);
+    expect(keys).toHaveLength(40);
+    expect(new Set(keys).size).toBe(40);
   });
 
   it('declares exactly the keys the contracts name — no more, no fewer', () => {
     registerAll();
     const declared = listSettingDeclarations().map((d) => d.key).sort();
     const expected = Object.values(EXPECTED).flat().sort();
-    expect(expected).toHaveLength(34);
+    expect(expected).toHaveLength(40);
     expect(declared).toEqual(expected);
   });
 
@@ -158,5 +158,59 @@ describe('the settings inventory the screen renders', () => {
         allowedScopes: ['organization'],
       }),
     ).toThrow(/duplicate setting declaration/);
+  });
+});
+
+describe('the signature block on a printed Fleet report', () => {
+  // «في إعدادات الحركة». A printed Fleet table goes up for signature and into a binder, so it names
+  // who prepared it, who approves it and who endorses the totals. Those are PEOPLE: freezing them
+  // in the print template would mean a release every time somebody was promoted, and this is the
+  // test that notices the six settings going missing.
+  const SIGNATORIES = [
+    FleetSettingKeys.ReportPreparedByTitle,
+    FleetSettingKeys.ReportPreparedByName,
+    FleetSettingKeys.ReportApprovedByTitle,
+    FleetSettingKeys.ReportApprovedByName,
+    FleetSettingKeys.ReportEndorsementNote,
+    FleetSettingKeys.ReportEndorsedByName,
+  ];
+
+  it('is six editable lines, every one of them declared', () => {
+    registerFleetSettings();
+    const declared = new Set(listSettingDeclarations().map((d) => d.key));
+    for (const key of SIGNATORIES) expect(declared.has(key), key).toBe(true);
+  });
+
+  it('ships the real names as DEFAULTS, so a fresh install prints a complete document', () => {
+    registerFleetSettings();
+    const byKey = new Map(listSettingDeclarations().map((d) => [d.key, d]));
+    expect(byKey.get(FleetSettingKeys.ReportPreparedByTitle)?.defaultValue).toBe('القائم بالأعمال');
+    expect(byKey.get(FleetSettingKeys.ReportApprovedByTitle)?.defaultValue).toBe('مدير إدارة الحركة');
+    expect(byKey.get(FleetSettingKeys.ReportEndorsementNote)?.defaultValue).toBe(
+      'يرجى المراجعة والتصديق على اجمالى المصروفات',
+    );
+    for (const key of SIGNATORIES) {
+      expect(String(byKey.get(key)?.defaultValue ?? ''), `${key} has a real default`).not.toBe('');
+    }
+  });
+
+  it('refuses an empty line rather than printing a blank office over a signature', () => {
+    registerFleetSettings();
+    const byKey = new Map(listSettingDeclarations().map((d) => [d.key, d]));
+    for (const key of SIGNATORIES) {
+      const schema = byKey.get(key)?.schema;
+      expect(schema?.safeParse('').success, `${key} refuses empty`).toBe(false);
+      // Long enough for a rank, a name, an office and the company on one line.
+      expect(schema?.safeParse('x'.repeat(160)).success, `${key} takes a full line`).toBe(true);
+      expect(schema?.safeParse('x'.repeat(161)).success, `${key} is bounded`).toBe(false);
+    }
+  });
+
+  it('is an ORGANIZATION setting — one document for the whole company, not one per branch', () => {
+    registerFleetSettings();
+    const byKey = new Map(listSettingDeclarations().map((d) => [d.key, d]));
+    for (const key of SIGNATORIES) {
+      expect(byKey.get(key)?.allowedScopes, key).toEqual(['organization']);
+    }
   });
 });

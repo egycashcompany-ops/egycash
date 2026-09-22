@@ -53,4 +53,53 @@ export const registerFleetSettings = (): void => {
     defaultValue: 'المهندسين',
     allowedScopes: ['organization'],
   });
+
+  // ── The signature block on every printed Fleet report ─────────────────────
+  //
+  // A printed table is a company document: it goes up for signature and into a binder, so it
+  // names who prepared it, who approves it and who endorses the totals. These are PEOPLE — they
+  // are promoted and they move — so they are settings rather than literals in a print template,
+  // which would mean a code change and a release every time one of them changed.
+  //
+  // Bounded at 160 characters because the endorsement line carries a rank, a name, an office and
+  // the company, and it still has to print on one line.
+  const signatory = (key: string, description: string, defaultValue: string): void =>
+    declareSetting({
+      key,
+      description,
+      schema: z.string().trim().min(1).max(160),
+      defaultValue,
+      allowedScopes: ['organization'],
+    });
+
+  signatory(
+    FleetSettingKeys.ReportPreparedByTitle,
+    'Printed Fleet reports — the office that prepared the report',
+    'القائم بالأعمال',
+  );
+  signatory(
+    FleetSettingKeys.ReportPreparedByName,
+    'Printed Fleet reports — the person who prepared the report',
+    'م / محمد حسين محمد',
+  );
+  signatory(
+    FleetSettingKeys.ReportApprovedByTitle,
+    'Printed Fleet reports — the office that approves the report',
+    'مدير إدارة الحركة',
+  );
+  signatory(
+    FleetSettingKeys.ReportApprovedByName,
+    'Printed Fleet reports — the person who approves the report',
+    'عميد / إيهاب عبد السلام سليمان',
+  );
+  signatory(
+    FleetSettingKeys.ReportEndorsementNote,
+    'Printed Fleet reports — the line asking for the totals to be endorsed',
+    'يرجى المراجعة والتصديق على اجمالى المصروفات',
+  );
+  signatory(
+    FleetSettingKeys.ReportEndorsedByName,
+    'Printed Fleet reports — the executive who endorses the totals',
+    'لواء أ ح / جمال أحمد أبواسماعيل - المدير العام التنفيذى - شركة ايجى كاش للحلول النقدية',
+  );
 };

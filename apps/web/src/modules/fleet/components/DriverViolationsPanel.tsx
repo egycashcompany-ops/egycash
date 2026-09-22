@@ -53,7 +53,7 @@ import { violationTypeColour } from '../lib/violation-type-colour';
 import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
-import { DriverName } from './EmployeeName';
+import { DriverName, useEmployeeRecords } from './EmployeeName';
 import {
   cardLabel,
   entryCards,
@@ -64,8 +64,9 @@ import {
   type DriverEntryCard,
   type DriverEntryType,
 } from '../lib/driver-violation-entry';
-import { toCsv, exportFilename } from '../lib/violations-export';
-import { printViolations } from '../lib/violations-print';
+import { buildXlsx, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { useReportSignatories } from '../lib/use-report-signatories';
+import { printFleetReport } from '../lib/fleet-report-print';
 
 // The filter bar's rhythm, shared by all four fields — see `FilterField` for why the name sits
 // above the control and why every control is the same width.
@@ -146,6 +147,7 @@ export const DriverViolationsPanel = ({
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const signatories = useReportSignatories();
   const mayRecord = can('fleetViolation.record');
   const mayCollect = can('fleetViolation.collect');
   const mayEdit = can('fleetViolation.edit');
@@ -511,45 +513,89 @@ export const DriverViolationsPanel = ({
       : []),
   ];
 
+  // THE COLUMNS THE FORM HAS, and no others. The document the owner signs carries the date, the
+  // car, the driver, the type and the money — «المحصل» is a working state on the board, not a line
+  // on a report that goes into a binder, and a column the form does not have does not belong here.
   const exportHeader = [
     t('fleet.violations.fields.date'),
     t('fleet.odometer.columns.vehicle'),
     t('fleet.violations.fields.driver'),
     t('fleet.violations.fields.type'),
     t('fleet.violations.fields.amount'),
-    t('fleet.violations.collected'),
   ];
+  /**
+   * THE DRIVER'S NAME, not their id. The board draws it through `DriverName`, which resolves each
+   * employee on its own; a document does not have that option, so the whole page is resolved at
+   * once. `useEmployeeRecords` shares the SAME cache keys those cells already filled, so this
+   * subscribes to requests the panel has paid for and sends nothing extra.
+   *
+   * A row kept from the old book has no employee and carries the name as the book wrote it; the
+   * fallback order here is the one `DriverName` itself uses, so the sheet and the screen agree.
+   */
+  const people = useEmployeeRecords(
+    rows.map((row) => row.driverEmployeeId).filter((id): id is string => id !== null),
+  );
+  const driverOf = (row: FleetViolationDto): string =>
+    (row.driverEmployeeId === null ? undefined : people.get(row.driverEmployeeId)?.personal.fullNameAr) ??
+    row.driverName ??
+    '';
+
   const exportRows = (): string[][] =>
     rows.map((row) => [
       row.date === null ? '' : row.date.slice(0, 10),
       row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? '')),
-      row.driverEmployeeId ?? row.driverName ?? '',
+      driverOf(row),
       typeName.get(row.violationTypeId) ?? '',
       String(row.amount),
-      row.collected ? t('common.yes') : t('common.no'),
+    ]);
+
+  /**
+   * The same rows, TYPED — the amount is a number, so the column adds up in Excel. Exporting
+   * «200.00» as text hands the reader a column the spreadsheet will not sum, which is the one
+   * thing they opened it for.
+   */
+  const sheetRows = (): XlsxCell[][] =>
+    rows.map((row) => [
+      row.date === null ? '' : row.date.slice(0, 10),
+      row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? '')),
+      driverOf(row),
+      typeName.get(row.violationTypeId) ?? '',
+      row.amount,
     ]);
 
   const onExport = (): void => {
-    const blob = new Blob([toCsv(exportHeader, exportRows())], {
-      type: 'text/csv;charset=utf-8',
+    const blob = buildXlsx({
+      name: t('fleet.violations.report.driverSheet'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: exportHeader,
+      rows: sheetRows(),
+      // The total sits under «المبلغ», where the column it sums is.
+      totals: ['', '', t('fleet.violations.report.grandTotal'), '', pageTotal],
     });
-    saveBlob(blob, exportFilename('driver-violations', new Date().toISOString().slice(0, 10)));
+    saveBlob(
+      blob,
+      xlsxFilename(t('fleet.violations.report.driverSheet'), new Date().toISOString().slice(0, 10)),
+    );
   };
   const onPrint = (): void => {
     try {
-      printViolations({
+      printFleetReport({
         title: t('fleet.violations.driverTitle'),
+        department: t('fleet.violations.report.department'),
         subtitle:
           vehicleCodes.length === 0 ? t('fleet.violations.allVehicles') : vehicleCodes.join(', '),
         header: exportHeader,
         rows: exportRows(),
-        totals: [
-          {
-            label: t('fleet.violations.lines.drivers'),
-            value: formatMoney(pageTotal, 'EGP', locale),
-          },
-        ],
-        rtl: locale === 'ar',
+        // The drivers' sheet carries its total INSIDE the table, on the last line — which is where
+        // the signed copies put it, and where the workbook puts it too.
+        totals: [],
+        totalRow: {
+          label: t('fleet.violations.lines.drivers'),
+          value: formatMoney(pageTotal, 'EGP', locale),
+        },
+        signatories,
+        serialHeader: t('fleet.violations.report.serial'),
+        emptyLabel: t('fleet.violations.report.empty'),
       });
     } catch {
       toast.error(t('fleet.violations.popupBlocked'));

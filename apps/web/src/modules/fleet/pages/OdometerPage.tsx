@@ -46,7 +46,16 @@ import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['alerts', 'drv', 'from', 'to', 'vehicleCodes', 'size', 'sort'] as const;
+const REMEMBERED_FILTERS = [
+  'alerts',
+  'drv',
+  'from',
+  'to',
+  'vehicleCodes',
+  'notes',
+  'size',
+  'sort',
+] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -78,6 +87,7 @@ export const OdometerPage = (): JSX.Element => {
   // `drv` is the drivers screen's own parameter name, so a filtered link reads the same on both.
   const drivers = (sp.get('drv') ?? '').split(',').filter((id) => id !== '');
   const alerts = (sp.get('alerts') ?? '').split(',').filter((a) => a !== '');
+  const notes = sp.get('notes') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   /**
@@ -106,7 +116,11 @@ export const OdometerPage = (): JSX.Element => {
   // The defaulted month is not an "active filter": it is where the page starts, so the reset
   // affordance stays off until the reader has actually narrowed something.
   const hasActiveFilters =
-    vehicleCodes.length > 0 || !range.defaulted || drivers.length > 0 || alerts.length > 0;
+    vehicleCodes.length > 0 ||
+    !range.defaulted ||
+    drivers.length > 0 ||
+    alerts.length > 0 ||
+    notes !== '';
 
   // NO HR SEARCH STEP ANY MORE.
   //
@@ -129,6 +143,7 @@ export const OdometerPage = (): JSX.Element => {
       to: to || undefined,
       alerts: alerts.length > 0 ? alerts : undefined,
       driverEmployeeIds: drivers.length > 0 ? drivers : undefined,
+      notes: notes || undefined,
     }),
     [paramsKey],
   );
@@ -389,7 +404,14 @@ export const OdometerPage = (): JSX.Element => {
           singleRowFrom={1440}
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
-            patch({ vehicleCodes: null, from: null, to: null, drv: null, alerts: null })
+            patch({
+              vehicleCodes: null,
+              from: null,
+              to: null,
+              drv: null,
+              alerts: null,
+              notes: null,
+            })
           }
           // How many readings the filter matched, over the WHOLE set — `totalItems`, not the
           // page's length, so turning a page never moves it.
@@ -479,6 +501,20 @@ export const OdometerPage = (): JSX.Element => {
             value={alerts}
             onChange={(next) => patch({ alerts: next.length === 0 ? null : next.join(',') })}
           />
+          {/* THE NOTE, SEARCHED — «خلى في انبوت يسمح ان ابحث بالملاحظات». The register already
+              SHOWS «ملاحظات» as a column, and a column a reader can see but not search is one
+              they scroll past; this log runs to thousands of rows. Unlike the controls before it
+              this one takes a SHARE of whatever the row has left rather than a fixed width, so
+              adding it cannot push the bar off the page. */}
+          <div className="min-w-[8rem] flex-1">
+            <Input
+              aria-label={t('fleet.odometer.columns.notes')}
+              placeholder={t('fleet.maintenance.notesFilter')}
+              value={notes}
+              onChange={(e) => patch({ notes: e.target.value || null })}
+              textScale="comfortable"
+            />
+          </div>
         </FilterBar>
 
         <DataTable

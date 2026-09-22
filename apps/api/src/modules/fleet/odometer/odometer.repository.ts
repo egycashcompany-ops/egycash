@@ -479,6 +479,8 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
      */
     vehicleCodes?: readonly string[] | undefined;
     driverEmployeeIds?: readonly string[] | undefined;
+    /** Part of the reading's own note. */
+    notes?: string | undefined;
     from?: Date | undefined;
     to?: Date | undefined;
   }): FilterQuery<FleetOdometerLogDoc> {
@@ -496,6 +498,13 @@ class FleetOdometerRepository extends BaseRepository<FleetOdometerLogDoc> {
       clauses.push({
         $or: [{ driver1EmployeeId: { $in: ids } }, { driver2EmployeeId: { $in: ids } }],
       });
+    }
+    // ESCAPED, so `.` and `*` are the characters the reader typed rather than a pattern they did
+    // not write — a search box is not a regex console, and an unescaped `.*` would match every
+    // row in the register. A reading with no note simply does not match: `null` is not a
+    // substring. The same matching the accidents file and the workshop visit already use.
+    if (query.notes !== undefined) {
+      clauses.push({ notes: new RegExp(query.notes.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') });
     }
     if (query.from !== undefined) clauses.push({ date: { $gte: query.from } });
     if (query.to !== undefined) {

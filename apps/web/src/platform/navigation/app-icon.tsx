@@ -6,6 +6,7 @@ import {
   AlertIcon,
   BadgeIcon,
   BellIcon,
+  CloseIcon,
   BriefcaseIcon,
   BuildingIcon,
   CalendarIcon,
@@ -23,6 +24,7 @@ import {
   LinkIcon,
   MonitorIcon,
   OfferIcon,
+  PinIcon,
   QrIcon,
   ShieldIcon,
   SitemapIcon,
@@ -64,6 +66,13 @@ const REGISTRY: Record<string, NavIcon> = {
   settings: CogIcon,
   alert: AlertIcon,
   shield: ShieldIcon,
+  // الطقم الثابت — the crew PINNED to a car, as against the day-by-day board beside it. Registered
+  // with the row that names it: an unregistered name falls back to the neutral glyph silently,
+  // which reads as a design choice rather than a missing entry.
+  pin: PinIcon,
+  // مخالفات السيارات — «خلى شاشة المخالفات x». The cross is what a mark against a car IS, and it
+  // is the one glyph in the rail nobody has to be taught.
+  x: CloseIcon,
   // Department (category) tiles — categories resolve through this same registry.
   briefcase: BriefcaseIcon,
   monitor: MonitorIcon,

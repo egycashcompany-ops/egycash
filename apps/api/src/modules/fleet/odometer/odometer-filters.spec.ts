@@ -83,3 +83,43 @@ describe('the odometer list filter', () => {
     expect(clauses(filter)).toHaveLength(4);
   });
 });
+
+describe('the note search — «خلى في انبوت يسمح ان ابحث بالملاحظات»', () => {
+  // «ملاحظات» is already a COLUMN on this register, which is where the things the screen has no
+  // field for end up: why the counter jumped, which trip it was, who took the car out without
+  // signing. A column a reader can see but not search is one they scroll past — and the answer
+  // has to come from the SERVER, because the table holds one page and the note that would find
+  // the reading is usually on a page nobody is looking at.
+  const noteRx = (notes: string): RegExp => {
+    const filter = fleetOdometerRepository.logFilter({ notes });
+    return clauses(filter).map((c) => c['notes']).find((c) => c !== undefined) as RegExp;
+  };
+
+  it('matches part of the note, case-insensitively', () => {
+    const rx = noteRx('ورشة');
+    expect(rx).toBeInstanceOf(RegExp);
+    expect(rx.flags).toContain('i');
+    expect(rx.test('راح ورشة الجيزة وهو راجع')).toBe(true);
+    expect(rx.test('العداد اتغير')).toBe(false);
+  });
+
+  it('ESCAPES what the reader typed — a search box is not a regex console', () => {
+    const rx = noteRx('a.*b');
+    expect(rx.test('a.*b'), 'the literal text still matches itself').toBe(true);
+    expect(rx.test('axxxb'), 'but it is not a wildcard').toBe(false);
+    expect(rx.source).toBe('a\\.\\*b');
+  });
+
+  it('is its OWN clause — it narrows beside the other filters, never instead of one', () => {
+    const filter = fleetOdometerRepository.logFilter({
+      notes: 'ورشة',
+      vehicleIds: [oid(1)],
+      driverEmployeeIds: [oid(7)],
+    });
+    expect(clauses(filter)).toHaveLength(3);
+  });
+
+  it('is absent entirely when nothing was typed, so an empty box is not a filter', () => {
+    expect(fleetOdometerRepository.logFilter({})).toEqual({});
+  });
+});

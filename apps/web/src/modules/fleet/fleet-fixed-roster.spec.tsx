@@ -28,6 +28,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
+import { resolveNavIcon } from '../../platform/navigation/app-icon';
 import { FixedRosterPage } from './pages/FixedRosterPage';
 import { applyEdit, changedRows } from './lib/fixed-roster-board';
 
@@ -740,7 +741,19 @@ describe('navigation', () => {
     expect(at, 'the row exists').toBeGreaterThan(-1);
     const row = NAV.slice(NAV.lastIndexOf('{', at), NAV.indexOf('}', at));
     expect(row).toContain("ar: 'الطقم الثابت'");
-    expect(row, 'an icon the registry knows').toMatch(/icon: '(users|clipboard|truck)'/);
+    // AN ICON THIS CLIENT CAN DRAW — asked of the registry itself rather than of a list of names
+    // somebody wrote down once. A name nobody registered does not fail: it falls back silently,
+    // and the row renders the neutral page glyph as though that had been chosen.
+    const name = /(?<!previous)[Ii]con: '([a-z]+)'/.exec(row)?.[1] ?? '';
+    const SENTINEL = (() => null) as unknown as ReturnType<typeof resolveNavIcon>;
+    expect(resolveNavIcon(name, SENTINEL), `icon '${name}'`).not.toBe(SENTINEL);
+    // …and NOT the drivers' glyph. This row wore `users` beside السائقون, which told a reader at
+    // a glance that the two screens held the same thing. `pin` is the distinction: this crew is
+    // fixed to its car, where the board above it is planned a day at a time.
+    const driversAt = NAV.indexOf("route: '/fleet/drivers'");
+    const driversRow = NAV.slice(NAV.lastIndexOf('{', driversAt), NAV.indexOf('}', driversAt));
+    expect(driversRow, 'the drivers row still has its own').toContain("icon: 'users'");
+    expect(name, 'and this one does not share it').not.toBe('users');
   });
 
   it('reuses the roster grant rather than inventing a permission', () => {

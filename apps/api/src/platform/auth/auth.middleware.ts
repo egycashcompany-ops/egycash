@@ -10,7 +10,7 @@ import { type AuthContext, touchedBranches } from '../../shared/types';
 import { setActor } from '../../infrastructure/http/request-context';
 import { auditService } from '../audit';
 import { authService } from './auth.service';
-import { ACTIVE_BRANCH_HEADER, resolveActiveBranches, singleActiveBranch } from './active-branch';
+import { ACTIVE_BRANCH_HEADER, resolveActiveBranch } from './active-branch';
 import { externalMayReach } from './external-surfaces';
 
 interface AuthedRequest extends Request {
@@ -43,14 +43,10 @@ export const authenticate: RequestHandler = (
       // application answers the same question the switcher is asking; `scopeSelector` applies it,
       // and can only ever narrow an organization-wide grant.
       const active = req.headers[ACTIVE_BRANCH_HEADER];
-      const chosen = await resolveActiveBranches(
+      ctx.activeBranchId = await resolveActiveBranch(
         typeof active === 'string' ? active : undefined,
         touchedBranches(ctx.reach),
       );
-      ctx.activeBranchIds = chosen;
-      // Null the moment the selection names more than one: this field answers «where does a NEW
-      // document belong», and a caller comparing three sites has not answered it.
-      ctx.activeBranchId = singleActiveBranch(chosen);
       (req as AuthedRequest).authContext = ctx;
       setActor({
         userId: ctx.userId,

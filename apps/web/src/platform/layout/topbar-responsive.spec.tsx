@@ -38,13 +38,8 @@ const me: MeDto = {
   branchId: null,
   branchIds: [],
   employeeId: null,
+  permissions: {},
   // Whole-company, so the branch switcher renders — the widest the bar ever gets.
-  //
-  // Stated as a GRANT rather than as a placement, because that is what the switcher reads and what
-  // the server reads: `scopeSelector` narrows an `organization` grant to whatever branch the header
-  // names, whoever holds it and wherever they sit. An account that merely has no branch on its
-  // record is not thereby company-wide.
-  permissions: { 'employee.view': 'organization' },
   isPrivileged: true,
   flags: {},
   totpEnabled: false,

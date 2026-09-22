@@ -18,6 +18,8 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Input } from '../../../shared/ui/form';
+import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -64,7 +66,7 @@ type Paper = (typeof PAPERS)[number];
  * afternoon, and retyping the same narrowing after every trip to another screen is the complaint
  * `useRememberedFilters` exists to answer. No `page` — this board has none.
  */
-const REMEMBERED_FILTERS = ['code', 'plate', 'chassis', 'ins', 'tax'] as const;
+const REMEMBERED_FILTERS = ['vehicleCodes', 'plate', 'chassis', 'ins', 'tax'] as const;
 
 /** A text filter, matched the way the registry's own boxes match: contains, case-insensitively. */
 const contains = (haystack: string, needle: string): boolean =>
@@ -127,7 +129,7 @@ export const LicensingPage = (): JSX.Element => {
   const mark = useSetLicensingMark();
   const mayMark = can('fleetLicensing.mark');
 
-  const code = sp.get('code') ?? '';
+  const vehicleCodes = readList(sp, 'vehicleCodes');
   const plate = sp.get('plate') ?? '';
   const chassis = sp.get('chassis') ?? '';
   const insurance = readList(sp, 'ins');
@@ -145,9 +147,13 @@ export const LicensingPage = (): JSX.Element => {
   // params THIS render was given, so the last write would put the others back — the defect the
   // violations screen's own `onClear` carries a comment about.
   const clearFilters = (): void =>
-    patch({ code: null, plate: null, chassis: null, ins: null, tax: null });
+    patch({ vehicleCodes: null, plate: null, chassis: null, ins: null, tax: null });
   const hasFilters =
-    code !== '' || plate !== '' || chassis !== '' || insurance.length > 0 || tax.length > 0;
+    vehicleCodes.length > 0 ||
+    plate !== '' ||
+    chassis !== '' ||
+    insurance.length > 0 ||
+    tax.length > 0;
 
   const all = board.data ?? [];
   /**
@@ -162,14 +168,24 @@ export const LicensingPage = (): JSX.Element => {
     () =>
       all.filter(
         (row) =>
-          contains(row.code, code) &&
+          (vehicleCodes.length === 0 || vehicleCodes.includes(row.code)) &&
           contains(row.plateNumber, plate) &&
           contains(row.chassisNumber, chassis) &&
           matchesPaper(row, PAPERS[0], insurance) &&
           matchesPaper(row, PAPERS[1], tax),
       ),
-    [all, code, plate, chassis, insurance.join(','), tax.join(',')],
+    [all, vehicleCodes.join(','), plate, chassis, insurance.join(','), tax.join(',')],
   );
+
+  /**
+   * The cars the picker offers — THIS BOARD's, not the registry's.
+   *
+   * «عاوز ينزل العربيات زى شاشة المخالفات»: the same dropdown the violations screen uses, fed from
+   * the rows already in hand the way the alarms board feeds it. Offering the whole registry here
+   * would list every «برقاش م» car in the fleet — cars this screen can never show — so picking one
+   * would empty the board with nothing to say why.
+   */
+  const carOptions = useMemo(() => boardVehicleOptions(all, vehicleCodes), [all, vehicleCodes.join(',')]);
 
   const stepOptions = [
     { value: 'handover', label: t('fleet.licensing.columns.handover') },
@@ -249,13 +265,18 @@ export const LicensingPage = (): JSX.Element => {
           </span>
         }
       >
-        <div className="min-w-[8rem] flex-1">
-          <Input
-            aria-label={t('fleet.licensing.columns.vehicle')}
+        {/* PICKED, not typed — the control every other Fleet screen asks «which cars?» with. It
+            also takes codes pasted out of a message («150 - 151»), which the box it replaces could
+            not: that one matched a substring, so `15` quietly meant 150 AND 151 AND 215. */}
+        <div className="w-44 shrink-0">
+          <VehicleCodeFilter
+            options={carOptions}
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: writeList(next) })}
             placeholder={t('fleet.licensing.columns.vehicle')}
-            value={code}
-            onChange={(e) => patch({ code: e.target.value || null })}
-            textScale="comfortable"
+            density="tight"
+            fullWidth
+            className="w-full"
           />
         </div>
         <div className="min-w-[8rem] flex-1">

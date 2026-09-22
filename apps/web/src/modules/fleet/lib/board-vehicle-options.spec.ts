@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { alarmVehicleOptions } from './alarm-vehicle-options';
+import { boardVehicleOptions } from './board-vehicle-options';
 
 const v = (code: string) => ({ code });
-const values = (...args: Parameters<typeof alarmVehicleOptions>): string[] =>
-  alarmVehicleOptions(...args).map((o) => o.value);
+const values = (...args: Parameters<typeof boardVehicleOptions>): string[] =>
+  boardVehicleOptions(...args).map((o) => o.value);
 
-describe('alarmVehicleOptions', () => {
+describe('boardVehicleOptions', () => {
   it('offers every car the board reports, labelled by its code', () => {
-    expect(alarmVehicleOptions([v('150'), v('151')], [])).toEqual([
+    expect(boardVehicleOptions([v('150'), v('151')], [])).toEqual([
       { value: '150', label: '150' },
       { value: '151', label: '151' },
     ]);
@@ -57,7 +57,7 @@ describe('alarmVehicleOptions', () => {
   });
 
   it('offers nothing when there is nothing to offer', () => {
-    expect(alarmVehicleOptions([], [])).toEqual([]);
+    expect(boardVehicleOptions([], [])).toEqual([]);
   });
 
   it('offers a repeated URL code once', () => {

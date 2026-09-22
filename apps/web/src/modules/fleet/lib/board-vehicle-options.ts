@@ -1,8 +1,9 @@
-// Turning the alarms BOARD into the options its car picker offers.
+// Turning a BOARD that arrives whole into the options its car picker offers.
 //
-// The board is the whole fleet in one answer, so unlike the registry picker next door this one
-// needs no search endpoint behind it — the codes are already here, and the component searches
-// them locally. What it does need is the rule below, and the rule is the reason this file exists
+// Two screens are in this shape — the maintenance alarms and the licensing board — and both differ
+// from every other car picker in the same way: the answer is not a page of a registry that
+// outgrows any page, it is the complete list, already here. So there is no search endpoint behind
+// the control and the component searches the codes locally. What it does need is the rule below, and the rule is the reason this file exists
 // rather than living inline: a closed dropdown renders no options at all, so an inline version is
 // a guarantee no node-env test can reach.
 //
@@ -13,7 +14,7 @@
 // always has a row waiting for it when the search is cleared.
 import { type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 
-export interface AlarmVehicle {
+export interface BoardVehicle {
   code: string;
 }
 
@@ -23,8 +24,8 @@ export interface AlarmVehicle {
  * Order puts the selection first so the things you can turn OFF are never below a scroll, and the
  * codes sort `9 < 150 < 1500` rather than as text.
  */
-export const alarmVehicleOptions = (
-  board: readonly AlarmVehicle[],
+export const boardVehicleOptions = (
+  board: readonly BoardVehicle[],
   selected: readonly string[],
 ): MultiSelectOption[] => {
   const onBoard = [...new Set(board.map((vehicle) => vehicle.code))].sort((a, b) =>

@@ -737,6 +737,21 @@ export const CompanyViolationsPanel = ({
           />
         </FilterField>
         <FilterField
+          label={t('fleet.vehicles.fields.code')}
+          active={vehicleCodes.length > 0}
+          className={CELL}
+          density={TIGHT}
+        >
+          <VehicleCodeFilter
+            value={vehicleCodes}
+            onChange={onVehicleCodesChange}
+            placeholder={t('common.filters.all')}
+            density={TIGHT}
+            fullWidth
+            className="w-full"
+          />
+        </FilterField>
+        <FilterField
           label={t('fleet.violations.columns.settledState')}
           active={settled !== ''}
           className={CELL}
@@ -753,21 +768,6 @@ export const CompanyViolationsPanel = ({
             <option value="true">{t('fleet.violations.settled')}</option>
             <option value="false">{t('fleet.violations.outstanding')}</option>
           </Select>
-        </FilterField>
-        <FilterField
-          label={t('fleet.vehicles.fields.code')}
-          active={vehicleCodes.length > 0}
-          className={CELL}
-          density={TIGHT}
-        >
-          <VehicleCodeFilter
-            value={vehicleCodes}
-            onChange={onVehicleCodesChange}
-            placeholder={t('common.filters.all')}
-            density={TIGHT}
-            fullWidth
-            className="w-full"
-          />
         </FilterField>
       </FilterBar>
 

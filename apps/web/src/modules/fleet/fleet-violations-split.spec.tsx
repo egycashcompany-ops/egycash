@@ -615,6 +615,24 @@ describe('the eight reported defects, as rules the markup carries', () => {
     }
   });
 
+  it('the company bar reads السنة · كود السيارة · الحالة, in that order', () => {
+    // «بدل ما السنه الحاله كود السيارة يبقى السنه كود السيارة الحاله». The car sits between the
+    // year and the state because that is the order the question is asked in: which year, which
+    // car, and only then what has been settled about it — and the state is the one of the three a
+    // reader changes while looking at the board rather than before.
+    //
+    // Scoped to the COMPANY half: the drivers' bar beside it names its own car filter too, and an
+    // unscoped search would find whichever came first in the document.
+    const markup = page();
+    const half = markup.slice(0, markup.indexOf('data-driver-form='));
+    const order = [...half.matchAll(/data-filter-field="([^"]+)"/g)].map((m) => m[1] as string);
+    expect(order.slice(0, 3)).toEqual([
+      translate('ar', 'fleet.violations.fields.year'),
+      translate('ar', 'fleet.vehicles.fields.code'),
+      translate('ar', 'fleet.violations.columns.settledState'),
+    ]);
+  });
+
   it('every violation type wears a DIFFERENT colour, on the counter and on the card', () => {
     // «كل مخالفة بباك جراوند مختلف». Two things had to be true and neither was: the counters were
     // handed their colour as a `className`, where the control's own `bg-white` beat it, so they

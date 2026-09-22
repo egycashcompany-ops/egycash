@@ -6328,10 +6328,12 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
 
       const fines = await finesOf(v.id);
       expect(fines).toHaveLength(2);
-      expect(
-        fines.map((f) => f['collected']),
-        'the 2026 fine went with the tick; the 2025 one is another year’s business',
-      ).toEqual([true, false]);
+      // BY DATE, not by position: the list's order is the board's and is not this rule's business,
+      // and a test that reads it positionally fails on a sort change while saying nothing true.
+      const collectedOn = (day: string): unknown =>
+        fines.find((f) => String(f['date']).startsWith(day))?.['collected'];
+      expect(collectedOn('2026-03-01'), 'the 2026 fine went with the tick').toBe(true);
+      expect(collectedOn('2025-11-20'), 'and the 2025 one is another year’s business').toBe(false);
 
       // …and the board reads the car's 2026 block as settled, both halves of it.
       const [year2026] = await rollupOf({ year: 2026, vehicleId: v.id });

@@ -185,9 +185,6 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'platform.file': { permission: 'file.view' },
   'platform.fileCategory': { permission: 'fileCategory.manage' },
   'platform.approvalWorkflow': { permission: 'approval.configure' },
-  // A rename touches every role under one heading at once, and the roles screen is where that has
-  // to land — so it rides the same permission the roles list is gated on.
-  'platform.roleGroup': { permission: 'role.view' },
   'platform.auditLog': { permission: 'auditLog.view' },
   'platform.activityLog': { permission: 'activityLog.view' },
 };

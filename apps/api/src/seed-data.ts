@@ -49,14 +49,9 @@ export const seedDevData = async (): Promise<{ adminId: string; hrId: string }> 
   // and widened it — every module screen 403ing in between, on the one account that is supposed to
   // be able to open everything. Reading the registry instead closes that window: the seed grants
   // what boot just registered, which is the same set the sync would converge on anyway.
-  // «Creator» is the owner's own word for this tier, and the rename matters because the system had
-  // borrowed the OTHER one: to him a «Super Admin» heads one department across every branch, while
-  // this role holds the whole registry company-wide. Two tiers sharing a name on a screen about
-  // authority is a screen that misinforms. The KEY stays `super-admin` — assignments, the HR-only
-  // policy and the boot sync all resolve by key, and renaming it would orphan every one of them.
   const superAdminRole = await rbacService.ensureSystemRole(
     'super-admin',
-    { en: 'Creator', ar: 'Creator' },
+    { en: 'Super Admin', ar: 'مدير النظام الأعلى' },
     rbacService.registeredPermissionKeys(),
   );
   const platformAdminRole = await rbacService.ensureSystemRole(

@@ -35,8 +35,6 @@ describe('System Administration routes', () => {
       [
         'users',
         'roles',
-        'new',
-        ':id/edit',
         'permissions',
         'approvals',
         'settings',
@@ -63,23 +61,11 @@ describe('System Administration routes', () => {
     }
   });
 
-  // The role form moved out of a dialog and onto its own route, because three hundred and forty-nine
-  // permissions do not fit in a modal — and the rule this test carried moved WITH it rather than
-  // being dropped. The objection was never «a form must not be routed»; it was that a route is
-  // reachable by URL with nothing linking to it, so it needs a guard of its own. It has one.
-  //
-  // Accounts still have no form route, and this keeps them that way: relaxing the guard for roles
-  // is the work, and nothing was relaxed ahead of work that has not happened.
-  it('guards every form route it declares, and routes no account form', () => {
-    for (const path of ['users/new', 'users/:id/edit']) {
+  // Roles are created and edited in a dialog, accounts likewise. A form ROUTE would be reachable by
+  // URL even with nothing linking to it, and would need its own guard.
+  it('routes no create or edit form', () => {
+    for (const path of ['new', ':id/edit', 'users/new', 'roles/new']) {
       expect(paths, `${path} is not routed`).not.toContain(path);
-    }
-    for (const [path, permission] of [
-      ['new', 'role.create'],
-      [':id/edit', 'role.edit'],
-    ]) {
-      const block = new RegExp(`path="${path}"[\\s\\S]{0,200}?permission="([^"]+)"`).exec(ROUTES);
-      expect(block?.[1], `${path} is routed without its own guard`).toBe(permission);
     }
   });
 

@@ -1162,10 +1162,14 @@ class EmployeeService {
     const employee = await employeeRepository.findByUserIdSystem(userId);
     if (employee === null) return null;
     const employeeId = String(employee._id);
+    // `by: null`, not a 'system' sentinel: `updateById` casts `by` to an ObjectId, so any string
+    // that is not one throws before the write is attempted — which is exactly what turned pressing
+    // «إنشاء حساب دخول» into «تعذّر على الخادم إتمام هذا الطلب». Null is how every other unattended
+    // write in the codebase says «nobody did this».
     await employeeRepository.updateById(
       employeeId,
       { userId: null },
-      { by: 'system', version: employee.__v },
+      { by: null, version: employee.__v },
     );
     await auditService.record({
       entityRef: entityRef(employeeId),
@@ -1200,9 +1204,13 @@ class EmployeeService {
       if (stillThere !== null) {
         throw new ConflictError('this employee already has a login account');
       }
-      await this.clearLoginLinkOf(String(employee.userId));
+      // Only when the clear ACTUALLY wrote. It reads the employee by the account id and returns
+      // null if it finds none, and bumping the local version for a write that never happened
+      // would make the link update below fail its own version check — a second, more confusing
+      // error standing in for the one this is repairing.
+      const cleared = await this.clearLoginLinkOf(String(employee.userId));
       employee.userId = null;
-      employee.__v += 1;
+      if (cleared !== null) employee.__v += 1;
     }
     if (employee.status === 'exited') {
       throw new BusinessRuleError('an exited employee cannot receive a login account');

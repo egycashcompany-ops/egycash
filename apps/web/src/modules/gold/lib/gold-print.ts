@@ -306,19 +306,19 @@ export const printDrawerAuditHtml = ({
   </style></head>
   <body>
     <button class="printbtn" onclick="window.print()">طباعة المحضر 🖨️</button>
-    ${letterhead(branch, ['ادارة الخزينة', 'خزينة المعادن الثمينة'], false)}
+    ${letterhead(branch, ['إدارة الخزينة', 'خزينة المعادن الثمينة'], false)}
     <div class="rtitle"><h1>محضر جرد درج</h1></div>
     <div class="body">
-      <p>انه فى يوم ${esc(weekday)} الموافق ${esc(date)}</p>
-      <p>- تم فتح <b>الدرج رقم: ${esc(drawerNumber)}</b> الخاص بـ <b>${esc(owner)}</b> لاجراء عملية الجرد</p>
+      <p>إنه في يوم ${esc(weekday)} الموافق ${esc(date)}</p>
+      <p>- تم فتح <b>الدرج رقم: ${esc(drawerNumber)}</b> الخاص بـ <b>${esc(owner)}</b> لإجراء عملية الجرد</p>
       <p>بواسطة السيد مفوض <b>${esc(owner)}</b></p>
       <p>وبناءً عليه تم جرد محتوى الدرج</p>
-      <p>وبيان محتوى الدرج كالتالى :</p>
+      <p>وبيان محتوى الدرج كالتالي:</p>
     </div>
     <table class="data">
       <thead><tr><th>نوع السبائك</th><th>وزن السبيكة</th><th>عدد السبائك</th><th>إجمالي الوزن</th></tr></thead>
       <tbody>${bodyRows}</tbody>
-      <tfoot><tr class="total"><td colspan="2">اجمالى رصيد الدرج</td><td>${String(totalCount)} سبيكة</td><td>${fmt(totalWeight)} جرام</td></tr></tfoot>
+      <tfoot><tr class="total"><td colspan="2">إجمالي رصيد الدرج</td><td>${String(totalCount)} سبيكة</td><td>${fmt(totalWeight)} جرام</td></tr></tfoot>
     </table>
     <div class="notes">ملاحظات الجرد : ${dots(80)}</div>
     <div class="sigs">
@@ -341,9 +341,9 @@ export interface ClosingRow {
   balanceWeight: number;
 }
 
-/** تقرير الإقفال الشهرى — one fund per printed page. */
+/** تقرير الإقفال الشهري — one fund per printed page. */
 export const printFundClosingHtml = ({
-  title = 'تقرير الإقفال الشهرى',
+  title = 'تقرير الإقفال الشهري',
   branch = '',
   metalLabel = '',
   funds = [],

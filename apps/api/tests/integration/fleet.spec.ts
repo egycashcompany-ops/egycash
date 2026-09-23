@@ -5980,7 +5980,7 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
     });
 
     it('is a search box, not a regex console — `.*` matches the characters typed', async () => {
-      const literal = await fileWith('رقم a.*b فى الدفتر', 'اصطدام');
+      const literal = await fileWith('رقم a.*b في الدفتر', 'اصطدام');
       const other = await fileWith('axxxb', 'اصطدام');
       const hits = await foundBy('a.*b');
       expect(hits).toContain(literal);

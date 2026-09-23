@@ -95,7 +95,7 @@ export const registerFleetSettings = (): void => {
   signatory(
     FleetSettingKeys.ReportEndorsementNote,
     'Printed Fleet reports — the line asking for the totals to be endorsed',
-    'يرجى المراجعة والتصديق على اجمالى المصروفات',
+    'يُرجى المراجعة والتصديق على إجمالي المصروفات',
   );
   signatory(
     FleetSettingKeys.ReportEndorsedByName,

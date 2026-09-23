@@ -357,7 +357,7 @@ describe('the count beside the filters', () => {
     expect(html, 'the vehicles screen’s own phrasing').toContain('سيارة');
     expect(html, 'and its own weight').toContain('text-xs font-medium text-slate-500');
     expect(html, 'nothing is labelled any more').not.toContain('المعروض');
-    expect(html).not.toContain('الإجمالى');
+    expect(html).not.toContain('الإجمالي');
   });
 
   it('counts what the FILTER matched, which is what that number means everywhere else', () => {

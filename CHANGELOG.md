@@ -11,6 +11,41 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The formal-Arabic guard now reads the whole product, and checks morphology rather than a word
+  list.** The first version of it missed a screen the owner opened the same afternoon — the roster
+  import preview, whose «موظفين جداد», «مطلوب في الملف ومش هيتعمل» and «صفوف ما اتقريتش» it had
+  passed over. Three separate holes, each fixed:
+
+  - it read `i18n.ts` and nothing else, so every Arabic sentence the SERVER composes — the whole
+    rejection half of that same screen, in `workforce-import/reasons.ts` — was never looked at.
+    The check now walks web, api and contracts, 7,272 Arabic strings, skipping comments (a comment
+    quoting the owner verbatim is a record of what a person said), tests (their fixtures are what
+    a user typed), and the files whose Arabic is a lookup key rather than prose;
+  - «مش» was matched between non-letters, and Arabic glues its conjunction onto the next word, so
+    «ومش هيتعمل» walked straight past it. Leading «و» and «ف» are now part of the boundary;
+  - a list of words cannot cover a dialect: «اتقريتش», «هيتعمل», «بيوقف» and «اتضافوا» share no
+    letters, they share a PREFIX. The tells are now the Egyptian verb morphology — بـ, هـ, اتـ and
+    the ما…ش negation, which formal Arabic does not have — with the words that carry no morphology
+    listed beside them, and the formal words the patterns reach by accident (اتخاذ, اتصال,
+    بيانات, بينما) named one at a time rather than the pattern being softened.
+
+  It lives in `scripts/check-formal-arabic.mjs` beside the repo's other cross-cutting checks and
+  runs as its own CI step; `formal-arabic.spec.ts` now calls into it instead of keeping a second
+  copy of the list, because two lists drift and the weaker one is the one that runs.
+
+- **The rest of the colloquial Arabic, and the spelling under it.** Thirty-seven more dictionary
+  entries, the eleven sentences the workforce import composes server-side, and a permission
+  description (`يقرّر خطوة موافقة مش بتاعته`) are rewritten formally. Separately, 60-odd words
+  ended in a dotless yāʾ — «إجمالى», «فى», «الشهرى», «الذى» — which is handwriting habit, not
+  written Arabic; those are corrected across the dictionary, the vault-inventory minutes and the
+  violations endorsement note, along with the dropped hamzas in that printed form («انه فى يوم» →
+  «إنه في يوم»).
+
+  Not touched, deliberately: the four misspelled driver-catalog entries seeded in `fleet.seed.ts`
+  («سائق صراف الى», «سزوكى», «ملاكى», «تانيه»). A seed is matched against existing rows by Arabic
+  name, so correcting one in code does not rename the live row — it seeds a second one beside it
+  and every dropdown shows both. They are catalog data, renamed from `/fleet/catalogs`.
+
 - **The Arabic the product speaks is formal Arabic, and a test keeps it that way.** Sixty-four
   messages across delegated permissions, approval chains, the workforce roster import, the fleet
   screens, system administration, operations and the ATM data editor were written in Egyptian

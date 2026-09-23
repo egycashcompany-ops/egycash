@@ -89,4 +89,4 @@ export const noteWith = (notes: string | null, ...extras: readonly string[]): st
 
 /** «الدفتر القديم كتب …» — how an unreadable field is quoted on the row it came from. */
 export const asWritten = (label: string, value: unknown): string =>
-  `${label} فى الدفتر القديم: «${value === null || value === undefined ? '—' : String(typeof value === 'object' ? JSON.stringify(value) : value)}»`;
+  `${label} في الدفتر القديم: «${value === null || value === undefined ? '—' : String(typeof value === 'object' ? JSON.stringify(value) : value)}»`;

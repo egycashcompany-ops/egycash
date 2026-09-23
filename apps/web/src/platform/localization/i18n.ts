@@ -6904,7 +6904,8 @@ const ar: Record<string, string> = {
   // مهلة عدم النشاط. الصياغة لواحد قام من مكتبه، مش لواحد عمل غلط.
   'auth.idle.warningTitle':
     'هل ما زلت متواجدًا؟',
-  'auth.idle.warningBody': 'الجلسة هتتقفل خلال {{seconds}} ثانية.',
+  'auth.idle.warningBody':
+    'تُغلق الجلسة خلال {{seconds}} ثانية.',
   'auth.idle.warningHint':
     'تُغلق الجلسة بعد فترة من عدم النشاط. أي بيانات أدخلتها ولم تحفظها ستُفقد، لذا اضغط «متابعة العمل» للبقاء داخل النظام.',
   'auth.idle.staySignedIn':
@@ -7346,13 +7347,16 @@ const ar: Record<string, string> = {
     'إزالة الكل',
   'delegation.unticked':
     '{{count}} غير محدَّدة',
-  'delegation.lockedScreens': '{{count}} اتمنحت من فوق — تشوفها بس ما تغيّرهاش',
-  'delegation.grantedElsewhere': 'اتمنحت من حد صلاحيته أوسع من صلاحيتك.',
+  'delegation.lockedScreens':
+    '{{count}} مُنحت من مستوى أعلى — للاطلاع فقط دون تعديل',
+  'delegation.grantedElsewhere':
+    'مُنحت من حساب صلاحيته أوسع من صلاحيتك.',
   'delegation.expand': 'فتح',
   'delegation.collapse': 'قفل',
   'delegation.willSee':
     'ما سيطّلع عليه هذا الشخص',
-  'delegation.willSeeNamed': '{{name}} هيشوف',
+  'delegation.willSeeNamed':
+    'ما سيطّلع عليه {{name}}',
   'delegation.noneYet':
     'لم يُحدَّد شيء بعد.',
   'delegation.lineWholeBranch':
@@ -8314,13 +8318,16 @@ const ar: Record<string, string> = {
   'approvals.outcome.pending': 'في الانتظار',
   'approvals.outcome.skipped':
     'لا يوجد أحد على هذه الخطوة',
-  'approvals.outcome.covered': 'اتلغت بقرار أعلى منها',
-  'approvals.outcome.unreached': 'الطلب ما وصلهاش',
+  'approvals.outcome.covered':
+    'أُلغيت بقرار أعلى منها',
+  'approvals.outcome.unreached':
+    'لم يصل إليها الطلب',
   'approvals.waitingHere':
     'الطلب متوقف عند هذه الخطوة حاليًا',
   'approvals.yourStep':
     'هذه الخطوة من مسؤوليتك',
-  'approvals.willCancel': 'موافقتك هنا هتلغي {{n}} خطوة تحتها',
+  'approvals.willCancel':
+    'موافقتك هنا تُلغي {{n}} خطوة تحتها',
   'approvals.overrideNotice':
     'أنت لست ضمن هذا المسار. سيُسجَّل القرار باسم صلاحية التجاوز الممنوحة لك.',
   'approvals.decidedBy': 'بواسطة {{name}}',
@@ -9331,20 +9338,24 @@ const ar: Record<string, string> = {
   'employees.roster.applying': 'جارٍ تطبيق التعديلات…',
   'employees.roster.previewNotice':
     'لم يُكتب شيء بعد. هذا ما سينفّذه الملف.',
-  'employees.roster.appliedNotice': 'تم — الملف اتطبّق.',
+  'employees.roster.appliedNotice':
+    'تم تطبيق الملف.',
   'employees.roster.apply': 'طبّق التعديلات',
   'employees.roster.nothingToDo':
     'الملف مطابق لما في النظام. لا يوجد ما يُطبَّق.',
   'employees.roster.sampled': 'معروض أول ٢٠٠. الأرقام فوق شاملة كل الصفوف.',
   'employees.roster.changesTitle':
     'ما سيتغيّر',
-  'employees.roster.additionsTitle': 'موظفين جداد',
+  'employees.roster.additionsTitle':
+    'موظفون جدد',
   'employees.roster.addedServing': 'على رأس العمل',
-  'employees.roster.addedExited': 'يتضاف منتهي الخدمة',
+  'employees.roster.addedExited': 'يُضاف منتهي الخدمة',
   'employees.roster.addedExitedHint':
     'هؤلاء واردون من ورقة Resignation، فيُضافون بحالة «منتهي الخدمة». وتُخفي شاشة الموظفين منتهي الخدمة ما لم يُضبط فلتر العرض على «الكل».',
-  'employees.roster.refusedTitle': 'مطلوب في الملف ومش هيتعمل',
-  'employees.roster.rejectedTitle': 'صفوف ما اتقريتش',
+  'employees.roster.refusedTitle':
+    'مطلوب في الملف ولن يُنفَّذ',
+  'employees.roster.rejectedTitle':
+    'صفوف تعذّرت قراءتها',
   'employees.roster.orgProblemsTitle': 'الهيكل التنظيمي',
   'employees.roster.row': 'صف',
   'employees.roster.field.fullNameAr': 'الاسم بالعربي',
@@ -9379,10 +9390,14 @@ const ar: Record<string, string> = {
     'من سيُسجَّل انتهاء خدمتهم',
   'employees.roster.pickHint':
     'اضغط على أي رقم لتحديده أو إلغاء تحديده. «المُضافون» و«من تم إخلاء طرفهم» محدَّدون تلقائيًا.',
-  'employees.roster.counts.added': 'اتضافوا',
-  'employees.roster.counts.updated': 'اتعدّلوا',
-  'employees.roster.counts.unchanged': 'زي ما هم',
-  'employees.roster.counts.failed': 'ما اتقروش',
+  'employees.roster.counts.added':
+    'أُضيفوا',
+  'employees.roster.counts.updated':
+    'عُدِّلوا',
+  'employees.roster.counts.unchanged':
+    'دون تغيير',
+  'employees.roster.counts.failed':
+    'تعذّرت قراءتهم',
   'employees.roster.field.educationLevel': 'الدرجة العلمية',
   'employees.roster.field.educationInstitution': 'جهة الحصول',
   'employees.roster.field.educationSpecialization': 'التخصص',
@@ -10440,7 +10455,7 @@ const ar: Record<string, string> = {
   'fleet.licensing.columns.handover': 'تسليم',
   'fleet.licensing.columns.receipt': 'استلام',
   'fleet.licensing.columns.licenseClass': 'الترخيص',
-  'fleet.licensing.empty': 'لا توجد سيارات فى لوحة التراخيص.',
+  'fleet.licensing.empty': 'لا توجد سيارات في لوحة التراخيص.',
   'fleet.licensing.emptyHint':
     'تظهر السيارة هنا عندما ينتهي رقم ترخيصها بحرف «ت» — مثل «برقاش ت» و«العجوزة ت».',
   'fleet.licensing.noMatches':
@@ -10525,7 +10540,7 @@ const ar: Record<string, string> = {
   'fleet.vehicles.deleteTitle': 'حذف السيارة؟',
   'fleet.vehicles.deleteBody': 'تُزال السيارة من كل القوائم، ويبقى تاريخها في سجل التدقيق.',
   'fleet.vehicles.disposedWarning':
-    'التكهين بيوقف السيارة عن الخدمة ومش بيمسح أي بيانات أو صور. السيارة المكهنة مبتتعدلش، وتقدر ترجّعها للخدمة في أي وقت.',
+    'يوقف التكهين السيارة عن الخدمة، ولا يمسح أي بيانات أو صور. والسيارة المكهَّنة لا تقبل التعديل، ويمكنك إعادتها إلى الخدمة في أي وقت.',
   'fleet.vehicles.fields.code': 'كود السيارة',
   'fleet.vehicles.fields.type': 'نوع السيارة',
   'fleet.vehicles.fields.plate': 'رقم اللوحة',
@@ -10564,7 +10579,8 @@ const ar: Record<string, string> = {
     'تم إنشاء السيارة، لكن تعذّر رفع صورة الرخصة. أعد المحاولة من صف السيارة.',
   'fleet.vehicles.licenseImage.loadFailed': 'تعذّر تحميل الصورة.',
   'fleet.vehicles.licenseImage.previewTitle': 'صورة رخصة السيارة',
-  'fleet.vehicles.licenseImage.previewSubtitle': 'كود العربية: {{code}} | الماركة: {{make}}',
+  'fleet.vehicles.licenseImage.previewSubtitle':
+    'كود السيارة: {{code}} | الماركة: {{make}}',
   'fleet.vehicles.licenseImage.deleteTitle': 'حذف صورة الرخصة؟',
   'fleet.vehicles.licenseImage.deleteBody':
     'ستُحذف الصورة من هذه السيارة. السيارة نفسها لن تُحذف، والتغيير مسجّل في سجل التدقيق.',
@@ -10621,7 +10637,7 @@ const ar: Record<string, string> = {
   'fleet.drivers.allLicenseTypes': 'الرخصة',
   'fleet.drivers.allBranches': 'الفرع',
   'fleet.drivers.hrFilterTooMany':
-    'فلتر الموارد البشرية طابق {{matched}} موظف — أكثر من {{max}} وهو الحد الذي تقدر القائمة تضيّق به. لم تتم أي فلترة. ضيّق فلتر الموارد البشرية وأعد المحاولة.',
+    'فلتر الموارد البشرية طابق {{matched}} موظف — أكثر من {{max}} وهو الحد الذي يمكن للقائمة أن تضيّق به. لم تتم أي فلترة. ضيّق فلتر الموارد البشرية وأعد المحاولة.',
   'fleet.drivers.hrFilterUnavailable':
     'فلاتر الموارد البشرية تتطلب صلاحية دليل الموظفين (employee.view) وتعذّر تطبيقها، فلم تتم أي فلترة.',
   'fleet.drivers.hrPersonal': 'البيانات الشخصية',
@@ -10643,18 +10659,19 @@ const ar: Record<string, string> = {
   'fleet.drivers.licenseImage.delete': 'حذف الصورة',
   'fleet.drivers.licenseImage.print': 'طباعة الرخصة',
   'fleet.drivers.licenseImage.addViaProfile':
-    'إضافة صورة الرخصة — هيطلب رقم الرخصة وتاريخ انتهائها بعدها',
+    'إضافة صورة الرخصة — سيُطلب بعدها رقم الرخصة وتاريخ انتهائها',
   'fleet.drivers.licenseImage.stagedHint':
-    'الصورة هتترفع أول ما السائق يتسجّل.',
+    'تُرفع الصورة فور تسجيل السائق.',
   'fleet.drivers.licenseImage.staged': 'تم اختيار: {{name}}',
   'fleet.drivers.licenseImage.printTitle': 'رخصة القيادة',
   'fleet.drivers.licenseImage.popupBlocked':
-    'نافذة الطباعة اتمنعت — اسمح بالنوافذ المنبثقة لهذا الموقع.',
+    'حُجبت نافذة الطباعة — يُرجى السماح بالنوافذ المنبثقة لهذا الموقع.',
   'fleet.drivers.licenseImage.uploaded': 'تم حفظ صورة الرخصة.',
   'fleet.drivers.licenseImage.deleted': 'تم حذف صورة الرخصة.',
   'fleet.drivers.licenseImage.loadFailed': 'تعذّر تحميل الصورة.',
   'fleet.drivers.licenseImage.previewTitle': 'صورة رخصة القيادة',
-  'fleet.drivers.licenseImage.vehicleToday': 'عربية اليوم: كود {{code}} | الماركة: {{make}}',
+  'fleet.drivers.licenseImage.vehicleToday':
+    'سيارة اليوم: كود {{code}} | الماركة: {{make}}',
   'fleet.drivers.licenseImage.previewSubtitle':
     'السائق: {{driver}} | كود الموظف: {{code}} | رقم الرخصة: {{license}}',
   'fleet.drivers.licenseImage.deleteTitle': 'حذف صورة الرخصة؟',
@@ -10729,7 +10746,8 @@ const ar: Record<string, string> = {
   'fleet.odometer.recordingWithoutReading':
     'سيُسجَّل دون قراءة عدّاد، وسيحتسب إنذار الصيانة هذا اليوم يومًا غير مقيس. سجّل القراءة لاحقًا لليوم نفسه لتُدرج في السطر نفسه لا في سطر جديد.',
   'fleet.alarms.columns.daysWithoutReading': 'أيام بلا قراءة',
-  'fleet.alarms.daysWithoutReadingHint': 'أيام بعد آخر صيانة اتسجّلت من غير عدّاد — المسافة الحقيقية على الأقل زى المكتوب.',
+  'fleet.alarms.daysWithoutReadingHint':
+    'أيام بعد آخر صيانة سُجّلت دون عدّاد — والمسافة الحقيقية لا تقل عمّا هو مكتوب.',
   'fleet.odometer.openPeriod': 'فترة مفتوحة',
   'fleet.odometer.openPeriodHint': 'الفترة المفتوحة تُغلق بالقراءة المسجلة التالية.',
   'fleet.odometer.expectedHint': 'الخادم يتوقع {{km}} كم أو أكثر',
@@ -10748,8 +10766,8 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.driver1': 'اسم السائق الأول (صباحي)',
   'fleet.odometer.columns.driver2': 'اسم السائق الثاني (مسائي)',
   'fleet.odometer.columns.driver': 'اسم السائق',
-  'fleet.odometer.driverShift.morning': 'صباحى',
-  'fleet.odometer.driverShift.evening': 'مسائى',
+  'fleet.odometer.driverShift.morning': 'صباحي',
+  'fleet.odometer.driverShift.evening': 'مسائي',
   'fleet.odometer.emptyMonth.title':
     'لا توجد قراءات في هذا الشهر',
   'fleet.odometer.emptyMonth.description':
@@ -10913,13 +10931,16 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.vehicles': 'سيارات',
   'fleet.goLive.field.imported': 'قراءات أُضيفت',
   'fleet.goLive.field.alreadyThere': 'موجودة مسبقًا',
-  'fleet.goLive.field.keptDeleted': 'صفوف كان النظام القديم ماسحها — اتضافت محذوفة: موجودة فى قاعدة البيانات ومش ظاهرة على أى شاشة',
+  'fleet.goLive.field.keptDeleted':
+    'صفوف كان النظام القديم قد مسحها — أُضيفت محذوفة: موجودة في قاعدة البيانات وغير ظاهرة على أي شاشة',
   'fleet.goLive.field.deletedRows':
     'إجمالي الصفوف المكتوبة محذوفة — وهي من النظام القديم، وما لا يستطيع النموذج إخفاءه ما زال ظاهرًا',
-  'fleet.goLive.field.unreadable': 'صفوف الدفتر ما كتبهاش بشكل مقروء — اتضافت محذوفة، وكلام الدفتر نفسه اتحفظ فى ملاحظاتها',
+  'fleet.goLive.field.unreadable':
+    'صفوف لم يكتبها الدفتر بشكل مقروء — أُضيفت محذوفة، ونصّ الدفتر نفسه محفوظ في ملاحظاتها',
   'fleet.goLive.field.relinked':
     'صفوف قائمة كانت قراءة إقفالها من الاستيراد، وأصبحت الآن مطابقة للصف الذي يليها',
-  'fleet.goLive.field.restored': 'قراءات كان تشغيل سابق دافنها بسبب تعارض على الفترة المفتوحة — رجّعها',
+  'fleet.goLive.field.restored':
+    'قراءات أخفاها تشغيل سابق بسبب تعارض على الفترة المفتوحة — أُعيدت',
   'fleet.goLive.field.openedByPrevious':
     'صفوف ترك الدفتر قراءة خروجها فارغة — فُتحت على آخر قراءة معروفة للسيارة',
   'fleet.goLive.field.typesCreated':
@@ -10930,7 +10951,8 @@ const ar: Record<string, string> = {
     'fleet.goLive.field.closedByNext': 'صفوف أُغلقت بقراءة الصف التالي',
   'fleet.goLive.field.badInReading': 'صفوف قراءة دخولها أقل من الخروج — أُغلقت بقراءة الصف التالي',
   'fleet.goLive.field.closedByExisting': 'صفوف أخيرة أُغلقت على قراءة سُجّلت في الشاشة الجديدة',
-  'fleet.goLive.field.openConflicts': 'صفوف كانت هتتعارض مع الفترة المفتوحة الوحيدة للعربية — اتكتبت محذوفة، ما اتسابتش',
+  'fleet.goLive.field.openConflicts':
+    'صفوف كانت ستتعارض مع الفترة المفتوحة الوحيدة للسيارة — كُتبت محذوفة، ولم تُهمل',
   'fleet.goLive.field.unmatchedDrivers': 'أسماء سائقين غير موجودة في الموارد البشرية — حُفظت نصًا على صفوفها؛ أضفهم هناك لو ما زالوا موجودين',
   'fleet.goLive.field.ambiguousDrivers': 'أسماء تنطبق على أكثر من موظف — حُفظت نصًا على صفوفها',
   'fleet.goLive.field.placeholders': 'أسماء قُرئت على أنها «بلا سائق»',
@@ -10939,15 +10961,18 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.outBeforeIn':
     'زيارات سبق خروجها دخولها — حُفظت بتاريخَي الدفتر كليهما؛ يُرجى تصحيحها من الشاشة',
   'fleet.goLive.field.counterFromOdometer': 'زيارات أُخذ عدادها من دفتر العداد',
-  'fleet.goLive.field.noCounter': 'زيارات بلا عداد في أي دفتر — اتكتبت بصفر؛ اكتب القراءة الصح من الشاشة',
+  'fleet.goLive.field.noCounter':
+    'زيارات بلا عدّاد في أي دفتر — كُتبت بصفر؛ سجّل القراءة الصحيحة من الشاشة',
   'fleet.goLive.field.catalogCreated': 'بنود أُضيفت للكتالوج بكلمات الدفتر نفسها',
   'fleet.goLive.step.violations': 'استيراد دفتر المخالفات',
   'fleet.goLive.step.accidents': 'استيراد دفتر الحوادث',
   'fleet.goLive.field.grievancesWritten': 'أرقام تظلّم كُتبت',
   'fleet.goLive.field.grievancesKept': 'أرقام تظلّم موجودة في الشاشة الجديدة بقيمة مختلفة — تُركت كما هي',
   'fleet.goLive.field.grievanceConflicts': 'سنوات كتب لها الدفتر رقمي تظلّم مختلفين — أُخذ الأول',
-  'fleet.goLive.field.zeroCount': 'صفوف كشف عددها صفر — اتكتبت زى ما الدفتر كاتبها',
-  'fleet.goLive.field.unknownTypes': 'صفوف نوعها فارغ أو غير موجود في الكتالوج على هذا الجانب — اتصنّفت تحت «غير محدد»',
+  'fleet.goLive.field.zeroCount':
+    'صفوف كشف عددها صفر — كُتبت كما دوّنها الدفتر',
+  'fleet.goLive.field.unknownTypes':
+    'صفوف نوعها فارغ أو غير موجود في الكتالوج على هذا الجانب — صُنّفت تحت «غير محدد»',
   'fleet.goLive.field.noDate': 'ملفات بلا تاريخ — أُضيفت بلا تاريخ',
   'fleet.goLive.field.namesFilled': 'صفوف كانت موجودة بلا سائق وكُتب عليها اسم الدفتر',
   'fleet.goLive.field.counterUnknown': 'زيارات على سيارات غير موجودة في السجل وبلا عداد في الدفتر — كُتب العداد صفرًا',
@@ -11042,10 +11067,10 @@ const ar: Record<string, string> = {
     'شكلان كما يحددهما الخادم — كشوف سنوية للسيارة (المبلغ يحسبه الخادم) ومخالفات سائق بالواقعة — والتجميع السنوي يُشتق عند الطلب.',
   'fleet.violations.view.list': 'المخالفات',
   'fleet.violations.view.rollup': 'التجميع السنوي',
-  'fleet.violations.lines.company': 'إجمالى الشركة',
-  'fleet.violations.lines.drivers': 'إجمالى السائقين',
-  'fleet.violations.lines.beforeGrievance': 'إجمالى السيارة قبل التظلم',
-  'fleet.violations.lines.total': 'إجمالى السيارة',
+  'fleet.violations.lines.company': 'إجمالي الشركة',
+  'fleet.violations.lines.drivers': 'إجمالي السائقين',
+  'fleet.violations.lines.beforeGrievance': 'إجمالي السيارة قبل التظلم',
+  'fleet.violations.lines.total': 'إجمالي السيارة',
   'fleet.violations.companyTitle': 'مخالفات تتحملها الشركــة',
   'fleet.violations.driverTitle': 'مخالفات يتحملها السائقين',
   'fleet.violations.allYears': 'كل السنوات',
@@ -11057,15 +11082,16 @@ const ar: Record<string, string> = {
   'fleet.violations.codePlaceholder': 'الكود',
   'fleet.violations.empty': 'لا توجد مخالفات بهذا الفلتر',
   'fleet.violations.exportCsv': 'تصدير Excel‏ (CSV)',
-  'fleet.violations.popupBlocked': 'نافذة الطباعة اتمنعت — اسمح بالنوافذ المنبثقة لهذا الموقع.',
-  'fleet.violations.totalAll': 'إجمالى المخالفات',
+  'fleet.violations.popupBlocked':
+    'حُجبت نافذة الطباعة — يُرجى السماح بالنوافذ المنبثقة لهذا الموقع.',
+  'fleet.violations.totalAll': 'إجمالي المخالفات',
   'fleet.violations.loadedOf': 'معروض {{shown}} من {{total}}',
   'fleet.violations.allLoaded': 'تم تحميل الكل ({{total}})',
   'fleet.violations.loadMore': 'تحميل المزيد',
   'fleet.violations.loadMoreFailed': 'تعذّر تحميل باقي الصفوف.',
   'fleet.violations.columns.seq': 'م',
   'fleet.violations.columns.totals': 'الإجماليات',
-  'fleet.violations.columns.totalCount': 'عدد إجمالى المخالفات',
+  'fleet.violations.columns.totalCount': 'عدد إجمالي المخالفات',
   'fleet.violations.columns.rowActions': 'تعديل / حذف',
   'fleet.violations.inspect': 'عرض مخالفات {{code}}',
   'fleet.violations.detailTitle': 'مخالفات الشركــة — {{code}}، {{year}}',
@@ -11073,7 +11099,7 @@ const ar: Record<string, string> = {
   'fleet.violations.columns.carriedOnto': 'محمولة على',
   'fleet.violations.report.department': 'إدارة الـحــركـــة',
   'fleet.violations.report.serial': 'م',
-  'fleet.violations.report.grandTotal': 'الإجمالى',
+  'fleet.violations.report.grandTotal': 'الإجمالي',
   'fleet.violations.report.empty': 'لا توجد بيانات مطابقة للفلاتر.',
   'fleet.violations.report.companySheet': 'ملخص المخالفات',
   'fleet.violations.report.driverSheet': 'مخالفات السائقين',
@@ -11081,26 +11107,29 @@ const ar: Record<string, string> = {
   'fleet.violations.report.driverTitle': 'جدول المخالفات للسائقين',
   'fleet.violations.report.year': 'السنة',
   'fleet.violations.report.vehicleCode': 'كود السيارة',
-  'fleet.violations.report.companyCount': 'إجمالى الشركة (عدد المخالفات)',
-  'fleet.violations.report.companyAmount': 'إجمالى الشركة (القيمة)',
-  'fleet.violations.report.driversCount': 'إجمالى السائقين (عدد المخالفات)',
-  'fleet.violations.report.driversAmount': 'إجمالى السائقين (القيمة)',
-  'fleet.violations.report.vehicleCount': 'إجمالى السيارة (عدد المخالفات)',
-  'fleet.violations.report.vehicleAmount': 'إجمالى السيارة (القيمة)',
+  'fleet.violations.report.companyCount': 'إجمالي الشركة (عدد المخالفات)',
+  'fleet.violations.report.companyAmount': 'إجمالي الشركة (القيمة)',
+  'fleet.violations.report.driversCount': 'إجمالي السائقين (عدد المخالفات)',
+  'fleet.violations.report.driversAmount': 'إجمالي السائقين (القيمة)',
+  'fleet.violations.report.vehicleCount': 'إجمالي السيارة (عدد المخالفات)',
+  'fleet.violations.report.vehicleAmount': 'إجمالي السيارة (القيمة)',
   'fleet.violations.report.date': 'التاريخ',
   'fleet.violations.report.driverName': 'اسم السائـق',
   'fleet.violations.report.type': 'نوع المخالفة',
   'fleet.violations.report.value': 'القيمة',
-  'fleet.violations.report.companyLine': 'إجمالى الشركة',
-  'fleet.violations.report.driversLine': 'إجمالى السائقين',
-  'fleet.violations.report.allLine': 'إجمالى المخالفات',
+  'fleet.violations.report.companyLine': 'إجمالي الشركة',
+  'fleet.violations.report.driversLine': 'إجمالي السائقين',
+  'fleet.violations.report.allLine': 'إجمالي المخالفات',
   'fleet.violations.report.signLine': 'التوقيع / ',
   'fleet.export.excel':
     'تحميل ملف إكسيل (كل ما أظهره الفلتر)',
-  'fleet.violations.returnToOwnYear': 'رجّع المخالفة لسنتها',
-  'fleet.violations.returnToCar': 'رجّع المخالفة لعربية {{code}} ولسنتها',
+  'fleet.violations.returnToOwnYear':
+    'أعِد المخالفة إلى سنتها',
+  'fleet.violations.returnToCar':
+    'أعِد المخالفة إلى السيارة {{code}} وإلى سنتها',
   'fleet.violations.returnedToOwnYear': 'رجعت لسنتها',
-  'fleet.violations.movedToYear': 'اتنقلت {{count}} مخالفة على {{code}} — {{year}}',
+  'fleet.violations.movedToYear':
+    'نُقلت {{count}} مخالفة إلى {{code}} — {{year}}',
   'fleet.violations.collectYear': 'تحصيل مخالفات {{code}} لسنة {{year}}',
   'fleet.violations.collectedOf': 'تم تحصيل {{collected}} من {{total}}',
   'fleet.violations.collect': 'تحصيل المخالفة',
@@ -11184,11 +11213,12 @@ const ar: Record<string, string> = {
   'fleet.catalogs.fields.nameAr': 'الاسم (عربي)',
   'fleet.catalogs.fields.nameEn': 'الاسم (إنجليزي)',
   'fleet.catalogs.fields.countsForAlarm': 'تُحتسب لإنذار الصيانة',
-  'fleet.maintenance.sparePartAdded': 'اتضافت «{{name}}» فى قطع الغيار واتختارت.',
+  'fleet.maintenance.sparePartAdded':
+    'أُضيفت «{{name}}» إلى قطع الغيار واختيرت.',
   'fleet.maintenance.workTypeNotCounting':
     'لا يصفّر هذا النوع من العمل عدّاد الصيانة — وسيظل الإنذار يحتسب من الصيانة السابقة له.',
   'fleet.odometer.sameAsPrevious':
-    'نفس آخر قراءة — دى هتسجّل فترة بـ ٠ كم. صح لو العربية ما تحركتش.',
+    'مطابقة لآخر قراءة — ستُسجَّل فترة بـ ٠ كم. وهذا صحيح إذا لم تتحرك السيارة.',
   'fleet.catalogs.fields.violationSide': 'تُسجَّل على',
   'fleet.catalogs.fields.isActive': 'نشط',
   'fleet.catalogs.countsBadge': 'يصفّر أساس الإنذار',
@@ -13015,7 +13045,7 @@ const ar: Record<string, string> = {
   'gold.dashboard.byOwnerType': 'التوزيع: صناديق وشركات',
   'gold.dashboard.funds': 'صناديق',
   'gold.dashboard.corporates': 'شركات',
-  'gold.dashboard.monthlyFlow': 'الدخول والخروج الشهرى (كجم)',
+  'gold.dashboard.monthlyFlow': 'الدخول والخروج الشهري (كجم)',
   'gold.dashboard.empty': 'لا توجد بيانات للعرض بعد',
   'gold.vaults.subtitle': 'عرض مرئي لكل الخزائن وأدراجها مع مؤشّر الامتلاء وحالة المفاتيح',
   'gold.vaults.keyOverlayFailed':
@@ -13279,19 +13309,19 @@ const ar: Record<string, string> = {
   'gold.representatives.deletePrompt': 'حذف المندوب "{{name}}"؟',
   'gold.reports.subtitle': 'تقارير الأرصدة والرقابة والحركة الشهرية — قابلة للطباعة',
   'gold.reports.more': 'تقارير إضافية قابلة للإضافة لاحقًا',
-  'gold.reports.goldBalances': 'إجمالى أرصدة العملاء (ذهب)',
-  'gold.reports.silverBalances': 'إجمالى أرصدة العملاء (فضة)',
+  'gold.reports.goldBalances': 'إجمالي أرصدة العملاء (ذهب)',
+  'gold.reports.silverBalances': 'إجمالي أرصدة العملاء (فضة)',
   'gold.reports.control': 'تقرير الرقابة المالية',
-  'gold.reports.movement': 'معدل الحركة الشهرى لصناديق الذهب',
-  'gold.reports.closing': 'الإقفال الشهرى لصناديق الذهب',
-  'gold.reports.balancesTitle': 'اجمالى ارصدة العملاء',
+  'gold.reports.movement': 'معدل الحركة الشهري لصناديق الذهب',
+  'gold.reports.closing': 'الإقفال الشهري لصناديق الذهب',
+  'gold.reports.balancesTitle': 'إجمالي أرصدة العملاء',
   'gold.reports.goldBars': 'سبائك الذهب',
   'gold.reports.silverBars': 'سبائك الفضة',
   'gold.reports.serialColumn': 'م',
   'gold.reports.clientName': 'اسم العميل',
   'gold.reports.barsCount': 'عدد السبائك',
-  'gold.reports.totalWeight': 'اجمالى الوزن',
-  'gold.reports.vaultTotal': 'اجمالى رصيد الخزينة',
+  'gold.reports.totalWeight': 'إجمالي الوزن',
+  'gold.reports.vaultTotal': 'إجمالي رصيد الخزينة',
   'gold.reports.barsUnit': '{{count}} سبيكة',
   'gold.reports.gramsUnit': '{{value}} جرام',
   'gold.reports.noData': 'لا توجد بيانات',
@@ -13303,11 +13333,11 @@ const ar: Record<string, string> = {
   'gold.reports.forMonth': 'عن شهر {{month}} / {{year}}',
   'gold.reports.fundName': 'اسم الصندوق',
   'gold.reports.barsWeightGrams': 'وزن السبائك بالجرام',
-  'gold.reports.grandTotal': 'الاجمالى',
+  'gold.reports.grandTotal': 'الإجمالي',
   'gold.reports.signatureLine': 'التوقيع / ..............................',
   'gold.reports.signatureWho': 'المدير العام للشركة',
-  'gold.reports.movementTitle': 'معدل الحركة الشهرى لصناديق الاستثمار فى {{metal}}',
-  'gold.reports.movementSubtitle': 'فى {{metal}}',
+  'gold.reports.movementTitle': 'معدل الحركة الشهري لصناديق الاستثمار في {{metal}}',
+  'gold.reports.movementSubtitle': 'في {{metal}}',
   'gold.reports.period': 'الفترة : {{from}} إلى {{to}} / {{year}}',
   'gold.reports.inBars': 'دخول سبائك',
   'gold.reports.outBars': 'خروج سبائك',
@@ -13315,24 +13345,24 @@ const ar: Record<string, string> = {
   'gold.reports.outWeight': 'خروج وزن',
   'gold.reports.netGrams': 'المعدل بالجرام',
   'gold.reports.closingBalance': 'رصيد الاغلاق',
-  'gold.reports.closingTitle': 'تقرير الإقفال الشهرى لصناديق الاستثمار',
-  'gold.reports.closingSubtitle': 'فى {{metal}} — كل صندوق على حدة',
+  'gold.reports.closingTitle': 'تقرير الإقفال الشهري لصناديق الاستثمار',
+  'gold.reports.closingSubtitle': 'في {{metal}} — كل صندوق على حدة',
   'gold.reports.monthYear': 'الشهر - السنة',
   'gold.reports.year': 'السنة',
   'gold.reports.month': 'الشهر',
   'gold.reports.fromMonth': 'من شهر',
-  'gold.reports.toMonth': 'الى شهر',
+  'gold.reports.toMonth': 'إلى شهر',
   'gold.reports.clients': 'العملاء',
   'gold.reports.funds': 'الصناديق',
 
-  // ── بوابة العملاء — السطح الذى يراه عميل الخزينة ──
+  // ── بوابة العملاء — السطح الذي يراه عميل الخزينة ──
   'gold.portal.subtitle': 'خزينة المعادن الثمينة — بوابة العملاء',
   'gold.portal.signOut': 'خروج',
   'gold.portal.confirmedOnly': 'المستندات المعتمدة فقط',
   'gold.portal.rowCount': '{{count}} سجل',
   'gold.portal.notFound': 'هذه الصفحة غير موجودة في البوابة.',
   'gold.portal.notACustomer': 'هذا القسم مخصص لعملاء الخزينة',
-  'gold.portal.notACustomerHint': 'حسابك تابع لإيجى كاش وليس لعميل. استخدم التطبيق الرئيسى.',
+  'gold.portal.notACustomerHint': 'حسابك تابع لإيجي كاش وليس لعميل. استخدم التطبيق الرئيسي.',
   'gold.portal.tabs.overview': 'نظرة عامة',
   'gold.portal.tabs.bars': 'السبائك',
   'gold.portal.tabs.drawers': 'الأدراج',
@@ -13349,15 +13379,15 @@ const ar: Record<string, string> = {
   'gold.portal.overview.drawers': 'الأدراج',
   'gold.portal.overview.keys': 'المفاتيح المستلمة',
   'gold.portal.overview.delegates': 'المناديب',
-  'gold.portal.overview.totalWeight': 'الوزن الكلى',
+  'gold.portal.overview.totalWeight': 'الوزن الكلي',
   'gold.portal.overview.goldWeight': 'الذهب',
   'gold.portal.overview.silverWeight': 'الفضة',
-  'gold.portal.bars.searchPlaceholder': 'بحث بالرقم التسلسلى…',
+  'gold.portal.bars.searchPlaceholder': 'بحث بالرقم التسلسلي…',
   'gold.portal.bars.empty': 'لا توجد سبائك مسجلة لك بعد.',
-  'gold.portal.drawers.myBars': 'عدد سبائكى',
-  'gold.portal.drawers.myWeight': 'وزن سبائكى',
-  'gold.portal.drawers.shared': 'الأعداد هى نصيبك أنت من كل درج.',
-  'gold.portal.drawers.empty': 'لا توجد سبائك لك داخل أى درج حاليًا.',
+  'gold.portal.drawers.myBars': 'عدد سبائكي',
+  'gold.portal.drawers.myWeight': 'وزن سبائكي',
+  'gold.portal.drawers.shared': 'الأعداد هي نصيبك أنت من كل درج.',
+  'gold.portal.drawers.empty': 'لا توجد سبائك لك داخل أي درج حاليًا.',
   'gold.portal.receiving.empty': 'لا توجد عمليات دخول معتمدة بعد.',
   'gold.portal.delivery.empty': 'لا توجد عمليات خروج معتمدة بعد.',
   'gold.portal.transfers.empty': 'لا توجد تحويلات معتمدة بعد.',
@@ -13368,18 +13398,18 @@ const ar: Record<string, string> = {
   'gold.portal.keys.empty': 'لا يوجد مندوب لك مستلم مفتاحًا.',
   'gold.portal.representatives.hint': 'المناديب الذين فوّضتهم لدينا.',
   'gold.portal.representatives.empty': 'لا يوجد مناديب مسجلون.',
-  'gold.portal.reports.movement': 'معدل الحركة الشهرى',
-  'gold.portal.reports.closing': 'الإقفال الشهرى',
+  'gold.portal.reports.movement': 'معدل الحركة الشهري',
+  'gold.portal.reports.closing': 'الإقفال الشهري',
   'gold.portal.reports.empty': 'لا توجد بيانات لهذه الفترة.',
   'gold.portal.reports.fundsOnly': 'هذان التقريران يخصان الصناديق فقط.',
   'gold.portal.login.title': 'بوابة العملاء',
   'gold.portal.login.welcome': 'أهلًا بك،',
   'gold.portal.login.welcomeAccent': 'سعداء بعودتك.',
   'gold.portal.login.subtitle': 'سجّل دخولك لمتابعة معدنك وأدراجك ومستنداتك.',
-  'gold.portal.login.usernamePlaceholder': 'اسم المستخدم الذى أصدرته لك إيجى كاش',
+  'gold.portal.login.usernamePlaceholder': 'اسم المستخدم الذي أصدرته لك إيجي كاش',
   'gold.portal.login.passwordPlaceholder': 'أدخل كلمة المرور',
   'gold.portal.login.totpHint': 'أدخل الرمز المكوّن من ستة أرقام من تطبيق المصادقة.',
-  'gold.portal.login.tagline': 'معدنك فى الخزينة. وحسابك محدَّث بالفعل.',
+  'gold.portal.login.tagline': 'معدنك في الخزينة. وحسابك محدَّث بالفعل.',
   'gold.portal.login.taglineBody':
     'كل سبيكة تدخل أو تتحرك أو تخرج تُقيَّد لحظة حدوثها. سجّل دخولك لترى أين معدنك وكم يزن.',
   'gold.portal.login.artAlt': 'سبائك ذهب مرصوصة على رفّ خزينة',
@@ -13458,20 +13488,20 @@ const ar: Record<string, string> = {
   'gold.portal.login.busy': 'جارٍ الدخول…',
   'gold.portal.login.failed': 'تعذّر الدخول. راجع اسم المستخدم وكلمة المرور.',
   'gold.portal.login.notActivated': 'هذا الحساب لم يُفعَّل بعد. استخدم رابط التفعيل المرسل إليك.',
-  'gold.portal.login.help': 'تواجه مشكلة في الدخول؟ تواصل مع مسؤول حسابك في إيجى كاش.',
+  'gold.portal.login.help': 'تواجه مشكلة في الدخول؟ تواصل مع مسؤول حسابك في إيجي كاش.',
   'gold.keys.returnDate': 'تاريخ الاسترجاع',
   // ── حسابات بوابة العملاء (شاشة الموظفين) ──
   'gold.portalAccounts.title': 'حسابات بوابة العملاء',
   'gold.portalAccounts.subtitle':
-    'حسابات دخول للشركات والصناديق التى نحفظ معادنها. للاطلاع فقط، وكل حساب لجهة واحدة.',
+    'حسابات دخول للشركات والصناديق التي نحفظ معادنها. للاطلاع فقط، وكل حساب لجهة واحدة.',
   'gold.portalAccounts.company': 'الشركة / الصندوق',
   'gold.portalAccounts.contact': 'المسؤول',
   'gold.portalAccounts.username': 'اسم المستخدم',
-  'gold.portalAccounts.email': 'البريد الإلكترونى',
-  'gold.portalAccounts.firstNameAr': 'الاسم الأول (عربى)',
-  'gold.portalAccounts.lastNameAr': 'اسم العائلة (عربى)',
-  'gold.portalAccounts.firstNameEn': 'الاسم الأول (إنجليزى)',
-  'gold.portalAccounts.lastNameEn': 'اسم العائلة (إنجليزى)',
+  'gold.portalAccounts.email': 'البريد الإلكتروني',
+  'gold.portalAccounts.firstNameAr': 'الاسم الأول (عربي)',
+  'gold.portalAccounts.lastNameAr': 'اسم العائلة (عربي)',
+  'gold.portalAccounts.firstNameEn': 'الاسم الأول (إنجليزي)',
+  'gold.portalAccounts.lastNameEn': 'اسم العائلة (إنجليزي)',
   'gold.portalAccounts.lastLogin': 'آخر دخول',
   'gold.portalAccounts.new': 'حساب جديد',
   'gold.portalAccounts.newTitle': 'حساب بوابة جديد',

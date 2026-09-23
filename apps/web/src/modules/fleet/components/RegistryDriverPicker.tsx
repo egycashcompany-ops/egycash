@@ -17,9 +17,7 @@
 // The search belongs on the SERVER, and HR's own `search` covers the name and the employee code
 // in one parameter — which is exactly the question this control asks.
 import { useT } from '../../../platform/localization/useT';
-import { useCan } from '../../../platform/rbac/Can';
 import { type ControlDensity } from '../../../shared/ui/form';
-import { useDrivingJobTitles } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { DriverPickerFilter } from './DriverPickerFilter';
 
 export const RegistryDriverPicker = ({
@@ -44,12 +42,10 @@ export const RegistryDriverPicker = ({
   className?: string;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
-  // The seats the registry is made of. Without `jobTitle.view` this is never asked and stays
-  // empty, which the picker reads as «do not narrow» — the same degradation the drivers screen
-  // makes, rather than an empty list a reader would read as «this company has no drivers».
-  const { data: drivingTitles } = useDrivingJobTitles(can('jobTitle.view'));
-  const jobTitleIds = (drivingTitles ?? []).map((title) => title.id);
+  // NO SEATS TO RESOLVE ANY MORE. The picker offers Fleet's own roster, and that roster IS the
+  // driving seats — every person on it holds a job title requiring a driving test. Asking HR for
+  // the titles, under `jobTitle.view`, was how this control used to narrow the payroll; there is
+  // no payroll here to narrow.
 
   return (
     <DriverPickerFilter
@@ -57,7 +53,6 @@ export const RegistryDriverPicker = ({
       // A single-pick control REPLACES its choice rather than adding to it, which is what «one
       // driver per fine» means — expressed here rather than by a second component.
       onChange={(next) => onChange(multiple ? next : next.slice(-1))}
-      jobTitleIds={jobTitleIds}
       placeholder={placeholder ?? t('fleet.drivers.filters.employeeShort')}
       fullWidth={fullWidth}
       {...(density === undefined ? {} : { density })}

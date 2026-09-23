@@ -1177,7 +1177,10 @@ describe('the next round of reports, as rules the markup carries', () => {
     expect(code, 'the registry picker').toContain('<RegistryDriverPicker');
     expect(code, 'not the payroll search box').not.toContain('OptionalEmployeeField');
     const picker = readFileSync(join(HERE, 'components/DriverPickerFilter.tsx'), 'utf8');
-    expect(picker, 'and it lists with an empty search').toContain('enabled: allowed,');
+    // It lists with an empty search by construction now: the roster is in hand, and an empty term
+    // filters nothing out — so there is no request to enable and none to wait for.
+    expect(picker, 'the whole roster when nothing is typed').toContain("term === ''");
+    expect(picker, 'and no HR search behind it').not.toContain('listEmployees(');
   });
 });
 

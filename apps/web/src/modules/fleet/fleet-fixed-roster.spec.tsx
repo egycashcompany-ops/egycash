@@ -89,12 +89,26 @@ const client = (board: FleetFixedRosterDto = BOARD): QueryClient => {
     ],
     meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
   });
-  for (const [id, code, ar] of [
-    [E1, 'HR-1', 'أحمد محمد'],
-    [E2, 'HR-2', 'محمد محمود'],
-  ] as const) {
-    qc.setQueryData(['hr', 'employees', 'detail', id], { id, code, personal: { fullNameAr: ar } });
-  }
+  // FLEET's own people list — one key for the whole roster, read by every driver cell on every
+  // Fleet screen. It replaces the per-employee HR detail entries: these names no longer come from
+  // HR's directory and no longer need HR's grant.
+  qc.setQueryData(
+    ['fleet', 'people'],
+    ([
+      [E1, 'HR-1', 'أحمد محمد'],
+      [E2, 'HR-2', 'محمد محمود'],
+    ] as const).map(([employeeId, code, fullNameAr]) => ({
+      employeeId,
+      code,
+      fullNameAr,
+      status: 'active' as const,
+      branchId: null,
+      address: null,
+      governorate: null,
+      phone: null,
+      hiredAt: null,
+    })),
+  );
   return qc;
 };
 
@@ -827,18 +841,20 @@ describe('the driver panel', () => {
     expect(searchAt, 'search above the list').toBeLessThan(listAt);
   });
 
-  it('searches every identifier the record already carries — no new endpoint', () => {
-    // The fields come from the employee record the cards already load; the hook below reuses
-    // those very cache entries rather than asking the server for a driver directory.
-    for (const field of ['fullNameAr', 'fullNameEn', 'employee.code', 'employeeNumber']) {
+  it('searches the identifiers the roster carries — and adds no search endpoint', () => {
+    // The two a driver chip is ever typed with. The English name and the employee NUMBER were HR
+    // record fields that came along for free while this read HR's directory; Fleet's own roster
+    // publishes one name and one code, which is what the panel now searches.
+    for (const field of ['fullNameAr', 'person.code']) {
       expect(SOURCE, `${field} is searchable`).toContain(field);
     }
-    expect(SOURCE, 'resolved through the shared employee cache').toContain('useEmployeeRecords(');
+    expect(SOURCE, 'resolved through the shared roster').toContain('useEmployeeRecords(');
     const employee = readFileSync(join(HERE, 'components/EmployeeName.tsx'), 'utf8');
-    expect(employee, 'same key as the single-employee hook').toContain(
-      "detailKey('hr', 'employees', employeeId)",
+    expect(employee, 'and the roster is Fleet’s own, not HR’s directory').toContain(
+      'useFleetPeople(',
     );
-    // No fleet endpoint was added for this.
+    expect(employee, 'nothing here asks HR any more').not.toContain("detailKey('hr', 'employees'");
+    // Still no per-search endpoint: the list is already in hand.
     const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
     expect(api, 'no driver-search endpoint').not.toMatch(/drivers\/search|driver-search/);
   });

@@ -103,7 +103,9 @@ const ALL = [
   'fleetOdometer.view',
   'fleetOdometer.record',
   'fleetOdometer.correct',
-  'employee.view',
+  // The DRIVERS' own view grant, not HR's: the driver picker reads Fleet's roster now, so a
+  // dispatcher with no HR permission still filters this register by who drove.
+  'fleetDriver.view',
 ];
 
 /**
@@ -1004,10 +1006,12 @@ describe('the filter bar', () => {
     expect(html).toContain(t('common.empty.title'));
   });
 
-  it('offers the driver filter only to someone who can read HR', () => {
+  it('offers the driver filter to someone who may read the DRIVERS, not the HR directory', () => {
+    // «انا عاوز اعرض السواقيين بتوع الحركه للناس اللى واخده موديول الحركه بس». It used to need
+    // `employee.view`, which is HR's whole directory; it needs the drivers' own view grant now.
     const without = render({ permissions: ['fleetOdometer.view'] });
     expect(without).not.toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
-    const with_ = render({ permissions: ['fleetOdometer.view', 'employee.view'] });
+    const with_ = render({ permissions: ['fleetOdometer.view', 'fleetDriver.view'] });
     expect(with_).toContain(`aria-label="${t('fleet.drivers.filters.employee')}"`);
   });
 });
@@ -1043,12 +1047,20 @@ describe('the actions respect the existing grants', () => {
     );
   });
 
-  it('invents no new permission — the three existing odometer grants are the whole surface', () => {
+  it('invents no new permission — the odometer grants plus the drivers’ view are the whole surface', () => {
+    // `fleetDriver.view` replaced `employee.view` here: the driver filter reads FLEET's roster,
+    // so the grant it asks for is the one that governs that roster. Still nothing invented — both
+    // are grants that already existed, and the list is exact so a fifth cannot appear quietly.
     const source = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
     for (const grant of [...source.matchAll(/can\('([^']+)'\)|permission="([^"]+)"/g)]) {
       const key = grant[1] ?? grant[2] ?? '';
       expect(
-        ['fleetOdometer.view', 'fleetOdometer.record', 'fleetOdometer.correct', 'employee.view'],
+        [
+          'fleetOdometer.view',
+          'fleetOdometer.record',
+          'fleetOdometer.correct',
+          'fleetDriver.view',
+        ],
         `${key} is an existing grant`,
       ).toContain(key);
     }

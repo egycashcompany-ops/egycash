@@ -19,6 +19,7 @@ import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
 import { buildFleetRosterRouter } from './roster/roster.routes';
 import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes';
 import { buildFleetLicensingRouter } from './licensing/licensing.routes';
+import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
 import { buildFleetViolationsRouter } from './violations/violation.routes';
 import { licenseExpirySweep, maintenanceAlarmSweep } from './sweeps/fleet-sweeps';
@@ -329,6 +330,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/accidents', router: buildFleetAccidentsRouter() },
     { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
     { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
+    { prefix: '/fleet/people', router: buildFleetPeopleRouter() },
   ],
   collections: [
     'fleet_vehicles',

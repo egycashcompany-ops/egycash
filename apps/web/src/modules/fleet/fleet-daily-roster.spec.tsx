@@ -92,17 +92,25 @@ const client = (board: FleetRosterDayDto = BOARD, date = day(1)): QueryClient =>
     ],
     meta: { page: 1, pageSize: 100, total: 1, totalPages: 1 },
   });
-  for (const [id, ar] of [
-    [E1, 'أحمد محمد'],
-    [E2, 'محمد محمود'],
-    [E3, 'سعيد سعد'],
-  ] as const) {
-    qc.setQueryData(['hr', 'employees', 'detail', id], {
-      id,
+  // FLEET's own people list — see the fixed-roster spec beside this one.
+  qc.setQueryData(
+    ['fleet', 'people'],
+    ([
+      [E1, 'أحمد محمد'],
+      [E2, 'محمد محمود'],
+      [E3, 'سعيد سعد'],
+    ] as const).map(([employeeId, fullNameAr]) => ({
+      employeeId,
       code: 'HR-1',
-      personal: { fullNameAr: ar },
-    });
-  }
+      fullNameAr,
+      status: 'active' as const,
+      branchId: null,
+      address: null,
+      governorate: null,
+      phone: null,
+      hiredAt: null,
+    })),
+  );
   return qc;
 };
 

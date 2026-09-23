@@ -32,10 +32,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
-  type EmployeeDto,
   type FleetCatalogKind,
   type FleetDriverProfileDto,
   type FleetDriverRowDto,
+  type FleetPersonDto,
   type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -53,11 +53,9 @@ import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { EditIcon, EyeIcon, UploadIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { detailKey } from '../../../shared/lib/query-keys';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
 import * as fleetApi from '../api/fleet-api';
 import { useDriverHrFilter, type DriverHrFilter } from '../api/driver-hr-filter';
-import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
 import {
   useBranches,
   useDrivingJobTitles,
@@ -153,24 +151,12 @@ const useCatalogNames = (kind: FleetCatalogKind, locale: Locale): ReadonlyMap<st
 };
 
 /**
- * The address this screen READS off an employee — the official one when there is one.
+ * One PERSON-owned cell.
  *
- * Named once because it is read twice now, by the column and by the exported file, and the two
- * must not drift: a sheet that picked the current address where the table shows the official one
- * would disagree with the screen it was exported from.
- */
-const hrAddress = (employee: EmployeeDto): { line: string; governorate: string } | null => {
-  const address = employee.personal.officialAddress ?? employee.personal.currentAddress;
-  if (address == null) return null;
-  return { line: [address.line1, address.city].join('، '), governorate: address.governorate };
-};
-
-/**
- * One HR-owned cell.
- *
- * Every instance shares ONE cached query per employee (same key as the HR profile page), so a row
- * with seven HR columns still costs a single request. Absent value, absent record and absent
- * `employee.view` all render the same dash — the cell never leaks an id in place of a name.
+ * Every instance reads FLEET's own people list — one request for the whole board, shared by every
+ * cell on it — so this screen needs no HR grant to print a driver. Absent value, absent person
+ * and absent `fleetDriver.view` all render the same dash: the cell never leaks an id in place of
+ * a name.
  */
 const EmployeeFact = ({
   employeeId,
@@ -178,11 +164,11 @@ const EmployeeFact = ({
   className,
 }: {
   employeeId: string;
-  pick: (employee: EmployeeDto) => string | null;
+  pick: (person: FleetPersonDto) => string | null;
   className?: string;
 }): JSX.Element => {
-  const employee = useEmployeeRecord(employeeId);
-  const value = employee === undefined ? null : pick(employee);
+  const person = useEmployeeRecord(employeeId);
+  const value = person === undefined ? null : pick(person);
   if (value === null || value === '') return <span className="text-slate-400">—</span>;
   return <span className={className}>{value}</span>;
 };
@@ -197,16 +183,6 @@ const EmployeeFact = ({
 // person, so it is the order somebody looking for one reads down. It also matches what the server
 // falls back to, so a first load and a cleared sort agree.
 const DEFAULT_SORT = 'employeeCode:asc';
-
-/**
- * How many HR records the export asks for at once.
- *
- * The file needs the person behind every row the filter matched, and HR answers one employee per
- * request — the same request the table's own cells make, so most of a read page costs nothing.
- * Firing all of them together would put a thousand requests in the browser's queue at once on a
- * wide filter; a small batch keeps the export a steady walk instead.
- */
-const HR_LOOKUP_BATCH = 8;
 
 export const DriversListPage = (): JSX.Element => {
   const t = useT();
@@ -276,17 +252,26 @@ export const DriversListPage = (): JSX.Element => {
   // keeping the driving ones worked only while the whole catalogue fitted in that page: a company
   // with more than a hundred job titles lost the seats that fell off the end, the narrowing below
   // silently became "ask HR about everybody", and every text filter on this bar went back to
-  // overflowing HR's cap and matching nobody. Measured at 122 titles: zero seats seen, «الجيزة»
-  // answered «narrow your filter» and filtered nothing.
+   /**
+   * The driving seats — kept for ONE thing: the banner that says «no job title carries the
+   * driving-test flag», which is why this registry would be empty.
+   *
+   * It no longer narrows any filter. That was the two-step's problem, not this screen's: step ①
+   * asked HR about the whole payroll and had to be told which seats to look at, under
+   * `jobTitle.view`. The roster Fleet publishes IS those seats.
+   */
   const { data: drivingTitles = [], isSuccess: drivingTitlesRead } = useDrivingJobTitles(
     can('jobTitle.view'),
   );
-  const drivingTitleIds = useMemo(() => drivingTitles.map((title) => title.id), [drivingTitles]);
-  const hr = useDriverHrFilter(hrFilter, drivingTitleIds);
-  // Reading HR is HR's own permission, and it gates the three text boxes as well as the columns. A
-  // URL still carrying one of them is honoured differently: the hook reports `failed` and the
-  // banner says why, rather than the page quietly returning an unfiltered list.
-  const mayFilterByHr = can('employee.view');
+
+  // THE PERSON FILTERS NARROW FLEET'S OWN ROSTER, in hand — no HR step, no page cap, and no job
+  // titles to resolve first. See `useDriverHrFilter`, where the reasoning for each of those
+  // disappearances lives.
+  const hr = useDriverHrFilter(hrFilter);
+  // The roster is the drivers' own view grant, and it gates the three text boxes as well as the
+  // columns. A URL still carrying one of them is honoured differently: the hook reports `failed`
+  // and the banner says why, rather than the page quietly returning an unfiltered list.
+  const mayFilterByHr = can('fleetDriver.view');
   const hasActiveFilters =
     pickedDrivers.length > 0 ||
     jobs.length > 0 ||
@@ -393,45 +378,24 @@ export const DriversListPage = (): JSX.Element => {
   };
 
   /**
-   * The HR records behind a set of rows, gathered for the FILE rather than for the screen.
+   * The people this file names — FLEET's own roster, in one request.
    *
-   * The table reads one employee per cell through `useEmployeeRecord`, and a hook cannot run over
-   * rows that were never rendered — which is most of what the export carries. So the very same
-   * cache is asked imperatively, with the SAME key, fetcher and freshness the hook uses: this is
-   * not a second copy of HR's records, it is the one the table already fills. The page in front of
-   * the reader therefore costs nothing, and only the rows they have not seen go out.
-   *
-   * Reading HR is HR's own permission. Without it nothing is fetched and the map comes back empty,
-   * so the seven HR columns land blank — exactly the dash the table draws — rather than the export
-   * leaking a raw employee id in place of a name. A single record that fails to load degrades the
-   * same way instead of failing the whole file: one unreachable person must not cost the other
-   * three hundred their sheet.
+   * It used to fetch HR's record per driver, in batches, under `employee.view`; the roster is one
+   * list, so the sheet asks for it once and looks every row up in hand. A reader without
+   * `fleetDriver.view` gets an empty map and the person columns land blank — exactly the dash the
+   * table draws — rather than the export leaking a raw employee id in place of a name.
    */
-  const employeeRecords = async (ids: readonly string[]): Promise<Map<string, EmployeeDto>> => {
-    const found = new Map<string, EmployeeDto>();
-    if (!mayFilterByHr) return found;
-    const unique = [...new Set(ids)].filter((id) => id !== '');
-    for (let at = 0; at < unique.length; at += HR_LOOKUP_BATCH) {
-      const batch = unique.slice(at, at + HR_LOOKUP_BATCH);
-      const records = await Promise.all(
-        batch.map(async (employeeId) => {
-          try {
-            return await queryClient.fetchQuery({
-              queryKey: detailKey('hr', 'employees', employeeId),
-              queryFn: () => getEmployee(employeeId),
-              staleTime: 5 * 60_000,
-            });
-          } catch {
-            return undefined;
-          }
-        }),
-      );
-      for (const [index, record] of records.entries()) {
-        const id = batch[index];
-        if (id !== undefined && record !== undefined) found.set(id, record);
-      }
+  const fleetPeople = async (): Promise<Map<string, FleetPersonDto>> => {
+    try {
+      const roster = await queryClient.fetchQuery({
+        queryKey: ['fleet', 'people'],
+        queryFn: fleetApi.listFleetPeople,
+        staleTime: 5 * 60_000,
+      });
+      return new Map(roster.map((person) => [person.employeeId, person]));
+    } catch {
+      return new Map();
     }
-    return found;
   };
 
   /** A catalog reference as the table resolves it: the item's own name, blank when nobody chose one. */
@@ -449,7 +413,7 @@ export const DriversListPage = (): JSX.Element => {
    * is looking at.
    *
    * THE COLUMNS ARE THE TABLE'S, from all three of its sources, resolved the way the table
-   * resolves them — HR's facts through the shared employee cache, the three catalogs through the
+   * resolves them — the person's facts from Fleet's own roster, the three catalogs through the
    * same id → name maps the cells read, and never an id. The licence-scan column is a CONTROL on
    * screen, so what the sheet carries is the fact behind it: whether a scan is on file at all.
    *
@@ -462,7 +426,7 @@ export const DriversListPage = (): JSX.Element => {
     const all = await fetchFilteredRows((pageNo, size) =>
       fleetApi.listDrivers({ ...filters, page: pageNo, pageSize: size }),
     );
-    const people = await employeeRecords(all.map((d) => d.employeeId));
+    const people = await fleetPeople();
     saveSheet(
       {
         name: t('fleet.nav.drivers'),
@@ -482,19 +446,18 @@ export const DriversListPage = (): JSX.Element => {
           t('fleet.drivers.columns.licenseImage'),
         ],
         rows: all.map((d) => {
-          const employee = people.get(d.employeeId);
-          const address = employee === undefined ? null : hrAddress(employee);
+          const person = people.get(d.employeeId);
           const { profile } = d;
           const expiry = profile?.licenseExpiresAt ?? null;
           return [
-            employee?.personal.fullNameAr ?? '',
-            employee?.code ?? '',
+            person?.fullNameAr ?? '',
+            person?.code ?? '',
             profile === null ? '' : catalogText(profile.jobId, jobName),
-            employee === undefined ? '' : (branchName.get(employee.employment.branchId) ?? ''),
-            address?.line ?? '',
-            address?.governorate ?? '',
-            employee?.personal.contact.primaryPhone ?? '',
-            employee === undefined ? '' : formatDate(employee.hiredAt, locale),
+            person?.branchId == null ? '' : (branchName.get(person.branchId) ?? ''),
+            person?.address ?? '',
+            person?.governorate ?? '',
+            person?.phone ?? '',
+            person?.hiredAt == null ? '' : formatDate(person.hiredAt, locale),
             profile === null ? '' : catalogText(profile.specializationId, specializationName),
             profile === null ? '' : catalogText(profile.licenseTypeId, licenseTypeName),
             expiry === null ? '' : formatDate(expiry, locale),
@@ -515,7 +478,7 @@ export const DriversListPage = (): JSX.Element => {
       // facts now travel with the roster from the directory seam. The browser still SHOWS them
       // from HR's own record; only the ranking is done where the whole list is.
       sortable: true,
-      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.personal.fullNameAr} />,
+      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.fullNameAr} />,
     },
     {
       key: 'employeeCode',
@@ -537,7 +500,7 @@ export const DriversListPage = (): JSX.Element => {
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}
-          pick={(e) => branchName.get(e.employment.branchId) ?? null}
+          pick={(e) => (e.branchId === null ? null : (branchName.get(e.branchId) ?? null))}
         />
       ),
     },
@@ -545,7 +508,7 @@ export const DriversListPage = (): JSX.Element => {
       key: 'address',
       header: t('fleet.drivers.columns.address'),
       render: (d) => (
-        <EmployeeFact employeeId={d.employeeId} pick={(e) => hrAddress(e)?.line ?? null} />
+        <EmployeeFact employeeId={d.employeeId} pick={(e) => e.address} />
       ),
     },
     {
@@ -553,7 +516,7 @@ export const DriversListPage = (): JSX.Element => {
       header: t('fleet.drivers.columns.governorate'),
       sortable: true,
       render: (d) => (
-        <EmployeeFact employeeId={d.employeeId} pick={(e) => hrAddress(e)?.governorate ?? null} />
+        <EmployeeFact employeeId={d.employeeId} pick={(e) => e.governorate} />
       ),
     },
     {
@@ -563,7 +526,7 @@ export const DriversListPage = (): JSX.Element => {
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}
-          pick={(e) => e.personal.contact.primaryPhone}
+          pick={(e) => e.phone}
           className="font-mono text-xs"
         />
       ),
@@ -809,7 +772,6 @@ export const DriversListPage = (): JSX.Element => {
                 onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
                 // The same seats the roster is built from, so every name it offers is a name this
                 // table can actually show.
-                jobTitleIds={drivingTitleIds}
                 density={TIGHT}
                 // The question is written above now, so the trigger says only the ANSWER.
                 placeholder={t('common.filters.all')}

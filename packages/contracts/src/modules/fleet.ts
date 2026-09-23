@@ -2525,3 +2525,38 @@ export const compareFleetVehicleCodes = (a: string | null, b: string | null): nu
   if (kb === null) return -1;
   return ka < kb ? -1 : ka > kb ? 1 : 0;
 };
+
+// ── Fleet's own people ───────────────────────────────────────────────────────
+//
+// «انا عاوز اعرض السواقيين بتوع الحركه للناس اللى واخده موديول الحركه بس ... عشان يظهر لازم اخش
+// اديله من الاتش ار صفحه الموظفون ف بيعرض ... كل المواظفين بتوع الشركه لا انا عاوز الحركه يظهر
+// الناس بتاعت الحركه بس».
+//
+// Every Fleet screen that prints a driver's name used to read HR's employee endpoint under HR's
+// own `employee.view`. That grant is the whole HR directory: to let a dispatcher see who drove
+// car 150 yesterday, somebody had to hand them «الموظفون» and with it every employee in the
+// company, which is a far larger thing than the job needs.
+//
+// So Fleet answers it itself, for ITS OWN PEOPLE and nobody else. The roster is the same one the
+// drivers registry is built from — every employee whose job title requires a driving test — and
+// it arrives through the directory seam, which is a read the org chart already offers and which
+// grants nothing. What this endpoint publishes is exactly the facts a Fleet screen prints; it is
+// read-only, stores nothing, and cannot reach a person who does not hold a driving seat.
+//
+// FR-11 IS UNTOUCHED. Fleet still does not OWN people: it does not write these facts, does not
+// keep them, and every one of them is HR's. What changes is which grant a reader needs to see the
+// ones Fleet already shows.
+
+export interface FleetPersonDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  /** HR employment status — the registry already grays an exited driver, and so may a cell. */
+  status: 'probation' | 'active' | 'onLeave' | 'suspended' | 'exited';
+  branchId: string | null;
+  /** The official address where there is one, the current one behind it; null when neither. */
+  address: string | null;
+  governorate: string | null;
+  phone: string | null;
+  hiredAt: string | null;
+}

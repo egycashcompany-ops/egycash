@@ -1,43 +1,26 @@
-// The HR half of the drivers filter bar.
+// The PERSON half of the drivers filter bar.
 //
 // Three of the boxes on /fleet/drivers ask about facts HR owns — address, governorate, mobile
-// number — and HR's own list endpoint is what filters on them. This hook is step ONE of a
-// two-step, entirely server-side filter:
+// number — and until now HR's own list endpoint filtered on them, in a two-step: ask HR for the
+// matching employee ids, then ask Fleet for the page. That step needed `employee.view`, which is
+// HR's whole directory: «انا عاوز اعرض السواقيين بتوع الحركه للناس اللى واخده موديول الحركه بس ...
+// لا انا عاوز الحركه يظهر الناس بتاعت الحركه بس».
 //
-//   ① GET /hr/employees?address=…&governorate=…&phone=…   → employee ids
-//   ② GET /fleet/drivers?employeeIds=<ids>&…              → the page
+// Fleet publishes its OWN roster now (`/fleet/people`), and these three facts travel on it. So the
+// step is a filter over a list already in hand: one request instead of two, under Fleet's own
+// grant, and the whole class of problems the two-step carried simply stops existing —
 //
-// Two independent queries, each answered by the module that owns its data, joined by id in the
-// browser. That is already how the table reads HR names; nothing here lets Fleet see HR's
-// collection, and nothing is filtered out of an already-fetched page.
+//   • THE CAP IS GONE. `/fleet/drivers?employeeIds=` takes one page of ids, so an HR match wider
+//     than that had to report «narrow your filter» and filter nothing rather than hand over a
+//     truncated list that looks complete. Measured, «الجيزة» matched 117 employees of whom 3 were
+//     drivers. The roster IS the drivers, so there is nothing to overflow.
+//   • THE SEATS ARE GONE with it. Step ① had to be narrowed to the job titles requiring a driving
+//     test, under `jobTitle.view`, for exactly that reason. The roster is those seats.
 //
-// THE CAP IS THE WHOLE POINT. `/fleet/drivers?employeeIds=` accepts one HR page (100 ids). When
-// the HR match is wider than that, this hook reports `tooMany` instead of handing over the first
-// hundred: a truncated `$in` would render a short list that looks complete, which is the one
-// outcome worse than no filter at all. The caller must then say so and filter nothing.
-//
-// SO THE QUESTION HAS TO BE THE ONE THE SCREEN IS ASKING. Step ① used to ask HR about EVERYBODY:
-// «who lives in الجيزة» is answered by the whole payroll, so a company of a few hundred blew the
-// cap on an ordinary governorate and the screen refused to filter — measured, «الجيزة» matched
-// 117 employees of whom 3 were drivers. The registry is only people whose job title requires a
-// driving test, so that is what step ① now asks about, and the answer is bounded by the driver
-// count rather than the headcount. A caller that cannot name those titles (no `jobTitle.view`,
-// or a screen that is not the registry) simply does not narrow, exactly as before.
-//
-// THE BRANCH IS NO LONGER ASKED HERE, and that is the fix rather than a tidy-up. «الفرع» was the
-// one filter whose own subject overflowed the cap: a branch's employees are its whole payroll,
-// drivers and everybody else, so every real branch matched more than one HR page and the screen
-// answered «narrow your filter» and filtered NOTHING — a control that could not work at any size.
-// Fleet's roster already carries each driver's branch from the directory seam, so the fleet list
-// filters on it directly (`/fleet/drivers?branchId=`), with no page to overflow. The same is true
-// of the driver PICKER: a ticked list of people is already ids, and needs no HR page at all.
-//
-// «الوظيفة» left too, in the other direction: it is a fleet `driverJob` catalog now — the grade
-// the house runs a driver at — rather than HR's job title, so it is Fleet's own column to filter.
-import { useQuery } from '@tanstack/react-query';
-import { MAX_PAGE_SIZE } from '@ecms/contracts';
-import { useCan } from '../../../platform/rbac/Can';
-import { listEmployees } from '../../hr/employee-management/employees/api/employee-api';
+// «الفرع» and «الوظيفة» are elsewhere and stay there: the branch rides the roster row and is
+// filtered by the fleet list itself, and the grade is a Fleet catalog, not HR's job title.
+import { useMemo } from 'react';
+import { useFleetPeopleMap } from '../components/EmployeeName';
 
 /** The HR-owned half of the filter bar, as the URL carries it. */
 export interface DriverHrFilter {
@@ -78,58 +61,43 @@ export interface DriverHrFilterResult {
  * as before. An empty array means "HR matched nobody", which is a real answer and must produce an
  * empty table, never an unfiltered one.
  */
-export const useDriverHrFilter = (
-  filter: DriverHrFilter,
-  /**
-   * The seats the asking screen is about — the drivers registry passes the job titles that
-   * require a driving test, which is exactly who its rows are.
-   *
-   * Omitted or empty means «ask about everybody», which is what Maintenance and Odometer want:
-   * they resolve ONE typed driver name for a visit, and a name is narrow enough on its own.
-   */
-  jobTitleIds: readonly string[] = [],
-): DriverHrFilterResult => {
-  const can = useCan();
+export const useDriverHrFilter = (filter: DriverHrFilter): DriverHrFilterResult => {
+  const roster = useFleetPeopleMap();
   const active = hasHrFilter(filter);
-  // Reading HR is HR's permission. Without it the six HR columns are dashes anyway, so there is
-  // nothing to filter on and the query never runs.
-  const allowed = can('employee.view');
+  const key = `${filter.search}|${filter.address}|${filter.governorate}|${filter.phone}`;
 
-  const seats = jobTitleIds.join(',');
-  const query = useQuery({
-    queryKey: ['hr', 'employees', 'fleet-driver-filter', filter, seats],
-    queryFn: () =>
-      listEmployees({
-        pageSize: MAX_PAGE_SIZE,
-        employed: true,
-        search: filter.search || undefined,
-        address: filter.address || undefined,
-        governorate: filter.governorate || undefined,
-        phone: filter.phone || undefined,
-        ...(seats === '' ? {} : { jobTitleId: seats }),
-      }),
-    enabled: active && allowed,
-    staleTime: 30_000,
-    retry: false,
-  });
+  const matches = useMemo(() => {
+    if (!active) return null;
+    const has = (haystack: string | null, needle: string): boolean =>
+      needle === '' ||
+      (haystack ?? '').toLocaleLowerCase().includes(needle.trim().toLocaleLowerCase());
+    return [...roster.values()]
+      .filter(
+        (person) =>
+          (filter.search === '' ||
+            has(person.fullNameAr, filter.search) ||
+            has(person.code, filter.search)) &&
+          has(person.address, filter.address) &&
+          has(person.governorate, filter.governorate) &&
+          has(person.phone, filter.phone),
+      )
+      .map((person) => person.employeeId);
+  }, [roster, active, key]);
 
   if (!active) {
     return { employeeIds: null, tooMany: false, matched: 0, loading: false, failed: false };
   }
-  if (!allowed || query.isError) {
+  // An EMPTY roster while a filter is set is «not readable», not «matched nobody»: a reader
+  // without the grant, or a list still on its way. Reporting it as a match would show an empty
+  // table and call it an answer.
+  if (roster.size === 0) {
     return { employeeIds: null, tooMany: false, matched: 0, loading: false, failed: true };
   }
-  if (query.data === undefined) {
-    return { employeeIds: null, tooMany: false, matched: 0, loading: true, failed: false };
-  }
-  const matched = query.data.meta.totalItems;
-  if (matched > MAX_PAGE_SIZE) {
-    return { employeeIds: null, tooMany: true, matched, loading: false, failed: false };
-  }
   return {
-    employeeIds: query.data.items.map((employee) => employee.id),
+    employeeIds: matches ?? [],
+    // Nothing to overflow any more — the roster is the drivers, and the filter runs over it whole.
     tooMany: false,
-    matched,
+    matched: (matches ?? []).length,
     loading: false,
     failed: false,
   };

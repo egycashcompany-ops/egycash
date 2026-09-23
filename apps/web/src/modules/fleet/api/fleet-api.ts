@@ -55,6 +55,7 @@ import {
   type SetRollupCollected,
   type UpdateFleetViolation,
   type FleetLicensingRowDto,
+  type FleetPersonDto,
   type SetFleetLicensingMark,
 } from '@ecms/contracts';
 import {
@@ -370,3 +371,15 @@ export const licensingBoard = (): Promise<FleetLicensingRowDto[]> =>
 /** Tick or untick ONE square. Answers with the refreshed board — the pair colours together. */
 export const setLicensingMark = (body: SetFleetLicensingMark): Promise<FleetLicensingRowDto[]> =>
   post<FleetLicensingRowDto[]>('/fleet/licensing/mark', body);
+
+// ── Fleet's own people ───────────────────────────────────────────────────────
+
+/**
+ * The people Fleet may name — its drivers, and nobody else.
+ *
+ * Read instead of HR's employee endpoint so a Fleet screen needs no HR grant: see
+ * `FleetPersonDto`. Unpaginated, because every consumer is a lookup table a screen holds while it
+ * renders, and «who is this id» must not depend on which page happened to be fetched.
+ */
+export const listFleetPeople = (): Promise<FleetPersonDto[]> =>
+  get<FleetPersonDto[]>('/fleet/people');

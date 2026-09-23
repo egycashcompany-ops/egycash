@@ -32,7 +32,7 @@ import {
 import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
-import { detailKey, listKey } from '../../shared/lib/query-keys';
+import { listKey } from '../../shared/lib/query-keys';
 import { MaintenancePage } from './pages/MaintenancePage';
 import { CheckOutDialog } from './components/MaintenanceDialogs';
 
@@ -149,28 +149,30 @@ const client = (
     pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
   );
   catalogs(qc);
-  qc.setQueryData(detailKey('hr', 'employees', 'e1'), {
-    id: 'e1',
-    code: 'HR-1',
-    personal: { fullNameAr: 'محمد' },
-  });
-  qc.setQueryData(detailKey('hr', 'employees', 'e2'), {
-    id: 'e2',
-    code: 'HR-2',
-    personal: { fullNameAr: 'أحمد' },
-  });
-  qc.setQueryData(detailKey('hr', 'employees', 'd1'), {
-    id: 'd1',
-    code: 'HR-D1',
-    personal: { fullNameAr: 'سائق الصباح' },
-  });
-  qc.setQueryData(detailKey('hr', 'employees', 'd2'), {
-    id: 'd2',
-    code: 'HR-D2',
-    personal: { fullNameAr: 'سائق المساء' },
-  });
+  // FLEET's own people list — one key for the whole roster, which is what every driver cell on
+  // every Fleet screen now reads. It replaces four HR detail entries: the names no longer come
+  // from HR's directory and no longer need HR's grant.
+  qc.setQueryData(['fleet', 'people'], [
+    person('e1', 'HR-1', 'محمد'),
+    person('e2', 'HR-2', 'أحمد'),
+    person('d1', 'HR-D1', 'سائق الصباح'),
+    person('d2', 'HR-D2', 'سائق المساء'),
+  ]);
   return qc;
 };
+
+/** One row of Fleet's people list — the shape `/fleet/people` answers with. */
+const person = (employeeId: string, code: string, fullNameAr: string) => ({
+  employeeId,
+  code,
+  fullNameAr,
+  status: 'active' as const,
+  branchId: null,
+  address: null,
+  governorate: null,
+  phone: null,
+  hiredAt: null,
+});
 
 const store = (permissions: string[]) =>
   configureStore({

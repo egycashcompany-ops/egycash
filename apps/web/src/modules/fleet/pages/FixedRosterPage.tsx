@@ -705,13 +705,17 @@ export const FixedRosterPage = (): JSX.Element => {
   );
   const searchIndex = useMemo(() => {
     const index = new Map<string, DriverSearchRecord>();
-    for (const [employeeId, employee] of records) {
+    for (const [employeeId, person] of records) {
       index.set(employeeId, {
         employeeId,
-        nameAr: employee.personal.fullNameAr,
-        nameEn: employee.personal.fullNameEn,
-        code: employee.code,
-        employeeNumber: employee.employeeNumber,
+        nameAr: person.fullNameAr,
+        // Fleet's own roster carries ONE name and ONE code — the two a search on this board is
+        // ever typed with. The English name and the employee NUMBER were HR-record fields that
+        // came along for free when this read HR's endpoint; they are not facts Fleet publishes,
+        // and searching by them was never something anybody did on a driver chip.
+        nameEn: null,
+        code: person.code,
+        employeeNumber: null,
       });
     }
     return index;
@@ -730,7 +734,7 @@ export const FixedRosterPage = (): JSX.Element => {
   const driverName = (employeeId: string | null): string =>
     employeeId === null
       ? ''
-      : (records.get(employeeId)?.personal.fullNameAr ?? employeeId.slice(-8));
+      : (records.get(employeeId)?.fullNameAr ?? employeeId.slice(-8));
 
   // Ascending, then descending, then out of the order altogether — the daily board's rule.
   const changeSort = (by: string): void => {

@@ -44,8 +44,8 @@ const toDirectoryEmployee = (employee: {
   personal: {
     fullNameAr: string;
     contact?: { primaryPhone?: string | null } | null;
-    officialAddress?: { governorate?: string | null } | null;
-    currentAddress?: { governorate?: string | null } | null;
+    officialAddress?: { governorate?: string | null; line1?: string | null; city?: string | null } | null;
+    currentAddress?: { governorate?: string | null; line1?: string | null; city?: string | null } | null;
   };
 }): DirectoryEmployee => {
   const address = employee.personal.officialAddress ?? employee.personal.currentAddress ?? null;
@@ -59,6 +59,14 @@ const toDirectoryEmployee = (employee: {
     phone: employee.personal.contact?.primaryPhone ?? null,
     governorate: address?.governorate ?? null,
     hiredAt: employee.hiredAt ?? null,
+    // The same two parts the drivers registry has always printed, joined the same way. Joined
+    // HERE rather than on the screen so the one seam answers with the one string — the registry
+    // and the sheet exported from it were already sharing a helper to avoid exactly that drift.
+    address:
+      address == null
+        ? null
+        : [address.line1, address.city].filter((part) => part != null && part !== '').join('، ') ||
+          null,
   };
 };
 

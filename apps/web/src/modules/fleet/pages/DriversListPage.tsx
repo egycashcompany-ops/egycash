@@ -193,7 +193,10 @@ const EmployeeFact = ({
  * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
  * first click REPLACES it rather than joining it — see `clickSort`.
  */
-const DEFAULT_SORT = 'createdAt:desc';
+// «والسواقيين يتعرضوا بالترتيب بتاع الاكواد — كود الموظف». The code is how the company names a
+// person, so it is the order somebody looking for one reads down. It also matches what the server
+// falls back to, so a first load and a cleared sort agree.
+const DEFAULT_SORT = 'employeeCode:asc';
 
 /**
  * How many HR records the export asks for at once.

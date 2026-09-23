@@ -192,6 +192,29 @@ describe('the registry’s order, on the columns HR owns', () => {
     expect(order(rows, 'driver', 'desc')).toEqual(['m', 's', 'a']);
   });
 
+  it('opens on the employee CODE when nothing was asked for', () => {
+    // «والسواقيين يتعرضوا بالترتيب بتاع الاكواد — كود الموظف». The default used to be «newest
+    // profile first», which ordered the registry by a Fleet record most of these drivers do not
+    // have — no order at all for them.
+    const rows = [
+      hrRow('c', { code: '150' }),
+      hrRow('a', { code: '9' }),
+      hrRow('b', { code: '61' }),
+    ];
+    expect(sortDriverRows(rows, undefined, undefined).map((r) => r.employeeId)).toEqual([
+      'a',
+      'b',
+      'c',
+    ]);
+  });
+
+  it('reads a code that is a NUMBER as a number — 9 before 150, not after it', () => {
+    // Employee codes are digits written as text, so a plain word comparison puts 9 last. It is
+    // the same defect the fleet's car order exists to end, on the other registry.
+    const rows = [hrRow('big', { code: '150' }), hrRow('small', { code: '9' })];
+    expect(order(rows, 'employeeCode', 'asc')).toEqual(['small', 'big']);
+  });
+
   it('orders by employee code, by governorate and by phone', () => {
     const rows = [
       hrRow('b', { code: '0200010', governorate: 'الجيزة', phone: '0102' }),

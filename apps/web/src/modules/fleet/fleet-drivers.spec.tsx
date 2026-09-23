@@ -72,9 +72,11 @@ const EMPLOYEE_ID = 'e1';
 const driverParams = (overrides: Record<string, unknown> = {}) => ({
   page: 1,
   pageSize: 25,
-  sortBy: 'createdAt',
-  sortDir: 'desc',
-  sort: 'createdAt:desc',
+  // The registry opens on «كود الموظف» — see `DEFAULT_SORT` on the page and the server's own
+  // fallback, which agree so a first load and a cleared sort ask for the same thing.
+  sortBy: 'employeeCode',
+  sortDir: 'asc',
+  sort: 'employeeCode:asc',
   jobId: undefined,
   branchId: undefined,
   area: undefined,
@@ -1333,9 +1335,9 @@ describe('a driver whose licence has not been recorded yet', () => {
       listKey('fleet', 'drivers', {
         page: 1,
         pageSize: 25,
-        sortBy: 'createdAt',
-        sortDir: 'desc',
-        sort: 'createdAt:desc',
+        sortBy: 'employeeCode',
+        sortDir: 'asc',
+        sort: 'employeeCode:asc',
         search: undefined,
         area: undefined,
         specialization: undefined,
@@ -1360,9 +1362,9 @@ describe('a driver whose licence has not been recorded yet', () => {
       listKey('fleet', 'drivers', {
         page: 1,
         pageSize: 25,
-        sortBy: 'createdAt',
-        sortDir: 'desc',
-        sort: 'createdAt:desc',
+        sortBy: 'employeeCode',
+        sortDir: 'asc',
+        sort: 'employeeCode:asc',
         search: undefined,
         area: undefined,
         specialization: undefined,

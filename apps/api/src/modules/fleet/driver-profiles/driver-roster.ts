@@ -196,7 +196,10 @@ const compareValues = (left: string | number | null, right: string | number | nu
   if (left === null) return Number.POSITIVE_INFINITY;
   if (right === null) return Number.NEGATIVE_INFINITY;
   if (typeof left === 'number' && typeof right === 'number') return left - right;
-  return String(left).localeCompare(String(right), 'ar');
+  // `numeric` because the commonest word column on this registry is a NUMBER written as text —
+  // «كود الموظف». Without it 9 sorts after 150, which is the same defect the fleet's car order
+  // exists to end; with it, the names and governorates beside it are unaffected.
+  return String(left).localeCompare(String(right), 'ar', { numeric: true });
 };
 
 /**
@@ -228,7 +231,19 @@ export const sortDriverRows = <
    */
   sorts: readonly { by: string; dir: 'asc' | 'desc' }[] = [],
 ): TRow[] => {
-  const columns = (sorts.length > 0 ? sorts : [{ by: sortBy ?? '', dir: sortDir ?? 'desc' }])
+  // WHERE THE REGISTRY OPENS when the reader has asked for nothing: «والسواقيين يتعرضوا
+  // بالترتيب بتاع الاكواد — كود الموظف». The code is how the company names a person, so it is the
+  // order somebody looking for one reads down; «newest profile first» ordered the registry by a
+  // Fleet record most of these drivers do not have, which is no order at all for them.
+  const columns = (
+    sorts.length > 0
+      ? sorts
+      : [
+          sortBy === undefined || sortBy === ''
+            ? { by: 'employeeCode', dir: 'asc' as const }
+            : { by: sortBy, dir: sortDir ?? 'desc' },
+        ]
+  )
     .map((entry) => ({
       // A column this registry cannot answer falls back to `createdAt`, which is what the
       // platform's own list contract does with an unknown `sortBy` — never a 400, and never a

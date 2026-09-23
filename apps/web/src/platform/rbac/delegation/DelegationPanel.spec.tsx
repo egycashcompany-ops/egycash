@@ -117,7 +117,7 @@ describe('the tree the manager walks down', () => {
   });
 
   it('names the person in the summary', () => {
-    expect(render({ locale: 'ar' })).toContain('صلاح هيشوف');
+    expect(render({ locale: 'ar' })).toContain('ما سيطّلع عليه صلاح');
   });
 
   it('draws «the branch as one unit» as its own block, locked for a department-level manager', () => {

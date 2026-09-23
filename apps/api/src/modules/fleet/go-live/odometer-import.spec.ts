@@ -97,7 +97,7 @@ describe('reading the export', () => {
     expect(row?.date).toEqual(new Date('2025-11-25T00:00:00.000Z'));
     expect(row?.out, 'a reading that is not a number is NO reading — the chain supplies one').toBeNull();
     expect(row?.notes).toBe(
-      'اسوان · التاريخ فى الدفتر القديم: «0000-12-31T00:00:00.000Z» · قراءة الخروج فى الدفتر القديم: «12a»',
+      'اسوان · التاريخ في الدفتر القديم: «0000-12-31T00:00:00.000Z» · قراءة الخروج في الدفتر القديم: «12a»',
     );
   });
 

@@ -28,26 +28,26 @@ export const rowReasons = {
   noJobTitle: () => both('لا توجد وظيفة (الوظيفة)', 'no job title (الوظيفة)'),
   noExitDate: () => both('لا يوجد تاريخ خروج', 'no exit date'),
   exitReasonBlank: () =>
-    both('سبب الخروج فاضي — املأه وارفع الملف تاني', 'exit reason is blank — fill it in and re-run'),
+    both('سبب الخروج فارغ — يُرجى استيفاؤه وإعادة رفع الملف', 'exit reason is blank — fill it in and re-run'),
   exitReasonUnknown: (reason: string) =>
     both(
-      `سبب الخروج «${reason}» مش من الأسباب المعروفة`,
+      `سبب الخروج «${reason}» ليس من الأسباب المعروفة`,
       `exit reason "${reason}" is not one of the recognised reasons`,
     ),
   exitBeforeHire: () =>
     both(
-      'تاريخ الخروج قبل تاريخ التعيين — واحد منهم غلط',
+      'تاريخ الخروج سابق لتاريخ التعيين — أحدهما غير صحيح',
       'exit date is before the hiring date — one of the two is wrong',
     ),
   duplicatePeriod: (sameExit: boolean) =>
     both(
-      `صفوف مكرّرة متعارضة لنفس فترة العمل (نفس تاريخ التعيين${sameExit ? ' وتاريخ الخروج' : ''}) — محتاجة قرار من شخص قبل الاستيراد`,
+      `صفوف مكرّرة متعارضة لنفس فترة العمل (نفس تاريخ التعيين${sameExit ? ' وتاريخ الخروج' : ''}) — تتطلب قرارًا من مسؤول قبل الاستيراد`,
       `conflicting duplicate rows for one employment (same hire date${sameExit ? ' and exit date' : ''})` +
         ' — needs a human decision before import',
     ),
   badCodeShape: (code: string) =>
     both(
-      `كود الموظف «${code}» مش على شكل <٣ أرقام للفرع><٤ أرقام للرقم>`,
+      `كود الموظف «${code}» ليس على صيغة <٣ أرقام للفرع><٤ أرقام للرقم>`,
       `employee code "${code}" is not <3-digit branch><4-digit number>`,
     ),
 } as const;
@@ -56,13 +56,13 @@ export const rowReasons = {
 export const personReasons = {
   codeHeldByDeleted: (code: string) =>
     both(
-      `الكود ${code} محجوز لسجل موظف محذوف ولسه واخد مكانه في الفهرس. رجّع السجل أو امسحه نهائيًا ثم أعد المحاولة.`,
+      `الكود ${code} محجوز لسجل موظف محذوف ما زال شاغلًا له في الفهرس. يُرجى استعادة السجل أو حذفه نهائيًا ثم إعادة المحاولة.`,
       `code ${code} is held by a DELETED employee record, which still occupies it in the unique ` +
         'index. Restore that record or purge it, then re-run.',
     ),
   couldNotPlace: () =>
     both(
-      'ما قدرناش نحدد مكان الشخص في الهيكل (الموقع/الإدارة/الوظيفة)',
+      'تعذّر تحديد موضع الشخص في الهيكل (الموقع/الإدارة/الوظيفة)',
       'could not place this person in the organization (site/department/job title)',
     ),
   /** A thrown error's message, when nothing more specific was decided. Shown as-is in both. */
@@ -73,13 +73,13 @@ export const personReasons = {
 export const refusalReasons = {
   nationalIdDiffers: () =>
     both(
-      'السجل فيه رقم قومي مختلف أصلًا — تغيير هوية شخص مش تعديل من ملف',
+      'السجل يحمل رقمًا قوميًا مختلفًا بالفعل — وتغيير هوية شخص ليس تعديلًا يُجرى من ملف',
       'the record already holds a different National ID — re-identifying a person is not an ' +
         'import edit',
     ),
   rehireNeedsDecision: () =>
     both(
-      'الملف بيقول إن الشخص على رأس العمل والسجل بيقول إنه خرج — رجوع حد للشغل قرار «إعادة تعيين» بيتسجّل، والملف مش بيقدر ياخده',
+      'الملف يُدرج الشخص على رأس العمل بينما السجل يُظهره منتهي الخدمة — وعودة أي شخص إلى العمل قرار «إعادة تعيين» يُسجَّل، ولا يملك الملف اتخاذه',
       'the file lists this person as serving but the registry has them exited — bringing ' +
         'somebody back is a Rehire, which records a decision an upload cannot make',
     ),
@@ -89,12 +89,12 @@ export const refusalReasons = {
 export const orgNotes = {
   siteHasNoCode: (site: string) =>
     both(
-      `الموقع «${site}» ماله بادئة كود موظف خاصة بيه — مش هنقدر نحدد مكانه`,
+      `الموقع «${site}» ليس له بادئة كود موظف خاصة به — لذا يتعذّر تحديد موضعه`,
       `site "${site}" has no employee-code prefix of its own — cannot place it`,
     ),
   branchCodeMismatch: (name: string, existingCode: string, sheetCode: string) =>
     both(
-      `فرع «${name}» موجود بكود ${existingCode}، لكن الشيت حاطّه على ${sheetCode}. هنستخدم الفرع الموجود زي ما هو ومش هنغيّر كوده؛ أكواد الموظفين جاية من الشيت في الحالتين. لو الشيت هو الصح، صحّح كود الفرع يدويًا.`,
+      `فرع «${name}» مسجَّل بكود ${existingCode}، بينما يضعه الملف على ${sheetCode}. سيُستخدم الفرع المسجَّل كما هو دون تغيير كوده؛ وأكواد الموظفين مأخوذة من الملف في الحالتين. فإذا كان الملف هو الصحيح، فيُرجى تصحيح كود الفرع يدويًا.`,
       `"${name}" already exists with code ${existingCode}, but the sheet places it at ${sheetCode}. ` +
         'The existing branch is used as it is and its code is NOT changed; employee codes come ' +
         'from the sheet either way. Correct the branch code by hand if the sheet is right.',

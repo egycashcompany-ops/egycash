@@ -91,12 +91,12 @@ describe('reading the export', () => {
     ]).visits;
     expect(noCar?.code, 'never an empty column').toBe('بدون كود');
     expect(badOut?.outDate, 'a car is never shown in two workshops over a word nobody can read').toBeNull();
-    expect(badOut?.notes).toBe('تغير عامود دريكسيون · تاريخ الخروج فى الدفتر القديم: «6/4/20205»');
+    expect(badOut?.notes).toBe('تغير عامود دريكسيون · تاريخ الخروج في الدفتر القديم: «6/4/20205»');
     expect(badIn?.inDate, 'the day the row was added is the nearest thing the export has').toEqual(
       new Date('2024-10-13T00:00:00.000Z'),
     );
     expect(badCounter?.counter).toBeNull();
-    expect(badCounter?.notes).toBe('العداد فى الدفتر القديم: «12a»');
+    expect(badCounter?.notes).toBe('العداد في الدفتر القديم: «12a»');
     expect([noCar, badOut, badIn].map((v) => v?.unreadable)).toEqual([true, true, true]);
     expect(badCounter?.unreadable, 'a counter the chain can supply does not bury the visit').toBe(false);
   });

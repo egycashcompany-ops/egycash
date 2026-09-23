@@ -49,6 +49,9 @@ jobs:
       - name: Automation template packages parse against their contract (A-9a)
         run: node scripts/automation-templates.mjs
 
+      - name: The Arabic the product speaks is formal Arabic
+        run: node scripts/check-formal-arabic.mjs
+
       # One step per workspace rather than `--workspaces`. That form runs every workspace and
       # reports the aggregate at the end, so a failure in an early workspace ends up buried under
       # thousands of lines from the ones that ran after it — the log tail shows a passing suite and

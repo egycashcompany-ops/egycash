@@ -475,7 +475,7 @@ describe('the registry table renders the frozen column order', () => {
     for (const locale of ['ar', 'en'] as const) {
       const warning = translate(locale, 'fleet.vehicles.disposedWarning');
       expect(warning, `${locale}: no longer claims it is final`).not.toMatch(/نهائي|final/i);
-      expect(warning, `${locale}: says nothing is deleted`).toMatch(/مش بيمسح|deletes nothing/i);
+      expect(warning, `${locale}: says nothing is deleted`).toMatch(/لا يمسح|deletes nothing/i);
     }
   });
 

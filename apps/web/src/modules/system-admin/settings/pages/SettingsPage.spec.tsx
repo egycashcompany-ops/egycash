@@ -87,7 +87,7 @@ const SHAPES: Record<string, { type: string; defaultValue: unknown }> = {
   },
   [FleetSettingKeys.ReportEndorsementNote]: {
     type: 'string',
-    defaultValue: 'يرجى المراجعة والتصديق على اجمالى المصروفات',
+    defaultValue: 'يُرجى المراجعة والتصديق على إجمالي المصروفات',
   },
   [FleetSettingKeys.ReportEndorsedByName]: {
     type: 'string',

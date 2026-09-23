@@ -93,7 +93,7 @@ describe('what the reader is shown about the chain', () => {
       />,
     );
     expect(markup).toContain('لا يوجد أحد على هذه الخطوة');
-    expect(markup).toContain('اتلغت بقرار أعلى منها');
+    expect(markup).toContain('أُلغيت بقرار أعلى منها');
     expect(markup).toContain('صلاح');
   });
 
@@ -106,7 +106,7 @@ describe('what the reader is shown about the chain', () => {
         })}
       />,
     );
-    expect(markup).toContain('الطلب ما وصلهاش');
+    expect(markup).toContain('لم يصل إليها الطلب');
     expect(markup).not.toContain('لا يوجد أحد على هذه الخطوة');
   });
 
@@ -139,8 +139,8 @@ describe('what the reader is told before he acts', () => {
         actions={<button type="button" id="decide-here" />}
       />,
     );
-    expect(markup).toContain('هتلغي 1 خطوة تحتها');
-    expect(markup.indexOf('هتلغي')).toBeLessThan(markup.indexOf('decide-here'));
+    expect(markup).toContain('تُلغي 1 خطوة تحتها');
+    expect(markup.indexOf('تُلغي')).toBeLessThan(markup.indexOf('decide-here'));
     expect(markup).toContain('هذه الخطوة من مسؤوليتك');
   });
 
@@ -148,7 +148,7 @@ describe('what the reader is told before he acts', () => {
     const markup = render(
       <ApprovalChainPanel trail={trail({ viewerMayDecide: true, viewerStep: 0 })} />,
     );
-    expect(markup).not.toContain('هتلغي');
+    expect(markup).not.toContain('تُلغي');
   });
 
   it('tells somebody stepping into a chain he is not on that it will be recorded', () => {

@@ -75,7 +75,7 @@ describe('reading the export', () => {
     expect(parsed.accidents[2]?.culprit, 'nobody wrote down who').toBe(NOT_STATED);
     expect(parsed.accidents[3]).toMatchObject({
       paidAmount: null,
-      notes: 'تم الاصلاح · المبلغ المدفوع فى الدفتر القديم: «x»',
+      notes: 'تم الاصلاح · المبلغ المدفوع في الدفتر القديم: «x»',
       unreadable: true,
     });
   });

@@ -272,7 +272,7 @@ export const approvalPermissions = declarePermissions(
       action: 'override',
       name: {
         en: 'Decide an approval step that is not yours',
-        ar: 'يقرّر خطوة موافقة مش بتاعته',
+        ar: 'يقرّر خطوة موافقة ليست من اختصاصه',
       },
     },
   ],

@@ -187,7 +187,7 @@ describe('the signature block on a printed Fleet report', () => {
     expect(byKey.get(FleetSettingKeys.ReportPreparedByTitle)?.defaultValue).toBe('القائم بالأعمال');
     expect(byKey.get(FleetSettingKeys.ReportApprovedByTitle)?.defaultValue).toBe('مدير إدارة الحركة');
     expect(byKey.get(FleetSettingKeys.ReportEndorsementNote)?.defaultValue).toBe(
-      'يرجى المراجعة والتصديق على اجمالى المصروفات',
+      'يُرجى المراجعة والتصديق على إجمالي المصروفات',
     );
     for (const key of SIGNATORIES) {
       expect(String(byKey.get(key)?.defaultValue ?? ''), `${key} has a real default`).not.toBe('');

@@ -1272,7 +1272,7 @@ const SIGN: ReportSignatories = {
   preparedByName: 'م / محمد حسين محمد',
   approvedByTitle: 'مدير إدارة الحركة',
   approvedByName: 'عميد / إيهاب عبد السلام سليمان',
-  endorsementNote: 'يرجى المراجعة والتصديق على اجمالى المصروفات',
+  endorsementNote: 'يُرجى المراجعة والتصديق على إجمالي المصروفات',
   endorsedByName: 'لواء أ ح / جمال أحمد أبواسماعيل',
 };
 
@@ -1286,7 +1286,7 @@ const report = (over: Partial<Parameters<typeof buildFleetReportHtml>[0]> = {}) 
       ['2026', '150'],
       ['2026', '152'],
     ],
-    totals: [{ label: 'إجمالى الشركة', value: '7344.40' }],
+    totals: [{ label: 'إجمالي الشركة', value: '7344.40' }],
     signatories: SIGN,
     serialHeader: 'م',
     emptyLabel: 'لا توجد بيانات',
@@ -1345,10 +1345,10 @@ describe('the printed report is a company document, not a screenshot', () => {
   it('puts the drivers’ total INSIDE the table, where the signed copy has it', () => {
     const html = report({
       totals: [],
-      totalRow: { label: 'إجمالى السائقين', value: '2900.00' },
+      totalRow: { label: 'إجمالي السائقين', value: '2900.00' },
     });
     // Spanning every column but the last, so the figure lands in the money column it sums.
-    expect(html).toContain('<tr class="trow"><th colspan="2">إجمالى السائقين</th><td>2900.00</td>');
+    expect(html).toContain('<tr class="trow"><th colspan="2">إجمالي السائقين</th><td>2900.00</td>');
   });
 
   it('speaks the FORM\u2019s vocabulary, not the board\u2019s', () => {
@@ -1483,7 +1483,7 @@ describe('the «Excel» button produces a real workbook', () => {
 
   it('numbers the rows and carries the total on the bottom line', async () => {
     const text = new TextDecoder().decode(
-      new Uint8Array(await book({ totals: ['الإجمالى', 907.5] }).arrayBuffer()),
+      new Uint8Array(await book({ totals: ['الإجمالي', 907.5] }).arrayBuffer()),
     );
     expect(text).toContain('<t xml:space="preserve">م</t>');
     expect(text, 'the total is the last row').toContain('<v>907.5</v>');
@@ -1507,7 +1507,7 @@ describe('the «Excel» button produces a real workbook', () => {
     const text = new TextDecoder().decode(
       new Uint8Array(
         await book({
-          totals: ['الإجمالى', 900],
+          totals: ['الإجمالي', 900],
           trailer: signatureRows(SIGN, signatureColumns(3), 'التوقيع / '),
         }).arrayBuffer(),
       ),

@@ -1990,7 +1990,7 @@ describe('the licence preview names the driver’s vehicle for today', () => {
       code: '150',
       make: 'مرسيدس اسبرانتر 515',
     });
-    expect(ar).toBe('عربية اليوم: كود 150 | الماركة: مرسيدس اسبرانتر 515');
+    expect(ar).toBe('سيارة اليوم: كود 150 | الماركة: مرسيدس اسبرانتر 515');
     expect(
       translate('en', 'fleet.drivers.licenseImage.vehicleToday', { code: '150', make: 'X' }),
     ).not.toContain('{{');

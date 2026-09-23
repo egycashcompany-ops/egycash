@@ -336,6 +336,21 @@ describe('the filters narrow the board', () => {
   });
 });
 
+describe('the Excel button', () => {
+  it('is offered on the board', () => {
+    // «شاشه fleet/licensing اعملى اكسيل» — the same control the other eight Fleet lists carry.
+    expect(render()).toContain('data-export="licensing"');
+  });
+
+  it('is still offered when the board is EMPTY — empty is an answer, a failure is not', () => {
+    // The button is gated on the query's ERROR, not on its length: a fleet with no «… ت» car has
+    // genuinely nothing to export and said so, which is a different thing from a fetch that never
+    // came back. The error branch itself needs a rejected query, which a markup render has no way
+    // to produce — it is the same gate the five paged screens carry, and it is read in the page.
+    expect(render({ rows: [] })).toContain('data-export="licensing"');
+  });
+});
+
 describe('the count beside the filters', () => {
   const fleet = [
     row({ vehicleId: 'v1', code: '150' }),

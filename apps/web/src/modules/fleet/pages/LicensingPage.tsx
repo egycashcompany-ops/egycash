@@ -19,6 +19,8 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Input } from '../../../shared/ui/form';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { saveSheet } from '../lib/fleet-sheet';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
@@ -192,6 +194,46 @@ export const LicensingPage = (): JSX.Element => {
     { value: 'receipt', label: t('fleet.licensing.columns.receipt') },
   ];
 
+  /**
+   * «شاشه fleet/licensing اعملى اكسيل» — what the FILTER left, in the order it is on screen.
+   *
+   * No round trip: this board is unpaginated, so the rows in hand ARE the answer — unlike the
+   * paged registers, whose export has to walk every page before it can be honest. No signatures
+   * either, for the reason the other seven list sheets have none: «ومفيش امضاءات» — these are
+   * working lists, not the company's forms.
+   *
+   * A square is written as a WORD rather than a tick: «تم» reads in a spreadsheet, filters and
+   * sorts, and survives being opened by something that has never heard of this application. An
+   * empty cell is the honest opposite — not «لا», which would claim somebody decided against it.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const done = (on: boolean): string => (on ? t('fleet.licensing.done') : '');
+    saveSheet({
+      name: t('fleet.nav.licensing'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.licensing.columns.vehicle'),
+        t('fleet.licensing.columns.plate'),
+        t('fleet.licensing.columns.chassis'),
+        t('fleet.licensing.columns.licenseClass'),
+        `${t('fleet.licensing.columns.insurance')} — ${t('fleet.licensing.columns.handover')}`,
+        `${t('fleet.licensing.columns.insurance')} — ${t('fleet.licensing.columns.receipt')}`,
+        `${t('fleet.licensing.columns.tax')} — ${t('fleet.licensing.columns.handover')}`,
+        `${t('fleet.licensing.columns.tax')} — ${t('fleet.licensing.columns.receipt')}`,
+      ],
+      rows: rows.map((row) => [
+        row.code,
+        row.plateNumber,
+        row.chassisNumber,
+        row.licenseClass ?? '',
+        done(row.insuranceHandover),
+        done(row.insuranceReceipt),
+        done(row.taxHandover),
+        done(row.taxReceipt),
+      ]),
+    });
+  };
+
   const toggle = async (
     row: FleetLicensingRowDto,
     field: FleetLicensingMark,
@@ -239,6 +281,9 @@ export const LicensingPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.licensing') },
         ]}
+        // Not offered when the board itself failed to load: the file behind it would be empty,
+        // and an empty sheet reads as «مفيش بيانات» rather than as a fetch that did not happen.
+        actions={!board.isError && <ExportSheetButton name="licensing" onExport={exportSheet} />}
       />
 
       {/* The module's own filter strip. `singleRow` because five controls fit one line at the width

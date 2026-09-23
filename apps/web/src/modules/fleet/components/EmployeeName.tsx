@@ -1,40 +1,57 @@
-// Resolves an employeeId to the person's name + code, sharing the HR employees detail cache
-// (same query key), so a name fetched here is free on the HR profile and vice versa. The HR
-// directory is its own permission: without `employee.view` the component degrades to the raw
-// id — honest, and the fleet screens stay usable for operators without directory access.
-import { useQueries, useQuery } from '@tanstack/react-query';
-import { type EmployeeDto } from '@ecms/contracts';
+// Resolves an employeeId to the person behind it, from FLEET's OWN people list.
+//
+// «انا عاوز اعرض السواقيين بتوع الحركه للناس اللى واخده موديول الحركه بس ... عشان يظهر لازم اخش
+// اديله من الاتش ار صفحه الموظفون ف بيعرض ... كل المواظفين بتوع الشركه لا انا عاوز الحركه يظهر
+// الناس بتاعت الحركه بس».
+//
+// This used to read HR's employee endpoint with HR's own `employee.view`, one request per cell.
+// That grant is the whole HR directory: to let a dispatcher see who drove car 150 yesterday,
+// somebody had to hand them «الموظفون» — and every employee in the company with it.
+//
+// Now it reads `/fleet/people`, which answers under the DRIVERS' own view grant and carries
+// exactly Fleet's roster (see `FleetPersonDto`). Two things follow, and both are improvements:
+// a Fleet-only reader needs no HR permission at all, and a board of a hundred rows costs ONE
+// request instead of a hundred — the list is shared by every cell on the screen.
+//
+// A person NOT on Fleet's roster resolves to nothing, and every consumer degrades to a dash or to
+// the raw id exactly as it did without `employee.view`. That is the right answer rather than a
+// gap: Fleet shows drivers, and somebody who is not one has no business being named here.
+import { useMemo } from 'react';
+import { type FleetPersonDto } from '@ecms/contracts';
 import { useCan } from '../../../platform/rbac/Can';
-import { detailKey } from '../../../shared/lib/query-keys';
-import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
+import { useFleetPeople } from '../api/fleet-queries';
 
 /**
- * The HR employee record behind a fleet row, READ-ONLY.
+ * Fleet's people, by employee id — ONE query, however many cells ask.
+ *
+ * Gated on `fleetDriver.view` because that is what the endpoint authorizes: a reader without it
+ * gets an empty map rather than a 403 on every row of every Fleet screen.
+ */
+export const useFleetPeopleMap = (): Map<string, FleetPersonDto> => {
+  const can = useCan();
+  const { data } = useFleetPeople(can('fleetDriver.view'));
+  return useMemo(
+    () => new Map((data ?? []).map((person) => [person.employeeId, person])),
+    [data],
+  );
+};
+
+/**
+ * The person behind a fleet row, READ-ONLY.
  *
  * FR-11 is about ownership, not visibility: Fleet may not store or write a person's HR facts, but
- * a fleet screen may still SHOW them — and this is how, by asking HR's own endpoint with HR's own
- * permission and keeping nothing. `undefined` when the caller lacks `employee.view` or the fetch
- * has not landed, and every consumer degrades to a dash rather than inventing a value.
- *
- * One query key per employee, shared with the HR profile page and with every other cell on the
- * same row, so a row costs one request no matter how many HR columns it renders.
+ * a fleet screen may still SHOW them. `undefined` when the caller may not read the roster, when
+ * the list has not landed, or when the id is not one of Fleet's people — and every consumer
+ * degrades to a dash rather than inventing a value.
  */
-export const useEmployeeRecord = (employeeId: string): EmployeeDto | undefined => {
-  const can = useCan();
-  const { data } = useQuery({
-    queryKey: detailKey('hr', 'employees', employeeId),
-    queryFn: () => getEmployee(employeeId),
-    enabled: employeeId !== '' && can('employee.view'),
-    staleTime: 5 * 60_000,
-  });
-  return data;
-};
+export const useEmployeeRecord = (employeeId: string): FleetPersonDto | undefined =>
+  useFleetPeopleMap().get(employeeId);
 
 export const useEmployeeName = (
   employeeId: string,
 ): { name: string | null; code: string | null } => {
-  const data = useEmployeeRecord(employeeId);
-  return { name: data?.personal.fullNameAr ?? null, code: data?.code ?? null };
+  const person = useEmployeeRecord(employeeId);
+  return { name: person?.fullNameAr ?? null, code: person?.code ?? null };
 };
 
 export const EmployeeName = ({ employeeId }: { employeeId: string }): JSX.Element => {
@@ -59,7 +76,7 @@ export const EmployeeName = ({ employeeId }: { employeeId: string }): JSX.Elemen
 };
 
 /**
- * A DRIVER cell on a fleet row: the employee HR knows, or — where the row came from the old
+ * A DRIVER cell on a fleet row: the person Fleet knows, or — where the row came from the old
  * books and HR has no employee for the spelling — the name as the book wrote it, kept as text.
  *
  * «عاوز يتحفظ كداتا زى ما يكون سواق كان موجود ومشى». The text name is set on such rows and on
@@ -85,31 +102,23 @@ export const DriverName = ({
 };
 
 /**
- * The same records, for a WHOLE list at once — what a search over the pool needs.
+ * The same people, for a WHOLE list at once — what a search over the pool needs.
  *
- * `useEmployeeRecord` is a hook, so a list cannot call it in a loop. `useQueries` can, and it
- * uses the SAME key, fetcher and staleTime as the single-employee hook — so these are the very
- * cache entries the driver cards already populate, not a second copy. A pool whose cards are
- * rendered has already paid for every request this subscribes to; nothing extra goes out.
- *
- * Degrades exactly as the single hook does: without `employee.view` nothing is fetched and the
- * map comes back empty, leaving the caller to search by id alone.
+ * It no longer fans out: the roster is one list and this is a lookup into it, so asking about a
+ * hundred ids costs what asking about one does. The map holds only the ids that are Fleet's, so a
+ * caller can still tell «not on the roster» from «not fetched yet» by whether the map is empty.
  */
-export const useEmployeeRecords = (employeeIds: readonly string[]): Map<string, EmployeeDto> => {
-  const can = useCan();
-  const allowed = can('employee.view');
-  const results = useQueries({
-    queries: employeeIds.map((employeeId) => ({
-      queryKey: detailKey('hr', 'employees', employeeId),
-      queryFn: () => getEmployee(employeeId),
-      enabled: allowed && employeeId !== '',
-      staleTime: 5 * 60_000,
-    })),
-  });
-  const found = new Map<string, EmployeeDto>();
-  for (const [i, result] of results.entries()) {
-    const id = employeeIds[i];
-    if (id !== undefined && result.data !== undefined) found.set(id, result.data);
-  }
-  return found;
+export const useEmployeeRecords = (
+  employeeIds: readonly string[],
+): Map<string, FleetPersonDto> => {
+  const all = useFleetPeopleMap();
+  const key = employeeIds.join(',');
+  return useMemo(() => {
+    const found = new Map<string, FleetPersonDto>();
+    for (const id of employeeIds) {
+      const person = all.get(id);
+      if (person !== undefined) found.set(id, person);
+    }
+    return found;
+  }, [all, key]);
 };

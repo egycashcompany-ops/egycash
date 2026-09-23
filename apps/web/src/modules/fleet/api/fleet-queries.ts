@@ -66,6 +66,7 @@ const fleetKeys = {
   accidents: featureKey(MODULE, 'accidents'),
   violations: featureKey(MODULE, 'violations'),
   licensing: featureKey(MODULE, 'licensing'),
+  people: featureKey(MODULE, 'people'),
 } as const;
 
 // ── Registry + rules ────────────────────────────────────────────────────────
@@ -734,3 +735,19 @@ export const useSetLicensingMark = () => {
     onSuccess: (rows) => qc.setQueryData(fleetKeys.licensing, rows),
   });
 };
+
+/**
+ * The people Fleet may name, as ONE list every screen shares.
+ *
+ * One request for a board of a hundred rows rather than one per cell: the roster is the company's
+ * drivers, and a screen that asked per id spent a hundred round trips to print a hundred names.
+ * Long `staleTime` because a name is not a figure — it changes when somebody is hired, not while
+ * a dispatcher reads a page.
+ */
+export const useFleetPeople = (enabled = true) =>
+  useQuery({
+    queryKey: fleetKeys.people,
+    queryFn: api.listFleetPeople,
+    staleTime: 5 * 60_000,
+    enabled,
+  });

@@ -40,7 +40,10 @@ import {
   useUploadDriverLicenseImage,
 } from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
-import { EmployeeName, useEmployeeRecord } from './EmployeeName';
+import { useQuery } from '@tanstack/react-query';
+import { detailKey } from '../../../shared/lib/query-keys';
+import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
+import { EmployeeName } from './EmployeeName';
 import {
   DRIVER_LICENSE_IMAGE_ACCEPT,
   DriverLicenseImageField,
@@ -131,9 +134,23 @@ export const DriverFormDialog = ({
   const [phone, setPhone] = useState('');
   const savePhone = useUpdateEmployeePersonal(subjectId);
 
-  // The HR half of the form — the same cached employee record the table row already fetched.
   const employeeId = profile?.employeeId ?? subjectId;
-  const employee = useEmployeeRecord(employeeId);
+
+  /**
+   * THE ONE PLACE IN FLEET THAT STILL READS HR'S RECORD — because it WRITES one.
+   *
+   * Everything else on these screens now reads Fleet's own people list, so a Fleet-only operator
+   * needs no HR grant to see a driver's name. The phone box is different in kind: it saves back
+   * into HR, and an optimistic write needs the HR document's own `version`. So it is fetched
+   * under `employee.editPersonal` — the very grant the save requires — and a reader without it
+   * simply does not get the box, which is the honest degradation rather than a box that 403s.
+   */
+  const { data: employee } = useQuery({
+    queryKey: detailKey('hr', 'employees', employeeId),
+    queryFn: () => getEmployee(employeeId),
+    enabled: open && employeeId !== '' && mayEditPhone,
+    staleTime: 5 * 60_000,
+  });
 
   // The phone box follows the record: it fills when the dialog opens and refills if the record
   // arrives after it, which is the ordinary case on a row whose employee is still being fetched.

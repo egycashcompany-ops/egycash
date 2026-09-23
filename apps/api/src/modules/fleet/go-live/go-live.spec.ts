@@ -332,6 +332,7 @@ describe('the driver licence scans — one per driver, by employee code', () => 
     phone: null,
     governorate: null,
     hiredAt: null,
+    address: null,
   });
 
   it('is at v2, in its own folder beside the cars', () => {

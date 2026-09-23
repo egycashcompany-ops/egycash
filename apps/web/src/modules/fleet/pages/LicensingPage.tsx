@@ -19,6 +19,8 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Input } from '../../../shared/ui/form';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { ExportSheetButton } from '../components/ExportSheetButton';
+import { saveSheet } from '../lib/fleet-sheet';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
@@ -30,7 +32,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { useAppSelector } from '../../../store';
 import { type Locale } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
-import { formatNumber } from '../../../shared/lib/format';
+import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { CheckIcon } from '../../../shared/ui/icons';
 import { useLicensingBoard, useSetLicensingMark } from '../api/fleet-queries';
 
@@ -66,11 +68,25 @@ type Paper = (typeof PAPERS)[number];
  * afternoon, and retyping the same narrowing after every trip to another screen is the complaint
  * `useRememberedFilters` exists to answer. No `page` — this board has none.
  */
-const REMEMBERED_FILTERS = ['vehicleCodes', 'plate', 'chassis', 'ins', 'tax'] as const;
+const REMEMBERED_FILTERS = ['vehicleCodes', 'plate', 'chassis', 'from', 'to', 'ins', 'tax'] as const;
 
 /** A text filter, matched the way the registry's own boxes match: contains, case-insensitively. */
 const contains = (haystack: string, needle: string): boolean =>
   needle === '' || haystack.toLocaleLowerCase().includes(needle.toLocaleLowerCase());
+
+/**
+ * Is this licence's expiry inside the window? Either bound may be empty, and an empty one does
+ * not constrain — «كل اللى بيخلص قبل آخر الشهر» is a question with one end.
+ *
+ * Compared as the ISO DAY, not as instants. The stored value carries a time and the boxes carry a
+ * date, so `new Date('2026-09-30') <= expiry` would drop a licence expiring on the very last day
+ * the reader asked for — the commonest thing a period filter is asked, and an off-by-one nobody
+ * would see until a car was missed.
+ */
+export const withinPeriod = (isoDate: string, from: string, to: string): boolean => {
+  const day = isoDate.slice(0, 10);
+  return (from === '' || day >= from) && (to === '' || day <= to);
+};
 
 /**
  * Does this row satisfy a paper's chosen squares?
@@ -134,6 +150,11 @@ export const LicensingPage = (): JSX.Element => {
   const chassis = sp.get('chassis') ?? '';
   const insurance = readList(sp, 'ins');
   const tax = readList(sp, 'tax');
+  // The licence-expiry WINDOW — «وفى الفلاتر الفتره». Two open-ended bounds rather than one
+  // preset («هذا الشهر»): a renewal run is planned over whatever stretch the office is working,
+  // and either end alone is an ordinary question — «كل اللى خلص قبل اليوم».
+  const from = sp.get('from') ?? '';
+  const to = sp.get('to') ?? '';
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -147,11 +168,21 @@ export const LicensingPage = (): JSX.Element => {
   // params THIS render was given, so the last write would put the others back — the defect the
   // violations screen's own `onClear` carries a comment about.
   const clearFilters = (): void =>
-    patch({ vehicleCodes: null, plate: null, chassis: null, ins: null, tax: null });
+    patch({
+      vehicleCodes: null,
+      plate: null,
+      chassis: null,
+      from: null,
+      to: null,
+      ins: null,
+      tax: null,
+    });
   const hasFilters =
     vehicleCodes.length > 0 ||
     plate !== '' ||
     chassis !== '' ||
+    from !== '' ||
+    to !== '' ||
     insurance.length > 0 ||
     tax.length > 0;
 
@@ -171,10 +202,11 @@ export const LicensingPage = (): JSX.Element => {
           (vehicleCodes.length === 0 || vehicleCodes.includes(row.code)) &&
           contains(row.plateNumber, plate) &&
           contains(row.chassisNumber, chassis) &&
+          withinPeriod(row.licenseExpiresAt, from, to) &&
           matchesPaper(row, PAPERS[0], insurance) &&
           matchesPaper(row, PAPERS[1], tax),
       ),
-    [all, vehicleCodes.join(','), plate, chassis, insurance.join(','), tax.join(',')],
+    [all, vehicleCodes.join(','), plate, chassis, from, to, insurance.join(','), tax.join(',')],
   );
 
   /**
@@ -191,6 +223,48 @@ export const LicensingPage = (): JSX.Element => {
     { value: 'handover', label: t('fleet.licensing.columns.handover') },
     { value: 'receipt', label: t('fleet.licensing.columns.receipt') },
   ];
+
+  /**
+   * «شاشه fleet/licensing اعملى اكسيل» — what the FILTER left, in the order it is on screen.
+   *
+   * No round trip: this board is unpaginated, so the rows in hand ARE the answer — unlike the
+   * paged registers, whose export has to walk every page before it can be honest. No signatures
+   * either, for the reason the other seven list sheets have none: «ومفيش امضاءات» — these are
+   * working lists, not the company's forms.
+   *
+   * A square is written as a WORD rather than a tick: «تم» reads in a spreadsheet, filters and
+   * sorts, and survives being opened by something that has never heard of this application. An
+   * empty cell is the honest opposite — not «لا», which would claim somebody decided against it.
+   */
+  const exportSheet = async (): Promise<void> => {
+    const done = (on: boolean): string => (on ? t('fleet.licensing.done') : '');
+    saveSheet({
+      name: t('fleet.nav.licensing'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.licensing.columns.vehicle'),
+        t('fleet.licensing.columns.plate'),
+        t('fleet.licensing.columns.chassis'),
+        t('fleet.licensing.columns.licenseClass'),
+        t('fleet.vehicles.fields.licenseExpiresAt'),
+        `${t('fleet.licensing.columns.insurance')} — ${t('fleet.licensing.columns.handover')}`,
+        `${t('fleet.licensing.columns.insurance')} — ${t('fleet.licensing.columns.receipt')}`,
+        `${t('fleet.licensing.columns.tax')} — ${t('fleet.licensing.columns.handover')}`,
+        `${t('fleet.licensing.columns.tax')} — ${t('fleet.licensing.columns.receipt')}`,
+      ],
+      rows: rows.map((row) => [
+        row.code,
+        row.plateNumber,
+        row.chassisNumber,
+        row.licenseClass ?? '',
+        formatDate(row.licenseExpiresAt, locale),
+        done(row.insuranceHandover),
+        done(row.insuranceReceipt),
+        done(row.taxHandover),
+        done(row.taxReceipt),
+      ]),
+    });
+  };
 
   const toggle = async (
     row: FleetLicensingRowDto,
@@ -239,6 +313,9 @@ export const LicensingPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.licensing') },
         ]}
+        // Not offered when the board itself failed to load: the file behind it would be empty,
+        // and an empty sheet reads as «مفيش بيانات» rather than as a fetch that did not happen.
+        actions={!board.isError && <ExportSheetButton name="licensing" onExport={exportSheet} />}
       />
 
       {/* The module's own filter strip. `singleRow` because five controls fit one line at the width
@@ -297,6 +374,36 @@ export const LicensingPage = (): JSX.Element => {
             textScale="comfortable"
           />
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <label htmlFor="licensing-from" className="text-sm text-slate-500 dark:text-slate-400">
+            {t('fleet.odometer.from')}
+          </label>
+          <div className="w-40">
+            <Input
+              id="licensing-from"
+              type="date"
+              aria-label={`${t('fleet.vehicles.fields.licenseExpiresAt')} — ${t('fleet.odometer.from')}`}
+              value={from}
+              onChange={(e) => patch({ from: e.target.value || null })}
+              textScale="comfortable"
+            />
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <label htmlFor="licensing-to" className="text-sm text-slate-500 dark:text-slate-400">
+            {t('fleet.odometer.to')}
+          </label>
+          <div className="w-40">
+            <Input
+              id="licensing-to"
+              type="date"
+              aria-label={`${t('fleet.vehicles.fields.licenseExpiresAt')} — ${t('fleet.odometer.to')}`}
+              value={to}
+              onChange={(e) => patch({ to: e.target.value || null })}
+              textScale="comfortable"
+            />
+          </div>
+        </div>
         {/* Each paper picks among its OWN two squares. Two controls rather than one list of four,
             because «تسليم» means a different column in each — one list would ask the reader to
             tell two identically-named entries apart by their position. */}
@@ -350,6 +457,9 @@ export const LicensingPage = (): JSX.Element => {
                 <th rowSpan={2} className={head}>
                   {t('fleet.licensing.columns.chassis')}
                 </th>
+                <th rowSpan={2} className={head}>
+                  {t('fleet.vehicles.fields.licenseExpiresAt')}
+                </th>
                 {PAPERS.map((paper) => (
                   <th key={paper.key} colSpan={2} className={head}>
                     {t(paper.label)}
@@ -382,6 +492,9 @@ export const LicensingPage = (): JSX.Element => {
                   </td>
                   <td className={`${cell} text-center font-mono text-xs`} dir="ltr">
                     {row.chassisNumber}
+                  </td>
+                  <td className={`${cell} text-center tabular-nums whitespace-nowrap`}>
+                    {formatDate(row.licenseExpiresAt, locale)}
                   </td>
                   {PAPERS.map((paper) => {
                     // ONE READING PER PAPER, used by both its squares — the pair is coloured

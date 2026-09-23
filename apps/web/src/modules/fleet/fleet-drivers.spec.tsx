@@ -40,7 +40,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { formatNumber } from '../../shared/lib/format';
-import { detailKey, listKey } from '../../shared/lib/query-keys';
+import { listKey } from '../../shared/lib/query-keys';
 import { buildQuery } from '../../shared/lib/api-client';
 import { DriversListPage } from './pages/DriversListPage';
 import { DriverLicenseImageCell } from './components/DriverLicenseImage';
@@ -72,9 +72,11 @@ const EMPLOYEE_ID = 'e1';
 const driverParams = (overrides: Record<string, unknown> = {}) => ({
   page: 1,
   pageSize: 25,
-  sortBy: 'createdAt',
-  sortDir: 'desc',
-  sort: 'createdAt:desc',
+  // The registry opens on «كود الموظف» — see `DEFAULT_SORT` on the page and the server's own
+  // fallback, which agree so a first load and a cleared sort ask for the same thing.
+  sortBy: 'employeeCode',
+  sortDir: 'asc',
+  sort: 'employeeCode:asc',
   jobId: undefined,
   branchId: undefined,
   area: undefined,
@@ -154,6 +156,23 @@ const HR = {
   hiredAt: '2019-03-15T00:00:00.000Z',
 };
 
+/**
+ * The row `/fleet/people` answers with — FLEET's own person, which is what every read-only column
+ * on this screen now reads. The HR record below it is kept for the one place that still needs
+ * one: the phone box, which SAVES back into HR and needs the HR document's version.
+ */
+const fleetPerson = () => ({
+  employeeId: EMPLOYEE_ID,
+  code: HR.code,
+  fullNameAr: HR.name,
+  status: 'active' as const,
+  branchId: 'b1',
+  address: [HR.line1, HR.city].join('، '),
+  governorate: HR.governorate,
+  phone: HR.phone,
+  hiredAt: HR.hiredAt,
+});
+
 const employee = (): EmployeeDto =>
   ({
     id: EMPLOYEE_ID,
@@ -225,11 +244,10 @@ const seededClient = (
       ]),
     );
   }
-  // The HR record every read-only column reads, under HR's OWN detail key — the same one the HR
-  // profile page uses, which is what makes a row cost one request rather than eight. `hr: false`
-  // is what a caller without `employee.view` really sees: the query is disabled, so nothing ever
-  // lands in that cache for the cells to read.
-  if (hr) qc.setQueryData(detailKey('hr', 'employees', EMPLOYEE_ID), employee());
+  // FLEET's own people list, under the one key every driver cell on every Fleet screen reads.
+  // `hr: false` is what a caller without the roster grant really sees: the query is disabled, so
+  // nothing ever lands for the cells to read and each renders its dash.
+  if (hr) qc.setQueryData(['fleet', 'people'], [fleetPerson()]);
   // `useBranches` / `useJobTitles` select `page.items`, so the cache holds the PAGE.
   qc.setQueryData(
     ['hr', 'branches', 'active'],
@@ -255,10 +273,10 @@ const seededClient = (
 };
 
 /**
- * A client where the HR filter step has already answered.
+ * A client where the PERSON filter has a roster to run over.
  *
- * `matched` is what HR REPORTS as the total, which is the number the page decides on — seeding a
- * short `items` array with a large `totalItems` is exactly the shape that must refuse to filter.
+ * There is no HR step any more: the three boxes narrow Fleet's own people list in hand, so what a
+ * test seeds is the roster itself plus the fleet page keyed by the ids it will resolve to.
  */
 const hrFilteredClient = (
   matched: number,
@@ -271,28 +289,22 @@ const hrFilteredClient = (
     phone: '',
     ...filter,
   };
-  const ids = Array.from({ length: Math.min(matched, MAX_PAGE_SIZE) }, (_, i) =>
-    i === 0 ? EMPLOYEE_ID : `e${i + 1}`,
-  );
-  const honoured = matched > 0 && matched <= MAX_PAGE_SIZE;
-  // When the filter CAN be honoured the page asks for the narrowed key; when it cannot, the
-  // parameter is dropped — so the unfiltered key is seeded instead, and the test can prove its
-  // rows are not what gets rendered.
-  const qc = seededClient([driver()], honoured ? { employeeIds: ids } : {});
+  const ids = Array.from({ length: matched }, (_, i) => (i === 0 ? EMPLOYEE_ID : `e${i + 1}`));
   // An EMPTY match is the subtle one. `buildQuery` drops an empty array, so `employeeIds: []`
-  // reaches the server as no filter at all and answers with every driver. Seeding that exact key
-  // with a row is what makes the guard's absence visible: without it the page renders this.
-  if (matched === 0) {
-    qc.setQueryData(
-      listKey('fleet', 'drivers', driverParams({ employeeIds: [] })),
-      page([row(driver())]),
-    );
-  }
-  // `jt1` is the seeded driving job title — the seats the registry narrows step ① to.
-  qc.setQueryData(['hr', 'employees', 'fleet-driver-filter', full, 'jt1'], {
-    items: ids.map((id) => ({ ...employee(), id })),
-    meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: matched, totalPages: 1 },
-  });
+  // would ask the SAME question as no filter at all — the page sends a sentinel instead, and this
+  // is the key it really asks for.
+  const qc = seededClient([driver()], { employeeIds: matched === 0 ? ['__none__'] : ids });
+  qc.setQueryData(
+    ['fleet', 'people'],
+    ids.map((employeeId) => ({
+      ...fleetPerson(),
+      employeeId,
+      // Everyone on the roster answers the filter under test, so `matched` is what it matches.
+      governorate: full.governorate === '' ? HR.governorate : full.governorate,
+      address: full.address === '' ? [HR.line1, HR.city].join('، ') : full.address,
+      phone: full.phone === '' ? HR.phone : full.phone,
+    })),
+  );
   return qc;
 };
 
@@ -1333,9 +1345,9 @@ describe('a driver whose licence has not been recorded yet', () => {
       listKey('fleet', 'drivers', {
         page: 1,
         pageSize: 25,
-        sortBy: 'createdAt',
-        sortDir: 'desc',
-        sort: 'createdAt:desc',
+        sortBy: 'employeeCode',
+        sortDir: 'asc',
+        sort: 'employeeCode:asc',
         search: undefined,
         area: undefined,
         specialization: undefined,
@@ -1360,9 +1372,9 @@ describe('a driver whose licence has not been recorded yet', () => {
       listKey('fleet', 'drivers', {
         page: 1,
         pageSize: 25,
-        sortBy: 'createdAt',
-        sortDir: 'desc',
-        sort: 'createdAt:desc',
+        sortBy: 'employeeCode',
+        sortDir: 'asc',
+        sort: 'employeeCode:asc',
         search: undefined,
         area: undefined,
         specialization: undefined,
@@ -1766,11 +1778,10 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     expect(ListEmployeesQuerySchema.parse({ address: 'جامعة الدول' }).address).toBe('جامعة الدول');
   });
 
-  it('offers an HR filter ONLY to someone who can use it', () => {
-    // Step ① of every HR filter is a query against HR's own endpoint. Without `employee.view` it
-    // can only answer "no directory access" — the same reason the HR columns are dashes for that
-    // caller — so the controls are not offered at all. A dead filter is the filter-bar version of
-    // a link that lands on a permission wall.
+  it('offers the PERSON filters to a Fleet-only reader — that is the whole point', () => {
+    // «انا عاوز اعرض السواقيين بتوع الحركه للناس اللى واخده موديول الحركه بس». These four used to
+    // be hidden without `employee.view`, because the filter behind them asked HR. They narrow
+    // Fleet's own roster now, so somebody holding nothing but the Fleet module gets them.
     const hrControls = [
       'fleet.drivers.filters.employee',
       'fleet.drivers.columns.address',
@@ -1783,16 +1794,16 @@ describe('the HR filters are owned by HR and applied server-side', () => {
       'fleet.drivers.columns.licenseType',
       'fleet.drivers.columns.licenseImage',
     ];
-    const withoutHr = render(<DriversListPage />, {
+    const fleetOnly = render(<DriversListPage />, {
       permissions: ['fleetDriver.view'],
-      client: seededClient([driver()], {}, { hr: false }),
+      client: seededClient([driver()]),
     });
     for (const key of hrControls) {
-      expect(withoutHr, `${key} is hidden`).not.toContain(`aria-label="${t(key)}"`);
+      expect(fleetOnly, `${key} is offered`).toContain(`aria-label="${t(key)}"`);
     }
-    // …and the fleet-owned half is untouched: HR access is not fleet access.
+    // …and the fleet-owned half is untouched, as it always was.
     for (const key of fleetControls) {
-      expect(withoutHr, `${key} still offered`).toContain(`aria-label="${t(key)}"`);
+      expect(fleetOnly, `${key} still offered`).toContain(`aria-label="${t(key)}"`);
     }
     const withHr = render(<DriversListPage />, {
       permissions: ['fleetDriver.view', 'employee.view'],
@@ -1856,22 +1867,22 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     );
   });
 
-  it('REFUSES to filter when HR matched more than one page — and shows no rows at all', () => {
-    // The failure this guards: `employeeIds` is dropped when it cannot be honoured, which collapses
-    // the query key back onto the UNFILTERED one. Its cached page must not appear under the banner
-    // and read as the filtered answer.
+  it('HONOURS a wide match — there is no page to overflow any more', () => {
+    // It used to refuse: `/fleet/drivers?employeeIds=` takes one page of ids, and an HR match
+    // wider than that had to report «narrow your filter» and filter NOTHING rather than hand over
+    // a truncated list that looks complete. Measured, «الجيزة» matched 117 employees of whom 3
+    // were drivers. Fleet's roster IS the drivers, so a wide match is just a wide match.
     const html = render(<DriversListPage />, {
       route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
       client: hrFilteredClient(MAX_PAGE_SIZE + 1),
     });
-    expect(html, 'the user is told to narrow').toContain(
+    expect(html, 'nobody is told to narrow').not.toContain(
       translate('ar', 'fleet.drivers.hrFilterTooMany', {
         matched: MAX_PAGE_SIZE + 1,
         max: MAX_PAGE_SIZE,
       }),
     );
-    const body = tbodyOf(html);
-    expect(body, 'and NOTHING is shown as if it were filtered').not.toContain(DEFAULT_YEAR);
+    expect(tbodyOf(html), 'and the filtered page is what is shown').toContain(DEFAULT_YEAR);
   });
 
   it('shows an empty table, not every driver, when HR matched nobody', () => {

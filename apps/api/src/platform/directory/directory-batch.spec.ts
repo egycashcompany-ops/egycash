@@ -21,6 +21,7 @@ const employee = (id: string, code: string): DirectoryEmployee => ({
   phone: null,
   governorate: null,
   hiredAt: null,
+  address: null,
 });
 
 describe('the batch employee lookup', () => {

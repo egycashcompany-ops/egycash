@@ -40,9 +40,8 @@ import { PageContainer, PageHeader } from '../../../platform/layout/PageContaine
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { ExportSheetButton } from '../components/ExportSheetButton';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import { fetchEmployeeNames } from '../lib/fleet-people';
 import * as fleetApi from '../api/fleet-api';
-import { detailKey } from '../../../shared/lib/query-keys';
-import { getEmployee } from '../../hr/employee-management/employees/api/employee-api';
 import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
@@ -168,7 +167,9 @@ export const MaintenancePage = (): JSX.Element => {
   // matches than one page, refused) and searched the whole payroll, so a name that belonged to
   // nobody with a driving seat returned an empty grid under a bar insisting a driver was picked.
   // Ids picked off the registry need no resolving and can only name people this table can show.
-  const mayFilterByDriver = can('employee.view');
+  // The picker reads FLEET's roster now, so the grant that decides whether it can be offered
+  // is Fleet's own — a dispatcher with no HR permission still filters by driver.
+  const mayFilterByDriver = can('fleetDriver.view');
 
   /** WHAT THE READER IS LOOKING AT — the filters, and only the filters. */
   const filters = useMemo(
@@ -265,48 +266,24 @@ export const MaintenancePage = (): JSX.Element => {
   /**
    * The drivers' NAMES for the export, out of the SAME cache the cells read.
    *
-   * A driver cell resolves its employee through `useEmployeeRecord`, which is a HOOK — the export
+   * A driver cell resolves its person through `useEmployeeRecord`, which is a HOOK — the export
    * runs in a callback, over rows that were never rendered, so it cannot call it. It asks for the
-   * same records by the SAME query key, fetcher and staleTime instead. That is not a second cache
-   * and not a second map: a name a cell already fetched is served from the entry that cell filled,
-   * and a name fetched here makes the next cell free.
+   * same list by the SAME query key, fetcher and staleTime instead. That is not a second cache:
+   * the roster a cell already fetched serves the file, and the file makes the next cell free.
    *
-   * Asked once per DISTINCT employee, not once per row — a month of visits is the same handful of
-   * drivers over and over — and in small batches so a wide filter does not open three hundred
-   * connections at once. Without `employee.view` nothing is asked and the map stays empty, which
-   * is the same degradation the cells make rather than a failed export.
+   * ONE request, whatever the filter matched — Fleet's people are one list. Without the roster
+   * grant it comes back empty, which is the same degradation the cells make rather than a failed
+   * export.
    */
   const driverNames = async (
     visits: readonly FleetMaintenanceVisitDto[],
   ): Promise<Map<string, string>> => {
-    const names = new Map<string, string>();
-    if (!can('employee.view')) return names;
-    const ids = [
-      ...new Set(
-        visits
-          .flatMap((visit) => [visit.driverInEmployeeId, visit.driverOutEmployeeId])
-          .filter((id): id is string => id !== null),
-      ),
-    ];
-    const batch = 10;
-    for (let i = 0; i < ids.length; i += batch) {
-      await Promise.all(
-        ids.slice(i, i + batch).map(async (id) => {
-          try {
-            const employee = await queryClient.fetchQuery({
-              queryKey: detailKey('hr', 'employees', id),
-              queryFn: () => getEmployee(id),
-              staleTime: 5 * 60_000,
-            });
-            names.set(id, employee.personal.fullNameAr);
-          } catch {
-            // One unreadable record is not a failed export: that driver falls back to the same
-            // id tail the cell prints, and every other row keeps its name.
-          }
-        }),
-      );
-    }
-    return names;
+    return fetchEmployeeNames(
+      queryClient,
+      visits
+        .flatMap((visit) => [visit.driverInEmployeeId, visit.driverOutEmployeeId])
+        .filter((id): id is string => id !== null),
+    );
   };
 
   /** One driver cell, resolved as the column resolves it — see `DriverName`. */

@@ -36,6 +36,14 @@ export interface DirectoryEmployee {
   phone: string | null;
   governorate: string | null;
   hiredAt: Date | null;
+  /**
+   * The address as a screen prints it — the official one first, the current one behind it.
+   *
+   * The fourth fact added here for the same reason as the three above, and the last of them:
+   * Fleet's drivers registry SHOWS it, and a registry that has to ask a second module for a
+   * column is a registry whose reader needs that module's grant. See `FleetPersonDto`.
+   */
+  address: string | null;
 }
 
 /**

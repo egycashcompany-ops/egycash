@@ -140,7 +140,8 @@ export const OdometerPage = (): JSX.Element => {
   // Picking from the drivers REGISTRY removes all of it. The ids are already ids, so there is
   // nothing to resolve before the table can be asked; and everyone offered holds a seat that
   // requires a driving test, so every offer is a driver this table could actually show.
-  const mayFilterByDriver = can('employee.view');
+  // The picker reads FLEET's roster now — see the workshop register beside this one.
+  const mayFilterByDriver = can('fleetDriver.view');
 
   /** WHAT THE READER IS LOOKING AT — the filters, and only the filters. */
   const filters = useMemo(
@@ -227,22 +228,20 @@ export const OdometerPage = (): JSX.Element => {
    * That is not a second cache and not a second map: a name a cell already fetched is served from
    * the entry that cell filled, and a name fetched here makes the next cell free.
    *
-   * Asked once per DISTINCT employee, not once per row — a month of readings is the same handful
-   * of drivers over and over — and in small batches so a wide filter does not open three hundred
-   * connections at once. Without `employee.view` nothing is asked and the map stays empty, which
-   * is the same degradation the cells make rather than a failed export.
+   * ONE request, whatever the filter matched — Fleet's people are one list, and it is the very
+   * list the cells read. Its own gate is inside `fetchEmployeeNames`: a reader who may not see the
+   * roster gets an empty map, which is the same degradation the cells make rather than a failed
+   * export.
    */
   const driverNames = async (
     logs: readonly FleetOdometerLogDto[],
   ): Promise<Map<string, string>> =>
-    can('employee.view')
-      ? fetchEmployeeNames(
-          queryClient,
-          logs
-            .flatMap((log) => [log.driver1EmployeeId, log.driver2EmployeeId])
-            .filter((id): id is string => id !== null),
-        )
-      : new Map();
+    fetchEmployeeNames(
+      queryClient,
+      logs
+        .flatMap((log) => [log.driver1EmployeeId, log.driver2EmployeeId])
+        .filter((id): id is string => id !== null),
+    );
 
   /**
    * «للشاشات دى اعملى اكسلات هتاخد اللى الفلتر عامله بس · ومفيش امضاءات».

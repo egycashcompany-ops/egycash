@@ -11,18 +11,16 @@
 // and the selection is made by picking — which is also why the ids travel as `employeeIds` rather
 // than as a string the server has to interpret.
 //
-// The options are one page of HR's own search (`employee.view`), never a joined-against list: a
+// The options are FLEET's OWN ROSTER, held as one list and searched in hand — never HR's employee
+// search, whose grant is the whole directory. What follows from that: a
 // company outgrows any page, and a picker that quietly stopped at its size would let a reader
 // conclude that a driver does not exist.
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
-import { useCan } from '../../../platform/rbac/Can';
-import { listEmployees } from '../../hr/employee-management/employees/api/employee-api';
 import { driverPickerOptions, type DriverPickOption } from '../lib/driver-filter-selection';
-import { useEmployeeRecords } from './EmployeeName';
+import { useEmployeeRecords, useFleetPeopleMap } from './EmployeeName';
 
 /** How many people one search offers. Enough to pick from, small enough to stay one request. */
 const SEARCH_SIZE = 25;
@@ -30,7 +28,6 @@ const SEARCH_SIZE = 25;
 export const DriverPickerFilter = ({
   value,
   onChange,
-  jobTitleIds = [],
   density,
   fullWidth = false,
   placeholder,
@@ -39,18 +36,6 @@ export const DriverPickerFilter = ({
   /** The employee ids currently filtering, in the order they were picked. */
   value: string[];
   onChange: (next: string[]) => void;
-  /**
-   * The seats this registry is about — the job titles that require a driving test.
-   *
-   * Offered people must be people the table can SHOW. Searching the whole payroll let a reader
-   * tick three colleagues who are not drivers and get an empty table back, with the filter bar
-   * insisting three people were selected: the picker had answered a question the list below could
-   * not. Narrowing by the same seats the roster is built from makes every offer a real row.
-   *
-   * Empty means «do not narrow», which is what a caller without `jobTitle.view` gets — the same
-   * degradation the rest of this screen makes wherever HR is involved.
-   */
-  jobTitleIds?: readonly string[];
   /** Passed straight through, so this control matches the bar it is dropped into. */
   density?: ControlDensity;
   /** Fill the width this control was given — see `MultiSelect`. */
@@ -64,31 +49,33 @@ export const DriverPickerFilter = ({
   className?: string;
 }): JSX.Element => {
   const t = useT();
-  const can = useCan();
   const [search, setSearch] = useState('');
-  const allowed = can('employee.view');
 
-  // HR's `search` covers the name AND the employee code in one parameter, which is exactly the
-  // question this control asks — so it is one query, not two whose capped pages could intersect
-  // to a wrong answer.
-  const seats = jobTitleIds.join(',');
-  const results = useQuery({
-    queryKey: ['hr', 'employees', 'fleet-driver-picker', search, seats],
-    queryFn: () =>
-      listEmployees({
-        ...(search.trim() === '' ? {} : { search: search.trim() }),
-        employed: true,
-        pageSize: SEARCH_SIZE,
-        ...(seats === '' ? {} : { jobTitleId: seats }),
-      }),
-    // Runs with an EMPTY search too, so opening the control already lists drivers. It used to wait
-    // for typing, which meant a reader who had picked three people opened the panel onto «no
-    // results» with three chips above it — nothing to compare them against, and no way to discover
-    // who else could be picked.
-    enabled: allowed,
-    staleTime: 30_000,
-    retry: false,
-  });
+  /**
+   * SEARCHED OVER FLEET'S OWN ROSTER, in hand.
+   *
+   * It used to be a page of HR's employee search under `employee.view` — which is the grant this
+   * whole change exists to stop asking for. Fleet's roster is the company's drivers, held as one
+   * list, so the search is a filter over what the screen already has: no request per keystroke,
+   * no cap to intersect wrongly with, and nothing offered that the table below cannot show.
+   *
+   * The seats no longer narrow anything because the roster IS the seats: every person on it holds
+   * a job title that requires a driving test, which is what `jobTitleIds` was for.
+   */
+  const roster = useFleetPeopleMap();
+  const matches = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase();
+    const all = [...roster.values()];
+    const found =
+      term === ''
+        ? all
+        : all.filter(
+            (person) =>
+              person.fullNameAr.toLocaleLowerCase().includes(term) ||
+              person.code.toLocaleLowerCase().includes(term),
+          );
+    return found.slice(0, SEARCH_SIZE);
+  }, [roster, search]);
 
   // What is known about the people ALREADY picked — the same cached records the table's own
   // columns read, so a chip names a driver without costing a request of its own.
@@ -96,9 +83,9 @@ export const DriverPickerFilter = ({
   const known = useMemo(() => {
     const map = new Map<string, DriverPickOption>();
     for (const id of value) {
-      const employee = picked.get(id);
-      if (employee === undefined) continue;
-      map.set(id, { employeeId: id, name: employee.personal.fullNameAr, code: employee.code });
+      const person = picked.get(id);
+      if (person === undefined) continue;
+      map.set(id, { employeeId: id, name: person.fullNameAr, code: person.code });
     }
     return map;
   }, [picked, value.join(',')]);
@@ -106,15 +93,15 @@ export const DriverPickerFilter = ({
   const options = useMemo(
     () =>
       driverPickerOptions(
-        (results.data?.items ?? []).map((employee) => ({
-          employeeId: employee.id,
-          name: employee.personal.fullNameAr,
-          code: employee.code,
+        matches.map((person) => ({
+          employeeId: person.employeeId,
+          name: person.fullNameAr,
+          code: person.code,
         })),
         value,
         known,
       ),
-    [results.data, value.join(','), known],
+    [matches, value.join(','), known],
   );
 
   return (
@@ -136,7 +123,6 @@ export const DriverPickerFilter = ({
       searchThreshold={0}
       searchValue={search}
       onSearch={setSearch}
-      searching={results.isFetching}
       fullWidth={fullWidth}
       {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}

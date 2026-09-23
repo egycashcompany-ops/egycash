@@ -1,8 +1,78 @@
 import { type FilterQuery, Types } from 'mongoose';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
-import { type ListFleetVehiclesQuery, type Paginated } from '@ecms/contracts';
+import {
+  FLEET_FIRST_WORKING_CODE,
+  type ListFleetVehiclesQuery,
+  type Paginated,
+} from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
 import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
+
+/**
+ * THE SAME THREE GROUPS `fleetVehicleCodeOrderKey` builds, spelled as an aggregation expression.
+ *
+ * «اى عربيات تتعرض من اول 150 وانت طالع ... وبعدين الملاكى اللى هما بيبدا 61». The working fleet
+ * first counting up, then the cars written in words, then «الملاكى» below 150.
+ *
+ * WRITTEN TWICE, DELIBERATELY, AND TESTED AGAINST ITS TWIN. The browser cannot run an aggregation
+ * expression and Mongo cannot run a TypeScript function, so the rule has to exist in both
+ * languages; what must not happen is the two DRIFTING, which is why the contract owns the rule,
+ * the boundary constant is imported rather than spelled, and a spec walks the same codes through
+ * both and expects the same order.
+ *
+ * `$convert` with `onError: null` is the numeric test as well as the conversion: a code that is
+ * not a plain number simply fails to convert and falls to the middle group, which is exactly the
+ * regular expression the contract uses, without a second pattern to keep in step.
+ */
+export const vehicleCodeOrder = (ref: string): unknown => ({
+  $let: {
+    vars: {
+      n: { $convert: { input: ref, to: 'long', onError: null, onNull: null } },
+      // LEFT-padded to a fixed width, so that text order and numeric order agree: the last twenty
+      // characters of «00000000000000000000150» are «150» with nineteen zeros in front of it.
+      padded: {
+        $let: {
+          vars: { s: { $concat: ['00000000000000000000', ref] } },
+          in: {
+            $substrCP: ['$$s', { $subtract: [{ $strLenCP: '$$s' }, 20] }, 20],
+          },
+        },
+      },
+    },
+    in: {
+      $cond: [
+        { $eq: [{ $ifNull: [ref, null] }, null] },
+        // No code at all — a row kept from the old book. Left null, which the missing-value flag
+        // beside every derived sort already sends to the end.
+        null,
+        {
+          $cond: [
+            { $eq: ['$$n', null] },
+            { $concat: ['1', ref] },
+            {
+              $concat: [
+                { $cond: [{ $gte: ['$$n', FLEET_FIRST_WORKING_CODE] }, '0', '2'] },
+                '$$padded',
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  },
+});
+
+/**
+ * The registry's OWN code column, ordered by the same rule.
+ *
+ * A key of its own rather than computing over `code` in place: the derived machinery projects a
+ * computed key away after sorting, so naming it `code` would strip the real column off every row
+ * the registry hands back. `listVehicles` maps a request for `code` onto this.
+ */
+export const VEHICLE_CODE_ORDER_SORT = {
+  key: 'codeOrder',
+  expression: vehicleCodeOrder('$code'),
+} as const;
 
 /**
  * «كود السيارة», as a sort key for the registers that REFERENCE a car.
@@ -19,6 +89,8 @@ export const VEHICLE_CODE_SORT = {
   from: FleetVehicleModel.collection.name,
   localField: 'vehicleId',
   pick: 'code',
+  // …and ordered by the FLEET's rule, not by the text of the code — see `vehicleCodeOrder`.
+  order: vehicleCodeOrder('$vehicleCode'),
 } as const;
 
 /**
@@ -62,11 +134,35 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
       .exec();
   }
 
+  /**
+   * The registry, ordered by the FLEET's rule whenever the reader asks for «كود السيارة».
+   *
+   * A request for `code` is rewritten onto `codeOrder` — the same column, the fleet's own three
+   * groups — before it reaches the generic list. Rewritten rather than exposed: `code:asc` is
+   * what every screen, every saved link and every other module's caller already sends, and the
+   * rule is not a second sort a reader chooses between. Nothing about the request or the rows
+   * changes; only the order does.
+   */
   async listVehicles(params: ListParams<FleetVehicleDoc>): Promise<Paginated<FleetVehicleDoc>> {
+    const ORDER = VEHICLE_CODE_ORDER_SORT.key;
     return this.list({
       ...params,
-      sortableFields: ['code', 'createdAt', 'licenseExpiresAt', VEHICLE_TYPE_NAME_SORT.key],
-      sortDerived: [VEHICLE_TYPE_NAME_SORT],
+      ...(params.sortBy === 'code' ? { sortBy: ORDER } : {}),
+      ...(params.sorts === undefined
+        ? {}
+        : {
+            sorts: params.sorts.map((entry) =>
+              entry.by === 'code' ? { ...entry, by: ORDER } : entry,
+            ),
+          }),
+      sortableFields: [
+        'code',
+        ORDER,
+        'createdAt',
+        'licenseExpiresAt',
+        VEHICLE_TYPE_NAME_SORT.key,
+      ],
+      sortDerived: [VEHICLE_TYPE_NAME_SORT, VEHICLE_CODE_ORDER_SORT],
     });
   }
 

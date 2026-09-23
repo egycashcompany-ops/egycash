@@ -19,7 +19,12 @@
 // starts, cut down by that day's workshop visits (FR-5) and driver availability (FR-6/7).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetRosterRowDto, type Locale } from '@ecms/contracts';
+import {
+  compareFleetVehicleCodes,
+  fleetVehicleCodeOrderKey,
+  type FleetRosterRowDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -91,7 +96,9 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
  * be an order that means nothing.
  */
 const rosterSortValue = (row: FleetRosterRowDto, key: string): string | number | null => {
-  if (key === 'code') return row.code;
+  // The CODE, as the fleet reads it — 150 upward, then the worded ones, then «الملاكى». The bare
+  // code would sort «9» after «150», and this board holds the whole fleet in one answer.
+  if (key === 'code') return fleetVehicleCodeOrderKey(row.code);
   if (key === 'state') return row.inMaintenance ? 0 : hasDriver(row) ? 1 : 2;
   return null;
 };
@@ -448,7 +455,7 @@ export const RosterPage = (): JSX.Element => {
         visibleRows(shown, { term: search, missions, view }),
         sorts,
         rosterSortValue,
-        (a, b) => a.code.localeCompare(b.code),
+        (a, b) => compareFleetVehicleCodes(a.code, b.code),
       ),
     [shown, search, missionsKey, view, sortParam],
   );
@@ -581,13 +588,17 @@ export const RosterPage = (): JSX.Element => {
   );
   const searchIndex = useMemo(() => {
     const index = new Map<string, DriverSearchRecord>();
-    for (const [employeeId, employee] of records) {
+    for (const [employeeId, person] of records) {
       index.set(employeeId, {
         employeeId,
-        nameAr: employee.personal.fullNameAr,
-        nameEn: employee.personal.fullNameEn,
-        code: employee.code,
-        employeeNumber: employee.employeeNumber,
+        nameAr: person.fullNameAr,
+        // Fleet's own roster carries ONE name and ONE code — the two a search on this board is
+        // ever typed with. The English name and the employee NUMBER were HR-record fields that
+        // came along for free when this read HR's endpoint; they are not facts Fleet publishes,
+        // and searching by them was never something anybody did on a driver chip.
+        nameEn: null,
+        code: person.code,
+        employeeNumber: null,
       });
     }
     return index;
@@ -613,7 +624,7 @@ export const RosterPage = (): JSX.Element => {
     // id's tail is the same stand-in the chip falls back to when the record is out of reach
     // (no `employee.view`, or not landed yet) — a seat that is taken must not read as empty.
     const record = records.get(employeeId);
-    return record?.personal.fullNameAr ?? employeeId.slice(-8);
+    return record?.fullNameAr ?? employeeId.slice(-8);
   };
 
   /**

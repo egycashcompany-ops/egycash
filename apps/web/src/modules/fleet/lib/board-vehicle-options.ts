@@ -12,6 +12,7 @@
 // un-tick and the filter becomes a thing you can set but not unset. Which is also what makes the
 // picker's search safe: narrowing the search hides options, never selections, and the selection
 // always has a row waiting for it when the search is cleared.
+import { compareFleetVehicleCodes } from '@ecms/contracts';
 import { type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 
 export interface BoardVehicle {
@@ -19,17 +20,19 @@ export interface BoardVehicle {
 }
 
 /**
- * The board's codes, numerically ordered, with every already-selected code kept in front.
+ * The board's codes, in the FLEET's order, with every already-selected code kept in front.
  *
- * Order puts the selection first so the things you can turn OFF are never below a scroll, and the
- * codes sort `9 < 150 < 1500` rather than as text.
+ * Order puts the selection first so the things you can turn OFF are never below a scroll. The
+ * codes themselves follow `compareFleetVehicleCodes` — the working fleet counting up from 150,
+ * then the ones written in words, then «الملاكى» — so the dropdown and the table under it are
+ * read in the same order, which is the whole reason a picker is worth opening.
  */
 export const boardVehicleOptions = (
   board: readonly BoardVehicle[],
   selected: readonly string[],
 ): MultiSelectOption[] => {
-  const onBoard = [...new Set(board.map((vehicle) => vehicle.code))].sort((a, b) =>
-    a.localeCompare(b, 'en', { numeric: true }),
+  const onBoard = [...new Set(board.map((vehicle) => vehicle.code))].sort(
+    compareFleetVehicleCodes,
   );
   const shown = new Set(onBoard);
   const orphans = selected.filter((code) => !shown.has(code));

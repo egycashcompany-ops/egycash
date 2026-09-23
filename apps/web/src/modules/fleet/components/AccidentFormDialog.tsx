@@ -60,7 +60,7 @@ export const AccidentFormDialog = ({
   // The picked driver's NAME, from the same cached records every other fleet screen reads.
   const records = useEmployeeRecords(culpritEmployeeId === '' ? [] : [culpritEmployeeId]);
   const drivers = new Map(
-    [...records.entries()].map(([id, employee]) => [id, employee.personal.fullNameAr]),
+    [...records.entries()].map(([id, person]) => [id, person.fullNameAr]),
   );
 
   /**

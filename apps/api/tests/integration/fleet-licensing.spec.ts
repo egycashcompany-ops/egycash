@@ -142,6 +142,8 @@ describe('who is on the board', () => {
     expect(row?.plateNumber).toBe('س ص LIC-100');
     expect(row?.chassisNumber).toBe('CH-LIC-100');
     expect(row?.licenseClass).toBe('برقاش ت');
+    // The date the errand is about, carried on the row rather than looked up per car.
+    expect(row?.licenseExpiresAt).toBe(day('2027-01-01').toISOString());
   });
 
   it('reads a car nobody has ticked as four falses, without writing a row for it', async () => {

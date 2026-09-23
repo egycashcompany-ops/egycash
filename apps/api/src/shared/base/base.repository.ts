@@ -86,6 +86,19 @@ export interface SortDerivedField {
   pick?: string;
   /** An aggregation expression, for a computed key. */
   expression?: unknown;
+  /**
+   * How the derived value is ORDERED, when its own value is not the order.
+   *
+   * An aggregation expression over the key just added — `$vehicleCode`, say — whose result
+   * replaces it for the `$sort` alone. A joined car code is text, and a fleet is not read in text
+   * order («9» after «150»); this is where a JOINED key gets a rule without the join itself
+   * learning one.
+   *
+   * Applied AFTER the missing-value flag, on purpose: the flag asks whether the joined value was
+   * there at all, and a transform that turned null into a string would answer that question wrong
+   * for every row whose reference no longer resolves.
+   */
+  order?: unknown;
 }
 
 interface WriteMeta {
@@ -364,6 +377,13 @@ export class BaseRepository<T extends BaseDocFields> {
       ordered[field] = direction;
     }
     if (Object.keys(flags).length > 0) stages.push({ $addFields: flags });
+    // …and only now the order transforms, so the flags above read the value the join produced.
+    const orders = Object.fromEntries(
+      derived
+        .filter((field) => field.order !== undefined && Object.keys(sort).includes(field.key))
+        .map((field) => [field.key, field.order]),
+    );
+    if (Object.keys(orders).length > 0) stages.push({ $addFields: orders });
     stages.push({ $sort: ordered });
     stages.push({ $skip: (page - 1) * pageSize });
     stages.push({ $limit: pageSize });

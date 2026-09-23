@@ -2446,6 +2446,15 @@ export interface FleetLicensingRowDto {
    * explained — a clerk looking for a car that is not there needs to see what the others have.
    */
   licenseClass: string | null;
+  /**
+   * WHEN THE LICENCE RUNS OUT — the registry's own `licenseExpiresAt`, carried here rather than
+   * looked up per row.
+   *
+   * It is the date the whole errand exists for: «تسليم» and «استلام» are steps towards a renewal,
+   * and a board that showed the steps without the deadline could not be read in the order the work
+   * is actually done. Filtering by a period over it is what turns the board into a worklist.
+   */
+  licenseExpiresAt: string;
   insuranceHandover: boolean;
   insuranceReceipt: boolean;
   taxHandover: boolean;
@@ -2466,3 +2475,88 @@ export const SetFleetLicensingMarkSchema = z
   })
   .strict();
 export type SetFleetLicensingMark = z.infer<typeof SetFleetLicensingMarkSchema>;
+
+// ── How a fleet is ORDERED by its car codes ──────────────────────────────────
+
+/**
+ * THE FIRST CODE OF THE WORKING FLEET. Below it a car is «ملاكى» — privately owned, driven by its
+ * owner, and not what anybody opens a Fleet screen to look at.
+ *
+ * A number rather than a flag because that is how the company numbers its cars: the working fleet
+ * was issued 150 upward and the private ones kept the old low numbers, so the code IS the fact.
+ * Naming it here keeps the boundary in one place; nothing else in the code may spell 150.
+ */
+export const FLEET_FIRST_WORKING_CODE = 150;
+
+/** Wide enough that no real code is truncated — the registry caps a code at twenty characters. */
+const CODE_PAD = 20;
+
+/**
+ * ONE SORTABLE KEY FOR A CAR CODE, so every Fleet screen and every list orders its cars the same
+ * way — «اى عربيات تتعرض من اول 150 وانت طالع ... وبعدين الملاكى».
+ *
+ * Three groups, in this order:
+ *
+ *   0. the working fleet — a numeric code of 150 or more, counting up: 150, 151, 152 …
+ *   1. the cars written in WORDS — «العربيات اللى متسجله بالكلام», any code that is not a number,
+ *      alphabetically among themselves;
+ *   2. «الملاكى» — a numeric code below 150, counting up: 61, 62 …
+ *
+ * The key is a STRING, not a number, because the three groups have to be ordered together and the
+ * middle one has no numeric value at all. The digits are LEFT-PADDED so that text order and
+ * numeric order agree: without it «9» sorts after «150», which is the bug this whole helper is
+ * here to end.
+ *
+ * `null`/empty answers `null`, which every caller already treats as "missing, sorts last" — a
+ * reading kept from the old book on a car the registry never had has no code to order by.
+ */
+export const fleetVehicleCodeOrderKey = (code: string | null | undefined): string | null => {
+  if (typeof code !== 'string' || code.trim() === '') return null;
+  const trimmed = code.trim();
+  if (!/^\d+$/u.test(trimmed)) return `1${trimmed}`;
+  const group = Number(trimmed) >= FLEET_FIRST_WORKING_CODE ? '0' : '2';
+  return `${group}${trimmed.padStart(CODE_PAD, '0')}`;
+};
+
+/** Compare two car codes by the fleet's own order. Missing codes sort last, either direction. */
+export const compareFleetVehicleCodes = (a: string | null, b: string | null): number => {
+  const [ka, kb] = [fleetVehicleCodeOrderKey(a), fleetVehicleCodeOrderKey(b)];
+  if (ka === null) return kb === null ? 0 : 1;
+  if (kb === null) return -1;
+  return ka < kb ? -1 : ka > kb ? 1 : 0;
+};
+
+// ── Fleet's own people ───────────────────────────────────────────────────────
+//
+// «انا عاوز اعرض السواقيين بتوع الحركه للناس اللى واخده موديول الحركه بس ... عشان يظهر لازم اخش
+// اديله من الاتش ار صفحه الموظفون ف بيعرض ... كل المواظفين بتوع الشركه لا انا عاوز الحركه يظهر
+// الناس بتاعت الحركه بس».
+//
+// Every Fleet screen that prints a driver's name used to read HR's employee endpoint under HR's
+// own `employee.view`. That grant is the whole HR directory: to let a dispatcher see who drove
+// car 150 yesterday, somebody had to hand them «الموظفون» and with it every employee in the
+// company, which is a far larger thing than the job needs.
+//
+// So Fleet answers it itself, for ITS OWN PEOPLE and nobody else. The roster is the same one the
+// drivers registry is built from — every employee whose job title requires a driving test — and
+// it arrives through the directory seam, which is a read the org chart already offers and which
+// grants nothing. What this endpoint publishes is exactly the facts a Fleet screen prints; it is
+// read-only, stores nothing, and cannot reach a person who does not hold a driving seat.
+//
+// FR-11 IS UNTOUCHED. Fleet still does not OWN people: it does not write these facts, does not
+// keep them, and every one of them is HR's. What changes is which grant a reader needs to see the
+// ones Fleet already shows.
+
+export interface FleetPersonDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  /** HR employment status — the registry already grays an exited driver, and so may a cell. */
+  status: 'probation' | 'active' | 'onLeave' | 'suspended' | 'exited';
+  branchId: string | null;
+  /** The official address where there is one, the current one behind it; null when neither. */
+  address: string | null;
+  governorate: string | null;
+  phone: string | null;
+  hiredAt: string | null;
+}

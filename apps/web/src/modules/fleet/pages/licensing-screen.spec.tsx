@@ -15,10 +15,11 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type FleetLicensingRowDto, type Locale, type MeDto } from '@ecms/contracts';
+import { formatDate } from '../../../shared/lib/format';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
-import { LicensingPage, matchesPaper, paperStage } from './LicensingPage';
+import { LicensingPage, matchesPaper, paperStage, withinPeriod } from './LicensingPage';
 
 /** The two tints the board paints, as the cell writes them — never the bare shade. */
 const AMBER = 'bg-amber-50 dark:bg-amber-950/40';
@@ -30,6 +31,7 @@ const row = (over: Partial<FleetLicensingRowDto> = {}): FleetLicensingRowDto => 
   plateNumber: 'س ص ١٥٠',
   chassisNumber: 'JTEBH9FJ7EK123456',
   licenseClass: 'برقاش ت',
+  licenseExpiresAt: '2027-03-15T00:00:00.000Z',
   insuranceHandover: false,
   insuranceReceipt: false,
   taxHandover: false,
@@ -333,6 +335,72 @@ describe('the filters narrow the board', () => {
     const html = render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=zzz' });
     expect(html).toContain('لا توجد سيارة مطابقة');
     expect(html, 'the membership rule is not the answer here').not.toContain('برقاش ت');
+  });
+});
+
+describe('the licence expiry', () => {
+  it('is a column on the board — the date the whole errand is about', () => {
+    const html = render({ rows: [row({ licenseExpiresAt: '2027-03-15T00:00:00.000Z' })] });
+    expect(html, 'the heading').toContain('تاريخ انتهاء الترخيص');
+    // `formatDate`'s own rendering, not a hand-built string: Arabic-Indic digits, medium style.
+    expect(html, 'and the date itself').toContain(formatDate('2027-03-15T00:00:00.000Z', 'ar'));
+  });
+
+  it('narrows by a PERIOD, with either end on its own', () => {
+    const fleet = [
+      row({ vehicleId: 'v1', code: '150', licenseExpiresAt: '2027-01-10T00:00:00.000Z' }),
+      row({ vehicleId: 'v2', code: '151', licenseExpiresAt: '2027-06-20T00:00:00.000Z' }),
+      row({ vehicleId: 'v3', code: '214', licenseExpiresAt: '2027-12-31T00:00:00.000Z' }),
+    ];
+    const shown = (html: string): string[] =>
+      [...html.matchAll(/data-licensing-row="([^"]+)"/g)].map((m) => m[1] as string);
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?to=2027-06-30' }))).toEqual([
+      '150',
+      '151',
+    ]);
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?from=2027-06-01' }))).toEqual([
+      '151',
+      '214',
+    ]);
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?from=2027-02-01&to=2027-11-30' })),
+      'both ends together',
+    ).toEqual(['151']);
+  });
+});
+
+describe('withinPeriod — the window, by DAY', () => {
+  it('takes a licence expiring on the very last day asked for', () => {
+    // The stored value carries a time and the boxes carry a date: compared as instants, the
+    // commonest question a period filter is asked — «كل اللى بيخلص لغاية آخر الشهر» — would drop
+    // the licences expiring on that day.
+    expect(withinPeriod('2026-09-30T00:00:00.000Z', '', '2026-09-30')).toBe(true);
+    expect(withinPeriod('2026-09-30T13:45:00.000Z', '', '2026-09-30')).toBe(true);
+    expect(withinPeriod('2026-09-30T00:00:00.000Z', '2026-09-30', '')).toBe(true);
+  });
+
+  it('an empty bound does not constrain', () => {
+    expect(withinPeriod('2020-01-01T00:00:00.000Z', '', '')).toBe(true);
+  });
+
+  it('refuses what falls outside', () => {
+    expect(withinPeriod('2026-10-01T00:00:00.000Z', '', '2026-09-30')).toBe(false);
+    expect(withinPeriod('2026-09-29T00:00:00.000Z', '2026-09-30', '')).toBe(false);
+  });
+});
+
+describe('the Excel button', () => {
+  it('is offered on the board', () => {
+    // «شاشه fleet/licensing اعملى اكسيل» — the same control the other eight Fleet lists carry.
+    expect(render()).toContain('data-export="licensing"');
+  });
+
+  it('is still offered when the board is EMPTY — empty is an answer, a failure is not', () => {
+    // The button is gated on the query's ERROR, not on its length: a fleet with no «… ت» car has
+    // genuinely nothing to export and said so, which is a different thing from a fetch that never
+    // came back. The error branch itself needs a rejected query, which a markup render has no way
+    // to produce — it is the same gate the five paged screens carry, and it is read in the page.
+    expect(render({ rows: [] })).toContain('data-export="licensing"');
   });
 });
 

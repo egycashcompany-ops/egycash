@@ -541,7 +541,7 @@ export const DriverViolationsPanel = ({
     rows.map((row) => row.driverEmployeeId).filter((id): id is string => id !== null),
   );
   const driverOf = (row: FleetViolationDto): string =>
-    (row.driverEmployeeId === null ? undefined : people.get(row.driverEmployeeId)?.personal.fullNameAr) ??
+    (row.driverEmployeeId === null ? undefined : people.get(row.driverEmployeeId)?.fullNameAr) ??
     row.driverName ??
     '';
 

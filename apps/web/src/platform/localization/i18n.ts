@@ -3605,6 +3605,7 @@ const en: Record<string, string> = {
     'A vehicle appears here when its licence class ends with «ت» — «برقاش ت», «العجوزة ت».',
   'fleet.licensing.noMatches': 'No vehicle matches these filters.',
   'fleet.licensing.count': '{{count}} vehicles',
+  'fleet.licensing.done': 'Done',
   'fleet.licensing.mark': '{{paper}} · {{step}} — vehicle {{code}}',
   'fleet.nav.catalogs': 'Fleet Catalogs',
   'fleet.nav.settings': 'Fleet Settings',
@@ -10461,6 +10462,7 @@ const ar: Record<string, string> = {
   'fleet.licensing.noMatches':
     'لا توجد سيارة مطابقة لعوامل التصفية.',
   'fleet.licensing.count': '{{count}} سيارة',
+  'fleet.licensing.done': 'تم',
   'fleet.licensing.mark': '{{paper}} · {{step}} — السيارة {{code}}',
   'fleet.nav.catalogs': 'قوائم الحركة',
   'fleet.nav.settings': 'إعدادات الحركة',

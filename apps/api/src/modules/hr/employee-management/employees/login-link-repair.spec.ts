@@ -1,0 +1,96 @@
+// A back-reference is not an account.
+//
+// Deleting a login from «مستخدمو النظام» is a SOFT delete: the row stays, `isDeleted` is set, and
+// every read of it answers 404. What it does NOT do on its own is let go of `employee.userId` —
+// ADR-017 keeps that linkage on HR's side, out of the platform's reach. So the id goes on naming a
+// row nothing returns, and the employee's account card drew the whole account panel over two
+// requests that both failed, with no way back to «إنشاء حساب دخول».
+//
+// Three things now stop that, and they are deliberately not one thing: the platform ANNOUNCES the
+// delete, HR answers it by clearing the link, and the two read paths that matter — provisioning and
+// the card — each test whether the account still EXISTS rather than trusting the id. The event
+// swallows its own failures by design, and rows predating it carry the stale link anyway, so the
+// existence tests are the guarantee and the handler is the tidy-up.
+import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PlatformEvents, EVENT_SCHEMA_VERSIONS } from '@ecms/contracts';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const read = (path: string): string => readFileSync(resolve(HERE, path), 'utf8');
+
+describe('a delete is its own event', () => {
+  it('is declared, versioned, and distinct from a status change', () => {
+    // Not `UserStatusChanged`: that also fires for an ARCHIVE, which deliberately KEEPS the links
+    // it has. A listener acting on «archived» would unpick a link the archive was preserving.
+    expect(PlatformEvents.UserDeleted).toBe('platform.user.deleted');
+    expect(PlatformEvents.UserDeleted).not.toBe(PlatformEvents.UserStatusChanged);
+    expect(EVENT_SCHEMA_VERSIONS[PlatformEvents.UserDeleted]).toBe(1);
+  });
+
+  it('is emitted by the soft delete, beside the status change and not instead of it', () => {
+    const source = read('../../../../platform/users/user.service.ts');
+    const softDelete = source.slice(source.indexOf('async softDelete('));
+    const body = softDelete.slice(0, softDelete.indexOf('\n  async ', 10));
+    expect(body).toContain('PlatformEvents.UserDeleted');
+    // The status change stays: the automation module listens for it, and this must not take that
+    // away from it.
+    expect(body).toContain('PlatformEvents.UserStatusChanged');
+  });
+
+  it('is subscribed to by HR, which owns the linkage', () => {
+    const module = read('../../hr.module.ts');
+    expect(module).toContain('PlatformEvents.UserDeleted');
+    expect(module).toContain('clearLoginLinkOf');
+  });
+});
+
+describe('provisioning tests existence, not the id', () => {
+  const service = read('./employee.service.ts');
+  const createLogin = service.slice(service.indexOf('async createLogin('));
+  const body = createLogin.slice(0, createLogin.indexOf('\n  /**', 10));
+
+  it('asks whether the named account is still there before refusing', () => {
+    // Refusing on the id alone left an employee whose login was deleted permanently unable to get
+    // another one — the conflict fired forever on a row that no longer exists.
+    expect(body).toContain('findByIdSystem');
+    const asked = body.indexOf('findByIdSystem');
+    const refused = body.indexOf("already has a login account");
+    expect(asked).toBeGreaterThan(-1);
+    expect(asked).toBeLessThan(refused);
+  });
+
+  it('still refuses when the account IS there', () => {
+    expect(body).toContain('stillThere !== null');
+    expect(body).toContain('ConflictError');
+  });
+
+  it('lets the stale link go rather than working around it', () => {
+    // Carrying on while the row still names a dead account would leave the same trap for the next
+    // reader; the repair belongs on the path that discovered it.
+    expect(body).toContain('clearLoginLinkOf');
+  });
+});
+
+describe('the card branches on the account, not the id', () => {
+  const card = read(
+    join(HERE, '../../../../../../..', 'apps/web/src/modules/hr/employee-management/employees/components/EmployeeAccountCard.tsx'),
+  );
+
+  it('treats a link that failed to resolve as no account', () => {
+    expect(card).toContain('linked.isError');
+    expect(card).toContain('const hasAccount');
+  });
+
+  it('gates every account-only panel on that, not on the raw id', () => {
+    // The username editor, the security actions and the data scopes each used to key off
+    // `employee.userId !== null`, which is exactly what drew them over a deleted account.
+    expect(card).not.toContain('{employee.userId !== null && (');
+    expect(card).toContain('{hasAccount && (');
+  });
+
+  it('says WHY the panel is gone rather than reusing «no login yet»', () => {
+    expect(card).toContain('employees.account.linkBroken');
+  });
+});

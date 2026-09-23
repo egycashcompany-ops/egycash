@@ -530,10 +530,28 @@ class UserService {
       email: doc.email,
       status: 'archived',
     });
+    // AND a delete is its own event, because every module holding a back-reference to this account
+    // now points at a row no read will return. `UserStatusChanged` cannot carry that meaning: it
+    // also fires for an ARCHIVE, which deliberately keeps the links it has. A listener acting on
+    // «archived» would unpick a link the archive was keeping on purpose.
+    await emit(PlatformEvents.UserDeleted, { userId: id });
   }
 
   async getById(id: string, scope?: ScopeSelector): Promise<UserDoc> {
     return userRepository.getById(id, scope);
+  }
+
+  /**
+   * Does this account still exist? `null` when it was deleted, or never was.
+   *
+   * For the modules that hold a back-reference to an account (ADR-017's `employee.userId`, and the
+   * external-subject links beside it) and need to know whether the id they are holding still names
+   * anything. Unscoped and non-throwing, because the question is about EXISTENCE, not about
+   * whether some caller may read the record: a dangling link is a fact about the data, and it must
+   * read the same however the person asking is placed.
+   */
+  async findByIdSystem(id: string): Promise<UserDoc | null> {
+    return userRepository.findById(id);
   }
 
   /**

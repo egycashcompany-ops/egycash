@@ -5,7 +5,7 @@
 // Screening), Stage 3 (Interviews), Stage 4 (Job Offer), Stage 5 (Employee Creation),
 // Stage 6 (Hiring Documents), and Stage 7 (Electronic Employee File) — the final stage of the
 // approved seven-stage workflow and the handoff artifact to the Employee module (BD-008).
-import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
+import { PlatformEvents, declarePermissions, type PageDef, type PermissionDef } from '@ecms/contracts';
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import {
   applicantService,
@@ -1657,6 +1657,36 @@ export const hrModule: ModuleManifest = {
     ...hrMedicalDocumentAuthorizers,
   ],
   eventSubscriptions: [
+    {
+      /**
+       * A login account was deleted — let go of the employee's back-reference to it.
+       *
+       * ADR-017 keeps the linkage on HR's side, so the platform cannot clear it without importing
+       * this module; it announces the delete instead and this answers. Without it, «إنشاء حساب
+       * دخول» never comes back: the card branches on `employee.userId`, which still names a row
+       * no read returns, so it draws the account panel over two requests that both 404.
+       *
+       * It swallows its own failure, like every courtesy attached to an event that already
+       * happened — deleting an account must not fail because a back-reference could not be tidied.
+       * That is affordable precisely because it is not the only defence: `createLogin` and the
+       * account card each test whether the named account still EXISTS rather than trusting the id,
+       * so a link this handler never got to is repaired the next time either one is used.
+       */
+      event: PlatformEvents.UserDeleted,
+      handlerId: 'employees.clearLoginLinkOnUserDeleted',
+      handler: async (envelope) => {
+        const payload = envelope.payload as { userId?: string };
+        if (typeof payload.userId !== 'string') return;
+        try {
+          await employeeService.clearLoginLinkOf(payload.userId);
+        } catch (error) {
+          logger.error(
+            { err: error, userId: payload.userId },
+            'clearing the employee login link after a user delete failed',
+          );
+        }
+      },
+    },
     {
       // P-HR-REQ D-REQ-13 — fulfilment. The requisition COUNTS hires; it never causes one, and it
       // never writes workflow state back (I15). The handler swallows its own failures for the same

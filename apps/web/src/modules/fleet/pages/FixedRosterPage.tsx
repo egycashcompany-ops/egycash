@@ -25,7 +25,12 @@
 // stores neither — see §2.7b, which is deliberately the two driver slots and nothing else.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetFixedCrewRowDto, type Locale } from '@ecms/contracts';
+import {
+  compareFleetVehicleCodes,
+  fleetVehicleCodeOrderKey,
+  type FleetFixedCrewRowDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -82,7 +87,9 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 /** Remembered across visits: this screen's filters. `page` is derived, never kept. */
 /** What one column of one row is worth — «الحالة» ranked, not spelled. See the daily board. */
 const fixedSortValue = (row: FleetFixedCrewRowDto, key: string): string | number | null => {
-  if (key === 'code') return row.code;
+  // The CODE, as the fleet reads it — 150 upward, then the worded ones, then «الملاكى». The bare
+  // code would sort «9» after «150», and this board holds the whole fleet in one answer.
+  if (key === 'code') return fleetVehicleCodeOrderKey(row.code);
   if (key === 'state') return row.inMaintenance ? 0 : hasDriver(row) ? 1 : 2;
   return null;
 };
@@ -658,7 +665,7 @@ export const FixedRosterPage = (): JSX.Element => {
         visibleFixedRows(draft, { term: search, missions, view }),
         sorts,
         fixedSortValue,
-        (a, b) => a.code.localeCompare(b.code),
+        (a, b) => compareFleetVehicleCodes(a.code, b.code),
       ),
     [draft, search, missionsKey, view, sortParam],
   );

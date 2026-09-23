@@ -19,7 +19,12 @@
 // starts, cut down by that day's workshop visits (FR-5) and driver availability (FR-6/7).
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetRosterRowDto, type Locale } from '@ecms/contracts';
+import {
+  compareFleetVehicleCodes,
+  fleetVehicleCodeOrderKey,
+  type FleetRosterRowDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -91,7 +96,9 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
  * be an order that means nothing.
  */
 const rosterSortValue = (row: FleetRosterRowDto, key: string): string | number | null => {
-  if (key === 'code') return row.code;
+  // The CODE, as the fleet reads it — 150 upward, then the worded ones, then «الملاكى». The bare
+  // code would sort «9» after «150», and this board holds the whole fleet in one answer.
+  if (key === 'code') return fleetVehicleCodeOrderKey(row.code);
   if (key === 'state') return row.inMaintenance ? 0 : hasDriver(row) ? 1 : 2;
   return null;
 };
@@ -448,7 +455,7 @@ export const RosterPage = (): JSX.Element => {
         visibleRows(shown, { term: search, missions, view }),
         sorts,
         rosterSortValue,
-        (a, b) => a.code.localeCompare(b.code),
+        (a, b) => compareFleetVehicleCodes(a.code, b.code),
       ),
     [shown, search, missionsKey, view, sortParam],
   );

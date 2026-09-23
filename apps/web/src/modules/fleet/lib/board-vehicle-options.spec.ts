@@ -13,8 +13,18 @@ describe('boardVehicleOptions', () => {
     ]);
   });
 
-  it('orders the codes as NUMBERS, so 9 comes before 150 and 150 before 1500', () => {
-    expect(values([v('1500'), v('9'), v('150')], [])).toEqual(['9', '150', '1500']);
+  it('orders the codes the way the FLEET is read, not as numbers and not as text', () => {
+    // «من اول 150 وانت طالع ... وبعدين الملاكى». 9 is «ملاكى» and goes last however small it is;
+    // among the working fleet 150 still comes before 1500, which a text sort gets wrong.
+    expect(values([v('1500'), v('9'), v('150')], [])).toEqual(['150', '1500', '9']);
+    // The dropdown and the board under it are read in one order — that is the whole point of
+    // sharing `compareFleetVehicleCodes` rather than each sorting its own way.
+    expect(values([v('61'), v('ميكروباص'), v('151'), v('150')], [])).toEqual([
+      '150',
+      '151',
+      'ميكروباص',
+      '61',
+    ]);
   });
 
   it('offers a car once, however many rows the board has for it', () => {

@@ -9,7 +9,11 @@
 // ones». Within a filter the answers are OR'd; the two filters AND together.
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetMaintenanceAlarmDto, type Locale } from '@ecms/contracts';
+import {
+  fleetVehicleCodeOrderKey,
+  type FleetMaintenanceAlarmDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -47,7 +51,8 @@ const LEVEL_ORDER = { red: 0, yellow: 1, none: 2 } as const;
  * «zero kilometres left».
  */
 const alarmSortValue = (alarm: FleetMaintenanceAlarmDto, key: string): string | number | null => {
-  if (key === 'code') return alarm.code;
+  // The fleet's own order, not the text of the code — see `fleetVehicleCodeOrderKey`.
+  if (key === 'code') return fleetVehicleCodeOrderKey(alarm.code);
   if (key === 'level') return LEVEL_ORDER[alarm.level];
   if (key === 'sinceServiceKm') return alarm.sinceServiceKm;
   if (key === 'remainingKm') return alarm.remainingKm;

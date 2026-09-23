@@ -331,7 +331,7 @@ describe('the filters narrow the board', () => {
     // The two empties are different answers: one sends the reader to fix a filter, the other to
     // the catalogs screen. Showing the licence-class hint here would send them to the wrong one.
     const html = render({ rows: fleet, path: '/fleet/licensing?vehicleCodes=zzz' });
-    expect(html).toContain('مفيش سيارة مطابقة');
+    expect(html).toContain('لا توجد سيارة مطابقة');
     expect(html, 'the membership rule is not the answer here').not.toContain('برقاش ت');
   });
 });

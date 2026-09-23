@@ -6902,14 +6902,17 @@ const en: Record<string, string> = {
 
 const ar: Record<string, string> = {
   // مهلة عدم النشاط. الصياغة لواحد قام من مكتبه، مش لواحد عمل غلط.
-  'auth.idle.warningTitle': 'لسه موجود؟',
+  'auth.idle.warningTitle':
+    'هل ما زلت متواجدًا؟',
   'auth.idle.warningBody': 'الجلسة هتتقفل خلال {{seconds}} ثانية.',
   'auth.idle.warningHint':
-    'الجلسة بتتقفل بعد فترة من غير نشاط. أي حاجة كاتبها وما حفظتهاش هتضيع، فاضغط «كمّل شغل» عشان تفضل داخل.',
-  'auth.idle.staySignedIn': 'كمّل شغل',
-  'auth.idle.signOutNow': 'اخرج دلوقتي',
+    'تُغلق الجلسة بعد فترة من عدم النشاط. أي بيانات أدخلتها ولم تحفظها ستُفقد، لذا اضغط «متابعة العمل» للبقاء داخل النظام.',
+  'auth.idle.staySignedIn':
+    'متابعة العمل',
+  'auth.idle.signOutNow':
+    'تسجيل الخروج الآن',
   'auth.idle.signedOutNotice':
-    'الجلسة اتقفلت بعد فترة من غير نشاط. سجّل الدخول عشان تكمّل.',
+    'أُغلقت الجلسة بعد فترة من عدم النشاط. يُرجى تسجيل الدخول للمتابعة.',
   // Auth / shell (platform)
   'platform.auth.login.title': 'تسجيل الدخول إلى ECMS',
   'platform.auth.login.email': 'البريد الإلكتروني',
@@ -7303,14 +7306,18 @@ const ar: Record<string, string> = {
   'nav.branchSwitcher.all': 'الشركة كلها',
   'nav.branchSwitcher.mine': 'كل فروعي',
   // توزيع الصلاحيات (ADR-032): تبويب «الصلاحيات» اللي المدير بيشوفه على زميله.
-  'delegation.treeIntro': 'افتح الفرع، اختار الإدارات اللي الشخص ده شغّال فيها، وبعدين حدّد الشاشات اللي يشوفها في كل إدارة.',
-  'delegation.clearBranch': 'شيل صلاحيات الفرع',
-  'delegation.noLogin': 'الشخص ده ملوش حساب دخول لسه، فمفيش صلاحيات تتوزّع.',
+  'delegation.treeIntro':
+    'افتح الفرع، ثم اختر الإدارات التي يعمل بها هذا الشخص، ثم حدّد الشاشات التي يطّلع عليها في كل إدارة.',
+  'delegation.clearBranch':
+    'إزالة صلاحيات الفرع',
+  'delegation.noLogin':
+    'لا يملك هذا الشخص حساب دخول بعد، لذا لا توجد صلاحيات يمكن توزيعها.',
   'delegation.noReach': 'أنت لا توزّع صلاحيات في أي وحدة.',
   'delegation.homeTag': 'وحدته',
   'delegation.wholeBranch': 'الفرع كله',
   'delegation.other': 'أخرى',
-  'delegation.readOnly': 'أنت لا توزّع في الوحدة دي؛ معروضة للاطلاع فقط.',
+  'delegation.readOnly':
+    'أنت لا توزّع الصلاحيات في هذه الوحدة؛ وهي معروضة للاطلاع فقط.',
   'delegation.save': 'حفظ',
   'delegation.saved': 'تم حفظ الصلاحيات.',
   'delegation.failed': 'تعذّر حفظ الصلاحيات.',
@@ -7320,27 +7327,36 @@ const ar: Record<string, string> = {
   'delegation.summary': '{{screens}} شاشة · {{actions}} أكشن',
   'delegation.departments': '{{count}} إدارة',
   'delegation.departmentsOn': '{{on}} من {{total}} إدارة',
-  'delegation.noDepartments': 'مفيش إدارات متسجّلة في الفرع ده لسه.',
+  'delegation.noDepartments':
+    'لا توجد إدارات مسجَّلة في هذا الفرع حتى الآن.',
   'delegation.wholeTitle': 'الفرع كله كوحدة واحدة',
-  'delegation.wholeHint': 'كل الإدارات في الفرع — الموجودة دلوقتي واللي هتتفتح بعدين. ده منح مستقل، مش زرار «علّم الكل».',
-  'delegation.wholeLockedHint': 'ده بيتدي من حساب صلاحيته على الفرع كله. صلاحيتك أنت على إدارة.',
+  'delegation.wholeHint':
+    'جميع الإدارات في الفرع — الحالية وما يُضاف لاحقًا. هذا منح مستقل، وليس زر «تحديد الكل».',
+  'delegation.wholeLockedHint':
+    'مُنح هذا من حساب تمتد صلاحيته على الفرع بالكامل، بينما صلاحيتك أنت على مستوى الإدارة.',
   'delegation.covered': 'داخلة في منح الفرع',
-  'delegation.coveredHint': 'مشمولة في منح «الفرع كله». اللي متسجّل عليها لوحدها ما اتمسّش، وهيرجع لو شِلت منح الفرع.',
+  'delegation.coveredHint':
+    'مشمولة ضمن منح «الفرع بالكامل». ما سُجِّل عليها منفردة لم يُمسح، وسيعود إذا أُزيل منح الفرع.',
   'delegation.screens': '{{count}} شاشة',
   'delegation.screensOn': '{{on}} من {{total}} شاشة',
   'delegation.actionsAll': 'كل الأكشنز',
   'delegation.actionsOn': '{{on}} من {{total}} أكشن',
   'delegation.tickAll': 'علّم الكل',
-  'delegation.clearAll': 'شيل الكل',
-  'delegation.unticked': '{{count}} مش متعلّمة',
+  'delegation.clearAll':
+    'إزالة الكل',
+  'delegation.unticked':
+    '{{count}} غير محدَّدة',
   'delegation.lockedScreens': '{{count}} اتمنحت من فوق — تشوفها بس ما تغيّرهاش',
   'delegation.grantedElsewhere': 'اتمنحت من حد صلاحيته أوسع من صلاحيتك.',
   'delegation.expand': 'فتح',
   'delegation.collapse': 'قفل',
-  'delegation.willSee': 'الشخص ده هيشوف',
+  'delegation.willSee':
+    'ما سيطّلع عليه هذا الشخص',
   'delegation.willSeeNamed': '{{name}} هيشوف',
-  'delegation.noneYet': 'لسه مفيش حاجة متعلّمة.',
-  'delegation.lineWholeBranch': '{{branch}} كله — كل الإدارات، الحالية واللي هتتفتح بعدين',
+  'delegation.noneYet':
+    'لم يُحدَّد شيء بعد.',
+  'delegation.lineWholeBranch':
+    '{{branch}} بالكامل — جميع الإدارات، الحالية وما يُضاف لاحقًا',
   'delegation.lineAll': '{{department}} في {{branch}} — {{screens}} شاشة، كل الأكشنز',
   'delegation.lineView': '{{department}} في {{branch}} — {{screens}} شاشة، عرض بس',
   'delegation.lineSome': '{{department}} في {{branch}} — {{screens}} شاشة، {{actions}} أكشن',
@@ -8296,22 +8312,29 @@ const ar: Record<string, string> = {
   'approvals.outcome.approved': 'تمت الموافقة',
   'approvals.outcome.rejected': 'مرفوضة',
   'approvals.outcome.pending': 'في الانتظار',
-  'approvals.outcome.skipped': 'مفيش حد على الخطوة دي',
+  'approvals.outcome.skipped':
+    'لا يوجد أحد على هذه الخطوة',
   'approvals.outcome.covered': 'اتلغت بقرار أعلى منها',
   'approvals.outcome.unreached': 'الطلب ما وصلهاش',
-  'approvals.waitingHere': 'الطلب واقف هنا دلوقتي',
-  'approvals.yourStep': 'الخطوة دي بتاعتك',
+  'approvals.waitingHere':
+    'الطلب متوقف عند هذه الخطوة حاليًا',
+  'approvals.yourStep':
+    'هذه الخطوة من مسؤوليتك',
   'approvals.willCancel': 'موافقتك هنا هتلغي {{n}} خطوة تحتها',
-  'approvals.overrideNotice': 'إنت مش على المسار ده. القرار هيتسجّل باسم صلاحية التجاوز بتاعتك.',
+  'approvals.overrideNotice':
+    'أنت لست ضمن هذا المسار. سيُسجَّل القرار باسم صلاحية التجاوز الممنوحة لك.',
   'approvals.decidedBy': 'بواسطة {{name}}',
-  'approvals.noChain': 'مفيش مسار موافقة متظبّط للطلب ده.',
+  'approvals.noChain':
+    'لا يوجد مسار موافقة مُعرَّف لهذا الطلب.',
   'approvals.page.title': 'مسارات الموافقة',
   'approvals.page.description':
-    'الخطوة بتحدد صلاحية، ولحد فين لازم توصل سلطة صاحبها — مش مسمى وظيفي. نفس الصلاحية على تلات مسافات مختلفة هي مدير الفرع والمدير العام والموارد البشرية، فلما حد يترقّى بيتغيّر اللي بيوافق من غير ما يتعدّل حاجة هنا.',
+    'تحدّد الخطوة صلاحيةً، ومدى السلطة المطلوبة لصاحبها، لا مسمى وظيفيًا. فالصلاحية الواحدة على ثلاثة مستويات مختلفة هي مدير الفرع والمدير العام والموارد البشرية، وعند ترقية أي موظف يتغيّر صاحب الموافقة دون تعديل أي شيء هنا.',
   'approvals.page.add': 'مسار جديد',
-  'approvals.page.empty': 'مفيش مسار متظبّط لسه — كل طلب ماشي على الافتراضي بتاع الموديول بتاعه.',
+  'approvals.page.empty':
+    'لا يوجد مسار مُعرَّف بعد — ويسير كل طلب على المسار الافتراضي للوحدة التابع لها.',
   'approvals.place.default': 'الافتراضي على مستوى الشركة',
-  'approvals.place.defaultHint': 'بيطبّق في أي مكان مش مكتوبله حاجة أخص',
+  'approvals.place.defaultHint':
+    'يُطبَّق في كل موضع لم يُعرَّف له مسار أكثر تحديدًا',
   'approvals.inactive': 'موقوف',
   'approvals.editor.title': 'مسار الموافقة',
   'approvals.editor.requestType': 'نوع الطلب',
@@ -8320,10 +8343,10 @@ const ar: Record<string, string> = {
   'approvals.editor.anyDepartment': 'كل الإدارات',
   'approvals.editor.anyBranch': 'كل الفروع',
   'approvals.editor.placeHint':
-    'سيب الاتنين «كل» عشان يبقى الافتراضي على مستوى الشركة. الأخص هو اللي بيكسب: إدارة وفرع مع بعض بيغلبوا أي واحد منهم لوحده.',
+    'اترك الحقلين على «الكل» ليكون هذا هو المسار الافتراضي على مستوى الشركة. والأكثر تحديدًا هو المُقدَّم: اجتماع الإدارة والفرع معًا يسبق أيًّا منهما منفردًا.',
   'approvals.editor.steps': 'الخطوات بالترتيب',
   'approvals.editor.stepsHint':
-    'الخطوة اللي مفيش حد في الشركة يقدر يقف عليها بتتخطّى مش بتوقّف الطلب، والمسار بيبيّن إنها اتخطّت.',
+    'الخطوة التي لا يستوفيها أحد في الشركة تُتخطّى ولا توقف الطلب، ويُبيِّن المسار أنها تُخطِّيت.',
   'approvals.editor.addStep': 'إضافة خطوة',
   'leave.status.approved': 'معتمدة',
   'leave.status.active': 'في إجازة',
@@ -9303,19 +9326,23 @@ const ar: Record<string, string> = {
   'employees.roster.action': 'استيراد ملف',
   'employees.roster.title': 'استيراد ملف الموظفين',
   'employees.roster.subtitle':
-    'بيضيف الموظفين الجداد ويعدّل اللي اتغيّر. الخانة الفاضية في الملف مش بتمسح حاجة موجودة في السيستم.',
-  'employees.roster.reading': 'بيقرا الملف ويقارنه بالسيستم…',
-  'employees.roster.applying': 'بيطبّق التعديلات…',
-  'employees.roster.previewNotice': 'لسه مفيش حاجة اتكتبت. ده اللي الملف هيعمله.',
+    'يضيف الموظفين الجدد ويعدّل ما تغيّر. والحقل الفارغ في الملف لا يمسح بيانات قائمة في النظام.',
+  'employees.roster.reading': 'جارٍ قراءة الملف ومقارنته بما في النظام…',
+  'employees.roster.applying': 'جارٍ تطبيق التعديلات…',
+  'employees.roster.previewNotice':
+    'لم يُكتب شيء بعد. هذا ما سينفّذه الملف.',
   'employees.roster.appliedNotice': 'تم — الملف اتطبّق.',
   'employees.roster.apply': 'طبّق التعديلات',
-  'employees.roster.nothingToDo': 'الملف مطابق للسيستم. مفيش حاجة تتطبّق.',
+  'employees.roster.nothingToDo':
+    'الملف مطابق لما في النظام. لا يوجد ما يُطبَّق.',
   'employees.roster.sampled': 'معروض أول ٢٠٠. الأرقام فوق شاملة كل الصفوف.',
-  'employees.roster.changesTitle': 'اللي هيتغيّر',
+  'employees.roster.changesTitle':
+    'ما سيتغيّر',
   'employees.roster.additionsTitle': 'موظفين جداد',
   'employees.roster.addedServing': 'على رأس العمل',
   'employees.roster.addedExited': 'يتضاف منتهي الخدمة',
-  'employees.roster.addedExitedHint': 'دول جايين من شيت Resignation، فبيتضافوا وحالتهم «منتهي الخدمة». شاشة الموظفين بتخفي منتهي الخدمة إلا لما تغيّر فلتر العرض لـ«الكل».',
+  'employees.roster.addedExitedHint':
+    'هؤلاء واردون من ورقة Resignation، فيُضافون بحالة «منتهي الخدمة». وتُخفي شاشة الموظفين منتهي الخدمة ما لم يُضبط فلتر العرض على «الكل».',
   'employees.roster.refusedTitle': 'مطلوب في الملف ومش هيتعمل',
   'employees.roster.rejectedTitle': 'صفوف ما اتقريتش',
   'employees.roster.orgProblemsTitle': 'الهيكل التنظيمي',
@@ -9348,9 +9375,10 @@ const ar: Record<string, string> = {
   'employees.roster.field.professionPractice': 'مزاولة المهنة',
   'employees.roster.field.retirementDate': 'تاريخ الإحالة للمعاش',
   'employees.roster.counts.exits': 'تم إخلاء طرفهم',
-  'employees.roster.exitsTitle': 'اللي هيتسجّل إنهم مشيوا',
+  'employees.roster.exitsTitle':
+    'من سيُسجَّل انتهاء خدمتهم',
   'employees.roster.pickHint':
-    'اضغط على أي رقم عشان تختاره أو تشيله. «اتضافوا» و«تم إخلاء طرفهم» مختارين تلقائياً.',
+    'اضغط على أي رقم لتحديده أو إلغاء تحديده. «المُضافون» و«من تم إخلاء طرفهم» محدَّدون تلقائيًا.',
   'employees.roster.counts.added': 'اتضافوا',
   'employees.roster.counts.updated': 'اتعدّلوا',
   'employees.roster.counts.unchanged': 'زي ما هم',
@@ -9374,9 +9402,9 @@ const ar: Record<string, string> = {
   'employees.roster.new': 'جديد',
   'employees.roster.closeWhileBusy.title': 'هل تريد الإقفال؟',
   'employees.roster.closeWhileBusy.reading':
-    'الملف لسه بيتقرا ويتقارن. مفيش حاجة اتكتبت، فالإقفال دلوقتي مش هيضيّع غير الاستنى — هترفعه تاني عشان تشوف هيعمل إيه.',
+    'ما زال الملف قيد القراءة والمقارنة. لم يُكتب شيء بعد، فالإغلاق الآن لا يُضيّع سوى وقت الانتظار — ويمكنك رفعه مرة أخرى للاطلاع على ما سينفّذه.',
   'employees.roster.closeWhileBusy.applying':
-    'التعديلات بتتكتب فعلًا دلوقتي. الإقفال ده مش بيوقّفها — السجلات هتفضل تتحفظ على الخادم، وكل اللي هيحصل إنك مش هتشوف النتيجة.',
+    'التعديلات قيد الكتابة فعليًا الآن. والإغلاق لا يوقفها — إذ تستمر السجلات في الحفظ على الخادم، وكل ما يترتب عليه أنك لن تطّلع على النتيجة.',
   'employees.roster.enum.maritalStatus.single': 'أعزب',
   'employees.roster.enum.maritalStatus.married': 'متزوج',
   'employees.roster.enum.maritalStatus.divorced': 'مطلّق',
@@ -10413,8 +10441,10 @@ const ar: Record<string, string> = {
   'fleet.licensing.columns.receipt': 'استلام',
   'fleet.licensing.columns.licenseClass': 'الترخيص',
   'fleet.licensing.empty': 'لا توجد سيارات فى لوحة التراخيص.',
-  'fleet.licensing.emptyHint': 'السيارة بتظهر هنا لما يكون الترخيص بتاعها آخره «ت» — «برقاش ت»، «العجوزة ت».',
-  'fleet.licensing.noMatches': 'مفيش سيارة مطابقة للفلاتر.',
+  'fleet.licensing.emptyHint':
+    'تظهر السيارة هنا عندما ينتهي رقم ترخيصها بحرف «ت» — مثل «برقاش ت» و«العجوزة ت».',
+  'fleet.licensing.noMatches':
+    'لا توجد سيارة مطابقة لعوامل التصفية.',
   'fleet.licensing.count': '{{count}} سيارة',
   'fleet.licensing.mark': '{{paper}} · {{step}} — السيارة {{code}}',
   'fleet.nav.catalogs': 'قوائم الحركة',
@@ -10694,8 +10724,10 @@ const ar: Record<string, string> = {
   'fleet.odometer.corrected': 'تم تصحيح القراءة.',
   'fleet.odometer.noReading': 'بدون قراءة',
   'fleet.filters.matchedRows': 'عدد الصفوف بعد الفلاتر',
-  'fleet.odometer.readingOptionalHint': 'اليوم ده فات — العدّاد اختيارى. سيبه فاضى لو محدّش كتبه، ولو الرقم ظهر بعدين سجّله لنفس اليوم وهيتحطّ فى نفس السطر.',
-  'fleet.odometer.recordingWithoutReading': 'هيتسجّل من غير عدّاد. إنذار الصيانة هيحسب اليوم ده كيوم مش متقاس — سجّل القراءة بعدين لنفس اليوم وهتتحطّ فى نفس السطر مش سطر جديد.',
+  'fleet.odometer.readingOptionalHint':
+    'هذا اليوم مضى، والعدّاد اختياري. اتركه فارغًا إذا لم يسجّله أحد، وإذا ظهر الرقم لاحقًا فسجّله لليوم نفسه وسيُدرج في السطر نفسه.',
+  'fleet.odometer.recordingWithoutReading':
+    'سيُسجَّل دون قراءة عدّاد، وسيحتسب إنذار الصيانة هذا اليوم يومًا غير مقيس. سجّل القراءة لاحقًا لليوم نفسه لتُدرج في السطر نفسه لا في سطر جديد.',
   'fleet.alarms.columns.daysWithoutReading': 'أيام بلا قراءة',
   'fleet.alarms.daysWithoutReadingHint': 'أيام بعد آخر صيانة اتسجّلت من غير عدّاد — المسافة الحقيقية على الأقل زى المكتوب.',
   'fleet.odometer.openPeriod': 'فترة مفتوحة',
@@ -10718,9 +10750,10 @@ const ar: Record<string, string> = {
   'fleet.odometer.columns.driver': 'اسم السائق',
   'fleet.odometer.driverShift.morning': 'صباحى',
   'fleet.odometer.driverShift.evening': 'مسائى',
-  'fleet.odometer.emptyMonth.title': 'مفيش قراءات فى الشهر ده',
+  'fleet.odometer.emptyMonth.title':
+    'لا توجد قراءات في هذا الشهر',
   'fleet.odometer.emptyMonth.description':
-    'الجدول بيفتح على الشهر الحالى. القراءات الأقدم من كده مش ناقصة — هى بره المدى.',
+    'يفتح الجدول على الشهر الحالي. والقراءات الأقدم من ذلك ليست ناقصة، وإنما خارج المدى المعروض.',
   'fleet.odometer.emptyMonth.action': 'اعرض آخر ١٢ شهر',
   'fleet.odometer.columns.notes': 'ملاحظات',
   'fleet.odometer.columns.sinceService': 'فارق عداد الصيانة',
@@ -10872,7 +10905,8 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.exited': 'صور سائقين تركوا العمل',
   'fleet.goLive.field.notImages': 'ملفات ليست صورًا',
   'fleet.goLive.field.duplicates': 'أكواد مكرّرة باسمين',
-  'fleet.goLive.panel.title': 'إيه اللى عمله استيراد الداتا القديمة',
+  'fleet.goLive.panel.title':
+    'ما نفّذه استيراد البيانات القديمة',
   'fleet.goLive.panel.hint': 'الدفاتر الأربعة وسجل السيارات وصور الرخص، زى ما الخادم سجّل كل تشغيل. محفوظة هنا بدل ما تكون فوق كل شاشة.',
   'fleet.goLive.step.odometer': 'استيراد دفتر العداد',
   'fleet.goLive.reason.vehicles-not-done': 'استيراد السيارات لم ينتهِ بعد — الدفتر ينتظر التشغيل التالي',
@@ -10880,13 +10914,18 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.imported': 'قراءات أُضيفت',
   'fleet.goLive.field.alreadyThere': 'موجودة مسبقًا',
   'fleet.goLive.field.keptDeleted': 'صفوف كان النظام القديم ماسحها — اتضافت محذوفة: موجودة فى قاعدة البيانات ومش ظاهرة على أى شاشة',
-  'fleet.goLive.field.deletedRows': 'إجمالى الصفوف المكتوبة محذوفة — بتاعة النظام القديم، واللى النموذج مش قادر يشيلها ظاهرة لسه',
+  'fleet.goLive.field.deletedRows':
+    'إجمالي الصفوف المكتوبة محذوفة — وهي من النظام القديم، وما لا يستطيع النموذج إخفاءه ما زال ظاهرًا',
   'fleet.goLive.field.unreadable': 'صفوف الدفتر ما كتبهاش بشكل مقروء — اتضافت محذوفة، وكلام الدفتر نفسه اتحفظ فى ملاحظاتها',
-  'fleet.goLive.field.relinked': 'صفوف موجودة كانت قراءة إقفالها من الاستيراد، وبقت دلوقتى توافق الصف اللى بعدها',
+  'fleet.goLive.field.relinked':
+    'صفوف قائمة كانت قراءة إقفالها من الاستيراد، وأصبحت الآن مطابقة للصف الذي يليها',
   'fleet.goLive.field.restored': 'قراءات كان تشغيل سابق دافنها بسبب تعارض على الفترة المفتوحة — رجّعها',
-  'fleet.goLive.field.openedByPrevious': 'صفوف الدفتر ساب قراءة خروجها فاضية — اتفتحت على آخر قراءة معروفة للعربية',
-  'fleet.goLive.field.typesCreated': 'أنواع مخالفات اتضافت للصفوف اللى محدش كتب نوعها',
-  'fleet.goLive.field.rejected': 'ملفات مش قائمة صفوف أصلًا',
+  'fleet.goLive.field.openedByPrevious':
+    'صفوف ترك الدفتر قراءة خروجها فارغة — فُتحت على آخر قراءة معروفة للسيارة',
+  'fleet.goLive.field.typesCreated':
+    'أنواع مخالفات أُضيفت للصفوف التي لم يُدوَّن نوعها',
+  'fleet.goLive.field.rejected':
+    'ملفات ليست قوائم صفوف من الأساس',
   'fleet.goLive.field.unknownCars': 'أكواد سيارات غير موجودة في السجل — أُضيفت صفوفها بالكود نصًا',
     'fleet.goLive.field.closedByNext': 'صفوف أُغلقت بقراءة الصف التالي',
   'fleet.goLive.field.badInReading': 'صفوف قراءة دخولها أقل من الخروج — أُغلقت بقراءة الصف التالي',
@@ -10897,7 +10936,8 @@ const ar: Record<string, string> = {
   'fleet.goLive.field.placeholders': 'أسماء قُرئت على أنها «بلا سائق»',
   'fleet.goLive.step.maintenance': 'استيراد دفتر الورشة',
   'fleet.goLive.reason.prior-steps-not-done': 'استيراد السيارات أو دفتر العداد لم ينتهِ بعد — الدفتر ينتظر التشغيل التالي',
-  'fleet.goLive.field.outBeforeIn': 'زيارات خروجها قبل دخولها — اتحفظت بتاريخى الدفتر الاتنين؛ صحّحها من الشاشة',
+  'fleet.goLive.field.outBeforeIn':
+    'زيارات سبق خروجها دخولها — حُفظت بتاريخَي الدفتر كليهما؛ يُرجى تصحيحها من الشاشة',
   'fleet.goLive.field.counterFromOdometer': 'زيارات أُخذ عدادها من دفتر العداد',
   'fleet.goLive.field.noCounter': 'زيارات بلا عداد في أي دفتر — اتكتبت بصفر؛ اكتب القراءة الصح من الشاشة',
   'fleet.goLive.field.catalogCreated': 'بنود أُضيفت للكتالوج بكلمات الدفتر نفسها',
@@ -11055,7 +11095,8 @@ const ar: Record<string, string> = {
   'fleet.violations.report.driversLine': 'إجمالى السائقين',
   'fleet.violations.report.allLine': 'إجمالى المخالفات',
   'fleet.violations.report.signLine': 'التوقيع / ',
-  'fleet.export.excel': 'تحميل اكسيل (كل اللى الفلتر طلعه)',
+  'fleet.export.excel':
+    'تحميل ملف إكسيل (كل ما أظهره الفلتر)',
   'fleet.violations.returnToOwnYear': 'رجّع المخالفة لسنتها',
   'fleet.violations.returnToCar': 'رجّع المخالفة لعربية {{code}} ولسنتها',
   'fleet.violations.returnedToOwnYear': 'رجعت لسنتها',
@@ -11075,7 +11116,8 @@ const ar: Record<string, string> = {
   'fleet.violations.pickVehicleFirst': 'اختر كود السيارة أولاً — الدفعة تُسجَّل على سيارة واحدة.',
   'fleet.violations.columns.settledState': 'الحالة',
   'fleet.violations.settled': 'محصَّلة',
-  'fleet.violations.outstanding': 'لسه',
+  'fleet.violations.outstanding':
+    'قائمة',
   'fleet.violations.enteredEmpty': 'اكتب عدد المخالفات فوق ويفتح كارت لكل واحدة.',
   'fleet.violations.enteredCount': '{{count}} للتسجيل',
   'common.print': 'طباعة',
@@ -11144,7 +11186,7 @@ const ar: Record<string, string> = {
   'fleet.catalogs.fields.countsForAlarm': 'تُحتسب لإنذار الصيانة',
   'fleet.maintenance.sparePartAdded': 'اتضافت «{{name}}» فى قطع الغيار واتختارت.',
   'fleet.maintenance.workTypeNotCounting':
-    'نوع العمل ده مش بيصفّر عداد الصيانة — الإنذار هيفضل يحسب من الصيانة اللى قبلها.',
+    'لا يصفّر هذا النوع من العمل عدّاد الصيانة — وسيظل الإنذار يحتسب من الصيانة السابقة له.',
   'fleet.odometer.sameAsPrevious':
     'نفس آخر قراءة — دى هتسجّل فترة بـ ٠ كم. صح لو العربية ما تحركتش.',
   'fleet.catalogs.fields.violationSide': 'تُسجَّل على',
@@ -12187,7 +12229,8 @@ const ar: Record<string, string> = {
   'systemAdmin.roles.noDepartment': 'عام',
   'systemAdmin.roles.groupCount': '{{count}} دور',
   'systemAdmin.roles.department': 'الإدارة',
-  'systemAdmin.roles.departmentHint': 'بتنظّم الدور في القايمة بس. مابتديش أي صلاحية — سيبها فاضية للدور اللي مش تابع لإدارة.',
+  'systemAdmin.roles.departmentHint':
+    'تُستخدم لتنظيم الدور في القائمة فقط، ولا تمنح أي صلاحية. اتركها فارغة للدور غير التابع لإدارة.',
   'systemAdmin.roles.module.platform': 'المنصة',
   'systemAdmin.roles.module.hr': 'الموارد البشرية',
   'systemAdmin.roles.module.fleet': 'الحركة',
@@ -12283,17 +12326,21 @@ const ar: Record<string, string> = {
   'systemAdmin.assignments.empty': 'هذا الحساب لا يحمل أي دور.',
   'systemAdmin.assignments.noAccess': 'غير مسموح لك بقراءة منح الأدوار.',
   'systemAdmin.assignments.department': 'الإدارة',
-  'systemAdmin.assignments.departmentHint': 'الإدارة على مستوى الشركة — «الحركة»، مش نسخة فرع واحد منها.',
+  'systemAdmin.assignments.departmentHint':
+    'الإدارة على مستوى الشركة — «الحركة» مثلًا، لا نسخة فرع واحد منها.',
   'systemAdmin.assignments.departmentHome': 'إدارة الحساب نفسه',
   'systemAdmin.assignments.reach': 'المدى',
-  'systemAdmin.assignments.reachHint': 'لحد فين الصلاحية دي بتوصل بعد فرع الحساب نفسه.',
+  'systemAdmin.assignments.reachHint':
+    'إلى أي مدى تصل هذه الصلاحية بعد فرع الحساب نفسه.',
   'systemAdmin.assignments.reaches.home': 'فرعه بس',
   'systemAdmin.assignments.reaches.some': 'فروع محددة',
   'systemAdmin.assignments.reaches.all': 'كل الفروع',
   'systemAdmin.assignments.branches': 'الفروع',
-  'systemAdmin.assignments.branchesHint': 'فرع الحساب نفسه داخل دايماً. علّم على الفروع اللي هتتضاف عليه.',
+  'systemAdmin.assignments.branchesHint':
+    'فرع الحساب نفسه مشمول دائمًا. حدّد الفروع الإضافية التي تُضاف إليه.',
   'systemAdmin.assignments.homeBranch': 'فرعه',
-  'systemAdmin.assignments.noBranches': 'اختار فرع واحد على الأقل — الحساب ده مالوش فرع أصلي.',
+  'systemAdmin.assignments.noBranches':
+    'اختر فرعًا واحدًا على الأقل — فهذا الحساب ليس له فرع أصلي.',
   'systemAdmin.assignments.role': 'الدور',
   'systemAdmin.assignments.scope': 'النطاق',
   'systemAdmin.assignments.scopeHint': 'النطاق الهرمي يُحسب من موقع الحساب نفسه في الهيكل.',
@@ -12646,7 +12693,7 @@ const ar: Record<string, string> = {
   'operations.shipment.vehicle': 'المركبة',
   'operations.shipment.noCrew': 'التعيين لاحقًا',
   'operations.shipment.noCrewForDay':
-    'لا توجد تشغيلة مخطَّطة لتاريخ التحصيل ده بعد — سجّل الشحنة دلوقتي وعيّنها من لوحة التشغيلة.',
+    'لا توجد تشغيلة مخطَّطة لتاريخ التحصيل هذا بعد — سجّل الشحنة الآن وعيّنها من لوحة التشغيلة.',
   'operations.shipment.collectionDate': 'تاريخ التحصيل',
   'operations.shipment.deliveryDate': 'تاريخ التسليم',
   'operations.shipment.deliveryDateHint': 'للمحصنات فقط — يوم الخروج للتسليم.',
@@ -13584,7 +13631,7 @@ const ar: Record<string, string> = {
   'atm.dataEdit.deleteHint': 'كود في كل سطر. تختفي الماكينة من كل القوائم.',
   'atm.dataEdit.labelName': 'الاسم',
   'atm.dataEdit.labelAdded': 'تمت الإضافة.',
-  'atm.dataEdit.labelExists': 'موجود قبل كدا.',
+  'atm.dataEdit.labelExists': 'موجود من قبل.',
   'atm.dataEdit.machinesAdded': 'تمت إضافة {{count}} ماكينة.',
   'atm.dataEdit.machinesSkipped': 'مسجلة من قبل: {{codes}}',
   'atm.dataEdit.machinesDeleted': 'تم حذف {{count}} ماكينة.',
@@ -13602,10 +13649,11 @@ const ar: Record<string, string> = {
   'atm.dataEdit.editMachine': 'تعديل الماكينة',
   'atm.dataEdit.deleteMachine': 'حذف الماكينة',
   'atm.dataEdit.deleteMachineBody':
-    'الماكينة {{code}} تختفي من كل القوائم، ويتحرر كودها للتسجيل من جديد ويبقى تاريخها كما هو. لو عايز الكود يفضل محجوزًا، أرشِفها بدل الحذف.',
+    'ستختفي الماكينة {{code}} من جميع القوائم، ويتحرر كودها للتسجيل من جديد، ويبقى تاريخها كما هو. وإذا أردت إبقاء الكود محجوزًا، فأرشِفها بدلًا من حذفها.',
   'atm.dataEdit.machineAdded': 'تمت إضافة الماكينة.',
   'atm.dataEdit.machineSaved': 'تم حفظ الماكينة.',
-  'atm.dataEdit.codeTaken': 'الكود ده مسجل قبل كدا.',
+  'atm.dataEdit.codeTaken':
+    'هذا الكود مسجَّل من قبل.',
   'atm.dataEdit.codeIsIdentity': 'الكود هو هوية الماكينة في كل السجلات ولا يمكن تعديله.',
   'atm.dataEdit.isActive': 'نشطة',
   'atm.dataEdit.isActiveHint':
@@ -13618,7 +13666,8 @@ const ar: Record<string, string> = {
   'atm.dataEdit.editArea': 'تعديل المنطقة',
   'atm.dataEdit.labelSaved': 'تم الحفظ.',
   'atm.dataEdit.bulkTitle': 'إضافة / حذف بالجملة',
-  'atm.dataEdit.lineAlignHint': 'اسم في كل سطر، مقابل الكود اللي جنبه.',
+  'atm.dataEdit.lineAlignHint':
+    'اسم في كل سطر، مقابل الكود الذي بجواره.',
 
   'atm.nav.dailyReport': 'تقرير اليوم',
   'atm.cards.dailyReport': 'المفتوح والإجمالي لكل بنك اليوم.',

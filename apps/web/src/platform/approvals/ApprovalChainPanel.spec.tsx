@@ -63,7 +63,7 @@ describe('a request with no configured chain', () => {
 
   it('says so plainly when the chain resolved to no steps', () => {
     const markup = render(<ApprovalChainPanel trail={trail({ steps: [], currentStep: null })} />);
-    expect(markup).toContain('مفيش مسار موافقة');
+    expect(markup).toContain('لا يوجد مسار موافقة');
   });
 });
 
@@ -73,7 +73,7 @@ describe('what the reader is shown about the chain', () => {
     expect(markup).toContain('مدير الإدارة في الفرع');
     expect(markup).toContain('المدير العام للإدارة');
     expect(markup).toContain('على مستوى الشركة');
-    expect(markup).toContain('الطلب واقف هنا دلوقتي');
+    expect(markup).toContain('الطلب متوقف عند هذه الخطوة حاليًا');
   });
 
   // The three «nobody decided this» outcomes are the reason the trail exists in this shape: a
@@ -92,7 +92,7 @@ describe('what the reader is shown about the chain', () => {
         })}
       />,
     );
-    expect(markup).toContain('مفيش حد على الخطوة دي');
+    expect(markup).toContain('لا يوجد أحد على هذه الخطوة');
     expect(markup).toContain('اتلغت بقرار أعلى منها');
     expect(markup).toContain('صلاح');
   });
@@ -107,7 +107,7 @@ describe('what the reader is shown about the chain', () => {
       />,
     );
     expect(markup).toContain('الطلب ما وصلهاش');
-    expect(markup).not.toContain('مفيش حد على الخطوة دي');
+    expect(markup).not.toContain('لا يوجد أحد على هذه الخطوة');
   });
 
   it('prefers the chain’s own caption over the level, when one was written', () => {
@@ -141,7 +141,7 @@ describe('what the reader is told before he acts', () => {
     );
     expect(markup).toContain('هتلغي 1 خطوة تحتها');
     expect(markup.indexOf('هتلغي')).toBeLessThan(markup.indexOf('decide-here'));
-    expect(markup).toContain('الخطوة دي بتاعتك');
+    expect(markup).toContain('هذه الخطوة من مسؤوليتك');
   });
 
   it('says nothing about cancelling when it is simply his turn', () => {

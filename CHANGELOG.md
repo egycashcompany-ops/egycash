@@ -9,6 +9,26 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Arabic the product speaks is formal Arabic, and a test keeps it that way.** Sixty-four
+  messages across delegated permissions, approval chains, the workforce roster import, the fleet
+  screens, system administration, operations and the ATM data editor were written in Egyptian
+  colloquial — «مفيش حاجة اتكتبت», «الطلب واقف هنا دلوقتي», «شيل صلاحيات الفرع» — which is the
+  wrong register for a system the whole company reads, and reads as unfinished beside the screens
+  that were already formal. Each is rewritten, with its meaning, its placeholders and its
+  «angle-quoted» terms carried over unchanged.
+
+  Rewriting them once was the easy half. `formal-arabic.spec.ts` is the half that lasts: it reads
+  every value in the Arabic dictionary and fails on any form that has no formal reading —
+  «مش», «مفيش», «اللي», «ده», «عشان», «دلوقتي», «بتاع» and the rest — naming the key and the
+  replacement. It lists only forms that cannot appear in formal prose by accident, because a guard
+  that flags «جرّب» or «عند الحاجة» gets weakened until it catches nothing; and it proves it can
+  still see the dictionary, so it cannot pass by reading nothing.
+
+  Five component specs pinned the old wording and are updated to the new. The English dictionary
+  is untouched: its register was never in question.
+
 ### Fixed
 
 - **The sign-in screen says WHY it refused.** «فشل تسجيل الدخول» was the answer to everything:

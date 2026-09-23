@@ -7647,8 +7647,19 @@ describe('who is on the drivers registry — the org chart, not a list Fleet kee
 
 describe('the drivers list filters narrow SERVER-side', () => {
   it('filters on the fleet-owned area, and on whether a scan is on file', async () => {
-    const withScan = await mkDriverProfile(await mkEmployee());
-    const withoutScan = await mkDriverProfile(await mkEmployee());
+    const scanEmployee = await mkEmployee();
+    const noScanEmployee = await mkEmployee();
+    const withScan = await mkDriverProfile(scanEmployee);
+    const withoutScan = await mkDriverProfile(noScanEmployee);
+    /**
+     * NARROWED TO THESE TWO PEOPLE, so the assertion is about the FILTER and not about which page
+     * they land on.
+     *
+     * The registry opens on «كود الموظف» now, and this suite creates drivers throughout — so
+     * asking for «every driver with no scan, first hundred» stopped being a question these two
+     * were reliably in the answer to. Naming them keeps the test about `hasLicenseImage`.
+     */
+    const bothOf = { employeeIds: [scanEmployee, noScanEmployee].join(',') };
     const area = `AREA-${withScan.id.slice(-6)}`;
     await request(app)
       .patch(`/api/v1/fleet/drivers/${withScan.id}`)
@@ -7661,7 +7672,7 @@ describe('the drivers list filters narrow SERVER-side', () => {
 
     const byArea = await request(app)
       .get('/api/v1/fleet/drivers')
-      .query({ area, pageSize: 100 })
+      .query({ ...bothOf, area, pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(byArea.status).toBe(200);
     const areaIds = data<FleetDriverRowDto[]>(byArea).map((row) => row.profile?.id);
@@ -7670,7 +7681,7 @@ describe('the drivers list filters narrow SERVER-side', () => {
 
     const withImage = await request(app)
       .get('/api/v1/fleet/drivers')
-      .query({ hasLicenseImage: 'true', pageSize: 100 })
+      .query({ ...bothOf, hasLicenseImage: 'true', pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
     const withImageIds = data<FleetDriverRowDto[]>(withImage).map((row) => row.profile?.id);
     expect(withImageIds).toContain(withScan.id);
@@ -7682,7 +7693,7 @@ describe('the drivers list filters narrow SERVER-side', () => {
     // is covered by the mapper's unit test, where a keyless row can actually be constructed.
     const withoutImage = await request(app)
       .get('/api/v1/fleet/drivers')
-      .query({ hasLicenseImage: 'false', pageSize: 100 })
+      .query({ ...bothOf, hasLicenseImage: 'false', pageSize: 100 })
       .set('Authorization', `Bearer ${adminToken}`);
     const withoutImageIds = data<FleetDriverRowDto[]>(withoutImage).map((row) => row.profile?.id);
     expect(withoutImageIds).toContain(withoutScan.id);

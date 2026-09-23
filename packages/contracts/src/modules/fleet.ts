@@ -2446,6 +2446,15 @@ export interface FleetLicensingRowDto {
    * explained — a clerk looking for a car that is not there needs to see what the others have.
    */
   licenseClass: string | null;
+  /**
+   * WHEN THE LICENCE RUNS OUT — the registry's own `licenseExpiresAt`, carried here rather than
+   * looked up per row.
+   *
+   * It is the date the whole errand exists for: «تسليم» and «استلام» are steps towards a renewal,
+   * and a board that showed the steps without the deadline could not be read in the order the work
+   * is actually done. Filtering by a period over it is what turns the board into a worklist.
+   */
+  licenseExpiresAt: string;
   insuranceHandover: boolean;
   insuranceReceipt: boolean;
   taxHandover: boolean;

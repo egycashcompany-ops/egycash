@@ -75,6 +75,7 @@ class FleetLicensingService {
         chassisNumber: vehicle.chassisNumber,
         licenseClass:
           vehicle.licenseClassId === null ? null : (classNames.get(String(vehicle.licenseClassId)) ?? null),
+        licenseExpiresAt: vehicle.licenseExpiresAt.toISOString(),
         // A car nobody has ticked anything for has no row, and reads as four falses rather than
         // being given one — the board must be readable without writing to it.
         insuranceHandover: row?.insuranceHandover ?? false,

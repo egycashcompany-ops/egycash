@@ -1144,6 +1144,40 @@ class EmployeeService {
     return employee;
   }
 
+  /**
+   * The login account is gone — drop the employee's back-reference to it.
+   *
+   * ADR-017 puts the linkage in HR's keeping, and a platform delete cannot reach in here without
+   * closing a layering cycle — so the platform announces the delete and this answers it. What it
+   * fixes is not cosmetic: `employee.userId` is what the account card branches on, so a reference
+   * left pointing at a deleted row renders «the account exists» over two requests that 404, and
+   * offers no way back to «create one».
+   *
+   * SYSTEM-SCOPED and version-free on purpose. Nobody is acting here — a courtesy attached to an
+   * event that already happened — so there is no caller whose data scope could narrow the write,
+   * and no draft of this employee for a version check to protect. It is also idempotent: a
+   * redelivered event finds no employee for that account and does nothing.
+   */
+  async clearLoginLinkOf(userId: string): Promise<string | null> {
+    const employee = await employeeRepository.findByUserIdSystem(userId);
+    if (employee === null) return null;
+    const employeeId = String(employee._id);
+    await employeeRepository.updateById(
+      employeeId,
+      { userId: null },
+      { by: 'system', version: employee.__v },
+    );
+    await auditService.record({
+      entityRef: entityRef(employeeId),
+      action: 'employeeUnlinked',
+      changes: [
+        { field: 'userId', old: userId, new: null },
+        { field: 'reason', old: null, new: 'the login account was deleted' },
+      ],
+    });
+    return employeeId;
+  }
+
   async createLogin(
     ctx: AuthContext,
     employeeId: string,
@@ -1152,7 +1186,23 @@ class EmployeeService {
   ): Promise<{ user: UserDoc; activationToken: string; employeeCode: string }> {
     const employee = await employeeRepository.getById(employeeId, scope);
     if (employee.userId !== null) {
-      throw new ConflictError('this employee already has a login account');
+      // AN ID IS NOT AN ACCOUNT. A login deleted from «مستخدمو النظام» is soft-deleted, so every
+      // read of it answers 404 while this back-reference goes on naming it — and refusing here on
+      // the id alone left the employee permanently unable to get a new login, with «إنشاء حساب
+      // دخول» nowhere on the screen. So the question asked is whether the account still EXISTS.
+      // It usually does, and this refuses exactly as before; when it does not, the stale link is
+      // let go and provisioning carries on.
+      //
+      // This is the guarantee, not the event that fires on delete: that handler swallows its own
+      // failures by design, and rows predating it carry the same stale link. Here it is repaired
+      // on the path that needs it repaired.
+      const stillThere = await userService.findByIdSystem(String(employee.userId));
+      if (stillThere !== null) {
+        throw new ConflictError('this employee already has a login account');
+      }
+      await this.clearLoginLinkOf(String(employee.userId));
+      employee.userId = null;
+      employee.__v += 1;
     }
     if (employee.status === 'exited') {
       throw new BusinessRuleError('an exited employee cannot receive a login account');

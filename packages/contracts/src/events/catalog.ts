@@ -30,6 +30,7 @@ import {
   RoleChangedPayloadV1,
   SettingsChangedPayloadV1,
   UserEventPayloadV1,
+  UserDeletedPayloadV1,
 } from './index.js';
 import {
   HrEvents,
@@ -1113,6 +1114,7 @@ export const PLATFORM_EVENT_PAYLOAD_SCHEMAS: Readonly<
   [PlatformEvents.UserCreated]: UserEventPayloadV1,
   [PlatformEvents.UserUpdated]: UserEventPayloadV1,
   [PlatformEvents.UserStatusChanged]: UserEventPayloadV1,
+  [PlatformEvents.UserDeleted]: UserDeletedPayloadV1,
   [PlatformEvents.AuthLoggedIn]: AuthEventPayloadV1,
   [PlatformEvents.AuthLoginFailed]: AuthEventPayloadV1,
   [PlatformEvents.AuthSessionRevoked]: AuthEventPayloadV1,

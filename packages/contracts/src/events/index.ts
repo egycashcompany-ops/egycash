@@ -22,6 +22,15 @@ export const PlatformEvents = {
   UserCreated: 'platform.user.created',
   UserUpdated: 'platform.user.updated',
   UserStatusChanged: 'platform.user.statusChanged',
+  /**
+   * The account is gone (soft-deleted), as against merely archived or suspended.
+   *
+   * Separate from `UserStatusChanged` on purpose: archiving is NOT a revocation — an archived
+   * account keeps its links and its grants — while a delete leaves every back-reference to it
+   * pointing at a row no read will ever return. A listener that unpicked those on `archived`
+   * would be unpicking a link the archive deliberately kept.
+   */
+  UserDeleted: 'platform.user.deleted',
 
   AuthLoggedIn: 'platform.auth.loggedIn',
   AuthLoginFailed: 'platform.auth.loginFailed',
@@ -57,6 +66,17 @@ export const UserEventPayloadV1 = z.object({
   userId: objectId(),
   email: z.string(),
   status: z.string(),
+});
+
+/**
+ * A deleted account, named for the modules that hold a back-reference to it.
+ *
+ * `email` is deliberately absent — it is nullable on the record, and an account with none is
+ * exactly the auto-provisioned employee login this event matters most for. Nothing a listener
+ * does with this needs it.
+ */
+export const UserDeletedPayloadV1 = z.object({
+  userId: objectId(),
 });
 
 export const AuthEventPayloadV1 = z.object({
@@ -153,6 +173,7 @@ export const EVENT_SCHEMA_VERSIONS: Record<PlatformEventName, number> = {
   [PlatformEvents.UserCreated]: 1,
   [PlatformEvents.UserUpdated]: 1,
   [PlatformEvents.UserStatusChanged]: 1,
+  [PlatformEvents.UserDeleted]: 1,
   [PlatformEvents.AuthLoggedIn]: 1,
   [PlatformEvents.AuthLoginFailed]: 1,
   [PlatformEvents.AuthSessionRevoked]: 1,

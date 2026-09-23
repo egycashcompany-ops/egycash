@@ -326,9 +326,31 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
   const t = useT();
   const [creating, setCreating] = useState(false);
   const { data: branch } = useBranch(employee.employment.branchId);
-  const { data: user } = useLinkedUser(employee.userId);
+  const linked = useLinkedUser(employee.userId);
+  const user = linked.data;
   const { data: assignments = [] } = useUserAssignments(employee.userId);
   const scopeTones = { own: 'neutral', section: 'info', department: 'info', branch: 'brand', organization: 'success' } as const;
+
+  /**
+   * AN ID IS NOT AN ACCOUNT.
+   *
+   * Deleting a login from «مستخدمو النظام» is a SOFT delete, and it used to leave `employee.userId`
+   * naming a row that no read returns. Branching on that id alone then drew the whole account panel
+   * — username editor, security actions, data scopes — over two requests that both 404, so the card
+   * showed «تعذّر العثور على هذا العنصر» twice and offered no way back to «إنشاء حساب دخول». The
+   * employee could never be given a login again.
+   *
+   * So the question is whether the account was FOUND. `linked.isError` is the answer the moment the
+   * fetch settles (`retry: false` on that query, so a 404 is final rather than tried three times),
+   * and while it is still in flight nothing is claimed either way — a spinner's worth of patience
+   * beats flashing the create button at somebody whose account is fine.
+   *
+   * The server no longer produces this state: a delete now tells HR to let the link go, and
+   * `createLogin` re-checks existence rather than trusting the id. This is what repairs the records
+   * that were already broken when those landed — including the one this was found on.
+   */
+  const linkBroken = employee.userId !== null && linked.isError;
+  const hasAccount = employee.userId !== null && !linkBroken;
 
   return (
     <Card>
@@ -342,26 +364,31 @@ export const EmployeeAccountCard = ({ employee }: { employee: EmployeeDto }): JS
             <span className="font-mono" dir="ltr">{branch?.code ?? '—'}</span>
           </Row>
           <Row label={t('employees.account.login')}>
-            {employee.userId === null ? (
+            {!hasAccount ? (
               <div className="flex flex-col items-start gap-2">
                 <Badge tone="neutral">{t('employees.account.status.notInvited')}</Badge>
-                <span className="text-slate-400">{t('employees.account.noLogin')}</span>
+                {/* Two different facts, said differently. «No login yet» is the ordinary state of a
+                    new employee; «the account was deleted» explains why the panel that was here a
+                    moment ago is gone, which is the question the reader actually has. */}
+                <span className="text-slate-400">
+                  {linkBroken ? t('employees.account.linkBroken') : t('employees.account.noLogin')}
+                </span>
                 <Can permission="user.create">
                   <Button size="sm" onClick={() => setCreating(true)}>{t('employees.account.createLogin')}</Button>
                 </Can>
               </div>
             ) : (
-              <UsernameEditor userId={employee.userId} current={user?.username ?? employee.code} />
+              <UsernameEditor userId={employee.userId ?? ''} current={user?.username ?? employee.code} />
             )}
           </Row>
-          {employee.userId !== null && (
+          {hasAccount && (
             <Can permission="user.resetPassword">
               <Row label={t('employees.account.security')}>
-                <SecurityActions userId={employee.userId} />
+                <SecurityActions userId={employee.userId ?? ''} />
               </Row>
             </Can>
           )}
-          {employee.userId !== null && (
+          {hasAccount && (
             <Row label={t('employees.account.dataScope')}>
               {assignments.length === 0 ? (
                 <span className="text-slate-400">{t('employees.account.noScopes')}</span>

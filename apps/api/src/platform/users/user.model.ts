@@ -185,10 +185,22 @@ userSchema.index(
     partialFilterExpression: { isDeleted: false, username: { $type: 'string' } },
   },
 );
-// One login per employee (User → one Employee); platform/system accounts (no employeeId) are exempt.
+// One LIVE login per employee (User → one Employee); platform/system accounts (no employeeId) are
+// exempt — and so is a DELETED account, for the same reason `ux_email` and `ux_username` above
+// exempt one.
+//
+// Without `isDeleted: false` the index reads "one login per employee, ever": a deleted account
+// went on holding its employee's slot, so the employee could never be given another login — the
+// insert died on a duplicate key, after the screen had already offered the button. Deletion frees
+// the username and the email; it has to free this too, or the three disagree about what a deleted
+// account still occupies.
 userSchema.index(
   { employeeId: 1 },
-  { unique: true, name: 'ux_employeeId', partialFilterExpression: { employeeId: { $type: 'objectId' } } },
+  {
+    unique: true,
+    name: 'ux_employeeId',
+    partialFilterExpression: { isDeleted: false, employeeId: { $type: 'objectId' } },
+  },
 );
 userSchema.index({ 'organization.branchId': 1, status: 1 }, { name: 'ix_branchId_status' });
 // "which accounts belong to this customer" — the portal-accounts screen, and the guard that keeps

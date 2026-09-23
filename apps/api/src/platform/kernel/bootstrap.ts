@@ -115,8 +115,14 @@ export const bootPlatform = async (options: BootOptions = {}): Promise<void> => 
   await schedulerService.syncRegistry();
 
   // Platform data migrations (auth design §7) — idempotent, before module seeds.
-  const { migrateUserAuthIndexes } = await import('../users/user.migration');
+  const { migrateUserAuthIndexes, migrateUserEmployeeLinkIndex } = await import(
+    '../users/user.migration'
+  );
   await migrateUserAuthIndexes();
+  // A deleted login used to keep its employee's slot in `ux_employeeId` forever, so the employee
+  // could never be given another one — the insert died on a duplicate key after the screen had
+  // already offered the button. Narrowing only; a no-op once rebuilt.
+  await migrateUserEmployeeLinkIndex();
   // P-ORG-2 — `autoIndex` is off in production, and `ux_branch_catalog` is the constraint the
   // org-unit catalog rests on. Partial on a linked `catalogId`, so this is a no-op on a database
   // that has not run `migrate:org-catalog` yet.

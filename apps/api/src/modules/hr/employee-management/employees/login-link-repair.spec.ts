@@ -73,6 +73,39 @@ describe('provisioning tests existence, not the id', () => {
   });
 });
 
+// THE SECOND HALF OF THE SAME BUG, one layer down. The screen offering the button and the service
+// accepting the press are both useless if the database refuses the insert — and it did: unlike
+// `ux_email` and `ux_username` beside it, `ux_employeeId` was not partial on `isDeleted: false`, so
+// a deleted account went on holding its employee's slot and the replacement died on a duplicate key.
+describe('a deleted account frees its employee', () => {
+  const model = read('../../../../platform/users/user.model.ts');
+
+  it('scopes the one-login-per-employee index to LIVE accounts', () => {
+    const declaration = model.slice(model.indexOf("name: 'ux_employeeId'") - 400, model.indexOf("name: 'ux_employeeId'") + 200);
+    expect(declaration).toContain('isDeleted: false');
+  });
+
+  it('keeps all three identity indexes agreeing about what a delete frees', () => {
+    // The username and the email were already freed by a delete; the employee link was the odd one
+    // out, and three indexes disagreeing about it is how the trap was built.
+    for (const name of ['ux_email', 'ux_username', 'ux_employeeId']) {
+      const at = model.indexOf(`name: '${name}'`);
+      expect(at, name).toBeGreaterThan(-1);
+      expect(model.slice(at, at + 220), name).toContain('isDeleted: false');
+    }
+  });
+
+  it('ships a migration for the databases that already carry the old shape', () => {
+    // `autoIndex` is off outside development, and mongoose does not rebuild an index whose OPTIONS
+    // changed — so the declaration alone would leave every existing deployment with the trap.
+    const migration = read('../../../../platform/users/user.migration.ts');
+    expect(migration).toContain('migrateUserEmployeeLinkIndex');
+    expect(migration).toContain("dropIndex('ux_employeeId')");
+    const boot = read('../../../../platform/kernel/bootstrap.ts');
+    expect(boot).toContain('migrateUserEmployeeLinkIndex');
+  });
+});
+
 describe('the card branches on the account, not the id', () => {
   const card = read(
     join(HERE, '../../../../../../..', 'apps/web/src/modules/hr/employee-management/employees/components/EmployeeAccountCard.tsx'),

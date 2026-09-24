@@ -11,7 +11,11 @@
 // rule of its own to fall out of step.
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetLicensingMark, type FleetLicensingRowDto } from '@ecms/contracts';
+import {
+  compareFleetVehicleCodes,
+  type FleetLicensingMark,
+  type FleetLicensingRowDto,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
@@ -33,7 +37,7 @@ import { useAppSelector } from '../../../store';
 import { type Locale } from '@ecms/contracts';
 import { cn } from '../../../shared/lib/cn';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
-import { CheckIcon } from '../../../shared/ui/icons';
+import { CheckIcon, ChevronIcon } from '../../../shared/ui/icons';
 import { useLicensingBoard, useSetLicensingMark } from '../api/fleet-queries';
 
 /**
@@ -68,25 +72,34 @@ type Paper = (typeof PAPERS)[number];
  * afternoon, and retyping the same narrowing after every trip to another screen is the complaint
  * `useRememberedFilters` exists to answer. No `page` — this board has none.
  */
-const REMEMBERED_FILTERS = ['vehicleCodes', 'plate', 'chassis', 'from', 'to', 'ins', 'tax'] as const;
+const REMEMBERED_FILTERS = [
+  'vehicleCodes',
+  'plate',
+  'chassis',
+  'month',
+  'ins',
+  'tax',
+  'sort',
+] as const;
 
 /** A text filter, matched the way the registry's own boxes match: contains, case-insensitively. */
 const contains = (haystack: string, needle: string): boolean =>
   needle === '' || haystack.toLocaleLowerCase().includes(needle.toLocaleLowerCase());
 
 /**
- * Is this licence's expiry inside the window? Either bound may be empty, and an empty one does
- * not constrain — «كل اللى بيخلص قبل آخر الشهر» is a question with one end.
+ * Does this licence expire in that MONTH? «اشيل دا واحط مكانه واحد بس بيجيب الشهر بس».
  *
- * Compared as the ISO DAY, not as instants. The stored value carries a time and the boxes carry a
- * date, so `new Date('2026-09-30') <= expiry` would drop a licence expiring on the very last day
- * the reader asked for — the commonest thing a period filter is asked, and an off-by-one nobody
- * would see until a car was missed.
+ * ONE control instead of the two bounds it replaces, because the question this board is actually
+ * worked from is «مين بيخلص الشهر ده» — a renewal run is a month's work, and expressing it as a
+ * pair of dates asked the clerk to type the first and the last day of it every time.
+ *
+ * Compared as the ISO month, never as instants: the stored value carries a time, and a comparison
+ * that built dates from it would drop a licence expiring on the last day of the month asked for —
+ * the commonest thing this filter is asked, and an off-by-one nobody would see until a car was
+ * missed.
  */
-export const withinPeriod = (isoDate: string, from: string, to: string): boolean => {
-  const day = isoDate.slice(0, 10);
-  return (from === '' || day >= from) && (to === '' || day <= to);
-};
+export const inMonth = (isoDate: string, month: string): boolean =>
+  month === '' || isoDate.slice(0, 7) === month;
 
 /**
  * Does this row satisfy a paper's chosen squares?
@@ -153,8 +166,15 @@ export const LicensingPage = (): JSX.Element => {
   // The licence-expiry WINDOW — «وفى الفلاتر الفتره». Two open-ended bounds rather than one
   // preset («هذا الشهر»): a renewal run is planned over whatever stretch the office is working,
   // and either end alone is an ordinary question — «كل اللى خلص قبل اليوم».
-  const from = sp.get('from') ?? '';
-  const to = sp.get('to') ?? '';
+  // `YYYY-MM`, exactly what `<input type="month">` reads and writes.
+  const month = sp.get('month') ?? '';
+  /**
+   * WHICH WAY THE EXPIRY RUNS — «عاوز اعمل سهم هنا عشان اقدر اتحكم فى التاريخ تصاعديا و تنازليا».
+   *
+   * One column and two directions, so one parameter holds it. `asc` is the default because the
+   * board is worked from the deadline nearest first; a reader who wants the far end clicks once.
+   */
+  const expiryDir = sp.get('sort') === 'desc' ? 'desc' : 'asc';
 
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -172,8 +192,7 @@ export const LicensingPage = (): JSX.Element => {
       vehicleCodes: null,
       plate: null,
       chassis: null,
-      from: null,
-      to: null,
+      month: null,
       ins: null,
       tax: null,
     });
@@ -181,8 +200,7 @@ export const LicensingPage = (): JSX.Element => {
     vehicleCodes.length > 0 ||
     plate !== '' ||
     chassis !== '' ||
-    from !== '' ||
-    to !== '' ||
+    month !== '' ||
     insurance.length > 0 ||
     tax.length > 0;
 
@@ -202,11 +220,11 @@ export const LicensingPage = (): JSX.Element => {
           (vehicleCodes.length === 0 || vehicleCodes.includes(row.code)) &&
           contains(row.plateNumber, plate) &&
           contains(row.chassisNumber, chassis) &&
-          withinPeriod(row.licenseExpiresAt, from, to) &&
+          inMonth(row.licenseExpiresAt, month) &&
           matchesPaper(row, PAPERS[0], insurance) &&
           matchesPaper(row, PAPERS[1], tax),
       ),
-    [all, vehicleCodes.join(','), plate, chassis, from, to, insurance.join(','), tax.join(',')],
+    [all, vehicleCodes.join(','), plate, chassis, month, insurance.join(','), tax.join(',')],
   );
 
   /**
@@ -218,6 +236,24 @@ export const LicensingPage = (): JSX.Element => {
    * would empty the board with nothing to say why.
    */
   const carOptions = useMemo(() => boardVehicleOptions(all, vehicleCodes), [all, vehicleCodes.join(',')]);
+
+  /**
+   * The board, in the reader's order.
+   *
+   * Sorted AFTER the filters and on the rows themselves: this board arrives whole, so ordering it
+   * here is the honest answer rather than a shortcut — there is no second page for an arrow to be
+   * wrong about. The car code closes every tie, so two licences expiring on one day keep a stable
+   * order instead of shuffling under a reader who changed nothing.
+   */
+  const ordered = useMemo(
+    () =>
+      [...rows].sort((a, b) => {
+        const verdict = a.licenseExpiresAt.localeCompare(b.licenseExpiresAt);
+        if (verdict !== 0) return expiryDir === 'asc' ? verdict : -verdict;
+        return compareFleetVehicleCodes(a.code, b.code);
+      }),
+    [rows, expiryDir],
+  );
 
   const stepOptions = [
     { value: 'handover', label: t('fleet.licensing.columns.handover') },
@@ -252,7 +288,7 @@ export const LicensingPage = (): JSX.Element => {
         `${t('fleet.licensing.columns.tax')} — ${t('fleet.licensing.columns.handover')}`,
         `${t('fleet.licensing.columns.tax')} — ${t('fleet.licensing.columns.receipt')}`,
       ],
-      rows: rows.map((row) => [
+      rows: ordered.map((row) => [
         row.code,
         row.plateNumber,
         row.chassisNumber,
@@ -374,35 +410,17 @@ export const LicensingPage = (): JSX.Element => {
             textScale="comfortable"
           />
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <label htmlFor="licensing-from" className="text-sm text-slate-500 dark:text-slate-400">
-            {t('fleet.odometer.from')}
-          </label>
-          <div className="w-40">
-            <Input
-              id="licensing-from"
-              type="date"
-              aria-label={`${t('fleet.vehicles.fields.licenseExpiresAt')} — ${t('fleet.odometer.from')}`}
-              value={from}
-              onChange={(e) => patch({ from: e.target.value || null })}
-              textScale="comfortable"
-            />
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <label htmlFor="licensing-to" className="text-sm text-slate-500 dark:text-slate-400">
-            {t('fleet.odometer.to')}
-          </label>
-          <div className="w-40">
-            <Input
-              id="licensing-to"
-              type="date"
-              aria-label={`${t('fleet.vehicles.fields.licenseExpiresAt')} — ${t('fleet.odometer.to')}`}
-              value={to}
-              onChange={(e) => patch({ to: e.target.value || null })}
-              textScale="comfortable"
-            />
-          </div>
+        {/* ONE MONTH, not a pair of dates — «واحد بس بيجيب الشهر بس». A renewal run is a month's
+            work, and the two bounds it replaces asked the clerk to type that month's first and
+            last day every time they wanted the obvious question. */}
+        <div className="w-44 shrink-0">
+          <Input
+            type="month"
+            aria-label={t('fleet.vehicles.fields.licenseExpiresAt')}
+            value={month}
+            onChange={(e) => patch({ month: e.target.value || null })}
+            textScale="comfortable"
+          />
         </div>
         {/* Each paper picks among its OWN two squares. Two controls rather than one list of four,
             because «تسليم» means a different column in each — one list would ask the reader to
@@ -458,7 +476,24 @@ export const LicensingPage = (): JSX.Element => {
                   {t('fleet.licensing.columns.chassis')}
                 </th>
                 <th rowSpan={2} className={head}>
-                  {t('fleet.vehicles.fields.licenseExpiresAt')}
+                  {/* The ONE column this board is ordered by, and the arrow that turns it round.
+                      A button rather than a click handler on the cell: the arrow is a control, and
+                      a control a keyboard cannot reach is one half the readers cannot use. */}
+                  <button
+                    type="button"
+                    data-licensing-sort={expiryDir}
+                    onClick={() => patch({ sort: expiryDir === 'asc' ? 'desc' : null })}
+                    aria-label={t('fleet.vehicles.fields.licenseExpiresAt')}
+                    className="mx-auto inline-flex items-center gap-1 rounded hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:hover:text-slate-200"
+                  >
+                    {t('fleet.vehicles.fields.licenseExpiresAt')}
+                    <ChevronIcon
+                      className={cn(
+                        'h-3.5 w-3.5 transition-transform',
+                        expiryDir === 'asc' && 'rotate-180',
+                      )}
+                    />
+                  </button>
                 </th>
                 {PAPERS.map((paper) => (
                   <th key={paper.key} colSpan={2} className={head}>
@@ -478,7 +513,7 @@ export const LicensingPage = (): JSX.Element => {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {ordered.map((row) => (
                 <tr
                   key={row.vehicleId}
                   data-licensing-row={row.code}

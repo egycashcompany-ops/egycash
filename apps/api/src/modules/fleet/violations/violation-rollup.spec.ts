@@ -20,6 +20,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           driverAmount: 150,
           outstandingVehicleAmount: 500,
           outstandingDriverAmount: 150,
+          outstandingVehicleCount: 5,
+          outstandingDriverCount: 2,
           rowCount: 3,
           collectedCount: 1,
         },
@@ -41,6 +43,9 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
         outstandingVehicleAmount: 500,
         outstandingDriverAmount: 150,
         outstandingTotalAmount: 650,
+        outstandingVehicleCount: 5,
+        outstandingDriverCount: 2,
+        outstandingTotalCount: 7,
         totalBeforeGrievance: 900,
         rowCount: 3,
         collectedCount: 1,
@@ -61,6 +66,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           driverAmount: 0,
           outstandingVehicleAmount: 300,
           outstandingDriverAmount: 0,
+          outstandingVehicleCount: 3,
+          outstandingDriverCount: 0,
           rowCount: 3,
           collectedCount: 0,
         },
@@ -93,6 +100,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           driverAmount: 0,
           outstandingVehicleAmount: 10,
           outstandingDriverAmount: 0,
+          outstandingVehicleCount: 1,
+          outstandingDriverCount: 0,
           rowCount: 1,
           collectedCount: 0,
         },
@@ -106,6 +115,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           driverAmount: 0,
           outstandingVehicleAmount: 10,
           outstandingDriverAmount: 0,
+          outstandingVehicleCount: 1,
+          outstandingDriverCount: 0,
           rowCount: 1,
           collectedCount: 0,
         },
@@ -131,6 +142,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           driverAmount: 0,
           outstandingVehicleAmount: 200,
           outstandingDriverAmount: 0,
+          outstandingVehicleCount: 2,
+          outstandingDriverCount: 0,
           rowCount: 2,
           collectedCount: 2,
         },
@@ -144,6 +157,8 @@ describe('assembleRollups (§2.9 — derived, never stored)', () => {
           driverAmount: 100,
           outstandingVehicleAmount: 500,
           outstandingDriverAmount: 100,
+          outstandingVehicleCount: 5,
+          outstandingDriverCount: 1,
           rowCount: 6,
           collectedCount: 0,
         },
@@ -186,6 +201,8 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
       driverAmount: 0,
       outstandingVehicleAmount: 0,
       outstandingDriverAmount: 0,
+      outstandingVehicleCount: 0,
+      outstandingDriverCount: 0,
       rowCount: 0,
       collectedCount: 0,
       ...over,
@@ -210,6 +227,8 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
         collectedCount: 4,
         outstandingVehicleAmount: 0,
         outstandingDriverAmount: 0,
+        outstandingVehicleCount: 0,
+        outstandingDriverCount: 0,
       }),
       [],
       codes,
@@ -218,6 +237,32 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
     expect(rows[0]?.totalAmount, 'the line still says what the year came to').toBe(400);
     expect(rows[0]?.outstandingTotalAmount, 'and nothing is still owed').toBe(0);
     expect(rows[0]?.rowCount).toBe(4);
+  });
+
+  it('counts what it owes, as well as adding it up — what the printed sheet reports', () => {
+    // «لما باجى اطبع بيجيب اللى خلص واللى مخلصش ف الجدول لا انا عاوز الجدول يجيب اللى مخلصش بس
+    // يعنى هيبقوا 3 كدا مش 8». The signed document reports what is still owed, so its table needs
+    // the COUNT of it too — the money and the count sit in the same row, and «٠ مخالفات · ٥٢٣٫٧٠»
+    // is a line that contradicts itself.
+    const rows = assembleRollups(
+      sums({
+        vehicleCount: 4,
+        vehicleAmount: 1046.77,
+        driverCount: 4,
+        driverAmount: 2300,
+        rowCount: 8,
+        collectedCount: 5,
+        outstandingVehicleAmount: 523.7,
+        outstandingDriverAmount: 700,
+        outstandingVehicleCount: 2,
+        outstandingDriverCount: 1,
+      }),
+      [],
+      codes,
+    );
+    expect(rows[0]?.totalCount, 'the screen still says eight').toBe(8);
+    expect(rows[0]?.outstandingTotalCount, 'and the sheet says three').toBe(3);
+    expect(rows[0]?.outstandingTotalAmount).toBe(1223.7);
   });
 
   it('a HALF-settled car owes the half it has not paid — per row, not per car', () => {
@@ -233,6 +278,8 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
         collectedCount: 1,
         outstandingVehicleAmount: 100,
         outstandingDriverAmount: 100,
+        outstandingVehicleCount: 1,
+        outstandingDriverCount: 1,
       }),
       [],
       codes,
@@ -292,6 +339,8 @@ describe('a (vehicle, year) with nothing in it leaves the board', () => {
           driverAmount: 0,
           outstandingVehicleAmount: 1000,
           outstandingDriverAmount: 0,
+          outstandingVehicleCount: 2,
+          outstandingDriverCount: 0,
           rowCount: 2,
           collectedCount: 0,
         },

@@ -6248,6 +6248,11 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         outstandingVehicleAmount: 300,
         outstandingDriverAmount: 150,
         outstandingTotalAmount: 450,
+        // …and the COUNTS of the same, which is what the PRINTED sheet's table reports. Nothing
+        // is ticked, so they are the full counts too — «٣ من ٣» and «١ من ١».
+        outstandingVehicleCount: 3,
+        outstandingDriverCount: 1,
+        outstandingTotalCount: 4,
         totalBeforeGrievance: 600,
         // TWO documents counted here — the statement row of «×3» and the driver event beside it.
         // These two are what the board's tick sets and is coloured from, and that tick settles the
@@ -8202,6 +8207,13 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       [half.collectedCount, half.rowCount],
       'one of the two is settled, which is what «بعضها» on the board means',
     ).toEqual([1, 2]);
+    // THE COUNTS FALL WITH THE MONEY. «لما باجى اطبع ... انا عاوز الجدول يجيب اللى مخلصش بس يعنى
+    // هيبقوا 3 كدا مش 8» — the printed sheet's table reports the outstanding fines, so the count
+    // beside the outstanding money has to be the count OF it, or the document contradicts itself.
+    expect(
+      [half.outstandingVehicleCount, half.outstandingDriverCount, half.outstandingTotalCount],
+      'the statement’s three fines are still owed; the driver’s one is not',
+    ).toEqual([3, 0, 3]);
 
     // Now the statement row too: a fully-settled group owes nothing and says so.
     await request(app)
@@ -8223,6 +8235,10 @@ describe('violations: two sides, one batch, and a collected flag that persists',
       [done.collectedCount, done.rowCount],
       'NOW the group reports itself fully collected — the green tint depends on it',
     ).toEqual([2, 2]);
+    expect(
+      [done.outstandingVehicleCount, done.outstandingDriverCount, done.outstandingTotalCount],
+      'and the printed sheet would list nothing at all for this car',
+    ).toEqual([0, 0, 0]);
 
     // UNTICKING brings the money back. A tick is a statement about payment, not a delete.
     const ticked = data<FleetViolationDto[]>(

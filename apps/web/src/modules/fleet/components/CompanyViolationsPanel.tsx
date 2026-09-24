@@ -269,16 +269,28 @@ export const CompanyViolationsPanel = ({
     [rows],
   );
 
+  /**
+   * WHAT IS STILL OWED, and only that — the signed sheet's table.
+   *
+   * «لما باجى اطبع بيجيب اللى خلص واللى مخلصش ف الجدول لا انا عاوز الجدول يجيب اللى مخلصش بس يعنى
+   * هيبقوا 3 كدا مش 8». The SCREEN goes on showing both halves, because a reader working the board
+   * needs to see what the year came to as well as what is left; the DOCUMENT is a demand for
+   * money, and a demand that lists what has already been paid is asking for it twice.
+   *
+   * It also makes the sheet agree with itself: the three figures under the table have been the
+   * outstanding ones since «الاجماليات بتاعت الجدول العربيه اللى خلصت تتطرح من الجدول», so a table
+   * of full figures above them added up to something the totals did not say.
+   */
   const exportRows = (): string[][] =>
     rows.map((r) => [
       String(r.year),
       r.code,
-      String(r.vehicleCount),
-      reportMoney(r.vehicleAmount),
-      String(r.driverCount),
-      reportMoney(r.driverAmount),
-      String(r.totalCount),
-      reportMoney(r.totalAmount),
+      String(r.outstandingVehicleCount),
+      reportMoney(r.outstandingVehicleAmount),
+      String(r.outstandingDriverCount),
+      reportMoney(r.outstandingDriverAmount),
+      String(r.outstandingTotalCount),
+      reportMoney(r.outstandingTotalAmount),
     ]);
   /**
    * THE FORM'S OWN HEADINGS, word for word — not the board's column labels.
@@ -322,12 +334,12 @@ export const CompanyViolationsPanel = ({
     rows.map((r) => [
       r.year,
       r.code,
-      r.vehicleCount,
-      r.vehicleAmount,
-      r.driverCount,
-      r.driverAmount,
-      r.totalCount,
-      r.totalAmount,
+      r.outstandingVehicleCount,
+      r.outstandingVehicleAmount,
+      r.outstandingDriverCount,
+      r.outstandingDriverAmount,
+      r.outstandingTotalCount,
+      r.outstandingTotalAmount,
     ]);
 
   const onExport = (): void => {

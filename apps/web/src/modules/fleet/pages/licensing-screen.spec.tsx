@@ -19,7 +19,7 @@ import { formatDate } from '../../../shared/lib/format';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
-import { LicensingPage, matchesPaper, paperStage, withinPeriod } from './LicensingPage';
+import { LicensingPage, inMonth, matchesPaper, paperStage } from './LicensingPage';
 
 /** The two tints the board paints, as the cell writes them — never the bare shade. */
 const AMBER = 'bg-amber-50 dark:bg-amber-950/40';
@@ -346,46 +346,78 @@ describe('the licence expiry', () => {
     expect(html, 'and the date itself').toContain(formatDate('2027-03-15T00:00:00.000Z', 'ar'));
   });
 
-  it('narrows by a PERIOD, with either end on its own', () => {
+  it('narrows by the MONTH it expires in', () => {
     const fleet = [
       row({ vehicleId: 'v1', code: '150', licenseExpiresAt: '2027-01-10T00:00:00.000Z' }),
       row({ vehicleId: 'v2', code: '151', licenseExpiresAt: '2027-06-20T00:00:00.000Z' }),
+      row({ vehicleId: 'v3', code: '214', licenseExpiresAt: '2027-06-30T00:00:00.000Z' }),
+    ];
+    const shown = (html: string): string[] =>
+      [...html.matchAll(/data-licensing-row="([^"]+)"/g)].map((m) => m[1] as string);
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?month=2027-06' }))).toEqual([
+      '151',
+      '214',
+    ]);
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?month=2027-01' }))).toEqual(['150']);
+    expect(
+      shown(render({ rows: fleet, path: '/fleet/licensing?month=2027-03' })),
+      'a month nothing expires in',
+    ).toEqual([]);
+  });
+
+  it('orders by the expiry, and the arrow turns it round', () => {
+    // «عاوز اعمل سهم هنا عشان اقدر اتحكم فى التاريخ تصاعديا و تنازليا». Nearest deadline first by
+    // default, because that is the end of the board the work is done from.
+    const fleet = [
+      row({ vehicleId: 'v1', code: '150', licenseExpiresAt: '2027-06-20T00:00:00.000Z' }),
+      row({ vehicleId: 'v2', code: '151', licenseExpiresAt: '2027-01-10T00:00:00.000Z' }),
       row({ vehicleId: 'v3', code: '214', licenseExpiresAt: '2027-12-31T00:00:00.000Z' }),
     ];
     const shown = (html: string): string[] =>
       [...html.matchAll(/data-licensing-row="([^"]+)"/g)].map((m) => m[1] as string);
-    expect(shown(render({ rows: fleet, path: '/fleet/licensing?to=2027-06-30' }))).toEqual([
+    expect(shown(render({ rows: fleet })), 'ascending by default').toEqual(['151', '150', '214']);
+    expect(shown(render({ rows: fleet, path: '/fleet/licensing?sort=desc' }))).toEqual([
+      '214',
       '150',
       '151',
     ]);
-    expect(shown(render({ rows: fleet, path: '/fleet/licensing?from=2027-06-01' }))).toEqual([
+  });
+
+  it('breaks a tie by the car code, in the fleet’s own order', () => {
+    // Two licences expiring on one day must keep a stable order — a board that reshuffled under a
+    // reader who changed nothing is a board they cannot work down.
+    const fleet = [
+      row({ vehicleId: 'v1', code: '61', licenseExpiresAt: '2027-06-20T00:00:00.000Z' }),
+      row({ vehicleId: 'v2', code: '151', licenseExpiresAt: '2027-06-20T00:00:00.000Z' }),
+      row({ vehicleId: 'v3', code: '150', licenseExpiresAt: '2027-06-20T00:00:00.000Z' }),
+    ];
+    const shown = (html: string): string[] =>
+      [...html.matchAll(/data-licensing-row="([^"]+)"/g)].map((m) => m[1] as string);
+    expect(shown(render({ rows: fleet })), 'the working fleet, then «الملاكى»').toEqual([
+      '150',
       '151',
-      '214',
+      '61',
     ]);
-    expect(
-      shown(render({ rows: fleet, path: '/fleet/licensing?from=2027-02-01&to=2027-11-30' })),
-      'both ends together',
-    ).toEqual(['151']);
   });
 });
 
-describe('withinPeriod — the window, by DAY', () => {
-  it('takes a licence expiring on the very last day asked for', () => {
-    // The stored value carries a time and the boxes carry a date: compared as instants, the
-    // commonest question a period filter is asked — «كل اللى بيخلص لغاية آخر الشهر» — would drop
-    // the licences expiring on that day.
-    expect(withinPeriod('2026-09-30T00:00:00.000Z', '', '2026-09-30')).toBe(true);
-    expect(withinPeriod('2026-09-30T13:45:00.000Z', '', '2026-09-30')).toBe(true);
-    expect(withinPeriod('2026-09-30T00:00:00.000Z', '2026-09-30', '')).toBe(true);
+describe('inMonth — the window, by MONTH', () => {
+  it('takes a licence expiring on the last day of the month asked for', () => {
+    // The stored value carries a time: a comparison built from dates would drop these, which is
+    // the commonest thing this filter is asked.
+    expect(inMonth('2026-09-30T00:00:00.000Z', '2026-09')).toBe(true);
+    expect(inMonth('2026-09-30T13:45:00.000Z', '2026-09')).toBe(true);
+    expect(inMonth('2026-09-01T00:00:00.000Z', '2026-09')).toBe(true);
   });
 
-  it('an empty bound does not constrain', () => {
-    expect(withinPeriod('2020-01-01T00:00:00.000Z', '', '')).toBe(true);
+  it('an empty month does not constrain', () => {
+    expect(inMonth('2020-01-01T00:00:00.000Z', '')).toBe(true);
   });
 
-  it('refuses what falls outside', () => {
-    expect(withinPeriod('2026-10-01T00:00:00.000Z', '', '2026-09-30')).toBe(false);
-    expect(withinPeriod('2026-09-29T00:00:00.000Z', '2026-09-30', '')).toBe(false);
+  it('refuses the months either side', () => {
+    expect(inMonth('2026-10-01T00:00:00.000Z', '2026-09')).toBe(false);
+    expect(inMonth('2026-08-31T00:00:00.000Z', '2026-09')).toBe(false);
+    expect(inMonth('2025-09-15T00:00:00.000Z', '2026-09')).toBe(false);
   });
 });
 

@@ -112,12 +112,15 @@ const rollupRow = (over: Partial<FleetViolationRollupDto> = {}): FleetViolationR
   driverAmount: 0,
   totalCount: 4,
   totalAmount: 2040.15,
-  // Nothing ticked, so what is outstanding IS what the year came to. A test that wants a settled
-  // car overrides these three and leaves the figures above alone — which is the whole point of
-  // there being two sets.
+  // Nothing ticked, so what is outstanding IS what the year came to — money AND count. A test
+  // that wants a settled car overrides these six and leaves the figures above alone, which is the
+  // whole point of there being two sets.
   outstandingVehicleAmount: 2040.15,
   outstandingDriverAmount: 0,
   outstandingTotalAmount: 2040.15,
+  outstandingVehicleCount: 4,
+  outstandingDriverCount: 0,
+  outstandingTotalCount: 4,
   rowCount: 4,
   collectedCount: 0,
   totalBeforeGrievance: 0,
@@ -613,6 +616,34 @@ describe('the eight reported defects, as rules the markup carries', () => {
         `data-filter-field="${label}"`,
       );
     }
+  });
+
+  it('the printed sheet reports what is STILL OWED, not what the year came to', () => {
+    // «لما باجى اطبع بيجيب اللى خلص واللى مخلصش ف الجدول لا انا عاوز الجدول يجيب اللى مخلصش بس
+    // يعنى هيبقوا 3 كدا مش 8». The screen keeps both halves; the document is a demand for money,
+    // and one that lists what has already been paid is asking for it twice.
+    const panel = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
+    const code = panel.replace(/\/\*[\s\S]*?\*\//gu, '');
+    for (const build of ['const exportRows', 'const sheetRows']) {
+      const body = code.slice(code.indexOf(build), code.indexOf('};', code.indexOf(build)));
+      for (const field of [
+        'outstandingVehicleCount',
+        'outstandingVehicleAmount',
+        'outstandingDriverCount',
+        'outstandingDriverAmount',
+        'outstandingTotalCount',
+        'outstandingTotalAmount',
+      ]) {
+        expect(body, `${build} carries ${field}`).toContain(field);
+      }
+      // …and none of the full figures, which is the half that must NOT reach the document.
+      for (const field of ['r.vehicleCount', 'r.totalAmount', 'r.driverAmount']) {
+        expect(body, `${build} leaves ${field} on the screen`).not.toContain(field);
+      }
+    }
+    // The SCREEN is untouched: the four lines of a group still say what the year came to.
+    expect(code, 'the board still reads the full figures').toContain("amount: 'vehicleAmount'");
+    expect(code).toContain("amount: 'totalAmount'");
   });
 
   it('the company bar reads السنة · كود السيارة · الحالة, in that order', () => {

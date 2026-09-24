@@ -261,6 +261,15 @@ export const SwapIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** A clock with its hand turned back — the record of what already happened. */
+export const HistoryIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M3 12a9 9 0 1 0 3-6.7" />
+    <polyline points="3 3 3 8 8 8" />
+    <polyline points="12 7 12 12 15 14" />
+  </Base>
+);
+
 export const LinkIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />

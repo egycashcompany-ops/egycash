@@ -29,6 +29,7 @@ import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { listKey } from '../../../shared/lib/query-keys';
 import { AccidentsPage } from './AccidentsPage';
+import { translate } from '../../../platform/localization/i18n';
 
 /**
  * The settled-row TINT, as the row writes it — not the bare shade.
@@ -53,6 +54,8 @@ const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
   companyCost: 0,
   amountCollected: 1500,
   paidAmount: 1500,
+  transferredIn: 0,
+  transferredOut: 0,
   status: 'open',
   notes: null,
   version: 0,
@@ -75,6 +78,8 @@ const totals = (over: Partial<FleetAccidentTotalsDto> = {}): FleetAccidentTotals
   amountCollected: 87_835,
   companyCost: 174_710,
   paidAmount: 240_540,
+  transferredIn: 0,
+  transferredOut: 0,
   remaining: 22_005,
   ...over,
 });
@@ -207,7 +212,7 @@ const rowWith = (html: string, needle: string): string => {
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 describe('the columns the reader asked for, in order', () => {
-  it('runs الكود → التاريخ → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → ملاحظات', () => {
+  it('runs الكود → التاريخ → المتسبب → البيان → المحصل → الشركة → المدفوع → المتبقي → السجل → ملاحظات', () => {
     const html = render({ seed: withRows([accident()]) });
     const headers = [...html.matchAll(/<th[^>]*>(?:<[^>]+>)*([^<]*)/g)].map((m) =>
       (m[1] ?? '').trim(),
@@ -222,6 +227,8 @@ describe('the columns the reader asked for, in order', () => {
       'تكلفة الشركة',
       'المبلغ المدفوع',
       'إجمالي المتبقي',
+      // «يتحط زرار فى كل صف يكون قبل الملاحظات» — the car's transfer log.
+      'السجل',
       'ملاحظات',
       'إجراءات',
     ]);
@@ -612,5 +619,80 @@ describe('the culprit’s name outlives the moment it was picked', () => {
     expect(CODE, 'and starts with nothing pending').toMatch(
       /setCulprit\(accident\?\.culprit \?\? ''\)[\s\S]{0,400}setAwaitingNameFor\(''\)/,
     );
+  });
+});
+
+// ── «اختار عربيه و جمبها مبلغ» — moving remaining between cars ───────────────
+describe('transfers between cars', () => {
+  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
+  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
+  const LOG = readFileSync(join(HERE, '../components/AccidentTransferLogDialog.tsx'), 'utf8');
+  const ar = (key: string): string => translate('ar', key);
+
+  it('counts what a file took and gave in its «إجمالي المتبقي»', () => {
+    // 400 + 500 − 200, plus 1,500 taken from another car, less 300 another file took from it.
+    const html = render({
+      seed: withRows([
+        accident({
+          amountCollected: 400,
+          companyCost: 500,
+          paidAmount: 200,
+          transferredIn: 1500,
+          transferredOut: 300,
+        }),
+      ]),
+    });
+    expect(rowWith(html, 'فنوس شمال')).toContain('1,900.00');
+  });
+
+  it('puts the log button in every row, in the column before «ملاحظات»', () => {
+    const html = render({ seed: withRows([accident(), accident({ id: 'a-2' })]) });
+    expect(html).toContain('data-transfer-log-open="a-1"');
+    expect(html).toContain('data-transfer-log-open="a-2"');
+    const at = PAGE.indexOf("key: 'transferLog'");
+    expect(at).toBeGreaterThan(PAGE.indexOf("key: 'remaining'"));
+    expect(at).toBeLessThan(PAGE.indexOf("key: 'notes'"));
+  });
+
+  it('offers no log for a file kept from the old book with no registry car', () => {
+    const html = render({ seed: withRows([accident({ vehicleId: null, vehicleCode: 'OLD-1' })]) });
+    expect(html).not.toContain('data-transfer-log-open=');
+  });
+
+  it('names the two directions as the owner asked', () => {
+    expect(ar('fleet.accidents.log.paidFrom')).toBe('تم الدفع من');
+    expect(ar('fleet.accidents.log.paidTo')).toBe('تم الدفع لـ');
+    expect(LOG).toContain(
+      "entry.direction === 'in' ? 'fleet.accidents.log.paidFrom' : 'fleet.accidents.log.paidTo'",
+    );
+  });
+
+  it('says the money returns to the car it CAME FROM, whichever side the log is read from', () => {
+    expect(LOG).toContain(
+      "code: (removing.direction === 'in' ? removing.otherVehicleCode : code) ?? '—'",
+    );
+  });
+
+  it('lets only a reader who may edit remove a transfer', () => {
+    expect(PAGE).toContain("mayRemove={can('fleetAccident.edit')}");
+    const at = LOG.indexOf('data-transfer-remove=');
+    expect(at).toBeGreaterThan(-1);
+    expect(LOG.slice(LOG.lastIndexOf('{mayRemove && (', at), at)).toContain('{mayRemove && (');
+  });
+
+  it('shows the source car’s remaining and refuses more than it has', () => {
+    expect(FORM, 'the same figure the server caps by').toContain(
+      'useAccidentCarTransfers(fromVehicleId, open)',
+    );
+    expect(FORM).toContain("t('fleet.accidents.transfer.balance'");
+    expect(FORM).toContain("t('fleet.accidents.transfer.after'");
+    expect(FORM).toContain("t('fleet.accidents.transfer.tooMuch'");
+    // A picked car with a problem keeps «حفظ» shut.
+    expect(FORM).toContain('(!transferring || transfer !== undefined)');
+  });
+
+  it('sends the transfer with the file — on a new one and on an edit', () => {
+    expect(FORM).toContain('...(transfer === undefined ? {} : { transfer }),');
+    expect(FORM).toContain('if (transfer !== undefined) body.transfer = transfer;');
   });
 });

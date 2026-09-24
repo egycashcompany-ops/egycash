@@ -40,7 +40,14 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { Input, Select } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { CheckIcon, CornerDownIcon, EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
+import {
+  CheckIcon,
+  CornerDownIcon,
+  EditIcon,
+  HistoryIcon,
+  PlusIcon,
+  TrashIcon,
+} from '../../../shared/ui/icons';
 import { formatDate, formatMoney, formatNumber } from '../../../shared/lib/format';
 import {
   useAccidentSummary,
@@ -55,6 +62,7 @@ import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import * as fleetApi from '../api/fleet-api';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { AccidentFormDialog } from '../components/AccidentFormDialog';
+import { AccidentTransferLogDialog } from '../components/AccidentTransferLogDialog';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
@@ -174,12 +182,15 @@ export const AccidentsPage = (): JSX.Element => {
     r.vehicleCode ??
     (r.vehicleId === null
       ? '—'
-      : (vehiclesQuery.data?.items.find((v) => v.id === r.vehicleId)?.code ?? r.vehicleId.slice(-8)));
+      : (vehiclesQuery.data?.items.find((v) => v.id === r.vehicleId)?.code ??
+        r.vehicleId.slice(-8)));
 
   const [recordOpen, setRecordOpen] = useState(false);
   const [editing, setEditing] = useState<FleetAccidentDto | null>(null);
   const [flipping, setFlipping] = useState<FleetAccidentDto | null>(null);
   const [deleting, setDeleting] = useState<FleetAccidentDto | null>(null);
+  /** The car whose transfer log is open — «خدت من مين او ادت ل مين». */
+  const [logOf, setLogOf] = useState<FleetAccidentDto | null>(null);
   const setStatus = useSetAccidentStatus();
   const remove = useDeleteAccident();
 
@@ -273,40 +284,38 @@ export const AccidentsPage = (): JSX.Element => {
     const all = await fetchFilteredRows((pageNo, size) =>
       fleetApi.listAccidents({ ...sheetFilters, page: pageNo, pageSize: size }),
     );
-    saveSheet(
-      {
-        name: t('fleet.nav.accidents'),
-        serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.vehicles.columns.code'),
-          t('fleet.vehicles.columns.status'),
-          t('fleet.accidents.fields.occurredAt'),
-          t('fleet.accidents.fields.culprit'),
-          t('fleet.accidents.fields.statement'),
-          t('fleet.accidents.fields.amountCollected'),
-          t('fleet.accidents.fields.companyCost'),
-          t('fleet.accidents.fields.paidAmount'),
-          t('fleet.accidents.fields.remaining'),
-          t('fleet.accidents.fields.notes'),
-        ],
-        // `codeOf` is the table's own resolver, reused rather than repeated: it prefers the code
-        // the server joined in and falls back to the registry map this screen already holds, so a
-        // file kept from the old book reads in the sheet exactly as it reads on screen.
-        rows: all.map((r) => [
-          codeOf(r),
-          t(`fleet.accidents.status.${r.status}`),
-          formatDate(r.occurredAt, locale),
-          r.culprit,
-          r.statement,
-          r.amountCollected,
-          r.companyCost,
-          r.paidAmount,
-          fleetAccidentRemaining(r),
-          r.notes ?? '',
-        ]),
-        moneyColumns: [5, 6, 7, 8],
-      },
-    );
+    saveSheet({
+      name: t('fleet.nav.accidents'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.vehicles.columns.code'),
+        t('fleet.vehicles.columns.status'),
+        t('fleet.accidents.fields.occurredAt'),
+        t('fleet.accidents.fields.culprit'),
+        t('fleet.accidents.fields.statement'),
+        t('fleet.accidents.fields.amountCollected'),
+        t('fleet.accidents.fields.companyCost'),
+        t('fleet.accidents.fields.paidAmount'),
+        t('fleet.accidents.fields.remaining'),
+        t('fleet.accidents.fields.notes'),
+      ],
+      // `codeOf` is the table's own resolver, reused rather than repeated: it prefers the code
+      // the server joined in and falls back to the registry map this screen already holds, so a
+      // file kept from the old book reads in the sheet exactly as it reads on screen.
+      rows: all.map((r) => [
+        codeOf(r),
+        t(`fleet.accidents.status.${r.status}`),
+        formatDate(r.occurredAt, locale),
+        r.culprit,
+        r.statement,
+        r.amountCollected,
+        r.companyCost,
+        r.paidAmount,
+        fleetAccidentRemaining(r),
+        r.notes ?? '',
+      ]),
+      moneyColumns: [5, 6, 7, 8],
+    });
   };
 
   const columns: Column<FleetAccidentDto>[] = [
@@ -376,6 +385,27 @@ export const AccidentsPage = (): JSX.Element => {
       sortable: true,
       className: 'font-medium',
       render: (r) => money(fleetAccidentRemaining(r)),
+    },
+    {
+      // «يتحط زرار فى كل صف يكون قبل الملاحظات» — the CAR's log, opened from any of its files.
+      key: 'transferLog',
+      header: t('fleet.accidents.log.column'),
+      align: 'center',
+      render: (r) =>
+        r.vehicleId === null ? (
+          <span className="text-slate-400 dark:text-slate-600">—</span>
+        ) : (
+          <button
+            type="button"
+            data-transfer-log-open={r.id}
+            className={actionButton}
+            aria-label={t('fleet.accidents.log.open', { code: codeOf(r) })}
+            title={t('fleet.accidents.log.open', { code: codeOf(r) })}
+            onClick={() => setLogOf(r)}
+          >
+            <HistoryIcon className="h-4 w-4" />
+          </button>
+        ),
     },
     {
       key: 'notes',
@@ -473,7 +503,6 @@ export const AccidentsPage = (): JSX.Element => {
           </>
         }
       />
-
 
       <div className="space-y-4">
         {/*
@@ -608,6 +637,12 @@ export const AccidentsPage = (): JSX.Element => {
           // A register somebody works through for an hour, not a panel they glance at: one step up
           // the type scale for the headers and every cell.
           textScale="comfortable"
+          // Eleven columns since «السجل» joined them: at the comfortable gutters the table was
+          // 1360px in a 1246px box at 1600, and in RTL the excess clips «إجراءات». The side gutter
+          // is trimmed instead of the text — measured, it then fits with room to spare.
+          dense
+          tightGutter
+          minColumnWidth={6}
           rowClassName={(r) =>
             // Read from the PERSISTED status on every render, and from nothing else. A file the
             // server says is closed is green after a refresh, in another tab, and for the next
@@ -643,6 +678,12 @@ export const AccidentsPage = (): JSX.Element => {
             ? (vehiclesQuery.data?.items.find((v) => v.code === vehicleCodes[0])?.id ?? '')
             : ''
         }
+      />
+      <AccidentTransferLogDialog
+        vehicleId={logOf?.vehicleId ?? null}
+        code={logOf === null ? '' : codeOf(logOf)}
+        mayRemove={can('fleetAccident.edit')}
+        onClose={() => setLogOf(null)}
       />
       <AccidentFormDialog
         open={editing !== null}

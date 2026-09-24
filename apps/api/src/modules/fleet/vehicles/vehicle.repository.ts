@@ -1,4 +1,4 @@
-import { type FilterQuery, Types } from 'mongoose';
+import { type ClientSession, type FilterQuery, Types } from 'mongoose';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import {
   FLEET_FIRST_WORKING_CODE,
@@ -155,13 +155,7 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
               entry.by === 'code' ? { ...entry, by: ORDER } : entry,
             ),
           }),
-      sortableFields: [
-        'code',
-        ORDER,
-        'createdAt',
-        'licenseExpiresAt',
-        VEHICLE_TYPE_NAME_SORT.key,
-      ],
+      sortableFields: ['code', ORDER, 'createdAt', 'licenseExpiresAt', VEHICLE_TYPE_NAME_SORT.key],
       sortDerived: [VEHICLE_TYPE_NAME_SORT, VEHICLE_CODE_ORDER_SORT],
     });
   }
@@ -200,6 +194,23 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
    * has since been scrapped still belongs to that car, so its code stays readable rather than
    * turning into a dash the day the registry entry goes.
    */
+  /**
+   * Take the car's accident-transfer lock for the rest of `session`'s transaction.
+   *
+   * Two clerks taking from one car at the same moment would each read its whole remaining and
+   * each be allowed to take it. Writing to the car FIRST makes the second transaction conflict
+   * with the first and re-run after it commits — reading the remaining the first one left. The
+   * native driver, deliberately: this is a lock, not an edit, so the car's `__v` and `updatedAt`
+   * stay as they are and no DTO ever carries the counter.
+   */
+  async lockForAccidentTransfer(id: string, session: ClientSession): Promise<void> {
+    await this.model.collection.updateOne(
+      { _id: new Types.ObjectId(id) },
+      { $inc: { accidentTransferSeq: 1 } },
+      { session },
+    );
+  }
+
   async codesByIds(ids: readonly string[]): Promise<Map<string, string>> {
     if (ids.length === 0) return new Map();
     const rows = await this.model

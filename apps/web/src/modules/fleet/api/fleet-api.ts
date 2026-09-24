@@ -13,6 +13,7 @@ import {
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
   type CreateFleetVehicleType,
+  type FleetAccidentCarTransfersDto,
   type FleetAccidentDto,
   type FleetAccidentTotalsDto,
   type FleetCatalogItemDto,
@@ -203,7 +204,9 @@ export const odometerBracketForMaintenance = (
   vehicleId: string,
   on: string,
 ): Promise<FleetOdometerBracketDto> =>
-  get<FleetOdometerBracketDto>(`/fleet/maintenance/odometer-bracket${buildQuery({ vehicleId, on })}`);
+  get<FleetOdometerBracketDto>(
+    `/fleet/maintenance/odometer-bracket${buildQuery({ vehicleId, on })}`,
+  );
 /**
  * The alarm projection, through the ODOMETER's door (`fleetOdometer.view`).
  *
@@ -289,6 +292,15 @@ export const listAccidents = (params: FleetListParams): Promise<Paginated<FleetA
  */
 export const accidentSummary = (params: FleetListParams): Promise<FleetAccidentTotalsDto> =>
   get<FleetAccidentTotalsDto>(`/fleet/accidents/summary${buildQuery(params)}`);
+/**
+ * «خدت من مين او ادت ل مين» — one car's transfers, both directions, and what it has left. The same
+ * `remaining` the server caps a new transfer by.
+ */
+export const accidentCarTransfers = (vehicleId: string): Promise<FleetAccidentCarTransfersDto> =>
+  get<FleetAccidentCarTransfersDto>(`/fleet/accidents/transfers${buildQuery({ vehicleId })}`);
+/** Remove one transfer: the amount goes back to the files it was drawn from. */
+export const voidAccidentTransfer = (accidentId: string, transferId: string): Promise<void> =>
+  del<void>(`/fleet/accidents/${accidentId}/transfers/${transferId}`);
 export const createAccident = (body: CreateFleetAccident): Promise<FleetAccidentDto> =>
   post<FleetAccidentDto>('/fleet/accidents', body);
 export const updateAccident = (id: string, body: UpdateFleetAccident): Promise<FleetAccidentDto> =>

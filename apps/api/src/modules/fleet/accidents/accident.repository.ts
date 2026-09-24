@@ -16,9 +16,21 @@ interface TotalsRow {
   amountCollected: number;
   companyCost: number;
   paidAmount: number;
+  transferredIn: number;
+  transferredOut: number;
 }
 
-const NOTHING: TotalsRow = { count: 0, amountCollected: 0, companyCost: 0, paidAmount: 0 };
+const NOTHING: TotalsRow = {
+  count: 0,
+  amountCollected: 0,
+  companyCost: 0,
+  paidAmount: 0,
+  transferredIn: 0,
+  transferredOut: 0,
+};
+
+/** A cached transfer figure, read as zero on a file written before transfers existed. */
+const orZero = (path: string) => ({ $ifNull: [path, 0] });
 
 /**
  * «إجمالي المتبقي», as a sort key — DERIVED, exactly as `fleetAccidentRemaining` derives it.
@@ -33,8 +45,22 @@ const NOTHING: TotalsRow = { count: 0, amountCollected: 0, companyCost: 0, paidA
  */
 export const REMAINING_SORT = {
   key: 'remaining',
-  expression: { $subtract: [{ $add: ['$amountCollected', '$companyCost'] }, '$paidAmount'] },
+  // What transfers moved in and out ride along, as the contract's formula has them. `$ifNull`
+  // because a file written before transfers existed has neither field, and `$add` over a missing
+  // field is null — which would sort every old file as though it owed nothing.
+  expression: {
+    $subtract: [
+      { $add: ['$amountCollected', '$companyCost', orZero('$transferredIn')] },
+      { $add: ['$paidAmount', orZero('$transferredOut')] },
+    ],
+  },
 } as const;
+
+/** To the piastre — a `$sum` of pounds carries binary residue the strip would print. */
+const roundMoney = (value: number): number => {
+  const rounded = Math.round(value * 100) / 100;
+  return rounded === 0 ? 0 : rounded;
+};
 
 class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
   constructor() {
@@ -112,6 +138,8 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
           amountCollected: { $sum: '$amountCollected' },
           companyCost: { $sum: '$companyCost' },
           paidAmount: { $sum: '$paidAmount' },
+          transferredIn: { $sum: orZero('$transferredIn') },
+          transferredOut: { $sum: orZero('$transferredOut') },
         },
       },
     ];
@@ -123,10 +151,115 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
       amountCollected: sums.amountCollected,
       companyCost: sums.companyCost,
       paidAmount: sums.paidAmount,
+      transferredIn: roundMoney(sums.transferredIn ?? 0),
+      transferredOut: roundMoney(sums.transferredOut ?? 0),
       // The contract's formula, not a second copy of it — the total and the rows above it are
-      // then arithmetically the same statement.
+      // then arithmetically the same statement. Transfers included: over the whole fleet what went
+      // in equals what came out, so only a narrowed strip moves.
       remaining: fleetAccidentRemaining(sums),
     };
+  }
+
+  // ── transfers: reads and writes that run INSIDE a transaction ─────────────
+  //
+  // `BaseRepository`'s reads take no session, and a transfer's check has to read the very state
+  // it then writes, in the same transaction — otherwise two clerks taking from one car at once
+  // could each see the whole remaining and both take it.
+
+  /** One live file, read inside `session`. */
+  async findLive(
+    id: string | Types.ObjectId,
+    session: ClientSession,
+  ): Promise<FleetAccidentDoc | null> {
+    return this.model
+      .findOne({ _id: new Types.ObjectId(String(id)), isDeleted: false })
+      .session(session)
+      .lean<FleetAccidentDoc>()
+      .exec();
+  }
+
+  /** The live files among `ids`, read inside `session`. */
+  async findLiveByIds(
+    ids: readonly (string | Types.ObjectId)[],
+    session: ClientSession,
+  ): Promise<FleetAccidentDoc[]> {
+    if (ids.length === 0) return [];
+    return this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(String(id))) }, isDeleted: false })
+      .session(session)
+      .lean<FleetAccidentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Every live file of one car, open and closed — by id, or by the code a file kept from the old
+   * book wrote. The same scope the strip sums when the table is filtered to that one car, so the
+   * figure the clerk is shown and the figure the table shows are one figure.
+   */
+  async liveOfCar(
+    vehicleId: string,
+    code: string,
+    session?: ClientSession,
+  ): Promise<FleetAccidentDoc[]> {
+    return this.model
+      .find(this.baseFilter(undefined, byVehicleOrBookCode<FleetAccidentDoc>([vehicleId], [code])))
+      .session(session ?? null)
+      .lean<FleetAccidentDoc[]>()
+      .exec();
+  }
+
+  /** Live files holding a live transfer FROM this car — «ادت ل مين». */
+  async takersFrom(vehicleId: string): Promise<FleetAccidentDoc[]> {
+    return this.model
+      .find({
+        isDeleted: false,
+        transfersIn: {
+          $elemMatch: { fromVehicleId: new Types.ObjectId(vehicleId), voidedAt: null },
+        },
+      })
+      .lean<FleetAccidentDoc[]>()
+      .exec();
+  }
+
+  /** Live files holding a live transfer that drew on `accidentId`. */
+  async takersOf(accidentId: string, session: ClientSession): Promise<FleetAccidentDoc[]> {
+    return this.model
+      .find({
+        isDeleted: false,
+        transfersIn: {
+          $elemMatch: { voidedAt: null, 'lines.accidentId': new Types.ObjectId(accidentId) },
+        },
+      })
+      .session(session)
+      .lean<FleetAccidentDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Write one file's transfer figures, as computed from what was read in the same transaction.
+   *
+   * Absolute values rather than `$inc`: the caller read this file inside the session, and any
+   * other write to it before commit is a write conflict that re-runs the whole transaction — so a
+   * value computed from the read is still the right one when it lands. `bumpVersion` for the file
+   * whose transfer LIST changed; a file that only gave some of its remaining keeps its version, so
+   * a clerk editing its facts is not refused for a figure their form does not carry.
+   */
+  async setTransferState(
+    id: Types.ObjectId,
+    set: Pick<Partial<FleetAccidentDoc>, 'transfersIn' | 'transferredIn' | 'transferredOut'>,
+    meta: { by: string | null; session: ClientSession; bumpVersion: boolean },
+  ): Promise<void> {
+    const by = meta.by === null ? null : new Types.ObjectId(meta.by);
+    await this.model
+      .updateOne(
+        { _id: id, isDeleted: false },
+        {
+          $set: { ...set, updatedBy: by },
+          ...(meta.bumpVersion ? { $inc: { __v: 1 } } : {}),
+        },
+        { session: meta.session },
+      )
+      .exec();
   }
 
   /**

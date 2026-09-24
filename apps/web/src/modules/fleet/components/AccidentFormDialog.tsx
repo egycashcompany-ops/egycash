@@ -113,26 +113,46 @@ export const AccidentFormDialog = ({
   // server code that caps the save. Asked only once a car is picked.
   const source = useAccidentCarTransfers(fromVehicleId, open);
   const sourceCode = source.data?.vehicleCode ?? '';
-  const available = Math.max(0, source.data?.remaining ?? 0);
-  const taking = transferAmount === '' ? 0 : Number(transferAmount);
+  // A file that sits on the source car and leaves it in this same save is not the car's to give:
+  // the server leaves it out of the cap, and so does the figure the clerk is shown.
+  const leaving =
+    accident !== null &&
+    (accident.vehicleId === fromVehicleId ||
+      (accident.vehicleId === null && accident.vehicleCode === sourceCode && sourceCode !== ''))
+      ? fleetAccidentRemaining(accident)
+      : 0;
+  const available = Math.max(
+    0,
+    fleetAccidentRemaining({
+      amountCollected: source.data?.remaining ?? 0,
+      companyCost: 0,
+      paidAmount: leaving,
+    }),
+  );
+  // A box holding only «.» is not a number; it is read as nothing typed yet.
+  const typed = transferAmount === '' ? 0 : Number(transferAmount);
+  const taking = Number.isFinite(typed) ? typed : 0;
   const transferring = fromVehicleId !== '';
   const transferProblem = !transferring
     ? null
     : fromVehicleId === vehicleId
       ? t('fleet.accidents.transfer.sameCar')
-      : source.data === undefined
-        ? null
-        : available <= 0
-          ? t('fleet.accidents.transfer.nothing', { code: sourceCode })
-          : // Compared in piastres, as the server compares them.
-            Math.round(taking * 100) > Math.round(available * 100)
-            ? t('fleet.accidents.transfer.tooMuch', {
-                available: money(available),
-                code: sourceCode,
-              })
-            : taking <= 0
-              ? t('fleet.accidents.transfer.needsAmount')
-              : null;
+      : source.isError
+        ? // Said, not left as a Save button that is silently off.
+          t('fleet.accidents.transfer.loadFailed')
+        : source.data === undefined
+          ? null
+          : available <= 0
+            ? t('fleet.accidents.transfer.nothing', { code: sourceCode })
+            : // Compared in piastres, as the server compares them.
+              Math.round(taking * 100) > Math.round(available * 100)
+              ? t('fleet.accidents.transfer.tooMuch', {
+                  available: money(available),
+                  code: sourceCode,
+                })
+              : taking <= 0
+                ? t('fleet.accidents.transfer.needsAmount')
+                : null;
   // This file's remaining as the form now reads — its own figures, plus what it already took and
   // gave — and what the new transfer would make it.
   const targetBefore = fleetAccidentRemaining({

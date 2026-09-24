@@ -69,7 +69,12 @@ export const AccidentTransferLogDialog = ({
             {t('fleet.accidents.log.remaining', { amount: money(log.data.remaining) })}
           </p>
         )}
-        {entries.length === 0 ? (
+        {log.isError ? (
+          // A failed read is not an empty log — «no transfers» would be a claim about the car.
+          <p role="alert" className="py-6 text-center text-sm text-red-700 dark:text-red-300">
+            {t('fleet.accidents.log.loadFailed')}
+          </p>
+        ) : entries.length === 0 ? (
           <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
             {log.isPending ? t('common.loading') : t('fleet.accidents.log.empty')}
           </p>

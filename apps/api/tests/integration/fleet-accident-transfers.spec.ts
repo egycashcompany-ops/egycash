@@ -40,6 +40,10 @@ const cars = {
   d: new Types.ObjectId(),
   e: new Types.ObjectId(),
   f: new Types.ObjectId(),
+  g: new Types.ObjectId(),
+  h: new Types.ObjectId(),
+  k: new Types.ObjectId(),
+  m: new Types.ObjectId(),
 };
 const CODES: Record<keyof typeof cars, string> = {
   a: 'TR-150',
@@ -48,6 +52,10 @@ const CODES: Record<keyof typeof cars, string> = {
   d: 'TR-410',
   e: 'TR-411',
   f: 'TR-412',
+  g: 'TR-500',
+  h: 'TR-501',
+  k: 'TR-600',
+  m: 'TR-601',
 };
 
 const plantCars = async (): Promise<void> => {
@@ -305,5 +313,94 @@ describe('two clerks taking from one car at the same moment', () => {
     expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
     expect((await file(source._id)).transferredOut).toBe(400);
     expect(await carFigure('d')).toBe(100);
+  });
+});
+
+describe('a file moved off the source car in the same save', () => {
+  // TR-500: G 500 (oldest), F 1,000, H −400 (overpaid) — the car has 1,100.
+  it('does not draw on itself: its own remaining leaves with it', async () => {
+    await record('g', '2026-01-01', 500, 0, 0);
+    const moving = await record('g', '2026-02-01', 1000, 0, 0);
+    await record('g', '2026-03-01', 0, 0, 400);
+    expect(await carFigure('g')).toBe(1100);
+    const id = String(moving._id);
+    const edit = async (amount: number) => {
+      const current = await file(id);
+      return fleetAccidentService.update(
+        id,
+        {
+          version: current.__v,
+          vehicleId: String(cars.h),
+          transfer: { fromVehicleId: String(cars.g), amount },
+        },
+        ACTOR,
+      );
+    };
+    // Without the moving file the car has 500 − 400 = 100, so 1,100 is refused — and nothing moves.
+    await expect(edit(1100)).rejects.toMatchObject({ httpStatus: 422 });
+    expect(String((await file(id)).vehicleId)).toBe(String(cars.g));
+    expect((await file(id)).transferredIn ?? 0).toBe(0);
+    // 100 is what the car can give once the file has left it.
+    const moved = await edit(100);
+    expect(String(moved.vehicleId)).toBe(String(cars.h));
+    expect(moved.transferredIn).toBe(100);
+    expect(moved.transferredOut ?? 0, 'the file never drew on itself').toBe(0);
+    expect(await carFigure('g'), 'G gave its 100: 400 − 400').toBe(0);
+    expect(await carFigure('h'), 'F: 1,000 + 100').toBe(1100);
+  });
+});
+
+describe('a file kept from the old book that a transfer drew on', () => {
+  // O: an old-book file for «TR-600» with no registry id, 800 remaining. The registry now has a
+  // car TR-600 too, so O is one of that car's files by its code.
+  const old = new Types.ObjectId();
+
+  it('can still be given its own car — that is not a move', async () => {
+    await FleetAccidentModel.collection.insertOne({
+      _id: old,
+      vehicleId: null,
+      vehicleCode: 'TR-600',
+      occurredAt: null,
+      culprit: 'من الدفتر',
+      culpritEmployeeId: null,
+      statement: 'حادث قديم',
+      companyCost: 0,
+      amountCollected: 800,
+      paidAmount: 0,
+      transfersIn: [],
+      transferredIn: 0,
+      transferredOut: 0,
+      status: 'open',
+      notes: null,
+      isDeleted: false,
+      __v: 0,
+      createdAt: day('2020-01-01'),
+      updatedAt: day('2020-01-01'),
+    });
+    expect(await carFigure('k')).toBe(800);
+    await record('m', '2026-09-01', 0, 0, 0, { from: 'k', amount: 300 });
+    expect((await file(old)).transferredOut).toBe(300);
+    expect(await carFigure('k')).toBe(500);
+
+    // Moving it to ANOTHER car is still refused: what it gave is logged against TR-600.
+    const first = await file(old);
+    await expect(
+      fleetAccidentService.update(
+        String(old),
+        { version: first.__v, vehicleId: String(cars.m) },
+        ACTOR,
+      ),
+    ).rejects.toMatchObject({ httpStatus: 422 });
+
+    // Naming the registry car that carries its own code is allowed — the form needs it to save.
+    const second = await file(old);
+    const saved = await fleetAccidentService.update(
+      String(old),
+      { version: second.__v, vehicleId: String(cars.k), notes: 'رُبط بالسجل' },
+      ACTOR,
+    );
+    expect(String(saved.vehicleId)).toBe(String(cars.k));
+    expect(saved.transferredOut).toBe(300);
+    expect(await carFigure('k')).toBe(500);
   });
 });

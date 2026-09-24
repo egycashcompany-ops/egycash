@@ -39,7 +39,15 @@ export const fileRemaining = (
  * the clerk is shown and what a transfer is capped by — the same number in both places.
  */
 export const carRemaining = (files: readonly Parameters<typeof fileRemaining>[0][]): number =>
-  toPounds(files.reduce((sum, file) => sum + toPiastres(fileRemaining(file)), 0));
+  // The raw figures summed and rounded ONCE — exactly how the strip sums a filtered set — so a
+  // file entered with fractions of a piastre cannot make the car's figure and the strip's differ.
+  fleetAccidentRemaining({
+    amountCollected: files.reduce((sum, file) => sum + file.amountCollected, 0),
+    companyCost: files.reduce((sum, file) => sum + file.companyCost, 0),
+    paidAmount: files.reduce((sum, file) => sum + file.paidAmount, 0),
+    transferredIn: files.reduce((sum, file) => sum + (file.transferredIn ?? 0), 0),
+    transferredOut: files.reduce((sum, file) => sum + (file.transferredOut ?? 0), 0),
+  });
 
 /** Oldest first: the day of the accident, then when it was recorded, then its id. */
 const olderFirst = (
@@ -94,6 +102,10 @@ export const allocateTransfer = (files: readonly TransferSource[], amount: numbe
     lines.push({ accidentId: file._id, amount: toPounds(take) });
     left -= take;
   }
+  // Only reachable through figures entered with fractions of a piastre, where the per-file
+  // rounding can fall a piastre short of the car's total. Refused rather than drawn short: the
+  // lines must add up to exactly the amount the file is credited with.
+  if (left > 0) return { ok: false, available: toPounds(wanted - left) };
   return { ok: true, lines };
 };
 

@@ -113,6 +113,8 @@ class FleetAccidentService {
   private async planTransfer(
     input: FleetAccidentTransferInput,
     receivingVehicleId: string | null,
+    /** The file taking the amount — never one of its own sources, whatever car it sat on. */
+    receivingAccidentId: string | null,
     by: string,
     byName: string | null,
     session: ClientSession,
@@ -126,7 +128,12 @@ class FleetAccidentService {
     const source = await fleetVehicleRepository.getById(input.fromVehicleId);
     // The lock FIRST, then the read it protects — see `lockForAccidentTransfer`.
     await fleetVehicleRepository.lockForAccidentTransfer(String(source._id), session);
-    const files = await fleetAccidentRepository.liveOfCar(String(source._id), source.code, session);
+    // The receiving file is left out: an edit that moves it OFF the source car in the same save is
+    // leaving that car, so its remaining is not the car's to give — and a file drawing on itself
+    // would count the same amount in and out while the log said the car gave it.
+    const files = (
+      await fleetAccidentRepository.liveOfCar(String(source._id), source.code, session)
+    ).filter((file) => String(file._id) !== receivingAccidentId);
     const allocation = allocateTransfer(files, input.amount);
     if (!allocation.ok) {
       throw new BusinessRuleError(
@@ -242,6 +249,7 @@ class FleetAccidentService {
       const { transfer, out } = await this.planTransfer(
         transferInput,
         input.vehicleId,
+        null,
         by,
         byName,
         session,
@@ -361,35 +369,16 @@ class FleetAccidentService {
     return fleetAccidentRepository.totals(await this.filterFor(query));
   }
 
-  /** Facts edit — audited, version-aware, publishes nothing (§8 lists no accident.updated). */
-  async update(id: string, input: UpdateFleetAccident, by: string): Promise<FleetAccidentDoc> {
-    const current = await fleetAccidentRepository.getById(id);
-    const movesCar = input.vehicleId !== undefined && input.vehicleId !== vehicleIdOf(current);
-    // A file that has GIVEN to other cars keeps its car: what it gave is logged against that car,
-    // and moving the file would move the gift with it while the log still named the old car.
-    if (movesCar && (current.transferredOut ?? 0) > 0) {
-      throw new BusinessRuleError(
-        'other files took from this accident — remove those transfers before moving it to another car',
-      );
-    }
-    // …and a file cannot end up on a car it took from: that car would be paying itself.
-    if (
-      movesCar &&
-      liveTransfers(current).some((transfer) => String(transfer.fromVehicleId) === input.vehicleId)
-    ) {
-      throw new BusinessRuleError('this accident took from that car — it cannot be moved onto it');
-    }
-    if (input.transfer !== undefined) return this.updateWithTransfer(id, input, input.transfer, by);
-    const before = current;
+  /**
+   * The facts an edit sets, as the body names them. `null` on `culpritEmployeeId` CLEARS the
+   * reference — «it turned out to be a third party» is an edit somebody has to be able to make, so
+   * undefined (untouched) and null (cleared) are kept apart.
+   */
+  private factSet(input: UpdateFleetAccident): Partial<FleetAccidentDoc> {
     const set: Partial<FleetAccidentDoc> = {};
-    if (input.vehicleId !== undefined) {
-      await fleetVehicleRepository.getById(input.vehicleId);
-      set.vehicleId = new Types.ObjectId(input.vehicleId);
-    }
+    if (input.vehicleId !== undefined) set.vehicleId = new Types.ObjectId(input.vehicleId);
     if (input.occurredAt !== undefined) set.occurredAt = input.occurredAt;
     if (input.culprit !== undefined) set.culprit = input.culprit;
-    // `null` CLEARS the reference — «it turned out to be a third party» is an edit somebody has
-    // to be able to make, so undefined (untouched) and null (cleared) are kept apart.
     if (input.culpritEmployeeId !== undefined) {
       set.culpritEmployeeId =
         input.culpritEmployeeId === null ? null : new Types.ObjectId(input.culpritEmployeeId);
@@ -399,8 +388,52 @@ class FleetAccidentService {
     if (input.amountCollected !== undefined) set.amountCollected = input.amountCollected;
     if (input.paidAmount !== undefined) set.paidAmount = input.paidAmount;
     if (input.notes !== undefined) set.notes = input.notes ?? null;
+    return set;
+  }
 
-    const updated = await fleetAccidentRepository.updateById(id, set, {
+  /**
+   * May this file move to `input.vehicleId`? Checked on the file as read INSIDE the transaction
+   * that moves it, so a transfer drawing on it at the same moment conflicts with the move rather
+   * than slipping in between the check and the write.
+   */
+  private assertMayMove(
+    file: FleetAccidentDoc,
+    input: UpdateFleetAccident,
+    targetCode: string | null,
+  ): void {
+    if (input.vehicleId === undefined || input.vehicleId === vehicleIdOf(file)) return;
+    // A file kept from the old book, given the registry car that carries its own book code, is
+    // not moving: it is the same car, now named by id — and the form cannot save such a file
+    // without picking that car.
+    if (
+      vehicleIdOf(file) === null &&
+      file.vehicleCode !== null &&
+      file.vehicleCode === targetCode
+    ) {
+      return;
+    }
+    // A file that has GIVEN to other cars keeps its car: what it gave is logged against that car,
+    // and moving the file would move the gift with it while the log still named the old car.
+    if ((file.transferredOut ?? 0) > 0) {
+      throw new BusinessRuleError(
+        'other files took from this accident — remove those transfers before moving it to another car',
+      );
+    }
+    // …and a file cannot end up on a car it took from: that car would be paying itself.
+    if (
+      liveTransfers(file).some((transfer) => String(transfer.fromVehicleId) === input.vehicleId)
+    ) {
+      throw new BusinessRuleError('this accident took from that car — it cannot be moved onto it');
+    }
+  }
+
+  /** Facts edit — audited, version-aware, publishes nothing (§8 lists no accident.updated). */
+  async update(id: string, input: UpdateFleetAccident, by: string): Promise<FleetAccidentDoc> {
+    const before = await fleetAccidentRepository.getById(id);
+    const movesCar = input.vehicleId !== undefined && input.vehicleId !== vehicleIdOf(before);
+    // Moving the car or taking from another car touches transfers — one transaction for it all.
+    if (movesCar || input.transfer !== undefined) return this.updateInTransaction(id, input, by);
+    const updated = await fleetAccidentRepository.updateById(id, this.factSet(input), {
       by,
       version: input.version,
     });
@@ -412,45 +445,42 @@ class FleetAccidentService {
     return updated;
   }
 
-  /** The same edit, plus one more transfer onto this file — one transaction for all of it. */
-  private async updateWithTransfer(
+  /**
+   * An edit that moves the file to another car and/or adds one more transfer onto it.
+   *
+   * The file is read inside the transaction and written by it, so the move rules are checked on
+   * the state the write lands on, and a transfer drawing on this file at the same moment makes one
+   * of the two re-run. The version check is the edit's own: a clerk working from a stale copy is
+   * refused here, transfer and all.
+   */
+  private async updateInTransaction(
     id: string,
     input: UpdateFleetAccident,
-    transferInput: FleetAccidentTransferInput,
     by: string,
   ): Promise<FleetAccidentDoc> {
-    const byName = await nameOf(by);
+    const target =
+      input.vehicleId === undefined ? null : await fleetVehicleRepository.getById(input.vehicleId);
+    const byName = input.transfer === undefined ? null : await nameOf(by);
     const { doc, audits } = await unitOfWork(async (session) => {
       const before = await fleetAccidentRepository.findLive(id, session);
       if (before === null) throw new NotFoundError();
-      if (input.vehicleId !== undefined) await fleetVehicleRepository.getById(input.vehicleId);
-      const receiving = input.vehicleId ?? vehicleIdOf(before);
-      const { transfer, out } = await this.planTransfer(
-        transferInput,
-        receiving,
-        by,
-        byName,
-        session,
-      );
-      const transfersIn = [...(before.transfersIn ?? []), transfer];
-      const set: Partial<FleetAccidentDoc> = {
-        transfersIn,
-        transferredIn: sumLive(liveTransfers({ transfersIn })),
-      };
-      if (input.vehicleId !== undefined) set.vehicleId = new Types.ObjectId(input.vehicleId);
-      if (input.occurredAt !== undefined) set.occurredAt = input.occurredAt;
-      if (input.culprit !== undefined) set.culprit = input.culprit;
-      if (input.culpritEmployeeId !== undefined) {
-        set.culpritEmployeeId =
-          input.culpritEmployeeId === null ? null : new Types.ObjectId(input.culpritEmployeeId);
+      this.assertMayMove(before, input, target?.code ?? null);
+      const set = this.factSet(input);
+      let out: OutDeltas = new Map();
+      if (input.transfer !== undefined) {
+        const planned = await this.planTransfer(
+          input.transfer,
+          input.vehicleId ?? vehicleIdOf(before),
+          id,
+          by,
+          byName,
+          session,
+        );
+        out = planned.out;
+        const transfersIn = [...(before.transfersIn ?? []), planned.transfer];
+        set.transfersIn = transfersIn;
+        set.transferredIn = sumLive(liveTransfers({ transfersIn }));
       }
-      if (input.statement !== undefined) set.statement = input.statement;
-      if (input.companyCost !== undefined) set.companyCost = input.companyCost;
-      if (input.amountCollected !== undefined) set.amountCollected = input.amountCollected;
-      if (input.paidAmount !== undefined) set.paidAmount = input.paidAmount;
-      if (input.notes !== undefined) set.notes = input.notes ?? null;
-      // The version check is the edit's own: a clerk working from a stale copy is refused here,
-      // transfer and all.
       const updated = await fleetAccidentRepository.updateById(id, set, {
         by,
         version: input.version,
@@ -596,13 +626,10 @@ class FleetAccidentService {
    * Every voided transfer stays on its file, as the deleted file itself stays in the database.
    */
   async softDelete(id: string, by: string): Promise<void> {
-    const current = await fleetAccidentRepository.getById(id);
-    const involved = liveTransfers(current).length > 0 || (current.transferredOut ?? 0) > 0;
-    if (!involved) {
-      await fleetAccidentRepository.softDeleteById(id, { by });
-      await auditService.record({ entityRef: entityRef(id), action: 'delete' });
-      return;
-    }
+    // Read and deleted in ONE transaction, always: whether the file is part of a transfer is
+    // decided on the state the delete lands on, so a transfer committing onto it — or drawing on
+    // it — at the same moment conflicts with the delete instead of being left counting a deleted
+    // file.
     const audits = await unitOfWork(async (session) => {
       const file = await fleetAccidentRepository.findLive(id, session);
       if (file === null) throw new NotFoundError();

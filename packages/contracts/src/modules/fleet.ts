@@ -1551,7 +1551,9 @@ export const FleetAccidentTransferInputSchema = z
     fromVehicleId: objectId(),
     amount: egp()
       .positive()
-      .refine((value) => Math.round(value * 100) === value * 100, {
+      // Within a hair of a whole piastre, not EXACTLY one: `19.99 * 100` is 1998.9999999999998 in
+      // binary floating point, and an exact comparison refused every ordinary amount like it.
+      .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, {
         message: 'At most two decimal places',
       }),
   })

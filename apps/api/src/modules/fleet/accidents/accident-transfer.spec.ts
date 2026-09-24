@@ -50,6 +50,12 @@ describe('a file’s and a car’s remaining', () => {
     expect(carRemaining([file('2026-01-01', 1000), file('2026-02-01', -400)])).toBe(600);
   });
 
+  it('sums the car the way the strip does — raw figures, rounded once', () => {
+    // Three files of half a piastre each: the strip reads 0.02 (0.015 rounded), and so must the car.
+    const halves = [0, 1, 2].map(() => file(null, 0.005));
+    expect(carRemaining(halves)).toBe(0.02);
+  });
+
   it('adds to the piastre, with no binary residue', () => {
     expect(carRemaining([file(null, 0.1), file(null, 0.2)])).toBe(0.3);
     expect(addMoney(0.1, 0.2)).toBe(0.3);

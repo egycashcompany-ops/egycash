@@ -691,6 +691,22 @@ describe('transfers between cars', () => {
     expect(FORM).toContain('(!transferring || transfer !== undefined)');
   });
 
+  it('leaves the file being moved off the source car out of what that car can give', () => {
+    // The server drops the receiving file from the source car's files; the figure shown must too.
+    expect(FORM).toContain('accident.vehicleId === fromVehicleId');
+    expect(FORM).toContain('paidAmount: leaving');
+  });
+
+  it('reads a box holding only «.» as nothing typed, never as NaN', () => {
+    expect(FORM).toContain('const taking = Number.isFinite(typed) ? typed : 0;');
+  });
+
+  it('says so when the car’s figures or the log could not be loaded', () => {
+    expect(FORM).toContain("t('fleet.accidents.transfer.loadFailed')");
+    expect(LOG).toContain("t('fleet.accidents.log.loadFailed')");
+    expect(ar('fleet.accidents.log.loadFailed')).not.toBe('fleet.accidents.log.loadFailed');
+  });
+
   it('sends the transfer with the file — on a new one and on an edit', () => {
     expect(FORM).toContain('...(transfer === undefined ? {} : { transfer }),');
     expect(FORM).toContain('if (transfer !== undefined) body.transfer = transfer;');

@@ -251,6 +251,16 @@ export const TrashIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** Two arrows passing each other — the two seats of one car trading places. */
+export const SwapIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M7 7h13" />
+    <polyline points="16 3 20 7 16 11" />
+    <path d="M17 17H4" />
+    <polyline points="8 13 4 17 8 21" />
+  </Base>
+);
+
 export const LinkIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />

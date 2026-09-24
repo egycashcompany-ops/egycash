@@ -43,6 +43,7 @@ import {
   ChevronStartIcon,
   EditIcon,
   ResetIcon,
+  SwapIcon,
   TrashIcon,
 } from '../../../shared/ui/icons';
 import { formatNumber, localized } from '../../../shared/lib/format';
@@ -71,6 +72,7 @@ import {
   hasEdits,
   rowsToSave,
   setMission,
+  swapDrivers,
 } from '../lib/daily-roster-board';
 import { filterDrivers, type DriverSearchRecord } from '../lib/driver-search';
 import { rosterDraftKey, ROSTER_EDITABLE_FIELDS } from '../lib/draft-storage';
@@ -184,7 +186,7 @@ const RosterSlotCell = ({
   const droppable = mayPlan && !row.inMaintenance && !needsFirst;
   const active = over === key;
   return (
-    <div className="min-w-[9rem]">
+    <div className="w-[10.5rem]">
       <div
         data-drop-zone={key}
         data-drop-disabled={
@@ -205,7 +207,7 @@ const RosterSlotCell = ({
           if (id !== '') onDrop(row, slot, id);
         }}
         className={[
-          'flex min-h-[2.5rem] items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors',
+          'flex min-h-[2.5rem] items-center gap-1 rounded-lg border px-1.5 py-1.5 transition-colors',
           // Dashed IS the affordance. A day that takes no drop does not wear one.
           mayPlan ? 'border-dashed' : 'border-solid',
           active
@@ -739,7 +741,7 @@ export const RosterPage = (): JSX.Element => {
   };
 
   const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
+    'rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const slotProps = {
     mayPlan,
@@ -826,7 +828,7 @@ export const RosterPage = (): JSX.Element => {
           // commonest mission there is, needs 104px. Measured, not guessed: a select clips its
           // label internally and reports no overflow.
           <div
-            className="min-w-[11rem]"
+            className="min-w-[10rem]"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -877,7 +879,11 @@ export const RosterPage = (): JSX.Element => {
     {
       key: 'notes',
       header: t('fleet.attendance.fields.notes'),
-      render: (row) => <span className="block max-w-[16rem] truncate">{row.notes ?? '—'}</span>,
+      render: (row) => (
+        <span className="block max-w-[9rem] truncate" title={row.notes ?? undefined}>
+          {row.notes ?? '—'}
+        </span>
+      ),
     },
     ...(mayPlan
       ? [
@@ -899,6 +905,23 @@ export const RosterPage = (): JSX.Element => {
                     <EditIcon className="h-4 w-4" />
                   </button>
                 )}
+                {/* «يخلى السائق الاول السائق الثانى ويخلى السائق الثانى السائق الاول». Offered
+                    only where there IS a pair to trade and a car that may be assigned — the same
+                    draft edit a drag between the two seats makes, saved by «حفظ» like any other. */}
+                {!row.inMaintenance &&
+                  row.driver1EmployeeId !== null &&
+                  row.driver2EmployeeId !== null && (
+                    <button
+                      type="button"
+                      data-swap-drivers={row.vehicleId}
+                      className={actionButton}
+                      aria-label={t('fleet.roster.swapDrivers')}
+                      title={t('fleet.roster.swapDrivers')}
+                      onClick={() => setDraft(() => swapDrivers(draft, row.vehicleId))}
+                    >
+                      <SwapIcon className="h-4 w-4" />
+                    </button>
+                  )}
                 {carriesPlan(row) && (
                   <button
                     type="button"
@@ -1126,18 +1149,21 @@ export const RosterPage = (): JSX.Element => {
           page-scroll away. The give now comes from the shell instead (`PageContainer fullHeight`),
           this grid takes it (`min-h-0 flex-1`), and each region scrolls INSIDE itself: the table
           in its own box, each pool in its own list. */}
-      <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-3">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_20rem]">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the column
             grows to the table's `min-w-[40rem]` and takes the PAGE sideways at 390px. `min-h-0`
             is the same rule in the other axis: without it this column would demand the table's
             full height and push the grid past the screen. */}
-        <div className="flex min-h-0 min-w-0 flex-col xl:col-span-2">
+        <div className="flex min-h-0 min-w-0 flex-col">
           <div className="min-h-0 flex-1 overflow-y-auto">
             <DataTable
               columns={columns}
               rows={rows}
               rowKey={(row) => row.vehicleId}
+              dense
+              tightGutter
+              minColumnWidth={6}
               /*
               A car the workshop holds on THIS DATE, tinted whole.
 

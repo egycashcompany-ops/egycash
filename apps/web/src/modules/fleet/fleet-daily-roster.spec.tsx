@@ -95,11 +95,13 @@ const client = (board: FleetRosterDayDto = BOARD, date = day(1)): QueryClient =>
   // FLEET's own people list — see the fixed-roster spec beside this one.
   qc.setQueryData(
     ['fleet', 'people'],
-    ([
-      [E1, 'أحمد محمد'],
-      [E2, 'محمد محمود'],
-      [E3, 'سعيد سعد'],
-    ] as const).map(([employeeId, fullNameAr]) => ({
+    (
+      [
+        [E1, 'أحمد محمد'],
+        [E2, 'محمد محمود'],
+        [E3, 'سعيد سعد'],
+      ] as const
+    ).map(([employeeId, fullNameAr]) => ({
       employeeId,
       code: 'HR-1',
       fullNameAr,
@@ -740,7 +742,7 @@ describe('the driver lists', () => {
     // page itself is exactly the shell's height and hands that down.
     expect(SOURCE, 'the page is the screen').toContain('<PageContainer fullHeight>');
     expect(SOURCE, 'and the board grid takes that height').toContain(
-      'grid min-h-0 flex-1 gap-6 xl:grid-cols-3',
+      'grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_20rem]',
     );
     expect(SOURCE, 'the list takes what is left').toContain('min-h-0 flex-1 space-y-1');
     expect(SOURCE, 'and no fixed box remains').not.toContain('max-h-[26rem]');
@@ -1107,9 +1109,7 @@ describe('the day’s counters', () => {
     );
     // Named `carriesPlan` and shared with the filter, so the chip cannot count one thing and
     // show another.
-    expect(block, 'and so does the operating tally').toContain(
-      'shown.filter(carriesPlan).length',
-    );
+    expect(block, 'and so does the operating tally').toContain('shown.filter(carriesPlan).length');
     expect(block, 'the memo depends on what the day shows').toContain(
       '[shown, missionTypes.data, locale, t, missionsKey, view]',
     );
@@ -1549,5 +1549,87 @@ describe('a car edited and not yet saved is tinted', () => {
     // a draft equal to its baseline has no changed rows. An explicit "clear the tint" step would
     // be a second source of truth for the same fact, and the two would drift.
     expect(CODE).not.toMatch(/setUnsaved|clearTint|setUnsavedIds/);
+  });
+});
+
+// ── «مش ظاهر ملاحظات إجراءات» — the whole row fits beside the two pools ─────
+//
+// At 1600px with the 240px sidebar the table was handed about 820px and needed about 1025px.
+// In RTL the excess spills off the LEFT edge, and the left edge is where «ملاحظات» and «إجراءات»
+// are drawn — so the two columns the reader acts from were the two they could not see. Measured
+// in a browser after the change: the table and its box are both 914px at 1600, nothing clipped.
+describe('the board fits: notes and actions are on screen', () => {
+  it('gives the pools a fixed width and the table everything else', () => {
+    expect(SOURCE).toContain('xl:grid-cols-[minmax(0,1fr)_20rem]');
+    expect(SOURCE, 'no third of the screen reserved for the pools any more').not.toContain(
+      'xl:grid-cols-3',
+    );
+    expect(SOURCE, 'nor a span that assumed it').not.toContain('xl:col-span-2');
+  });
+
+  it('trims the side gutters the way the other wide Fleet boards do', () => {
+    const at = SOURCE.indexOf('<DataTable');
+    const table = SOURCE.slice(at, at + 400);
+    expect(table).toContain('dense');
+    expect(table).toContain('tightGutter');
+    expect(table).toContain('minColumnWidth={6}');
+  });
+
+  it('holds a driver seat to one width and a long note to a short line', () => {
+    expect(SOURCE, 'the seat is a fixed width').toContain('<div className="w-[10.5rem]">');
+    expect(SOURCE, 'the note truncates').toContain('block max-w-[9rem] truncate');
+    expect(SOURCE, 'and keeps its full text as a tooltip').toContain(
+      'title={row.notes ?? undefined}',
+    );
+  });
+
+  it('still leaves the mission select room for «نقل أموال (يومي)»', () => {
+    // 10rem less the 36px chevron gutter and 12px start padding is 112px; the label needs 104px.
+    const at = SOURCE.indexOf("key: 'mission'");
+    expect(SOURCE.slice(at, SOURCE.indexOf("key: 'driver1'"))).toContain('min-w-[10rem]');
+  });
+});
+
+// ── «زرار اسوتش يبدل بين السواقيين اللى على العربيه» ─────────────────────────
+describe('the row swaps its two drivers', () => {
+  const FULL: FleetRosterDayDto = {
+    ...BOARD,
+    rows: [
+      row(V1, '150', { missionTypeId: MT, driver1EmployeeId: E1, driver2EmployeeId: E3 }),
+      row(V2, '151', { inMaintenance: true, driver1EmployeeId: E2, driver2EmployeeId: E3 }),
+    ],
+  };
+
+  it('offers the swap on a car that has both drivers', () => {
+    const markup = render({ qc: client(FULL) });
+    expect(markup).toContain(`data-swap-drivers="${V1}"`);
+    expect(markup).toContain(t('fleet.roster.swapDrivers'));
+  });
+
+  it('does not offer it on a car the workshop holds — FR-5 refuses the assignment', () => {
+    expect(render({ qc: client(FULL) })).not.toContain(`data-swap-drivers="${V2}"`);
+  });
+
+  it('does not offer it where there is only one driver to trade', () => {
+    expect(render(), 'the default board seats E1 alone on 150').not.toContain('data-swap-drivers=');
+  });
+
+  it('does not offer it on a day that cannot be planned', () => {
+    expect(render({ qc: client(FULL), permissions: ['fleetRoster.view'] })).not.toContain(
+      'data-swap-drivers=',
+    );
+  });
+
+  it('sits in the actions, between edit and delete, and edits the DRAFT only', () => {
+    const edit = SOURCE.indexOf("t('fleet.roster.editAssignment')");
+    const swap = SOURCE.indexOf('data-swap-drivers=');
+    const clear = SOURCE.indexOf("t('fleet.roster.clearAssignment')");
+    expect(edit).toBeGreaterThan(-1);
+    expect(swap).toBeGreaterThan(edit);
+    expect(clear).toBeGreaterThan(swap);
+    expect(SOURCE.slice(swap, swap + 500)).toContain(
+      'setDraft(() => swapDrivers(draft, row.vehicleId))',
+    );
+    expect(SOURCE.slice(swap, swap + 500)).toContain('<SwapIcon');
   });
 });

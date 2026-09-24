@@ -80,8 +80,7 @@ export const assignDriver = (
   return rows.map((row) => {
     // Any OTHER car releases them — that is what makes one driver, one vehicle per date true.
     if (row.vehicleId !== vehicleId) {
-      const releases =
-        row.driver1EmployeeId === employeeId || row.driver2EmployeeId === employeeId;
+      const releases = row.driver1EmployeeId === employeeId || row.driver2EmployeeId === employeeId;
       // A vehicle with nothing to do with this drag comes back UNTOUCHED. `seatOrder` is a
       // normalisation, and run over the whole board it rewrites rows the user never edited —
       // which puts them in the save payload, where the server re-validates them against rules
@@ -104,6 +103,25 @@ export const assignDriver = (
     // cell refuses that drop before it reaches here; this makes the rule hold for the dialog too.
     return seatOrder(next);
   });
+};
+
+/**
+ * «زرار اسوتش يبدل بين السواقيين اللى على العربيه» — the first driver becomes the second and the
+ * second the first, on ONE car, in the draft.
+ *
+ * The same swap a drag from one seat onto the other already makes, named so the row's button and
+ * the drag cannot mean two different things. A car without BOTH seats taken has nothing to trade
+ * and comes back unchanged, and so does a car the workshop holds — `assignDriver` refuses it.
+ */
+export const swapDrivers = (
+  rows: readonly FleetRosterRowDto[],
+  vehicleId: string,
+): FleetRosterRowDto[] => {
+  const row = rows.find((candidate) => candidate.vehicleId === vehicleId);
+  if (row === undefined || row.driver1EmployeeId === null || row.driver2EmployeeId === null) {
+    return [...rows];
+  }
+  return assignDriver(rows, vehicleId, 'driver1EmployeeId', row.driver2EmployeeId);
 };
 
 /**

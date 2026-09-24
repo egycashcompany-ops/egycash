@@ -4136,6 +4136,7 @@ const en: Record<string, string> = {
   'fleet.roster.assigned': 'Assigned',
   'fleet.roster.editAssignment': 'Edit assignment',
   'fleet.roster.clearAssignment': 'Clear assignment',
+  'fleet.roster.swapDrivers': 'Swap first and second driver',
   'fleet.roster.clearTitle': 'Clear assignment — {{code}}',
   'fleet.roster.clearBody':
     "This clears the day's mission and drivers for this vehicle. The planning history stays in the audit log.",
@@ -10994,6 +10995,7 @@ const ar: Record<string, string> = {
   'fleet.roster.assigned': 'معيّنة',
   'fleet.roster.editAssignment': 'تعديل التعيين',
   'fleet.roster.clearAssignment': 'إلغاء التعيين',
+  'fleet.roster.swapDrivers': 'تبديل السائق الأول والثاني',
   'fleet.roster.clearTitle': 'إلغاء التعيين — {{code}}',
   'fleet.roster.clearBody':
     'سيتم مسح مهمة اليوم وسائقي هذه السيارة لهذا التاريخ. يبقى تاريخ التخطيط محفوظاً في سجل التدقيق.',

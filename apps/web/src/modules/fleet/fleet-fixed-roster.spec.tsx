@@ -1497,7 +1497,9 @@ describe('the standing board wears the daily board’s bar', () => {
       ['daily', DAILY],
     ] as const) {
       const strip = source.indexOf('mb-4 flex flex-wrap items-center gap-1.5');
-      const grid = source.indexOf('grid min-h-0 flex-1 gap-6');
+      // The board grid's opening, whatever its gutter: the daily board's is `gap-3` since the
+      // pools took a fixed width so «ملاحظات» and «إجراءات» fit beside them.
+      const grid = source.indexOf('grid min-h-0 flex-1 gap-');
       expect(strip, `${name}: the strip is there`).toBeGreaterThan(-1);
       expect(grid, `${name}: the grid is there`).toBeGreaterThan(-1);
       expect(strip, `${name}: the strip is ABOVE the grid`).toBeLessThan(grid);

@@ -26,7 +26,7 @@ import { userService } from '../../../platform/users';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetAccidentRepository } from './accident.repository';
-import { vehicleIdOf } from '../fleet.mappers';
+import { culpritIdsOf, vehicleIdOf } from '../fleet.mappers';
 import { type FleetAccidentDoc, type FleetAccidentTransfer } from './accident.model';
 import {
   addMoney,
@@ -45,6 +45,7 @@ const snapshot = (doc: FleetAccidentDoc) => ({
   occurredAt: doc.occurredAt,
   culprit: doc.culprit,
   culpritEmployeeId: doc.culpritEmployeeId === null ? null : String(doc.culpritEmployeeId),
+  culpritEmployeeIds: culpritIdsOf(doc),
   statement: doc.statement,
   companyCost: doc.companyCost,
   amountCollected: doc.amountCollected,
@@ -56,6 +57,29 @@ const snapshot = (doc: FleetAccidentDoc) => ({
   status: doc.status,
   notes: doc.notes,
 });
+
+/**
+ * The drivers at fault, as a write sets them — «اكتر من سواق فى المره الواحده».
+ *
+ * `culpritEmployeeIds` sent is the WHOLE list, and the single id becomes its first so everything
+ * that reads one driver still reads the right one. Only the single id sent (an older client) is a
+ * list of one. Neither sent leaves both untouched on an edit.
+ */
+const culpritFields = (input: {
+  culpritEmployeeId?: string | null | undefined;
+  culpritEmployeeIds?: string[] | undefined;
+}): Pick<Partial<FleetAccidentDoc>, 'culpritEmployeeId' | 'culpritEmployeeIds'> => {
+  if (input.culpritEmployeeIds !== undefined) {
+    const ids = [...new Set(input.culpritEmployeeIds)].map((id) => new Types.ObjectId(id));
+    return { culpritEmployeeId: ids[0] ?? null, culpritEmployeeIds: ids };
+  }
+  if (input.culpritEmployeeId !== undefined) {
+    const id =
+      input.culpritEmployeeId === null ? null : new Types.ObjectId(input.culpritEmployeeId);
+    return { culpritEmployeeId: id, culpritEmployeeIds: id === null ? [] : [id] };
+  }
+  return {};
+};
 
 /** An audit to record once the transaction has committed — `auditService` cannot join one. */
 interface PendingAudit {
@@ -217,8 +241,7 @@ class FleetAccidentService {
         vehicleId: new Types.ObjectId(input.vehicleId),
         occurredAt: input.occurredAt,
         culprit: input.culprit,
-        culpritEmployeeId:
-          input.culpritEmployeeId == null ? null : new Types.ObjectId(input.culpritEmployeeId),
+        ...culpritFields(input),
         statement: input.statement,
         companyCost: input.companyCost,
         amountCollected: input.amountCollected,
@@ -259,8 +282,7 @@ class FleetAccidentService {
           vehicleId: new Types.ObjectId(input.vehicleId),
           occurredAt: input.occurredAt,
           culprit: input.culprit,
-          culpritEmployeeId:
-            input.culpritEmployeeId == null ? null : new Types.ObjectId(input.culpritEmployeeId),
+          ...culpritFields(input),
           statement: input.statement,
           companyCost: input.companyCost,
           amountCollected: input.amountCollected,
@@ -370,8 +392,8 @@ class FleetAccidentService {
   }
 
   /**
-   * The facts an edit sets, as the body names them. `null` on `culpritEmployeeId` CLEARS the
-   * reference — «it turned out to be a third party» is an edit somebody has to be able to make, so
+   * The facts an edit sets, as the body names them. `null` on `culpritEmployeeId` (or an empty
+   * `culpritEmployeeIds`) CLEARS the reference — «it turned out to be a third party» is an edit somebody has to be able to make, so
    * undefined (untouched) and null (cleared) are kept apart.
    */
   private factSet(input: UpdateFleetAccident): Partial<FleetAccidentDoc> {
@@ -379,10 +401,7 @@ class FleetAccidentService {
     if (input.vehicleId !== undefined) set.vehicleId = new Types.ObjectId(input.vehicleId);
     if (input.occurredAt !== undefined) set.occurredAt = input.occurredAt;
     if (input.culprit !== undefined) set.culprit = input.culprit;
-    if (input.culpritEmployeeId !== undefined) {
-      set.culpritEmployeeId =
-        input.culpritEmployeeId === null ? null : new Types.ObjectId(input.culpritEmployeeId);
-    }
+    Object.assign(set, culpritFields(input));
     if (input.statement !== undefined) set.statement = input.statement;
     if (input.companyCost !== undefined) set.companyCost = input.companyCost;
     if (input.amountCollected !== undefined) set.amountCollected = input.amountCollected;

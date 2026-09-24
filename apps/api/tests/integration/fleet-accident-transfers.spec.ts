@@ -404,3 +404,32 @@ describe('a file kept from the old book that a transfer drew on', () => {
     expect(await carFigure('k')).toBe(500);
   });
 });
+
+describe('several drivers on one accident — «اكتر من سواق فى المره الواحده»', () => {
+  it('files every driver, keeps the first as the single one, and is found by any of them', async () => {
+    const first = new Types.ObjectId().toString();
+    const second = new Types.ObjectId().toString();
+    const doc = await fleetAccidentService.create(
+      {
+        vehicleId: String(cars.k),
+        occurredAt: day('2026-09-10'),
+        culprit: 'سائق أ، سائق ب',
+        culpritEmployeeIds: [first, second],
+        statement: 'حادث بسائقين',
+        amountCollected: 0,
+        companyCost: 0,
+        paidAmount: 0,
+      },
+      ACTOR,
+    );
+    expect((doc.culpritEmployeeIds ?? []).map(String)).toEqual([first, second]);
+    expect(String(doc.culpritEmployeeId)).toBe(first);
+    const bySecond = await fleetAccidentService.list({
+      page: 1,
+      pageSize: 25,
+      sortDir: 'desc',
+      culpritEmployeeId: [second],
+    } as Parameters<typeof fleetAccidentService.list>[0]);
+    expect(bySecond.items.map((item) => String(item._id))).toEqual([String(doc._id)]);
+  });
+});

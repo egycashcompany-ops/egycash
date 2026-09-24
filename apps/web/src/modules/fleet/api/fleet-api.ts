@@ -393,5 +393,5 @@ export const setLicensingMark = (body: SetFleetLicensingMark): Promise<FleetLice
  * `FleetPersonDto`. Unpaginated, because every consumer is a lookup table a screen holds while it
  * renders, and «who is this id» must not depend on which page happened to be fetched.
  */
-export const listFleetPeople = (): Promise<FleetPersonDto[]> =>
-  get<FleetPersonDto[]>('/fleet/people');
+export const listFleetPeople = (includeExited = false): Promise<FleetPersonDto[]> =>
+  get<FleetPersonDto[]>(`/fleet/people${includeExited ? '?includeExited=true' : ''}`);

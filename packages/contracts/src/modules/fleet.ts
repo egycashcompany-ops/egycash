@@ -1516,8 +1516,13 @@ export interface FleetAccidentDto {
   /** `null` only on a file from the old book that recorded no date. Nothing else may leave it out. */
   occurredAt: string | null;
   culprit: string;
-  /** The DRIVER at fault, when it was one of ours. `null` for a third party. */
+  /** The DRIVER at fault, when it was one of ours. `null` for a third party. The first of `culpritEmployeeIds`. */
   culpritEmployeeId: string | null;
+  /**
+   * EVERY driver of ours at fault — «يقدر يختار اكتر من سواق فى المره الواحده». Empty for a third
+   * party. A file from before several could be picked reads as its one driver.
+   */
+  culpritEmployeeIds: string[];
   statement: string;
   companyCost: number;
   amountCollected: number;
@@ -1532,6 +1537,11 @@ export interface FleetAccidentDto {
    * and the amount is drawn from that car's files oldest first — this is this file's share.
    */
   transferredOut: number;
+  /**
+   * Does this file's CAR have at least one transfer in its log, in either direction? The row's
+   * «السجل» button is yellow when it does — «لو السجل فى عمليه واحده على الاقل يخليه باللون الاصفر».
+   */
+  carHasTransfers: boolean;
   status: FleetAccidentStatus;
   notes: string | null;
   version: number;
@@ -1581,6 +1591,11 @@ const accidentCore = {
    * who share a first name.
    */
   culpritEmployeeId: objectId().nullish(),
+  /**
+   * …or SEVERAL drivers. Sent, it is the whole list and `culpritEmployeeId` becomes its first;
+   * `culprit` then carries all their names.
+   */
+  culpritEmployeeIds: z.array(objectId()).max(20).optional(),
   statement: z.string().trim().min(1).max(2000),
   companyCost: egp(),
   amountCollected: egp(),
@@ -2669,6 +2684,15 @@ export const compareFleetVehicleCodes = (a: string | null, b: string | null): nu
 // FR-11 IS UNTOUCHED. Fleet still does not OWN people: it does not write these facts, does not
 // keep them, and every one of them is HR's. What changes is which grant a reader needs to see the
 // ones Fleet already shows.
+
+/**
+ * GET /fleet/people. `includeExited=true` adds the drivers who have LEFT — asked by the violations
+ * screen only, where a fine from before someone resigned is still theirs.
+ */
+export const FleetPeopleQuerySchema = z
+  .object({ includeExited: z.enum(['true', 'false']).optional() })
+  .strict();
+export type FleetPeopleQuery = z.infer<typeof FleetPeopleQuerySchema>;
 
 export interface FleetPersonDto {
   employeeId: string;

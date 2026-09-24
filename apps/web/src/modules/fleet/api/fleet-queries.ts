@@ -760,10 +760,12 @@ export const useSetLicensingMark = () => {
  * Long `staleTime` because a name is not a figure — it changes when somebody is hired, not while
  * a dispatcher reads a page.
  */
-export const useFleetPeople = (enabled = true) =>
+export const useFleetPeople = (enabled = true, includeExited = false) =>
   useQuery({
-    queryKey: fleetKeys.people,
-    queryFn: api.listFleetPeople,
+    // The wider list under its own key, BENEATH the usual one, so an invalidation of the people
+    // refreshes both and neither screen is ever handed the other's list.
+    queryKey: includeExited ? [...fleetKeys.people, 'withExited'] : fleetKeys.people,
+    queryFn: () => api.listFleetPeople(includeExited),
     staleTime: 5 * 60_000,
     enabled,
   });

@@ -116,7 +116,9 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     const res = await this.model
       .updateMany(
         { 'employment.managerId': new Types.ObjectId(fromUserId), isDeleted: false },
-        { $set: { 'employment.managerId': toUserId === null ? null : new Types.ObjectId(toUserId) } },
+        {
+          $set: { 'employment.managerId': toUserId === null ? null : new Types.ObjectId(toUserId) },
+        },
       )
       .exec();
     return res.modifiedCount;
@@ -199,7 +201,10 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     const valid = ids.filter((id) => Types.ObjectId.isValid(id));
     if (valid.length === 0) return new Set<string>();
     const rows = await this.model
-      .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, status: 'exited' }, { _id: 1 })
+      .find(
+        { _id: { $in: valid.map((id) => new Types.ObjectId(id)) }, status: 'exited' },
+        { _id: 1 },
+      )
       .lean<{ _id: Types.ObjectId }[]>()
       .exec();
     return new Set(rows.map((row) => String(row._id)));
@@ -271,9 +276,15 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
    * of choices is the set that exists. A hardcoded list would silently fail to match "مسيحي" the
    * day somebody wrote "مسيحى".
    */
-  async distinctPersonal(field: 'religion' | 'nationality', scope: ScopeSelector): Promise<string[]> {
+  async distinctPersonal(
+    field: 'religion' | 'nationality',
+    scope: ScopeSelector,
+  ): Promise<string[]> {
     const values = await this.model
-      .distinct(`personal.${field}`, this.baseFilter(scope, { status: { $in: [...EMPLOYED_STATUSES] } }))
+      .distinct(
+        `personal.${field}`,
+        this.baseFilter(scope, { status: { $in: [...EMPLOYED_STATUSES] } }),
+      )
       .exec();
     return (values as unknown[])
       .filter((value): value is string => typeof value === 'string' && value.trim() !== '')
@@ -311,6 +322,22 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       .find({
         'employment.jobTitleId': { $in: jobTitleIds.map((id) => new Types.ObjectId(id)) },
         status: { $in: [...EMPLOYED_STATUSES] },
+        isDeleted: false,
+      })
+      .lean<EmployeeDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Everyone holding one of these job titles, EMPLOYED OR NOT — the same seats with the people
+   * who have left them. For a caller recording history against a person who may have since exited
+   * (Fleet's violations). Soft-deleted rows are not included.
+   */
+  async listByJobTitlesAnyStatusSystem(jobTitleIds: readonly string[]): Promise<EmployeeDoc[]> {
+    if (jobTitleIds.length === 0) return [];
+    return this.model
+      .find({
+        'employment.jobTitleId': { $in: jobTitleIds.map((id) => new Types.ObjectId(id)) },
         isDeleted: false,
       })
       .lean<EmployeeDoc[]>()
@@ -395,11 +422,10 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     const clauses: FilterQuery<EmployeeDoc>[] = [];
     if (f.status !== undefined) clauses.push({ status: f.status });
     if (f.employed !== undefined)
-      clauses.push(
-        f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' },
-      );
+      clauses.push(f.employed ? { status: { $in: [...EMPLOYED_STATUSES] } } : { status: 'exited' });
     if (f.origin !== undefined) clauses.push({ origin: f.origin });
-    if (f.applicantId !== undefined) clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
+    if (f.applicantId !== undefined)
+      clauses.push({ applicantId: new Types.ObjectId(f.applicantId) });
     if (f.jobOfferId !== undefined) clauses.push({ jobOfferId: new Types.ObjectId(f.jobOfferId) });
     if (f.branchId !== undefined)
       clauses.push({ branchId: { $in: f.branchId.map((id) => new Types.ObjectId(id)) } });
@@ -413,7 +439,8 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
       });
     if (f.managerId !== undefined)
       clauses.push({ 'employment.managerId': new Types.ObjectId(f.managerId) });
-    if (f.employmentType !== undefined) clauses.push({ 'employment.employmentType': f.employmentType });
+    if (f.employmentType !== undefined)
+      clauses.push({ 'employment.employmentType': f.employmentType });
     if (f.governorate !== undefined && f.governorate.trim() !== '') {
       const re = new RegExp(escapeRegExp(f.governorate.trim()), 'i');
       // Mirrors how the address is READ — `officialAddress ?? currentAddress` — rather than
@@ -445,10 +472,7 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
         $or: [
           anyPart('personal.officialAddress'),
           {
-            $and: [
-              { 'personal.officialAddress': null },
-              anyPart('personal.currentAddress'),
-            ],
+            $and: [{ 'personal.officialAddress': null }, anyPart('personal.currentAddress')],
           },
         ],
       } as FilterQuery<EmployeeDoc>);

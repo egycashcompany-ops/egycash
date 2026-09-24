@@ -83,7 +83,7 @@ describe('no Fleet screen reads HR’s directory to print a name', () => {
 describe('the roster it reads instead', () => {
   it('is Fleet’s own endpoint, under Fleet’s own grant', () => {
     const api = code(join(HERE, 'api/fleet-api.ts'));
-    expect(api, 'a Fleet endpoint').toContain("get<FleetPersonDto[]>('/fleet/people')");
+    expect(api, 'a Fleet endpoint').toContain('get<FleetPersonDto[]>(`/fleet/people$');
     const names = code(join(HERE, 'components/EmployeeName.tsx'));
     expect(names, 'gated on the drivers’ view grant').toContain("can('fleetDriver.view')");
   });
@@ -94,5 +94,30 @@ describe('the roster it reads instead', () => {
     const names = code(join(HERE, 'components/EmployeeName.tsx'));
     expect(names, 'one query').toContain('useFleetPeople(');
     expect(names, 'no fan-out').not.toContain('useQueries(');
+  });
+});
+
+// «السواقيين اللى موجودين او مشيوا من الشغل الاتنين مع بعض بس فى الشاشه دى بس».
+describe('the violations screen names departed drivers too — and only it', () => {
+  it('asks for the wider list under its own key', () => {
+    const api = code(join(HERE, 'api/fleet-api.ts'));
+    expect(api).toContain("includeExited ? '?includeExited=true' : ''");
+    const queries = code(join(HERE, 'api/fleet-queries.ts'));
+    expect(queries).toContain(
+      "includeExited ? [...fleetKeys.people, 'withExited'] : fleetKeys.people",
+    );
+  });
+
+  it('is switched on by the violations page and nowhere else', () => {
+    const pages = [
+      'ViolationsPage.tsx',
+      'AccidentsPage.tsx',
+      'RosterPage.tsx',
+      'DriversListPage.tsx',
+    ];
+    for (const page of pages) {
+      const source = code(join(HERE, 'pages', page));
+      expect(source.includes('<WithExitedDrivers>'), page).toBe(page === 'ViolationsPage.tsx');
+    }
   });
 });

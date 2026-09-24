@@ -44,8 +44,16 @@ const toDirectoryEmployee = (employee: {
   personal: {
     fullNameAr: string;
     contact?: { primaryPhone?: string | null } | null;
-    officialAddress?: { governorate?: string | null; line1?: string | null; city?: string | null } | null;
-    currentAddress?: { governorate?: string | null; line1?: string | null; city?: string | null } | null;
+    officialAddress?: {
+      governorate?: string | null;
+      line1?: string | null;
+      city?: string | null;
+    } | null;
+    currentAddress?: {
+      governorate?: string | null;
+      line1?: string | null;
+      city?: string | null;
+    } | null;
   };
 }): DirectoryEmployee => {
   const address = employee.personal.officialAddress ?? employee.personal.currentAddress ?? null;
@@ -87,8 +95,13 @@ export const registerHrDirectorySeams = (): void => {
   // The same LIST question along the other axis: "who holds these seats". Fleet's drivers registry
   // is every employee whose job title requires a driving test, so the roster is the org chart
   // rather than a list Fleet keeps and has to remember to update.
-  registerEmployeesByJobTitlesLookup(async (jobTitleIds) => {
-    const employees = await employeeRepository.listByJobTitlesSystem(jobTitleIds);
+  registerEmployeesByJobTitlesLookup(async (jobTitleIds, options) => {
+    // `includeExited`: the same seats, with the people who have since left — a screen that
+    // records history (a fine from last year) still has to be able to name them.
+    const employees =
+      options?.includeExited === true
+        ? await employeeRepository.listByJobTitlesAnyStatusSystem(jobTitleIds)
+        : await employeeRepository.listByJobTitlesSystem(jobTitleIds);
     return employees.map(toDirectoryEmployee);
   });
 
@@ -151,12 +164,7 @@ export const registerHrDirectorySeams = (): void => {
   // per row; the shape is the single lookup's, so a consumer reads one type either way.
   registerEmployeeBatchLookup(async (employeeIds) => {
     const docs = await employeeRepository.findByIdsSystem([...new Set(employeeIds)]);
-    return new Map(
-      docs.map((employee) => [
-        String(employee._id),
-        toDirectoryEmployee(employee),
-      ]),
-    );
+    return new Map(docs.map((employee) => [String(employee._id), toDirectoryEmployee(employee)]));
   });
 
   // WHERE the names live, for a consumer that has to ORDER by one. HR declares the join; Fleet

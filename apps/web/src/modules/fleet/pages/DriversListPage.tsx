@@ -252,7 +252,7 @@ export const DriversListPage = (): JSX.Element => {
   // keeping the driving ones worked only while the whole catalogue fitted in that page: a company
   // with more than a hundred job titles lost the seats that fell off the end, the narrowing below
   // silently became "ask HR about everybody", and every text filter on this bar went back to
-   /**
+  /**
    * The driving seats — kept for ONE thing: the banner that says «no job title carries the
    * driving-test flag», which is why this registry would be empty.
    *
@@ -389,7 +389,7 @@ export const DriversListPage = (): JSX.Element => {
     try {
       const roster = await queryClient.fetchQuery({
         queryKey: ['fleet', 'people'],
-        queryFn: fleetApi.listFleetPeople,
+        queryFn: () => fleetApi.listFleetPeople(),
         staleTime: 5 * 60_000,
       });
       return new Map(roster.map((person) => [person.employeeId, person]));
@@ -427,45 +427,43 @@ export const DriversListPage = (): JSX.Element => {
       fleetApi.listDrivers({ ...filters, page: pageNo, pageSize: size }),
     );
     const people = await fleetPeople();
-    saveSheet(
-      {
-        name: t('fleet.nav.drivers'),
-        serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.drivers.columns.driver'),
-          t('fleet.drivers.columns.employeeCode'),
-          t('fleet.drivers.columns.jobTitle'),
-          t('fleet.drivers.columns.branch'),
-          t('fleet.drivers.columns.address'),
-          t('fleet.drivers.columns.governorate'),
-          t('fleet.drivers.columns.phone'),
-          t('fleet.drivers.columns.hiredAt'),
-          t('fleet.drivers.columns.specialization'),
-          t('fleet.drivers.columns.licenseType'),
-          t('fleet.drivers.columns.licenseExpiresAt'),
-          t('fleet.drivers.columns.licenseImage'),
-        ],
-        rows: all.map((d) => {
-          const person = people.get(d.employeeId);
-          const { profile } = d;
-          const expiry = profile?.licenseExpiresAt ?? null;
-          return [
-            person?.fullNameAr ?? '',
-            person?.code ?? '',
-            profile === null ? '' : catalogText(profile.jobId, jobName),
-            person?.branchId == null ? '' : (branchName.get(person.branchId) ?? ''),
-            person?.address ?? '',
-            person?.governorate ?? '',
-            person?.phone ?? '',
-            person?.hiredAt == null ? '' : formatDate(person.hiredAt, locale),
-            profile === null ? '' : catalogText(profile.specializationId, specializationName),
-            profile === null ? '' : catalogText(profile.licenseTypeId, licenseTypeName),
-            expiry === null ? '' : formatDate(expiry, locale),
-            profile !== null && profile.licenseImage !== null ? t('common.yes') : t('common.no'),
-          ];
-        }),
-      },
-    );
+    saveSheet({
+      name: t('fleet.nav.drivers'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.drivers.columns.driver'),
+        t('fleet.drivers.columns.employeeCode'),
+        t('fleet.drivers.columns.jobTitle'),
+        t('fleet.drivers.columns.branch'),
+        t('fleet.drivers.columns.address'),
+        t('fleet.drivers.columns.governorate'),
+        t('fleet.drivers.columns.phone'),
+        t('fleet.drivers.columns.hiredAt'),
+        t('fleet.drivers.columns.specialization'),
+        t('fleet.drivers.columns.licenseType'),
+        t('fleet.drivers.columns.licenseExpiresAt'),
+        t('fleet.drivers.columns.licenseImage'),
+      ],
+      rows: all.map((d) => {
+        const person = people.get(d.employeeId);
+        const { profile } = d;
+        const expiry = profile?.licenseExpiresAt ?? null;
+        return [
+          person?.fullNameAr ?? '',
+          person?.code ?? '',
+          profile === null ? '' : catalogText(profile.jobId, jobName),
+          person?.branchId == null ? '' : (branchName.get(person.branchId) ?? ''),
+          person?.address ?? '',
+          person?.governorate ?? '',
+          person?.phone ?? '',
+          person?.hiredAt == null ? '' : formatDate(person.hiredAt, locale),
+          profile === null ? '' : catalogText(profile.specializationId, specializationName),
+          profile === null ? '' : catalogText(profile.licenseTypeId, licenseTypeName),
+          expiry === null ? '' : formatDate(expiry, locale),
+          profile !== null && profile.licenseImage !== null ? t('common.yes') : t('common.no'),
+        ];
+      }),
+    });
   };
 
   const columns: Column<FleetDriverRowDto>[] = [
@@ -507,17 +505,13 @@ export const DriversListPage = (): JSX.Element => {
     {
       key: 'address',
       header: t('fleet.drivers.columns.address'),
-      render: (d) => (
-        <EmployeeFact employeeId={d.employeeId} pick={(e) => e.address} />
-      ),
+      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.address} />,
     },
     {
       key: 'governorate',
       header: t('fleet.drivers.columns.governorate'),
       sortable: true,
-      render: (d) => (
-        <EmployeeFact employeeId={d.employeeId} pick={(e) => e.governorate} />
-      ),
+      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.governorate} />,
     },
     {
       key: 'phone',

@@ -16,6 +16,7 @@ import { jobTitleRepository } from '../../../platform/organization/job-titles/jo
 import {
   listDirectoryEmployeesByJobTitles,
   type DirectoryEmployee,
+  type JobTitlesLookupOptions,
 } from '../../../platform/directory';
 
 /**
@@ -29,11 +30,19 @@ import {
  * Empty when no job title carries the flag — the honest answer, and the one the registry screen
  * names out loud rather than showing as an empty fleet.
  */
-export const drivingSeatRoster = async (): Promise<DirectoryEmployee[]> => {
+export const drivingSeatRoster = async (
+  options: JobTitlesLookupOptions = {},
+): Promise<DirectoryEmployee[]> => {
   const jobTitleIds = await jobTitleRepository.idsRequiringDrivingTestSystem();
-  return listDirectoryEmployeesByJobTitles(jobTitleIds);
+  return listDirectoryEmployeesByJobTitles(jobTitleIds, options);
 };
 
-/** Just the ids, for a caller that only asks «is this person a driver». */
-export const drivingSeatEmployeeIds = async (): Promise<string[]> =>
-  (await drivingSeatRoster()).map((employee) => employee.employeeId);
+/**
+ * Just the ids, for a caller that only asks «is this person a driver».
+ *
+ * `includeExited` widens it to the drivers who have LEFT — only the violations screen asks that
+ * («السواقيين اللى موجودين او مشيوا من الشغل الاتنين مع بعض بس فى الشاشه دى بس»).
+ */
+export const drivingSeatEmployeeIds = async (
+  options: JobTitlesLookupOptions = {},
+): Promise<string[]> => (await drivingSeatRoster(options)).map((employee) => employee.employeeId);

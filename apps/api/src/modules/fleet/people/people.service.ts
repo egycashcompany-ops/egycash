@@ -32,8 +32,10 @@ class FleetPeopleService {
    * still that driver's, and a cell that fell back to a raw id the day somebody resigned would be
    * losing history rather than tidying it.
    */
-  async list(): Promise<FleetPersonDto[]> {
-    const roster = await drivingSeatRoster();
+  async list(options: { includeExited?: boolean } = {}): Promise<FleetPersonDto[]> {
+    const roster = await drivingSeatRoster(
+      options.includeExited === true ? { includeExited: true } : {},
+    );
     return roster.map((employee) => ({
       employeeId: employee.employeeId,
       code: employee.code,

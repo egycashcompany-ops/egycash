@@ -208,6 +208,35 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
       .exec();
   }
 
+  /**
+   * Which of these cars have ANY transfer on their log — a live file of theirs that took or gave.
+   * Answered as the registry ids and the old-book codes of those files, for one page at a time.
+   */
+  async carsWithTransfers(
+    vehicleIds: readonly string[],
+    codes: readonly string[],
+  ): Promise<{ ids: Set<string>; codes: Set<string> }> {
+    if (vehicleIds.length === 0 && codes.length === 0) return { ids: new Set(), codes: new Set() };
+    const rows = await this.model
+      .find({
+        isDeleted: false,
+        $and: [
+          byVehicleOrBookCode<FleetAccidentDoc>([...vehicleIds], [...codes]),
+          { $or: [{ transferredIn: { $gt: 0 } }, { transferredOut: { $gt: 0 } }] },
+        ],
+      })
+      .select({ vehicleId: 1, vehicleCode: 1 })
+      .lean<Pick<FleetAccidentDoc, 'vehicleId' | 'vehicleCode'>[]>()
+      .exec();
+    const ids = new Set<string>();
+    const found = new Set<string>();
+    for (const row of rows) {
+      if (row.vehicleId !== null) ids.add(String(row.vehicleId));
+      if (row.vehicleCode !== null) found.add(row.vehicleCode);
+    }
+    return { ids, codes: found };
+  }
+
   /** Live files holding a live transfer FROM this car — «ادت ل مين». */
   async takersFrom(vehicleId: string): Promise<FleetAccidentDoc[]> {
     return this.model
@@ -299,10 +328,10 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
     // Escaped, so `.` and `*` are the characters the reader typed rather than a pattern they did
     // not write — a search box is not a regex console, and an unescaped `.*` would match all.
     if (query.culpritEmployeeId !== undefined) {
+      const ids = query.culpritEmployeeId.map((id) => new Types.ObjectId(id));
+      // Either field: a file names its drivers in the list, an older one in the single id.
       clauses.push({
-        culpritEmployeeId: {
-          $in: query.culpritEmployeeId.map((id) => new Types.ObjectId(id)),
-        },
+        $or: [{ culpritEmployeeId: { $in: ids } }, { culpritEmployeeIds: { $in: ids } }],
       });
     }
     if (query.culprit !== undefined) {

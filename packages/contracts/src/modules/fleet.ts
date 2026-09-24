@@ -2023,6 +2023,19 @@ export interface FleetViolationRollupDto {
   outstandingVehicleAmount: number;
   outstandingDriverAmount: number;
   outstandingTotalAmount: number;
+  /**
+   * …AND HOW MANY FINES THAT IS. The counts beside the outstanding money, for the same reason the
+   * full figures carry counts: they sit in the same row, and a line reading «٠ مخالفات · ٥٢٣٫٧٠»
+   * contradicts itself.
+   *
+   * The PRINTED sheet is what needs them. «لما باجى اطبع بيجيب اللى خلص واللى مخلصش ف الجدول لا
+   * انا عاوز الجدول يجيب اللى مخلصش بس يعنى هيبقوا 3 كدا مش 8» — the signed document reports what
+   * is still owed, so its table has to count what is still owed too, and the screen goes on
+   * showing both halves.
+   */
+  outstandingVehicleCount: number;
+  outstandingDriverCount: number;
+  outstandingTotalCount: number;
   totalBeforeGrievance: number;
   /**
    * How many of this (vehicle, year)'s COMPANY rows exist, and how many have been collected.

@@ -31,6 +31,9 @@ export interface ViolationYearSums {
    */
   outstandingVehicleAmount: number;
   outstandingDriverAmount: number;
+  /** The same pair as counts — what the printed sheet's table reports. */
+  outstandingVehicleCount: number;
+  outstandingDriverCount: number;
   /** Documents in the group, and how many of them are ticked — the board's group tick reads these. */
   rowCount: number;
   collectedCount: number;
@@ -340,6 +343,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       driverAmount: number;
       outstandingVehicleAmount: number;
       outstandingDriverAmount: number;
+      outstandingVehicleCount: number;
+      outstandingDriverCount: number;
       rowCount: number;
       collectedCount: number;
     }>([
@@ -415,6 +420,22 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
               ],
             },
           },
+          // The COUNTS of the same two, for the signed sheet's table. Counted the same way the
+          // full figures are — a statement row carries `count` fines, a driver row is one.
+          outstandingVehicleCount: {
+            $sum: {
+              $cond: [
+                { $and: [{ $eq: ['$kind', 'vehicle'] }, { $not: ['$collected'] }] },
+                { $ifNull: ['$count', 0] },
+                0,
+              ],
+            },
+          },
+          outstandingDriverCount: {
+            $sum: {
+              $cond: [{ $and: [{ $eq: ['$kind', 'driver'] }, { $not: ['$collected'] }] }, 1, 0],
+            },
+          },
           outstandingDriverAmount: {
             $sum: {
               $cond: [
@@ -449,6 +470,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
       driverAmount: row.driverAmount,
       outstandingVehicleAmount: row.outstandingVehicleAmount,
       outstandingDriverAmount: row.outstandingDriverAmount,
+      outstandingVehicleCount: row.outstandingVehicleCount,
+      outstandingDriverCount: row.outstandingDriverCount,
       rowCount: row.rowCount,
       collectedCount: row.collectedCount,
     }));

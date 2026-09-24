@@ -398,7 +398,14 @@ export const AccidentsPage = (): JSX.Element => {
           <button
             type="button"
             data-transfer-log-open={r.id}
-            className={actionButton}
+            data-has-transfers={r.carHasTransfers ? 'true' : undefined}
+            // «لو السجل فى عمليه واحده على الاقل يخليه باللون الاصفر» — yellow once the car has
+            // paid from or to another car at least once; the plain button otherwise.
+            className={
+              r.carHasTransfers
+                ? 'rounded-md bg-amber-100 p-1.5 text-amber-800 hover:bg-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:bg-amber-900/60 dark:text-amber-200 dark:hover:bg-amber-900'
+                : actionButton
+            }
             aria-label={t('fleet.accidents.log.open', { code: codeOf(r) })}
             title={t('fleet.accidents.log.open', { code: codeOf(r) })}
             onClick={() => setLogOf(r)}

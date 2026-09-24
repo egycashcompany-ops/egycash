@@ -16,7 +16,7 @@
 // A person NOT on Fleet's roster resolves to nothing, and every consumer degrades to a dash or to
 // the raw id exactly as it did without `employee.view`. That is the right answer rather than a
 // gap: Fleet shows drivers, and somebody who is not one has no business being named here.
-import { useMemo } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { type FleetPersonDto } from '@ecms/contracts';
 import { useCan } from '../../../platform/rbac/Can';
 import { useFleetPeople } from '../api/fleet-queries';
@@ -27,13 +27,22 @@ import { useFleetPeople } from '../api/fleet-queries';
  * Gated on `fleetDriver.view` because that is what the endpoint authorizes: a reader without it
  * gets an empty map rather than a 403 on every row of every Fleet screen.
  */
+/**
+ * «السواقيين اللى موجودين او مشيوا من الشغل الاتنين مع بعض بس فى الشاشه دى بس» — a screen that
+ * wraps itself in this reads the drivers who have LEFT as well, in every picker and every name it
+ * renders. Only the violations screen does; everywhere else the list is who works here today.
+ */
+const IncludeExitedDrivers = createContext(false);
+
+export const WithExitedDrivers = ({ children }: { children: ReactNode }): JSX.Element => (
+  <IncludeExitedDrivers.Provider value={true}>{children}</IncludeExitedDrivers.Provider>
+);
+
 export const useFleetPeopleMap = (): Map<string, FleetPersonDto> => {
   const can = useCan();
-  const { data } = useFleetPeople(can('fleetDriver.view'));
-  return useMemo(
-    () => new Map((data ?? []).map((person) => [person.employeeId, person])),
-    [data],
-  );
+  const includeExited = useContext(IncludeExitedDrivers);
+  const { data } = useFleetPeople(can('fleetDriver.view'), includeExited);
+  return useMemo(() => new Map((data ?? []).map((person) => [person.employeeId, person])), [data]);
 };
 
 /**
@@ -108,9 +117,7 @@ export const DriverName = ({
  * hundred ids costs what asking about one does. The map holds only the ids that are Fleet's, so a
  * caller can still tell «not on the roster» from «not fetched yet» by whether the map is empty.
  */
-export const useEmployeeRecords = (
-  employeeIds: readonly string[],
-): Map<string, FleetPersonDto> => {
+export const useEmployeeRecords = (employeeIds: readonly string[]): Map<string, FleetPersonDto> => {
   const all = useFleetPeopleMap();
   const key = employeeIds.join(',');
   return useMemo(() => {

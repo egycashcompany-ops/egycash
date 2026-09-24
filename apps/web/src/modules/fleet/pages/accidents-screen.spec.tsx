@@ -49,6 +49,7 @@ const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
   vehicleCode: null,
   occurredAt: '2026-03-09T00:00:00.000Z',
   culpritEmployeeId: null,
+  culpritEmployeeIds: [],
   culprit: 'محمود محمد فهمى محمود',
   statement: 'فنوس شمال امامى',
   companyCost: 0,
@@ -56,6 +57,7 @@ const accident = (over: Partial<FleetAccidentDto> = {}): FleetAccidentDto => ({
   paidAmount: 1500,
   transferredIn: 0,
   transferredOut: 0,
+  carHasTransfers: false,
   status: 'open',
   notes: null,
   version: 0,
@@ -594,8 +596,8 @@ describe('the culprit’s name outlives the moment it was picked', () => {
     );
   });
 
-  it('clearing the driver still clears the name — an empty picker is an empty culprit', () => {
-    expect(CODE).toMatch(/if \(picked === ''\) \{[\s\S]{0,120}setCulprit\(''\)/);
+  it('clearing the drivers still clears the name — an empty picker is an empty culprit', () => {
+    expect(CODE).toMatch(/if \(next\.length === 0\) \{[\s\S]{0,120}setCulprit\(''\)/);
   });
 
   it('says why Save is disabled while the name is on its way', () => {
@@ -710,5 +712,36 @@ describe('transfers between cars', () => {
   it('sends the transfer with the file — on a new one and on an edit', () => {
     expect(FORM).toContain('...(transfer === undefined ? {} : { transfer }),');
     expect(FORM).toContain('if (transfer !== undefined) body.transfer = transfer;');
+  });
+});
+
+// ── several drivers, and a log that has something in it ───────────────────────
+describe('several drivers and a yellow log', () => {
+  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
+  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
+
+  it('lets the clerk pick more than one driver, and files all of them', () => {
+    expect(FORM).toMatch(/<RegistryDriverPicker\s+value=\{culpritEmployeeIds\}\s+multiple/);
+    expect(FORM, 'the new file carries the list').toContain('        culpritEmployeeIds,\n');
+    expect(FORM, 'an edit sends the list when it changed').toContain(
+      'body.culpritEmployeeIds = culpritEmployeeIds;',
+    );
+    expect(FORM, 'the name line holds every name').toContain("names.join('، ')");
+  });
+
+  it('turns the log button yellow once the car has at least one transfer', () => {
+    const html = render({
+      seed: withRows([accident({ carHasTransfers: true }), accident({ id: 'a-2' })]),
+    });
+    const yellow = html.slice(
+      html.lastIndexOf('<button', html.indexOf('data-transfer-log-open="a-1"')),
+    );
+    expect(yellow.slice(0, yellow.indexOf('>'))).toContain('bg-amber-100');
+    expect(html).toContain('data-has-transfers="true"');
+    const plain = html.slice(
+      html.lastIndexOf('<button', html.indexOf('data-transfer-log-open="a-2"')),
+    );
+    expect(plain.slice(0, plain.indexOf('>'))).not.toContain('bg-amber-100');
+    expect(PAGE).toContain('r.carHasTransfers');
   });
 });

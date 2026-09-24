@@ -177,9 +177,20 @@ export const toOdometerLogDto = (
   updatedAt: iso(doc.updatedAt),
 });
 
+/** Every driver at fault — the list, or on a file from before the list, its one driver. */
+export const culpritIdsOf = (
+  doc: Pick<FleetAccidentDoc, 'culpritEmployeeId' | 'culpritEmployeeIds'>,
+): string[] =>
+  doc.culpritEmployeeIds !== undefined && doc.culpritEmployeeIds.length > 0
+    ? doc.culpritEmployeeIds.map(String)
+    : doc.culpritEmployeeId === null
+      ? []
+      : [String(doc.culpritEmployeeId)];
+
 export const toAccidentDto = (
   doc: FleetAccidentDoc,
   vehicleCode: string | null = null,
+  carHasTransfers = false,
 ): FleetAccidentDto => ({
   id: String(doc._id),
   vehicleId: vehicleIdOf(doc),
@@ -187,6 +198,7 @@ export const toAccidentDto = (
   occurredAt: doc.occurredAt == null ? null : iso(doc.occurredAt),
   culprit: doc.culprit,
   culpritEmployeeId: doc.culpritEmployeeId === null ? null : String(doc.culpritEmployeeId),
+  culpritEmployeeIds: culpritIdsOf(doc),
   statement: doc.statement,
   companyCost: doc.companyCost,
   amountCollected: doc.amountCollected,
@@ -194,6 +206,7 @@ export const toAccidentDto = (
   // `?? 0`: files written before transfers existed carry neither field.
   transferredIn: doc.transferredIn ?? 0,
   transferredOut: doc.transferredOut ?? 0,
+  carHasTransfers,
   status: doc.status,
   notes: doc.notes,
   version: doc.__v,

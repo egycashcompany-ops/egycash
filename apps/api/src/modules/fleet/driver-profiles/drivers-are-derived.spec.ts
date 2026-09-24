@@ -52,9 +52,9 @@ describe('who the drivers registry is made of', () => {
     expect(code('src/platform/organization/job-titles/job-title.repository.ts')).toContain(
       "status: 'active'",
     );
-    expect(
-      code('src/modules/hr/employee-management/employees/employee.repository.ts'),
-    ).toContain('listByJobTitlesSystem');
+    expect(code('src/modules/hr/employee-management/employees/employee.repository.ts')).toContain(
+      'listByJobTitlesSystem',
+    );
     const employees = code('src/modules/hr/employee-management/employees/employee.repository.ts');
     const at = employees.indexOf('listByJobTitlesSystem');
     expect(employees.slice(at, at + 500)).toContain('EMPLOYED_STATUSES');
@@ -88,14 +88,20 @@ describe('who the drivers registry is made of', () => {
     );
     // Every surface that asks «is this person a driver» asks it the one way. A second definition
     // is a second place for the answer to drift.
+    // Violations asks the SAME seat, widened to the drivers who have since left: «السواقيين اللى
+    // موجودين او مشيوا من الشغل الاتنين مع بعض بس فى الشاشه دى بس» — a fine is history.
+    expect(code('src/modules/fleet/violations/violation.service.ts')).toContain(
+      'drivingSeatEmployeeIds({ includeExited: true })',
+    );
     for (const surface of [
       'src/modules/fleet/availability/unavailability.service.ts',
       'src/modules/fleet/violations/violation.service.ts',
     ]) {
-      expect(code(surface), `${surface} asks the seat`).toContain('drivingSeatEmployeeIds()');
-      expect(code(surface), `${surface} does not ask the profiles collection instead`).not.toContain(
-        'findDriverByEmployeeId',
-      );
+      expect(code(surface), `${surface} asks the seat`).toContain('drivingSeatEmployeeIds(');
+      expect(
+        code(surface),
+        `${surface} does not ask the profiles collection instead`,
+      ).not.toContain('findDriverByEmployeeId');
     }
   });
 

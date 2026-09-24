@@ -26,6 +26,7 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { type Locale } from '@ecms/contracts';
 import { useDeleteViolation } from '../api/fleet-queries';
 import { CompanyViolationsPanel } from '../components/CompanyViolationsPanel';
+import { WithExitedDrivers } from '../components/EmployeeName';
 import { DriverViolationsPanel } from '../components/DriverViolationsPanel';
 import { CompanyViolationsDetailLayer } from '../components/CompanyViolationsDetailLayer';
 import {
@@ -54,7 +55,6 @@ const REMEMBERED_FILTERS = [
   'dsort',
 ] as const;
 
-
 /**
  * The order the DRIVERS ledger opens in. Named because it is used twice and the two must
  * agree: the board is drawn in it, and a first click replaces it — see `clickSort`.
@@ -78,7 +78,10 @@ export const ViolationsPage = (): JSX.Element => {
    * the order the ledger has always arrived in.
    */
   const driverSortParam = sp.get('dsort');
-  const driverSorts = useMemo(() => readSorts(driverSortParam, DRIVER_DEFAULT_SORT), [driverSortParam]);
+  const driverSorts = useMemo(
+    () => readSorts(driverSortParam, DRIVER_DEFAULT_SORT),
+    [driverSortParam],
+  );
   const codes = splitVehicleCodeList(sp.get('codes') ?? '');
   const driverCodes = splitVehicleCodeList(sp.get('dcodes') ?? '');
   const driverEmployeeIds = splitVehicleCodeList(sp.get('driver') ?? '');
@@ -149,8 +152,10 @@ export const ViolationsPage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer fullHeight>
-      {/* NO PAGE HEADER, and no pager under the board — both by the owner's instruction:
+    // Current AND departed drivers, in every picker and name on this screen — and this screen only.
+    <WithExitedDrivers>
+      <PageContainer fullHeight>
+        {/* NO PAGE HEADER, and no pager under the board — both by the owner's instruction:
           «انا عاوز اشيلهم خالص ميبقوش فى البيدج دى بس». This is the only screen in the app
           without one, so it is a deliberate exception rather than a pattern: the two panels name
           themselves, and the ~85px the h1, its rule and its margin took now go to the ledgers,
@@ -159,108 +164,113 @@ export const ViolationsPage = (): JSX.Element => {
           What goes with it, and is worth knowing: the breadcrumb «الحركة › مخالفات السيارات»,
           which was the only in-page link back to /fleet. The sidebar and ⌘K still carry it —
           they read the server's nav, not this page. */}
-      {/*
+        {/*
         Company FIRST in the DOM. The app is RTL, so the first child of a row sits on the RIGHT —
         which is where the business reads its own ledger. On a narrow screen the grid collapses to
         one column and the same order becomes top-to-bottom, so the reading order survives.
       */}
-      {/* The two ledgers fill whatever the shell left, and the PAGE never scrolls: each panel
+        {/* The two ledgers fill whatever the shell left, and the PAGE never scrolls: each panel
           scrolls its own board instead. Comparing the company's total to the drivers' is the whole
           reason these sit side by side, and a page-level scrollbar takes one of them off screen at
           exactly the moment a reader is looking from one to the other. */}
-      <div
-        data-violations-split="true"
-        className="grid min-h-0 min-w-0 flex-1 gap-4 2xl:grid-cols-2"
-      >
-        <CompanyViolationsPanel
-          years={years}
-          vehicleCodes={codes}
-          settled={companySettled}
-          entryVehicleId={entryVehicleId}
-          onEntryVehicleChange={setEntryVehicleId}
-          onMoved={() => setMovedAt((n) => n + 1)}
-          onSettledChange={(next) => patch({ cset: next })}
-          onYearsChange={(next) => patch({ year: writeList(next) })}
-          onVehicleCodesChange={(next) =>
-            patch({ codes: next.length === 0 ? null : next.join(',') })
-          }
-          onClear={() => patch({ year: null, codes: null, cset: null })}
-          onInspect={setInspecting}
-        />
-        <DriverViolationsPanel
-          entryVehicleId={entryVehicleId}
-          onEntryVehicleChange={setEntryVehicleId}
-          movedAt={movedAt}
-          sorts={driverSorts}
-          onSortChange={(by) => patch({ dsort: writeSorts(clickSort(driverSortParam, DRIVER_DEFAULT_SORT, by)) })}
-          vehicleCodes={driverCodes}
-          driverEmployeeIds={driverEmployeeIds}
-          typeIds={typeIds}
-          amount={driverAmount}
-          settled={driverSettled}
-          onSettledChange={(next) => patch({ dset: next })}
-          onVehicleCodesChange={(next) =>
-            patch({ dcodes: next.length === 0 ? null : next.join(',') })
-          }
-          onDriverChange={(next) => patch({ driver: next })}
-          onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
-          onAmountChange={(next) => patch({ damt: next })}
-          onClear={() => patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })}
+        <div
+          data-violations-split="true"
+          className="grid min-h-0 min-w-0 flex-1 gap-4 2xl:grid-cols-2"
+        >
+          <CompanyViolationsPanel
+            years={years}
+            vehicleCodes={codes}
+            settled={companySettled}
+            entryVehicleId={entryVehicleId}
+            onEntryVehicleChange={setEntryVehicleId}
+            onMoved={() => setMovedAt((n) => n + 1)}
+            onSettledChange={(next) => patch({ cset: next })}
+            onYearsChange={(next) => patch({ year: writeList(next) })}
+            onVehicleCodesChange={(next) =>
+              patch({ codes: next.length === 0 ? null : next.join(',') })
+            }
+            onClear={() => patch({ year: null, codes: null, cset: null })}
+            onInspect={setInspecting}
+          />
+          <DriverViolationsPanel
+            entryVehicleId={entryVehicleId}
+            onEntryVehicleChange={setEntryVehicleId}
+            movedAt={movedAt}
+            sorts={driverSorts}
+            onSortChange={(by) =>
+              patch({ dsort: writeSorts(clickSort(driverSortParam, DRIVER_DEFAULT_SORT, by)) })
+            }
+            vehicleCodes={driverCodes}
+            driverEmployeeIds={driverEmployeeIds}
+            typeIds={typeIds}
+            amount={driverAmount}
+            settled={driverSettled}
+            onSettledChange={(next) => patch({ dset: next })}
+            onVehicleCodesChange={(next) =>
+              patch({ dcodes: next.length === 0 ? null : next.join(',') })
+            }
+            onDriverChange={(next) => patch({ driver: next })}
+            onTypeChange={(next) => patch({ dtype: next.length === 0 ? null : next.join(',') })}
+            onAmountChange={(next) => patch({ damt: next })}
+            onClear={() =>
+              patch({ dcodes: null, driver: null, dtype: null, damt: null, dset: null })
+            }
+            onEdit={setEditing}
+            onDelete={setDeleting}
+          />
+        </div>
+
+        <CompanyViolationsDetailLayer
+          row={inspecting}
+          onClose={() => setInspecting(null)}
           onEdit={setEditing}
           onDelete={setDeleting}
+          onGrievance={(row) => setGrieving(row)}
         />
-      </div>
 
-      <CompanyViolationsDetailLayer
-        row={inspecting}
-        onClose={() => setInspecting(null)}
-        onEdit={setEditing}
-        onDelete={setDeleting}
-        onGrievance={(row) => setGrieving(row)}
-      />
-
-      {/* The two edit forms, each opened only for the shape it edits. */}
-      <VehicleViolationDialog
-        open={editing?.kind === 'vehicle'}
-        onClose={() => setEditing(null)}
-        violation={editing?.kind === 'vehicle' ? editing : null}
-      />
-      <DriverViolationDialog
-        open={editing?.kind === 'driver'}
-        onClose={() => setEditing(null)}
-        violation={editing?.kind === 'driver' ? editing : null}
-      />
-      {grieving !== null && grieving.vehicleId !== null && (
-        <GrievanceDialog
-          open
-          onClose={() => setGrieving(null)}
-          vehicleId={grieving.vehicleId}
-          code={grieving.code}
-          year={grieving.year}
-          current={grieving.totalBeforeGrievance}
+        {/* The two edit forms, each opened only for the shape it edits. */}
+        <VehicleViolationDialog
+          open={editing?.kind === 'vehicle'}
+          onClose={() => setEditing(null)}
+          violation={editing?.kind === 'vehicle' ? editing : null}
         />
-      )}
+        <DriverViolationDialog
+          open={editing?.kind === 'driver'}
+          onClose={() => setEditing(null)}
+          violation={editing?.kind === 'driver' ? editing : null}
+        />
+        {grieving !== null && grieving.vehicleId !== null && (
+          <GrievanceDialog
+            open
+            onClose={() => setGrieving(null)}
+            vehicleId={grieving.vehicleId}
+            code={grieving.code}
+            year={grieving.year}
+            current={grieving.totalBeforeGrievance}
+          />
+        )}
 
-      {/* DELETING SHOWS THE FINE, not a sentence about it. The same form the edit path uses,
+        {/* DELETING SHOWS THE FINE, not a sentence about it. The same form the edit path uses,
           read-only, over a delete button: a reader confirming the removal of one of nine fines on
           one car needs to see WHICH one — its year, its kind, its value, its count and what those
           come to. The old dialog asked «are you sure?» about a row it never showed. */}
-      <VehicleViolationDialog
-        open={deleting?.kind === 'vehicle'}
-        onClose={() => setDeleting(null)}
-        violation={deleting?.kind === 'vehicle' ? deleting : null}
-        mode="delete"
-        deleting={remove.isPending}
-        onConfirmDelete={() => void confirmDelete()}
-      />
-      <DriverViolationDialog
-        open={deleting?.kind === 'driver'}
-        onClose={() => setDeleting(null)}
-        violation={deleting?.kind === 'driver' ? deleting : null}
-        mode="delete"
-        deleting={remove.isPending}
-        onConfirmDelete={() => void confirmDelete()}
-      />
-    </PageContainer>
+        <VehicleViolationDialog
+          open={deleting?.kind === 'vehicle'}
+          onClose={() => setDeleting(null)}
+          violation={deleting?.kind === 'vehicle' ? deleting : null}
+          mode="delete"
+          deleting={remove.isPending}
+          onConfirmDelete={() => void confirmDelete()}
+        />
+        <DriverViolationDialog
+          open={deleting?.kind === 'driver'}
+          onClose={() => setDeleting(null)}
+          violation={deleting?.kind === 'driver' ? deleting : null}
+          mode="delete"
+          deleting={remove.isPending}
+          onConfirmDelete={() => void confirmDelete()}
+        />
+      </PageContainer>
+    </WithExitedDrivers>
   );
 };

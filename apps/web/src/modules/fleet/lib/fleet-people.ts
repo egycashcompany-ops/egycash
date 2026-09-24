@@ -35,7 +35,7 @@ export const fetchEmployeeNames = async (
   try {
     const roster = await queryClient.fetchQuery({
       queryKey: FLEET_PEOPLE_KEY,
-      queryFn: listFleetPeople,
+      queryFn: () => listFleetPeople(),
       staleTime: 5 * 60_000,
     });
     return new Map(roster.map((person) => [person.employeeId, person.fullNameAr]));

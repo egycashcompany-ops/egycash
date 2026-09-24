@@ -29,7 +29,7 @@ import {
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { VehicleSelect } from './VehicleSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
-import { useEmployeeRecords } from './EmployeeName';
+import { useFleetPeopleMap } from './EmployeeName';
 
 export const AccidentFormDialog = ({
   open,
@@ -48,10 +48,10 @@ export const AccidentFormDialog = ({
   const [vehicleId, setVehicleId] = useState('');
   const [occurredAt, setOccurredAt] = useState('');
   const [culprit, setCulprit] = useState('');
-  // WHICH driver, when it was one of ours. Kept beside the NAME rather than replacing it: an
-  // accident is often a third party's, and a form that could only name an employee could not
-  // record the commonest kind there is.
-  const [culpritEmployeeId, setCulpritEmployeeId] = useState('');
+  // WHICH drivers, when they were ours — «يقدر يختار اكتر من سواق فى المره الواحده». Kept beside
+  // the NAME rather than replacing it: an accident is often a third party's, and a form that could
+  // only name employees could not record the commonest kind there is.
+  const [culpritEmployeeIds, setCulpritEmployeeIds] = useState<string[]>([]);
   const [statement, setStatement] = useState('');
   const [companyCost, setCompanyCost] = useState('');
   const [amountCollected, setAmountCollected] = useState('');
@@ -66,7 +66,7 @@ export const AccidentFormDialog = ({
     setVehicleId(accident?.vehicleId ?? initialVehicleId);
     setOccurredAt(accident?.occurredAt?.slice(0, 10) ?? '');
     setCulprit(accident?.culprit ?? '');
-    setCulpritEmployeeId(accident?.culpritEmployeeId ?? '');
+    setCulpritEmployeeIds(accident?.culpritEmployeeIds ?? []);
     setStatement(accident?.statement ?? '');
     setCompanyCost(accident === null ? '' : String(accident.companyCost));
     setAmountCollected(accident === null ? '' : String(accident.amountCollected));
@@ -78,9 +78,15 @@ export const AccidentFormDialog = ({
     setTransferAmount('');
   }, [open, accident, initialVehicleId]);
 
-  // The picked driver's NAME, from the same cached records every other fleet screen reads.
-  const records = useEmployeeRecords(culpritEmployeeId === '' ? [] : [culpritEmployeeId]);
-  const drivers = new Map([...records.entries()].map(([id, person]) => [id, person.fullNameAr]));
+  // The picked drivers' NAMES, from the same roster every other fleet screen reads — the WHOLE
+  // roster, so a driver picked a moment ago is already in it.
+  const roster = useFleetPeopleMap();
+  const drivers = new Map([...roster.entries()].map(([id, person]) => [id, person.fullNameAr]));
+  /** Several drivers read as one name line, in the order they were picked. */
+  const namesOf = (ids: readonly string[]): string | undefined => {
+    const names = ids.map((id) => drivers.get(id));
+    return names.every((name): name is string => name !== undefined) ? names.join('، ') : undefined;
+  };
 
   /**
    * WHOSE NAME IS STILL BEING LOOKED UP — and the reason this form could not be submitted at all.
@@ -99,7 +105,8 @@ export const AccidentFormDialog = ({
    * this accident — so an existing row's name is left exactly as filed until somebody picks again.
    */
   const [awaitingNameFor, setAwaitingNameFor] = useState('');
-  const resolvedName = awaitingNameFor === '' ? undefined : drivers.get(awaitingNameFor);
+  // The ids still waiting, comma-joined in state so the effect below compares a string.
+  const resolvedName = awaitingNameFor === '' ? undefined : namesOf(awaitingNameFor.split(','));
   useEffect(() => {
     if (awaitingNameFor === '' || resolvedName === undefined) return;
     setCulprit(resolvedName);
@@ -193,7 +200,8 @@ export const AccidentFormDialog = ({
         vehicleId,
         occurredAt: new Date(occurredAt),
         culprit: culprit.trim(),
-        culpritEmployeeId: culpritEmployeeId === '' ? null : culpritEmployeeId,
+        culpritEmployeeId: culpritEmployeeIds[0] ?? null,
+        culpritEmployeeIds,
         statement: statement.trim(),
         ...amounts,
         notes: notes.trim() === '' ? null : notes.trim(),
@@ -209,8 +217,10 @@ export const AccidentFormDialog = ({
       if (culprit.trim() !== accident.culprit) body.culprit = culprit.trim();
       // `null` when it was cleared or typed over — «it turned out to be a third party» has to be
       // an edit somebody can make, so untouched and cleared are kept apart.
-      const nextCulpritId = culpritEmployeeId === '' ? null : culpritEmployeeId;
-      if (nextCulpritId !== accident.culpritEmployeeId) body.culpritEmployeeId = nextCulpritId;
+      // The whole list when it changed — cleared to none, one, or several.
+      if (culpritEmployeeIds.join(',') !== accident.culpritEmployeeIds.join(',')) {
+        body.culpritEmployeeIds = culpritEmployeeIds;
+      }
       if (statement.trim() !== accident.statement) body.statement = statement.trim();
       if (amounts.companyCost !== accident.companyCost) body.companyCost = amounts.companyCost;
       if (amounts.amountCollected !== accident.amountCollected)
@@ -267,19 +277,19 @@ export const AccidentFormDialog = ({
           {...(awaitingNameFor === '' ? {} : { warning: t('fleet.accidents.culpritNameLoading') })}
         >
           <RegistryDriverPicker
-            value={culpritEmployeeId === '' ? [] : [culpritEmployeeId]}
+            value={culpritEmployeeIds}
+            multiple
             onChange={(next) => {
-              const picked = next[0] ?? '';
-              setCulpritEmployeeId(picked);
-              // Clearing the driver clears the name with it; picking one asks for the name and the
-              // effect above writes it the moment the directory answers.
-              if (picked === '') {
+              setCulpritEmployeeIds(next);
+              // Clearing every driver clears the name with them; picking asks for the names and
+              // the effect above writes them the moment the roster answers.
+              if (next.length === 0) {
                 setCulprit('');
                 setAwaitingNameFor('');
                 return;
               }
-              const known = drivers.get(picked);
-              if (known === undefined) setAwaitingNameFor(picked);
+              const known = namesOf(next);
+              if (known === undefined) setAwaitingNameFor(next.join(','));
               else {
                 setCulprit(known);
                 setAwaitingNameFor('');

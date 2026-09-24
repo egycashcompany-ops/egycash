@@ -109,7 +109,14 @@ type EmployeesByDepartmentLookup = (departmentIds: string[]) => Promise<Director
  * Employed only, for the reason the one above gives: a driver who has left is not on the road, and
  * making each consumer remember to filter is one forgotten filter away from dispatching them.
  */
-type EmployeesByJobTitlesLookup = (jobTitleIds: string[]) => Promise<DirectoryEmployee[]>;
+/** `includeExited` — people who have LEFT count too; for screens that record history. */
+export interface JobTitlesLookupOptions {
+  includeExited?: boolean;
+}
+type EmployeesByJobTitlesLookup = (
+  jobTitleIds: string[],
+  options?: JobTitlesLookupOptions,
+) => Promise<DirectoryEmployee[]>;
 
 let employeeLookup: EmployeeLookup | null = null;
 let employeeBatchLookup: EmployeeBatchLookup | null = null;
@@ -140,9 +147,7 @@ export const registerSelfEmployeeLookup = (lookup: SelfEmployeeLookup): void => 
   selfEmployeeLookup = lookup;
 };
 
-export const registerEmployeesByDepartmentLookup = (
-  lookup: EmployeesByDepartmentLookup,
-): void => {
+export const registerEmployeesByDepartmentLookup = (lookup: EmployeesByDepartmentLookup): void => {
   employeesByDepartmentLookup = lookup;
 };
 
@@ -189,7 +194,9 @@ let employeeByCodeLookup: EmployeeByCodeLookup | null = null;
 export const registerEmployeeByCodeLookup = (lookup: EmployeeByCodeLookup): void => {
   employeeByCodeLookup = lookup;
 };
-export const getDirectoryEmployeeByCode = async (code: string): Promise<DirectoryEmployee | null> =>
+export const getDirectoryEmployeeByCode = async (
+  code: string,
+): Promise<DirectoryEmployee | null> =>
   employeeByCodeLookup === null ? null : employeeByCodeLookup(code);
 
 /**
@@ -263,10 +270,11 @@ export const listDirectoryEmployeesByDepartment = async (
  */
 export const listDirectoryEmployeesByJobTitles = async (
   jobTitleIds: readonly string[],
+  options: JobTitlesLookupOptions = {},
 ): Promise<DirectoryEmployee[]> =>
   employeesByJobTitlesLookup === null || jobTitleIds.length === 0
     ? []
-    : employeesByJobTitlesLookup([...jobTitleIds]);
+    : employeesByJobTitlesLookup([...jobTitleIds], options);
 
 /**
  * The employee behind a login, or null when the account is not linked to one.

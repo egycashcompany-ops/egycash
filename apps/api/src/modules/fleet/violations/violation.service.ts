@@ -137,7 +137,9 @@ class FleetViolationService {
   ): Promise<void> {
     const wanted = [...new Set(employeeIds)];
     if (wanted.length === 0) return;
-    const seats = new Set(await drivingSeatEmployeeIds());
+    // A fine can be filed against a driver who has since LEFT: it is about what they did while
+    // they drove. The violations screen offers them, so the server accepts them.
+    const seats = new Set(await drivingSeatEmployeeIds({ includeExited: true }));
     for (const employeeId of wanted) {
       if (!seats.has(employeeId)) {
         throw invalid(fieldOf(employeeId), 'this employee does not hold a driving seat (FR-11)');

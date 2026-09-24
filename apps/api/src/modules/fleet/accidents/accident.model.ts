@@ -51,6 +51,8 @@ export interface FleetAccidentDoc extends BaseDocFields {
   occurredAt: Date | null;
   culprit: string;
   culpritEmployeeId: Types.ObjectId | null;
+  /** Every driver of ours at fault; the first is `culpritEmployeeId`. Absent on older files. */
+  culpritEmployeeIds?: Types.ObjectId[];
   statement: string;
   companyCost: number;
   amountCollected: number;
@@ -93,6 +95,7 @@ const accidentSchema = new Schema<FleetAccidentDoc>(
     occurredAt: { type: Date, default: null },
     culprit: { type: String, required: true },
     culpritEmployeeId: { type: Schema.Types.ObjectId, default: null },
+    culpritEmployeeIds: { type: [Schema.Types.ObjectId], default: [] },
     statement: { type: String, required: true },
     companyCost: { type: Number, required: true, min: 0 },
     amountCollected: { type: Number, required: true, min: 0 },
@@ -113,6 +116,8 @@ accidentSchema.index({ status: 1 }, { name: 'ix_status' });
 // the name substring could only guess at. Declared here rather than as `index: true` on the path,
 // because every index in this module is NAMED: an unnamed one cannot be checked for presence.
 accidentSchema.index({ culpritEmployeeId: 1, occurredAt: -1 }, { name: 'ix_culprit_occurred' });
+// …and every file ANY of several drivers caused.
+accidentSchema.index({ culpritEmployeeIds: 1, occurredAt: -1 }, { name: 'ix_culprits_occurred' });
 // «ادت ل مين» — the files that took from a car: one car's log reads them by the SOURCE car.
 accidentSchema.index({ 'transfersIn.fromVehicleId': 1 }, { name: 'ix_transfer_from' });
 // «who drew from this file» — what deleting a file, or moving it to another car, has to find.

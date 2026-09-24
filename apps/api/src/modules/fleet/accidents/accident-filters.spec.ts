@@ -240,3 +240,13 @@ describe('the totals answer the SAME filters as the page', () => {
     expect(JSON.stringify(captured)).not.toContain('page');
   });
 });
+
+describe('several drivers on one file — «اكتر من سواق فى المره الواحده»', () => {
+  it('finds a file by ANY of its drivers, and an older file by its one', async () => {
+    const [clause] = clausesOf(await filterFor({ culpritEmployeeId: [oid('7')] }));
+    const id = new Types.ObjectId(oid('7'));
+    expect(clause).toEqual({
+      $or: [{ culpritEmployeeId: { $in: [id] } }, { culpritEmployeeIds: { $in: [id] } }],
+    });
+  });
+});

@@ -1,18 +1,32 @@
-// Create/edit an accident file (§4.6). The three amounts are the ENTERED facts — the server
-// stores them typed and derives no money from them until §13-Q9 defines the formula, so this
-// form asks for exactly what happened and computes nothing. The vehicle select offers the
-// WHOLE registry: an accident is historical paperwork about the day it happened, so a disposed
-// vehicle is a legal reference (deliberate contrast with the odometer's refusal). Edits send
-// only the changed fields + the document version.
+// Create/edit an accident file (§4.6). The three amounts are the ENTERED facts, stored as typed.
+// The vehicle select offers the WHOLE registry: an accident is historical paperwork about the day
+// it happened, so a disposed vehicle is a legal reference (deliberate contrast with the odometer's
+// refusal). Edits send only the changed fields + the document version.
+//
+// «اختار عربيه و جمبها مبلغ» — optionally, an amount taken from ANOTHER car's remaining and added
+// to this file. The form shows what that car has and what it will have left, and refuses more than
+// it has; the server checks the same figure again inside the transaction that writes it.
 import { useEffect, useState } from 'react';
-import { type FleetAccidentDto, type UpdateFleetAccident } from '@ecms/contracts';
+import {
+  fleetAccidentRemaining,
+  type FleetAccidentDto,
+  type Locale,
+  type UpdateFleetAccident,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
+import { formatMoney } from '../../../shared/lib/format';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { useCreateAccident, useUpdateAccident } from '../api/fleet-queries';
+import {
+  useAccidentCarTransfers,
+  useCreateAccident,
+  useUpdateAccident,
+} from '../api/fleet-queries';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { VehicleSelect } from './VehicleSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { useEmployeeRecords } from './EmployeeName';
@@ -43,6 +57,10 @@ export const AccidentFormDialog = ({
   const [amountCollected, setAmountCollected] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
   const [notes, setNotes] = useState('');
+  // «اختار عربيه و جمبها مبلغ» — the car the amount is TAKEN FROM, and how much. Both optional:
+  // most accidents are recorded without one.
+  const [fromVehicleId, setFromVehicleId] = useState('');
+  const [transferAmount, setTransferAmount] = useState('');
   useEffect(() => {
     if (!open) return;
     setVehicleId(accident?.vehicleId ?? initialVehicleId);
@@ -55,13 +73,14 @@ export const AccidentFormDialog = ({
     setPaidAmount(accident === null ? '' : String(accident.paidAmount));
     setNotes(accident?.notes ?? '');
     setAwaitingNameFor('');
+    // A transfer is one act per save: every open starts with none picked.
+    setFromVehicleId('');
+    setTransferAmount('');
   }, [open, accident, initialVehicleId]);
 
   // The picked driver's NAME, from the same cached records every other fleet screen reads.
   const records = useEmployeeRecords(culpritEmployeeId === '' ? [] : [culpritEmployeeId]);
-  const drivers = new Map(
-    [...records.entries()].map(([id, person]) => [id, person.fullNameAr]),
-  );
+  const drivers = new Map([...records.entries()].map(([id, person]) => [id, person.fullNameAr]));
 
   /**
    * WHOSE NAME IS STILL BEING LOOKED UP — and the reason this form could not be submitted at all.
@@ -87,6 +106,67 @@ export const AccidentFormDialog = ({
     setAwaitingNameFor('');
   }, [awaitingNameFor, resolvedName]);
 
+  const locale = useAppSelector((state): Locale => state.locale.locale);
+  const money = (value: number): string => formatMoney(value, 'EGP', locale);
+
+  // WHAT THE SOURCE CAR HAS — its «إجمالي المتبقي» over every one of its files, from the same
+  // server code that caps the save. Asked only once a car is picked.
+  const source = useAccidentCarTransfers(fromVehicleId, open);
+  const sourceCode = source.data?.vehicleCode ?? '';
+  // A file that sits on the source car and leaves it in this same save is not the car's to give:
+  // the server leaves it out of the cap, and so does the figure the clerk is shown.
+  const leaving =
+    accident !== null &&
+    (accident.vehicleId === fromVehicleId ||
+      (accident.vehicleId === null && accident.vehicleCode === sourceCode && sourceCode !== ''))
+      ? fleetAccidentRemaining(accident)
+      : 0;
+  const available = Math.max(
+    0,
+    fleetAccidentRemaining({
+      amountCollected: source.data?.remaining ?? 0,
+      companyCost: 0,
+      paidAmount: leaving,
+    }),
+  );
+  // A box holding only «.» is not a number; it is read as nothing typed yet.
+  const typed = transferAmount === '' ? 0 : Number(transferAmount);
+  const taking = Number.isFinite(typed) ? typed : 0;
+  const transferring = fromVehicleId !== '';
+  const transferProblem = !transferring
+    ? null
+    : fromVehicleId === vehicleId
+      ? t('fleet.accidents.transfer.sameCar')
+      : source.isError
+        ? // Said, not left as a Save button that is silently off.
+          t('fleet.accidents.transfer.loadFailed')
+        : source.data === undefined
+          ? null
+          : available <= 0
+            ? t('fleet.accidents.transfer.nothing', { code: sourceCode })
+            : // Compared in piastres, as the server compares them.
+              Math.round(taking * 100) > Math.round(available * 100)
+              ? t('fleet.accidents.transfer.tooMuch', {
+                  available: money(available),
+                  code: sourceCode,
+                })
+              : taking <= 0
+                ? t('fleet.accidents.transfer.needsAmount')
+                : null;
+  // This file's remaining as the form now reads — its own figures, plus what it already took and
+  // gave — and what the new transfer would make it.
+  const targetBefore = fleetAccidentRemaining({
+    companyCost: Number(companyCost) || 0,
+    amountCollected: Number(amountCollected) || 0,
+    paidAmount: Number(paidAmount) || 0,
+    transferredIn: accident?.transferredIn ?? 0,
+    transferredOut: accident?.transferredOut ?? 0,
+  });
+  const transfer =
+    transferring && transferProblem === null && source.data !== undefined
+      ? { fromVehicleId, amount: taking }
+      : undefined;
+
   const create = useCreateAccident();
   const update = useUpdateAccident();
   const pending = create.isPending || update.isPending;
@@ -103,7 +183,9 @@ export const AccidentFormDialog = ({
     statement.trim() !== '' &&
     [companyCost, amountCollected, paidAmount].every(
       (v) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0,
-    );
+    ) &&
+    // A car picked to take from must be a DIFFERENT car with enough on it, and an amount.
+    (!transferring || transfer !== undefined);
 
   const submit = async (): Promise<void> => {
     if (accident === null) {
@@ -115,13 +197,15 @@ export const AccidentFormDialog = ({
         statement: statement.trim(),
         ...amounts,
         notes: notes.trim() === '' ? null : notes.trim(),
+        ...(transfer === undefined ? {} : { transfer }),
       });
       toast.success(t('fleet.accidents.created'));
     } else {
       // Send only what changed, plus the version the edit was made against.
       const body: UpdateFleetAccident = { version: accident.version };
       if (vehicleId !== accident.vehicleId) body.vehicleId = vehicleId;
-      if (occurredAt !== (accident.occurredAt?.slice(0, 10) ?? '')) body.occurredAt = new Date(occurredAt);
+      if (occurredAt !== (accident.occurredAt?.slice(0, 10) ?? ''))
+        body.occurredAt = new Date(occurredAt);
       if (culprit.trim() !== accident.culprit) body.culprit = culprit.trim();
       // `null` when it was cleared or typed over — «it turned out to be a third party» has to be
       // an edit somebody can make, so untouched and cleared are kept apart.
@@ -134,6 +218,8 @@ export const AccidentFormDialog = ({
       if (amounts.paidAmount !== accident.paidAmount) body.paidAmount = amounts.paidAmount;
       const nextNotes = notes.trim() === '' ? null : notes.trim();
       if (nextNotes !== accident.notes) body.notes = nextNotes;
+      // ONE MORE transfer onto this file; the ones it already has stay.
+      if (transfer !== undefined) body.transfer = transfer;
       await update.mutateAsync({ id: accident.id, body });
       toast.success(t('fleet.accidents.updated'));
     }
@@ -217,6 +303,86 @@ export const AccidentFormDialog = ({
             <MoneyInput value={paidAmount} onChange={setPaidAmount} />
           </Field>
         </div>
+        {/* «اختار كود عربيه وقدمها مكان اكتب فيه المبلغ اللى عاوز اخده من العربيه» — the car and
+            the amount side by side, and under them what it means: what the car has, what it will
+            have left, and what this accident's remaining becomes. */}
+        <fieldset
+          data-accident-transfer="true"
+          className="space-y-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700"
+        >
+          <legend className="px-1 text-sm font-medium text-slate-700 dark:text-slate-200">
+            {t('fleet.accidents.transfer.title')}
+          </legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('fleet.accidents.transfer.fromVehicle')}>
+              <VehicleCodeCombobox
+                value={fromVehicleId}
+                onChange={setFromVehicleId}
+                anyStatus
+                ariaLabel={t('fleet.accidents.transfer.fromVehicle')}
+              />
+            </Field>
+            <Field label={t('fleet.accidents.transfer.amount')}>
+              <MoneyInput
+                value={transferAmount}
+                onChange={setTransferAmount}
+                disabled={!transferring}
+                aria-invalid={transferProblem !== null}
+              />
+            </Field>
+          </div>
+          {transferring && source.data !== undefined && fromVehicleId !== vehicleId && (
+            <div
+              data-transfer-balance="true"
+              className="space-y-1 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+            >
+              <p className="font-medium">
+                {t('fleet.accidents.transfer.balance', {
+                  code: sourceCode,
+                  available: money(available),
+                })}
+              </p>
+              {transferProblem === null && taking > 0 && (
+                <>
+                  <p>
+                    {t('fleet.accidents.transfer.after', {
+                      amount: money(taking),
+                      left: money(
+                        fleetAccidentRemaining({
+                          amountCollected: available,
+                          companyCost: 0,
+                          paidAmount: taking,
+                        }),
+                      ),
+                    })}
+                  </p>
+                  <p className="text-sky-700 dark:text-sky-300">
+                    {t('fleet.accidents.transfer.target', {
+                      before: money(targetBefore),
+                      after: money(
+                        fleetAccidentRemaining({
+                          amountCollected: targetBefore,
+                          companyCost: 0,
+                          paidAmount: 0,
+                          transferredIn: taking,
+                        }),
+                      ),
+                    })}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+          {transferProblem !== null && (
+            <p
+              data-transfer-error="true"
+              role="alert"
+              className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-700 dark:bg-red-950/40 dark:text-red-200"
+            >
+              {transferProblem}
+            </p>
+          )}
+        </fieldset>
         <Field label={t('fleet.attendance.fields.notes')}>
           <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>

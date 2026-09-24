@@ -191,6 +191,9 @@ export const toAccidentDto = (
   companyCost: doc.companyCost,
   amountCollected: doc.amountCollected,
   paidAmount: doc.paidAmount,
+  // `?? 0`: files written before transfers existed carry neither field.
+  transferredIn: doc.transferredIn ?? 0,
+  transferredOut: doc.transferredOut ?? 0,
   status: doc.status,
   notes: doc.notes,
   version: doc.__v,
@@ -216,7 +219,10 @@ export const toViolationDto = (
   // row nobody has moved. The board needs it to draw «محمولة على ٢٠٢٦» beside a 2025 date.
   filedYear: doc.filedYear ?? null,
   // Where it goes back to when the badge is pressed. `null` on every row that is not carried.
-  homeVehicleId: doc.homeVehicleId === undefined || doc.homeVehicleId === null ? null : String(doc.homeVehicleId),
+  homeVehicleId:
+    doc.homeVehicleId === undefined || doc.homeVehicleId === null
+      ? null
+      : String(doc.homeVehicleId),
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
   driverName: doc.driverName ?? null,
   collected: doc.collected,

@@ -1522,12 +1522,43 @@ export interface FleetAccidentDto {
   companyCost: number;
   amountCollected: number;
   paidAmount: number;
+  /**
+   * What this file has TAKEN from other cars' remaining — «المبلغ ده يضاف للعربيه اللى عامل عليه
+   * تعديل». The sum of its live transfers; the detail is in the car's log.
+   */
+  transferredIn: number;
+  /**
+   * What other files have taken OUT of this one's remaining. A transfer names a CAR to take from,
+   * and the amount is drawn from that car's files oldest first — this is this file's share.
+   */
+  transferredOut: number;
   status: FleetAccidentStatus;
   notes: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * «اختار عربيه و جمبها مبلغ» — take `amount` out of another car's remaining and add it to the file
+ * being recorded or edited.
+ *
+ * The amount is capped by what that car has left over ALL its files (the server checks, inside
+ * the same transaction as the write) and is drawn from those files oldest first.
+ */
+export const FleetAccidentTransferInputSchema = z
+  .object({
+    fromVehicleId: objectId(),
+    amount: egp()
+      .positive()
+      // Within a hair of a whole piastre, not EXACTLY one: `19.99 * 100` is 1998.9999999999998 in
+      // binary floating point, and an exact comparison refused every ordinary amount like it.
+      .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, {
+        message: 'At most two decimal places',
+      }),
+  })
+  .strict();
+export type FleetAccidentTransferInput = z.infer<typeof FleetAccidentTransferInputSchema>;
 
 const accidentCore = {
   vehicleId: objectId(),
@@ -1557,14 +1588,43 @@ const accidentCore = {
   notes: z.string().trim().min(1).max(1000).nullish(),
 };
 
-export const CreateFleetAccidentSchema = z.object(accidentCore).strict();
+/** A car cannot take from itself — that would move nothing and log a transfer. */
+const transferFromAnotherCar = (
+  value: { vehicleId?: string | undefined; transfer?: FleetAccidentTransferInput | undefined },
+  ctx: z.RefinementCtx,
+): void => {
+  if (
+    value.transfer !== undefined &&
+    value.vehicleId !== undefined &&
+    value.transfer.fromVehicleId === value.vehicleId
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['transfer', 'fromVehicleId'],
+      message: 'Pick a car other than the accident’s own',
+    });
+  }
+};
+
+export const CreateFleetAccidentSchema = z
+  .object({ ...accidentCore, transfer: FleetAccidentTransferInputSchema.optional() })
+  .strict()
+  .superRefine(transferFromAnotherCar);
 export type CreateFleetAccident = z.infer<typeof CreateFleetAccidentSchema>;
 
+/**
+ * `transfer` on an edit ADDS one more transfer to the file; the ones already on it stay. A wrong
+ * one is removed from the car's log, which puts the amount back where it came from.
+ */
 export const UpdateFleetAccidentSchema = z
   .object(accidentCore)
   .partial()
-  .extend({ version: z.number().int().min(0) })
-  .strict();
+  .extend({
+    version: z.number().int().min(0),
+    transfer: FleetAccidentTransferInputSchema.optional(),
+  })
+  .strict()
+  .superRefine(transferFromAnotherCar);
 export type UpdateFleetAccident = z.infer<typeof UpdateFleetAccidentSchema>;
 
 /** Open↔closed, both directions (legacy toggles; both audited + published). */
@@ -1643,14 +1703,50 @@ export interface FleetAccidentTotalsDto {
   amountCollected: number;
   companyCost: number;
   paidAmount: number;
+  /** Sums of the matched files' `transferredIn` / `transferredOut`. Equal over the whole fleet. */
+  transferredIn: number;
+  transferredOut: number;
   /** Derived, never stored: see `fleetAccidentRemaining`. */
   remaining: number;
 }
 
+/** GET /fleet/accidents/transfers — one car's log, both directions. */
+export const FleetAccidentTransfersQuerySchema = z.object({ vehicleId: objectId() }).strict();
+export type FleetAccidentTransfersQuery = z.infer<typeof FleetAccidentTransfersQuerySchema>;
+
+/** One transfer, as the car the log is about sees it. */
+export interface FleetAccidentTransferEntryDto {
+  /** The transfer itself — what «حذف» names. */
+  transferId: string;
+  /** The file that RECEIVED the amount; the transfer lives on it. */
+  accidentId: string;
+  /** `in` — this car's file was paid from `otherVehicleCode`; `out` — this car paid `otherVehicleCode`. */
+  direction: 'in' | 'out';
+  otherVehicleId: string | null;
+  otherVehicleCode: string | null;
+  amount: number;
+  at: string;
+  byName: string | null;
+}
+
+export interface FleetAccidentCarTransfersDto {
+  vehicleId: string;
+  vehicleCode: string;
+  /**
+   * The car's «إجمالي المتبقي» over ALL its files, open and closed, transfers included — the
+   * figure a new transfer from this car is capped by, computed by the same code that checks it.
+   */
+  remaining: number;
+  /** Newest first. */
+  entries: FleetAccidentTransferEntryDto[];
+}
 /**
  * What an accident file still owes: «إجمالي المتبقي».
  *
- *   remaining = amountCollected + companyCost − paidAmount
+ *   remaining = amountCollected + companyCost − paidAmount + transferredIn − transferredOut
+ *
+ * The last two are what other cars' files moved in and out (see `FleetAccidentTransferInputSchema`);
+ * both are zero on a file no transfer has touched, so its figure is the three facts alone.
  *
  * Derived on READ and stored NOWHERE. There is no column for it, no migration behind it, and no
  * second copy to fall out of step with the three facts it is made of — change one of them and the
@@ -1670,8 +1766,22 @@ export const fleetAccidentRemaining = (of: {
   amountCollected: number;
   companyCost: number;
   paidAmount: number;
+  /**
+   * Moved in from, and out to, other cars' files (see `FleetAccidentTransferInputSchema`). Optional
+   * so a caller holding only the three facts still gets their figure; absent means none.
+   */
+  transferredIn?: number | undefined;
+  transferredOut?: number | undefined;
 }): number => {
-  const rounded = Math.round((of.amountCollected + of.companyCost - of.paidAmount) * 100) / 100;
+  const rounded =
+    Math.round(
+      (of.amountCollected +
+        of.companyCost -
+        of.paidAmount +
+        (of.transferredIn ?? 0) -
+        (of.transferredOut ?? 0)) *
+        100,
+    ) / 100;
   // `=== 0` is true of -0 as well, so this is the one place negative zero is turned back.
   return rounded === 0 ? 0 : rounded;
 };

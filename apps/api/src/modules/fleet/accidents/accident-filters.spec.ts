@@ -30,7 +30,15 @@ beforeEach(() => {
   });
   vi.spyOn(fleetAccidentRepository, 'totals').mockImplementation(async (filter) => {
     captured = filter;
-    return { count: 0, amountCollected: 0, companyCost: 0, paidAmount: 0, remaining: 0 };
+    return {
+      count: 0,
+      amountCollected: 0,
+      companyCost: 0,
+      paidAmount: 0,
+      transferredIn: 0,
+      transferredOut: 0,
+      remaining: 0,
+    };
   });
   codeSearch = vi.spyOn(fleetVehicleRepository, 'idsByCodeSearch');
 });

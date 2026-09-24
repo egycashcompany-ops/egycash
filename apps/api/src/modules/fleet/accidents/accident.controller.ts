@@ -3,6 +3,7 @@ import { type Request, type Response } from 'express';
 import {
   type CreateFleetAccident,
   type FleetAccidentSummaryQuery,
+  type FleetAccidentTransfersQuery,
   type ListFleetAccidentsQuery,
   type SetFleetAccidentStatus,
   type UpdateFleetAccident,
@@ -14,6 +15,7 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetAccidentService } from './accident.service';
 
 type IdParam = { id: string };
+type TransferParam = { id: string; transferId: string };
 
 export const listAccidents = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetAccidentsQuery>(req);
@@ -50,5 +52,16 @@ export const setAccidentStatus = async (req: Request, res: Response): Promise<vo
 export const deleteAccident = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   await fleetAccidentService.softDelete(params.id, authContext(req).userId);
+  noContent(res);
+};
+
+export const carTransfers = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetAccidentTransfersQuery>(req);
+  ok(res, await fleetAccidentService.carTransfers(query.vehicleId));
+};
+
+export const voidTransfer = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, TransferParam>(req);
+  await fleetAccidentService.voidTransfer(params.id, params.transferId, authContext(req).userId);
   noContent(res);
 };

@@ -20,7 +20,10 @@ interface Stage {
 const pipelineFor = async (
   filter: Record<string, unknown>,
   sums: Record<string, number> | null = null,
-): Promise<{ stages: Stage[]; result: Awaited<ReturnType<typeof fleetAccidentRepository.totals>> }> => {
+): Promise<{
+  stages: Stage[];
+  result: Awaited<ReturnType<typeof fleetAccidentRepository.totals>>;
+}> => {
   let stages: Stage[] = [];
   vi.spyOn(FleetAccidentModel, 'aggregate').mockImplementation(((sent: Stage[]) => {
     stages = sent;
@@ -52,7 +55,7 @@ describe('the totals pipeline', () => {
     expect(JSON.stringify(stages[0]?.$match)).toContain('"status":"open"');
   });
 
-  it('sums the three stored facts and counts the rows', async () => {
+  it('sums the three stored facts, what transfers moved, and counts the rows', async () => {
     const { stages } = await pipelineFor({});
     expect(stages[1]?.$group).toEqual({
       _id: null,
@@ -60,7 +63,28 @@ describe('the totals pipeline', () => {
       amountCollected: { $sum: '$amountCollected' },
       companyCost: { $sum: '$companyCost' },
       paidAmount: { $sum: '$paidAmount' },
+      // A file from before transfers existed has neither figure; `$ifNull` reads it as zero.
+      transferredIn: { $sum: { $ifNull: ['$transferredIn', 0] } },
+      transferredOut: { $sum: { $ifNull: ['$transferredOut', 0] } },
     });
+  });
+
+  it('counts what transfers moved into, and out of, the matched files', async () => {
+    // Filtered to one car that received 1,500 and gave 400: its remaining moves by the net 1,100.
+    const { result } = await pipelineFor(
+      {},
+      {
+        count: 2,
+        amountCollected: 5_500,
+        companyCost: 2_000,
+        paidAmount: 1_800,
+        transferredIn: 1_500,
+        transferredOut: 400,
+      },
+    );
+    expect(result.transferredIn).toBe(1_500);
+    expect(result.transferredOut).toBe(400);
+    expect(result.remaining).toBe(5_500 + 2_000 - 1_800 + 1_500 - 400);
   });
 
   it('derives `remaining` with the CONTRACT’s formula, not a second copy of it', async () => {
@@ -73,10 +97,16 @@ describe('the totals pipeline', () => {
       amountCollected: 87_835,
       companyCost: 174_710,
       paidAmount: 240_540,
+      transferredIn: 0,
+      transferredOut: 0,
       remaining: 22_005,
     });
     expect(result.remaining).toBe(
-      fleetAccidentRemaining({ amountCollected: 87_835, companyCost: 174_710, paidAmount: 240_540 }),
+      fleetAccidentRemaining({
+        amountCollected: 87_835,
+        companyCost: 174_710,
+        paidAmount: 240_540,
+      }),
     );
   });
 
@@ -87,6 +117,8 @@ describe('the totals pipeline', () => {
       amountCollected: 0,
       companyCost: 0,
       paidAmount: 0,
+      transferredIn: 0,
+      transferredOut: 0,
       remaining: 0,
     });
     expect(Object.is(result.remaining, -0)).toBe(false);
@@ -94,7 +126,9 @@ describe('the totals pipeline', () => {
 });
 
 describe('resolving a typed code against the registry', () => {
-  const findFor = async (term: string): Promise<{ filter: Record<string, unknown>; ids: string[] }> => {
+  const findFor = async (
+    term: string,
+  ): Promise<{ filter: Record<string, unknown>; ids: string[] }> => {
     let filter: Record<string, unknown> = {};
     const id = new Types.ObjectId();
     vi.spyOn(FleetVehicleModel, 'find').mockImplementation(((sent: Record<string, unknown>) => {

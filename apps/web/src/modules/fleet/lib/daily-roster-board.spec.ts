@@ -18,6 +18,7 @@ import {
   isDirty,
   rowsToSave,
   setMission,
+  swapDrivers,
 } from './daily-roster-board';
 
 const row = (
@@ -469,8 +470,12 @@ describe('a vehicle the workshop holds is not materialised', () => {
       inMaintenance: true,
       missionTypeId: mission,
     });
-  const free = (vehicleId: string, code: string, mission: string | null, d1: string | null = null) =>
-    row(vehicleId, code, d1, null, { planned: false, missionTypeId: mission });
+  const free = (
+    vehicleId: string,
+    code: string,
+    mission: string | null,
+    d1: string | null = null,
+  ) => row(vehicleId, code, d1, null, { planned: false, missionTypeId: mission });
 
   it('CASE 1 — an in-workshop vehicle with an INHERITED operation is not sent', () => {
     const baseline = [inShop('v213', '213', 'm1')];
@@ -654,10 +659,9 @@ describe('clearCrew takes every driver off one day', () => {
   });
 
   it('and clearing the slots one after the other does NOT', () => {
-    const folded = DUTY_SLOTS.reduce(
-      (rows, slot) => clearSlot(rows, 'v1', slot),
-      [crewed('v1', 'a', 'b')] as readonly FleetRosterRowDto[],
-    );
+    const folded = DUTY_SLOTS.reduce((rows, slot) => clearSlot(rows, 'v1', slot), [
+      crewed('v1', 'a', 'b'),
+    ] as readonly FleetRosterRowDto[]);
     expect(folded[0]?.driver1EmployeeId, 'the promoted driver survives').toBe('b');
   });
 
@@ -669,5 +673,44 @@ describe('clearCrew takes every driver off one day', () => {
   it('leaves the PER-DRIVER bin promoting, which is what that gesture wants', () => {
     const [only] = clearSlot([crewed('v1', 'a', 'b')], 'v1', 'driver1EmployeeId');
     expect(only?.driver1EmployeeId).toBe('b');
+  });
+});
+
+describe("swapDrivers — the row's swap button", () => {
+  it('makes the first driver the second and the second the first, on that car only', () => {
+    const before = [row('v1', '150', 'e1', 'e2'), row('v2', '151', 'e3', 'e4')];
+    expect(crews(swapDrivers(before, 'v1'))).toEqual(['150:e2/e1', '151:e3/e4']);
+  });
+
+  it('twice is where it started', () => {
+    const before = [row('v1', '150', 'e1', 'e2')];
+    expect(crews(swapDrivers(swapDrivers(before, 'v1'), 'v1'))).toEqual(['150:e1/e2']);
+  });
+
+  it('keeps the mission and the note', () => {
+    const before = [row('v1', '150', 'e1', 'e2', { missionTypeId: 'm1', notes: 'صباحي' })];
+    const [after] = swapDrivers(before, 'v1');
+    expect(after?.missionTypeId).toBe('m1');
+    expect(after?.notes).toBe('صباحي');
+  });
+
+  it('leaves a car with one driver, none, or in the workshop exactly as it was', () => {
+    const before = [
+      row('v1', '150', 'e1'),
+      row('v2', '151'),
+      row('v3', '152', 'e5', 'e6', { inMaintenance: true }),
+    ];
+    for (const id of ['v1', 'v2', 'v3', 'nope']) {
+      expect(swapDrivers(before, id)).toEqual(before);
+    }
+  });
+
+  it('is an edit the save sends and the cancel can undo', () => {
+    const saved = [row('v1', '150', 'e1', 'e2', { planned: true })];
+    const draft = swapDrivers(saved, 'v1');
+    expect(hasEdits(saved, draft)).toBe(true);
+    const [sent] = rowsToSave(saved, draft);
+    expect(sent?.vehicleId).toBe('v1');
+    expect([sent?.driver1EmployeeId, sent?.driver2EmployeeId]).toEqual(['e2', 'e1']);
   });
 });

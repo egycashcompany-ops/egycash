@@ -6,7 +6,10 @@ import {
   ChangeFleetVehicleStatusSchema,
   CreateFleetCatalogItemSchema,
   CreateFleetUnavailabilitySchema,
+  FleetAccidentTransferInputSchema,
   FleetEvents,
+  UpdateFleetAccidentSchema,
+  fleetAccidentRemaining,
   ListFleetDriversQuerySchema,
   ListFleetVehiclesQuerySchema,
   MoveFleetViolationsSchema,
@@ -516,5 +519,47 @@ describe('carrying a fine onto another car, and the way back', () => {
     expect(
       MoveFleetViolationsSchema.safeParse({ ids: IDS, vehicleId: CAR, filedYear: null }).success,
     ).toBe(false);
+  });
+});
+
+describe('taking from another car’s remaining — the transfer input', () => {
+  const car = oid('a1');
+  const ok = (amount: number): boolean =>
+    FleetAccidentTransferInputSchema.safeParse({ fromVehicleId: car, amount }).success;
+
+  it('takes ordinary amounts to the piastre — including the ones binary floats cannot hold', () => {
+    // 19.99 * 100 is 1998.9999999999998 and 1.1 * 100 is 110.00000000000001 in JavaScript; an
+    // exact comparison refused both.
+    for (const amount of [1.1, 19.99, 4.35, 2.3, 0.29, 0.01, 10.01, 1500, 3500.5]) {
+      expect(ok(amount), String(amount)).toBe(true);
+    }
+  });
+
+  it('refuses fractions of a piastre, zero and a negative amount', () => {
+    for (const amount of [0.001, 19.995, 0, -5]) expect(ok(amount), String(amount)).toBe(false);
+  });
+
+  it('refuses a car taking from itself when the edit names both', () => {
+    const parsed = UpdateFleetAccidentSchema.safeParse({
+      version: 0,
+      vehicleId: car,
+      transfer: { fromVehicleId: car, amount: 10 },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it('counts what moved in and out in the file’s remaining', () => {
+    expect(
+      fleetAccidentRemaining({
+        amountCollected: 1500,
+        companyCost: 500,
+        paidAmount: 1300,
+        transferredIn: 1500,
+        transferredOut: 200,
+      }),
+    ).toBe(2000);
+    expect(
+      fleetAccidentRemaining({ amountCollected: 1500, companyCost: 500, paidAmount: 1300 }),
+    ).toBe(700);
   });
 });

@@ -612,6 +612,22 @@ export const useSetAccidentStatus = () =>
   );
 export const useDeleteAccident = () => useAccidentMutation((id: string) => api.deleteAccident(id));
 
+/**
+ * One car's transfer log and its remaining — under the accidents subtree, so every accident write
+ * (a transfer rides on one) and every realtime `fleet.accident` signal refreshes it.
+ */
+export const useAccidentCarTransfers = (vehicleId: string, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'accidents', { transfers: vehicleId }),
+    queryFn: () => api.accidentCarTransfers(vehicleId),
+    enabled: enabled && vehicleId !== '',
+  });
+
+export const useVoidAccidentTransfer = () =>
+  useAccidentMutation(({ accidentId, transferId }: { accidentId: string; transferId: string }) =>
+    api.voidAccidentTransfer(accidentId, transferId),
+  );
+
 export const useViolations = (params: FleetListParams) =>
   useQuery({
     queryKey: listKey(MODULE, 'violations', params),

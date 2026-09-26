@@ -7,7 +7,6 @@ import { Outlet, Route, Routes } from 'react-router-dom';
 import { RequirePermission } from '../../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../../platform/app/pages/NotFoundPage';
 import { RecruitmentLayout } from './RecruitmentLayout';
-import { RecruitmentOverview } from './pages/RecruitmentOverview';
 import { ApplicantsListPage } from './applicants/pages/ApplicantsListPage';
 import { RecruitmentFormPage } from './recruitment-form/pages/RecruitmentFormPage';
 import { ApplicantSourcesPage } from './applicant-sources/pages/ApplicantSourcesPage';
@@ -38,7 +37,6 @@ export default function RecruitmentRoutes(): JSX.Element {
   return (
     <Routes>
       <Route element={<RecruitmentLayout />}>
-        <Route index element={<RecruitmentOverview />} />
         <Route
           path="recruitment-form"
           element={

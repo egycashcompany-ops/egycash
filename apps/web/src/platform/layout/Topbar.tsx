@@ -7,6 +7,7 @@ import { useAppDispatch, useAppSelector } from '../../store';
 import { signedOut } from '../../store/authSlice';
 import { toggleSidebar } from '../../store/uiSlice';
 import { logoutRequest } from '../auth/api';
+import { queryClient } from '../../shared/lib/query-client';
 import { useT } from '../localization/useT';
 import { fullName } from '../../shared/lib/format';
 import { useOnClickOutside } from '../../shared/lib/useOnClickOutside';
@@ -37,6 +38,9 @@ const UserMenu = (): JSX.Element => {
       await logoutRequest();
     } finally {
       dispatch(signedOut());
+      // The idle sign-out and a lost session already did this; the button did not, so the
+      // signed-out person's lists and menu stayed in memory behind the sign-in screen.
+      queryClient.clear();
       navigate('/login');
     }
   };

@@ -8,6 +8,7 @@ import { signedIn, signedOut } from '../../store/authSlice';
 import { bootstrapSession } from '../auth/api';
 import { LoginPage } from '../auth/LoginPage';
 import { ActivationPage } from '../auth/ActivationPage';
+import { LandingPage } from './pages/LandingPage';
 import { RequireAuth } from '../router/RequireAuth';
 import { RealtimeProvider } from '../realtime/RealtimeProvider';
 import { LoadingState } from '../../shared/ui/states/LoadingState';
@@ -62,6 +63,9 @@ const PublicApplyPage = lazy(() =>
   })),
 );
 const AccountRoutes = lazy(() => import('../account/routes'));
+// The shell around `/`, lazy like every other signed-in area. The landing page itself is eager:
+// it is a few lines, and it is the first thing every sign-in renders.
+const AppShell = lazy(() => import('../layout/AppShell').then((m) => ({ default: m.AppShell })));
 const NotificationRoutes = lazy(() => import('../notifications/routes'));
 
 const useDirection = (): void => {
@@ -517,6 +521,29 @@ export const App = (): JSX.Element => {
             </RequireAuth>
           }
         />
+        {/* `/` belongs to the platform, not to a module. It used to fall through to the catch-all
+            below, which made HR's recruitment overview everybody's front door — an empty HR page
+            for somebody granted only the fleet. It now lands each person on the first page of
+            their own menu. Inside the shell, so a person who holds nothing yet still has the top
+            bar: their name, the language, and the way out. */}
+        <Route
+          path="/"
+          element={
+            <RequireAuth>
+              <Suspense
+                fallback={
+                  <div className="grid min-h-screen place-items-center">
+                    <LoadingState />
+                  </div>
+                }
+              >
+                <AppShell />
+              </Suspense>
+            </RequireAuth>
+          }
+        >
+          <Route index element={<LandingPage />} />
+        </Route>
         <Route
           path="/*"
           element={

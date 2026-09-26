@@ -9,6 +9,32 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Signing in opens the first screen the person is allowed, not an empty HR page.** Somebody
+  granted only the fleet or the operations screens signed in to HR's recruitment overview, with
+  nothing on it. `/` was never decided by anybody's access: the recruitment routes were the app's
+  catch-all, so their overview was everybody's front door.
+
+  `/` now belongs to the platform. It reads the person's own menu — the same list the sidebar
+  draws — and replaces itself with its first page, top to bottom (`landingRoute`). Whatever an
+  administrator puts first in someone's menu is what they open onto, and revoking it moves them to
+  the next page they hold, with nothing to maintain. A route that is not an in-app path is never
+  followed (the catalogue is admin-edited data; `//host` and `/\host` resolve to another origin),
+  and `/` is never chosen as its own target. A person who holds nothing yet is told so plainly,
+  inside the shell, rather than shown an empty module or a 403.
+
+  HR's recruitment overview had `/` as its only route and is removed with the twelve strings only
+  it used: its KPI tiles were placeholders, and every card on it is a page of the sidebar. HR staff
+  now land on the first page of their menu like everybody else. «Back to overview» on the 404 and
+  403 pages reads «Back to home», since `/` is no longer an overview.
+
+- **Signing out from the top bar clears what the session had loaded.** The idle sign-out and a
+  lost session already did; the button did not. On a shared browser, the next person to sign in on
+  that tab was answered from the previous person's cache for up to five minutes — their menu among
+  it, which is exactly what `/` now picks the first screen from. The cache is also cleared where
+  every session begins, at sign-in, so it cannot matter how the last one ended.
+
 ### Changed
 
 - **The formal-Arabic guard now reads the whole product, and checks morphology rather than a word

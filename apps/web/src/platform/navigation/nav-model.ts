@@ -121,6 +121,37 @@ export const moduleEntryRoute = (module: NavModule, remembered: string | null): 
   return stillValid ? remembered : first;
 };
 
+/**
+ * A route this app can navigate to by itself: an absolute in-app path, and not `/`.
+ *
+ * The catalogue is edited by administrators, so a route is data, not a promise. `/` would send
+ * the landing page onto itself forever; `//host` and `/\host` are protocol-relative — a browser
+ * resolves both to ANOTHER origin, which history refuses with a thrown error rather than a
+ * navigation. A landing page must neither loop nor be the thing that sends someone off-site.
+ */
+const isInAppPath = (route: string): boolean => /^\/[^/\\]/.test(route);
+
+/**
+ * Where `/` sends a signed-in person: the first page of their OWN navigation, top to bottom — the
+ * very row their sidebar shows first.
+ *
+ * `/` used to belong to HR. The recruitment routes were the app's catch-all, so their overview was
+ * everybody's front door, and somebody granted only the fleet or operations screens signed in to
+ * an HR page with nothing on it. Taking the landing from the navigation makes it follow access
+ * with nothing to maintain: whatever an administrator puts first in a person's menu is what they
+ * open onto, and revoking it moves them to the next page they hold.
+ *
+ * Null when there is nowhere to go — nothing granted yet — so the caller can say so plainly
+ * instead of guessing at a page the server would refuse.
+ */
+export const landingRoute = (data: MyApplicationCategoryDto[]): string | null => {
+  for (const module of visibleModules(data)) {
+    const first = moduleApps(module).find((app) => isInAppPath(app.route));
+    if (first !== undefined) return first.route;
+  }
+  return null;
+};
+
 /** The id of the module owning the app that best (longest-prefix) matches the current path. */
 export const moduleOfPathname = (modules: NavModule[], pathname: string): string | null => {
   let bestId: string | null = null;

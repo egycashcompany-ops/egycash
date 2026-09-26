@@ -5,6 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   flattenApps,
+  landingRoute,
   moduleApps,
   moduleEntryRoute,
   moduleOfPathname,
@@ -281,5 +282,79 @@ describe('visibleModules — which modules earn chrome', () => {
     const [only] = visibleModules([hrFullyGrouped]);
     expect(moduleApps(only!)[0]?.route).toBe('/applicants');
     expect(moduleEntryRoute(only!, null)).toBe('/applicants');
+  });
+});
+
+describe('landingRoute — where `/` sends a person', () => {
+  // «لو انا عامل لحد ان يشوف الحركه مثلا او العمليات… بيجيب الشاشه بتاعت الاتش ار بس مفيهاش
+  // معلومات… انا عاوز يجيب اول شاشه فى اللى مسموح ليه فقط». `/` was HR's recruitment overview for
+  // everybody; it is now the first page of the person's own menu.
+  const page = (id: string, route: string) => ({ id, name: { ar: id, en: id }, icon: 'file', route });
+  const section = (id: string, applications: ReturnType<typeof page>[]) => ({
+    id,
+    name: { ar: id, en: id },
+    applications,
+  });
+  const module = (
+    id: string,
+    applications: ReturnType<typeof page>[],
+    sections: ReturnType<typeof section>[] = [],
+  ) => ({ id, name: { ar: id, en: id }, icon: null, applications, sections });
+
+  it('opens a fleet-only person onto the fleet, not onto HR', () => {
+    const fleetOnly = [module('fleet', [page('f1', '/fleet'), page('f2', '/fleet/vehicles')])];
+    expect(landingRoute(fleetOnly)).toBe('/fleet');
+  });
+
+  it('is the first row of the menu, in the order the server sent it', () => {
+    const operationsFirst = [
+      module('operations', [page('o1', '/operations/shipments')]),
+      module('fleet', [page('f1', '/fleet')]),
+    ];
+    expect(landingRoute(operationsFirst)).toBe('/operations/shipments');
+  });
+
+  it('reads a module top to bottom: its ungrouped pages before its sections', () => {
+    // The same order both shells draw the column in, so the landing is the row the person sees
+    // first — not the first row of some other ordering.
+    const hr = module(
+      'hr',
+      [page('h0', '/announcements')],
+      [section('s1', [page('h1', '/applicants')]), section('s2', [page('h2', '/payroll/runs')])],
+    );
+    expect(landingRoute([hr])).toBe('/announcements');
+  });
+
+  it('reaches into a section when a module has nothing ungrouped', () => {
+    const hr = module('hr', [], [section('s1', [page('h1', '/applicants')])]);
+    expect(landingRoute([hr])).toBe('/applicants');
+  });
+
+  it('skips a module with no pages, as the sidebar does', () => {
+    const emptyThenFleet = [module('gold', [], [section('s', [])]), module('fleet', [page('f', '/fleet')])];
+    expect(landingRoute(emptyThenFleet)).toBe('/fleet');
+  });
+
+  it('is null when nothing is granted — the caller says so rather than guessing', () => {
+    expect(landingRoute([])).toBeNull();
+    expect(landingRoute([module('gold', [])])).toBeNull();
+  });
+
+  it('never lands on `/` itself, which would redirect onto itself forever', () => {
+    expect(landingRoute([module('hr', [page('root', '/'), page('h1', '/applicants')])])).toBe(
+      '/applicants',
+    );
+  });
+
+  it('never follows a route out of the app — the catalogue is admin-edited data', () => {
+    // `//host` and `/\host` are protocol-relative: a browser resolves both to another origin.
+    const hostile = module('x', [
+      page('a', '//evil.example'),
+      page('b', '/\\evil.example'),
+      page('c', 'https://evil.example'),
+      page('d', 'fleet'),
+    ]);
+    expect(landingRoute([hostile])).toBeNull();
+    expect(landingRoute([hostile, module('fleet', [page('f', '/fleet')])])).toBe('/fleet');
   });
 });

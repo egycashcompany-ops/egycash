@@ -257,6 +257,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['platform/account/PreferencesPage.tsx'],
   ['platform/account/SecurityPage.tsx'],
   ['platform/app/pages/ForbiddenPage.tsx'],
+  ['platform/app/pages/LandingPage.tsx'],
   ['platform/app/pages/NotFoundPage.tsx'],
   ['platform/auth/ActivationPage.tsx'],
   ['platform/auth/ForcePasswordChangePage.tsx'],

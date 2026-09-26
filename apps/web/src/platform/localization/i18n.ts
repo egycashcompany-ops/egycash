@@ -369,6 +369,9 @@ const en: Record<string, string> = {
   'platform.auth.brand.footer': 'ECMS · Enterprise Platform',
   'platform.shell.signOut': 'Sign out',
   'platform.shell.language': 'العربية',
+  'platform.landing.nothingGrantedTitle': 'No screens are assigned to your account yet',
+  'platform.landing.nothingGrantedBody':
+    'Your account is active, but no screens have been granted to it. Please contact the system administrator to set up your access.',
 
   // Common UI kit
   'common.loading': 'Loading…',
@@ -403,7 +406,7 @@ const en: Record<string, string> = {
   'common.clear': 'Clear',
   'common.noResults': 'No matches',
   'common.remove': 'Remove',
-  'common.backHome': 'Back to overview',
+  'common.backHome': 'Back to home',
   'common.empty.title': 'Nothing here yet',
   'common.error.title': 'Could not load',
   'common.errorBoundary.title': 'Something went wrong',
@@ -626,18 +629,6 @@ const en: Record<string, string> = {
   'recruitment.placeholder.title': 'Screen not built yet',
   'recruitment.placeholder.body':
     'The foundation is ready; the screen for this stage will be added next.',
-  'recruitment.overview.title': 'Recruitment',
-  'recruitment.overview.subtitle': 'Manage the hiring pipeline end to end.',
-  'recruitment.overview.welcome': 'Welcome, {{name}} — manage the hiring pipeline end to end.',
-  'recruitment.overview.noAccessTitle': 'No recruitment access',
-  'recruitment.overview.noAccessBody': 'Ask an administrator to grant you recruitment permissions.',
-  'recruitment.cards.applicants': 'Register and track candidates through the pipeline.',
-  'recruitment.cards.screening': 'Run the initial screening decision for each applicant.',
-  'recruitment.cards.interviews': 'Schedule rounds and panels, and record evaluations.',
-  'recruitment.cards.offers': 'Draft, send, and track job offers.',
-  'recruitment.cards.employees': 'Convert accepted offers into employee records.',
-  'recruitment.cards.hiringDocuments': 'Collect and validate required hiring documents.',
-  'recruitment.cards.employeeFiles': 'Assemble the electronic employee file.',
 
   // Common (extra)
   'common.cancel': 'Cancel',
@@ -7290,6 +7281,9 @@ const ar: Record<string, string> = {
   'platform.auth.brand.footer': 'ECMS · المنصة المؤسسية',
   'platform.shell.signOut': 'تسجيل الخروج',
   'platform.shell.language': 'English',
+  'platform.landing.nothingGrantedTitle': 'لم تُخصَّص أي شاشات لحسابك بعد',
+  'platform.landing.nothingGrantedBody':
+    'حسابك مفعَّل، ولكن لم تُمنح له أي شاشات حتى الآن. يُرجى التواصل مع مسؤول النظام لإعداد صلاحياتك.',
 
   // Common UI kit
   'common.loading': 'جارٍ التحميل…',
@@ -7323,7 +7317,7 @@ const ar: Record<string, string> = {
   'common.clear': 'مسح',
   'common.noResults': 'لا توجد نتائج',
   'common.remove': 'إزالة',
-  'common.backHome': 'العودة إلى النظرة العامة',
+  'common.backHome': 'العودة إلى الصفحة الرئيسية',
   'common.empty.title': 'لا يوجد شيء هنا بعد',
   'common.error.title': 'تعذّر التحميل',
   'common.errorBoundary.title': 'حدث خطأ ما',
@@ -7560,18 +7554,6 @@ const ar: Record<string, string> = {
   'applicants.moveToOffer.done': 'تم نقل المتقدِّم لمرحلة عرض العمل.',
   'recruitment.placeholder.title': 'لم يتم بناء الشاشة بعد',
   'recruitment.placeholder.body': 'الأساس جاهز؛ ستُضاف شاشة هذه المرحلة لاحقًا.',
-  'recruitment.overview.title': 'التوظيف',
-  'recruitment.overview.subtitle': 'أدر مسار التعيين من البداية إلى النهاية.',
-  'recruitment.overview.welcome': 'مرحبًا {{name}} — أدر مسار التعيين من البداية إلى النهاية.',
-  'recruitment.overview.noAccessTitle': 'لا صلاحية للتوظيف',
-  'recruitment.overview.noAccessBody': 'اطلب من المسؤول منحك صلاحيات التوظيف.',
-  'recruitment.cards.applicants': 'تسجيل المتقدِّمين ومتابعتهم عبر المسار.',
-  'recruitment.cards.screening': 'اتخاذ قرار الفرز المبدئي لكل متقدِّم.',
-  'recruitment.cards.interviews': 'جدولة الجولات واللجان وتسجيل التقييمات.',
-  'recruitment.cards.offers': 'إعداد عروض العمل وإرسالها ومتابعتها.',
-  'recruitment.cards.employees': 'تحويل العروض المقبولة إلى سجلات موظفين.',
-  'recruitment.cards.hiringDocuments': 'جمع مستندات التعيين المطلوبة والتحقق منها.',
-  'recruitment.cards.employeeFiles': 'تجميع الملف الإلكتروني للموظف.',
 
   // Common (extra)
   'common.cancel': 'إلغاء',

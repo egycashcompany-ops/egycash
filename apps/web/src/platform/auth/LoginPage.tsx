@@ -7,6 +7,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch } from '../../store';
 import { signedIn } from '../../store/authSlice';
+import { queryClient } from '../../shared/lib/query-client';
 import { useT } from '../localization/useT';
 import { loginFailure } from './login-failure';
 import { ThemeToggle } from '../layout/ThemeToggle';
@@ -40,6 +41,11 @@ export const LoginPage = (): JSX.Element => {
   const [busy, setBusy] = useState(false);
 
   const finish = (me: MeDto): void => {
+    // A new session starts from an empty cache. When somebody signs out and somebody else signs
+    // in on the same tab, everything still cached was fetched with the PREVIOUS person's token —
+    // their menu included, and `/` picks this person's first screen from that menu. Cleared here,
+    // at the one place every session begins, it cannot matter how the last one ended.
+    queryClient.clear();
     dispatch(signedIn(me));
     navigate('/');
   };

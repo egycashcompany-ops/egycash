@@ -19,6 +19,8 @@ export interface FleetCatalogItemDoc extends BaseDocFields {
   /** `violationType` only: which half of the violations screen files it. Null for other kinds. */
   violationSide: FleetViolationSide | null;
   isActive: boolean;
+  /** Place in its list, as dragged on the catalogs screen. Absent/null until arranged once. */
+  sortOrder?: number | null;
 }
 
 const catalogItemSchema = new Schema<FleetCatalogItemDoc>(
@@ -28,6 +30,7 @@ const catalogItemSchema = new Schema<FleetCatalogItemDoc>(
     countsForAlarm: { type: Boolean, required: true, default: false },
     violationSide: { type: String, enum: [...FLEET_VIOLATION_SIDES, null], default: null },
     isActive: { type: Boolean, required: true, default: true },
+    sortOrder: { type: Number, default: null },
     ...baseFields,
   },
   baseSchemaOptions,
@@ -38,6 +41,8 @@ catalogItemSchema.index(
   { unique: true, name: 'ux_kind_name_ar', partialFilterExpression: { isDeleted: false } },
 );
 catalogItemSchema.index({ kind: 1, isActive: 1 }, { name: 'ix_kind_active' });
+// Every list of a kind is read in the order it was dragged into.
+catalogItemSchema.index({ kind: 1, sortOrder: 1 }, { name: 'ix_kind_order' });
 // The violations screen reads one half's types at a time — the side belongs in that lookup.
 catalogItemSchema.index(
   { kind: 1, violationSide: 1, isActive: 1 },

@@ -70,6 +70,7 @@ const catalogItem = (
   kind: 'violationType',
   name: { ar, en: ar },
   countsForAlarm: false,
+  sortOrder: null,
   violationSide,
   isActive: true,
   version: 0,
@@ -693,7 +694,9 @@ describe('the eight reported defects, as rules the markup carries', () => {
     // A clerk reconciling a stack asks «speeding and seatbelt». A `<select>` cannot be asked that,
     // which is why this is a listbox trigger and why the URL key carries a list.
     const markup = page();
-    const at = markup.indexOf(`data-filter-field="${translate('ar', 'fleet.violations.fields.type')}"`);
+    const at = markup.indexOf(
+      `data-filter-field="${translate('ar', 'fleet.violations.fields.type')}"`,
+    );
     expect(at, 'the type filter is named').toBeGreaterThan(-1);
     const field = markup.slice(at, at + 700);
     expect(field, 'a multi-select, not a dropdown').toContain('aria-haspopup="listbox"');
@@ -902,7 +905,9 @@ describe('the next round of reports, as rules the markup carries', () => {
     const code = panel.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
     expect(code, 'no pager').not.toContain('<Pagination');
     expect(code, 'no page-size box either').not.toContain('PageSizeSelect');
-    expect(code, 'and nothing is left importing it').not.toMatch(/import[\s\S]{0,80}PageSizeSelect/);
+    expect(code, 'and nothing is left importing it').not.toMatch(
+      /import[\s\S]{0,80}PageSizeSelect/,
+    );
     // The chunk the board asks for is a constant, not a control the reader sets.
     expect(code, 'the chunk is fixed').toMatch(/pageSize: MAX_PAGE_SIZE/);
     // The heading is a plain centred h2 again — there is no longer a control laid over the row to
@@ -915,10 +920,7 @@ describe('the next round of reports, as rules the markup carries', () => {
     // AND THE REST OF THE APP IS UNTOUCHED. `Pagination` is shared by ~20 other screens; the
     // summary sentence and the page-size box are still its default, so removing them HERE must
     // not have removed them THERE.
-    const pagination = readFileSync(
-      join(HERE, '../../shared/ui/Pagination.tsx'),
-      'utf8',
-    );
+    const pagination = readFileSync(join(HERE, '../../shared/ui/Pagination.tsx'), 'utf8');
     expect(pagination, 'the summary is still on by default').toContain('summary = true');
     expect(pagination, 'and the page-size box still ships with it').toContain('<PageSizeSelect');
   });
@@ -951,13 +953,20 @@ describe('the next round of reports, as rules the markup carries', () => {
     // statement and that car's drivers' fines are the same sitting, and picking it twice was two
     // chances to pick two different cars and file half the sitting against the wrong one.
     const pageSrc = readFileSync(join(HERE, 'pages/ViolationsPage.tsx'), 'utf8');
-    expect(pageSrc, 'the page owns it').toContain("const [entryVehicleId, setEntryVehicleId] = useState('')");
+    expect(pageSrc, 'the page owns it').toContain(
+      "const [entryVehicleId, setEntryVehicleId] = useState('')",
+    );
     // Handed to BOTH halves, and to nothing else: the two BOARDS keep their own car filters.
     expect((pageSrc.match(/entryVehicleId=\{entryVehicleId\}/g) ?? []).length).toBe(2);
     expect((pageSrc.match(/onEntryVehicleChange=\{setEntryVehicleId\}/g) ?? []).length).toBe(2);
-    for (const file of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+    for (const file of [
+      'components/CompanyViolationsPanel.tsx',
+      'components/DriverViolationsPanel.tsx',
+    ]) {
       const panel = readFileSync(join(HERE, file), 'utf8');
-      expect(panel, `${file} reads the shared car`).toContain('const formVehicleId = entryVehicleId;');
+      expect(panel, `${file} reads the shared car`).toContain(
+        'const formVehicleId = entryVehicleId;',
+      );
       expect(panel, `${file} writes the shared car`).toContain(
         'const setFormVehicleId = onEntryVehicleChange;',
       );
@@ -1008,7 +1017,9 @@ describe('the next round of reports, as rules the markup carries', () => {
 
     const api = readFileSync(join(HERE, 'api/fleet-api.ts'), 'utf8');
     const call = api.slice(api.indexOf('export const violationRollup'));
-    expect(call.slice(0, 700), 'the codes are what the endpoint is asked').toContain('vehicleCodes');
+    expect(call.slice(0, 700), 'the codes are what the endpoint is asked').toContain(
+      'vehicleCodes',
+    );
   });
 
   it('ticks the drivers’ fines and lets the ticked set be dragged as ONE', () => {
@@ -1080,7 +1091,7 @@ describe('the next round of reports, as rules the markup carries', () => {
     // NO CAR IS SENT. The only one this screen could name is the car the fine is sitting on NOW,
     // which is the wrong one — the row remembers where it came from and the server reads it.
     expect(panel, 'the return names no vehicle').toContain(
-      "move.mutateAsync({ ids: [row.id], filedYear: null })",
+      'move.mutateAsync({ ids: [row.id], filedYear: null })',
     );
     expect(panel, 'and it is not the car it was dropped onto').not.toContain(
       'vehicleId: row.vehicleId, filedYear: null',
@@ -1141,7 +1152,10 @@ describe('the next round of reports, as rules the markup carries', () => {
     const panel = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/[^\n]*/g, '');
-    const bar = panel.slice(panel.indexOf('data-driver-bar'), panel.indexOf('data-driver-bar') + 400);
+    const bar = panel.slice(
+      panel.indexOf('data-driver-bar'),
+      panel.indexOf('data-driver-bar') + 400,
+    );
     expect(bar, 'no sideways scroll in the entry bar').not.toContain('overflow-x-auto');
     expect(bar, 'it wraps instead').toContain('flex-wrap');
   });
@@ -1153,10 +1167,9 @@ describe('the next round of reports, as rules the markup carries', () => {
     const at = panel.indexOf('data-company-form-total');
     const field = panel.slice(panel.lastIndexOf('<Field', at), at);
     expect(field, 'the widest share in the row').toMatch(/flex-\[1\.6\] basis-0 min-w-\[5\.5rem\]/);
-    expect(
-      panel.slice(at, at + 600),
-      'and the full figure is always recoverable',
-    ).toContain('title={');
+    expect(panel.slice(at, at + 600), 'and the full figure is always recoverable').toContain(
+      'title={',
+    );
   });
 
   it('a settled fine is out of the drivers’ page total too', () => {
@@ -1371,7 +1384,10 @@ describe('the printed report is a company document, not a screenshot', () => {
     const company = readFileSync(join(HERE, 'components/CompanyViolationsPanel.tsx'), 'utf8');
     const drivers = readFileSync(join(HERE, 'components/DriverViolationsPanel.tsx'), 'utf8');
     const headerOf = (source: string): string =>
-      source.slice(source.indexOf('const exportHeader = ['), source.indexOf('];', source.indexOf('const exportHeader = [')));
+      source.slice(
+        source.indexOf('const exportHeader = ['),
+        source.indexOf('];', source.indexOf('const exportHeader = [')),
+      );
     expect(headerOf(company), 'eight columns, as sent').not.toContain('totalBeforeGrievance');
     expect(headerOf(drivers), 'five columns, as sent').not.toContain('violations.collected');
   });
@@ -1400,7 +1416,7 @@ describe('the printed report is a company document, not a screenshot', () => {
     for (const header of [headerOf(drivers), headerOf(company)]) {
       // Every heading comes from the report's own namespace, and none from the board's.
       expect(header, 'the report names its own columns').toContain("t('fleet.violations.report.");
-      expect(header, 'and borrows none from the table').not.toContain("fleet.violations.fields.");
+      expect(header, 'and borrows none from the table').not.toContain('fleet.violations.fields.');
       expect(header, 'nor from the odometer').not.toContain('fleet.odometer.columns');
       expect(header, 'nor from the rollup').not.toContain('fleet.violations.rollup');
     }
@@ -1416,7 +1432,10 @@ describe('the printed report is a company document, not a screenshot', () => {
     expect(reportMoney(7344.4)).toBe('7344.40');
     expect(reportMoney(2900), 'no thousands separator').toBe('2900.00');
     expect(reportMoney(0)).toBe('0.00');
-    for (const panel of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+    for (const panel of [
+      'components/CompanyViolationsPanel.tsx',
+      'components/DriverViolationsPanel.tsx',
+    ]) {
       const source = readFileSync(join(HERE, panel), 'utf8');
       const at = source.indexOf('printFleetReport({');
       expect(at, `${panel} prints the form`).toBeGreaterThan(-1);
@@ -1447,7 +1466,11 @@ describe('the printed report is a company document, not a screenshot', () => {
   });
 
   it('escapes the document rather than letting a name close a tag', () => {
-    const html = report({ header: ['<b>h</b>'], rows: [['a & b']], totals: [{ label: '"q"', value: '1' }] });
+    const html = report({
+      header: ['<b>h</b>'],
+      rows: [['a & b']],
+      totals: [{ label: '"q"', value: '1' }],
+    });
     expect(html).toContain('&lt;b&gt;h&lt;/b&gt;');
     expect(html).toContain('a &amp; b');
     expect(html).toContain('&quot;q&quot;');
@@ -1648,11 +1671,19 @@ describe('the counters are one row, and they wrap as one', () => {
    */
   it('gives all five fields the SAME share of the bar', () => {
     expect(CODE, 'one share, declared once').toContain("const ENTRY_CELL = 'flex-1 basis-0");
-    const bar = CODE.slice(CODE.indexOf('data-driver-bar'), CODE.indexOf('</Field>', CODE.indexOf('data-driver-count=')));
+    const bar = CODE.slice(
+      CODE.indexOf('data-driver-bar'),
+      CODE.indexOf('</Field>', CODE.indexOf('data-driver-count=')),
+    );
     // The car box's own field takes it too — that is what makes it one of the five rather than
     // a fixed box the other four line up beside.
-    expect(bar.match(/className=\{ENTRY_CELL\}/g)?.length ?? 0, 'the code box and a counter').toBeGreaterThanOrEqual(2);
-    expect(bar, 'and no fixed width is left on the car box').not.toMatch(/<div className="w-\d+">\s*<VehicleCodeCombobox/);
+    expect(
+      bar.match(/className=\{ENTRY_CELL\}/g)?.length ?? 0,
+      'the code box and a counter',
+    ).toBeGreaterThanOrEqual(2);
+    expect(bar, 'and no fixed width is left on the car box').not.toMatch(
+      /<div className="w-\d+">\s*<VehicleCodeCombobox/,
+    );
   });
 
   it('pays the counters group for its own gaps, so a counter equals the car box exactly', () => {
@@ -1724,12 +1755,13 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
     for (const hook of ['data-detail-collect=', 'data-detail-delete=', 'data-detail-edit=']) {
       expect((CODE.match(new RegExp(hook, 'g')) ?? []).length, `${hook} is not copied`).toBe(1);
     }
-    expect(
-      (CODE.match(/render: rowActions,/g) ?? []).length,
-      'and both tables use it',
-    ).toBe(2);
+    expect((CODE.match(/render: rowActions,/g) ?? []).length, 'and both tables use it').toBe(2);
     // Each still behind its own grant — the thing a second copy would have lost.
-    for (const grant of ['fleetViolation.collect', 'fleetViolation.delete', 'fleetViolation.edit']) {
+    for (const grant of [
+      'fleetViolation.collect',
+      'fleetViolation.delete',
+      'fleetViolation.edit',
+    ]) {
       expect(CODE, `${grant} still gates its action`).toContain(`can('${grant}')`);
     }
   });
@@ -1738,9 +1770,7 @@ describe('opening a car’s year shows BOTH halves of what its totals are made o
     // The layer is where a car's year opens into the fines behind it, and it draws TWO tables:
     // the company rows and the drivers' rows of the same car and year. Both opened on a serial,
     // the same «م» the two boards behind them have just lost.
-    expect(CODE, 'no serial header in either table').not.toContain(
-      'fleet.violations.columns.seq',
-    );
+    expect(CODE, 'no serial header in either table').not.toContain('fleet.violations.columns.seq');
     expect(CODE, 'and no serial cell').not.toContain('formatNumber(index + 1, locale)');
     // Which column each table opens on now — read from the source in order, so a serial put back
     // under a different name still moves these and still fails.
@@ -1841,13 +1871,22 @@ describe('the company entry row gives its width to the figures that are typed', 
   it('the row’s total floor did not grow — that is what keeps it inside the panel at 1536', () => {
     // Every floor on the row, summed. It was 25rem before this change and must not exceed it:
     // the bar has ~510px of content at the split, and the floors plus gaps are what fill it.
-    const floors = [YEAR, 'testId="company-entry"', 'allLabel', VALUE, COUNT, 'data-company-form-total'];
+    const floors = [
+      YEAR,
+      'testId="company-entry"',
+      'allLabel',
+      VALUE,
+      COUNT,
+      'data-company-form-total',
+    ];
     const total = floors.reduce((sum, hook) => sum + field(hook).floor, 0);
     expect(total, `floors sum to ${total}rem`).toBeLessThanOrEqual(25);
   });
 
   it('the row is still one line from `md` up, and still never scrolls sideways', () => {
-    const row = CODE.slice(CODE.indexOf('<div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5'));
+    const row = CODE.slice(
+      CODE.indexOf('<div className="flex min-w-0 flex-1 flex-wrap items-end gap-1.5'),
+    );
     const open = row.slice(0, row.indexOf('>'));
     expect(open, 'one line on a desktop').toContain('md:flex-nowrap');
     expect(open, 'wrapping is the phone fallback').toContain('flex-wrap');

@@ -2,6 +2,8 @@
 import {
   parseFleetSort,
   type CreateFleetCatalogItem,
+  type FleetCatalogKind,
+  type OrderFleetCatalog,
   type ListFleetCatalogQuery,
   type Paginated,
   type UpdateFleetCatalogItem,
@@ -11,6 +13,11 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from './catalog-item.repository';
 import { type FleetCatalogItemDoc } from './catalog-item.model';
+
+/** The order a list currently reads in: its places first (unplaced read as last), then by name. */
+const byCurrentOrder = (a: FleetCatalogItemDoc, b: FleetCatalogItemDoc): number =>
+  (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+  a.name.ar.localeCompare(b.name.ar, 'ar');
 
 const entityRef = (id: string) => ({
   moduleId: 'fleet',
@@ -42,6 +49,9 @@ class FleetCatalogItemService {
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
         isActive: true,
+        // A new item joins the END of a list somebody has arranged; an unarranged list stays by
+        // name, so there is nothing to append to.
+        sortOrder: await this.nextOrder(input.kind),
       },
       { by },
     );
@@ -77,9 +87,54 @@ class FleetCatalogItemService {
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
         isActive: true,
+        // A new item joins the END of a list somebody has arranged; an unarranged list stays by
+        // name, so there is nothing to append to.
+        sortOrder: await this.nextOrder(input.kind),
       },
       { by },
     );
+  }
+
+  private async nextOrder(kind: FleetCatalogKind): Promise<number | null> {
+    const max = await fleetCatalogItemRepository.maxOrder(kind);
+    return max === null ? null : max + 1;
+  }
+
+  /**
+   * «اقدر ارتبهم عن طريق الشد والترك» — save one list's order. The ids named come first, in the
+   * order given; any item of the kind not named keeps its place after them, so a list filtered on
+   * screen cannot lose the order of what it was not showing.
+   */
+  async order(input: OrderFleetCatalog, by: string): Promise<void> {
+    const all = await fleetCatalogItemRepository.listKind(input.kind);
+    const byId = new Map(all.map((item) => [String(item._id), item]));
+    const stranger = input.ids.find((id) => !byId.has(id));
+    if (stranger !== undefined) {
+      throw new ConflictError(`${stranger} is not an item of ${input.kind}`);
+    }
+    const named = new Set(input.ids);
+    const current = [...all].sort(byCurrentOrder);
+    const ordered = [
+      ...input.ids.map((id) => byId.get(id) as FleetCatalogItemDoc),
+      ...current.filter((item) => !named.has(String(item._id))),
+    ];
+    await fleetCatalogItemRepository.writeOrder(
+      ordered.map((item) => item._id),
+      by,
+    );
+    const first = ordered[0];
+    if (first === undefined) return;
+    await auditService.record({
+      entityRef: entityRef(String(first._id)),
+      action: 'update',
+      changes: [
+        {
+          field: `order.${input.kind}`,
+          old: current.map((item) => item.name.ar),
+          new: ordered.map((item) => item.name.ar),
+        },
+      ],
+    });
   }
 
   async list(query: ListFleetCatalogQuery): Promise<Paginated<FleetCatalogItemDoc>> {
@@ -95,8 +150,15 @@ class FleetCatalogItemService {
       sortDir: query.sortDir,
       // …and the rest of the reader's order behind it. `sortBy` stays the first column
       // so nothing that only speaks the pagination contract is left sorting by nothing.
-      sorts: parseFleetSort(query.sort),
-      sortableFields: ['createdAt', 'kind', 'name.ar'],
+      // No order asked for: the list as it was ARRANGED, then by name for anything not yet placed.
+      sorts:
+        query.sort === undefined && query.sortBy === undefined
+          ? [
+              { by: 'sortOrder', dir: 'asc' },
+              { by: 'name.ar', dir: 'asc' },
+            ]
+          : parseFleetSort(query.sort),
+      sortableFields: ['createdAt', 'kind', 'name.ar', 'sortOrder'],
     });
   }
 

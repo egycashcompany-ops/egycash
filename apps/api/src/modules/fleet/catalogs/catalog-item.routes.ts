@@ -6,13 +6,19 @@ import { z } from 'zod';
 import {
   CreateFleetCatalogItemSchema,
   ListFleetCatalogQuerySchema,
+  OrderFleetCatalogSchema,
   UpdateFleetCatalogItemSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
 import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
-import { createCatalogItem, listCatalogItems, updateCatalogItem } from './catalog-item.controller';
+import {
+  createCatalogItem,
+  listCatalogItems,
+  orderCatalog,
+  updateCatalogItem,
+} from './catalog-item.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
 
@@ -54,6 +60,14 @@ export const buildFleetCatalogRouter = (): Router => {
     authorize('fleetCatalog.manage'),
     validate({ body: CreateFleetCatalogItemSchema }),
     asyncHandler(createCatalogItem),
+  );
+  // «اقدر ارتبهم عن طريق الشد والترك» — one list's order. Static, before `/:id`.
+  router.put(
+    '/order',
+    authenticate,
+    authorize('fleetCatalog.manage'),
+    validate({ body: OrderFleetCatalogSchema }),
+    asyncHandler(orderCatalog),
   );
   router.patch(
     '/:id',

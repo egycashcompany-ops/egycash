@@ -17,19 +17,20 @@ import {
 /** The order as a reader would describe it: «code ascending, then expiry descending». */
 const said = (sorts: readonly TableSort[]): string[] => sorts.map((s) => `${s.by}:${s.dir}`);
 
+// «لو عملت فلتر اسم السائق مثلا وبعدين دوست على السهم كود الموظف يلغى اسم السائق» — the owner
+// asked for the opposite of the piling-up order this file used to pin: ONE column at a time.
 describe('clicking a column the table is not sorted by', () => {
-  it('ADDS it, ascending, keeping what was there', () => {
-    // THE WHOLE POINT. The second column used to replace the first.
-    const after = toggleSort([{ by: 'code', dir: 'asc' }], 'licenseExpiresAt');
-    expect(said(after)).toEqual(['code:asc', 'licenseExpiresAt:asc']);
+  it('REPLACES the order — the column clicked before is cancelled', () => {
+    const after = toggleSort([{ by: 'driverName', dir: 'asc' }], 'employeeCode');
+    expect(said(after)).toEqual(['employeeCode:asc']);
   });
 
-  it('adds it at the END, so the first column clicked stays the first column sorted', () => {
+  it('never holds more than one column, however many are clicked', () => {
     let sorts: TableSort[] = [];
     sorts = toggleSort(sorts, 'code');
     sorts = toggleSort(sorts, 'licenseExpiresAt');
     sorts = toggleSort(sorts, 'createdAt');
-    expect(said(sorts)).toEqual(['code:asc', 'licenseExpiresAt:asc', 'createdAt:asc']);
+    expect(said(sorts)).toEqual(['createdAt:asc']);
   });
 
   it('starts ascending — «من الاصغر للاكبر», which is what the reader described', () => {
@@ -73,12 +74,11 @@ describe('clicking a column the table is already sorted by', () => {
 });
 
 describe('the cap', () => {
-  it('drops the OLDEST column rather than refusing the click', () => {
+  it('is never reached by clicking — one column is all a click leaves', () => {
     let sorts: TableSort[] = [];
     for (const key of ['a', 'b', 'c', 'd', 'e']) sorts = toggleSort(sorts, key);
-    expect(sorts).toHaveLength(FLEET_SORT_MAX);
-    expect(said(sorts)[0], 'the first click has aged out').toBe('b:asc');
-    expect(said(sorts).at(-1)).toBe('e:asc');
+    expect(sorts.length).toBeLessThanOrEqual(FLEET_SORT_MAX);
+    expect(said(sorts)).toEqual(['e:asc']);
   });
 });
 
@@ -168,12 +168,8 @@ describe('the first click, when the reader has ordered nothing yet', () => {
     expect(said(clickSort(null, 'inDate:desc', 'vehicleCode'))).toEqual(['vehicleCode:asc']);
   });
 
-  it('keeps piling columns up once the reader HAS ordered something', () => {
-    // The multi-column behaviour is about the reader's own columns, and it is untouched.
-    expect(said(clickSort('typeName:asc', 'code:asc', 'code'))).toEqual([
-      'typeName:asc',
-      'code:asc',
-    ]);
+  it('replaces the reader’s column with the next one clicked', () => {
+    expect(said(clickSort('typeName:asc', 'code:asc', 'code'))).toEqual(['code:asc']);
     expect(said(clickSort('typeName:asc,code:asc', 'code:asc', 'typeName'))).toEqual([
       'typeName:desc',
       'code:asc',

@@ -190,13 +190,20 @@ describe('every Fleet table is wired the same way', () => {
    * Named rather than detected, because this is a CLAIM about each screen — «this board is
    * whole» — and a new screen must be looked at rather than inherit the answer by accident.
    */
-  const CLIENT_BOARDS = ['RosterPage.tsx', 'FixedRosterPage.tsx', 'MaintenanceAlarmsPage.tsx'];
+  // …and the catalogs screen, since its lists are dragged into order: a list cannot be arranged
+  // across pages, so it holds each kind whole.
+  const CLIENT_BOARDS = [
+    'RosterPage.tsx',
+    'FixedRosterPage.tsx',
+    'MaintenanceAlarmsPage.tsx',
+    'CatalogsPage.tsx',
+  ];
   const SERVER_PAGES = PAGES.filter((name) => !CLIENT_BOARDS.includes(name));
 
   it('finds every sorting page — the census is not empty', () => {
-    // Ten today: seven server-paged registers and the three whole boards.
+    // Ten today: six server-paged registers and the four whole boards.
     expect(PAGES.length).toBeGreaterThanOrEqual(10);
-    expect(SERVER_PAGES.length).toBeGreaterThanOrEqual(7);
+    expect(SERVER_PAGES.length).toBeGreaterThanOrEqual(6);
     for (const board of CLIENT_BOARDS) expect(PAGES, board).toContain(board);
   });
 
@@ -213,7 +220,10 @@ describe('every Fleet table is wired the same way', () => {
     // same string. Spelled twice, they drift — and the drift is invisible: the table would open
     // in one order and a click would turn a different one round.
     const source = code(join('pages', name));
-    expect(source).toMatch(/const DEFAULT_SORT = '[^']+';/);
+    // Empty only where the default is the list's own ARRANGED order, which is no column at all.
+    expect(source).toMatch(
+      name === 'CatalogsPage.tsx' ? /const DEFAULT_SORT = '';/ : /const DEFAULT_SORT = '[^']+';/,
+    );
     expect(
       source.match(/DEFAULT_SORT/g)?.length,
       'declared once, read by the memo and by the click',
@@ -239,9 +249,7 @@ describe('every Fleet table is wired the same way', () => {
   it.each(SERVER_PAGES)('%s sends the order to the server, both shapes', (name) => {
     const source = code(join('pages', name));
     expect(source).toContain('...sortQuery(sorts)');
-    expect(source, 'nothing still sends a single column by hand').not.toMatch(
-      /sortBy: sort\.by/,
-    );
+    expect(source, 'nothing still sends a single column by hand').not.toMatch(/sortBy: sort\.by/);
   });
 
   it.each(CLIENT_BOARDS)('%s orders the WHOLE board in hand, through the shared rule', (name) => {
@@ -282,5 +290,15 @@ describe('what the shared table does with an order it is handed', () => {
     // Fleet's click adds a column; another module's replaces one. Both call the same callback.
     expect(TABLE).toContain('onSortChange?: (key: string) => void;');
     expect(TABLE, 'no sorting rule lives in the table').not.toContain('toggleSort');
+  });
+});
+
+describe('the catalogs are dragged into order', () => {
+  const SOURCE = code(join('pages', 'CatalogsPage.tsx'));
+  it('holds each list whole, saves a drop, and drags only in the arranged order', () => {
+    expect(SOURCE).toContain('useFleetCatalog(kind)');
+    expect(SOURCE).toContain('saveOrder.mutate(');
+    expect(SOURCE).toContain("const mayOrder = can('fleetCatalog.manage') && sorts.length === 0;");
+    expect(SOURCE, 'no pages to drag across').not.toContain('<Pagination');
   });
 });

@@ -31,6 +31,7 @@ import {
   type SetFleetGrievance,
   type UpdateFleetAccident,
   type UpdateFleetCatalogItem,
+  type OrderFleetCatalog,
   type UpdateFleetDriverProfile,
   type UpdateFleetVehicleType,
   type SetFleetViolationCollected,
@@ -221,6 +222,18 @@ const useCatalogItemMutation = <TInput>(
 
 export const useCreateCatalogItem = () =>
   useCatalogItemMutation((body: CreateFleetCatalogItem) => api.createCatalogItem(body));
+/**
+ * Save a list's order. Every catalog cache refreshes — the dropdowns across Fleet read the same
+ * lists, so they follow the new order too.
+ */
+export const useOrderCatalog = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderFleetCatalog) => api.orderCatalog(body),
+    onSettled: () => void qc.invalidateQueries({ queryKey: fleetKeys.catalogs }),
+  });
+};
+
 export const useUpdateCatalogItem = () =>
   useCatalogItemMutation(({ id, body }: { id: string; body: UpdateFleetCatalogItem }) =>
     api.updateCatalogItem(id, body),

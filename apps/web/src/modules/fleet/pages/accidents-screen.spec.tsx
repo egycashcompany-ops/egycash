@@ -747,3 +747,17 @@ describe('several drivers and a yellow log', () => {
     expect(PAGE).toContain('r.carHasTransfers');
   });
 });
+
+describe('the Excel carries the log — «الحوادث ضيف السجل فى الاكسيل»', () => {
+  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
+  it('has a «السجل» column before «ملاحظات», filled from each car’s own log', () => {
+    const at = PAGE.indexOf('const exportSheet');
+    const body = PAGE.slice(at, at + 4000);
+    expect(body.indexOf("t('fleet.accidents.log.column')")).toBeLessThan(
+      body.indexOf("t('fleet.accidents.fields.notes')"),
+    );
+    expect(body).toContain('fleetApi.accidentCarTransfers(vehicleId)');
+    expect(body).toContain('logCell(r.vehicleId)');
+    expect(body, 'only cars that have a transfer are asked').toContain('r.carHasTransfers');
+  });
+});

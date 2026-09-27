@@ -17,7 +17,7 @@
 // `code:asc,licenseExpiresAt:desc`, which is what sits in `?sort=`, what the request carries, and
 // what the server sorts by. One spelling, three places, no translation between them — which is
 // also why a link a reader sends a colleague arrives with their whole order, not its first column.
-import { FLEET_SORT_MAX, formatFleetSort, parseFleetSort, type FleetSortEntry } from '@ecms/contracts';
+import { formatFleetSort, parseFleetSort, type FleetSortEntry } from '@ecms/contracts';
 
 export type TableSort = FleetSortEntry;
 
@@ -81,8 +81,9 @@ export const clickSort = (raw: string | null, fallback: string, key: string): Ta
 
 export const toggleSort = (sorts: readonly TableSort[], key: string): TableSort[] => {
   const at = sorts.findIndex((entry) => entry.by === key);
-  const added: TableSort = { by: key, dir: 'asc' };
-  if (at === -1) return [...sorts, added].slice(-FLEET_SORT_MAX);
+  // «لو عملت فلتر اسم السائق ... وبعدين دوست على السهم كود الموظف يلغى اسم السائق» — a column the
+  // table is NOT sorted by REPLACES the order rather than joining it: one column at a time.
+  if (at === -1) return [{ by: key, dir: 'asc' }];
   const current = sorts[at] as TableSort;
   if (current.dir === 'asc') {
     return sorts.map((entry, index) =>
@@ -102,7 +103,11 @@ export const toggleSort = (sorts: readonly TableSort[], key: string): TableSort[
  */
 export const sortQuery = (
   sorts: readonly TableSort[],
-): { sortBy: string | undefined; sortDir: 'asc' | 'desc' | undefined; sort: string | undefined } => {
+): {
+  sortBy: string | undefined;
+  sortDir: 'asc' | 'desc' | undefined;
+  sort: string | undefined;
+} => {
   const first = sorts[0];
   return {
     sortBy: first?.by,

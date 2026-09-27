@@ -52,6 +52,32 @@ class FleetCatalogItemRepository extends BaseRepository<FleetCatalogItemDoc> {
     return this.model.find({ kind, isDeleted: false }).lean<FleetCatalogItemDoc[]>().exec();
   }
 
+  /**
+   * Write one list's order: each id gets its position. `bulkWrite` in one call; the version is
+   * left alone — a place in a list is not a fact an edit dialog carries, so reordering must not
+   * refuse the next rename as stale.
+   */
+  async writeOrder(ids: readonly Types.ObjectId[], by: string | null): Promise<void> {
+    if (ids.length === 0) return;
+    const updatedBy = by === null ? null : new Types.ObjectId(by);
+    await this.model.bulkWrite(
+      ids.map((_id, index) => ({
+        updateOne: { filter: { _id }, update: { $set: { sortOrder: index, updatedBy } } },
+      })),
+    );
+  }
+
+  /** The highest place used in a kind's list, or null when it has never been arranged. */
+  async maxOrder(kind: FleetCatalogKind): Promise<number | null> {
+    const top = await this.model
+      .findOne({ kind, isDeleted: false, sortOrder: { $ne: null } })
+      .sort({ sortOrder: -1 })
+      .select({ sortOrder: 1 })
+      .lean<{ sortOrder: number | null }>()
+      .exec();
+    return top?.sortOrder ?? null;
+  }
+
   /** Names for the ids a row points at — workshop, work type, spare parts — in one read. */
   async namesByIds(ids: readonly string[]): Promise<Map<string, LocalizedString>> {
     if (ids.length === 0) return new Map();

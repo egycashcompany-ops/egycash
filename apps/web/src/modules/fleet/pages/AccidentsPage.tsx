@@ -284,6 +284,31 @@ export const AccidentsPage = (): JSX.Element => {
     const all = await fetchFilteredRows((pageNo, size) =>
       fleetApi.listAccidents({ ...sheetFilters, page: pageNo, pageSize: size }),
     );
+    // «الحوادث ضيف السجل فى الاكسيل» — the SAME log the row's button opens, one line per car, read
+    // once for each car that has any. A car with none leaves the cell empty.
+    const withLog = [
+      ...new Set(
+        all
+          .filter((r) => r.carHasTransfers && r.vehicleId !== null)
+          .map((r) => r.vehicleId as string),
+      ),
+    ];
+    const logs = new Map(
+      await Promise.all(
+        withLog.map(
+          async (vehicleId) => [vehicleId, await fleetApi.accidentCarTransfers(vehicleId)] as const,
+        ),
+      ),
+    );
+    const logCell = (vehicleId: string | null): string =>
+      vehicleId === null
+        ? ''
+        : (logs.get(vehicleId)?.entries ?? [])
+            .map(
+              (entry) =>
+                `${t(entry.direction === 'in' ? 'fleet.accidents.log.paidFrom' : 'fleet.accidents.log.paidTo')} ${entry.otherVehicleCode ?? '—'}: ${formatMoney(entry.amount, 'EGP', locale)}`,
+            )
+            .join(' — ');
     saveSheet({
       name: t('fleet.nav.accidents'),
       serialHeader: t('fleet.violations.report.serial'),
@@ -297,6 +322,7 @@ export const AccidentsPage = (): JSX.Element => {
         t('fleet.accidents.fields.companyCost'),
         t('fleet.accidents.fields.paidAmount'),
         t('fleet.accidents.fields.remaining'),
+        t('fleet.accidents.log.column'),
         t('fleet.accidents.fields.notes'),
       ],
       // `codeOf` is the table's own resolver, reused rather than repeated: it prefers the code
@@ -312,6 +338,7 @@ export const AccidentsPage = (): JSX.Element => {
         r.companyCost,
         r.paidAmount,
         fleetAccidentRemaining(r),
+        logCell(r.vehicleId),
         r.notes ?? '',
       ]),
       moneyColumns: [5, 6, 7, 8],

@@ -15,24 +15,19 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
-import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge, StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
-import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
-import { useCatalogItems } from '../api/fleet-queries';
+import { EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { useFleetCatalog, useOrderCatalog } from '../api/fleet-queries';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
-import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
+import { sortRows } from '../lib/sort-rows';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = [
-  'active',
-  'sort',
-  'size',
-] as const;
-
-const DEFAULT_PAGE_SIZE = 25;
+const REMEMBERED_FILTERS = ['active', 'sort'] as const;
 
 const isKind = (value: string | null): value is FleetCatalogKind =>
   (FLEET_CATALOG_KINDS as readonly string[]).includes(value ?? '');
@@ -43,7 +38,10 @@ const isKind = (value: string | null): value is FleetCatalogKind =>
  * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
  * first click REPLACES it rather than joining it — see `clickSort`.
  */
-const DEFAULT_SORT = 'name.ar:asc';
+// «اقدر ارتبهم عن طريق الشد والترك» — the list opens in the order it was ARRANGED, which is no
+// column at all; a click on the name's arrow orders by name for reading, and dragging waits until
+// the arrow is cleared again.
+const DEFAULT_SORT = '';
 
 export const CatalogsPage = (): JSX.Element => {
   const t = useT();
@@ -54,8 +52,6 @@ export const CatalogsPage = (): JSX.Element => {
   const kindParam = sp.get('kind');
   const kind: FleetCatalogKind = isKind(kindParam) ? kindParam : 'workshop';
   const active = sp.get('active') ?? '';
-  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
-  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   /**
    * The columns this table is sorted by, in the order the reader clicked them —
    * «انا عاوز اقدر اعمل الاتنين مع بعض». One parameter carries the whole order; `name.ar:asc`
@@ -63,7 +59,6 @@ export const CatalogsPage = (): JSX.Element => {
    */
   const sortParam = sp.get('sort');
   const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);
-  const paramsKey = sp.toString();
 
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
     const next = new URLSearchParams(sp);
@@ -80,17 +75,51 @@ export const CatalogsPage = (): JSX.Element => {
     patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
   };
 
-  const params = useMemo(
-    () => ({
-      kind,
-      page,
-      pageSize,
-      ...sortQuery(sorts),
-      isActive: active === '' ? undefined : active === 'true',
-    }),
-    [paramsKey],
-  );
-  const { data, isLoading, isError, error, refetch } = useCatalogItems(params);
+  // The WHOLE list of the kind, one page: a list cannot be dragged into order across pages, and
+  // these lists are tens of entries. The same cached list every Fleet dropdown reads.
+  const { data, isLoading, isError, error, refetch } = useFleetCatalog(kind);
+  const saveOrder = useOrderCatalog();
+  /** The order just dropped, shown at once while the save and the refetch land. */
+  const [pending, setPending] = useState<{ kind: string; ids: string[] } | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
+  const all = useMemo(() => {
+    const items = data?.items ?? [];
+    if (pending === null || pending.kind !== kind) return items;
+    const byId = new Map(items.map((item) => [item.id, item]));
+    return pending.ids.flatMap((id) => {
+      const item = byId.get(id);
+      return item === undefined ? [] : [item];
+    });
+  }, [data, pending, kind]);
+  const rows = useMemo(() => {
+    const shown = all.filter((item) => active === '' || String(item.isActive) === active);
+    // The whole list is in hand, so a click on the name orders it here; none keeps the arranged
+    // order, which is the order the server answered in.
+    return sorts.length === 0
+      ? shown
+      : sortRows(shown, sorts, (row, key) => (key === 'name.ar' ? row.name.ar : null));
+  }, [all, active, sorts]);
+  // Dragging arranges the list itself, so it is offered only while the list IS its own order.
+  const mayOrder = can('fleetCatalog.manage') && sorts.length === 0;
+  const move = (fromId: string, toId: string): void => {
+    if (fromId === toId) return;
+    const ids = all.map((item) => item.id);
+    const from = ids.indexOf(fromId);
+    const target = ids.indexOf(toId);
+    if (from === -1 || target === -1) return;
+    ids.splice(from, 1);
+    // Dropped ON a row, it takes that row's place: above it when moving up, below it when down.
+    ids.splice(from < target ? ids.indexOf(toId) + 1 : ids.indexOf(toId), 0, fromId);
+    setPending({ kind, ids });
+    saveOrder.mutate(
+      { kind, ids },
+      {
+        onSuccess: () => toast.success(t('fleet.catalogs.orderSaved')),
+        onError: () => setPending(null),
+      },
+    );
+  };
 
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FleetCatalogItemDto | null>(null);
@@ -99,6 +128,29 @@ export const CatalogsPage = (): JSX.Element => {
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const columns: Column<FleetCatalogItemDto>[] = [
+    ...(can('fleetCatalog.manage')
+      ? [
+          {
+            key: 'drag',
+            header: '',
+            render: (r: FleetCatalogItemDto) => (
+              <span
+                data-drag-handle={r.id}
+                title={t(
+                  mayOrder ? 'fleet.catalogs.dragToOrder' : 'fleet.catalogs.dragNeedsOwnOrder',
+                )}
+                className={
+                  mayOrder
+                    ? 'inline-flex cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200'
+                    : 'inline-flex cursor-not-allowed rounded p-1 text-slate-300 dark:text-slate-700'
+                }
+              >
+                <GripIcon className="h-4 w-4" />
+              </span>
+            ),
+          } satisfies Column<FleetCatalogItemDto>,
+        ]
+      : []),
     {
       key: 'name.ar',
       header: t('fleet.catalogs.fields.nameAr'),
@@ -211,21 +263,48 @@ export const CatalogsPage = (): JSX.Element => {
 
         <DataTable
           columns={columns}
-          rows={data?.items ?? []}
+          rows={rows}
           rowKey={(r) => r.id}
+          rowClassName={(r) =>
+            dragging === r.id
+              ? 'opacity-40'
+              : over === r.id && dragging !== null
+                ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
+                : undefined
+          }
+          rowProps={(r) =>
+            mayOrder
+              ? {
+                  draggable: true,
+                  onDragStart: (e) => {
+                    e.dataTransfer.setData('text/plain', r.id);
+                    e.dataTransfer.effectAllowed = 'move';
+                    setDragging(r.id);
+                  },
+                  onDragEnd: () => {
+                    setDragging(null);
+                    setOver(null);
+                  },
+                  onDragOver: (e) => {
+                    e.preventDefault();
+                    setOver(r.id);
+                  },
+                  onDrop: (e) => {
+                    e.preventDefault();
+                    const id = e.dataTransfer.getData('text/plain');
+                    setDragging(null);
+                    setOver(null);
+                    if (id !== '') move(id, r.id);
+                  },
+                }
+              : undefined
+          }
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sorts}
           onSortChange={changeSort}
         />
-        {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
-            meta={data.meta}
-            onPageChange={(p) => patch({ page: String(p) }, false)}
-            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-          />
-        )}
       </div>
 
       <CatalogItemDialog

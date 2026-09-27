@@ -99,10 +99,32 @@ export interface FleetCatalogItemDto {
   /** `violationType` only: which half of the violations screen offers it. Null elsewhere. */
   violationSide: FleetViolationSide | null;
   isActive: boolean;
+  /**
+   * Where the item sits in its list — «اقدر ارتبهم عن طريق الشد والترك». Every list of this kind,
+   * on this screen and in every Fleet dropdown, reads in this order. `null` until the list has
+   * been arranged once; such items read by name.
+   */
+  sortOrder: number | null;
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * PUT /fleet/catalog-items/order — one list of one kind, in the order it was dragged into. Items
+ * of the kind left out keep their relative order after the ones named.
+ */
+export const OrderFleetCatalogSchema = z
+  .object({
+    kind: FleetCatalogKindSchema,
+    ids: z
+      .array(objectId())
+      .min(1)
+      .max(1000)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'An item is listed twice' }),
+  })
+  .strict();
+export type OrderFleetCatalog = z.infer<typeof OrderFleetCatalogSchema>;
 
 export const CreateFleetCatalogItemSchema = z
   .object({

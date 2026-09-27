@@ -9,6 +9,7 @@ import {
   type CorrectFleetOdometer,
   type CreateFleetAccident,
   type CreateFleetCatalogItem,
+  type OrderFleetCatalog,
   type CreateFleetDriverProfile,
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
@@ -97,6 +98,9 @@ export const listCatalogItems = (
   getPage<FleetCatalogItemDto>(`/fleet/catalog-items${buildQuery(params)}`);
 export const createCatalogItem = (body: CreateFleetCatalogItem): Promise<FleetCatalogItemDto> =>
   post<FleetCatalogItemDto>('/fleet/catalog-items', body);
+/** One list's order, as dragged — `ids` first, the rest of the kind after them. */
+export const orderCatalog = (body: OrderFleetCatalog): Promise<void> =>
+  put<void>('/fleet/catalog-items/order', body);
 export const updateCatalogItem = (
   id: string,
   body: UpdateFleetCatalogItem,

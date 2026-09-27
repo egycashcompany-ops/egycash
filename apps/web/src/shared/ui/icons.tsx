@@ -270,6 +270,18 @@ export const HistoryIcon = (p: IconProps): JSX.Element => (
   </Base>
 );
 
+/** Six dots in two columns — "grab here to move this row". */
+export const GripIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <circle cx="9" cy="6" r="1" />
+    <circle cx="15" cy="6" r="1" />
+    <circle cx="9" cy="12" r="1" />
+    <circle cx="15" cy="12" r="1" />
+    <circle cx="9" cy="18" r="1" />
+    <circle cx="15" cy="18" r="1" />
+  </Base>
+);
+
 export const LinkIcon = (p: IconProps): JSX.Element => (
   <Base {...p}>
     <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />

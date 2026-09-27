@@ -3,9 +3,10 @@ import { type Request, type Response } from 'express';
 import {
   type CreateFleetCatalogItem,
   type ListFleetCatalogQuery,
+  type OrderFleetCatalog,
   type UpdateFleetCatalogItem,
 } from '@ecms/contracts';
-import { created, ok, okPage, validated } from '../../../platform/web';
+import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toCatalogItemDto } from '../fleet.mappers';
 import { fleetCatalogItemService } from './catalog-item.service';
@@ -21,6 +22,12 @@ export const createCatalogItem = async (req: Request, res: Response): Promise<vo
   const { body } = validated<CreateFleetCatalogItem>(req);
   const doc = await fleetCatalogItemService.create(body, authContext(req).userId);
   created(res, toCatalogItemDto(doc));
+};
+
+export const orderCatalog = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<OrderFleetCatalog>(req);
+  await fleetCatalogItemService.order(body, authContext(req).userId);
+  noContent(res);
 };
 
 export const updateCatalogItem = async (req: Request, res: Response): Promise<void> => {

@@ -231,10 +231,62 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
     const ids = new Set<string>();
     const found = new Set<string>();
     for (const row of rows) {
-      if (row.vehicleId !== null) ids.add(String(row.vehicleId));
-      if (row.vehicleCode !== null) found.add(row.vehicleCode);
+      // `!= null`, not `!== null`: a file that never had the field reads as UNDEFINED, and adding
+      // `undefined` to this set marked every other code-less file on the page as having
+      // transfers — which is how every «السجل» button on the board turned yellow.
+      if (row.vehicleId != null) ids.add(String(row.vehicleId));
+      if (row.vehicleCode != null && row.vehicleCode !== '') found.add(row.vehicleCode);
     }
     return { ids, codes: found };
+  }
+
+  /**
+   * The five figures summed per car over every live file: by registry id, and — for a file kept
+   * from the old book with no id — by the code the book wrote.
+   */
+  async sumsPerCar(): Promise<
+    {
+      vehicleId: Types.ObjectId | null;
+      vehicleCode: string | null;
+      amountCollected: number;
+      companyCost: number;
+      paidAmount: number;
+      transferredIn: number;
+      transferredOut: number;
+    }[]
+  > {
+    const rows = await this.model
+      .aggregate<{
+        _id: { vehicleId: Types.ObjectId | null; vehicleCode: string | null };
+        amountCollected: number;
+        companyCost: number;
+        paidAmount: number;
+        transferredIn: number;
+        transferredOut: number;
+      }>([
+        { $match: { isDeleted: false } },
+        {
+          $group: {
+            _id: {
+              vehicleId: { $ifNull: ['$vehicleId', null] },
+              vehicleCode: {
+                $cond: [{ $eq: [{ $ifNull: ['$vehicleId', null] }, null] }, '$vehicleCode', null],
+              },
+            },
+            amountCollected: { $sum: '$amountCollected' },
+            companyCost: { $sum: '$companyCost' },
+            paidAmount: { $sum: '$paidAmount' },
+            transferredIn: { $sum: orZero('$transferredIn') },
+            transferredOut: { $sum: orZero('$transferredOut') },
+          },
+        },
+      ])
+      .exec();
+    return rows.map(({ _id, ...sums }) => ({
+      vehicleId: _id.vehicleId,
+      vehicleCode: _id.vehicleCode ?? null,
+      ...sums,
+    }));
   }
 
   /** Live files holding a live transfer FROM this car — «ادت ل مين». */

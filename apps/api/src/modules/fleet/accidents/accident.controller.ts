@@ -32,9 +32,9 @@ export const listAccidents = async (req: Request, res: Response): Promise<void> 
   okPage(res, page, (doc) => {
     const code = codes.get(String(doc.vehicleId)) ?? null;
     const carHasTransfers =
-      (doc.vehicleId !== null && withTransfers.ids.has(String(doc.vehicleId))) ||
+      (doc.vehicleId != null && withTransfers.ids.has(String(doc.vehicleId))) ||
       (code !== null && withTransfers.codes.has(code)) ||
-      (doc.vehicleCode !== null && withTransfers.codes.has(doc.vehicleCode));
+      (doc.vehicleCode != null && withTransfers.codes.has(doc.vehicleCode));
     return toAccidentDto(doc, code, carHasTransfers);
   });
 };
@@ -71,6 +71,10 @@ export const deleteAccident = async (req: Request, res: Response): Promise<void>
 export const carTransfers = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, FleetAccidentTransfersQuery>(req);
   ok(res, await fleetAccidentService.carTransfers(query.vehicleId));
+};
+
+export const carBalances = async (_req: Request, res: Response): Promise<void> => {
+  ok(res, await fleetAccidentService.carBalances());
 };
 
 export const voidTransfer = async (req: Request, res: Response): Promise<void> => {

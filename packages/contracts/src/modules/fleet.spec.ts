@@ -525,7 +525,7 @@ describe('carrying a fine onto another car, and the way back', () => {
 describe('taking from another car’s remaining — the transfer input', () => {
   const car = oid('a1');
   const ok = (amount: number): boolean =>
-    FleetAccidentTransferInputSchema.safeParse({ fromVehicleId: car, amount }).success;
+    FleetAccidentTransferInputSchema.safeParse({ fromVehicleIds: [car], amount }).success;
 
   it('takes ordinary amounts to the piastre — including the ones binary floats cannot hold', () => {
     // 19.99 * 100 is 1998.9999999999998 and 1.1 * 100 is 110.00000000000001 in JavaScript; an
@@ -539,11 +539,20 @@ describe('taking from another car’s remaining — the transfer input', () => {
     for (const amount of [0.001, 19.995, 0, -5]) expect(ok(amount), String(amount)).toBe(false);
   });
 
+  it('takes several cars, in the order picked, and refuses the same car twice', () => {
+    const parse = (ids: string[]) =>
+      FleetAccidentTransferInputSchema.safeParse({ fromVehicleIds: ids, amount: 10 });
+    const picked = parse([oid('b2'), car]);
+    expect(picked.success && picked.data.fromVehicleIds).toEqual([oid('b2'), car]);
+    expect(parse([car, car]).success).toBe(false);
+    expect(parse([]).success).toBe(false);
+  });
+
   it('refuses a car taking from itself when the edit names both', () => {
     const parsed = UpdateFleetAccidentSchema.safeParse({
       version: 0,
       vehicleId: car,
-      transfer: { fromVehicleId: car, amount: 10 },
+      transfer: { fromVehicleIds: [oid('b2'), car], amount: 10 },
     });
     expect(parsed.success).toBe(false);
   });

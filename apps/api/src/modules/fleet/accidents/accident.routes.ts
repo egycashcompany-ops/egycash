@@ -14,6 +14,7 @@ import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   accidentSummary,
+  carBalances,
   carTransfers,
   createAccident,
   deleteAccident,
@@ -52,6 +53,13 @@ export const buildFleetAccidentsRouter = (): Router => {
     authorize('fleetAccident.view'),
     validate({ query: FleetAccidentTransfersQuerySchema }),
     asyncHandler(carTransfers),
+  );
+  // «كود السيارة المأخوذ منها» offers only the cars with something left. Static, before `/:id`.
+  router.get(
+    '/car-balances',
+    authenticate,
+    authorize('fleetAccident.view'),
+    asyncHandler(carBalances),
   );
   router.post(
     '/',

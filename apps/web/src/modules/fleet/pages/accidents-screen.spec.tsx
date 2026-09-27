@@ -682,21 +682,23 @@ describe('transfers between cars', () => {
     expect(LOG.slice(LOG.lastIndexOf('{mayRemove && (', at), at)).toContain('{mayRemove && (');
   });
 
-  it('shows the source car’s remaining and refuses more than it has', () => {
-    expect(FORM, 'the same figure the server caps by').toContain(
-      'useAccidentCarTransfers(fromVehicleId, open)',
+  it('offers only cars with something left, several at once, and refuses more than they have', () => {
+    expect(FORM, 'the server’s list of cars with remaining > 0').toContain(
+      'useAccidentCarBalances(open)',
     );
-    expect(FORM).toContain("t('fleet.accidents.transfer.balance'");
-    expect(FORM).toContain("t('fleet.accidents.transfer.after'");
-    expect(FORM).toContain("t('fleet.accidents.transfer.tooMuch'");
+    expect(FORM, 'never this accident’s own car').toContain('car.vehicleId !== vehicleId');
+    expect(FORM, 'several cars').toContain('<MultiSelect');
+    expect(FORM, 'drawn in the order picked').toContain('planTakes(');
+    expect(FORM).toContain("t('fleet.accidents.transfer.carLine'");
+    expect(FORM).toContain("t('fleet.accidents.transfer.tooMuchAll'");
     // A picked car with a problem keeps «حفظ» shut.
     expect(FORM).toContain('(!transferring || transfer !== undefined)');
   });
 
-  it('leaves the file being moved off the source car out of what that car can give', () => {
+  it('leaves the file being moved off a source car out of what that car can give', () => {
     // The server drops the receiving file from the source car's files; the figure shown must too.
-    expect(FORM).toContain('accident.vehicleId === fromVehicleId');
-    expect(FORM).toContain('paidAmount: leaving');
+    expect(FORM).toContain('accident.vehicleId === carId ? fleetAccidentRemaining(accident) : 0');
+    expect(FORM).toContain('paidAmount: leavingFrom(id)');
   });
 
   it('reads a box holding only «.» as nothing typed, never as NaN', () => {

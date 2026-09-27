@@ -99,12 +99,19 @@ export const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
  * this depends on HR's PUBLIC HTTP surface — deliberately as a URL rather than by importing HR's
  * api module, which would be the code-level cross-module coupling the review checklist forbids.
  * Gated server-side by `employee.view`; the picker says so rather than searching into a 403.
+ *
+ * The employed by default. `includeExited` drops the filter, so HR answers with every status —
+ * the leavers too — which is what a SEARCH of the custody register needs and a hand-over never
+ * does.
  */
 export const searchEmployees = (
   search: string,
+  { includeExited = false }: { includeExited?: boolean } = {},
   pageSize = 8,
 ): Promise<Paginated<EmployeeDto>> =>
-  getPage<EmployeeDto>(`/hr/employees${buildQuery({ search, employed: true, pageSize })}`);
+  getPage<EmployeeDto>(
+    `/hr/employees${buildQuery({ search, employed: includeExited ? undefined : true, pageSize })}`,
+  );
 
 // ── Catalog items (design §2.4 — kind-discriminated: assetCategory | ticketCategory) ─
 export const listCatalogItems = (params: ItListParams): Promise<Paginated<ItCatalogItemDto>> =>

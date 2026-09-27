@@ -251,8 +251,11 @@ export const CustodyPage = (): JSX.Element => {
             ))}
           </Select>
           {/* The holder filter searches the server (ADR-019) — the browser never holds the staff
-              list. The id goes in the URL so a filtered register can be linked and shared. */}
+              list. The id goes in the URL so a filtered register can be linked and shared. It
+              finds the people who have LEFT as well: their intervals are still in this register,
+              and «who left with a laptop» is one of the questions it exists to answer. */}
           <EmployeePicker
+            includeExited
             value={employeeId}
             valueLabel={holderLabel}
             ariaLabel={t('it.custody.filterHolder')}

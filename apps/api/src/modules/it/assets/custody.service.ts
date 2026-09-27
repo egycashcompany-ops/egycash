@@ -26,6 +26,7 @@ import {
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
+import { getDirectoryEmployee, type DirectoryEmployee } from '../../../platform/directory';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { logger } from '../../../infrastructure/logging/logger';
@@ -44,6 +45,27 @@ const actorNameOf = (ctx: AuthContext): string =>
 
 /** Audit rows for custody carry the transition, not a field-by-field diff of the whole asset. */
 const change = (field: string, from: unknown, to: unknown) => ({ field, old: from, new: to });
+
+/**
+ * Custody is handed only to somebody who works here today — «فى حاله الاضافه اللى موجود بس».
+ *
+ * The holder box on assign and transfer offers the employed alone; this is the same rule where a
+ * stale dialog, a second tab or a direct call cannot step around it. The custody register's
+ * SEARCH finds leavers on purpose, which is exactly why the rule cannot rest on which list a box
+ * happened to load.
+ *
+ * It refuses on a POSITIVE answer only. An id the directory cannot read — a deployment with no HR
+ * source, or a person it does not know — leaves the action exactly as it was: this adds the one
+ * fact HR can state, not a new dependency on HR answering at all. On leave and suspended are still
+ * employed, and still receive custody.
+ */
+const refuseLeaver = (employee: DirectoryEmployee | null): void => {
+  if (employee?.status === 'exited') {
+    throw new BusinessRuleError(
+      `employee ${employee.code} has left the company; custody can only be handed to a current employee`,
+    );
+  }
+};
 
 interface HistoryInput {
   assetId: string;
@@ -131,6 +153,9 @@ class ItAssetCustodyService {
     scope: ScopeSelector,
   ): Promise<{ asset: ItAssetDoc; assignment: ItAssetAssignmentDoc }> {
     const at = input.assignedAt ?? new Date();
+    // Asked BEFORE the transaction: HR's answer is not part of the custody write, and a read of
+    // another module's data has no business holding it open.
+    refuseLeaver(await getDirectoryEmployee(input.employeeId));
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
       if (asset.status !== 'inStock') {
@@ -296,6 +321,10 @@ class ItAssetCustodyService {
     scope: ScopeSelector,
   ): Promise<{ asset: ItAssetDoc; assignment: ItAssetAssignmentDoc }> {
     const at = input.at ?? new Date();
+    // Read outside the transaction, like assign's, and judged inside it: whether this names a NEW
+    // holder is only known once the open interval has been read.
+    const named =
+      input.toEmployeeId === undefined ? null : await getDirectoryEmployee(input.toEmployeeId);
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
       await this.assertNoActiveMaintenance(asset, 'transfer', session);
@@ -318,6 +347,10 @@ class ItAssetCustodyService {
           'a transfer must change the holder, the branch, or both — this changes neither',
         );
       }
+      // Only a transfer that HANDS the asset to somebody new is a hand-over. Moving it across
+      // branches in the same hands gives nobody anything, even when those hands have since left:
+      // the return is still owed, and refusing the move would not bring it any closer.
+      if (!sameHolder) refuseLeaver(named);
 
       // Close the current interval. `returnedAt` is what makes it closed, so the partial unique
       // index releases immediately and the new interval can be inserted in the same transaction.

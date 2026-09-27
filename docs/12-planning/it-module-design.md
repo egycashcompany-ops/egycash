@@ -373,6 +373,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 - **FR-14** A requester may cancel their **own** ticket while it is still `open`, and may add
   public comments to their own tickets — ownership rules riding the `own` scope, not grants; no
   permission is minted for either.
+- **FR-15** Custody is handed only to a current employee: `assign`, and a `transfer` that names a
+  new holder, refuse an employee HR reports as `exited` (422). A branch move in the same hands is
+  not a hand-over and stays open to a departed holder. The custody register's holder search finds
+  every status, leavers included; the hand-over pickers offer the employed alone (§17,
+  2026-09-27).
 
 ## 6. States catalog
 
@@ -640,3 +645,10 @@ starts only on an explicit owner GO.
   Also recorded: `registered`, `updated` and `warrantyUpdated` are declared in
   `IT_ASSET_EVENT_TYPES` and written by nothing (§4.1 says they should be). Left as a deliberate
   debt — IT-5 does not widen its scope to fix an IT-1/IT-2 gap.
+- **Custody holders** (2026-09-27) — owner request: «لما يعمل بحث او يضيف حاجه او اى حاجه يختار
+  اسم الموظف يظهرله اسم الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود لكن فى حاله
+  الاضافه اللى موجود بس». The register's holder filter now searches every employee HR has, leavers
+  marked as such; assign and transfer keep offering the employed alone, and the server enforces
+  it (FR-15). Only a positive `exited` answer refuses — an id the directory cannot read is accepted
+  as before, so a deployment without HR is unchanged. No schema, event or permission change: the
+  picker still reads HR's list under `employee.view`, as §9.1 has it.

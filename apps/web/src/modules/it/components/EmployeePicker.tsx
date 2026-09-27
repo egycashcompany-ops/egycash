@@ -9,10 +9,20 @@
 // Resolve-by-id is not needed here and is deliberately absent: a custody dialog always opens on a
 // fresh choice, and the CURRENT holder is rendered from the assignment row the server already
 // returned. A picker only has to resolve ids it might arrive holding.
+//
+// WHO THE BOX FINDS depends on what the pick is for — «لما يعمل بحث ... كل المواظفين سواء اللى
+// مشى او اللى موجود لكن فى حاله الاضافه اللى موجود بس»:
+//   • a SEARCH (the custody register's holder filter) finds everyone HR has, leavers included —
+//     the register still holds their intervals, and a leaver who kept a laptop is exactly who
+//     that filter gets asked about;
+//   • a HAND-OVER (assign, transfer) finds the people who work here today, and nobody else.
+// The hand-over is the default, so a new box that forgets to choose cannot offer a leaver
+// custody. The server refuses that hand-over too; this only keeps the box from offering it.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
+import { Badge } from '../../../shared/ui/Badge';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { CloseIcon } from '../../../shared/ui/icons';
@@ -24,6 +34,7 @@ export const EmployeePicker = ({
   valueLabel,
   onChange,
   ariaLabel,
+  includeExited = false,
 }: {
   /** The picked employee id, '' when none. */
   value: string;
@@ -31,6 +42,8 @@ export const EmployeePicker = ({
   valueLabel: string;
   onChange: (employeeId: string, label: string) => void;
   ariaLabel?: string;
+  /** `true` for a search: the people who have left are found too, and marked as such. */
+  includeExited?: boolean;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -38,8 +51,10 @@ export const EmployeePicker = ({
   const allowed = can('employee.view');
 
   const results = useQuery({
-    queryKey: listKey('it', 'employeeSearch', search),
-    queryFn: () => api.searchEmployees(search),
+    // The population is part of the key: a search's wider answer must never be served from the
+    // cache to a hand-over box that was typed into with the same letters.
+    queryKey: listKey('it', 'employeeSearch', { search, includeExited }),
+    queryFn: () => api.searchEmployees(search, { includeExited }),
     enabled: allowed && search.trim() !== '',
     staleTime: 30_000,
   });
@@ -101,7 +116,12 @@ export const EmployeePicker = ({
                           : 'text-slate-700 dark:text-slate-200'
                       }`}
                     >
-                      <span>{employee.personal.fullNameAr}</span>
+                      <span className="flex items-center gap-2">
+                        <span>{employee.personal.fullNameAr}</span>
+                        {employee.status === 'exited' && (
+                          <Badge size="sm">{t('it.custody.pickerExited')}</Badge>
+                        )}
+                      </span>
                       <span className="font-mono text-xs text-slate-500" dir="ltr">
                         {employee.code}
                       </span>

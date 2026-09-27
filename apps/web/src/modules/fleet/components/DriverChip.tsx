@@ -28,10 +28,13 @@ export const DriverChip = ({
   employeeId,
   className,
   title,
+  size = 'md',
 }: {
   employeeId: string;
   className?: string;
   title?: string;
+  /** `lg` — a board whose job is the names reads them a step bigger. */
+  size?: 'md' | 'lg';
 }): JSX.Element => {
   const { name } = useEmployeeName(employeeId);
   return (
@@ -39,8 +42,13 @@ export const DriverChip = ({
       data-driver-chip={employeeId}
       title={title ?? name ?? employeeId}
       className={cn(
-        'flex max-w-full items-center justify-center truncate rounded-md bg-green-700 px-2.5 py-1',
-        'text-xs font-medium text-white dark:bg-green-600',
+        'flex max-w-full items-center justify-center rounded-md bg-green-700 px-2.5',
+        // `lg` WRAPS a long name onto a second line instead of cutting it — the board that asks
+        // for it is the one whose job is reading the names.
+        size === 'lg'
+          ? 'whitespace-normal break-words py-1.5 text-center text-sm leading-snug'
+          : 'truncate py-1 text-xs',
+        'font-medium text-white dark:bg-green-600',
         className,
       )}
     >

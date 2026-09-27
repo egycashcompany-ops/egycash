@@ -742,7 +742,7 @@ describe('the driver lists', () => {
     // page itself is exactly the shell's height and hands that down.
     expect(SOURCE, 'the page is the screen').toContain('<PageContainer fullHeight>');
     expect(SOURCE, 'and the board grid takes that height').toContain(
-      'grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_20rem]',
+      'grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_26rem]',
     );
     expect(SOURCE, 'the list takes what is left').toContain('min-h-0 flex-1 space-y-1');
     expect(SOURCE, 'and no fixed box remains').not.toContain('max-h-[26rem]');
@@ -1560,7 +1560,7 @@ describe('a car edited and not yet saved is tinted', () => {
 // in a browser after the change: the table and its box are both 914px at 1600, nothing clipped.
 describe('the board fits: notes and actions are on screen', () => {
   it('gives the pools a fixed width and the table everything else', () => {
-    expect(SOURCE).toContain('xl:grid-cols-[minmax(0,1fr)_20rem]');
+    expect(SOURCE).toContain('xl:grid-cols-[minmax(0,1fr)_26rem]');
     expect(SOURCE, 'no third of the screen reserved for the pools any more').not.toContain(
       'xl:grid-cols-3',
     );
@@ -1576,7 +1576,11 @@ describe('the board fits: notes and actions are on screen', () => {
   });
 
   it('holds a driver seat to one width and a long note to a short line', () => {
-    expect(SOURCE, 'the seat is a fixed width').toContain('<div className="w-[10.5rem]">');
+    // «كبر اى مكان فيه اسم سواق» — the seats are wider and read the name a size bigger.
+    expect(SOURCE, 'the seat is a fixed width').toContain('<div className="w-[15rem]">');
+    expect(SOURCE, 'the seated name is the big chip').toContain(
+      '<DriverChip employeeId={employeeId} className="w-full" size="lg" />',
+    );
     expect(SOURCE, 'the note truncates').toContain('block max-w-[9rem] truncate');
     expect(SOURCE, 'and keeps its full text as a tooltip').toContain(
       'title={row.notes ?? undefined}',
@@ -1584,9 +1588,12 @@ describe('the board fits: notes and actions are on screen', () => {
   });
 
   it('still leaves the mission select room for «نقل أموال (يومي)»', () => {
-    // 10rem less the 36px chevron gutter and 12px start padding is 112px; the label needs 104px.
+    // «صغر ... نوع المهمة» — 9.5rem at the tight gutter: 152px less the 36px chevron and 8px
+    // start padding is 108px; the label needs 104px.
     const at = SOURCE.indexOf("key: 'mission'");
-    expect(SOURCE.slice(at, SOURCE.indexOf("key: 'driver1'"))).toContain('min-w-[10rem]');
+    const cell = SOURCE.slice(at, SOURCE.indexOf("key: 'driver1'"));
+    expect(cell).toContain('className="w-[9.5rem]"');
+    expect(cell).toContain('density="tight"');
   });
 });
 
@@ -1631,5 +1638,18 @@ describe('the row swaps its two drivers', () => {
       'setDraft(() => swapDrivers(draft, row.vehicleId))',
     );
     expect(SOURCE.slice(swap, swap + 500)).toContain('<SwapIcon');
+  });
+});
+
+describe('the names are the board — «كبر اى مكان فيه اسم سواق»', () => {
+  const CHIP = readFileSync(join(HERE, 'components/DriverChip.tsx'), 'utf8');
+  it('reads a big chip a size up, and wraps a long name instead of cutting it', () => {
+    expect(CHIP).toContain(
+      "'whitespace-normal break-words py-1.5 text-center text-sm leading-snug'",
+    );
+    expect(CHIP, 'the default chip is unchanged elsewhere').toContain("'truncate py-1 text-xs'");
+  });
+  it('uses the big chip in the pool as on the car', () => {
+    expect(SOURCE.match(/size="lg"/g)?.length).toBeGreaterThanOrEqual(2);
   });
 });

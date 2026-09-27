@@ -186,7 +186,7 @@ const RosterSlotCell = ({
   const droppable = mayPlan && !row.inMaintenance && !needsFirst;
   const active = over === key;
   return (
-    <div className="w-[10.5rem]">
+    <div className="w-[15rem]">
       <div
         data-drop-zone={key}
         data-drop-disabled={
@@ -263,7 +263,7 @@ const RosterSlotCell = ({
                 dragging === employeeId ? 'opacity-50' : '',
               ].join(' ')}
             >
-              <DriverChip employeeId={employeeId} className="w-full" />
+              <DriverChip employeeId={employeeId} className="w-full" size="lg" />
             </span>
             {/* Taking somebody OFF the day, without a dialog. The driver returns to the pool
                 immediately because the pool is derived from the draft — and, like every other
@@ -828,7 +828,7 @@ export const RosterPage = (): JSX.Element => {
           // commonest mission there is, needs 104px. Measured, not guessed: a select clips its
           // label internally and reports no overflow.
           <div
-            className="min-w-[10rem]"
+            className="w-[9.5rem]"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
           >
@@ -851,6 +851,8 @@ export const RosterPage = (): JSX.Element => {
                 and legible — the reader can see what the day holds, and simply cannot change it.
               */
               disabled={row.inMaintenance}
+              density="tight"
+              className="w-full"
               onChange={(id) => {
                 // The GUARD, not just the attribute. `disabled` stops a person — a real click and
                 // every keystroke — but React's handler is attached at the root and still runs for
@@ -1149,7 +1151,7 @@ export const RosterPage = (): JSX.Element => {
           page-scroll away. The give now comes from the shell instead (`PageContainer fullHeight`),
           this grid takes it (`min-h-0 flex-1`), and each region scrolls INSIDE itself: the table
           in its own box, each pool in its own list. */}
-      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <div className="grid min-h-0 flex-1 gap-3 xl:grid-cols-[minmax(0,1fr)_26rem]">
         {/* `min-w-0`: a grid item's default `min-width: auto` refuses to shrink below its
             content, so without it the table's own `overflow-x-auto` never engages — the column
             grows to the table's `min-w-[40rem]` and takes the PAGE sideways at 390px. `min-h-0`
@@ -1267,7 +1269,11 @@ export const RosterPage = (): JSX.Element => {
                         dragging === driver.employeeId ? 'opacity-50' : '',
                       ].join(' ')}
                     >
-                      <DriverChip employeeId={driver.employeeId} className="min-w-0 flex-1" />
+                      <DriverChip
+                        employeeId={driver.employeeId}
+                        className="min-w-0 flex-1"
+                        size="lg"
+                      />
                     </div>
                   </li>
                 ))}

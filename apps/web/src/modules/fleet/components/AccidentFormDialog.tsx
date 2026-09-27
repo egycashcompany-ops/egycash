@@ -21,12 +21,9 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import {
-  useAccidentCarTransfers,
-  useCreateAccident,
-  useUpdateAccident,
-} from '../api/fleet-queries';
-import { VehicleCodeCombobox } from './VehicleCodeCombobox';
+import { useAccidentCarBalances, useCreateAccident, useUpdateAccident } from '../api/fleet-queries';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { planTakes } from '../lib/accident-transfer-plan';
 import { VehicleSelect } from './VehicleSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { useFleetPeopleMap } from './EmployeeName';
@@ -59,7 +56,8 @@ export const AccidentFormDialog = ({
   const [notes, setNotes] = useState('');
   // «اختار عربيه و جمبها مبلغ» — the car the amount is TAKEN FROM, and how much. Both optional:
   // most accidents are recorded without one.
-  const [fromVehicleId, setFromVehicleId] = useState('');
+  // The cars to take from, IN THE ORDER PICKED — the first gives all it has before the next.
+  const [fromVehicleIds, setFromVehicleIds] = useState<string[]>([]);
   const [transferAmount, setTransferAmount] = useState('');
   useEffect(() => {
     if (!open) return;
@@ -74,7 +72,7 @@ export const AccidentFormDialog = ({
     setNotes(accident?.notes ?? '');
     setAwaitingNameFor('');
     // A transfer is one act per save: every open starts with none picked.
-    setFromVehicleId('');
+    setFromVehicleIds([]);
     setTransferAmount('');
   }, [open, accident, initialVehicleId]);
 
@@ -116,50 +114,46 @@ export const AccidentFormDialog = ({
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const money = (value: number): string => formatMoney(value, 'EGP', locale);
 
-  // WHAT THE SOURCE CAR HAS — its «إجمالي المتبقي» over every one of its files, from the same
-  // server code that caps the save. Asked only once a car is picked.
-  const source = useAccidentCarTransfers(fromVehicleId, open);
-  const sourceCode = source.data?.vehicleCode ?? '';
-  // A file that sits on the source car and leaves it in this same save is not the car's to give:
+  // «يجب كود السيارة المأخوذ منها السيارات اللى المبلغ المتبقى بالموجب بس» — every car with
+  // something left, from the same server figures that cap the save. This accident's own car is not
+  // offered: a car cannot pay itself.
+  const balances = useAccidentCarBalances(open);
+  const offered = (balances.data ?? []).filter((car) => car.vehicleId !== vehicleId);
+  const balanceOf = new Map((balances.data ?? []).map((car) => [car.vehicleId, car]));
+  // A file that sits on a source car and leaves it in this same save is not that car's to give:
   // the server leaves it out of the cap, and so does the figure the clerk is shown.
-  const leaving =
-    accident !== null &&
-    (accident.vehicleId === fromVehicleId ||
-      (accident.vehicleId === null && accident.vehicleCode === sourceCode && sourceCode !== ''))
-      ? fleetAccidentRemaining(accident)
-      : 0;
-  const available = Math.max(
-    0,
-    fleetAccidentRemaining({
-      amountCollected: source.data?.remaining ?? 0,
-      companyCost: 0,
-      paidAmount: leaving,
-    }),
-  );
+  const leavingFrom = (carId: string): number =>
+    accident !== null && accident.vehicleId === carId ? fleetAccidentRemaining(accident) : 0;
   // A box holding only «.» is not a number; it is read as nothing typed yet.
   const typed = transferAmount === '' ? 0 : Number(transferAmount);
   const taking = Number.isFinite(typed) ? typed : 0;
-  const transferring = fromVehicleId !== '';
+  const picked = fromVehicleIds.filter((id) => id !== vehicleId && balanceOf.has(id));
+  const plan = planTakes(
+    picked.map((id) => ({
+      vehicleId: id,
+      code: balanceOf.get(id)?.vehicleCode ?? '',
+      available: Math.max(
+        0,
+        fleetAccidentRemaining({
+          amountCollected: balanceOf.get(id)?.remaining ?? 0,
+          companyCost: 0,
+          paidAmount: leavingFrom(id),
+        }),
+      ),
+    })),
+    taking,
+  );
+  const transferring = picked.length > 0;
   const transferProblem = !transferring
     ? null
-    : fromVehicleId === vehicleId
-      ? t('fleet.accidents.transfer.sameCar')
-      : source.isError
-        ? // Said, not left as a Save button that is silently off.
-          t('fleet.accidents.transfer.loadFailed')
-        : source.data === undefined
-          ? null
-          : available <= 0
-            ? t('fleet.accidents.transfer.nothing', { code: sourceCode })
-            : // Compared in piastres, as the server compares them.
-              Math.round(taking * 100) > Math.round(available * 100)
-              ? t('fleet.accidents.transfer.tooMuch', {
-                  available: money(available),
-                  code: sourceCode,
-                })
-              : taking <= 0
-                ? t('fleet.accidents.transfer.needsAmount')
-                : null;
+    : balances.isError
+      ? // Said, not left as a Save button that is silently off.
+        t('fleet.accidents.transfer.loadFailed')
+      : taking <= 0
+        ? t('fleet.accidents.transfer.needsAmount')
+        : plan.short
+          ? t('fleet.accidents.transfer.tooMuchAll', { available: money(plan.total) })
+          : null;
   // This file's remaining as the form now reads — its own figures, plus what it already took and
   // gave — and what the new transfer would make it.
   const targetBefore = fleetAccidentRemaining({
@@ -170,8 +164,12 @@ export const AccidentFormDialog = ({
     transferredOut: accident?.transferredOut ?? 0,
   });
   const transfer =
-    transferring && transferProblem === null && source.data !== undefined
-      ? { fromVehicleId, amount: taking }
+    transferring && transferProblem === null
+      ? {
+          // Only the cars that actually give something, still in the order picked.
+          fromVehicleIds: plan.rows.filter((row) => row.take > 0).map((row) => row.vehicleId),
+          amount: taking,
+        }
       : undefined;
 
   const create = useCreateAccident();
@@ -325,11 +323,18 @@ export const AccidentFormDialog = ({
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={t('fleet.accidents.transfer.fromVehicle')}>
-              <VehicleCodeCombobox
-                value={fromVehicleId}
-                onChange={setFromVehicleId}
-                anyStatus
-                ariaLabel={t('fleet.accidents.transfer.fromVehicle')}
+              <MultiSelect
+                label={t('fleet.accidents.transfer.fromVehicle')}
+                placeholder={t('common.select')}
+                options={offered.map((car) => ({
+                  value: car.vehicleId,
+                  label: `${car.vehicleCode} — ${money(car.remaining)}`,
+                  shortLabel: car.vehicleCode,
+                }))}
+                value={picked}
+                onChange={setFromVehicleIds}
+                fullWidth
+                className="w-full"
               />
             </Field>
             <Field label={t('fleet.accidents.transfer.amount')}>
@@ -341,45 +346,41 @@ export const AccidentFormDialog = ({
               />
             </Field>
           </div>
-          {transferring && source.data !== undefined && fromVehicleId !== vehicleId && (
+          {transferring && (
             <div
               data-transfer-balance="true"
               className="space-y-1 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
             >
-              <p className="font-medium">
-                {t('fleet.accidents.transfer.balance', {
-                  code: sourceCode,
-                  available: money(available),
-                })}
-              </p>
-              {transferProblem === null && taking > 0 && (
-                <>
-                  <p>
-                    {t('fleet.accidents.transfer.after', {
-                      amount: money(taking),
-                      left: money(
-                        fleetAccidentRemaining({
-                          amountCollected: available,
-                          companyCost: 0,
-                          paidAmount: taking,
-                        }),
-                      ),
-                    })}
-                  </p>
-                  <p className="text-sky-700 dark:text-sky-300">
-                    {t('fleet.accidents.transfer.target', {
-                      before: money(targetBefore),
-                      after: money(
-                        fleetAccidentRemaining({
-                          amountCollected: targetBefore,
-                          companyCost: 0,
-                          paidAmount: 0,
-                          transferredIn: taking,
-                        }),
-                      ),
-                    })}
-                  </p>
-                </>
+              {/* One line per car, in the order it gives: what it has, what it gives, what is left. */}
+              {plan.rows.map((row) => (
+                <p key={row.vehicleId} data-transfer-car={row.code}>
+                  {t('fleet.accidents.transfer.carLine', {
+                    code: row.code,
+                    available: money(row.available),
+                    take: money(row.take),
+                    left: money(row.left),
+                  })}
+                </p>
+              ))}
+              {picked.length > 1 && (
+                <p className="font-medium">
+                  {t('fleet.accidents.transfer.totalAvailable', { available: money(plan.total) })}
+                </p>
+              )}
+              {transferProblem === null && (
+                <p className="text-sky-700 dark:text-sky-300">
+                  {t('fleet.accidents.transfer.target', {
+                    before: money(targetBefore),
+                    after: money(
+                      fleetAccidentRemaining({
+                        amountCollected: targetBefore,
+                        companyCost: 0,
+                        paidAmount: 0,
+                        transferredIn: taking,
+                      }),
+                    ),
+                  })}
+                </p>
               )}
             </div>
           )}

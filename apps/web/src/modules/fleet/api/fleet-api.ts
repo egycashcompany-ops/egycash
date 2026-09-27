@@ -13,6 +13,7 @@ import {
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
   type CreateFleetVehicleType,
+  type FleetAccidentCarBalanceDto,
   type FleetAccidentCarTransfersDto,
   type FleetAccidentDto,
   type FleetAccidentTotalsDto,
@@ -299,6 +300,9 @@ export const accidentSummary = (params: FleetListParams): Promise<FleetAccidentT
 export const accidentCarTransfers = (vehicleId: string): Promise<FleetAccidentCarTransfersDto> =>
   get<FleetAccidentCarTransfersDto>(`/fleet/accidents/transfers${buildQuery({ vehicleId })}`);
 /** Remove one transfer: the amount goes back to the files it was drawn from. */
+/** Every car with more than zero remaining — what «كود السيارة المأخوذ منها» offers. */
+export const accidentCarBalances = (): Promise<FleetAccidentCarBalanceDto[]> =>
+  get<FleetAccidentCarBalanceDto[]>('/fleet/accidents/car-balances');
 export const voidAccidentTransfer = (accidentId: string, transferId: string): Promise<void> =>
   del<void>(`/fleet/accidents/${accidentId}/transfers/${transferId}`);
 export const createAccident = (body: CreateFleetAccident): Promise<FleetAccidentDto> =>

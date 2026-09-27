@@ -623,6 +623,14 @@ export const useAccidentCarTransfers = (vehicleId: string, enabled = true) =>
     enabled: enabled && vehicleId !== '',
   });
 
+/** The cars with something left to give — under the accidents subtree, so every write refreshes it. */
+export const useAccidentCarBalances = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'accidents', { carBalances: true }),
+    queryFn: () => api.accidentCarBalances(),
+    enabled,
+  });
+
 export const useVoidAccidentTransfer = () =>
   useAccidentMutation(({ accidentId, transferId }: { accidentId: string; transferId: string }) =>
     api.voidAccidentTransfer(accidentId, transferId),

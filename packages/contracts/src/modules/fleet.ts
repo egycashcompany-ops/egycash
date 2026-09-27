@@ -1558,7 +1558,16 @@ export interface FleetAccidentDto {
  */
 export const FleetAccidentTransferInputSchema = z
   .object({
-    fromVehicleId: objectId(),
+    /**
+     * The cars to take from, IN THE ORDER PICKED: the first gives all it has left before the
+     * second gives anything — «لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من
+     * العربيه التانيه».
+     */
+    fromVehicleIds: z
+      .array(objectId())
+      .min(1)
+      .max(20)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'A car is listed twice' }),
     amount: egp()
       .positive()
       // Within a hair of a whole piastre, not EXACTLY one: `19.99 * 100` is 1998.9999999999998 in
@@ -1611,11 +1620,11 @@ const transferFromAnotherCar = (
   if (
     value.transfer !== undefined &&
     value.vehicleId !== undefined &&
-    value.transfer.fromVehicleId === value.vehicleId
+    value.transfer.fromVehicleIds.includes(value.vehicleId)
   ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['transfer', 'fromVehicleId'],
+      path: ['transfer', 'fromVehicleIds'],
       message: 'Pick a car other than the accident’s own',
     });
   }
@@ -1722,6 +1731,17 @@ export interface FleetAccidentTotalsDto {
   transferredIn: number;
   transferredOut: number;
   /** Derived, never stored: see `fleetAccidentRemaining`. */
+  remaining: number;
+}
+
+/**
+ * GET /fleet/accidents/car-balances — every car with MORE THAN ZERO remaining over its files, the
+ * list the «كود السيارة المأخوذ منها» picker offers: a car with nothing left has nothing to give.
+ */
+export interface FleetAccidentCarBalanceDto {
+  vehicleId: string;
+  vehicleCode: string;
+  /** Always > 0 — the same figure a transfer from this car is capped by. */
   remaining: number;
 }
 

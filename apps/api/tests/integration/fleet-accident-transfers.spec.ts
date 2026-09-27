@@ -44,6 +44,9 @@ const cars = {
   h: new Types.ObjectId(),
   k: new Types.ObjectId(),
   m: new Types.ObjectId(),
+  p: new Types.ObjectId(),
+  q: new Types.ObjectId(),
+  r: new Types.ObjectId(),
 };
 const CODES: Record<keyof typeof cars, string> = {
   a: 'TR-150',
@@ -56,6 +59,9 @@ const CODES: Record<keyof typeof cars, string> = {
   h: 'TR-501',
   k: 'TR-600',
   m: 'TR-601',
+  p: 'TR-700',
+  q: 'TR-701',
+  r: 'TR-702',
 };
 
 const plantCars = async (): Promise<void> => {
@@ -106,7 +112,7 @@ const record = async (
       paidAmount: paid,
       ...(transfer === undefined
         ? {}
-        : { transfer: { fromVehicleId: String(cars[transfer.from]), amount: transfer.amount } }),
+        : { transfer: { fromVehicleIds: [String(cars[transfer.from])], amount: transfer.amount } }),
     },
     ACTOR,
   );
@@ -116,7 +122,7 @@ const take = async (accidentId: string, from: keyof typeof cars, amount: number)
   const current = await fleetAccidentRepository.getById(accidentId);
   return fleetAccidentService.update(
     accidentId,
-    { version: current.__v, transfer: { fromVehicleId: String(cars[from]), amount } },
+    { version: current.__v, transfer: { fromVehicleIds: [String(cars[from])], amount } },
     ACTOR,
   );
 };
@@ -331,7 +337,7 @@ describe('a file moved off the source car in the same save', () => {
         {
           version: current.__v,
           vehicleId: String(cars.h),
-          transfer: { fromVehicleId: String(cars.g), amount },
+          transfer: { fromVehicleIds: [String(cars.g)], amount },
         },
         ACTOR,
       );
@@ -431,5 +437,49 @@ describe('several drivers on one accident — «اكتر من سواق فى ال
       culpritEmployeeId: [second],
     } as Parameters<typeof fleetAccidentService.list>[0]);
     expect(bySecond.items.map((item) => String(item._id))).toEqual([String(doc._id)]);
+  });
+});
+
+describe('taking from several cars — the first to zero before the next', () => {
+  // TR-700 has 300 left, TR-701 has 1,000. A file on TR-702 takes 500 from [TR-700, TR-701].
+  it('empties the first car picked before drawing on the second', async () => {
+    await record('p', '2026-01-01', 300, 0, 0);
+    await record('q', '2026-01-01', 1000, 0, 0);
+    const taker = await record('r', '2026-09-01', 0, 0, 0);
+    const id = String(taker._id);
+    const edit = async (amount: number) => {
+      const current = await file(id);
+      return fleetAccidentService.update(
+        id,
+        {
+          version: current.__v,
+          transfer: { fromVehicleIds: [String(cars.p), String(cars.q)], amount },
+        },
+        ACTOR,
+      );
+    };
+    // Together they have 1,300: 1,400 is refused and nothing moves.
+    await expect(edit(1400)).rejects.toMatchObject({ httpStatus: 422 });
+    expect(await carFigure('p')).toBe(300);
+
+    const updated = await edit(500);
+    expect(updated.transferredIn).toBe(500);
+    expect(await carFigure('p'), 'the first car picked is emptied').toBe(0);
+    expect(await carFigure('q'), '…and only the rest comes from the second').toBe(800);
+    const log = await fleetAccidentService.carTransfers(String(cars.r));
+    expect(log.entries.map((e) => [e.otherVehicleCode, e.amount]).sort()).toEqual([
+      ['TR-700', 300],
+      ['TR-701', 200],
+    ]);
+  });
+
+  it('offers only the cars with something left', async () => {
+    const offered = (await fleetAccidentService.carBalances()).map((car) => car.vehicleCode);
+    expect(offered).toContain('TR-701');
+    expect(offered, 'emptied — nothing to give').not.toContain('TR-700');
+    const q = (await fleetAccidentService.carBalances()).find(
+      (car) => car.vehicleCode === 'TR-701',
+    );
+    expect(q?.remaining).toBe(800);
   });
 });

@@ -7,7 +7,10 @@ import {
   FleetEvents,
   parseFleetSort,
   type CreateFleetAccident,
+  type FleetAccidentCarBalanceDto,
   type FleetAccidentCarTransfersDto,
+  compareFleetVehicleCodes,
+  fleetAccidentRemaining,
   type FleetAccidentSummaryQuery,
   type FleetAccidentTotalsDto,
   type FleetAccidentTransferEntryDto,
@@ -134,7 +137,18 @@ class FleetAccidentService {
    * Plan one transfer onto a file of `receivingVehicleId`: read the source car's files INSIDE the
    * transaction, refuse more than it has, and say which of its files give what — oldest first.
    */
-  private async planTransfer(
+  /**
+   * Plan a take from ONE OR SEVERAL cars onto a file of `receivingVehicleId`.
+   *
+   * «يقدر يختار اكتر من عربيه بس لازم يوصل ل 0 فى العربيه اللى بينقص منها عشان يبدا ينقاص من
+   * العربيه التانيه» — the cars are drawn IN THE ORDER THEY WERE PICKED: the first gives everything
+   * it has left before the second gives anything. Within each car the files give oldest first.
+   * One transfer per car that gave something, so each car's log names exactly what left it.
+   *
+   * Every source car is locked and read INSIDE the transaction; more than all of them have
+   * together is refused, naming that total.
+   */
+  private async planTransfers(
     input: FleetAccidentTransferInput,
     receivingVehicleId: string | null,
     /** The file taking the amount — never one of its own sources, whatever car it sat on. */
@@ -142,36 +156,40 @@ class FleetAccidentService {
     by: string,
     byName: string | null,
     session: ClientSession,
-  ): Promise<{ transfer: FleetAccidentTransfer; out: OutDeltas }> {
+  ): Promise<{ transfers: FleetAccidentTransfer[]; out: OutDeltas }> {
     if (receivingVehicleId === null) {
       throw new BusinessRuleError('a file with no registry car cannot receive a transfer');
     }
-    if (input.fromVehicleId === receivingVehicleId) {
+    if (input.fromVehicleIds.includes(receivingVehicleId)) {
       throw new BusinessRuleError('a car cannot take from its own remaining');
     }
-    const source = await fleetVehicleRepository.getById(input.fromVehicleId);
-    // The lock FIRST, then the read it protects — see `lockForAccidentTransfer`.
-    await fleetVehicleRepository.lockForAccidentTransfer(String(source._id), session);
-    // The receiving file is left out: an edit that moves it OFF the source car in the same save is
-    // leaving that car, so its remaining is not the car's to give — and a file drawing on itself
-    // would count the same amount in and out while the log said the car gave it.
-    const files = (
-      await fleetAccidentRepository.liveOfCar(String(source._id), source.code, session)
-    ).filter((file) => String(file._id) !== receivingAccidentId);
-    const allocation = allocateTransfer(files, input.amount);
-    if (!allocation.ok) {
-      throw new BusinessRuleError(
-        `car ${source.code} has ${allocation.available.toFixed(2)} remaining — ${input.amount.toFixed(2)} is more than that`,
-      );
-    }
+    const wanted = toPiastres(input.amount);
+    let left = wanted;
+    let total = 0;
     const out: OutDeltas = new Map();
-    for (const line of allocation.lines) addDelta(out, line.accidentId, line.amount);
-    return {
-      transfer: {
+    const transfers: FleetAccidentTransfer[] = [];
+    for (const fromVehicleId of input.fromVehicleIds) {
+      const source = await fleetVehicleRepository.getById(fromVehicleId);
+      // The lock FIRST, then the read it protects — see `lockForAccidentTransfer`.
+      await fleetVehicleRepository.lockForAccidentTransfer(String(source._id), session);
+      // The receiving file is left out: an edit that moves it OFF a source car in the same save
+      // is leaving that car, so its remaining is not the car's to give — and a file drawing on
+      // itself would count the same amount in and out while the log said the car gave it.
+      const files = (
+        await fleetAccidentRepository.liveOfCar(String(source._id), source.code, session)
+      ).filter((file) => String(file._id) !== receivingAccidentId);
+      const available = Math.max(0, toPiastres(carRemaining(files)));
+      total += available;
+      const take = Math.min(left, available);
+      if (take <= 0) continue;
+      const allocation = allocateTransfer(files, toPounds(take));
+      if (!allocation.ok) continue;
+      for (const line of allocation.lines) addDelta(out, line.accidentId, line.amount);
+      transfers.push({
         _id: new Types.ObjectId(),
         fromVehicleId: source._id,
         fromVehicleCode: source.code,
-        amount: toPounds(toPiastres(input.amount)),
+        amount: toPounds(take),
         lines: allocation.lines,
         at: new Date(),
         by: new Types.ObjectId(by),
@@ -179,9 +197,15 @@ class FleetAccidentService {
         voidedAt: null,
         voidedBy: null,
         voidReason: null,
-      },
-      out,
-    };
+      });
+      left -= take;
+    }
+    if (left > 0) {
+      throw new BusinessRuleError(
+        `the chosen cars have ${toPounds(total).toFixed(2)} remaining together — ${toPounds(wanted).toFixed(2)} is more than that`,
+      );
+    }
+    return { transfers, out };
   }
 
   /**
@@ -269,7 +293,7 @@ class FleetAccidentService {
   ): Promise<FleetAccidentDoc> {
     const byName = await nameOf(by);
     const { doc, audits } = await unitOfWork(async (session) => {
-      const { transfer, out } = await this.planTransfer(
+      const { transfers, out } = await this.planTransfers(
         transferInput,
         input.vehicleId,
         null,
@@ -287,8 +311,8 @@ class FleetAccidentService {
           companyCost: input.companyCost,
           amountCollected: input.amountCollected,
           paidAmount: input.paidAmount,
-          transfersIn: [transfer],
-          transferredIn: transfer.amount,
+          transfersIn: transfers,
+          transferredIn: sumLive(transfers),
           transferredOut: 0,
           status: 'open',
           notes: input.notes ?? null,
@@ -487,7 +511,7 @@ class FleetAccidentService {
       const set = this.factSet(input);
       let out: OutDeltas = new Map();
       if (input.transfer !== undefined) {
-        const planned = await this.planTransfer(
+        const planned = await this.planTransfers(
           input.transfer,
           input.vehicleId ?? vehicleIdOf(before),
           id,
@@ -496,7 +520,7 @@ class FleetAccidentService {
           session,
         );
         out = planned.out;
-        const transfersIn = [...(before.transfersIn ?? []), planned.transfer];
+        const transfersIn = [...(before.transfersIn ?? []), ...planned.transfers];
         set.transfersIn = transfersIn;
         set.transferredIn = sumLive(liveTransfers({ transfersIn }));
       }
@@ -513,6 +537,64 @@ class FleetAccidentService {
     });
     await this.recordAudits(audits);
     return doc;
+  }
+
+  /**
+   * «يجب كود السيارة المأخوذ منها السيارات اللى المبلغ المتبقى بالموجب بس» — every registry car
+   * whose files still owe something in total, with that total. A file kept from the old book
+   * counts for the registry car carrying its code, exactly as a transfer from that car draws on it.
+   */
+  async carBalances(): Promise<FleetAccidentCarBalanceDto[]> {
+    const rows = await fleetAccidentRepository.sumsPerCar();
+    const bookCodes = rows
+      .filter((row) => row.vehicleId === null && row.vehicleCode !== null)
+      .map((row) => row.vehicleCode as string);
+    const ids = new Set(
+      rows.filter((row) => row.vehicleId !== null).map((row) => String(row.vehicleId)),
+    );
+    for (const id of await fleetVehicleRepository.idsByCodes(bookCodes)) ids.add(id);
+    const codeOf = await fleetVehicleRepository.codesByIds([...ids]);
+    const idOfCode = new Map([...codeOf.entries()].map(([id, code]) => [code, id]));
+    const totals = new Map<
+      string,
+      {
+        amountCollected: number;
+        companyCost: number;
+        paidAmount: number;
+        transferredIn: number;
+        transferredOut: number;
+      }
+    >();
+    for (const row of rows) {
+      const id =
+        row.vehicleId !== null
+          ? String(row.vehicleId)
+          : row.vehicleCode === null
+            ? undefined
+            : idOfCode.get(row.vehicleCode);
+      if (id === undefined || !codeOf.has(id)) continue;
+      const sum = totals.get(id) ?? {
+        amountCollected: 0,
+        companyCost: 0,
+        paidAmount: 0,
+        transferredIn: 0,
+        transferredOut: 0,
+      };
+      sum.amountCollected += row.amountCollected;
+      sum.companyCost += row.companyCost;
+      sum.paidAmount += row.paidAmount;
+      sum.transferredIn += row.transferredIn;
+      sum.transferredOut += row.transferredOut;
+      totals.set(id, sum);
+    }
+    return [...totals.entries()]
+      .map(([vehicleId, sums]) => ({
+        vehicleId,
+        vehicleCode: codeOf.get(vehicleId) ?? '',
+        remaining: fleetAccidentRemaining(sums),
+      }))
+      .filter((car) => car.remaining > 0)
+      .sort((a, b) => compareFleetVehicleCodes(a.vehicleCode, b.vehicleCode));
   }
 
   /**

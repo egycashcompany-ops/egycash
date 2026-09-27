@@ -301,4 +301,12 @@ describe('the catalogs are dragged into order', () => {
     );
     expect(SOURCE, 'no pages to drag across').not.toContain('<Pagination');
   });
+  it("drags on the page's own pointer tracking, and steps a row with up/down buttons", () => {
+    // The browser's drag-and-drop never started on some screens — rows would not move at all.
+    expect(SOURCE).toContain('onPointerDown={(e) => startDrag(r.id, e)}');
+    expect(SOURCE).toContain('document.elementFromPoint(ev.clientX, ev.clientY)');
+    expect(SOURCE, 'no browser drag-and-drop').not.toContain('draggable');
+    expect(SOURCE).toContain('onClick={() => step(r.id, -1)}');
+    expect(SOURCE).toContain('onClick={() => step(r.id, 1)}');
+  });
 });

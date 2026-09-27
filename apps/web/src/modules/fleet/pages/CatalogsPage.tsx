@@ -3,7 +3,7 @@
 // `fleetCatalog.manage`. Items ARCHIVE instead of delete (history references them), so the row
 // action is edit only and the status column tells the truth. `countsForAlarm` renders only on
 // the workType tab, exactly where the schema allows it.
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CATALOG_KINDS,
@@ -20,7 +20,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Button } from '../../../shared/ui/Button';
 import { Badge, StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
-import { EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
+import { ChevronIcon, EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useFleetCatalog, useOrderCatalog } from '../api/fleet-queries';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
@@ -62,6 +62,8 @@ export const CatalogsPage = (): JSX.Element => {
   const [pending, setPending] = useState<{ kind: string; ids: string[] } | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  /** The row under the pointer, read at release — state alone would be one render behind. */
+  const overRef = useRef<string | null>(null);
   const all = useMemo(() => {
     const items = data?.items ?? [];
     if (pending === null || pending.kind !== kind) return items;
@@ -101,6 +103,50 @@ export const CatalogsPage = (): JSX.Element => {
     );
   };
 
+  /** One step up or down among the rows ON SCREEN — the row it passes takes its old place. */
+  const step = (id: string, by: -1 | 1): void => {
+    const at = rows.findIndex((item) => item.id === id);
+    const neighbour = rows[at + by];
+    if (at !== -1 && neighbour !== undefined) move(id, neighbour.id);
+  };
+  // The drag is the page's OWN pointer tracking on the ⋮⋮ grip — not the browser's drag-and-drop,
+  // which some browsers, touch screens and table rows never start. Mouse, pen and finger alike.
+  const startDrag = (id: string, e: ReactPointerEvent<HTMLElement>): void => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    overRef.current = id;
+    setDragging(id);
+    setOver(id);
+    const onMove = (ev: PointerEvent): void => {
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const target =
+        hit?.closest('tr')?.querySelector('[data-drag-handle]')?.getAttribute('data-drag-handle') ??
+        null;
+      if (target !== null && target !== overRef.current) {
+        overRef.current = target;
+        setOver(target);
+      }
+      // Near the window's top or bottom edge the page scrolls along, so a long list is reachable.
+      if (ev.clientY < 48) window.scrollBy(0, -16);
+      else if (ev.clientY > window.innerHeight - 48) window.scrollBy(0, 16);
+    };
+    const finish = (drop: boolean): void => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      const target = overRef.current;
+      overRef.current = null;
+      setDragging(null);
+      setOver(null);
+      if (drop && target !== null) move(id, target);
+    };
+    const onUp = (): void => finish(true);
+    const onCancel = (): void => finish(false);
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+  };
+
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FleetCatalogItemDto | null>(null);
 
@@ -108,7 +154,7 @@ export const CatalogsPage = (): JSX.Element => {
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const columns: Column<FleetCatalogItemDto>[] = [
-    ...(can('fleetCatalog.manage')
+    ...(mayOrder
       ? [
           {
             key: 'drag',
@@ -117,7 +163,8 @@ export const CatalogsPage = (): JSX.Element => {
               <span
                 data-drag-handle={r.id}
                 title={t('fleet.catalogs.dragToOrder')}
-                className="inline-flex cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                onPointerDown={(e) => startDrag(r.id, e)}
+                className="inline-flex cursor-grab touch-none select-none rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200"
               >
                 <GripIcon className="h-4 w-4" />
               </span>
@@ -155,23 +202,48 @@ export const CatalogsPage = (): JSX.Element => {
         />
       ),
     },
-    ...(can('fleetCatalog.manage')
+    ...(mayOrder
       ? [
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
             align: 'end',
-            render: (r: FleetCatalogItemDto) => (
-              <button
-                type="button"
-                className={actionButton}
-                aria-label={t('fleet.catalogs.editItem')}
-                title={t('fleet.catalogs.editItem')}
-                onClick={() => setEditing(r)}
-              >
-                <EditIcon className="h-4 w-4" />
-              </button>
-            ),
+            render: (r: FleetCatalogItemDto) => {
+              const at = rows.indexOf(r);
+              return (
+                <div className="inline-flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    className={`${actionButton} disabled:pointer-events-none disabled:opacity-30`}
+                    aria-label={t('fleet.catalogs.moveUp')}
+                    title={t('fleet.catalogs.moveUp')}
+                    disabled={at <= 0}
+                    onClick={() => step(r.id, -1)}
+                  >
+                    <ChevronIcon className="h-4 w-4 rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${actionButton} disabled:pointer-events-none disabled:opacity-30`}
+                    aria-label={t('fleet.catalogs.moveDown')}
+                    title={t('fleet.catalogs.moveDown')}
+                    disabled={at === rows.length - 1}
+                    onClick={() => step(r.id, 1)}
+                  >
+                    <ChevronIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className={actionButton}
+                    aria-label={t('fleet.catalogs.editItem')}
+                    title={t('fleet.catalogs.editItem')}
+                    onClick={() => setEditing(r)}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            },
           } satisfies Column<FleetCatalogItemDto>,
         ]
       : []),
@@ -244,33 +316,6 @@ export const CatalogsPage = (): JSX.Element => {
               : over === r.id && dragging !== null
                 ? 'bg-brand-50 outline outline-2 -outline-offset-2 outline-brand-400 dark:bg-brand-950/40'
                 : undefined
-          }
-          rowProps={(r) =>
-            mayOrder
-              ? {
-                  draggable: true,
-                  onDragStart: (e) => {
-                    e.dataTransfer.setData('text/plain', r.id);
-                    e.dataTransfer.effectAllowed = 'move';
-                    setDragging(r.id);
-                  },
-                  onDragEnd: () => {
-                    setDragging(null);
-                    setOver(null);
-                  },
-                  onDragOver: (e) => {
-                    e.preventDefault();
-                    setOver(r.id);
-                  },
-                  onDrop: (e) => {
-                    e.preventDefault();
-                    const id = e.dataTransfer.getData('text/plain');
-                    setDragging(null);
-                    setOver(null);
-                    if (id !== '') move(id, r.id);
-                  },
-                }
-              : undefined
           }
           loading={isLoading}
           error={isError ? error : undefined}

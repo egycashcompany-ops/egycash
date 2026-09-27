@@ -16,7 +16,10 @@ import {
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
   type ItVendorDto,
+  type ItPersonDto,
+  type ItTechnicianDto,
 } from '@ecms/contracts';
+import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
 import { type ItVendorDoc } from './vendors/vendor.model';
 import { type ItAssetDoc } from './assets/asset.model';
@@ -389,4 +392,34 @@ export const toItLicenseDto = (view: ItLicenseView): ItLicenseDto => ({
   version: view.doc.__v,
   createdAt: iso(view.doc.createdAt),
   updatedAt: iso(view.doc.updatedAt),
+});
+
+/**
+ * A person as IT's screens print them — HR's facts, read through the directory, and the one fact
+ * that is IT's: how many assets they hold now. That count is computed for a whole page in one
+ * `$group` and handed in already decided, for the reason `toItLicenseDto` gives.
+ */
+export const toItPersonDto = (
+  person: DirectoryEmployeeListing,
+  openCustodyCount: number,
+): ItPersonDto => ({
+  employeeId: person.employeeId,
+  code: person.code,
+  fullNameAr: person.fullNameAr,
+  status: person.status,
+  branchId: person.branchId,
+  departmentId: person.departmentId,
+  jobTitleId: person.jobTitleId,
+  hiredAt: person.hiredAt === null ? null : iso(person.hiredAt),
+  exitedAt: person.exitedAt === null ? null : iso(person.exitedAt),
+  userId: person.userId,
+  openCustodyCount,
+});
+
+export const toItTechnicianDto = (person: DirectoryEmployeeListing): ItTechnicianDto => ({
+  employeeId: person.employeeId,
+  code: person.code,
+  fullNameAr: person.fullNameAr,
+  status: person.status,
+  userId: person.userId,
 });

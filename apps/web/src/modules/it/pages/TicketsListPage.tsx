@@ -29,7 +29,14 @@ import { Select } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { EyeIcon, InboxIcon, PlusIcon, SearchIcon } from '../../../shared/ui/icons';
 import { localized } from '../../../shared/lib/format';
-import { useItCatalog, useItTicketPriorities, useItTickets } from '../api/it-queries';
+import {
+  useItCatalog,
+  useItPerson,
+  useItTicketPriorities,
+  useItTickets,
+} from '../api/it-queries';
+import { EmployeePicker } from '../components/EmployeePicker';
+import { TechnicianPicker } from '../components/TechnicianPicker';
 import { TicketStatusBadge } from '../components/TicketStatusBadge';
 import { SlaIndicator } from '../components/SlaIndicator';
 import { ItUserName } from '../components/ItUserName';
@@ -42,7 +49,9 @@ const REMEMBERED_FILTERS = [
   'category',
   'priority',
   'q',
+  'requester',
   'status',
+  'technician',
   'size',
   'sort',
   'view',
@@ -70,6 +79,14 @@ export const TicketsListPage = (): JSX.Element => {
   const categoryId = sp.get('category') ?? '';
   const priorityId = sp.get('priority') ?? '';
   const active = sp.get('active') ?? '';
+  // The two PERSON filters hold employee ids, and ask for everyone HR has — leavers included:
+  // «ونفس الموضوع فى الفلاتر فى كل الشاشات». Each rides the grant that lets the reader find people
+  // (`itAsset.view`), and the technician one also the grant that lets them list technicians; a
+  // reader without them never had the box, so a remembered id is not applied behind their back.
+  const canPeople = can('itAsset.view');
+  const canTechnicians = canPeople && (can('itTicket.assign') || can('itTicket.edit'));
+  const requesterId = canPeople ? (sp.get('requester') ?? '') : '';
+  const technicianId = canTechnicians ? (sp.get('technician') ?? '') : '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'createdAt:desc').split(':');
@@ -93,7 +110,39 @@ export const TicketsListPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
   const hasActiveFilters =
-    search !== '' || status !== '' || categoryId !== '' || priorityId !== '' || active !== '';
+    search !== '' ||
+    status !== '' ||
+    categoryId !== '' ||
+    priorityId !== '' ||
+    active !== '' ||
+    requesterId !== '' ||
+    technicianId !== '';
+
+  // A ticket names people by LOGIN, so each person filter is resolved to theirs first. While that
+  // is in flight the list asks nothing; a person with no login — or none at all — can match no
+  // ticket, so the list is simply empty rather than unfiltered.
+  // The label a pick supplies, kept WITH the id it was picked for: after back/forward the URL may
+  // name somebody else, and then the chip must follow the URL, not the last pick.
+  const [pickedRequester, setPickedRequester] = useState({ id: '', label: '' });
+  const [pickedTechnician, setPickedTechnician] = useState({ id: '', label: '' });
+  const requester = useItPerson(requesterId);
+  const technician = useItPerson(technicianId);
+  const resolving = (id: string, person: typeof requester): boolean =>
+    id !== '' && person.isPending;
+  const unmatchable = (id: string, person: typeof requester): boolean =>
+    id !== '' && !person.isPending && (person.data?.userId ?? null) === null;
+  const personPending = resolving(requesterId, requester) || resolving(technicianId, technician);
+  const personEmpty = unmatchable(requesterId, requester) || unmatchable(technicianId, technician);
+  const label = (
+    id: string,
+    picked: { id: string; label: string },
+    person: typeof requester,
+  ): string => {
+    if (picked.id === id && picked.label !== '') return picked.label;
+    return person.data === undefined ? '' : `${person.data.fullNameAr} (${person.data.code})`;
+  };
+  const requesterUserId = requester.data?.userId ?? undefined;
+  const technicianUserId = technician.data?.userId ?? undefined;
 
   const params = useMemo(
     () => ({
@@ -106,14 +155,19 @@ export const TicketsListPage = (): JSX.Element => {
       categoryId: categoryId || undefined,
       priorityId: priorityId || undefined,
       active: active === '' ? undefined : active === 'true',
+      requesterUserId: requesterId === '' ? undefined : requesterUserId,
+      assignedTechnicianUserId: technicianId === '' ? undefined : technicianUserId,
       // The two views that ARE server filters. `queue` sends neither.
       mine: view === 'mine' ? true : undefined,
       breached: view === 'breached' ? true : undefined,
     }),
-    [paramsKey],
+    [paramsKey, requesterUserId, technicianUserId],
   );
-  const { data, isLoading, isError, error, refetch } = useItTickets(params);
-  const rows = data?.items ?? [];
+  const { data, isLoading, isError, error, refetch } = useItTickets(
+    params,
+    !personPending && !personEmpty,
+  );
+  const rows = personEmpty ? [] : (data?.items ?? []);
 
   const categories = useItCatalog('ticketCategory');
   const categoryName = useMemo(() => {
@@ -259,9 +313,19 @@ export const TicketsListPage = (): JSX.Element => {
       <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
-          onClear={() =>
-            patch({ q: null, status: null, category: null, priority: null, active: null })
-          }
+          onClear={() => {
+            setPickedRequester({ id: '', label: '' });
+            setPickedTechnician({ id: '', label: '' });
+            patch({
+              q: null,
+              status: null,
+              category: null,
+              priority: null,
+              active: null,
+              requester: null,
+              technician: null,
+            });
+          }}
         >
           <SearchInput
             value={search}
@@ -323,13 +387,37 @@ export const TicketsListPage = (): JSX.Element => {
                 </option>
               ))}
           </Select>
+          {canPeople && (
+            <EmployeePicker
+              includeExited
+              value={requesterId}
+              valueLabel={label(requesterId, pickedRequester, requester)}
+              placeholder={t('it.tickets.columns.requester')}
+              onChange={(id, picked) => {
+                setPickedRequester({ id, label: picked });
+                patch({ requester: id || null });
+              }}
+            />
+          )}
+          {canTechnicians && (
+            <TechnicianPicker
+              includeExited
+              value={technicianId}
+              valueLabel={label(technicianId, pickedTechnician, technician)}
+              placeholder={t('it.tickets.columns.technician')}
+              onChange={(picked, name) => {
+                setPickedTechnician({ id: picked?.employeeId ?? '', label: name });
+                patch({ technician: picked?.employeeId ?? null });
+              }}
+            />
+          )}
         </FilterBar>
 
         <DataTable
           columns={columns}
           rows={rows}
           rowKey={(ticket) => ticket.id}
-          loading={isLoading}
+          loading={isLoading || personPending}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
           sort={sort}
@@ -354,7 +442,7 @@ export const TicketsListPage = (): JSX.Element => {
             )
           }
         />
-        {data !== undefined && data.meta.totalItems > 0 && (
+        {!personEmpty && data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}

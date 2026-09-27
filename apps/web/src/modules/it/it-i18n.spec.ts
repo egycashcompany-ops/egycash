@@ -14,6 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  EMPLOYEE_STATUSES,
   IT_ASSET_STATUSES,
   IT_CATALOG_KINDS,
   IT_LICENSE_STATES,
@@ -52,6 +53,9 @@ const VOCABULARIES: { name: string; prefix: string; values: readonly string[] }[
   // IT-5. Rendered through a TEMPLATE key by both the badge and the install dialog, so the source
   // scan below cannot see them — which is exactly why they are driven off the enum instead.
   { name: 'licence state', prefix: 'it.licenses.state', values: IT_LICENSE_STATES },
+  // The employees register and a person's history name HR's employment status through a
+  // TEMPLATE key — the badge — so the source scan below cannot see these either.
+  { name: 'employment status', prefix: 'it.employees.status', values: EMPLOYEE_STATUSES },
 ];
 
 const sources = (dir: string): string[] =>

@@ -497,6 +497,45 @@ class EmployeeRepository extends BaseRepository<EmployeeDoc> {
     return { $and: clauses } as FilterQuery<EmployeeDoc>;
   }
 
+  /**
+   * The platform directory's register (`searchDirectoryEmployees`): HR's own match — the same
+   * `search` over code, applicant code and normalised name that HR's list uses — one page at a
+   * time, in the caller's scope when one is handed over and unscoped when the caller has already
+   * bounded who it is asking about.
+   */
+  async searchDirectory(params: {
+    search?: string | undefined;
+    status: 'employed' | 'exited' | 'all';
+    departmentIds?: readonly string[] | undefined;
+    branchId?: string | undefined;
+    employeeIds?: readonly string[] | undefined;
+    sortBy?: 'name' | 'code' | undefined;
+    sortDir?: 'asc' | 'desc' | undefined;
+    scope?: ScopeSelector | undefined;
+    page: number;
+    pageSize: number;
+  }): Promise<Paginated<EmployeeDoc>> {
+    const matched = this.buildFilter({
+      search: params.search,
+      ...(params.status === 'all' ? {} : { employed: params.status === 'employed' }),
+      departmentId: params.departmentIds,
+      branchId: params.branchId === undefined ? undefined : [params.branchId],
+    });
+    const ids = params.employeeIds
+      ?.filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    const sortField = params.sortBy === 'code' ? 'code' : 'personal.fullNameAr';
+    return this.list({
+      filter: ids === undefined ? matched : { $and: [matched, { _id: { $in: ids } }] },
+      page: params.page,
+      pageSize: params.pageSize,
+      sortBy: sortField,
+      sortDir: params.sortDir ?? 'asc',
+      sortableFields: ['code', 'personal.fullNameAr'],
+      ...(params.scope === undefined ? {} : { scope: params.scope }),
+    });
+  }
+
   async listEmployees(params: {
     filter: EmployeeListFilter;
     page: number;

@@ -22,6 +22,8 @@
 //   /it/software           itSoftware.view                                       IT-5
 //   /it/licenses           itLicense.view                                        IT-5
 //   /it/licenses/:id       itLicense.view                                        IT-5
+//   /it/employees          itAsset.view   (HR's people, current and departed)    owner request
+//   /it/employees/:id      itAsset.view   (one person's custody and tickets)     owner request
 // The custody, ticket, maintenance and installation ACTIONS are not routes — they are dialogs on
 // the record, which is where the decision is actually taken. Dashboards get their routes with IT-6.
 import { Route, Routes } from 'react-router-dom';
@@ -45,6 +47,8 @@ import { SparePartsPage } from './pages/SparePartsPage';
 import { SoftwarePage } from './pages/SoftwarePage';
 import { LicensesPage } from './pages/LicensesPage';
 import { LicenseDetailPage } from './pages/LicenseDetailPage';
+import { ItEmployeesPage } from './pages/ItEmployeesPage';
+import { ItEmployeeHistoryPage } from './pages/ItEmployeeHistoryPage';
 
 export default function ItRoutes(): JSX.Element {
   return (
@@ -81,6 +85,24 @@ export default function ItRoutes(): JSX.Element {
           element={
             <RequirePermission permission="itAsset.view">
               <CustodyPage />
+            </RequirePermission>
+          }
+        />
+        {/* The people IT names — under the custody grant, which already shows a holder's name on
+            every row of the register. No HR permission is involved. */}
+        <Route
+          path="employees"
+          element={
+            <RequirePermission permission="itAsset.view">
+              <ItEmployeesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="employees/:employeeId"
+          element={
+            <RequirePermission permission="itAsset.view">
+              <ItEmployeeHistoryPage />
             </RequirePermission>
           }
         />

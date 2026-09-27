@@ -10,7 +10,8 @@
 //   leave    → false (best-effort read: availability degrades to fleet-owned records alone,
 //              which is exactly what `fleet.availability.useHrLeave=false` means)
 
-import { type AttendanceDayStatus } from '@ecms/contracts';
+import { type AttendanceDayStatus, type Paginated } from '@ecms/contracts';
+import { type ScopeSelector } from '../../shared/types';
 
 export interface DirectoryEmployee {
   employeeId: string;
@@ -229,6 +230,70 @@ export const findDirectoryEmployeesByNames = async (
   employeesByNamesLookup === null || names.length === 0
     ? new Map()
     : employeesByNamesLookup([...names]);
+
+/**
+ * The directory as a REGISTER — searched, filtered by status, one page at a time.
+ *
+ * Every lookup above answers about people the consumer already knew to ask about, or about one
+ * part of the org chart. IT's custody asks the other question: anybody in the company may hold a
+ * laptop, so the screens that name them — a holder box, IT's employees register — have to FIND
+ * them, by a name or a code, among the people who work here today or everybody who ever did.
+ *
+ * «يظهرله اسم الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود» — and without handing
+ * the reader HR's `employee.view`, which is the whole HR file. This answers with names, codes and
+ * placement: what a register prints, and nothing a register does not.
+ *
+ * A PAGE, never the company (ADR-019 rule 5). Scoped when the caller hands a scope — the reader's
+ * own grant, so a branch-scoped technician finds their branch — and unscoped when the caller has
+ * already bounded the population itself (IT's technicians are the IT departments' people, whoever
+ * is asking). Fail-closed like every lookup here: no HR, an empty page.
+ */
+export interface DirectoryEmployeeQuery {
+  /** Free text over the code and the name, matched the way HR's own register matches it. */
+  search?: string | undefined;
+  /** `employed` — the four working statuses; `exited` — the leavers; `all` — both. */
+  status: 'employed' | 'exited' | 'all';
+  /** Any of these departments. Absent narrows nothing; EMPTY is nobody, never everybody. */
+  departmentIds?: readonly string[] | undefined;
+  branchId?: string | undefined;
+  /** Exactly these people — a screen holding an id that wants the listing's facts for it. */
+  employeeIds?: readonly string[] | undefined;
+  sortBy?: 'name' | 'code' | undefined;
+  sortDir?: 'asc' | 'desc' | undefined;
+  scope?: ScopeSelector | undefined;
+  page: number;
+  pageSize: number;
+}
+
+/** A directory employee as a register lists them: the lookups' shape and three facts more. */
+export interface DirectoryEmployeeListing extends DirectoryEmployee {
+  /** The linked login (ADR-017) — what a ticket names a person by. Null until one is created. */
+  userId: string | null;
+  jobTitleId: string | null;
+  /** When the current employment ended — null while employed. */
+  exitedAt: Date | null;
+}
+
+type EmployeeSearchLookup = (
+  query: DirectoryEmployeeQuery,
+) => Promise<Paginated<DirectoryEmployeeListing>>;
+let employeeSearchLookup: EmployeeSearchLookup | null = null;
+export const registerEmployeeSearchLookup = (lookup: EmployeeSearchLookup): void => {
+  employeeSearchLookup = lookup;
+};
+
+export const searchDirectoryEmployees = async (
+  query: DirectoryEmployeeQuery,
+): Promise<Paginated<DirectoryEmployeeListing>> => {
+  const lookup = employeeSearchLookup;
+  if (lookup === null || query.departmentIds?.length === 0 || query.employeeIds?.length === 0) {
+    return {
+      items: [],
+      meta: { page: query.page, pageSize: query.pageSize, totalItems: 0, totalPages: 1 },
+    };
+  }
+  return lookup(query);
+};
 
 export const getDirectoryEmployee = async (
   employeeId: string,

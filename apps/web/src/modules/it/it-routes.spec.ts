@@ -30,7 +30,7 @@ const declaredPaths = (): string[] =>
 describe('IT routes', () => {
   const paths = declaredPaths();
 
-  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface', () => {
+  it('declares the IT-1 + IT-2 + IT-3 + IT-4 + IT-5 surface, and the employees register', () => {
     expect(paths.sort()).toEqual(
       [
         'assets',
@@ -38,6 +38,8 @@ describe('IT routes', () => {
         'assets/scan',
         'catalogs',
         'custody',
+        'employees',
+        'employees/:employeeId',
         'helpdesk-settings',
         'licenses',
         'licenses/:id',

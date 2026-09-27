@@ -136,6 +136,13 @@ class ItAssetService {
     if (query.categoryId !== undefined) filter.categoryId = new Types.ObjectId(query.categoryId);
     if (query.status !== undefined) filter.status = query.status;
     if (query.branchId !== undefined) filter.branchId = new Types.ObjectId(query.branchId);
+    if (query.holderEmployeeId !== undefined) {
+      // What they hold NOW: the open intervals, matched through the asset's own pointer to its
+      // current one — so an asset returned yesterday is not «held» by yesterday's holder. The
+      // scope still applies to the assets themselves, below.
+      const open = await itAssetAssignmentRepository.listOpenForEmployee(query.holderEmployeeId);
+      filter.currentAssignmentId = { $in: open.map((assignment) => assignment._id) };
+    }
     if (query.search !== undefined && query.search !== '') {
       const pattern = new RegExp(query.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       filter.$or = [

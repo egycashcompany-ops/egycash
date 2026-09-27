@@ -6,11 +6,13 @@
 // surface uses so a captain's identity comes from the token, never from a client-supplied id.
 import {
   type DirectoryEmployee,
+  type DirectoryEmployeeListing,
   registerAttendanceDayLookup,
   registerDirectoryNameSource,
   registerEmployeeBatchLookup,
   registerEmployeeByCodeLookup,
   registerEmployeeLookup,
+  registerEmployeeSearchLookup,
   registerEmployeesByDepartmentLookup,
   registerEmployeesByJobTitlesLookup,
   registerEmployeesByNamesLookup,
@@ -18,7 +20,7 @@ import {
   registerSelfEmployeeLookup,
 } from '../../platform/directory';
 import { employeeRepository } from './employee-management/employees/employee.repository';
-import { EmployeeModel } from './employee-management/employees/employee.model';
+import { EmployeeModel, type EmployeeDoc } from './employee-management/employees/employee.model';
 import { matchEmployeesByName } from './employee-management/employees/employee-name-match';
 import { LeaveRequestModel } from './leave-management/leave-requests/leave-request.model';
 import { AttendanceDayModel } from './attendance/day-records/day-record.model';
@@ -77,6 +79,20 @@ const toDirectoryEmployee = (employee: {
           null,
   };
 };
+
+/**
+ * The same person as a REGISTER lists them — the three facts a register prints beyond the lookup's
+ * shape. `exitedAt` is read only for someone who HAS left: a rehire starts a new employment, and
+ * the date the previous one ended is not when this one did.
+ */
+const toDirectoryListing = (employee: EmployeeDoc): DirectoryEmployeeListing => ({
+  ...toDirectoryEmployee(employee),
+  // `== null`: a record filed before the login link existed carries no `userId` at all, and a
+  // lean read hands back `undefined` rather than the schema's null default.
+  userId: employee.userId == null ? null : String(employee.userId),
+  jobTitleId: String(employee.employment.jobTitleId),
+  exitedAt: employee.status === 'exited' ? (employee.exit?.effectiveDate ?? null) : null,
+});
 
 export const registerHrDirectorySeams = (): void => {
   registerEmployeeLookup(async (employeeId) => {
@@ -158,6 +174,14 @@ export const registerHrDirectorySeams = (): void => {
         },
       ]),
     );
+  });
+
+  // The directory as a REGISTER — searched and paged, for the consumer that has to FIND people
+  // rather than resolve ids it already holds: IT names any employee in the company as a custody
+  // holder, and lists them on its own employees screen, leavers included.
+  registerEmployeeSearchLookup(async (query) => {
+    const page = await employeeRepository.searchDirectory(query);
+    return { items: page.items.map(toDirectoryListing), meta: page.meta };
   });
 
   // IT-6 — the same fact, in bulk, for list screens. One `$in` per page rather than one query

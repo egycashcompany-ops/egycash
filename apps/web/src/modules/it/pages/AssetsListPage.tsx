@@ -25,7 +25,14 @@ import { useTableSelection } from '../../../shared/ui/useTableSelection';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, EyeIcon, PlusIcon, QrIcon, TrashIcon } from '../../../shared/ui/icons';
 import { localized } from '../../../shared/lib/format';
-import { useDeleteItAsset, useItAssets, useItBranchOptions, useItCatalog } from '../api/it-queries';
+import {
+  useDeleteItAsset,
+  useItAssets,
+  useItBranchOptions,
+  useItCatalog,
+  useItPerson,
+} from '../api/it-queries';
+import { EmployeePicker } from '../components/EmployeePicker';
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
 import { ItCatalogSelect } from '../components/ItCatalogSelect';
@@ -36,6 +43,7 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 const REMEMBERED_FILTERS = [
   'branch',
   'category',
+  'holder',
   'q',
   'status',
   'size',
@@ -56,6 +64,8 @@ export const AssetsListPage = (): JSX.Element => {
   const status = sp.get('status') ?? '';
   const categoryId = sp.get('category') ?? '';
   const branchId = sp.get('branch') ?? '';
+  // Who holds it NOW — an employee id, so the filter survives a rename and can be linked.
+  const holderId = sp.get('holder') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const [sortByRaw, sortDirRaw] = (sp.get('sort') ?? 'assetCode:asc').split(':');
@@ -79,7 +89,7 @@ export const AssetsListPage = (): JSX.Element => {
     patch({ sort: `${by}:${dir}` }, false);
   };
   const hasActiveFilters =
-    search !== '' || status !== '' || categoryId !== '' || branchId !== '';
+    search !== '' || status !== '' || categoryId !== '' || branchId !== '' || holderId !== '';
 
   const params = useMemo(
     () => ({
@@ -91,10 +101,24 @@ export const AssetsListPage = (): JSX.Element => {
       status: status || undefined,
       categoryId: categoryId || undefined,
       branchId: branchId || undefined,
+      holderEmployeeId: holderId || undefined,
     }),
     [paramsKey],
   );
   const { data, isLoading, isError, error, refetch } = useItAssets(params);
+
+  // The holder chip's label: the pick supplies it; arriving on a link or a remembered filter with
+  // only an id, the person is resolved by id (ADR-019 rule 5's other half).
+  // Kept WITH the id it was picked for, so back/forward — which changes the id underneath — makes
+  // the chip follow the URL rather than the last pick.
+  const [pickedHolder, setPickedHolder] = useState({ id: '', label: '' });
+  const pickedHere = pickedHolder.id === holderId && pickedHolder.label !== '';
+  const holderPerson = useItPerson(holderId, !pickedHere);
+  const holderLabel = pickedHere
+    ? pickedHolder.label
+    : holderPerson.data === undefined
+      ? ''
+      : `${holderPerson.data.fullNameAr} (${holderPerson.data.code})`;
   const rows = data?.items ?? [];
 
   const categories = useItCatalog('assetCategory');
@@ -243,7 +267,10 @@ export const AssetsListPage = (): JSX.Element => {
       <div className="space-y-4">
         <FilterBar
           hasActiveFilters={hasActiveFilters}
-          onClear={() => patch({ q: null, status: null, category: null, branch: null })}
+          onClear={() => {
+            setPickedHolder({ id: '', label: '' });
+            patch({ q: null, status: null, category: null, branch: null, holder: null });
+          }}
         >
           <SearchInput
             value={search}
@@ -285,6 +312,17 @@ export const AssetsListPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
+          {/* A SEARCH: everybody HR has, leavers included — a leaver may still hold a laptop. */}
+          <EmployeePicker
+            includeExited
+            value={holderId}
+            valueLabel={holderLabel}
+            ariaLabel={t('it.custody.filterHolder')}
+            onChange={(id, label) => {
+              setPickedHolder({ id, label });
+              patch({ holder: id || null });
+            }}
+          />
         </FilterBar>
 
         {/* Labels ride `itAsset.view` by design (§4.2): a label shows nothing a viewer cannot see. */}

@@ -170,6 +170,12 @@ export const ItHomePage = (): JSX.Element => {
                   description={t('it.scan.subtitle')}
                   icon={QrIcon}
                 />
+                <ShortcutCard
+                  to="/it/employees"
+                  title={t('it.nav.employees')}
+                  description={t('it.employees.subtitle')}
+                  icon={UsersIcon}
+                />
               </>
             )}
             {canVendors && (

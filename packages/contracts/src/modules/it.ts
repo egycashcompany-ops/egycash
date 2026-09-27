@@ -272,6 +272,8 @@ export const ListItAssetsQuerySchema = PaginationQuerySchema.extend({
   categoryId: objectId().optional(),
   status: ItAssetStatusSchema.optional(),
   branchId: objectId().optional(),
+  /** The assets this employee holds right now — an OPEN custody interval, not a past one. */
+  holderEmployeeId: objectId().optional(),
 }).strict();
 export type ListItAssetsQuery = z.infer<typeof ListItAssetsQuerySchema>;
 
@@ -416,6 +418,95 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
 }).strict();
 export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema>;
+
+// ── People: the employees IT names ──────────────────────────────────────────
+//
+// «اعمل شاشه فيها كل المواظفيين اللى مشيوا واللى موجودين واللى ادوس عليه يجيب الهيستورى بتاعه كله
+// ونفس الموضوع فى الفلاتر فى كل الشاشات لكن فى حاله اضافه اى حاجه لازم يكون المواظفيين يكونوا
+// موجودين».
+//
+// Custody references employees (§9.1), and any employee in the company may hold an asset — so IT
+// names people it does not own. It used to ask HR's employee endpoint under HR's `employee.view`,
+// which is the whole HR file: letting a technician see who holds a laptop meant handing them
+// «الموظفون». IT now answers under its OWN grant, through the platform directory, with exactly what
+// its screens print — a name, a code, a placement, a status — and nothing a register does not.
+//
+// IT still owns none of it (§9.1): nothing here is stored or written by IT, and every fact is
+// HR's, read fresh. What changed is which grant a reader needs to see the names IT already showed.
+
+/**
+ * Who is listed. A SEARCH and the register mean everybody — `all`, the default; a HAND-OVER means
+ * the people who work here today — `employed`. `exited` is the register's «left» filter.
+ */
+export const IT_PERSON_STATUSES = ['all', 'employed', 'exited'] as const;
+export const ItPersonStatusSchema = z.enum(IT_PERSON_STATUSES);
+export type ItPersonStatus = z.infer<typeof ItPersonStatusSchema>;
+
+export const ListItPeopleQuerySchema = PaginationQuerySchema.extend({
+  /** The code or the name, matched the way HR's own register matches them. */
+  search: z.string().trim().max(100).optional(),
+  status: ItPersonStatusSchema.default('all'),
+  branchId: objectId().optional(),
+  sortBy: z.enum(['name', 'code']).default('name'),
+  sortDir: z.enum(['asc', 'desc']).default('asc'),
+}).strict();
+export type ListItPeopleQuery = z.infer<typeof ListItPeopleQuerySchema>;
+
+export const ItPersonIdParamSchema = z.object({ employeeId: objectId() }).strict();
+
+export interface ItPersonDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  /** HR's employment status. `exited` is the one every IT screen marks as «left». */
+  status: 'probation' | 'active' | 'onLeave' | 'suspended' | 'exited';
+  branchId: string | null;
+  departmentId: string | null;
+  jobTitleId: string | null;
+  hiredAt: string | null;
+  /** When the employment ended — null while employed. */
+  exitedAt: string | null;
+  /**
+   * The person's login, or null without one. A ticket names its requester and its technician by
+   * LOGIN, so this is what joins a person to their tickets — and why someone without a login can
+   * have custody but no tickets.
+   */
+  userId: string | null;
+  /** Assets this person holds right now — open custody intervals the reader may see. */
+  openCustodyCount: number;
+}
+
+/**
+ * The technicians a ticket may be assigned to: the IT departments' people (`it.technicianDepartmentIds`).
+ * `employed` — the default — for ASSIGNING work, which only somebody who works here today can take;
+ * `all` for a FILTER over work already done, where a technician who has since left still did it.
+ */
+export const ListItTechniciansQuerySchema = PaginationQuerySchema.extend({
+  search: z.string().trim().max(100).optional(),
+  status: z.enum(['employed', 'all']).default('employed'),
+  sortBy: z.enum(['name', 'code']).default('name'),
+  sortDir: z.enum(['asc', 'desc']).default('asc'),
+}).strict();
+export type ListItTechniciansQuery = z.infer<typeof ListItTechniciansQuerySchema>;
+
+export interface ItTechnicianDto {
+  employeeId: string;
+  code: string;
+  fullNameAr: string;
+  status: ItPersonDto['status'];
+  /** The login a ticket is assigned to. Null → an IT employee who cannot be assigned work yet. */
+  userId: string | null;
+}
+
+/**
+ * The technician list's answer: the page, and whether the IT departments are configured at all —
+ * «nobody is configured» and «nobody matches» are different states, and only one of them is fixed
+ * in the help-desk settings.
+ */
+export interface ItTechniciansPageDto {
+  configured: boolean;
+  items: ItTechnicianDto[];
+}
 
 // ── Custody: the asset's business history (design §2.3) ─────────────────────
 
@@ -748,6 +839,12 @@ export const ListItTicketsQuerySchema = PaginationQuerySchema.extend({
   assetId: objectId().optional(),
   branchId: objectId().optional(),
   assignedTechnicianUserId: objectId().optional(),
+  /**
+   * The tickets one person opened, by their LOGIN — the filter's «مقدّم الطلب», and a person's
+   * history. Narrows inside the caller's scope like every other filter, so an `own` reader asking
+   * about somebody else gets nothing rather than somebody else's tickets.
+   */
+  requesterUserId: objectId().optional(),
   /** `true` → only the caller's own tickets. The requester view (FR-8). */
   mine: booleanQuery().optional(),
   /** `true` → only tickets that have breached either clock. Reads the STAMPS, never a clock. */
@@ -826,6 +923,12 @@ export const ItSettingKeys = {
   WarrantyWarnDays: 'it.warranty.warnDays',
   /** Days before a license expires that `it.license.expiring` fires. 0 disables it. */
   LicenseWarnDays: 'it.license.warnDays',
+  /**
+   * HR department ids whose people ARE the help desk's technicians — «الفنى يكون من موظفين الـ IT
+   * بس». The org chart, not a list IT keeps: a new hire in those departments is a technician the
+   * day HR files them. Empty means not configured yet.
+   */
+  TechnicianDepartmentIds: 'it.technicianDepartmentIds',
 } as const;
 export type ItSettingKey = (typeof ItSettingKeys)[keyof typeof ItSettingKeys];
 

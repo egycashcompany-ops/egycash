@@ -7,7 +7,6 @@
 // history; IT-3 added the help desk; IT-4 added maintenance and the spare-parts store; IT-5 adds
 // the software register. Export arrives with IT-6 and gets its function then.
 import {
-  type EmployeeDto,
   type FileCategoryDto,
   type FileDto,
   type AssignItAsset,
@@ -58,6 +57,8 @@ import {
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
   type ItVendorDto,
+  type ItPersonDto,
+  type ItTechniciansPageDto,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -93,18 +94,55 @@ export const listBranchOptions = (): Promise<OrgUnitOptionDto[]> =>
   get<OrgUnitOptionDto[]>('/platform/branches/options');
 
 /**
- * Employee search for the custody picker (ADR-019 rule 5 — searched, never loaded).
- *
- * Custody references employees, which the design establishes as a live HR integration (§9.1), so
- * this depends on HR's PUBLIC HTTP surface — deliberately as a URL rather than by importing HR's
- * api module, which would be the code-level cross-module coupling the review checklist forbids.
- * Gated server-side by `employee.view`; the picker says so rather than searching into a 403.
+ * Department options, for naming a person's department and for choosing the IT departments.
+ * The same PLATFORM reference route as the branches above, readable by any authenticated user.
  */
-export const searchEmployees = (
+export const listDepartmentOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/departments/options');
+
+/** Job-title options, for naming a person's job title on their history page. */
+export const listJobTitleOptions = (): Promise<OrgUnitOptionDto[]> =>
+  get<OrgUnitOptionDto[]>('/platform/job-titles/options');
+
+// ── People: the employees IT names ──────────────────────────────────────────
+//
+// HR's facts, read by IT's OWN endpoint under IT's own grant (`itAsset.view`) — never HR's own
+// employee list under `employee.view`, which is the whole HR file. «يظهرله اسم الموظف من الاتش
+// ار كل المواظفين سواء اللى مشى او اللى موجود»: a technician names the people they hand laptops
+// to without being handed «الموظفون».
+
+/** The employees register and the people behind every holder / requester filter. */
+export const listPeople = (params: ItListParams): Promise<Paginated<ItPersonDto>> =>
+  getPage<ItPersonDto>(`/it/people${buildQuery(params)}`);
+
+/** One person — the head of their history page, and a filter chip arriving on a link. */
+export const getPerson = (employeeId: string): Promise<ItPersonDto> =>
+  get<ItPersonDto>(`/it/people/${employeeId}`);
+
+/**
+ * The employee box (ADR-019 rule 5 — searched, never loaded). The employed by default — a
+ * hand-over's population; `includeExited` asks for everyone, which is what a SEARCH needs.
+ */
+export const searchPeople = (
   search: string,
+  { includeExited = false }: { includeExited?: boolean } = {},
   pageSize = 8,
-): Promise<Paginated<EmployeeDto>> =>
-  getPage<EmployeeDto>(`/hr/employees${buildQuery({ search, employed: true, pageSize })}`);
+): Promise<Paginated<ItPersonDto>> =>
+  listPeople({ search, status: includeExited ? 'all' : 'employed', pageSize });
+
+/**
+ * The IT departments' people — who a ticket may be assigned to (`it.technicianDepartmentIds`).
+ * `configured: false` says no department has been chosen yet, which is not the same as nobody
+ * matching the search.
+ */
+export const searchTechnicians = (
+  search: string,
+  { includeExited = false }: { includeExited?: boolean } = {},
+  pageSize = 8,
+): Promise<ItTechniciansPageDto> =>
+  get<ItTechniciansPageDto>(
+    `/it/technicians${buildQuery({ search, status: includeExited ? 'all' : 'employed', pageSize })}`,
+  );
 
 // ── Catalog items (design §2.4 — kind-discriminated: assetCategory | ticketCategory) ─
 export const listCatalogItems = (params: ItListParams): Promise<Paginated<ItCatalogItemDto>> =>
@@ -240,10 +278,6 @@ export const createTicketComment = (
   id: string,
   body: CreateItTicketComment,
 ): Promise<ItTicketEventDto> => post<ItTicketEventDto>(`/it/tickets/${id}/comments`, body);
-
-/** Technician picker — platform users, the same public surface the org screens read. */
-export const searchUsers = (search: string, pageSize = 8): Promise<Paginated<UserDto>> =>
-  getPage<UserDto>(`/platform/users${buildQuery({ search, status: 'active', pageSize })}`);
 
 /**
  * Resolve one user by id — the other half of ADR-019 rule 5, and what turns a stored

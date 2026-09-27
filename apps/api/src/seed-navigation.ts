@@ -743,6 +743,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'itAsset.view',
       },
       {
+        // Everybody HR has, current and departed, each opening their whole IT history. Under the
+        // custody grant: the register already names a holder on every row.
+        en: 'Employees',
+        ar: 'الموظفون',
+        route: '/it/employees',
+        icon: 'users',
+        permission: 'itAsset.view',
+      },
+      {
         en: 'Help Desk',
         ar: 'الدعم الفني',
         route: '/it/tickets',

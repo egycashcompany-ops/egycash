@@ -45,8 +45,16 @@ class ItTicketRepository extends BaseRepository<ItTicketDoc> {
     if (query.assignedTechnicianUserId !== undefined) {
       filter.assignedTechnicianUserId = new Types.ObjectId(query.assignedTechnicianUserId);
     }
-    // "My tickets" — narrows to the caller on top of whatever scope they already have.
-    if (query.mine === true) filter.requesterUserId = new Types.ObjectId(requesterUserId);
+    // "My tickets" narrows to the caller, and `requesterUserId` to the person a filter or a history
+    // names — each on top of whatever scope the caller already has. Asked together they AND: the
+    // same person, or nobody.
+    const [requester, ...others] = new Set([
+      ...(query.requesterUserId === undefined ? [] : [query.requesterUserId]),
+      ...(query.mine === true ? [requesterUserId] : []),
+    ]);
+    if (requester !== undefined) {
+      filter.requesterUserId = others.length === 0 ? new Types.ObjectId(requester) : { $in: [] };
+    }
     if (query.active === true) filter.status = { $in: ACTIVE_STATUSES };
     if (query.active === false) filter.status = { $in: ['resolved', 'closed', 'cancelled'] };
     // Breached reads the STAMPS, never a recomputed clock (FR-6).

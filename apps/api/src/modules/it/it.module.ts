@@ -19,6 +19,7 @@ import {
 import { buildItSparePartsRouter } from './spare-parts';
 import { buildItSoftwareInstallationsRouter, buildItSoftwareProductsRouter } from './software';
 import { buildItLicensesRouter } from './licenses';
+import { buildItPeopleRouter, buildItTechniciansRouter } from './people';
 import { expirySweep } from './shared/expiry-sweeps';
 import { registerItSettings } from './it.settings';
 import {
@@ -310,6 +311,10 @@ export const itModule: ModuleManifest = {
     { prefix: '/it/software-products', router: buildItSoftwareProductsRouter() },
     { prefix: '/it/software-installations', router: buildItSoftwareInstallationsRouter() },
     { prefix: '/it/licenses', router: buildItLicensesRouter() },
+    // The employees IT names and the technicians it assigns — HR's facts read through the
+    // platform directory under IT's own grants (people.service.ts). Read-only, no collection.
+    { prefix: '/it/people', router: buildItPeopleRouter() },
+    { prefix: '/it/technicians', router: buildItTechniciansRouter() },
   ],
   collections: [
     'it_assets',

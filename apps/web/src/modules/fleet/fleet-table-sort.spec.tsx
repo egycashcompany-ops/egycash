@@ -301,4 +301,9 @@ describe('the catalogs are dragged into order', () => {
     );
     expect(SOURCE, 'no pages to drag across').not.toContain('<Pagination');
   });
+  it('beside the drag, steps a row one place with up/down buttons', () => {
+    expect(SOURCE).toContain('draggable: true');
+    expect(SOURCE).toContain('onClick={() => step(r.id, -1)}');
+    expect(SOURCE).toContain('onClick={() => step(r.id, 1)}');
+  });
 });

@@ -20,7 +20,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Button } from '../../../shared/ui/Button';
 import { Badge, StatusBadge } from '../../../shared/ui/Badge';
 import { Select } from '../../../shared/ui/form';
-import { EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
+import { ChevronIcon, EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useFleetCatalog, useOrderCatalog } from '../api/fleet-queries';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
@@ -101,6 +101,13 @@ export const CatalogsPage = (): JSX.Element => {
     );
   };
 
+  /** One step up or down among the rows ON SCREEN — the row it passes takes its old place. */
+  const step = (id: string, by: -1 | 1): void => {
+    const at = rows.findIndex((item) => item.id === id);
+    const neighbour = rows[at + by];
+    if (at !== -1 && neighbour !== undefined) move(id, neighbour.id);
+  };
+
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<FleetCatalogItemDto | null>(null);
 
@@ -108,7 +115,7 @@ export const CatalogsPage = (): JSX.Element => {
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const columns: Column<FleetCatalogItemDto>[] = [
-    ...(can('fleetCatalog.manage')
+    ...(mayOrder
       ? [
           {
             key: 'drag',
@@ -155,23 +162,48 @@ export const CatalogsPage = (): JSX.Element => {
         />
       ),
     },
-    ...(can('fleetCatalog.manage')
+    ...(mayOrder
       ? [
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
             align: 'end',
-            render: (r: FleetCatalogItemDto) => (
-              <button
-                type="button"
-                className={actionButton}
-                aria-label={t('fleet.catalogs.editItem')}
-                title={t('fleet.catalogs.editItem')}
-                onClick={() => setEditing(r)}
-              >
-                <EditIcon className="h-4 w-4" />
-              </button>
-            ),
+            render: (r: FleetCatalogItemDto) => {
+              const at = rows.indexOf(r);
+              return (
+                <div className="inline-flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    className={`${actionButton} disabled:pointer-events-none disabled:opacity-30`}
+                    aria-label={t('fleet.catalogs.moveUp')}
+                    title={t('fleet.catalogs.moveUp')}
+                    disabled={at <= 0}
+                    onClick={() => step(r.id, -1)}
+                  >
+                    <ChevronIcon className="h-4 w-4 rotate-180" />
+                  </button>
+                  <button
+                    type="button"
+                    className={`${actionButton} disabled:pointer-events-none disabled:opacity-30`}
+                    aria-label={t('fleet.catalogs.moveDown')}
+                    title={t('fleet.catalogs.moveDown')}
+                    disabled={at === rows.length - 1}
+                    onClick={() => step(r.id, 1)}
+                  >
+                    <ChevronIcon className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className={actionButton}
+                    aria-label={t('fleet.catalogs.editItem')}
+                    title={t('fleet.catalogs.editItem')}
+                    onClick={() => setEditing(r)}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </button>
+                </div>
+              );
+            },
           } satisfies Column<FleetCatalogItemDto>,
         ]
       : []),

@@ -190,19 +190,13 @@ describe('every Fleet table is wired the same way', () => {
    * Named rather than detected, because this is a CLAIM about each screen — «this board is
    * whole» — and a new screen must be looked at rather than inherit the answer by accident.
    */
-  // …and the catalogs screen, since its lists are dragged into order: a list cannot be arranged
-  // across pages, so it holds each kind whole.
-  const CLIENT_BOARDS = [
-    'RosterPage.tsx',
-    'FixedRosterPage.tsx',
-    'MaintenanceAlarmsPage.tsx',
-    'CatalogsPage.tsx',
-  ];
+  const CLIENT_BOARDS = ['RosterPage.tsx', 'FixedRosterPage.tsx', 'MaintenanceAlarmsPage.tsx'];
   const SERVER_PAGES = PAGES.filter((name) => !CLIENT_BOARDS.includes(name));
 
   it('finds every sorting page — the census is not empty', () => {
-    // Ten today: six server-paged registers and the four whole boards.
-    expect(PAGES.length).toBeGreaterThanOrEqual(10);
+    // Nine today: six server-paged registers and the three whole boards. The catalogs screen left
+    // the census when its lists became dragged into order — it has no column sort at all.
+    expect(PAGES.length).toBeGreaterThanOrEqual(9);
     expect(SERVER_PAGES.length).toBeGreaterThanOrEqual(6);
     for (const board of CLIENT_BOARDS) expect(PAGES, board).toContain(board);
   });
@@ -220,10 +214,7 @@ describe('every Fleet table is wired the same way', () => {
     // same string. Spelled twice, they drift — and the drift is invisible: the table would open
     // in one order and a click would turn a different one round.
     const source = code(join('pages', name));
-    // Empty only where the default is the list's own ARRANGED order, which is no column at all.
-    expect(source).toMatch(
-      name === 'CatalogsPage.tsx' ? /const DEFAULT_SORT = '';/ : /const DEFAULT_SORT = '[^']+';/,
-    );
+    expect(source).toMatch(/const DEFAULT_SORT = '[^']+';/);
     expect(
       source.match(/DEFAULT_SORT/g)?.length,
       'declared once, read by the memo and by the click',
@@ -298,7 +289,16 @@ describe('the catalogs are dragged into order', () => {
   it('holds each list whole, saves a drop, and drags only in the arranged order', () => {
     expect(SOURCE).toContain('useFleetCatalog(kind)');
     expect(SOURCE).toContain('saveOrder.mutate(');
-    expect(SOURCE).toContain("const mayOrder = can('fleetCatalog.manage') && sorts.length === 0;");
+    // Dragging is ALWAYS on for a manager: the list has no column sort that could switch it off.
+    // A remembered sort from an earlier visit did exactly that, and the rows would not move.
+    expect(SOURCE).toContain("const mayOrder = can('fleetCatalog.manage');");
+    expect(SOURCE, 'no column sort on this screen').not.toContain('onSortChange');
+    expect(SOURCE, 'and no sort remembered').toContain(
+      "const REMEMBERED_FILTERS = ['active'] as const;",
+    );
+    expect(SOURCE, 'a refused save says so').toContain(
+      'toast.error(errorMessage(failure, locale))',
+    );
     expect(SOURCE, 'no pages to drag across').not.toContain('<Pagination');
   });
 });

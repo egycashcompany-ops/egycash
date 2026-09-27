@@ -9,8 +9,10 @@ import {
   FLEET_CATALOG_KINDS,
   type FleetCatalogItemDto,
   type FleetCatalogKind,
+  type Locale,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
@@ -22,44 +24,27 @@ import { EditIcon, GripIcon, PlusIcon } from '../../../shared/ui/icons';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useFleetCatalog, useOrderCatalog } from '../api/fleet-queries';
 import { CatalogItemDialog } from '../components/CatalogDialogs';
-import { clickSort, readSorts, writeSorts } from '../lib/table-sort';
-import { sortRows } from '../lib/sort-rows';
+import { errorMessage } from '../../../shared/lib/errors';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
-const REMEMBERED_FILTERS = ['active', 'sort'] as const;
+// NOT `sort`: this list has no column order to remember — it IS its own order. A sort kept from an
+// earlier visit is what switched the drag off without the reader knowing why.
+const REMEMBERED_FILTERS = ['active'] as const;
 
 const isKind = (value: string | null): value is FleetCatalogKind =>
   (FLEET_CATALOG_KINDS as readonly string[]).includes(value ?? '');
 
-/**
- * The order this screen opens in, before the reader has asked for one.
- *
- * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
- * first click REPLACES it rather than joining it — see `clickSort`.
- */
-// «اقدر ارتبهم عن طريق الشد والترك» — the list opens in the order it was ARRANGED, which is no
-// column at all; a click on the name's arrow orders by name for reading, and dragging waits until
-// the arrow is cleared again.
-const DEFAULT_SORT = '';
-
 export const CatalogsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
 
   const kindParam = sp.get('kind');
   const kind: FleetCatalogKind = isKind(kindParam) ? kindParam : 'workshop';
   const active = sp.get('active') ?? '';
-  /**
-   * The columns this table is sorted by, in the order the reader clicked them —
-   * «انا عاوز اقدر اعمل الاتنين مع بعض». One parameter carries the whole order; `name.ar:asc`
-   * is where the screen starts when the reader has not said otherwise.
-   */
-  const sortParam = sp.get('sort');
-  const sorts = useMemo(() => readSorts(sortParam, DEFAULT_SORT), [sortParam]);
-
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
     const next = new URLSearchParams(sp);
     for (const [key, val] of Object.entries(updates)) {
@@ -69,12 +54,6 @@ export const CatalogsPage = (): JSX.Element => {
     if (resetPage && !('page' in updates)) next.delete('page');
     setSp(next);
   };
-  // Ascending, then descending, then out of the order altogether — and a column the table
-  // is NOT sorted by joins the end of it rather than replacing what is there.
-  const changeSort = (by: string): void => {
-    patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
-  };
-
   // The WHOLE list of the kind, one page: a list cannot be dragged into order across pages, and
   // these lists are tens of entries. The same cached list every Fleet dropdown reads.
   const { data, isLoading, isError, error, refetch } = useFleetCatalog(kind);
@@ -93,15 +72,11 @@ export const CatalogsPage = (): JSX.Element => {
     });
   }, [data, pending, kind]);
   const rows = useMemo(() => {
-    const shown = all.filter((item) => active === '' || String(item.isActive) === active);
-    // The whole list is in hand, so a click on the name orders it here; none keeps the arranged
-    // order, which is the order the server answered in.
-    return sorts.length === 0
-      ? shown
-      : sortRows(shown, sorts, (row, key) => (key === 'name.ar' ? row.name.ar : null));
-  }, [all, active, sorts]);
-  // Dragging arranges the list itself, so it is offered only while the list IS its own order.
-  const mayOrder = can('fleetCatalog.manage') && sorts.length === 0;
+    // Always the ARRANGED order — the order the server answered in. There is no column sort on
+    // this screen: «اقدر ارتبهم عن طريق الشد والترك» is the only order it has.
+    return all.filter((item) => active === '' || String(item.isActive) === active);
+  }, [all, active]);
+  const mayOrder = can('fleetCatalog.manage');
   const move = (fromId: string, toId: string): void => {
     if (fromId === toId) return;
     const ids = all.map((item) => item.id);
@@ -116,7 +91,12 @@ export const CatalogsPage = (): JSX.Element => {
       { kind, ids },
       {
         onSuccess: () => toast.success(t('fleet.catalogs.orderSaved')),
-        onError: () => setPending(null),
+        // A refused save puts the rows back and SAYS so — a row that silently snaps back reads
+        // as a screen that will not let you move it.
+        onError: (failure) => {
+          setPending(null);
+          toast.error(errorMessage(failure, locale));
+        },
       },
     );
   };
@@ -136,14 +116,8 @@ export const CatalogsPage = (): JSX.Element => {
             render: (r: FleetCatalogItemDto) => (
               <span
                 data-drag-handle={r.id}
-                title={t(
-                  mayOrder ? 'fleet.catalogs.dragToOrder' : 'fleet.catalogs.dragNeedsOwnOrder',
-                )}
-                className={
-                  mayOrder
-                    ? 'inline-flex cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200'
-                    : 'inline-flex cursor-not-allowed rounded p-1 text-slate-300 dark:text-slate-700'
-                }
+                title={t('fleet.catalogs.dragToOrder')}
+                className="inline-flex cursor-grab rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 active:cursor-grabbing dark:hover:bg-slate-800 dark:hover:text-slate-200"
               >
                 <GripIcon className="h-4 w-4" />
               </span>
@@ -154,7 +128,6 @@ export const CatalogsPage = (): JSX.Element => {
     {
       key: 'name.ar',
       header: t('fleet.catalogs.fields.nameAr'),
-      sortable: true,
       render: (r) => r.name.ar,
     },
     {
@@ -302,8 +275,6 @@ export const CatalogsPage = (): JSX.Element => {
           loading={isLoading}
           error={isError ? error : undefined}
           onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
         />
       </div>
 

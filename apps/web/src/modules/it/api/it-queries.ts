@@ -72,6 +72,8 @@ const itKeys = {
   software: featureKey(MODULE, 'software'),
   /** Licences and the installations that consume their seats: one write moves both numbers. */
   licenses: featureKey(MODULE, 'licenses'),
+  /** The people IT names — each carries how many assets they hold, which custody moves. */
+  people: featureKey(MODULE, 'people'),
 } as const;
 
 // ── Platform references ─────────────────────────────────────────────────────
@@ -276,6 +278,8 @@ const useCustodyMutation = <TInput extends { id: string }>(
       qc.setQueryData(detailKey(MODULE, 'assets', asset.id), asset);
       void qc.invalidateQueries({ queryKey: itKeys.assets });
       void qc.invalidateQueries({ queryKey: itKeys.custody });
+      // A hand-over changes what two people hold — the counts on the employees register.
+      void qc.invalidateQueries({ queryKey: itKeys.people });
     },
   });
 };
@@ -296,6 +300,44 @@ export const useDisposeItAsset = () =>
   useCustodyMutation(({ id, body }: { id: string; body: DisposeItAsset }) =>
     api.disposeAsset(id, body),
   );
+
+// ── People: the employees IT names ──────────────────────────────────────────
+
+/** Departments and job titles — names for a person's placement. Rarely change: session-cached. */
+export const useItDepartmentOptions = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'departmentOptions'),
+    queryFn: api.listDepartmentOptions,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+
+export const useItJobTitleOptions = (enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'jobTitleOptions'),
+    queryFn: api.listJobTitleOptions,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+
+/** The employees register — current and departed, as the filters ask. */
+export const useItPeople = (params: ItListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'people', params),
+    queryFn: () => api.listPeople(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** One person — a history page's head, or the name on a filter chip that arrived on a link. */
+export const useItPerson = (employeeId: string, enabled = true) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'people', employeeId),
+    queryFn: () => api.getPerson(employeeId),
+    enabled: enabled && employeeId !== '',
+    staleTime: 60_000,
+    retry: false,
+  });
 
 // ── Help desk (IT-3) ────────────────────────────────────────────────────────
 

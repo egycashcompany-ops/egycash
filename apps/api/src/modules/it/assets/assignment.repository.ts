@@ -25,6 +25,33 @@ class ItAssetAssignmentRepository extends BaseRepository<ItAssetAssignmentDoc> {
     return query.lean<ItAssetAssignmentDoc>().exec();
   }
 
+  /**
+   * How many assets each of these people holds right now, as the reader may see it — ONE `$group`
+   * for a page of people, never a count per row. Scoped like every custody read, so a branch-scoped
+   * technician counts their branch's assets and not another's. People holding nothing are absent.
+   */
+  async countOpenByEmployees(
+    employeeIds: readonly string[],
+    scope?: ScopeSelector,
+  ): Promise<Map<string, number>> {
+    const ids = employeeIds
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .aggregate<{ _id: Types.ObjectId; count: number }>([
+        {
+          $match: this.baseFilter(scope, {
+            assignedToEmployeeId: { $in: ids },
+            returnedAt: null,
+          }),
+        },
+        { $group: { _id: '$assignedToEmployeeId', count: { $sum: 1 } } },
+      ])
+      .exec();
+    return new Map(rows.map((row) => [String(row._id), row.count]));
+  }
+
   /** Everything an employee currently holds — the exit checklist's question (§9.1). */
   async listOpenForEmployee(employeeId: string): Promise<ItAssetAssignmentDoc[]> {
     return this.model

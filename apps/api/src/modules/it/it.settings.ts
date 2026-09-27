@@ -1,11 +1,12 @@
 // IT settings (design §8.3) — declared at module load, before boot resolves any value.
 //
 // IT-3 declared the two the help desk consumes; IT-4 added the one its preventive sweep reads;
-// IT-5 adds the two warn windows its expiry sweep reads. Every one of the five arrived WITH the
-// code that consumes it — a setting with no consumer is a knob that does nothing, and this module
+// IT-5 adds the two warn windows its expiry sweep reads; the technicians' departments arrived with
+// the technician list and the assign guard that read them. Every one arrived WITH the code that
+// consumes it — a setting with no consumer is a knob that does nothing, and this module
 // has been careful not to ship those.
 import { z } from 'zod';
-import { ItSettingKeys } from '@ecms/contracts';
+import { ItSettingKeys, objectId } from '@ecms/contracts';
 import { declareSetting } from '../../platform/settings';
 
 export const registerItSettings = (): void => {
@@ -47,6 +48,16 @@ export const registerItSettings = (): void => {
       'Days before a licence expires that it.license.expiring fires. 0 disables the early warning; the expired announcement still fires (§4.8)',
     schema: z.number().int().min(0).max(365),
     defaultValue: 30,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: ItSettingKeys.TechnicianDepartmentIds,
+    description:
+      'HR department ids whose employees ARE the help-desk technicians — a ticket is assigned only to a current employee of one of them. Empty means not configured: nobody is offered until one is chosen, and the server keeps its old behaviour',
+    schema: z.array(objectId()).max(50),
+    defaultValue: [],
+    // Organization only: who works in IT is one fact about the company, not a per-branch opinion
+    // — two branches disagreeing would give two dispatchers two different sets of technicians.
     allowedScopes: ['organization'],
   });
 };

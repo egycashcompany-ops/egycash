@@ -31,6 +31,7 @@ const PART_ROUTES = read('spare-parts/part.routes.ts');
 const PRODUCT_ROUTES = read('software/product.routes.ts');
 const INSTALLATION_ROUTES = read('software/installation.routes.ts');
 const LICENSE_ROUTES = read('licenses/license.routes.ts');
+const PEOPLE_ROUTES = read('people/people.routes.ts');
 const ASSET_SERVICE = read('assets/asset.service.ts');
 const CATALOG_SERVICE = read('catalog-items/catalog-item.service.ts');
 const VENDOR_SERVICE = read('vendors/vendor.service.ts');
@@ -270,6 +271,24 @@ describe('every endpoint the IT client calls exists on the API', () => {
     expect([...routes].some((r) => r.startsWith('delete'))).toBe(false);
     expect(MANIFEST).toContain("prefix: '/it/ticket-priorities'");
     expect(CLIENT).toContain('/it/ticket-priorities');
+  });
+});
+
+// The people IT names — HR's facts read through IT's OWN routes, so no IT screen needs HR's
+// `employee.view`: «يظهرله اسم الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود».
+describe('the people and technicians the IT client reads exist on the API', () => {
+  it('mounts both read-only routers', () => {
+    expect(MANIFEST).toContain("prefix: '/it/people'");
+    expect(MANIFEST).toContain("prefix: '/it/technicians'");
+    // Read-only by construction: IT writes nothing about a person.
+    expect(declared(PEOPLE_ROUTES)).toEqual(new Set(['get /', 'get /:employeeId']));
+  });
+
+  it('the client calls them — and never HR’s employee endpoint', () => {
+    expect(CLIENT).toContain("getPage<ItPersonDto>(`/it/people${buildQuery(params)}`)");
+    expect(CLIENT).toContain('`/it/people/${employeeId}`');
+    expect(CLIENT).toContain('`/it/technicians${buildQuery(');
+    expect(CLIENT).not.toContain('/hr/employees');
   });
 });
 
@@ -658,5 +677,25 @@ describe('growth catalogs are searched, never loaded', () => {
     expect(dialog, 'the dialog must not hold the catalog to name a part').not.toContain(
       'useItSpareParts',
     );
+  });
+});
+
+describe('people ride IT’s grants, never HR’s', () => {
+  const route = (router: string): string =>
+    new RegExp(`export const ${router} = [\\s\\S]*?\\n};`).exec(PEOPLE_ROUTES)?.[0] ?? '';
+
+  it('the people register rides the custody grant — the register already names every holder', () => {
+    const people = route('buildItPeopleRouter');
+    expect(people.match(/authorize\('itAsset\.view'\)/g)).toHaveLength(2);
+  });
+
+  it('the technicians ride the help desk’s work grants — a requester does not get the list', () => {
+    expect(route('buildItTechniciansRouter')).toContain(
+      "authorizeAny('itTicket.assign', 'itTicket.edit')",
+    );
+  });
+
+  it('and no IT route asks for an HR permission', () => {
+    expect(PEOPLE_ROUTES).not.toMatch(/employee\.(view|edit)/);
   });
 });

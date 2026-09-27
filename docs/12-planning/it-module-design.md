@@ -378,6 +378,13 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   not a hand-over and stays open to a departed holder. The custody register's holder search finds
   every status, leavers included; the hand-over pickers offer the employed alone (§17,
   2026-09-27).
+- **FR-16** Every IT filter that picks a person (custody holder, asset holder, ticket requester,
+  ticket technician) finds every employee HR has, leavers included and marked; every hand-over
+  (custody assign/transfer, a ticket's technician) offers current employees only (§17, 2026-09-27).
+- **FR-17** A ticket's technician is a current employee of the departments in
+  `it.technicianDepartmentIds`, resolved through the login's employee (422 otherwise). Until a
+  department is chosen the rule is not applied and the technician box offers nobody, saying why
+  (§17, 2026-09-27).
 
 ## 6. States catalog
 
@@ -445,11 +452,16 @@ responsible; asset assigned → notify the holder.
 
 ### 8.3 Settings (`declareSetting`, organization scope)
 `it.warrantyWarnDays` (30) · `it.licenseWarnDays` (30) · `it.slaAtRiskPercent` (80) ·
-`it.ticketAutoCloseDays` (7; 0 = off) · `it.preventiveHorizonDays` (7).
+`it.ticketAutoCloseDays` (7; 0 = off) · `it.preventiveHorizonDays` (7) ·
+`it.technicianDepartmentIds` ([] = not configured; FR-17, edited on the help-desk settings page).
 
 ## 9. Integration points
 
 **9.1 HR (live):** custody references employees; requesters/technicians are platform users.
+IT NAMES employees through its own read-only `/it/people` (under `itAsset.view`) and
+`/it/technicians` (under `itTicket.assign`/`itTicket.edit`), which read HR through the platform
+directory seam (`searchDirectoryEmployees`) — no IT screen needs HR's `employee.view` (§17,
+2026-09-27).
 Subscribes to `hr.employee.exited`: assets held by the leaver are **flagged** (dashboard panel
 "assets held by exited employees" + notification to IT) — never auto-returned (FR-13); the exit
 checklist is the human process, the flag is its safety net.
@@ -498,6 +510,8 @@ precedent; `itAsset.export`).
 | `/it/software-products`, `/it/software-installations` | remove (stamps `removedAt`) |
 | `/it/licenses` | — |
 | `/it/vendors` | — |
+| `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` — HR's people through the directory (§9.1) |
+| `/it/technicians` | read-only: `GET /` — the IT departments' people (FR-17) |
 | `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -645,10 +659,21 @@ starts only on an explicit owner GO.
   Also recorded: `registered`, `updated` and `warrantyUpdated` are declared in
   `IT_ASSET_EVENT_TYPES` and written by nothing (§4.1 says they should be). Left as a deliberate
   debt — IT-5 does not widen its scope to fix an IT-1/IT-2 gap.
-- **Custody holders** (2026-09-27) — owner request: «لما يعمل بحث او يضيف حاجه او اى حاجه يختار
+- **IT's employees** (2026-09-27) — owner requests: «لما يعمل بحث او يضيف حاجه او اى حاجه يختار
   اسم الموظف يظهرله اسم الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود لكن فى حاله
-  الاضافه اللى موجود بس». The register's holder filter now searches every employee HR has, leavers
-  marked as such; assign and transfer keep offering the employed alone, and the server enforces
-  it (FR-15). Only a positive `exited` answer refuses — an id the directory cannot read is accepted
-  as before, so a deployment without HR is unchanged. No schema, event or permission change: the
-  picker still reads HR's list under `employee.view`, as §9.1 has it.
+  الاضافه اللى موجود بس», then «اعمل شاشه فيها كل المواظفيين اللى مشيوا واللى موجودين واللى ادوس
+  عليه يجيب الهيستورى بتاعه كله ونفس الموضوع فى الفلاتر فى كل الشاشات ... الفنى يكون من مموظفيين
+  الit بس», and yes to IT staff seeing names without HR's permission. Delivered:
+  1. **`/it/people` and `/it/technicians`** — HR's facts through the platform directory's new
+     register seam, under IT's own grants (§9.1). Read-only; no collection.
+  2. **The employees register** (`/it/employees`) — everybody, current and departed, with what
+     each holds now; a row opens the person's history: custody now and before, tickets opened
+     and tickets worked (through their login).
+  3. **Person filters on every screen that lists by a person** — custody (holder), assets
+     (holder, new `holderEmployeeId`) and the help desk (requester, new `requesterUserId`;
+     technician) — all finding leavers (FR-16).
+  4. **Hand-overs to current employees only**, enforced server-side (FR-15), and a technician from
+     the IT departments only (FR-17, `it.technicianDepartmentIds`).
+  Only a positive answer refuses — an id the directory cannot read is accepted as before, so a
+  deployment without HR, and one whose IT departments are not chosen yet, is unchanged. No new
+  permission and no schema change; one setting and two list filters are added.

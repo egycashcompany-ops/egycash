@@ -44,6 +44,7 @@ import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { itCatalogItemRepository } from '../catalog-items';
 import { itAssetRepository } from '../assets';
+import { itPeopleService } from '../people';
 import { itTicketRepository } from './ticket.repository';
 import { itTicketPriorityRepository } from './priority.repository';
 import { itTicketEventRepository } from './ticket-event.repository';
@@ -455,6 +456,9 @@ class ItTicketService {
     scope: ScopeSelector,
   ): Promise<ItTicketDoc> {
     const at = new Date();
+    // «الفنى يكون من موظفين الـ IT بس»: a current employee of the IT departments. Asked BEFORE
+    // the transaction, like custody's holder check — HR's answer is not part of the ticket write.
+    await itPeopleService.assertAssignableTechnician(input.technicianUserId);
     const result = await unitOfWork(async (session) => {
       const current = await itTicketRepository.getByIdForUpdate(id, scope, session);
       if (!isActiveTicketStatus(current.status)) {

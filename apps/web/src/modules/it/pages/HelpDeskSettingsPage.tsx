@@ -1,4 +1,5 @@
-// Help-desk settings (design §2.6, §8.3) — the priorities, which ARE the SLA policy.
+// Help-desk settings (design §2.6, §8.3) — the priorities, which ARE the SLA policy, and the
+// departments whose people are the technicians (`it.technicianDepartmentIds`).
 //
 // One screen, one grant (`itSlaPolicy.manage`), one collection. v1.0 of the design split priority
 // and policy into two joined tables; an admin tunes the name, the rank and the two targets as ONE
@@ -25,6 +26,7 @@ import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { localized } from '../../../shared/lib/format';
 import { useItTicketPriorities } from '../api/it-queries';
 import { TicketPriorityDialog } from '../components/TicketPriorityDialog';
+import { TechnicianDepartmentsCard } from '../components/TechnicianDepartmentsCard';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -178,6 +180,9 @@ export const HelpDeskSettingsPage = (): JSX.Element => {
             </p>
           </CardBody>
         </Card>
+
+        {/* Who a ticket may be assigned to — the IT departments' current employees. */}
+        <TechnicianDepartmentsCard />
 
         <FilterBar hasActiveFilters={active !== ''} onClear={() => patch({ active: null })}>
           <Select

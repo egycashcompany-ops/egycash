@@ -45,6 +45,9 @@ import {
   ItAssetLabelsSchema,
   ItAssetWarrantySchema,
   ListItTicketsQuerySchema,
+  ListItAssetsQuerySchema,
+  ListItPeopleQuerySchema,
+  ListItTechniciansQuerySchema,
   ReopenItTicketSchema,
   ResolveItTicketSchema,
   UpdateItAssetSchema,
@@ -239,7 +242,14 @@ describe('it help-desk contracts (IT-3)', () => {
     expect(parsed.success && parsed.data.mine).toBe(true);
     expect(parsed.success && parsed.data.breached).toBe(false);
     expect(ListItTicketsQuerySchema.safeParse({ status: 'archived' }).success).toBe(false);
-    expect(ListItTicketsQuerySchema.safeParse({ requesterUserId: oid(1) }).success).toBe(false);
+    expect(ListItTicketsQuerySchema.safeParse({ requester: oid(1) }).success).toBe(false);
+  });
+
+  // A person's tickets — the requester filter and the history page — name them by LOGIN, and
+  // the id is validated like every other one.
+  it('filters by requester login, and only by a well-formed one', () => {
+    expect(ListItTicketsQuerySchema.safeParse({ requesterUserId: oid(1) }).success).toBe(true);
+    expect(ListItTicketsQuerySchema.safeParse({ requesterUserId: 'me' }).success).toBe(false);
   });
 });
 
@@ -513,5 +523,44 @@ describe('it software and licence contracts', () => {
     expect(ListItSoftwareInstallationsQuerySchema.safeParse({ removedAt: null }).success).toBe(
       false,
     );
+  });
+});
+
+// ── People: the employees IT names ──────────────────────────────────────────
+//
+// «اعمل شاشه فيها كل المواظفيين اللى مشيوا واللى موجودين ... لكن فى حاله اضافه اى حاجه لازم يكون
+// المواظفيين يكونوا موجودين».
+
+describe('it people contracts', () => {
+  const oid = (n: number) => String(n).padStart(24, '0');
+
+  it('lists everybody by default — a register and a search both mean leavers too', () => {
+    const parsed = ListItPeopleQuerySchema.safeParse({});
+    expect(parsed.success && parsed.data.status).toBe('all');
+    // By name, A→Z: the order a person is looked for in, not the order they were filed in.
+    expect(parsed.success && parsed.data.sortBy).toBe('name');
+    expect(parsed.success && parsed.data.sortDir).toBe('asc');
+  });
+
+  it('narrows to the employed for a hand-over, to leavers for the register filter', () => {
+    for (const status of ['employed', 'exited', 'all']) {
+      expect(ListItPeopleQuerySchema.safeParse({ status }).success, status).toBe(true);
+    }
+    expect(ListItPeopleQuerySchema.safeParse({ status: 'onLeave' }).success).toBe(false);
+    expect(ListItPeopleQuerySchema.safeParse({ sortBy: 'salary' }).success).toBe(false);
+    expect(ListItPeopleQuerySchema.safeParse({ departmentId: oid(1) }).success).toBe(false);
+  });
+
+  it('offers technicians who work here today unless a filter asks for everyone', () => {
+    const parsed = ListItTechniciansQuerySchema.safeParse({});
+    expect(parsed.success && parsed.data.status).toBe('employed');
+    expect(ListItTechniciansQuerySchema.safeParse({ status: 'all' }).success).toBe(true);
+    // There is no «only the ones who left» list of people to assign work to.
+    expect(ListItTechniciansQuerySchema.safeParse({ status: 'exited' }).success).toBe(false);
+  });
+
+  it('filters the asset register by the person holding an asset now', () => {
+    expect(ListItAssetsQuerySchema.safeParse({ holderEmployeeId: oid(1) }).success).toBe(true);
+    expect(ListItAssetsQuerySchema.safeParse({ holderEmployeeId: 'x' }).success).toBe(false);
   });
 });

@@ -13,7 +13,7 @@ import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { localized } from '../../../shared/lib/format';
 import { ItCatalogSelect } from './ItCatalogSelect';
-import { UserPicker } from './UserPicker';
+import { TechnicianPicker } from './TechnicianPicker';
 import {
   useAssignItTicket,
   useCancelItTicket,
@@ -521,12 +521,15 @@ export const AssignTicketDialog = ({
 }): JSX.Element => {
   const t = useT();
   const assign = useAssignItTicket();
+  // The box picks an EMPLOYEE of IT; the ticket is assigned to that employee's LOGIN.
+  const [employeeId, setEmployeeId] = useState('');
   const [userId, setUserId] = useState('');
   const [label, setLabel] = useState('');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     if (open) {
+      setEmployeeId('');
       setUserId('');
       setLabel('');
       setNote('');
@@ -581,11 +584,13 @@ export const AssignTicketDialog = ({
           </p>
         )}
         <Field label={t('it.tickets.technician')} required>
-          <UserPicker
-            value={userId}
+          <TechnicianPicker
+            listWhenEmpty
+            value={employeeId}
             valueLabel={label}
-            onChange={(id, name) => {
-              setUserId(id);
+            onChange={(technician, name) => {
+              setEmployeeId(technician?.employeeId ?? '');
+              setUserId(technician?.userId ?? '');
               setLabel(name);
             }}
             ariaLabel={t('it.tickets.technician')}

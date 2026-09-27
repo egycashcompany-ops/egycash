@@ -37,21 +37,45 @@ its entry here in the same PR.
 
 ### Changed
 
-- **IT custody: searching for a holder finds everyone HR has; handing an asset over offers only
-  who works here today.** «لما يعمل بحث او يضيف حاجه او اى حاجه يختار اسم الموظف يظهرله اسم
-  الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود لكن فى حاله الاضافه اللى موجود
-  بس». The custody register's «تصفية حسب المستلِم» box asked HR for the employed only, so somebody
-  who had left could not be searched for — although their intervals are still in the register,
-  and «who left holding a laptop» is one of the questions it gets asked. It now asks HR for every
-  status, and a leaver in its results carries «منتهي الخدمة». The two hand-over boxes, «تسليم»
-  and «نقل», still offer the employed alone — the box's default, so a new one that does not choose
-  cannot offer a leaver custody — and the two populations are cached apart.
+- **IT names the company's employees itself: a register of everyone, current and departed, with
+  each person's whole history; every person filter finds leavers; every hand-over, and every
+  technician, is somebody who works here today.** «لما يعمل بحث او يضيف حاجه او اى حاجه يختار اسم
+  الموظف يظهرله اسم الموظف من الاتش ار كل المواظفين سواء اللى مشى او اللى موجود لكن فى حاله
+  الاضافه اللى موجود بس», and then «اعمل شاشه فيها كل المواظفيين اللى مشيوا واللى موجودين واللى ادوس
+  عليه يجيب الهيستورى بتاعه كله ونفس الموضوع فى الفلاتر فى كل الشاشات ... الفنى يكون من مموظفيين
+  الit بس».
 
-  The server holds the same line (IT design FR-15): assigning an asset to an employee HR reports
-  as exited, or transferring it to one, is refused with a 422 before anything is written. Only a
-  positive answer refuses — an id the directory cannot read is accepted as it always was — and a
-  branch move that keeps the asset in the same hands is not a hand-over, so a departed holder's
-  asset can still be moved while its return is pending. On leave and suspended are still employed.
+  - **No HR permission needed.** IT's employee boxes read HR's own list under HR's
+    `employee.view` — the whole HR file — so a technician could not see who they were handing a
+    laptop to until somebody gave them «الموظفون». IT now answers itself: `GET /it/people` (under
+    `itAsset.view`, the grant whose register already names every holder) and `GET /it/technicians`
+    (under `itTicket.assign` / `itTicket.edit`), both reading HR through a new register seam on
+    the platform directory (`searchDirectoryEmployees`). Names, codes, placement and status —
+    what the screens print, and nothing else. Read-only; IT stores none of it.
+  - **«الموظفون»** (`/it/employees`, in the IT menu and on the IT home page): everybody HR has,
+    filtered by current / former and branch, each with how many assets they hold now. A row opens
+    the person's history — what they hold now, every asset they held before and how it came
+    back, the tickets they opened and the tickets they worked as a technician (tickets join
+    through the person's login; someone without one is told so rather than shown an empty table).
+  - **Person filters on every screen that lists by a person, and all of them find leavers**,
+    marked «منتهي الخدمة»: the custody register's holder, and — new — the asset register's holder
+    (`holderEmployeeId`) and the help desk's requester (`requesterUserId`) and technician. A
+    census spec holds it: a person box on a screen must find leavers, one in a hand-over dialog
+    must not, and there is no third kind of place.
+  - **Hand-overs go to current employees only, and the server holds the line**: assigning an asset
+    to an employee HR reports as exited, or transferring it to one, is a 422 before anything is
+    written. A branch move in the same hands is not a hand-over, so a departed holder's asset can
+    still move while its return is pending; on leave and suspended are still employed.
+  - **A ticket's technician is a current employee of the IT departments** — the org chart, not a
+    list: the departments are ticked once on «إعدادات الدعم الفني»
+    (`it.technicianDepartmentIds`), and the technician box then offers exactly their current
+    people, marking anyone without a login (a ticket is assigned to a login). The server refuses
+    anybody else. Until a department is ticked, the box says so and offers nobody, and the server
+    behaves as before.
+
+  Only a positive answer refuses: an id the directory cannot read is accepted as it always was, so
+  a deployment without HR is unchanged. IT design FR-15, FR-16 and FR-17. No new permission; one
+  setting (so forty-one are declared) and one navigation row (119).
 
 - **The formal-Arabic guard now reads the whole product, and checks morphology rather than a word
   list.** The first version of it missed a screen the owner opened the same afternoon — the roster

@@ -4351,6 +4351,8 @@ const en: Record<string, string> = {
   'fleet.violations.report.value': 'Value',
   'fleet.violations.report.companyLine': 'Company total',
   'fleet.violations.report.driversLine': 'Drivers total',
+  'fleet.violations.report.violations': 'Violations',
+  'fleet.violations.report.and': ' and ',
   'fleet.violations.report.allLine': 'Violations total',
   'fleet.violations.report.signLine': 'Signature / ',
   // The «Excel» button every Fleet list screen carries — the filtered set, as data.
@@ -11348,6 +11350,8 @@ const ar: Record<string, string> = {
   'fleet.violations.report.value': 'القيمة',
   'fleet.violations.report.companyLine': 'إجمالي الشركة',
   'fleet.violations.report.driversLine': 'إجمالي السائقين',
+  'fleet.violations.report.violations': 'المخالفات',
+  'fleet.violations.report.and': ' و ',
   'fleet.violations.report.allLine': 'إجمالي المخالفات',
   'fleet.violations.report.signLine': 'التوقيع / ',
   'fleet.export.excel':

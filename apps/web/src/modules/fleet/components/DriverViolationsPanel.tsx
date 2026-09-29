@@ -68,6 +68,7 @@ import {
 import { buildXlsx, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { printFleetReport, reportMoney, signatureRows } from '../lib/fleet-report-print';
+import { driverSheetRows } from '../lib/driver-violations-sheet';
 
 // The filter bar's rhythm, shared by all four fields — see `FilterField` for why the name sits
 // above the control and why every control is the same width.
@@ -546,14 +547,17 @@ export const DriverViolationsPanel = ({
     row.driverName ??
     '';
 
-  const exportRows = (): string[][] =>
-    rows.map((row) => [
-      row.date === null ? '' : row.date.slice(0, 10),
-      row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? '')),
-      driverOf(row),
-      typeName.get(row.violationTypeId) ?? '',
-      reportMoney(row.amount),
-    ]);
+  const vehicleCodeOf = (row: FleetViolationDto): string =>
+    row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? ''));
+
+  /** The printed sheet's columns — sample A, the one the owner picked. */
+  const printHeader = [
+    t('fleet.violations.report.driverName'),
+    t('fleet.violations.report.vehicleCode'),
+    t('fleet.violations.report.date'),
+    t('fleet.violations.report.violations'),
+    t('fleet.violations.report.grandTotal'),
+  ];
 
   /**
    * The same rows, TYPED — the amount is a number, so the column adds up in Excel. Exporting
@@ -579,7 +583,11 @@ export const DriverViolationsPanel = ({
       moneyColumns: [4],
       // THE SAME BLOCK THE PAGE CARRIES, inside the sheet — this is a document somebody
       // prints and signs, not a dump of the table.
-      trailer: signatureRows(signatories, signatureColumns(6), t('fleet.violations.report.signLine')),
+      trailer: signatureRows(
+        signatories,
+        signatureColumns(6),
+        t('fleet.violations.report.signLine'),
+      ),
       // The total sits under «المبلغ», where the column it sums is.
       totals: ['', '', t('fleet.violations.report.grandTotal'), '', pageTotal],
     });
@@ -595,8 +603,15 @@ export const DriverViolationsPanel = ({
         department: t('fleet.violations.report.department'),
         // NO SUBTITLE — the sent form has none. See the company panel for the whole of it.
         subtitle: '',
-        header: exportHeader,
-        rows: exportRows(),
+        // ONE LINE PER DRIVER — «يجمع كل مخالفات السائق فى صف واحد يحط الاجمالى», sample A.
+        header: printHeader,
+        rows: driverSheetRows({
+          rows,
+          driverOf,
+          codeOf: vehicleCodeOf,
+          typeOf: (row) => typeName.get(row.violationTypeId) ?? '',
+          and: t('fleet.violations.report.and'),
+        }),
         // The drivers' sheet carries its total INSIDE the table, on the last line — which is where
         // the signed copies put it, and where the workbook puts it too.
         totals: [],

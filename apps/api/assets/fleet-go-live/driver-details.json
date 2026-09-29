@@ -1,0 +1,4361 @@
+[
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791271"
+  },
+  "employee_id": "0100014",
+  "employee_name": "احمد فوزى عثمان عبد الحى عامر ",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2028-07-08T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أوسيم",
+  "phone": "01147230641",
+  "phone2": "01097014989",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791276"
+  },
+  "employee_id": "0100022",
+  "employee_name": "تهامي عبد الصمد السيد محمود درويش",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-05-25T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "بهرمس",
+  "phone": "01062683260",
+  "phone2": "01014663743",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791278"
+  },
+  "employee_id": "0100025",
+  "employee_name": "عبد الرؤف احمد عبد المنعم على",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-06-17T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "السلام",
+  "phone": "01067132040",
+  "phone2": "0101227852",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791279"
+  },
+  "employee_id": "0100026",
+  "employee_name": "محمد ابراهيم السيد عبده",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-09-19T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "حلوان",
+  "phone": "01024388989",
+  "phone2": "01025716564",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879127a"
+  },
+  "employee_id": "0100028",
+  "employee_name": "محمد عبد الله محمد عبد المحسن",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-06-23T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "منشية القناطر",
+  "phone": "01128285960",
+  "phone2": "01127014334",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879128a"
+  },
+  "employee_id": "0100050",
+  "employee_name": "سامح جمال الدين احمد فوزى الطويل",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-09-15T00:00:00.000Z"
+  },
+  "specialization": "ملاكى",
+  "area": "حدائق المعادي",
+  "phone": "01099905859",
+  "phone2": "01004918612",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791294"
+  },
+  "employee_id": "0100068",
+  "employee_name": "محمد محمود حسن حسن",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-08-20T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الخصوص",
+  "phone": "01553465849",
+  "phone2": "44383656",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879129c"
+  },
+  "employee_id": "0100080",
+  "employee_name": "طلعت جابر حسين بحيرى",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-02-12T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أوسيم",
+  "phone": "01010221020",
+  "phone2": "01062733994",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879129f"
+  },
+  "employee_id": "0100084",
+  "employee_name": "احمد حمدى صلاح الدين ابوزيد",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-01-06T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "حلوان",
+  "phone": "01112730036",
+  "phone2": "01159326634",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912a0"
+  },
+  "employee_id": "0100085",
+  "employee_name": "احمد محمد عبد ربه عبد الوهاب",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-06-15T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "شبرا",
+  "phone": "01228038366",
+  "phone2": "01115622433",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912a1"
+  },
+  "employee_id": "0100086",
+  "employee_name": "سعيد عبد اللطيف ابراهيم سالم",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-10-01T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "منيالقمح",
+  "phone": "01008532695",
+  "phone2": "01270203379",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912a2"
+  },
+  "employee_id": "0100088",
+  "employee_name": "كريم فتحى محمد عبد الرحمن",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-05-09T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "منيالقمح",
+  "phone": "01094715108",
+  "phone2": "01119605070",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912a3"
+  },
+  "employee_id": "0100090",
+  "employee_name": "محمد نبيل محمد محمد الغانم",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-03-23T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "المطرية",
+  "phone": "01006510947",
+  "phone2": "01223756354",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912a4"
+  },
+  "employee_id": "0100091",
+  "employee_name": "هشام جلال عبد المجيد علام",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-06-23T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "العمرانية",
+  "phone": "01118387876",
+  "phone2": "01115487447",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912ae"
+  },
+  "employee_id": "0100114",
+  "employee_name": "خالد مندى محمد حمزه",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-01-11T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أوسيم",
+  "phone": "01093026115",
+  "phone2": "01006847237",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912b5"
+  },
+  "employee_id": "0100125",
+  "employee_name": "محمد إبراهيم حسن دسوقى",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-09-19T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "كفر صقر",
+  "phone": "01061155681",
+  "phone2": "01013917915",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912c1"
+  },
+  "employee_id": "0100148",
+  "employee_name": "احمد جمعه محمد عقل",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2028-03-10T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "شبرا ",
+  "phone": "01118524090",
+  "phone2": "01126650067",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912c4"
+  },
+  "employee_id": "0100152",
+  "employee_name": "ايمن على على محمد شعبان",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2028-04-12T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "منشاة القناطر",
+  "phone": "01060591930",
+  "phone2": "01008209110",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912c5"
+  },
+  "employee_id": "0100156",
+  "employee_name": "محمود محمد احمد إبراهيم",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-02-22T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "العجوزة ",
+  "phone": "01111320069",
+  "phone2": "01007426728",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912c7"
+  },
+  "employee_id": "0100159",
+  "employee_name": "محمود فتحى محمد حسن",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-08-16T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "هرم",
+  "phone": "01002059896",
+  "phone2": "01125072608",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912cf"
+  },
+  "employee_id": "0100173",
+  "employee_name": "عمرو عنتر على على",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-12-04T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "دار السلام ",
+  "phone": "01111884740",
+  "phone2": "01028899327",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912d0"
+  },
+  "employee_id": "0100174",
+  "employee_name": "محمد رشدى محمود محمد",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-08-27T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم",
+  "phone": "01002070534",
+  "phone2": "01064140232",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912d1"
+  },
+  "employee_id": "0100175",
+  "employee_name": "علاء ناصر صابر السيد الشرنوبى",
+  "employee_title": "سائق ب",
+  "license": "ثانية ",
+  "license_date": {
+   "$date": "2026-05-27T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم",
+  "phone": "01011716757",
+  "phone2": "01153337998",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912d2"
+  },
+  "employee_id": "0100176",
+  "employee_name": "محمود احمد امين حسين",
+  "employee_title": "سائق ب",
+  "license": "ثانية ",
+  "license_date": {
+   "$date": "2027-06-28T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم ",
+  "phone": "01118786082",
+  "phone2": "01120487779",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912d3"
+  },
+  "employee_id": "0100177",
+  "employee_name": "مصطفى كمال عبد المحسن حمزه",
+  "employee_title": "سائق ب",
+  "license": "ثانية ",
+  "license_date": {
+   "$date": "2025-07-21T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم ",
+  "phone": "01002750469",
+  "phone2": "01061106141",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912e4"
+  },
+  "employee_id": "0100206",
+  "employee_name": "عماد حمدى فهيم عبد الرسول",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-02-04T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "المعادى ",
+  "phone": "01004620207",
+  "phone2": "01065967384",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912eb"
+  },
+  "employee_id": "0100218",
+  "employee_name": "اسلام محمود عبد السلام عبد الرحيم",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2028-01-30T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم ",
+  "phone": "01024631266",
+  "phone2": "01001672460",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687912ec"
+  },
+  "employee_id": "0100219",
+  "employee_name": "مدحت رمضان عبد الله عطيه",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-08-04T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الدلنجات",
+  "phone": "01000407542",
+  "phone2": "01003873103",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791304"
+  },
+  "employee_id": "0100259",
+  "employee_name": "هانى نبيه خميس ابوزيد",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-12-04T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "شيرا الخيمة",
+  "phone": "01022680607",
+  "phone2": "01006960984",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791307"
+  },
+  "employee_id": "0100271",
+  "employee_name": "احمد رمضان فتحى مسعود",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-06-24T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "عبود",
+  "phone": "01159210170",
+  "phone2": "01102231500",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791308"
+  },
+  "employee_id": "0100272",
+  "employee_name": "عمرو محسن على قناوى",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-05-22T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الياجور",
+  "phone": "01001916111",
+  "phone2": "01068320808",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879130c"
+  },
+  "employee_id": "0100277",
+  "employee_name": "عبده محمد رشدى على السيد",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-04-28T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الهرم",
+  "phone": "01220893424",
+  "phone2": "01116836813",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879130d"
+  },
+  "employee_id": "0100278",
+  "employee_name": "محمد صلاح محمد محمد ابوليمود",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-10-12T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم",
+  "phone": "01127547332",
+  "phone2": "01060502529",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879130f"
+  },
+  "employee_id": "0100281",
+  "employee_name": "شريف محمد سليم عبد الله",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-03-08T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "شبرا مصر",
+  "phone": "01281990559",
+  "phone2": "01281990557",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791310"
+  },
+  "employee_id": "0100282",
+  "employee_name": "عمرو عبد الحميد عبد العليم الاحول",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-05-24T00:00:00.000Z"
+  },
+  "specialization": "ملاكى",
+  "area": "الزاوية الحمراء",
+  "phone": "01146688424",
+  "phone2": "01060476842",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791311"
+  },
+  "employee_id": "0100283",
+  "employee_name": "مصطفى على عبد المنجى مصطفى ريحان",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-11-22T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم",
+  "phone": "01002948011",
+  "phone2": "01007776346",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791318"
+  },
+  "employee_id": "0100294",
+  "employee_name": "سامى سرحان عبد المجيد عبد الرحمن",
+  "employee_title": "سائق ب",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-09-10T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "شبرا الخيمة",
+  "phone": "01221924772",
+  "phone2": "01283091273",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791326"
+  },
+  "employee_id": "0100320",
+  "employee_name": "محمد شوقى حامد عبد الفتاح",
+  "employee_title": "سائق ب",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-05-14T00:00:00.000Z"
+  },
+  "specialization": "ملاكى",
+  "area": "شبراالخيمة",
+  "phone": "01153424747",
+  "phone2": "01159883122",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879132c"
+  },
+  "employee_id": "0100330",
+  "employee_name": "سعد السعيد على محمد",
+  "employee_title": "سائق ج ",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-06-12T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الهرم",
+  "phone": "01223076311",
+  "phone2": "01143136721",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791330"
+  },
+  "employee_id": "0100339",
+  "employee_name": "اسامة محمود محمد احمد",
+  "employee_title": "سائق ج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-03-11T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الزاوية الحمراء",
+  "phone": "01009865279",
+  "phone2": "01274064330",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791333"
+  },
+  "employee_id": "0200343",
+  "employee_name": "محمد محمود بابلى جبر فخره",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-07-14T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "مركز السنطة",
+  "phone": "01006741006",
+  "phone2": "0404475955",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791337"
+  },
+  "employee_id": "0100352",
+  "employee_name": "مروان احمد خيرى ابو سريع ",
+  "employee_title": "سائق ج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-03-11T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "دار السلام ",
+  "phone": "01100464975",
+  "phone2": "01126190735",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791338"
+  },
+  "employee_id": "0200353",
+  "employee_name": "وائل محمد عبد السلام عطيه",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-03-23T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "كفر الزيات",
+  "phone": "01008472760",
+  "phone2": "01009327613",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791344"
+  },
+  "employee_id": "0100373",
+  "employee_name": "ادهم محمد عبد المنعم ابراهيم",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-07-21T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "حدائق القبه",
+  "phone": "01093344212",
+  "phone2": "01111193465",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791345"
+  },
+  "employee_id": "0200375",
+  "employee_name": "منير على محمود علام",
+  "employee_title": "سائق ج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-01-27T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "بولاق الدكرور",
+  "phone": "01099466908",
+  "phone2": "01119557724",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879135b"
+  },
+  "employee_id": "0100408",
+  "employee_name": "محمد عبد الوهاب محمد عبد العليم",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-10-01T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "شبرا الخيمة",
+  "phone": "01067816999",
+  "phone2": "01220866820",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791374"
+  },
+  "employee_id": "0300447",
+  "employee_name": "كامل فتحى على عبد الله",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-03-05T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أسيوط اول",
+  "phone": "01113597787",
+  "phone2": "01120295904",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791375"
+  },
+  "employee_id": "0100448",
+  "employee_name": "احمد سمير محمد الممدوح عبد الرحيم",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-06-23T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "منشية القناطر",
+  "phone": "01024751911",
+  "phone2": "01148266456",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879137b"
+  },
+  "employee_id": "0100461",
+  "employee_name": "محمود نزيه امين عبد اللا",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-10-02T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اشمون",
+  "phone": "01114507012",
+  "phone2": "01157485671",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879137c"
+  },
+  "employee_id": "0100462",
+  "employee_name": "احمد عبد النبى مصلحى محمد",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-10-27T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الزقازيق",
+  "phone": "01008203109",
+  "phone2": "01124250157",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879137d"
+  },
+  "employee_id": "0100463",
+  "employee_name": "محمد جمال عبد الغفار محمد",
+  "employee_title": "سائق ج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-07-22T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الهرم",
+  "phone": "01020502908",
+  "phone2": "01010868355",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791381"
+  },
+  "employee_id": "0100469",
+  "employee_name": "ابوبكر ربيع حسين العريف",
+  "employee_title": "سائق ",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-10-19T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "المرج",
+  "phone": "01007860566",
+  "phone2": "01002912452",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791382"
+  },
+  "employee_id": "0100471",
+  "employee_name": "محمد رافت محمد احمد منصور",
+  "employee_title": "سائق ج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-03-13T00:00:00.000Z"
+  },
+  "specialization": "ملاكى",
+  "area": "المطرية",
+  "phone": "01006991500",
+  "phone2": "01008398069",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879138d"
+  },
+  "employee_id": "0300484",
+  "employee_name": "محمود بهنساوى فرغلى محمود",
+  "employee_title": "سائق ج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-04-19T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "مركز الفتح",
+  "phone": "01221358832",
+  "phone2": "01060802964",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879138e"
+  },
+  "employee_id": "0300485",
+  "employee_name": "وليد عاطف عبد النبى سليم",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-04-28T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "مركز أسيوط",
+  "phone": "01113529801",
+  "phone2": "01005875567",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791393"
+  },
+  "employee_id": "0100492",
+  "employee_name": "احمد محمد فرج عبد الجواد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-08-18T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "بولاق الدكرور",
+  "phone": "01119908384",
+  "phone2": "01156851087",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791394"
+  },
+  "employee_id": "0100493",
+  "employee_name": "رضا محمد على النوبى",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-07-15T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الجيزة",
+  "phone": "01115636793",
+  "phone2": "01147398624",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913a1"
+  },
+  "employee_id": "0200511",
+  "employee_name": "محمد الشحات محمود المراكبى",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-08-31T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "طنطا",
+  "phone": "01145404675",
+  "phone2": "01226488990",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913a8"
+  },
+  "employee_id": "0100527",
+  "employee_name": "ابراهيم عبد العزيز محمد طه",
+  "employee_title": "سائق ",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2028-02-25T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الوراق",
+  "phone": "01110324435",
+  "phone2": "01229179822",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913a9"
+  },
+  "employee_id": "0100529",
+  "employee_name": "محمود محمد فهمى محمود",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-02-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01111105607",
+  "phone2": "01003307084",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913b6"
+  },
+  "employee_id": "0100549",
+  "employee_name": "محمود احمد محمود سليمان ",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-02-02T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "العجوزه",
+  "phone": "01061869693",
+  "phone2": "01004533617",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913ce"
+  },
+  "employee_id": "0100586",
+  "employee_name": "احمد ابراهيم محمد ابراهيم",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-03-14T00:00:00.000Z"
+  },
+  "specialization": "ملاكى",
+  "area": "عين شمس",
+  "phone": "01006113565",
+  "phone2": "01016991613",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913cf"
+  },
+  "employee_id": "0100588",
+  "employee_name": "احمد محمد على ريان",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-05-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشاة القناطر",
+  "phone": "01099021805",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913e0"
+  },
+  "employee_id": "0200624",
+  "employee_name": "محمد عبد الفتاح عبد الفتاح على الشرقاوى",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-06-04T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا ثان",
+  "phone": "01274909119",
+  "phone2": "01004744022",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913e1"
+  },
+  "employee_id": "0200625",
+  "employee_name": "محمود رجب محمود رجب",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-05-07T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "مركز قطور",
+  "phone": "01061090905",
+  "phone2": "01066776003",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913e2"
+  },
+  "employee_id": "0100626",
+  "employee_name": "محمود طلعت قطب قطب اسماعيل",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-07-05T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "قليوب",
+  "phone": "01063857176",
+  "phone2": "01095608951",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913e8"
+  },
+  "employee_id": "0100635",
+  "employee_name": "احمد محمد ابراهيم سلامه",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-10-11T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "قليوب",
+  "phone": "01201325425",
+  "phone2": "01281072639",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913e9"
+  },
+  "employee_id": "0200636",
+  "employee_name": "امين محمود انور الجوهرى",
+  "employee_title": "سائق ج",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-09-21T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "مركز زفتى",
+  "phone": "01200955399",
+  "phone2": "01024445548",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913ec"
+  },
+  "employee_id": "0100640",
+  "employee_name": "على عبد الموجود اسماعيل عبد النبى",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-01-13T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "مصر القديمه",
+  "phone": "01229884954",
+  "phone2": "01284655803",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687913fb"
+  },
+  "employee_id": "0300670",
+  "employee_name": "مصطفى محمد احمد حسانين",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-02-19T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أسيوط ثان",
+  "phone": "01003718117",
+  "phone2": "01033952553",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791405"
+  },
+  "employee_id": "0100681",
+  "employee_name": "بيشوى عماد سامى خليل",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-01-02T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "روض القرج ",
+  "phone": "01204341405",
+  "phone2": "01283197096",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791406"
+  },
+  "employee_id": "0100684",
+  "employee_name": "سعد لبيب عبد الحميد احمد جاد الحق",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-12-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الوراق",
+  "phone": "01280080636",
+  "phone2": "01281622572",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791413"
+  },
+  "employee_id": "0300707",
+  "employee_name": "احمد مختار عبد المنعم عبد الرحمن",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-01-16T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "مركز أسيوط",
+  "phone": "01069335922",
+  "phone2": "01017105095",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791414"
+  },
+  "employee_id": "0200708",
+  "employee_name": "علاء محمد ابو العلا شداد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-01-08T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا",
+  "phone": "01207931900",
+  "phone2": "01206364128",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791416"
+  },
+  "employee_id": "0100711",
+  "employee_name": "ايمن حسن مصطفى عبد السلام",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-10-28T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01127567520",
+  "phone2": "01009814975",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879141a"
+  },
+  "employee_id": "0300718",
+  "employee_name": "احمد ممدوح مرغنى فرغلى",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-07-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "أسيوط اول",
+  "phone": "01014545050",
+  "phone2": "01003374907",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879141b"
+  },
+  "employee_id": "0300719",
+  "employee_name": "مصطفى كمال محمد محمد المغربى",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-12-31T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أسيوط",
+  "phone": "01011813181",
+  "phone2": "01003389791",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879141c"
+  },
+  "employee_id": "0100720",
+  "employee_name": "على عبد الله على عبد الله الدونى",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-10-20T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "قليوب",
+  "phone": "01227811552",
+  "phone2": "01220686713",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879141d"
+  },
+  "employee_id": "0100721",
+  "employee_name": "مصطفى جمال احمد السيد حسين",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-12-10T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشاة القناطر",
+  "phone": "01094216050",
+  "phone2": "01117464553",
+  "work_status": 2,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879141f"
+  },
+  "employee_id": "0200726",
+  "employee_name": "ياسر سند الكيلانى الشيخ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-03-17T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "زفتى",
+  "phone": "01005320885",
+  "phone2": "01063936905",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791427"
+  },
+  "employee_id": "0100744",
+  "employee_name": "هشام عادل محمد احمد حسن",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-07-15T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "القاهرة",
+  "phone": "01152265009",
+  "phone2": "01114493634",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791433"
+  },
+  "employee_id": "0100758",
+  "employee_name": "محمود مجدى محمود عبد الواحد مرسى",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-05-14T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "أوسيم",
+  "phone": "01153605281",
+  "phone2": "01110343401",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791437"
+  },
+  "employee_id": "0100765",
+  "employee_name": "ابراهيم رزق السيد جابر",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-02-25T00:00:00.000Z"
+  },
+  "specialization": "ملاكى",
+  "area": "منشاة القناطر",
+  "phone": "01060542491",
+  "phone2": "01208283612",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791444"
+  },
+  "employee_id": "0100786",
+  "employee_name": "عصام محمد فؤاد باشا",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-02-18T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الاميريه",
+  "phone": "01025413105",
+  "phone2": "01273443120",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791445"
+  },
+  "employee_id": "0100788",
+  "employee_name": "محمد عبد التواب عباس محمد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-01-14T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "عين شمس",
+  "phone": "01112814673",
+  "phone2": "01000605535",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791449"
+  },
+  "employee_id": "0100796",
+  "employee_name": "محمود عبد الستار سعيد دسوقى",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-02-27T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "حلوان",
+  "phone": "01156601555",
+  "phone2": "01119195459",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791452"
+  },
+  "employee_id": "0200810",
+  "employee_name": "محمد محمدى ابراهيم عبد الجواد",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-03-10T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "طنطا   ",
+  "phone": "01003170988",
+  "phone2": "01118614653",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791459"
+  },
+  "employee_id": "0300821",
+  "employee_name": "حسام محمود عبد العزيز عبد العال",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-07-31T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أسيوط ثانى",
+  "phone": "01013775466",
+  "phone2": "01090181188",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879145d"
+  },
+  "employee_id": "0300831",
+  "employee_name": "احمد عصام حسن عبد الجليل",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-06-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "أسيوط ",
+  "phone": "01120756651",
+  "phone2": "01099961241",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791464"
+  },
+  "employee_id": "0500839",
+  "employee_name": "اسلام محمود محمد عبد الموجود يوسف",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-01-11T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اول المندرة",
+  "phone": "01227374711",
+  "phone2": "01206029961",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791468"
+  },
+  "employee_id": "0100845",
+  "employee_name": "محمد رجب سيد احمد السيد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-10-19T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشاة القناطر",
+  "phone": "01018979378",
+  "phone2": "01020225232",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791473"
+  },
+  "employee_id": "0100869",
+  "employee_name": "مصطفى محمود شيمى منصور ابراهيم",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-03-25T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "ابو النمرس",
+  "phone": "01143883488",
+  "phone2": "01118912447",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791474"
+  },
+  "employee_id": "0100871",
+  "employee_name": "فهد محمد احمد ابوزيد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-06-21T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "بولاق الدكرور",
+  "phone": "01150089872",
+  "phone2": "01017723694",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791482"
+  },
+  "employee_id": "0100899",
+  "employee_name": "محمد رجب احمد فرج",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-11-23T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "قليوب",
+  "phone": "01025457533",
+  "phone2": "01016247529",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791488"
+  },
+  "employee_id": "0100907",
+  "employee_name": "ابراهيم محمد محفوظ اسماعيل صيام",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-12-11T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "شبرا الخيمة",
+  "phone": "01115131388",
+  "phone2": "01111898795",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791489"
+  },
+  "employee_id": "0100908",
+  "employee_name": "عماد صابر عبد الفتاح عطيه",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-09-01T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "اوسيم",
+  "phone": "01009970082",
+  "phone2": "01006493150",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879148a"
+  },
+  "employee_id": "0100910",
+  "employee_name": "ايهاب نبيل عبد الحميد السيد",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-02-16T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "بولاق الدكرور",
+  "phone": "01003266955",
+  "phone2": "01020044338",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791492"
+  },
+  "employee_id": "0100927",
+  "employee_name": "ايمن ابراهيم محمد رجب محمد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-06-07T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "التبين",
+  "phone": "01147712419",
+  "phone2": "01126912796",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791493"
+  },
+  "employee_id": "0200928",
+  "employee_name": "محمود عبد المجيد محمود الخلوانى",
+  "employee_title": "سائق صراف الى",
+  "phone": "01288369591",
+  "phone2": "01091057037",
+  "work_status": 2,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914a0"
+  },
+  "employee_id": "0200947",
+  "employee_name": "احمد جميل محمد الحو",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-04-22T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "قطور",
+  "phone": "01226341229",
+  "phone2": "01094510110",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914ab"
+  },
+  "employee_id": "0300967",
+  "employee_name": "شادى نبيل فايز الياس",
+  "employee_title": "سائق صراف الى",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-10-21T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "أسيوط",
+  "phone": "01004348035",
+  "phone2": "01098936544",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914af"
+  },
+  "employee_id": "0100977",
+  "employee_name": "كريم سيد عبد الوهاب جاد",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-02-19T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "العباسية",
+  "phone": "01005788309",
+  "phone2": "01278410936",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914b6"
+  },
+  "employee_id": "0500990",
+  "employee_name": "احمد حسن محمد على حسن",
+  "employee_title": "منسق جراج",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-02-17T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": " العصافره - المنتزه ثانى",
+  "phone": "01273424121",
+  "phone2": "01275125049",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914b7"
+  },
+  "employee_id": "0200991",
+  "employee_name": "احمد سعد السيد شاويش",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-08-05T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا",
+  "phone": "01140510069",
+  "phone2": "01228743946",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914b9"
+  },
+  "employee_id": "0100995",
+  "employee_name": "اسلام صابر احمد حسين",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-09-22T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الساحل",
+  "phone": "01275423101",
+  "phone2": "01274666414",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914ba"
+  },
+  "employee_id": "0100996",
+  "employee_name": "محمد السيد عباس محمد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-01-14T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01129546920",
+  "phone2": "01026612282",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914bb"
+  },
+  "employee_id": "0100997",
+  "employee_name": "نبيه محمد نبيه السيد",
+  "employee_title": "سائق صراف الى",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-11-04T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "البساتين",
+  "phone": "01016301437",
+  "phone2": "01011896660",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914c2"
+  },
+  "employee_id": "0101012",
+  "employee_name": "باسم صالح على صالح",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-02-12T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "المرج",
+  "phone": "01062756908",
+  "phone2": "01144751457",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914cb"
+  },
+  "employee_id": "0101025",
+  "employee_name": "عبد المنعم محمد فتحى عبد المنعم المغربل ",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-01-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "phone": "01028066826",
+  "phone2": "01000434547",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914d2"
+  },
+  "employee_id": "0101043",
+  "employee_name": "احمد غريب ابراهيم عبد الرحمن",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-12-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "قليوب",
+  "phone": "01226760440",
+  "phone2": "01204507682",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914d3"
+  },
+  "employee_id": "0101044",
+  "employee_name": "سعيد امام محمد جمعه عبد العال",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-09-24T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "البساتين",
+  "phone": "01142790678",
+  "phone2": "01114608986",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914de"
+  },
+  "employee_id": "0201065",
+  "employee_name": "محمد عزت عبد القوى الخولى",
+  "employee_title": "سائق",
+  "phone": "01061583432",
+  "phone2": "01018298819",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914ef"
+  },
+  "employee_id": "0101104",
+  "employee_name": "شريف ابراهيم عبدالقادر ابراهيم",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-08-30T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشاه القناطر",
+  "phone": "01024631546",
+  "phone2": "01003875347",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914f2"
+  },
+  "employee_id": "0101111",
+  "employee_name": "محمد خالد عبد الرحمن على",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2028-02-07T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "امبابه",
+  "phone": "01117641597",
+  "phone2": "01114588646",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914f5"
+  },
+  "employee_id": "0501115",
+  "employee_name": "احمد يوسف فراج عبد العال",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-08-29T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "مينا البصل",
+  "phone": "01147733395",
+  "phone2": "01277804973",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914f7"
+  },
+  "employee_id": "0101118",
+  "employee_name": "محمد جمال عبدالفتاح عبداللطيف ",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-05-28T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "امبابه",
+  "phone": "01159213132",
+  "phone2": "01115443637",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914f9"
+  },
+  "employee_id": "0101125",
+  "employee_name": "محمد على احمد مرزوق",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-01-24T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01013926408",
+  "phone2": "01114945432",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687914ff"
+  },
+  "employee_id": "0101136",
+  "employee_name": "سيد حسين ابراهيم حسين",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-01-15T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "إمبابة",
+  "phone": "01122474494",
+  "phone2": "01006561999",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791506"
+  },
+  "employee_id": "0301149",
+  "employee_name": "محمد محمود محمد عبد السلام",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-10-26T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "أسيوط",
+  "phone": "01061316117",
+  "phone2": "01091979780",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879151f"
+  },
+  "employee_id": "0101183",
+  "employee_name": "اسامه سيد محمود عبدالنبى البكل",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-03-19T00:00:00.000Z"
+  },
+  "specialization": "سوزوكى",
+  "area": "6اكتوبر",
+  "phone": "01091090143",
+  "phone2": "01016609833",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791520"
+  },
+  "employee_id": "0101184",
+  "employee_name": "وضاح راضى ضبعى عبدالعاطى ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-11-22T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "العياط",
+  "phone": "01141209621",
+  "phone2": "01121120288",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791522"
+  },
+  "employee_id": "0101187",
+  "employee_name": "مصطفى محمود شهاب الدين محمد",
+  "employee_title": "سائق",
+  "license_date": {
+   "$date": "2024-11-14T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "امبابه ",
+  "phone": "01278071250",
+  "phone2": "01210971722",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791523"
+  },
+  "employee_id": "0101188",
+  "employee_name": "حمدى الصاوى عمر الصاوى",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-10-22T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشية القناطر",
+  "phone": "01099071935",
+  "phone2": "01013055431",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791524"
+  },
+  "employee_id": "0101189",
+  "employee_name": "احمد السيد السيد محمد ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-03-03T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "روض الفرج ",
+  "phone": "01111293584",
+  "phone2": "01145285535",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791527"
+  },
+  "employee_id": "0101192",
+  "employee_name": "حسام سمير منجد ابراهيم",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-02-21T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "شبرالخيمه اول",
+  "phone": "01553515038",
+  "phone2": "01553515039",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879152b"
+  },
+  "employee_id": "0101198",
+  "employee_name": "محمد سيد محمد عبدالسميع",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-03-21T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشية القناطر",
+  "phone": "01062148275",
+  "phone2": "01003467235",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791530"
+  },
+  "employee_id": "0101210",
+  "employee_name": "اسلام رجب اسماعيل الصاوى",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-03-03T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشية القناطر",
+  "phone": "01090672982",
+  "phone2": "01093004550",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791533"
+  },
+  "employee_id": "0201213",
+  "employee_name": "هانى محروس عبدالمنعم سرحان",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-07-29T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا",
+  "phone": "01009113300",
+  "phone2": "01009119966",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791537"
+  },
+  "employee_id": "0101220",
+  "employee_name": "اسلام سمير صبحى عبدالعزيز قسيم",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-05-06T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01030300966",
+  "phone2": "01552287999",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791538"
+  },
+  "employee_id": "0101221",
+  "employee_name": "عبدالرحمن عبدالله فؤاد بيومى فرحات",
+  "employee_title": "سائق صراف الى",
+  "phone": "01120267175",
+  "phone2": "01157027013",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791544"
+  },
+  "employee_id": "0101238",
+  "employee_name": "اسامه اشرف احمد الشاهد",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-08-20T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01110069968",
+  "phone2": "01150888960",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791545"
+  },
+  "employee_id": "0201239",
+  "employee_name": "قاسم عبدالجليل قاسم سليمان",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-09-03T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا ",
+  "phone": "01016230703",
+  "phone2": "01006901955",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791546"
+  },
+  "employee_id": "0501240",
+  "employee_name": "محمود السيد على محمد محمد حسين",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-06-02T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "محرم بيك",
+  "phone": "01006481004",
+  "phone2": "01226052997",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791547"
+  },
+  "employee_id": "0101241",
+  "employee_name": "احمد شعبان محمد زكى",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-03-29T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01156464291",
+  "phone2": "01111261531",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791556"
+  },
+  "employee_id": "0501263",
+  "employee_name": "قدرى محمد احمد عبدالبارى",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-10-01T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "المنتزه",
+  "phone": "01111252629",
+  "phone2": "01229436391",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791560"
+  },
+  "employee_id": "0101278",
+  "employee_name": "احمد هشام يوسف احسان توكل",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-04-18T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الضاهر",
+  "phone": "01114053212",
+  "phone2": "01012014580",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791568"
+  },
+  "employee_id": "0101287",
+  "employee_name": "محمود عبدالمجيد عبد الستار عبد الحليم",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-11-23T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01152701427",
+  "phone2": "01061724373",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879156b"
+  },
+  "employee_id": "0501290",
+  "employee_name": "محمد جمال عبدالعظيم قاسم ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-09-27T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": " غبريال",
+  "phone": "01226792722",
+  "phone2": "01204011985",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879156c"
+  },
+  "employee_id": "0501291",
+  "employee_name": "محمود فتحى حامد هنداوى ",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-05-06T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اول المنتزه",
+  "phone": "01287511313",
+  "phone2": "01207068530",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879157d"
+  },
+  "employee_id": "0101317",
+  "employee_name": "اسلام احمد عبدالمقصود عبدالحميد",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-02-08T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "مصر القديمه",
+  "phone": "01066168688",
+  "phone2": "01103812484",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879158b"
+  },
+  "employee_id": "0101345",
+  "employee_name": "احمد مرزوق ابوسريع عبدالحليم ",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-12-09T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "اوسيم",
+  "phone": "01092581391",
+  "phone2": "01016611405",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879158e"
+  },
+  "employee_id": "0101349",
+  "employee_name": "امير محمد محمد احمدصالح",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-04-20T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الوراق",
+  "phone": "01006665770",
+  "phone2": "01007097590",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791596"
+  },
+  "employee_id": "0501359",
+  "employee_name": "عمرو عادل عبدالغنى قاسم",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-03-29T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "كوم حمادة",
+  "phone": "01282993451",
+  "phone2": "01201433158",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791597"
+  },
+  "employee_id": "0101360",
+  "employee_name": "رضا عاشور احمد محمد ",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "بولاق الدكرور",
+  "phone": "01140192694",
+  "phone2": "01128287496",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791598"
+  },
+  "employee_id": "0201361",
+  "employee_name": "الحسين محمد احمد عبدالحليم",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-01-18T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا ",
+  "phone": "01028060988",
+  "phone2": "01212473852",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915a8"
+  },
+  "employee_id": "0101386",
+  "employee_name": "حسين عربى السيد حنفى محمود ",
+  "employee_title": "سائق",
+  "phone": "01113201464",
+  "phone2": "01127359469",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915a9"
+  },
+  "employee_id": "0301387",
+  "employee_name": "على احمد على عبدالله ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2027-09-07T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "أسيوط",
+  "phone": "01004643114",
+  "phone2": "01001284110",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915ae"
+  },
+  "employee_id": "0201396",
+  "employee_name": "حلمى احمد عبدالحميد عبدالرحمن ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-10-24T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا ",
+  "phone": "01003423796",
+  "phone2": "01017980678",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915b2"
+  },
+  "employee_id": "0601408",
+  "employee_name": "محمد عبدالرحمن احمد العاصى ",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-06-28T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الزهور",
+  "phone": "01030060232",
+  "phone2": "01068048718",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915b3"
+  },
+  "employee_id": "0601409",
+  "employee_name": "محمد مجدى محمدمحمود عبدالرحمن",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2025-11-02T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "المناخ",
+  "phone": "01279953314",
+  "phone2": "01284123753",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915c6"
+  },
+  "employee_id": "0101435",
+  "employee_name": "عبدالباسط احمد محمد معوض",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-07-05T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "عين شمس",
+  "phone": "01146921981",
+  "phone2": "01007485413",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915c9"
+  },
+  "employee_id": "0601438",
+  "employee_name": "حسن ثابت حسن حسنين",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-01-12T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الزهور",
+  "phone": "01201960603",
+  "phone2": "01222422924",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915cc"
+  },
+  "employee_id": "0501443",
+  "employee_name": "احمد عبدالرحيم شحات على",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-11-29T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": " ثان الرمل",
+  "phone": "01060303211",
+  "phone2": "01283043753",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687915f8"
+  },
+  "employee_id": "0601515",
+  "employee_name": "محمد حسين عبدالعزيز عبدالرؤف",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-10-14T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "بورفؤاد",
+  "phone": "01001876671",
+  "phone2": "01211156262",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791616"
+  },
+  "employee_id": "0101559",
+  "employee_name": "احمد جمال فاروق عبدالفتاح",
+  "employee_title": "سائق",
+  "phone": "01111139736",
+  "phone2": "01228073437",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791618"
+  },
+  "employee_id": "0501561",
+  "employee_name": "احمد سيف الدين محمد طلبه مسعود",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2027-08-15T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "ثان المنتزه",
+  "phone": "01208171610",
+  "phone2": "01228810825",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879161a"
+  },
+  "employee_id": "0101564",
+  "employee_name": "احمد منجد شبل على",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-08-20T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "بولاق الدكرور",
+  "phone": "01026983457",
+  "phone2": "01006821831",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791625"
+  },
+  "employee_id": "0301580",
+  "employee_name": "عمرو احمد محمد احمد ",
+  "employee_title": "سائق",
+  "phone": "01126411650",
+  "phone2": "01101684115",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791626"
+  },
+  "employee_id": "0301581",
+  "employee_name": "رمضان مصطفى حامد ثابت",
+  "employee_title": "سائق",
+  "phone": "01024163343",
+  "phone2": "01062523062",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791627"
+  },
+  "employee_id": "0301582",
+  "employee_name": "رمضان صاوى عبدالعليم عبدالرحمن",
+  "employee_title": "سائق",
+  "phone": "01027382590",
+  "phone2": "01113738405",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791628"
+  },
+  "employee_id": "0301583",
+  "employee_name": "اسلام محمد فوزى محمد",
+  "employee_title": "سائق",
+  "phone": "01003361725",
+  "phone2": "01152818096",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879162e"
+  },
+  "employee_id": "0101591",
+  "employee_name": "احمد عادل حسنى صالح عمر ابوطه",
+  "employee_title": "سائق",
+  "phone": "01092740870",
+  "phone2": "01069347977",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791633"
+  },
+  "employee_id": "0501600",
+  "employee_name": "احمد اسامه على احمدالكيكى",
+  "employee_title": "سائق",
+  "phone": "01210049484",
+  "phone2": "01023427267",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791646"
+  },
+  "employee_id": "0501638",
+  "employee_name": "عبدالحميد سعيد عبدالحميد محمد",
+  "employee_title": "سائق",
+  "phone": "01274760232",
+  "phone2": "01010450930",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879164d"
+  },
+  "employee_id": "0201648",
+  "employee_name": "على خالد على ابويمن",
+  "employee_title": "سائق",
+  "phone": "01068576019",
+  "phone2": "01014830428",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791656"
+  },
+  "employee_id": "0301665",
+  "employee_name": "رامى نعمان فؤاد ميخائيل",
+  "employee_title": "سائق",
+  "phone": "01222200069",
+  "phone2": "01500050910",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791657"
+  },
+  "employee_id": "0301666",
+  "employee_name": "احمد يسرى عبدالناصر عبدالهادى",
+  "employee_title": "سائق",
+  "phone": "01006915880",
+  "phone2": "01094945030",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879165e"
+  },
+  "employee_id": "0101682",
+  "employee_name": "محمد سيد مصطفى السباعى ",
+  "employee_title": "سائق",
+  "phone": "01205217185",
+  "phone2": "01222759237",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879165f"
+  },
+  "employee_id": "0101684",
+  "employee_name": "بسام حسن عبد العزيز حسن حنفى",
+  "employee_title": "سائق",
+  "phone": "01004176203",
+  "phone2": "01117993214",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791668"
+  },
+  "employee_id": "0501696",
+  "employee_name": "محمد مجدى ابوالعز عبداللطيف العشرى",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2028-02-04T00:00:00.000Z"
+  },
+  "specialization": "نقل اموال",
+  "area": "الرمل اول ",
+  "phone": "01208138084",
+  "phone2": "01282938508",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791669"
+  },
+  "employee_id": "0101697",
+  "employee_name": "عبدالعزيز السيد عبدالعزيز ابراهيم كيلانى ",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2025-07-14T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "منشية القناطر",
+  "phone": "01033154245",
+  "phone2": "01090939185",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879166a"
+  },
+  "employee_id": "0101698",
+  "employee_name": "على ماهر عبده طه",
+  "employee_title": "سائق",
+  "license": "ثانية",
+  "license_date": {
+   "$date": "2026-09-05T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طره",
+  "phone": "01280092272",
+  "phone2": "0101715138",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879166b"
+  },
+  "employee_id": "0201699",
+  "employee_name": "احمد ابراهيم بركات سعيد",
+  "employee_title": "سائق",
+  "license": "أولى",
+  "license_date": {
+   "$date": "2026-01-09T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "طنطا",
+  "phone": "01206552694",
+  "phone2": "01276913349",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879166f"
+  },
+  "employee_id": "0101708",
+  "employee_name": "ياسر عبدالباسط بدوى على الدرس",
+  "employee_title": "سائق",
+  "phone": "01129960040",
+  "phone2": "01147141519",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791673"
+  },
+  "employee_id": "0101714",
+  "employee_name": "ايهاب شوقى السيد عواد عبيد",
+  "employee_title": "سائق",
+  "license_date": {
+   "$date": "2028-02-25T00:00:00.000Z"
+  },
+  "specialization": "ATM",
+  "area": "الخانكه",
+  "phone": "01093949876",
+  "phone2": "01009691933",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879168a"
+  },
+  "employee_id": "0601747",
+  "employee_name": "احمد عبدالرحمن عبدالرحمن جادو",
+  "employee_title": "سائق",
+  "phone": "01200206698",
+  "phone2": "01201663914",
+  "work_status": 2,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879168e"
+  },
+  "employee_id": "0101751",
+  "employee_name": "سعيد فوزى احمد عبدالرحمن",
+  "employee_title": "سائق",
+  "phone": "01005430934",
+  "phone2": "01065855840",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879168f"
+  },
+  "employee_id": "0101752",
+  "employee_name": "بيتر يحي شهيد جرجس",
+  "employee_title": "سائق",
+  "phone": "01225748482",
+  "phone2": "01283377050",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791699"
+  },
+  "employee_id": "0401765",
+  "employee_name": "محمد رمضان احمد محمد سالم",
+  "employee_title": "سائق",
+  "phone": "01001032505",
+  "phone2": "01224186505",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879169f"
+  },
+  "employee_id": "0501771",
+  "employee_name": "احمد ناصر سالم محمد",
+  "employee_title": "سائق",
+  "phone": "01272816936",
+  "phone2": "01228265599",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916a1"
+  },
+  "employee_id": "0501773",
+  "employee_name": "محمد احمد عبدالمنعم احمد خليل ",
+  "employee_title": "سائق",
+  "phone": "01227730019",
+  "phone2": "01227730018",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916b3"
+  },
+  "employee_id": "0301797",
+  "employee_name": "وليد محمد اسماعيل محمد ",
+  "employee_title": "سائق",
+  "phone": "01128522344",
+  "phone2": "01063510704",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916bf"
+  },
+  "employee_id": "0101817",
+  "employee_name": "محمد خالد عبدالعليم محمود الكوميه",
+  "employee_title": "سائق",
+  "phone": "01114635794",
+  "phone2": "01114647424",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916c0"
+  },
+  "employee_id": "0601818",
+  "employee_name": "محمد احمد ابراهيم العواد",
+  "employee_title": "سائق",
+  "phone": "01201097800",
+  "phone2": "01279725457",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916d2"
+  },
+  "employee_id": "0301844",
+  "employee_name": "عبدالخالق محمد عبدالخالق عبدالعال",
+  "employee_title": "سائق",
+  "phone": "01001049740",
+  "phone2": "01020470381",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916d3"
+  },
+  "employee_id": "0101845",
+  "employee_name": "كريم حسن محمد سليمان",
+  "employee_title": "سائق",
+  "phone": "01018170967",
+  "phone2": "01096099867",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916d4"
+  },
+  "employee_id": "0101846",
+  "employee_name": "احمد جابر محمد سيد",
+  "employee_title": "سائق",
+  "phone": "01067626704",
+  "phone2": "01099604888",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916dd"
+  },
+  "employee_id": "0201855",
+  "employee_name": "محمد عدلى راغب الحو",
+  "employee_title": "سائق",
+  "phone": "01000705302",
+  "phone2": "01000964203",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916f3"
+  },
+  "employee_id": "0201879",
+  "employee_name": "محمد محمد عبدالحميد العادلى",
+  "employee_title": "سائق",
+  "phone": "01098287973",
+  "phone2": "01007573108",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687916fb"
+  },
+  "employee_id": "0101888",
+  "employee_name": "محمود صلاح الدين عبدالحميد محمد",
+  "employee_title": "سائق",
+  "phone": "01114669696",
+  "phone2": "01116810336",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791708"
+  },
+  "employee_id": "0101905",
+  "employee_name": "مروان مصطفى رشاد عبدالمعطى",
+  "employee_title": "سائق",
+  "phone": "01220401993",
+  "phone2": "01122145823",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879170f"
+  },
+  "employee_id": "0601915",
+  "employee_name": "كريم محمود بهنسى احمد حسن",
+  "employee_title": "سائق",
+  "phone": "01275666841",
+  "phone2": "01288116636",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791717"
+  },
+  "employee_id": "0401923",
+  "employee_name": "وليد محمد حسنين محمد ",
+  "employee_title": "سائق",
+  "phone": "01142244045",
+  "phone2": "01140490550",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879171a"
+  },
+  "employee_id": "0401927",
+  "employee_name": "طه احمد محمود حسين",
+  "employee_title": "سائق صراف الى",
+  "phone": "01111378030",
+  "phone2": "01124731758",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791721"
+  },
+  "employee_id": "0101934",
+  "employee_name": "طارق محمد عبدالمجيد على",
+  "employee_title": "سائق",
+  "phone": "01119554159",
+  "phone2": "01111227265",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791729"
+  },
+  "employee_id": "0501943",
+  "employee_name": "على محمد حسنين عبدالهادى",
+  "employee_title": "سائق",
+  "phone": "01281070315",
+  "phone2": "01204832337",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879172b"
+  },
+  "employee_id": "0401945",
+  "employee_name": "عبدالغنى محمد عبدالغنى محمد",
+  "employee_title": "سائق",
+  "phone": "01121011286",
+  "phone2": "01283009087",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879172f"
+  },
+  "employee_id": "0501949",
+  "employee_name": "محمد زين العابدين محمد محمد ",
+  "employee_title": "سائق",
+  "phone": "01273703145",
+  "phone2": "01287477475",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791733"
+  },
+  "employee_id": "0401954",
+  "employee_name": "تامرمحمود سالم السيد الشخص",
+  "employee_title": "سائق صراف الى",
+  "phone": "01010373044",
+  "phone2": "01015382903",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791734"
+  },
+  "employee_id": "0401955",
+  "employee_name": "حبيب عبدالعزيز سعيد حبيب",
+  "employee_title": "سائق صراف الى",
+  "phone": "01063592604",
+  "phone2": "01144828873",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791738"
+  },
+  "employee_id": "0401961",
+  "employee_name": "ايمن كرم محمد فروجه",
+  "employee_title": "سائق صراف الى",
+  "phone": "01153084414",
+  "phone2": "01068253450",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879173c"
+  },
+  "employee_id": "0201965",
+  "employee_name": "رائف عبدالمحسن محمد ابويمن",
+  "employee_title": "سائق صراف الى",
+  "phone": "01070085264",
+  "phone2": "01097436004",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791742"
+  },
+  "employee_id": "0101972",
+  "employee_name": "شريف محمد قاسم حسين",
+  "employee_title": "سائق صراف الى",
+  "phone": "01200800416",
+  "phone2": "01207111065",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791743"
+  },
+  "employee_id": "0501973",
+  "employee_name": "محمد يحي محمد مصطفى على عرفات",
+  "employee_title": "سائق",
+  "phone": "01200688016",
+  "phone2": "01020406203",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879175c"
+  },
+  "employee_id": "0602002",
+  "employee_name": "اسلام ايمن محمود كامل شوقى",
+  "employee_title": "سائق صراف الى",
+  "phone": "01205505935",
+  "phone2": "01272122771",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791763"
+  },
+  "employee_id": "0402010",
+  "employee_name": "محمد عبدالرازق عبدالبارى درار",
+  "employee_title": "سائق صراف الى",
+  "phone": "01287770326",
+  "phone2": "01287422342",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879176a"
+  },
+  "employee_id": "0402019",
+  "employee_name": "محمد احمد عبدالعظيم مصطفى الخولى",
+  "employee_title": "سائق",
+  "phone": "01122040870",
+  "phone2": "01112080913",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a6879177f"
+  },
+  "employee_id": "0602042",
+  "employee_name": "حسام محمد بدر عبدالرحيم بدر تفاحه ",
+  "employee_title": "سائق",
+  "phone": "01200686960",
+  "phone2": "01270021705",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791780"
+  },
+  "employee_id": "0102043",
+  "employee_name": "سامح عبدالعظيم محمد عمار",
+  "employee_title": "سائق",
+  "phone": "01127986880",
+  "phone2": "01111513379",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791781"
+  },
+  "employee_id": "0202044",
+  "employee_name": "ابراهيم جميل رمضان حماد",
+  "employee_title": "سائق",
+  "phone": "01144357250",
+  "phone2": "01126016169",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791782"
+  },
+  "employee_id": "0202045",
+  "employee_name": "محمد شحاته حموده الجبالى ",
+  "employee_title": "سائق",
+  "phone": "01111474768",
+  "phone2": "01063669889",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791783"
+  },
+  "employee_id": "0102046",
+  "employee_name": "معتزبالله احمد انور فؤاد",
+  "employee_title": "سائق",
+  "phone": "01006891423",
+  "phone2": "01006486096",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791784"
+  },
+  "employee_id": "0202049",
+  "employee_name": "محمد جمعه مصطفى احمد هلال",
+  "employee_title": "سائق",
+  "phone": "01224109113",
+  "phone2": "01226341336",
+  "work_status": 2,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791789"
+  },
+  "employee_id": "0102054",
+  "employee_name": "مصطفى عثمان محمود عثمان",
+  "employee_title": "سائق",
+  "phone": "01009018766",
+  "phone2": "01119276691",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791790"
+  },
+  "employee_id": "0402061",
+  "employee_name": "احمد على سعد السيد",
+  "employee_title": "سائق",
+  "phone": "01127304599",
+  "phone2": "01102879579",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a68791799"
+  },
+  "employee_id": "0402072",
+  "employee_name": "زهدى محمد زهدى عفيفى",
+  "employee_title": "سائق",
+  "phone": "01113849594",
+  "phone2": "01003703406",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917a0"
+  },
+  "employee_id": "0102081",
+  "employee_name": "عادل محمود فاروق زكى",
+  "employee_title": "سائق",
+  "phone": "01068308707",
+  "phone2": "01011275097",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917a6"
+  },
+  "employee_id": "0102088",
+  "employee_name": "محمد حمزه عبدالفتاح احمد",
+  "employee_title": "سائق",
+  "specialization": "Operation",
+  "phone": "01090806644",
+  "phone2": "01005384324",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917a7"
+  },
+  "employee_id": "0402093",
+  "employee_name": "محمد عبدالتواب عبدالفتاح عبدالحليم",
+  "employee_title": "سائق",
+  "specialization": "Operation",
+  "phone": "01143769933",
+  "phone2": "01151006526",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917ae"
+  },
+  "employee_id": "0502100",
+  "employee_name": "محمد جمال على احمد عبدالقادر",
+  "employee_title": "سائق",
+  "specialization": "Operation",
+  "phone": "01211669338",
+  "phone2": "01007919178",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917cd"
+  },
+  "employee_id": "0102132",
+  "employee_name": "اكرم محمد عبدالرسول عبدالسلام سليم",
+  "employee_title": "سائق",
+  "specialization": "Operation",
+  "phone": "01153014809",
+  "phone2": "01006142087",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917cf"
+  },
+  "employee_id": "0102134",
+  "employee_name": "محمد رمضان عبدالحكم عنانى",
+  "employee_title": "سائق",
+  "phone": "01011823481",
+  "phone2": "01275600741",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917df"
+  },
+  "employee_id": "0602152",
+  "employee_name": "محمد احمد محمد سودان",
+  "employee_title": "سائق",
+  "phone": "01226060922",
+  "phone2": "01288369119",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69393f4d5bb6657a687917e5"
+  },
+  "employee_id": "0102158",
+  "employee_name": "محمد احمد على عبدالعظيم",
+  "employee_title": "سائق",
+  "phone": "01109336079",
+  "phone2": "01117923261",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "6943c4bba38a757d619b9f6e"
+  },
+  "employee_id": "0502162",
+  "employee_name": "احمد محمد محمد محمد ابراهيم",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01024556346",
+  "phone2": "",
+  "work_status": 1,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "6943c4e5a38a757d619b9f7e"
+  },
+  "employee_id": "0302163",
+  "employee_name": "محمد عبدالحليم على عبدالحليم ",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01119030108",
+  "phone2": "",
+  "work_status": 1,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "6943c695a38a757d619ba01e"
+  },
+  "employee_id": "0202172",
+  "employee_name": "مصطفى عاطف حسين احمد حسين",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01094297227",
+  "phone2": "",
+  "work_status": 2,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "6954d6509f0f94219dc6e2ac"
+  },
+  "employee_id": "0302188",
+  "employee_name": "ايمن صلاح حسن احمد",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01024518890",
+  "phone2": "",
+  "work_status": 1,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "6954d6a79f0f94219dc6e2dc"
+  },
+  "employee_id": "0302190",
+  "employee_name": "محمد سيد نعمان المهدى",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01068755648",
+  "phone2": "",
+  "work_status": 1,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "6954da079f0f94219dc6e490"
+  },
+  "employee_id": "0102209",
+  "employee_name": "محمود عزت سيد محمد",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01094403302",
+  "phone2": "",
+  "work_status": 1,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "6954dce49f0f94219dc6e5be"
+  },
+  "employee_id": "0102219",
+  "employee_name": "محمد يحى محمد عبدالفتاح",
+  "employee_title": "سائق",
+  "license": "0",
+  "license_date": null,
+  "specialization": "",
+  "area": "",
+  "phone": "01228465647",
+  "phone2": "",
+  "work_status": 1,
+  "deleted": 0,
+  "deleted_date": null
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c893"
+  },
+  "employee_id": "0502224",
+  "employee_name": "كريم محمود سعد بحيرى",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-09-11T00:00:00.000Z"
+  },
+  "phone": "01099654773",
+  "phone2": "01015135190",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c894"
+  },
+  "employee_id": "0502225",
+  "employee_name": "محمد احمد محمد احمد صقر",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-02-01T00:00:00.000Z"
+  },
+  "phone": "01200603134",
+  "phone2": "01222620491",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c896"
+  },
+  "employee_id": "0302227",
+  "employee_name": "عبدالرحمن ناصر عبدالحكيم امين",
+  "employee_title": "اخصائى صراف الى ( موتوسيكل ) ",
+  "license": 0,
+  "license_date": {
+   "$date": "2030-12-22T00:00:00.000Z"
+  },
+  "phone": "01012321105",
+  "phone2": "01060456727",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8a8"
+  },
+  "employee_id": "0502245",
+  "employee_name": "مؤمن اسامه ابراهيم محمد حسن",
+  "employee_title": "اخصائى صراف الى ( موتوسيكل ) ",
+  "license": 0,
+  "license_date": {
+   "$date": "2030-12-15T00:00:00.000Z"
+  },
+  "phone": "01204140384",
+  "phone2": "01031071360",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8b0"
+  },
+  "employee_id": "0102254",
+  "employee_name": "احمد اسماعيل عبدالهادى اسماعيل",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2028-03-29T00:00:00.000Z"
+  },
+  "phone": "01063368932",
+  "phone2": "01110879023",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8b7"
+  },
+  "employee_id": "0202262",
+  "employee_name": "شوقى محمدى على خليل عبدالعزيز",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2028-07-16T00:00:00.000Z"
+  },
+  "phone": "01062459916",
+  "phone2": "01070829043",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8b8"
+  },
+  "employee_id": "0502263",
+  "employee_name": "محمد حمدى محمود ابراهيم",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-03-01T00:00:00.000Z"
+  },
+  "phone": "01282455285",
+  "phone2": "01224753384",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8bc"
+  },
+  "employee_id": "0502267",
+  "employee_name": "محمود ابراهيم محمود محمد السيد",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-10-09T00:00:00.000Z"
+  },
+  "phone": "01276011269",
+  "phone2": "01224467063",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8bd"
+  },
+  "employee_id": "0302268",
+  "employee_name": "محمد عبدالحميد احمد محمد فاضل",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-05-30T00:00:00.000Z"
+  },
+  "phone": "01009021124",
+  "phone2": "01034549220",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8c4"
+  },
+  "employee_id": "0302275",
+  "employee_name": "عثمان محمد عبود عثمان",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-02-11T00:00:00.000Z"
+  },
+  "phone": "01065169798",
+  "phone2": "01553959601",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8c5"
+  },
+  "employee_id": "0202276",
+  "employee_name": "محمد مغربى عبدالكريم محمد",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-12-02T00:00:00.000Z"
+  },
+  "phone": "01012080912",
+  "phone2": "01098066253",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8c6"
+  },
+  "employee_id": "0202277",
+  "employee_name": "محمود المحمدى عبداللطيف ابراهيم سافوح",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-05-31T00:00:00.000Z"
+  },
+  "phone": "01124638363",
+  "phone2": "01017881332",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8cc"
+  },
+  "employee_id": "0202285",
+  "employee_name": "ياسين أنور ياسين عبدالمقصود عبدربه",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2028-05-05T00:00:00.000Z"
+  },
+  "phone": "01065669338",
+  "phone2": "01221922983",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8d7"
+  },
+  "employee_id": "0402297",
+  "employee_name": "سيد محمد احمد محمود على سالم",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-11-04T00:00:00.000Z"
+  },
+  "phone": "01129171584",
+  "phone2": "01008723676",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8d8"
+  },
+  "employee_id": "0502298",
+  "employee_name": "ابراهيم محمود نفادى حسن",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-04-20T00:00:00.000Z"
+  },
+  "phone": "01210164860",
+  "phone2": "01222648770",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8d9"
+  },
+  "employee_id": "0402299",
+  "employee_name": "عبدالعزيز محمد عبدالظاهر خليل",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-12-15T00:00:00.000Z"
+  },
+  "phone": "01156723904",
+  "phone2": "01120092378",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8dc"
+  },
+  "employee_id": "0502302",
+  "employee_name": "محمد الشحات صادق عباس",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2028-09-02T00:00:00.000Z"
+  },
+  "phone": "01208806503",
+  "phone2": "01501501790",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8de"
+  },
+  "employee_id": "0102304",
+  "employee_name": "احمد محمد على محمد حسانين",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-01-06T00:00:00.000Z"
+  },
+  "phone": "01102463547",
+  "phone2": "01129477463",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8df"
+  },
+  "employee_id": "0102305",
+  "employee_name": "سعيد صفوت عبدالعليم محمود الكوميه",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-09-05T00:00:00.000Z"
+  },
+  "phone": "01147374335",
+  "phone2": "01143238895",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8e0"
+  },
+  "employee_id": "0102306",
+  "employee_name": "رمضان عبدالجواد قاسم عبدالجواد",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-11-08T00:00:00.000Z"
+  },
+  "phone": "01061055543",
+  "phone2": "01017294107",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8e1"
+  },
+  "employee_id": "0102307",
+  "employee_name": "محمود بهاءالدين سعد عبداللطيف",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2028-10-28T00:00:00.000Z"
+  },
+  "phone": "01150141688",
+  "phone2": "01144645493",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8e5"
+  },
+  "employee_id": "0402312",
+  "employee_name": "محمد عبدالحميد عبدالعظيم الغرباوى",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2028-12-30T00:00:00.000Z"
+  },
+  "phone": "01118797047",
+  "phone2": "01093920035",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8e7"
+  },
+  "employee_id": "0102314",
+  "employee_name": "سعودى مصباح عبدالمقصود بطران",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2027-08-21T00:00:00.000Z"
+  },
+  "phone": "01227200916",
+  "phone2": "01153337690",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8e8"
+  },
+  "employee_id": "0602315",
+  "employee_name": "محمد جمال اسماعيل محمد على",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-01-15T00:00:00.000Z"
+  },
+  "phone": "01212059375",
+  "phone2": "01200944801",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "699ecbd8c5692048b0a6c8fa"
+  },
+  "employee_id": "0602333",
+  "employee_name": "احمد محمود محمد كردوش",
+  "employee_title": "سائق",
+  "license": 0,
+  "license_date": {
+   "$date": "2026-09-18T00:00:00.000Z"
+  },
+  "phone": "01050212270",
+  "phone2": "01225001067",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe68"
+  },
+  "employee_id": "0102336",
+  "employee_name": "سمير مصطفى امين غمرى متولى",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe6b"
+  },
+  "employee_id": "0602341",
+  "employee_name": "عمرو محمد عبدالعال على احمد",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe6d"
+  },
+  "employee_id": "0602343",
+  "employee_name": "محمد السيد يوسف على",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe6e"
+  },
+  "employee_id": "0402344",
+  "employee_name": "محمود احمد زكريا احمد",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe6f"
+  },
+  "employee_id": "0402345",
+  "employee_name": "محمود محمد صابر عطا",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe70"
+  },
+  "employee_id": "0502347",
+  "employee_name": "احمد ناصر عبدالمنعم عبدالموجود",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe71"
+  },
+  "employee_id": "0302348",
+  "employee_name": "محمد عبدالنبى محمد حسن",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe72"
+  },
+  "employee_id": "0302349",
+  "employee_name": "شعبان حسن على عبدالحليم",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe78"
+  },
+  "employee_id": "0302357",
+  "employee_name": "محمد هاشم فرحان احمد",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe79"
+  },
+  "employee_id": "0102358",
+  "employee_name": "محمد فاروق محمد مصطفى",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe7d"
+  },
+  "employee_id": "0302367",
+  "employee_name": "مصطفى محمد غريب كيلانى عبدالقادر",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe81"
+  },
+  "employee_id": "0602371",
+  "employee_name": "هانى ابراهيم ابراهيم محمد الادهم",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe82"
+  },
+  "employee_id": "0102373",
+  "employee_name": "محمد محمد حلمى السيد الباجورى",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe88"
+  },
+  "employee_id": "0502380",
+  "employee_name": "كريم صابر السيد على",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe8b"
+  },
+  "employee_id": "0602383",
+  "employee_name": "محمد المطراوى عبدالعال حسن",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe8c"
+  },
+  "employee_id": "0602384",
+  "employee_name": "معتز السيد يوسف الريس",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe91"
+  },
+  "employee_id": "0602389",
+  "employee_name": "عبده السيد عبدالرحمن محمد عبدالرحمن",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe98"
+  },
+  "employee_id": "0602397",
+  "employee_name": "عمادالدين احمد سليمان محمد احمد",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fe99"
+  },
+  "employee_id": "0602398",
+  "employee_name": "كريم على احمد محمد",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850fea1"
+  },
+  "employee_id": "0402407",
+  "employee_name": "فؤاد فاروق فؤاد ابراهيم",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ },
+ {
+  "_id": {
+   "$oid": "69f7833af7504b12a850feae"
+  },
+  "employee_id": "0502423",
+  "employee_name": "عمرو احمد خميس حسن احمد",
+  "employee_title": "سائق",
+  "work_status": 1,
+  "deleted": 0
+ }
+]

@@ -9,7 +9,7 @@
 // files — and earned its place twice over, because it is how the seventeen buried readings and
 // the workshop book that never started were both found. It is also six walls of text, hundreds
 // of names that will not change, permanent, on every screen in the module: «انا مش عاوز الرسايل
-// تظهر هنا». So it lives on the Fleet settings page now, all six runs together, and the screens
+// تظهر هنا». So it lives on the Fleet settings page now, every run together, and the screens
 // show the data instead of the story of how it got there. Nothing is lost — the rows are the
 // same rows, the detail is the same detail, and `GoLiveRunsPanel` is one click away.
 //
@@ -28,7 +28,13 @@ export type GoLiveStep =
   | 'odometer'
   | 'maintenance'
   | 'violations'
-  | 'accidents';
+  | 'accidents'
+  | 'vehicle-changes'
+  | 'drivers'
+  | 'odometer-sync'
+  | 'maintenance-sync'
+  | 'violations-reload'
+  | 'accidents-clear';
 
 /** The keys the notice never prints as a line — they are the state, shown as the title. */
 const STATE_KEYS = new Set(['refused', 'refusedAt', 'failedAt']);
@@ -153,10 +159,17 @@ const STEPS: readonly GoLiveStep[] = [
   'maintenance',
   'violations',
   'accidents',
+  // The owner's later books (29 Sept 2026), in the order they build on the six above.
+  'vehicle-changes',
+  'drivers',
+  'odometer-sync',
+  'maintenance-sync',
+  'violations-reload',
+  'accidents-clear',
 ];
 
 /**
- * All six runs, on the page the owner goes to when they want to know what the import did — and
+ * Every run, on the page the owner goes to when they want to know what the import did — and
  * nowhere else. A step that has never run at all prints nothing, as it always did.
  */
 export const GoLiveRunsPanel = (): JSX.Element | null => {

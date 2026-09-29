@@ -68,6 +68,7 @@ import {
   useReopenMaintenance,
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
+import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverName } from '../components/EmployeeName';
 import { RemainingKm } from '../components/AlarmBadge';
 import {
@@ -83,6 +84,7 @@ const REMEMBERED_FILTERS = [
   'drv',
   'from',
   'notes',
+  'operation',
   'outFrom',
   'parts',
   'state',
@@ -118,6 +120,9 @@ export const MaintenancePage = (): JSX.Element => {
   const from = sp.get('from') ?? '';
   const outFrom = sp.get('outFrom') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
+  // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's «التشغيل», several at once, under the same
+  // `operation` parameter the vehicles screen carries.
+  const operationIds = csv(sp.get('operation'));
   // WHO, as ids picked off the drivers registry — the same `drv` parameter the drivers screen
   // and the odometer carry, so a filtered link reads the same on all three.
   const drivers = csv(sp.get('drv'));
@@ -155,6 +160,7 @@ export const MaintenancePage = (): JSX.Element => {
     from !== '' ||
     outFrom !== '' ||
     vehicleCodes.length > 0 ||
+    operationIds.length > 0 ||
     drivers.length > 0 ||
     workshopIds.length > 0 ||
     workTypeIds.length > 0 ||
@@ -177,6 +183,7 @@ export const MaintenancePage = (): JSX.Element => {
       from: from || undefined,
       outFrom: outFrom || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
+      operationIds: operationIds.length > 0 ? operationIds : undefined,
       workshopIds: workshopIds.length > 0 ? workshopIds : undefined,
       workTypeIds: workTypeIds.length > 0 ? workTypeIds : undefined,
       sparePartIds: sparePartIds.length > 0 ? sparePartIds : undefined,
@@ -218,6 +225,8 @@ export const MaintenancePage = (): JSX.Element => {
   const workshops = useFleetCatalog('workshop');
   const workTypes = useFleetCatalog('workType');
   const spareParts = useFleetCatalog('sparePart');
+  // «التشغيل» — the car's operation, for the column and the filter.
+  const operations = useFleetCatalog('operation');
   const optionsOf = (items: readonly FleetCatalogItemDto[] | undefined) =>
     (items ?? []).map((item) => ({ value: item.id, label: localized(item.name, locale) }));
   const workshopOptions = useMemo(() => optionsOf(workshops.data?.items), [workshops.data, locale]);
@@ -232,11 +241,12 @@ export const MaintenancePage = (): JSX.Element => {
       ...(workshops.data?.items ?? []),
       ...(workTypes.data?.items ?? []),
       ...(spareParts.data?.items ?? []),
+      ...(operations.data?.items ?? []),
     ]) {
       map.set(item.id, localized(item.name, locale));
     }
     return map;
-  }, [workshops.data, workTypes.data, spareParts.data, locale]);
+  }, [workshops.data, workTypes.data, spareParts.data, operations.data, locale]);
 
   const [checkInOpen, setCheckInOpen] = useState(false);
   const [checkingOut, setCheckingOut] = useState<FleetMaintenanceVisitDto | null>(null);
@@ -324,51 +334,49 @@ export const MaintenancePage = (): JSX.Element => {
       fleetApi.listMaintenanceVisits({ ...filtersOnly(params), page: pageNo, pageSize: size }),
     );
     const names = await driverNames(all);
-    saveSheet(
-      {
-        name: t('fleet.nav.maintenance'),
-        serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.maintenance.fields.inDate'),
-          t('fleet.maintenance.fields.outDate'),
-          t('fleet.odometer.columns.vehicle'),
-          t('fleet.maintenance.fields.driverIn'),
-          t('fleet.maintenance.fields.driverOut'),
-          t('fleet.maintenance.fields.workshop'),
-          t('fleet.maintenance.fields.workType'),
-          t('fleet.maintenance.fields.spareParts'),
-          t('fleet.maintenance.legacyParts'),
-          t('fleet.maintenance.fields.odometerAtService'),
-          t('fleet.alarms.columns.sinceService'),
-          t('fleet.alarms.columns.remaining'),
-          t('fleet.odometer.columns.notes'),
-        ],
-        rows: all.map((visit) => {
-          // The same join the two alarm columns make, and the same refusal: a car the projection
-          // cannot answer for prints nothing rather than a distance it deliberately withheld.
-          const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
-          return [
-            formatDate(visit.inDate, locale),
-            visit.outDate === null
-              ? t('fleet.maintenance.open')
-              : formatDate(visit.outDate, locale),
-            visit.vehicleCode ?? '',
-            driverCell(visit.driverInEmployeeId, visit.driverInName, names),
-            driverCell(visit.driverOutEmployeeId, visit.driverOutName, names),
-            catalogName.get(visit.workshopId) ?? '',
-            catalogName.get(visit.workTypeId) ?? '',
-            // An id the catalog cannot name is printed as the id, exactly as the cell prints it —
-            // a part that was deleted from the list is still what this visit had fitted.
-            visit.sparePartIds.map((id) => catalogName.get(id) ?? id).join('، '),
-            visit.spareParts.join('، '),
-            visit.odometerAtService,
-            alarm?.sinceServiceKm ?? '',
-            alarm?.remainingKm ?? '',
-            visit.notes ?? '',
-          ];
-        }),
-      },
-    );
+    saveSheet({
+      name: t('fleet.nav.maintenance'),
+      serialHeader: t('fleet.violations.report.serial'),
+      header: [
+        t('fleet.maintenance.fields.inDate'),
+        t('fleet.maintenance.fields.outDate'),
+        t('fleet.odometer.columns.vehicle'),
+        t('fleet.maintenance.fields.operation'),
+        t('fleet.maintenance.fields.driverIn'),
+        t('fleet.maintenance.fields.driverOut'),
+        t('fleet.maintenance.fields.workshop'),
+        t('fleet.maintenance.fields.workType'),
+        t('fleet.maintenance.fields.spareParts'),
+        t('fleet.maintenance.legacyParts'),
+        t('fleet.maintenance.fields.odometerAtService'),
+        t('fleet.alarms.columns.sinceService'),
+        t('fleet.alarms.columns.remaining'),
+        t('fleet.odometer.columns.notes'),
+      ],
+      rows: all.map((visit) => {
+        // The same join the two alarm columns make, and the same refusal: a car the projection
+        // cannot answer for prints nothing rather than a distance it deliberately withheld.
+        const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
+        return [
+          formatDate(visit.inDate, locale),
+          visit.outDate === null ? t('fleet.maintenance.open') : formatDate(visit.outDate, locale),
+          visit.vehicleCode ?? '',
+          visit.operationId === null ? '' : (catalogName.get(visit.operationId) ?? ''),
+          driverCell(visit.driverInEmployeeId, visit.driverInName, names),
+          driverCell(visit.driverOutEmployeeId, visit.driverOutName, names),
+          catalogName.get(visit.workshopId) ?? '',
+          catalogName.get(visit.workTypeId) ?? '',
+          // An id the catalog cannot name is printed as the id, exactly as the cell prints it —
+          // a part that was deleted from the list is still what this visit had fitted.
+          visit.sparePartIds.map((id) => catalogName.get(id) ?? id).join('، '),
+          visit.spareParts.join('، '),
+          visit.odometerAtService,
+          alarm?.sinceServiceKm ?? '',
+          alarm?.remainingKm ?? '',
+          visit.notes ?? '',
+        ];
+      }),
+    });
   };
 
   const columns: Column<FleetMaintenanceVisitDto>[] = [
@@ -402,6 +410,15 @@ export const MaintenancePage = (): JSX.Element => {
           {visit.vehicleCode ?? '—'}
         </span>
       ),
+    },
+    // «ضيف عمود فى الجدول ب نوع التشغيل» — the CAR's operation, beside its code. The server reads
+    // it off the registry for the page like the code; it is the car's operation today, and a car
+    // with none on file (or one the registry never had) prints a dash.
+    {
+      key: 'operation',
+      header: t('fleet.maintenance.fields.operation'),
+      render: (visit) =>
+        visit.operationId === null ? dash : (catalogName.get(visit.operationId) ?? dash),
     },
     // TWO COLUMNS, ONE PER LEG — «تفصل الصباحى عن المسائى كل واحد فى عمود», the same split the
     // odometer register just took. The grid printed both drivers in one cell, one above the other,
@@ -600,9 +617,17 @@ export const MaintenancePage = (): JSX.Element => {
    * One date BOUND. The width lives on the wrapper: `Input` is `w-full` at its base and `cn` does
    * not merge Tailwind classes, so a `w-*` passed to it would only compete with that. `w-36` is
    * the floor — Chromium refuses to paint `type="date"` narrower than about 144px.
+   *
+   * «عاوز الفلاتر التواريخ تاريخ الدخول تكون مكتوبه على المكان اللى هسجل فيه التاريخ مش جمبها».
+   * The caption is written INSIDE the field, where the date goes, not beside it. A date input has
+   * no placeholder — Chromium paints «yyyy-mm-dd» there whatever it is given — so while the field
+   * is empty and not being typed in, that mask is made invisible and the caption is drawn over it.
+   * The moment the reader clicks in (or a date is set) the caption goes and the mask comes back,
+   * so typing a date works exactly as before. The caption is decoration only: the field keeps its
+   * `aria-label`, and clicks pass straight through the caption to the field underneath.
    */
   const dateBound = (labelKey: string, value: string, param: string): JSX.Element => (
-    <span className="w-36">
+    <span className="relative w-36">
       <Input
         type="date"
         dir="ltr"
@@ -610,7 +635,19 @@ export const MaintenancePage = (): JSX.Element => {
         title={t(labelKey)}
         value={value}
         onChange={(e) => patch({ [param]: e.target.value || null })}
+        className={
+          value === '' ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0' : undefined
+        }
       />
+      {value === '' && (
+        <span
+          aria-hidden="true"
+          data-date-caption={param}
+          className="pointer-events-none absolute inset-y-0 left-2 right-8 flex items-center justify-center truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
+        >
+          {t(labelKey)}
+        </span>
+      )}
     </span>
   );
 
@@ -642,7 +679,6 @@ export const MaintenancePage = (): JSX.Element => {
         }
       />
 
-
       <div className="space-y-4">
         {/* Ten filters, in the order the question is asked, each sized to what it holds so the row
             packs as tightly as it honestly can: the two date ranges and the counter range are ONE
@@ -659,6 +695,7 @@ export const MaintenancePage = (): JSX.Element => {
               from: null,
               outFrom: null,
               vehicleCodes: null,
+              operation: null,
               drv: null,
               workshops: null,
               workTypes: null,
@@ -670,19 +707,20 @@ export const MaintenancePage = (): JSX.Element => {
           // How many visits the filter matched, over the WHOLE set — see the odometer register.
           trailing={<FilteredCount value={data?.meta.totalItems} />}
         >
-          {/* One bound, not a range: the screen asks "checked in from this date". */}
-          <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <span className="whitespace-nowrap">{t('fleet.maintenance.inRange')}</span>
-            {dateBound('fleet.maintenance.inRange', from, 'from')}
-          </label>
-          <label className="flex flex-wrap items-center gap-1.5 text-sm text-slate-500 dark:text-slate-400">
-            <span className="whitespace-nowrap">{t('fleet.maintenance.outRange')}</span>
-            {dateBound('fleet.maintenance.outRange', outFrom, 'outFrom')}
-          </label>
+          {/* One bound, not a range: the screen asks "checked in from this date". The caption is
+              inside the field — see `dateBound`. */}
+          {dateBound('fleet.maintenance.inRange', from, 'from')}
+          {dateBound('fleet.maintenance.outRange', outFrom, 'outFrom')}
           <VehicleCodeFilter
             className="shrink-0"
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+          />
+          <CatalogMultiSelect
+            kind="operation"
+            value={operationIds}
+            onChange={(next) => patch({ operation: next.length === 0 ? null : next.join(',') })}
+            label={t('fleet.vehicles.filters.operation')}
           />
           {/* Several drivers at once: a visit is matched on its ENTRY driver or its EXIT driver,
               so asking about a crew is one question, not two searches run in turn. */}

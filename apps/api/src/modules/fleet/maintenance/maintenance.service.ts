@@ -33,6 +33,8 @@ import { vehicleIdOf, vehicleIdsOf } from '../fleet.mappers';
  */
 export type MaintenanceVisitPage = Paginated<FleetMaintenanceVisitRow> & {
   codes: ReadonlyMap<string, string>;
+  /** The car's «التشغيل» for the same cars — «ضيف عمود فى الجدول ب نوع التشغيل». */
+  operations: ReadonlyMap<string, string | null>;
 };
 
 /**
@@ -43,6 +45,8 @@ export type MaintenanceVisitPage = Paginated<FleetMaintenanceVisitRow> & {
 export interface MaintenanceVisitWithJoins {
   doc: FleetMaintenanceVisitDoc;
   vehicleCode: string | null;
+  /** The car's «التشغيل» — a fact about the CAR, read with its code. */
+  operationId: string | null;
 }
 
 const entityRef = (id: string) => ({
@@ -152,9 +156,14 @@ class FleetMaintenanceService {
   private async withJoins(doc: FleetMaintenanceVisitDoc): Promise<MaintenanceVisitWithJoins> {
     const vehicleId = vehicleIdOf(doc);
     // A visit kept from the old book for a car the registry never had names its car itself.
-    if (vehicleId === null) return { doc, vehicleCode: doc.vehicleCode ?? null };
+    if (vehicleId === null) return { doc, vehicleCode: doc.vehicleCode ?? null, operationId: null };
     const codes = await fleetVehicleRepository.codesByIds([vehicleId]);
-    return { doc, vehicleCode: codes.get(vehicleId) ?? null };
+    const operations = await fleetVehicleRepository.operationIdsByIds([vehicleId]);
+    return {
+      doc,
+      vehicleCode: codes.get(vehicleId) ?? null,
+      operationId: operations.get(vehicleId) ?? null,
+    };
   }
 
   /**
@@ -405,13 +414,24 @@ class FleetMaintenanceService {
    * history than that bound would silently lose the rest. It belongs in the pipeline.
    */
   private async vehicleScope(query: ListFleetMaintenanceQuery): Promise<string[] | undefined> {
-    if (query.vehicleCodes === undefined) return undefined;
-    const matched = await fleetVehicleRepository.list({
-      filter: { code: { $in: [...query.vehicleCodes] } },
-      page: 1,
-      pageSize: query.vehicleCodes.length,
-    });
-    return matched.items.map((vehicle) => String(vehicle._id));
+    const byCode =
+      query.vehicleCodes === undefined
+        ? undefined
+        : (
+            await fleetVehicleRepository.list({
+              filter: { code: { $in: [...query.vehicleCodes] } },
+              page: 1,
+              pageSize: query.vehicleCodes.length,
+            })
+          ).items.map((vehicle) => String(vehicle._id));
+    // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's operation is the registry's fact too, so it
+    // narrows to vehicle ids here exactly as a code does. Both asked means BOTH hold: the cars
+    // among those codes that run under one of those operations.
+    if (query.operationIds === undefined) return byCode;
+    const byOperation = await fleetVehicleRepository.idsWithOperations(query.operationIds);
+    if (byCode === undefined) return byOperation;
+    const wanted = new Set(byOperation);
+    return byCode.filter((id) => wanted.has(id));
   }
 
   /**
@@ -426,6 +446,9 @@ class FleetMaintenanceService {
       fleetMaintenanceRepository.visitFilter({
         ...query,
         ...(vehicleIds === undefined ? {} : { vehicleIds }),
+        // A visit kept from the old book on a car the registry never had matches a typed CODE —
+        // but it has no operation on file, so it cannot be one of the operations asked for.
+        ...(query.operationIds === undefined ? {} : { vehicleCodes: undefined }),
       }),
       query.driverEmployeeIds,
     );
@@ -449,8 +472,10 @@ class FleetMaintenanceService {
       // has asked for one. See the odometer register, which does the same with the same helper.
       sortDerived: await alarmSortsFor([...sorts, { by: query.sortBy ?? '' }]),
     });
-    const codes = await fleetVehicleRepository.codesByIds(vehicleIdsOf(page.items));
-    return { ...page, codes };
+    const onPage = vehicleIdsOf(page.items);
+    const codes = await fleetVehicleRepository.codesByIds(onPage);
+    const operations = await fleetVehicleRepository.operationIdsByIds(onPage);
+    return { ...page, codes, operations };
   }
 }
 

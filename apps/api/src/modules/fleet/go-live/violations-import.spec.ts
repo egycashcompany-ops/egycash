@@ -119,6 +119,26 @@ describe('turning the book into rows', () => {
     expect(String(fine!.driverEmployeeId)).toBe(EMP_1);
   });
 
+  it('marks EVERY row it writes as the book’s — «ويكون الصف لونه اخضر» — the deleted ones too', () => {
+    // The boards paint these green, and `existingByKey` counts only these as already landed, so
+    // a row a person typed with the same facts never stands in for the book's own.
+    const plan = planViolationsImport(
+      parseViolations([
+        company({}),
+        driver({}),
+        company({ _id: 'gone', deleted: 1, deleted_date: { $date: '2025-12-31T00:00:00.000Z' } }),
+        company({ _id: 'bus', car_code: 'كوستر' }),
+      ]),
+      REGISTRY,
+      TYPES,
+      new Map(),
+    );
+    const docs = plan.vehicles.flatMap((v) => v.rows.map((r) => r.doc));
+    expect(docs).toHaveLength(4);
+    expect(docs.map((d) => d.fromOldBook)).toEqual([true, true, true, true]);
+    expect(docs.filter((d) => d.isDeleted === true)).toHaveLength(1);
+  });
+
   it('writes the old one-letter shorthand out — «ت» is «تليفون», «ح» is «حزام»', () => {
     expect(DRIVER_TYPE_ALIASES).toEqual({ ت: 'تليفون', ح: 'حزام' });
     const plan = planViolationsImport(parseViolations([driver({ violation_driver: 'ت' }), driver({ _id: 'h', violation_driver: 'ح' })]), REGISTRY, TYPES, new Map());

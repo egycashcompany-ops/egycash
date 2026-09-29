@@ -55,6 +55,7 @@ const VEHICLE_ID = 'v1';
 const WORKSHOP_ID = 'ws1';
 const WORK_TYPE_ID = 'wt1';
 const PART_ID = 'sp1';
+const OPERATION_ID = 'op1';
 /** Two drivers to pick, as real employee ids — what `drv` carries now. */
 const DRIVER_A = '64b1f0dddddddddddddddd01';
 const DRIVER_B = '64b1f0dddddddddddddddd02';
@@ -64,6 +65,7 @@ const visit = (o: Partial<FleetMaintenanceVisitDto> = {}): FleetMaintenanceVisit
   vehicleId: VEHICLE_ID,
   // A SERVER fact on the row, like the roster crew below it.
   vehicleCode: '150',
+  operationId: null,
   driverInEmployeeId: null,
   driverOutEmployeeId: null,
   driverInName: null,
@@ -135,6 +137,10 @@ const catalogs = (qc: QueryClient): void => {
     CATALOG_KEY('sparePart'),
     pageOf([{ id: PART_ID, name: { ar: 'فلتر زيت', en: 'Oil filter' } }]),
   );
+  qc.setQueryData(
+    CATALOG_KEY('operation'),
+    pageOf([{ id: OPERATION_ID, name: { ar: 'نقل اموال', en: 'Cash transport' } }]),
+  );
 };
 
 const client = (
@@ -152,12 +158,15 @@ const client = (
   // FLEET's own people list — one key for the whole roster, which is what every driver cell on
   // every Fleet screen now reads. It replaces four HR detail entries: the names no longer come
   // from HR's directory and no longer need HR's grant.
-  qc.setQueryData(['fleet', 'people'], [
-    person('e1', 'HR-1', 'محمد'),
-    person('e2', 'HR-2', 'أحمد'),
-    person('d1', 'HR-D1', 'سائق الصباح'),
-    person('d2', 'HR-D2', 'سائق المساء'),
-  ]);
+  qc.setQueryData(
+    ['fleet', 'people'],
+    [
+      person('e1', 'HR-1', 'محمد'),
+      person('e2', 'HR-2', 'أحمد'),
+      person('d1', 'HR-D1', 'سائق الصباح'),
+      person('d2', 'HR-D2', 'سائق المساء'),
+    ],
+  );
   return qc;
 };
 
@@ -245,6 +254,8 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.inDate',
   'fleet.maintenance.fields.outDate',
   'fleet.odometer.columns.vehicle',
+  // «ضيف عمود فى الجدول ب نوع التشغيل» — the car's operation, beside its code.
+  'fleet.maintenance.fields.operation',
   // ONE COLUMN PER LEG — «تفصل الصباحى عن المسائى كل واحد فى عمود».
   //
   // A REVERSAL, said out loud: the two drivers shared a cell, entry above exit, and read perfectly
@@ -331,7 +342,7 @@ describe('the maintenance table', () => {
   it('names the DRIVER who brought the car in — in red, in its own column', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
     const markup = render({ qc });
-    expect(cells(markup)[3]).toContain('سائق الصباح');
+    expect(cells(markup)[4]).toContain('سائق الصباح');
     expect(tone(tbody(markup), 'سائق الصباح')).toContain('text-red-700');
   });
 
@@ -344,8 +355,8 @@ describe('the maintenance table', () => {
       }),
     ]);
     const markup = render({ qc });
-    expect(cells(markup)[3], 'the entry driver’s own column').toContain('سائق الصباح');
-    expect(cells(markup)[4], 'the exit driver’s own column').toContain('سائق المساء');
+    expect(cells(markup)[4], 'the entry driver’s own column').toContain('سائق الصباح');
+    expect(cells(markup)[5], 'the exit driver’s own column').toContain('سائق المساء');
     // The two legs are still told apart by TONE as well as by position — a reader scanning down
     // one column should not have to read the header to know which end of the visit it is.
     // Asserting each is NOT the other's colour is what fails if one class ever paints both.
@@ -366,14 +377,14 @@ describe('the maintenance table', () => {
 
   it('shows no exit driver while the car is still in the workshop', () => {
     const qc = client([visit({ driverInEmployeeId: 'd1' })]);
-    expect(cells(render({ qc }))[3]).toContain('سائق الصباح');
-    expect(cells(render({ qc }))[4], 'nobody has driven it away yet').toBe('—');
+    expect(cells(render({ qc }))[4]).toContain('سائق الصباح');
+    expect(cells(render({ qc }))[5], 'nobody has driven it away yet').toBe('—');
   });
 
   it('dashes BOTH driver cells for a visit written before the driver fields existed', () => {
     const body = tbody(render());
-    expect(cells(render())[3]).toBe('—');
     expect(cells(render())[4]).toBe('—');
+    expect(cells(render())[5]).toBe('—');
     expect(body).not.toContain('null');
     expect(body).not.toContain('undefined');
   });
@@ -401,8 +412,9 @@ describe('the maintenance table', () => {
 
   it('shows catalog spare parts by NAME, and still shows an old visit’s free text', () => {
     const qc = client([visit({ sparePartIds: [PART_ID], spareParts: ['بوجيهات'] })]);
-    // Column 7, not 6: the driver cell became two when the legs were split.
-    const partsCell = cells(render({ qc }))[7] as string;
+    // Column 8: the driver cell became two when the legs were split, and «نوع التشغيل» sits
+    // beside the car's code.
+    const partsCell = cells(render({ qc }))[8] as string;
     expect(partsCell, 'the catalog name, not the id').toContain('فلتر زيت');
     expect(partsCell).not.toContain(PART_ID);
     // The words an older visit recorded are the only record of what was fitted on it.
@@ -723,7 +735,10 @@ describe('the check-in dialog', () => {
     // شاشه fleet/catalogs يضيفها تبع قطع الغيار».
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    const field = code.slice(code.indexOf('const SparePartsField'), code.indexOf('const counterWarning'));
+    const field = code.slice(
+      code.indexOf('const SparePartsField'),
+      code.indexOf('const counterWarning'),
+    );
     // Typed and committed — the picker's own «Enter in the search box» seam, not a second input.
     expect(field, 'Enter commits what was typed').toContain('onCommitSearch');
     expect(field, 'and the box is always offered, however short the list').toContain(
@@ -743,7 +758,10 @@ describe('the check-in dialog', () => {
     // SELECTED, never added again.
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    const field = code.slice(code.indexOf('const SparePartsField'), code.indexOf('const counterWarning'));
+    const field = code.slice(
+      code.indexOf('const SparePartsField'),
+      code.indexOf('const counterWarning'),
+    );
     expect(field, 'case-folded').toContain('toLocaleLowerCase()');
     expect(field, 'against the Arabic name').toContain('item.name.ar');
     expect(field, 'and the English one').toContain('item.name.en');
@@ -756,7 +774,10 @@ describe('the check-in dialog', () => {
     // one action the form appeared to invite. They keep the picker; they lose only the typing.
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    const field = code.slice(code.indexOf('const SparePartsField'), code.indexOf('const counterWarning'));
+    const field = code.slice(
+      code.indexOf('const SparePartsField'),
+      code.indexOf('const counterWarning'),
+    );
     expect(field).toContain("can('fleetCatalog.manage')");
     // The two props are spread TOGETHER behind that grant — a search box with no commit would be
     // an invitation to type something that goes nowhere.
@@ -903,10 +924,7 @@ describe('the maintenance and odometer dialogs say what a choice will cost', () 
     expect(code, 'and reads the flag the SERVER matches on').toContain('countsForAlarm === true');
     // Both dialogs — checking a car in, and editing the visit afterwards. Editing the type has
     // exactly the same consequence, so a warning on only one of them is half a warning.
-    expect(
-      code.split('warning: notCounting').length - 1,
-      'check-in and edit both warn',
-    ).toBe(2);
+    expect(code.split('warning: notCounting').length - 1, 'check-in and edit both warn').toBe(2);
   });
 
   it('says nothing while the catalog is still loading', () => {
@@ -947,5 +965,51 @@ describe('the maintenance and odometer dialogs say what a choice will cost', () 
         expect(text.length, `${key} in ${locale} explains itself`).toBeGreaterThan(40);
       }
     }
+  });
+});
+
+describe('«نوع التشغيل» on the maintenance register', () => {
+  // «وضيف انا اقدر اعمل فلتر ب نوع التشغيل وضيف عمود فى الجدول ب نوع التشغيل».
+  const OPERATION_CELL = REQUIRED_COLUMNS.indexOf('fleet.maintenance.fields.operation');
+
+  it('prints the car’s operation by NAME beside its code, and a dash for a car with none', () => {
+    expect(OPERATION_CELL, 'right after the car').toBe(
+      REQUIRED_COLUMNS.indexOf('fleet.odometer.columns.vehicle') + 1,
+    );
+    const named = cells(render({ qc: client([visit({ operationId: OPERATION_ID })]) }));
+    expect(named[OPERATION_CELL]).toBe('نقل اموال');
+    expect(cells(render())[OPERATION_CELL]).toBe('—');
+  });
+
+  it('filters by several operations, sent to the server as ids under the vehicles screen’s parameter', () => {
+    const qc = client([visit({ operationId: OPERATION_ID })], { operationIds: [OPERATION_ID] });
+    const markup = render({ route: `/fleet/maintenance?operation=${OPERATION_ID}`, qc });
+    expect(tbody(markup)).toContain('نقل اموال');
+    expect(filterBar(markup)).toContain(t('fleet.vehicles.filters.operation'));
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source).toContain("const operationIds = csv(sp.get('operation'));");
+    expect(source).toContain('operationIds: operationIds.length > 0 ? operationIds : undefined');
+    expect(source, 'remembered like the other filters').toMatch(/'operation',\n\s+'outFrom'/);
+    expect(source, 'and cleared with them').toContain('operation: null,');
+  });
+
+  it('writes «تاريخ الدخول» and «تاريخ الخروج» INSIDE their date fields, not beside them', () => {
+    // «عاوز الفلاتر التواريخ تاريخ الدخول تكون مكتوبه على المكان اللى هسجل فيه التاريخ مش جمبها».
+    const bar = filterBar(render());
+    expect(bar).toContain('data-date-caption="from"');
+    expect(bar).toContain('data-date-caption="outFrom"');
+    const source = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
+    expect(source, 'no caption beside the field any more').not.toContain(
+      '<span className="whitespace-nowrap">{t(\'fleet.maintenance.inRange\')}</span>',
+    );
+    // A date already chosen shows the date itself, with no caption over it.
+    const set = filterBar(
+      render({
+        route: '/fleet/maintenance?from=2026-09-01',
+        qc: client([visit()], { from: '2026-09-01' }),
+      }),
+    );
+    expect(set).not.toContain('data-date-caption="from"');
+    expect(set).toContain('data-date-caption="outFrom"');
   });
 });

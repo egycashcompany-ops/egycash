@@ -54,6 +54,7 @@ import { cn } from '../../../shared/lib/cn';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { DriverName, useEmployeeRecords } from './EmployeeName';
+import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
 import {
   cardLabel,
   entryCards,
@@ -1106,10 +1107,10 @@ export const DriverViolationsPanel = ({
               }
             : {})}
           // Collected is a STATE OF THE ROW, so the row carries it — the tick is where you change
-          // it, the tint is how the board reads at a glance.
-          rowClassName={(row) =>
-            row.collected ? 'bg-emerald-50 dark:bg-emerald-950/40' : undefined
-          }
+          // it, the tint is how the board reads at a glance. A fine from the old book is GREEN
+          // instead, settled or not («ويكون الصف لونه اخضر») — `violationRowTone` says why the
+          // two are different greens and why a row gets exactly one of them.
+          rowClassName={violationRowTone}
         />
       </div>
       {meta !== undefined && meta.totalItems > 0 && (
@@ -1140,20 +1141,26 @@ export const DriverViolationsPanel = ({
               It is the idiom the users screen's activity timeline already uses (`useUserTimeline`
               + «تحميل الأقدم»), not a new one invented here. */}
           <div className="mt-2 flex items-center justify-between gap-3 px-3 pb-1">
-            <span
-              data-driver-loaded
-              role="status"
-              className="text-xs text-slate-500 dark:text-slate-400"
-            >
-              {loadState.complete
-                ? t('fleet.violations.allLoaded', {
-                    total: formatNumber(loadState.total, locale),
-                  })
-                : t('fleet.violations.loadedOf', {
-                    shown: formatNumber(loadState.shown, locale),
-                    total: formatNumber(loadState.total, locale),
-                  })}
-            </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+              <span
+                data-driver-loaded
+                role="status"
+                className="text-xs text-slate-500 dark:text-slate-400"
+              >
+                {loadState.complete
+                  ? t('fleet.violations.allLoaded', {
+                      total: formatNumber(loadState.total, locale),
+                    })
+                  : t('fleet.violations.loadedOf', {
+                      shown: formatNumber(loadState.shown, locale),
+                      total: formatNumber(loadState.total, locale),
+                    })}
+              </span>
+              {/* WHAT THE GREEN MEANS, on the line that is already here — this board is read beside
+                  the company's, and a line of its own would take a row of fines off both. Shown
+                  only while a fine from the old book is actually on screen. */}
+              {rows.some((row) => row.fromOldBook) && <FromOldBookLegend />}
+            </div>
             {list.hasNextPage === true && (
               <Button
                 size="sm"

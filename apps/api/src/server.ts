@@ -19,6 +19,12 @@ import { startOdometerGoLive } from './modules/fleet/go-live/odometer';
 import { startMaintenanceGoLive } from './modules/fleet/go-live/maintenance';
 import { startViolationsGoLive } from './modules/fleet/go-live/violations';
 import { startAccidentsGoLive } from './modules/fleet/go-live/accidents';
+import { startVehicleChangesGoLive } from './modules/fleet/go-live/vehicle-changes';
+import { startDriverDetailsGoLive } from './modules/fleet/go-live/driver-details';
+import { startOdometerSyncGoLive } from './modules/fleet/go-live/odometer-sync';
+import { startMaintenanceSyncGoLive } from './modules/fleet/go-live/maintenance-sync';
+import { startViolationsReloadGoLive } from './modules/fleet/go-live/violations-reload';
+import { startAccidentsClearGoLive } from './modules/fleet/go-live/accidents-clear';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -55,6 +61,15 @@ const main = async (): Promise<void> => {
   // The violations and accidents books — on the same terms, once the cars are in.
   startViolationsGoLive();
   startAccidentsGoLive();
+  // The owner's later books (29 Sept 2026): the cars' changes, the drivers' missing facts, the
+  // newer odometer and workshop exports, the violations reloaded from 24 Sept, and the accidents
+  // screen emptied. Each waits for the step it builds on; see each file.
+  startVehicleChangesGoLive();
+  startDriverDetailsGoLive();
+  startOdometerSyncGoLive();
+  startMaintenanceSyncGoLive();
+  startViolationsReloadGoLive();
+  startAccidentsClearGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

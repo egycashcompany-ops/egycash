@@ -385,10 +385,20 @@ export interface MaintenanceImportOutcome {
  * the same day in, the same workshop and the same work — and such a visit is counted and not
  * written again, but a driver's NAME is filled into it where an earlier run left the driver
  * empty, which is the one repair a later run makes.
+ *
+ * `claimed` exists for a LATER EXPORT of the same book (`maintenance-sync-import.ts`), which plans
+ * only the rows the earlier export did not have. Every row the two exports share already has its
+ * visit on ECMS — the one an earlier run wrote, or matched, for it — so before a car's new rows
+ * are matched, each claimed visit takes its own row out of the car's key group, first come first
+ * served, exactly as it would have if the whole book had been planned again. Without it, a new
+ * row that shares a car, a day in, a workshop and a work with an old one would be counted as
+ * «already there» against the OLD row's visit and never written. Absent — the import itself —
+ * nothing is claimed, and this is the function it always was.
  */
 export const applyMaintenanceImport = async (
   plan: MaintenancePlan,
   by: string,
+  claimed: ReadonlyMap<string, readonly ParsedVisit[]> = new Map(),
 ): Promise<MaintenanceImportOutcome> => {
   const outcome: MaintenanceImportOutcome = {
     imported: 0,
@@ -413,11 +423,20 @@ export const applyMaintenanceImport = async (
     name === null
       ? (catalog[kind].unspecified as string)
       : (catalog[kind].ids.get(fold(name)) as string);
+  // A claimed row's words, LOOKED UP and never added: they were all in the catalog when the
+  // earlier run wrote its visit, and a word that is not there any more names no row to take.
+  const known = (kind: 'workshop' | 'workType', name: string | null): string =>
+    catalog[kind].ids.get(fold(name ?? UNSPECIFIED.ar)) ?? '';
 
   const at = new Date();
   for (const vehicle of plan.vehicles) {
     try {
       const existing = await fleetMaintenanceRepository.existingByKey(vehicle.ref);
+      for (const visit of claimed.get(vehicle.code) ?? []) {
+        existing
+          .get(fleetMaintenanceRepository.rowKey(visit.inDate, known('workshop', visit.workshop), known('workType', visit.workType)))
+          ?.shift();
+      }
       const vehicleId = vehicle.ref.vehicleId;
       const open = vehicleId === null ? null : await fleetMaintenanceRepository.findOpen(vehicleId);
       // Whether THIS run has already written the car's one open visit — the book left a handful

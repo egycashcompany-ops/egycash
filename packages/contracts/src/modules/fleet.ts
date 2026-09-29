@@ -1049,6 +1049,14 @@ export interface FleetMaintenanceVisitDto {
    * For a row with no `vehicleId` it is the code the old book wrote.
    */
   vehicleCode: string | null;
+  /**
+   * The car's «التشغيل» (`operation` catalog id) — «ضيف عمود فى الجدول ب نوع التشغيل».
+   *
+   * A fact about the CAR, not the visit, read off the registry for the row like the code is — so
+   * it names the car's operation TODAY. `null` when the car has none on file, and on a visit kept
+   * from the old book for a car the registry never had.
+   */
+  operationId: string | null;
   /** The drivers' NAMES as the old book wrote them, where HR has no employee — see the odometer log. */
   driverInName: string | null;
   driverOutName: string | null;
@@ -1229,6 +1237,12 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
   workTypeId: objectId().optional(),
   workTypeIds: listQuery(objectId()),
   sparePartIds: listQuery(objectId()),
+  /**
+   * «انا اقدر اعمل فلتر ب نوع التشغيل» — visits of cars whose «التشغيل» is one of these. Resolved
+   * server-side against the registry, like `vehicleCodes`; a car the registry never had has no
+   * operation and matches none.
+   */
+  operationIds: listQuery(objectId()),
   /** Substring over the visit's own note. */
   notes: z.string().trim().min(1).max(100).optional(),
   /** Inclusive bounds on the counter the vehicle went in on. */
@@ -1908,6 +1922,20 @@ export interface FleetViolationDto {
    * board shows that state to whoever opens it next.
    */
   collected: boolean;
+  /**
+   * THIS ROW CAME FROM THE OLD SYSTEM'S BOOK, not from somebody typing it here.
+   *
+   * «وكل اللى فى الملف ضيفه ويكون الصف لونه اخضر». The violations recorded on this system up to
+   * 23 September were cleared and the old book's `car_violations` export was written again in
+   * their place (`go-live/violations-reload.ts`); every row that reload writes carries `true`, and
+   * the two boards paint it green so a reader can tell the book's history from what was filed
+   * here since. A row somebody records on the screen is `false`, and so is every row stored before
+   * the field existed — the server answers `false` for a row that has no value, never «unknown».
+   *
+   * Set ONLY by the import. No form sends it and the update schema does not accept it: where a
+   * row came from is a fact about its history, not something a correction can change.
+   */
+  fromOldBook: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;

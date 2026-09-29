@@ -117,6 +117,8 @@ const SPELLING = [
 const DATA_FILES = [
   'apps/api/src/workforce-import/vocabulary.ts',
   'apps/api/src/modules/fleet/go-live/vocabulary.ts',
+  // The old books' own spellings of the licence classes («اتانية» …), matched against, never shown.
+  'apps/api/src/modules/fleet/go-live/driver-details-import.ts',
   'packages/contracts/src/common/egypt-geography.ts',
   'apps/web/src/shared/national-id/transliterate.ts',
 ];

@@ -222,6 +222,45 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
   }
 
   /**
+   * «ضيف عمود فى الجدول ب نوع التشغيل» — the car's «التشغيل», for the visits on one page.
+   *
+   * The same one-lookup-per-page shape as `codesByIds`: a workshop visit does not carry its car's
+   * operation (it is a fact about the CAR, and it changes when the car is reassigned), so the
+   * maintenance register reads it here for exactly the cars it is showing. A car with no operation
+   * on file maps to `null`, which the column prints as a dash.
+   */
+  async operationIdsByIds(ids: readonly string[]): Promise<Map<string, string | null>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.model
+      .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) } })
+      .select({ operationId: 1 })
+      .lean<{ _id: Types.ObjectId; operationId?: Types.ObjectId | null }[]>()
+      .exec();
+    return new Map(
+      rows.map((row) => [
+        String(row._id),
+        row.operationId == null ? null : String(row.operationId),
+      ]),
+    );
+  }
+
+  /**
+   * «انا اقدر اعمل فلتر ب نوع التشغيل» — every car, deleted ones included, whose operation is one
+   * of these.
+   *
+   * `distinct` and not a page: `list()` clamps to MAX_PAGE_SIZE, and an operation like «نقل اموال»
+   * holds about a hundred cars — a page would silently drop the visits of every car past it.
+   * Deleted cars are INCLUDED because their visits are still history the register shows.
+   */
+  async idsWithOperations(operationIds: readonly string[]): Promise<string[]> {
+    if (operationIds.length === 0) return [];
+    const ids = await this.model
+      .distinct('_id', { operationId: { $in: operationIds.map((id) => new Types.ObjectId(id)) } })
+      .exec();
+    return ids.map((id) => String(id));
+  }
+
+  /**
    * The ids of every vehicle whose CODE contains `term`, case-insensitively.
    *
    * The screens that file paperwork against a car — accidents, maintenance — store the car by id

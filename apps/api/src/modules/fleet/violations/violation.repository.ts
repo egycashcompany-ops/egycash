@@ -65,20 +65,89 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
   }
 
   /**
-   * How many live rows of each SHAPE one vehicle already holds — the go-live import's check
-   * before writing. A count per key rather than a set, because the old statement legitimately
-   * holds two identical rows for one car (two «رسوم خدمة» entries of the same value in one
-   * year), and a set would let a take-over write the second one twice.
+   * How many rows of each SHAPE the old book already has on one vehicle — the go-live import's
+   * check before writing. A count per key rather than a set, because the old statement
+   * legitimately holds two identical rows for one car (two «رسوم خدمة» entries of the same value
+   * in one year), and a set would let a take-over write the second one twice.
+   *
+   * ONLY THE BOOK'S OWN ROWS — `fromOldBook: true` — deleted ones included, as `bookRefFilter`
+   * explains. «امسح من ecms كل المخالفات لحد يوم 23 … وكل اللى فى الملف ضيفه»: the reload
+   * soft-deletes everything recorded here up to 23 September and writes the book again. Counted
+   * without this clause, the rows it had just deleted — the first import's, carrying the very same
+   * facts — would read as «already there» and not one row of the file would come back; and a fine
+   * somebody typed on the screen that happens to match a book row would stand in for it, painted
+   * the normal colour, while the book's own row was never written.
    */
   async existingByKey(
     ref: BookRef,
     keyOf: (row: FleetViolationDoc) => string,
   ): Promise<Map<string, FleetViolationDoc[]>> {
     const rows = await this.model
-      .find(bookRefFilter<FleetViolationDoc>(ref))
+      .find({ ...bookRefFilter<FleetViolationDoc>(ref), fromOldBook: true })
       .lean<FleetViolationDoc[]>()
       .exec();
     return groupByKey(rows, keyOf);
+  }
+
+  /**
+   * The reload's sweep: every LIVE violation recorded on this system before `cutoff`, soft-deleted
+   * in one write — «امسح من ecms كل المخالفات لحد يوم 23».
+   *
+   * Soft, never `deleteMany`: «الداتا اللى ممسوحه متظهرش للمستخدم تبقى فى الداتا بيز فقط». Each
+   * row goes off every board and out of every total and stays in the collection, exactly the state
+   * a person's delete leaves — except `deletedBy`, which stays `null` because nobody pressed
+   * anything: a boot did this, and naming a person would put work against them they never did.
+   * `__v` moves, so a form somebody still had open on one of these rows is refused as stale
+   * rather than resurrecting it.
+   */
+  async softDeleteRecordedBefore(cutoff: Date, at: Date): Promise<number> {
+    const result = await this.model
+      .updateMany(violationsRecordedBefore(cutoff), {
+        $set: { isDeleted: true, deletedAt: at, deletedBy: null },
+        $inc: { __v: 1 },
+      })
+      .exec();
+    return result.modifiedCount;
+  }
+
+  /**
+   * The rows the sweep is about to take that somebody CHANGED on or after `cutoff` — a tick, a
+   * carry, a corrected amount. They go with the rest, as the owner asked; the book's copy of each
+   * comes back without that change, so the run names them for somebody to redo. Asked BEFORE the
+   * sweep, because the sweep's own write moves `updatedAt`.
+   */
+  async recordedBeforeChangedSince(cutoff: Date): Promise<FleetViolationDoc[]> {
+    return this.model
+      .find({ ...violationsRecordedBefore(cutoff), updatedAt: { $gte: cutoff } })
+      .lean<FleetViolationDoc[]>()
+      .exec();
+  }
+
+  /**
+   * Every row the sweep has deleted, on this attempt AND any earlier one — so a run taken over
+   * after a lapsed lease still reports the whole sweep rather than the nothing it found left.
+   *
+   * Told apart by what only the sweep writes: recorded before the cutoff, deleted after it, and
+   * by nobody. A person's delete names the person; the imports' rows that arrived deleted carry
+   * the OLD system's date (or none), which is long before the cutoff.
+   */
+  async countSweptBefore(cutoff: Date): Promise<number> {
+    return this.model
+      .countDocuments({
+        isDeleted: true,
+        deletedBy: null,
+        createdAt: { $lt: cutoff },
+        deletedAt: { $gte: cutoff },
+        fromOldBook: { $ne: true },
+      })
+      .exec();
+  }
+
+  /** Live rows recorded on this system from `cutoff` on — what the sweep leaves exactly as it is. */
+  async countRecordedSince(cutoff: Date): Promise<number> {
+    return this.model
+      .countDocuments({ isDeleted: false, createdAt: { $gte: cutoff }, fromOldBook: { $ne: true } })
+      .exec();
   }
 
   /** The go-live import's one repair on a fine already written: the driver's name, where it had none. */
@@ -490,6 +559,46 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
       .exec();
   }
 
+  /**
+   * The reload's sweep of the grievance figures — see `grievancesRecordedBefore` for which, and
+   * `FleetViolationRepository.softDeleteRecordedBefore` for why it is soft and names nobody.
+   *
+   * It frees `ux_vehicle_year` (partial on `isDeleted: false`) for the book's figure to be
+   * written again beside the fines it belongs to.
+   */
+  async softDeleteRecordedBefore(cutoff: Date, at: Date): Promise<number> {
+    const result = await this.model
+      .updateMany(grievancesRecordedBefore(cutoff), {
+        $set: { isDeleted: true, deletedAt: at, deletedBy: null },
+        $inc: { __v: 1 },
+      })
+      .exec();
+    return result.modifiedCount;
+  }
+
+  /** Every figure the sweep has deleted, on any attempt — the same test as the fines' count. */
+  async countSweptBefore(cutoff: Date): Promise<number> {
+    return this.model
+      .countDocuments({
+        isDeleted: true,
+        deletedBy: null,
+        createdAt: { $lt: cutoff },
+        deletedAt: { $gte: cutoff },
+      })
+      .exec();
+  }
+
+  /**
+   * Figures recorded before `cutoff` that somebody set again on or after it — the ones the sweep
+   * LEAVES. Durable: nothing the reload does touches them, so a take-over finds the same list.
+   */
+  async recordedBeforeChangedSince(cutoff: Date): Promise<FleetGrievanceDoc[]> {
+    return this.model
+      .find({ isDeleted: false, createdAt: { $lt: cutoff }, updatedAt: { $gte: cutoff } })
+      .lean<FleetGrievanceDoc[]>()
+      .exec();
+  }
+
   /** The grievances of SEVERAL years, ORed — the rollup's other half, narrowed the same way. */
   async forYears(
     years: readonly number[] | undefined,
@@ -543,6 +652,47 @@ export const violationYearBranches = (
       date: { $gte: new Date(Date.UTC(year, 0, 1)), $lt: new Date(Date.UTC(year + 1, 0, 1)) },
     } as FilterQuery<FleetViolationDoc>,
   ]);
+
+/**
+ * WHICH FINES THE RELOAD'S SWEEP TAKES — «امسح من ecms كل المخالفات لحد يوم 23 يعنى من يوم 24
+ * البدايه».
+ *
+ * RECORDED, not dated: `createdAt`, the moment the row was written on this system, and never the
+ * fine's own `date` or `year`. The owner's line is about what was ENTERED here up to 23 September
+ * — the first import's rows and whatever was typed beside them — and a fine typed on the 25th for
+ * something that happened in March is exactly the kind of row that must stay.
+ *
+ * Live rows only: a row already deleted, by a person or by the old book, is left as it lies.
+ *
+ * NEVER A ROW OF THE BOOK ITSELF (`fromOldBook`). The reload writes those after the cutoff, so the
+ * date alone would already spare them; this says it outright, so that a take-over after a lapsed
+ * lease can never sweep up the rows the first attempt had just written, whatever the clock says.
+ *
+ * Exported and pure for its test — a filter is where a sweep goes wrong quietly.
+ */
+export const violationsRecordedBefore = (cutoff: Date): FilterQuery<FleetViolationDoc> => ({
+  isDeleted: false,
+  createdAt: { $lt: cutoff },
+  fromOldBook: { $ne: true },
+});
+
+/**
+ * WHICH GRIEVANCE FIGURES THE SWEEP TAKES: live, recorded before the cutoff, AND not set again
+ * since.
+ *
+ * The owner named the fines; the figures go with them because the book carries its own, and a
+ * figure left standing would keep the book's from being written back (one per vehicle and year).
+ * But a figure is ONE row that a person edits in place — `setGrievance` updates it rather than
+ * writing a new one — so its `createdAt` says when the first import wrote it, not when its current
+ * value was entered. A figure somebody set on the 25th is work done from the 24th on, which the
+ * owner said stays as it is; so it is left, and the book's figure for that year is then reported
+ * beside it (`grievancesKept`) instead of written over it.
+ */
+export const grievancesRecordedBefore = (cutoff: Date): FilterQuery<FleetGrievanceDoc> => ({
+  isDeleted: false,
+  createdAt: { $lt: cutoff },
+  updatedAt: { $lt: cutoff },
+});
 
 export const fleetViolationRepository = new FleetViolationRepository();
 export const fleetGrievanceRepository = new FleetGrievanceRepository();

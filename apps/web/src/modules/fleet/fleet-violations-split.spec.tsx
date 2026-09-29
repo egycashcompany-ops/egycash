@@ -37,6 +37,7 @@ import { formatDate, formatNumber } from '../../shared/lib/format';
 import { listKey } from '../../shared/lib/query-keys';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
+import { COLLECTED_ROW, FROM_OLD_BOOK_ROW, violationRowTone } from './components/ViolationRowTone';
 import {
   cardLabel,
   entryCards,
@@ -144,6 +145,7 @@ const driverRow = (over: Partial<FleetViolationDto> = {}): FleetViolationDto => 
   driverEmployeeId: E1,
   driverName: null,
   collected: false,
+  fromOldBook: false,
   version: 0,
   createdAt: '2026-02-01T00:00:00.000Z',
   updatedAt: '2026-02-01T00:00:00.000Z',
@@ -476,6 +478,90 @@ describe('the drivers bar: counts in, one card per fine out', () => {
     expect(markup, 'and no empty-state placeholder either').not.toContain('data-entered-empty');
     // The counting bar itself is what IS on screen — the way in is still visible.
     expect(markup, 'the counting bar is still there').toContain('data-driver-bar="true"');
+  });
+});
+
+// ── 3b · the old book's rows are green ──────────────────────────────────────
+
+describe('a fine from the old book is GREEN — «ويكون الصف لونه اخضر»', () => {
+  /** The `<tr>` a row's own collect button sits in — the tint must be on THAT tag. */
+  const rowTag = (markup: string, id: string): string => {
+    const at = markup.indexOf(`data-collect="${id}"`);
+    expect(at, `${id} is on the board`).toBeGreaterThan(-1);
+    const open = markup.lastIndexOf('<tr', at);
+    return markup.slice(open, markup.indexOf('>', open) + 1);
+  };
+
+  it('paints the book’s row green and leaves a typed one the normal colour', () => {
+    const markup = page({
+      drivers: [driverRow({ id: 'book', fromOldBook: true }), driverRow({ id: 'typed' })],
+    });
+    expect(rowTag(markup, 'book'), 'the book’s row').toContain(FROM_OLD_BOOK_ROW);
+    expect(rowTag(markup, 'typed'), 'a row somebody typed').not.toContain('bg-green-');
+    expect(rowTag(markup, 'typed')).not.toContain(COLLECTED_ROW);
+  });
+
+  it('is a green of its own — the pale one still means «settled» on a typed fine', () => {
+    // The settled tint was green before the book's rows were; one shade for both would make the
+    // legend untrue of every typed fine somebody ticked.
+    expect(FROM_OLD_BOOK_ROW).not.toBe(COLLECTED_ROW);
+    const markup = page({
+      drivers: [
+        driverRow({ id: 'book', fromOldBook: true, collected: true }),
+        driverRow({ id: 'typed', collected: true }),
+      ],
+    });
+    expect(rowTag(markup, 'book'), 'the book’s row stays green when settled').toContain(
+      FROM_OLD_BOOK_ROW,
+    );
+    expect(rowTag(markup, 'book'), 'with one tint, not two fighting').not.toContain(COLLECTED_ROW);
+    const at = markup.indexOf('data-collect="book"');
+    const tick = markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at) + 1);
+    expect(tick, 'the tick is what still says it is settled').toContain('aria-pressed="true"');
+    expect(rowTag(markup, 'typed'), 'a typed, settled fine keeps its pale tint').toContain(
+      COLLECTED_ROW,
+    );
+  });
+
+  it('says what the green means, with the green beside the words — only while a book row is shown', () => {
+    const withBook = page({ drivers: [driverRow({ fromOldBook: true })] });
+    expect(withBook).toContain('data-from-old-book-legend="true"');
+    expect(withBook).toContain(t('fleet.violations.fromOldBookLegend'));
+    expect(t('fleet.violations.fromOldBookLegend')).toBe(
+      'الصفوف باللون الأخضر منقولة من النظام القديم',
+    );
+    const legend = withBook.slice(withBook.indexOf('data-from-old-book-legend'));
+    expect(legend.slice(0, legend.indexOf('</p>')), 'the swatch is the row’s own green').toContain(
+      FROM_OLD_BOOK_ROW,
+    );
+
+    const typedOnly = page({ drivers: [driverRow({ collected: true })] });
+    expect(typedOnly, 'no legend for a colour nobody can see').not.toContain(
+      'data-from-old-book-legend',
+    );
+  });
+
+  it('decides the colour in ONE place, for both tables that list fines', () => {
+    expect(violationRowTone({ fromOldBook: true, collected: false })).toBe(FROM_OLD_BOOK_ROW);
+    expect(violationRowTone({ fromOldBook: true, collected: true })).toBe(FROM_OLD_BOOK_ROW);
+    expect(violationRowTone({ fromOldBook: false, collected: true })).toBe(COLLECTED_ROW);
+    expect(violationRowTone({ fromOldBook: false, collected: false })).toBeUndefined();
+    for (const file of [
+      'components/DriverViolationsPanel.tsx',
+      'components/CompanyViolationsDetailLayer.tsx',
+    ]) {
+      const code = readFileSync(join(HERE, file), 'utf8');
+      expect(code, `${file} asks the one helper`).toContain('rowClassName={violationRowTone}');
+      expect(code, `${file} writes no tint of its own`).not.toContain(
+        "'bg-emerald-50 dark:bg-emerald-950/40'",
+      );
+      expect(code, `${file} explains the green`).toContain('<FromOldBookLegend');
+    }
+    const layer = readFileSync(join(HERE, 'components/CompanyViolationsDetailLayer.tsx'), 'utf8');
+    expect(
+      (layer.match(/rowClassName=\{violationRowTone\}/g) ?? []).length,
+      'both of the layer’s tables',
+    ).toBe(2);
   });
 });
 

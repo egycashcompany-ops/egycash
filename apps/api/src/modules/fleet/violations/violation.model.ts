@@ -44,6 +44,18 @@ export interface FleetViolationDoc extends BaseDocFields {
   driverName: string | null;
   /** The money is in. Set by a person, never derived — see the DTO for why it is its own fact. */
   collected: boolean;
+  /**
+   * Written by the go-live import from the old system's `car_violations` book, not typed here.
+   *
+   * «وكل اللى فى الملف ضيفه ويكون الصف لونه اخضر» — the boards paint these rows green. It is also
+   * the import's own «have I written this row already?» answer: `existingByKey` counts ONLY rows
+   * carrying `true`, so a row the reload soft-deleted, or one a person typed with the same facts,
+   * is never mistaken for a book row that already landed (`go-live/violations-reload.ts`).
+   *
+   * Absent on every row stored before the field existed — `default` only fills a NEW document —
+   * which is why every reader asks `=== true` and never trusts the key to be there.
+   */
+  fromOldBook: boolean;
 }
 
 const violationSchema = new Schema<FleetViolationDoc>(
@@ -62,6 +74,10 @@ const violationSchema = new Schema<FleetViolationDoc>(
     driverEmployeeId: { type: Schema.Types.ObjectId, default: null },
     driverName: { type: String, default: null },
     collected: { type: Boolean, required: true, default: false },
+    // NOT `required`: the rows written before this field existed have no key, and a required
+    // path would fail validation wherever one of them is ever saved whole. `false` is only what a
+    // NEW row starts as; the import is the one writer that sets `true`.
+    fromOldBook: { type: Boolean, default: false },
     ...baseFields,
   },
   baseSchemaOptions,

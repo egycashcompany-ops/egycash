@@ -31,6 +31,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { CheckIcon, EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { DriverName } from './EmployeeName';
+import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
 import { formatDate, formatMoney, formatNumber, localized } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useFleetCatalog, useSetViolationCollected, useViolations } from '../api/fleet-queries';
@@ -247,7 +248,9 @@ export const CompanyViolationsDetailLayer = ({
           error={list.isError ? list.error : undefined}
           onRetry={() => void list.refetch()}
           dense
-          rowClassName={(v) => (v.collected ? 'bg-emerald-50 dark:bg-emerald-950/40' : undefined)}
+          // The same colours as the drivers' board, from the same place — a settled fine, or a fine
+          // from the old book («ويكون الصف لونه اخضر»). See `violationRowTone`.
+          rowClassName={violationRowTone}
         />
         {row !== null && (
           <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-800">
@@ -287,8 +290,11 @@ export const CompanyViolationsDetailLayer = ({
           error={driverList.isError ? driverList.error : undefined}
           onRetry={() => void driverList.refetch()}
           dense
-          rowClassName={(v) => (v.collected ? 'bg-emerald-50 dark:bg-emerald-950/40' : undefined)}
+          rowClassName={violationRowTone}
         />
+        {/* What the green means, under the two tables it colours — only while one of the book's
+            rows is actually in them. */}
+        {[...rows, ...driverRows].some((v) => v.fromOldBook) && <FromOldBookLegend />}
       </div>
     </SideLayer>
   );

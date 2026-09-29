@@ -240,6 +240,9 @@ export const toViolationDto = (
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
   driverName: doc.driverName ?? null,
   collected: doc.collected,
+  // `=== true`, not the stored value: rows written before the field existed have no key at all,
+  // and those are all rows somebody typed or the first import wrote — never the green ones.
+  fromOldBook: doc.fromOldBook === true,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -261,6 +264,8 @@ export const toGrievanceDto = (doc: FleetGrievanceDoc): FleetGrievanceDto => ({
  */
 export interface MaintenanceVisitJoins {
   vehicleCode: string | null;
+  /** The car's «التشغيل», read off the registry with its code. */
+  operationId: string | null;
 }
 
 export const toMaintenanceVisitDto = (
@@ -270,6 +275,7 @@ export const toMaintenanceVisitDto = (
   id: String(doc._id),
   vehicleId: vehicleIdOf(doc),
   vehicleCode: codeOr(doc, joins.vehicleCode),
+  operationId: joins.operationId,
   inDate: iso(doc.inDate),
   outDate: doc.outDate === null ? null : iso(doc.outDate),
   workshopId: String(doc.workshopId),

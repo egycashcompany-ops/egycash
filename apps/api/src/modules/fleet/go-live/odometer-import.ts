@@ -274,6 +274,12 @@ export const driverRef = (
 
 /** One row of a vehicle's chain, as it will be written. */
 export interface ChainRow {
+  /**
+   * The old system's own id for the row. Nothing here writes it — the model has no column for it —
+   * but a LATER export of the same book is joined to this one by it (`odometer-sync-import.ts`),
+   * so the planner hands it through. Optional only so a chain built by hand in a test needs none.
+   */
+  id?: string;
   date: Date;
   out: number;
   in: number | null;
@@ -380,6 +386,7 @@ export const planOdometerImport = (
         }
       }
       return {
+        id: entry.row.id,
         date: entry.row.date,
         out: entry.out,
         in: inReading,

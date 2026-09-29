@@ -40,6 +40,13 @@
 // DRIVERS ARE NAMES, as in the other books, with the same answer: matched, or the NAME KEPT ON
 // THE ROW AS TEXT and listed for HR. A fine is history; it is not less a fine for HR not knowing
 // the spelling.
+//
+// EVERY ROW IT WRITES SAYS WHERE IT CAME FROM — `fromOldBook: true`. «وكل اللى فى الملف ضيفه
+// ويكون الصف لونه اخضر»: the boards paint the book's rows green, and the flag is also how a
+// take-over knows which rows are the book's. `existingByKey` counts ONLY flagged rows, so the
+// reload (`violations-reload.ts`), which soft-deletes everything recorded here up to 23 September
+// before running this same plan again, is not told by its own deletions — or by a fine somebody
+// typed with the same facts — that the book is already there.
 import { Types } from 'mongoose';
 import { type FleetViolationSide } from '@ecms/contracts';
 import { fleetCatalogItemRepository, fleetCatalogItemService } from '../catalogs';
@@ -346,6 +353,7 @@ export const planViolationsImport = (
       driverEmployeeId: null,
       driverName: null,
       collected: row.collected,
+      fromOldBook: true,
       ...(deleted ? deletedFields(row.deletion) : liveFields()),
     };
     push(row.code, {
@@ -392,6 +400,7 @@ export const planViolationsImport = (
       driverEmployeeId: driver.id === null ? null : new Types.ObjectId(driver.id),
       driverName: driver.name,
       collected: row.collected,
+      fromOldBook: true,
       ...(deleted ? deletedFields(row.deletion) : liveFields()),
     };
     push(row.code, {
@@ -425,9 +434,15 @@ export interface ViolationsImportOutcome {
 
 /**
  * Write every car's rows and the grievance figures. Idempotent per row AS A MULTISET: a car that
- * already holds N rows of a shape gets only the rows beyond N, so a take-over neither duplicates
- * a row nor drops the second of two identical, legitimate ones — and a fine already written gets
- * the driver's NAME filled in where an earlier run left the driver empty.
+ * already holds N of the BOOK'S rows of a shape (`fromOldBook`, deleted ones included) gets only
+ * the rows beyond N, so a take-over neither duplicates a row nor drops the second of two
+ * identical, legitimate ones — and a fine already written gets the driver's NAME filled in where
+ * an earlier run left the driver empty.
+ *
+ * A grievance figure is written only where the (vehicle, year) has no LIVE one: a figure already
+ * on the screen — a person's, or one written by an earlier attempt — is left as it is and, when it
+ * differs from the book's, listed. The reload relies on exactly that: it deletes the figures
+ * recorded before its cutoff first, so the book's come back, and the ones somebody set since stay.
  */
 export const applyViolationsImport = async (
   plan: ViolationsPlan,

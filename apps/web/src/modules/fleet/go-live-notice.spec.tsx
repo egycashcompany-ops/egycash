@@ -250,6 +250,7 @@ describe('it lives on the settings page and nowhere else', () => {
     for (const step of [
       'vehicles', 'driver-photos', 'odometer', 'maintenance', 'violations', 'accidents',
       'vehicle-changes', 'drivers', 'odometer-sync', 'maintenance-sync', 'violations-reload', 'accidents-clear',
+      'violations-restore', 'odometer-fix',
     ]) {
       expect(source, step).toContain(`'${step}',`);
     }

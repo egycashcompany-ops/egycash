@@ -93,6 +93,8 @@ describe('the long-running processes are what import the vehicle registry', () =
     'startMaintenanceSyncGoLive',
     'startViolationsReloadGoLive',
     'startAccidentsClearGoLive',
+    'startViolationsRestoreGoLive',
+    'startOdometerFixGoLive',
   ];
   const cases = LONG_RUNNING.flatMap((path) => STARTERS.map((starter) => [path, starter]));
 

@@ -1,7 +1,8 @@
 // The workshop sync, against a real mongo — the owner's second workshop export brought onto the
 // visits the first one filled, in the order an operator meets it.
 //
-//   1. It WAITS for the workshop import: until that run is done it refuses, unclaimed.
+//   1. It WAITS for the workshop import (and for the new odometer export, marked done here): until
+//      that run is done it refuses, unclaimed.
 //   2. The run that can proceed applies each changed field by the three-way rule — the new value
 //      where ECMS still holds the import's, a count where ECMS already holds the new one, the
 //      person's value KEPT and listed where somebody changed it since — soft-deletes a visit the
@@ -31,6 +32,7 @@ import { FleetGoLiveRunModel } from '../../src/modules/fleet/go-live/go-live-run
 import { runVehicleGoLive } from '../../src/modules/fleet/go-live/vehicles';
 import { CARS_LOG_FILE, runOdometerGoLive } from '../../src/modules/fleet/go-live/odometer';
 import { runMaintenanceGoLive } from '../../src/modules/fleet/go-live/maintenance';
+import { ODOMETER_SYNC_GO_LIVE_MARK } from '../../src/modules/fleet/go-live/odometer-sync';
 import {
   MAINTENANCE_SYNC_GO_LIVE_MARK,
   MAINTENANCE_SYNC_NEW_FILE,
@@ -302,7 +304,18 @@ describe('it waits for the workshop import', () => {
   it('refuses, unclaimed, while the workshop run is not done — and writes why', async () => {
     await runVehicleGoLive(dataDir);
     await runOdometerGoLive(dataDir);
-    // The cars and the readings are in; the workshop book is not.
+    // The odometer book's own new export, which this step also waits for, is simply DONE here —
+    // its own spec proves what it writes, and this one has no readings for it to change.
+    const now = new Date();
+    await FleetGoLiveRunModel.create({
+      key: ODOMETER_SYNC_GO_LIVE_MARK,
+      status: 'done',
+      leaseUntil: now,
+      startedAt: now,
+      finishedAt: now,
+      outcome: {},
+    });
+    // The cars, the readings and the new readings are in; the workshop book is not.
     await runMaintenanceSyncGoLive(dataDir);
 
     expect(await FleetMaintenanceVisitModel.countDocuments({}).exec(), 'no visit was written').toBe(

@@ -516,7 +516,9 @@ describe('a run that died is finished by the next boot, without writing a row tw
       deletedByBook: 0,
       closedByExisting: 0,
       deletedRows: 0,
-      openConflicts: [],
+      // The tail the first attempt parked is still parked, and still named — the take-over's
+      // outcome replaces the first one's, and must not lose it.
+      openConflicts: ['OS-4 2026-09-17'],
       keptEcmsEditsCount: 2,
     });
     expect(

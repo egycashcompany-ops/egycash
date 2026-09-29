@@ -146,25 +146,61 @@ const describeGrievance = (
   `${codeOfId.get(String(row.vehicleId)) ?? '—'} ${row.year}: ${row.totalBeforeGrievance}`;
 
 /**
- * What an EARLIER attempt of this run wrote about its sweep, if one got that far.
+ * What an EARLIER attempt of this run wrote about its sweep, if one got that far — `null` when
+ * none did (no row, or a row that only holds a refusal).
  *
  * The one thing a take-over cannot find again for itself: which swept fines somebody had changed
  * since the 24th. The sweep's own write moves `updatedAt`, so once a row is swept that question
- * has no answer left in the collection — only on the run row, where the first attempt put it.
- * The counts need no such help (`countSweptBefore` finds them again), and neither do the kept
- * grievance figures, which nothing here touches.
+ * has no answer left in the collection — only on the run row, where the first attempt put it
+ * BEFORE it swept (`sweepRecordedBeforeCutoff`). The counts need no such help
+ * (`countSweptBefore` finds them again), and neither do the kept grievance figures, which nothing
+ * here touches.
  */
-const previousSweep = async (): Promise<{ changed: string[]; count: number }> => {
+const previousSweep = async (): Promise<{ changed: string[]; count: number } | null> => {
   const run = await FleetGoLiveRunModel.findOne({ key: VIOLATIONS_RELOAD_MARK }).lean().exec();
   const outcome = (run?.outcome ?? {}) as Partial<ViolationsReloadSweep>;
-  const changed = Array.isArray(outcome.changedSinceCutoff)
-    ? outcome.changedSinceCutoff.filter((entry): entry is string => typeof entry === 'string')
-    : [];
+  if (!Array.isArray(outcome.changedSinceCutoff)) return null;
+  const changed = outcome.changedSinceCutoff.filter(
+    (entry): entry is string => typeof entry === 'string',
+  );
   const count =
     typeof outcome.changedSinceCutoffCount === 'number'
       ? outcome.changedSinceCutoffCount
       : changed.length;
   return { changed, count };
+};
+
+/**
+ * This attempt's findings joined to an earlier attempt's, without counting a row twice.
+ *
+ * An earlier attempt wrote its list BEFORE it swept, so everything it could see is already in it.
+ * What this attempt finds again is what that attempt did not get to sweep — the same rows, already
+ * counted — so the count is the larger of the two, never their sum. Without an earlier list, this
+ * attempt's findings are the whole answer.
+ */
+const joinChanged = (
+  previous: { changed: string[]; count: number } | null,
+  found: readonly string[],
+): { changed: string[]; count: number } => {
+  if (previous === null) return { changed: found.slice(0, REPORT_CAP), count: found.length };
+  const joined = [...new Set([...previous.changed, ...found])];
+  return {
+    changed: joined.slice(0, REPORT_CAP),
+    count: Math.max(previous.count, found.length, joined.length),
+  };
+};
+
+/** The list the sweep keeps on the run row — read back into a failure's outcome, never lost. */
+const keptChangedList = async (): Promise<Record<string, unknown>> => {
+  try {
+    const kept = await previousSweep();
+    return kept === null
+      ? {}
+      : { changedSinceCutoff: kept.changed, changedSinceCutoffCount: kept.count };
+  } catch {
+    // The database that failed the sweep may fail this read too; the failure is still recorded.
+    return {};
+  }
 };
 
 /**
@@ -179,11 +215,30 @@ export const sweepRecordedBeforeCutoff = async (
   at: Date = new Date(),
 ): Promise<ViolationsReloadSweep> => {
   const cutoff = VIOLATIONS_RELOAD_CUTOFF;
-  const previous = await previousSweep();
   // Asked BEFORE the sweep — its own write moves `updatedAt` and the answer would be gone.
-  const changed = (await fleetViolationRepository.recordedBeforeChangedSince(cutoff)).map((row) =>
-    describeViolation(row, codeOfId),
+  const changed = joinChanged(
+    await previousSweep(),
+    (await fleetViolationRepository.recordedBeforeChangedSince(cutoff)).map((row) =>
+      describeViolation(row, codeOfId),
+    ),
   );
+  // And WRITTEN DOWN before the sweep, too. `updateMany` is not one atomic act across documents:
+  // a sweep cut off halfway has already moved `updatedAt` on the rows it reached, and a process
+  // that dies between the sweep and the next write to the run row takes the list with it. On the
+  // row first, the list survives both, and the next attempt joins it (`joinChanged`).
+  await FleetGoLiveRunModel.updateOne(
+    { key: VIOLATIONS_RELOAD_MARK },
+    {
+      $set: {
+        outcome: {
+          stage: 'sweeping',
+          cutoff: cutoff.toISOString(),
+          changedSinceCutoff: changed.changed,
+          changedSinceCutoffCount: changed.count,
+        },
+      },
+    },
+  ).exec();
   const keptRecordedSince = await fleetViolationRepository.countRecordedSince(cutoff);
 
   const sweptNow = await fleetViolationRepository.softDeleteRecordedBefore(cutoff, at);
@@ -193,7 +248,6 @@ export const sweepRecordedBeforeCutoff = async (
     'fleet go-live: violations recorded before 24 September swept (soft-deleted) — writing the book again',
   );
 
-  const all = [...new Set([...previous.changed, ...changed])];
   return {
     cutoff: cutoff.toISOString(),
     // The WHOLE sweep, found again from the rows themselves — a take-over's own modifiedCount is
@@ -201,8 +255,8 @@ export const sweepRecordedBeforeCutoff = async (
     deletedViolations: await fleetViolationRepository.countSweptBefore(cutoff),
     deletedGrievances: await fleetGrievanceRepository.countSweptBefore(cutoff),
     keptRecordedSince,
-    changedSinceCutoff: all.slice(0, REPORT_CAP),
-    changedSinceCutoffCount: previous.count + changed.length,
+    changedSinceCutoff: changed.changed,
+    changedSinceCutoffCount: changed.count,
     grievancesKeptSinceCutoff: (await fleetGrievanceRepository.recordedBeforeChangedSince(cutoff))
       .map((row) => describeGrievance(row, codeOfId))
       .slice(0, REPORT_CAP),
@@ -286,11 +340,13 @@ export const runViolationsReloadGoLive = async (dataDir?: string): Promise<void>
   } catch (error) {
     // Not one row of the book is written over a sweep that did not finish — the board would show
     // the book beside the rows it was meant to replace. Written to the row, left unfinished; the
-    // next boot after the lease runs the sweep again, which takes only what is still there.
+    // next boot after the lease runs the sweep again, which takes only what is still there. The
+    // list the sweep wrote down before it started is carried into the failure, not written over.
     await recordGoLiveFailure(VIOLATIONS_RELOAD_MARK, {
       stage: 'sweep',
       error: error instanceof Error ? error.message : String(error),
       failed: 1,
+      ...(await keptChangedList()),
     });
     logger.error(
       { err: error },

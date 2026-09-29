@@ -314,11 +314,31 @@ export const planMaintenanceSync = (oldRaw: unknown, newRaw: unknown): Maintenan
     unreadable: [],
     rejected: [],
   };
-  for (const [file, book] of [
-    ['old', oldBook],
-    ['new', newBook],
+  for (const [file, book, raw] of [
+    ['old', oldBook, oldRaw],
+    ['new', newBook, newRaw],
   ] as const) {
     plan.rejected.push(...book.rejected.map((row) => ({ file, ...row })));
+    // A row with no id of its own is named by its PLACE in its file (`row 12`), and the same place
+    // in the other file is another row — joined on that, it would be read as a change to a row it
+    // is not. So it is refused, as the odometer sync refuses one.
+    if (Array.isArray(raw)) {
+      raw.forEach((entry: unknown, index) => {
+        const id = (entry as { _id?: unknown } | null)?._id;
+        const named =
+          typeof id === 'string' ||
+          (typeof id === 'object' &&
+            id !== null &&
+            typeof (id as { $oid?: unknown }).$oid === 'string');
+        if (!named) {
+          plan.rejected.push({
+            file,
+            id: `row ${index}`,
+            reason: 'no row id — the two exports are compared by it',
+          });
+        }
+      });
+    }
     const seen = new Set<string>();
     for (const visit of book.visits) {
       if (seen.has(visit.id)) {
@@ -404,17 +424,24 @@ export type SyncDecision = 'unchanged' | 'alreadyThere' | 'apply' | 'keptEcmsEdi
  * before the rule itself: whether the change is a change at all once both sides are in the
  * model's terms (two spellings of one employee are not), and «already there» before «apply», so a
  * field equal to both sides is counted and never written.
+ *
+ * `oneValue` says what a side's LIST is. For every field but one it is several forms of ONE value,
+ * and a form both sides share means both sides are that value. For a counter the book left blank
+ * it is not: the old side is every stand-in the import MIGHT have written, only one of which it
+ * did — so the new counter matching one of the others says nothing about the visit, and the rule
+ * must still read ECMS. `decideVisitChange` passes `false` for the counter.
  */
 export const decideSyncChange = (
   ecms: ValueKey,
   old: readonly ValueKey[],
   next: readonly ValueKey[],
+  oneValue = true,
 ): SyncDecision => {
   const named = (keys: readonly ValueKey[]): (string | null)[] =>
     keys.filter((key): key is string | null => key !== undefined);
   const olds = named(old);
   const nexts = named(next);
-  if (olds.some((key) => nexts.includes(key))) return 'unchanged';
+  if (oneValue && olds.some((key) => nexts.includes(key))) return 'unchanged';
   if (ecms === undefined) return 'keptEcmsEdit';
   if (nexts.includes(ecms)) return 'alreadyThere';
   if (olds.includes(ecms)) return 'apply';
@@ -571,7 +598,8 @@ export const decideVisitChange = (
     }
     const old = bookKeysOf(change.old, field, names, standIns.old);
     const next = bookKeysOf(change.next, field, names, standIns.next);
-    return { field, decision: decideSyncChange(ecms, old, next), ecms, old, next };
+    const decision = decideSyncChange(ecms, old, next, field !== 'counter');
+    return { field, decision, ecms, old, next };
   });
 
 /** The NEW values a write needs that only the catalog and the chain can supply. */

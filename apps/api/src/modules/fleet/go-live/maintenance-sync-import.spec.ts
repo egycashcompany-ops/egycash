@@ -108,6 +108,16 @@ describe('the three-way rule', () => {
     expect(decideSyncChange('id-old', ['id-old'], [undefined])).toBe('apply');
   });
 
+  it('a stand-in the import MIGHT have written that equals the new counter proves nothing — ECMS is still read', () => {
+    // The chain now has a reading equal to the book's new counter, but the import wrote 99000.
+    const standIns = ['99000', '99860'];
+    expect(decideSyncChange('99000', standIns, ['99860'], false)).toBe('apply');
+    expect(decideSyncChange('99860', standIns, ['99860'], false)).toBe('alreadyThere');
+    expect(decideSyncChange('99700', standIns, ['99860'], false)).toBe('keptEcmsEdit');
+    // …where for one value in several forms, a shared form IS no change.
+    expect(decideSyncChange('99000', standIns, ['99860'])).toBe('unchanged');
+  });
+
   it('asks «already there» before «apply» — a field equal to both sides is counted, never written', () => {
     expect(decideSyncChange('x', ['x'], ['x'])).toBe('unchanged');
     expect(decideSyncChange('x', ['x', 'y'], ['x'])).toBe('unchanged');
@@ -251,6 +261,14 @@ describe('comparing the two exports', () => {
         id: '6aa65d669b4450de756c8705',
         reason: 'the same row id twice — the two exports are compared by it',
       },
+    ]);
+  });
+
+  it('refuses a row with no id of its own — its place in one file is another row in the other', () => {
+    const nameless: Record<string, unknown> = legacy({});
+    delete nameless['_id'];
+    expect(planMaintenanceSync([legacy({}), nameless], [legacy({})]).rejected).toEqual([
+      { file: 'old', id: 'row 1', reason: 'no row id — the two exports are compared by it' },
     ]);
   });
 
@@ -604,6 +622,13 @@ describe('the two real exports', () => {
         'counter',
         'apply',
       ]);
+      // A chain that has since grown a reading equal to the book's new counter does not make the
+      // change «no change»: ECMS still holds the import's stand-in, and the book's value is written.
+      expect(
+        decideVisitChange(change, untouched, names, { old: [STAND_IN, 99860], next: [] }).find(
+          (d) => d.field === 'counter',
+        )?.decision,
+      ).toBe('apply');
       const typed = { ...untouched, odometerAtService: 99850 } as EcmsVisit;
       expect(decide(change, typed).find(([f]) => f === 'counter')).toEqual([
         'counter',
@@ -662,11 +687,15 @@ describe('the step itself — its payload and its order', () => {
     );
   });
 
-  it('is its own run, versioned, and waits for the workshop book and both steps it stands on', () => {
+  it('is its own run, versioned, and waits for the workshop book, both steps it stands on, and the new odometer export', () => {
     expect(MAINTENANCE_SYNC_GO_LIVE_MARK).toBe('go-live:maintenance-sync:v1');
+    // The odometer sync adds the readings of 16 to 29 September that 18 of the new visits take
+    // their counter from — so it must be DONE first. It waits for nothing of the workshop's.
     expect(source).toMatch(
-      /waitForGoLiveRuns\(\[\s*VEHICLE_GO_LIVE_MARK,\s*ODOMETER_GO_LIVE_MARK,\s*MAINTENANCE_GO_LIVE_MARK,?\s*\]\)/,
+      /waitForGoLiveRuns\(\[\s*VEHICLE_GO_LIVE_MARK,\s*ODOMETER_GO_LIVE_MARK,\s*MAINTENANCE_GO_LIVE_MARK,\s*ODOMETER_SYNC_GO_LIVE_MARK,?\s*\]\)/,
     );
+    const odometerSync = readFileSync(join(HERE, 'odometer-sync.ts'), 'utf8');
+    expect(odometerSync, 'no wait the other way round').not.toMatch(/MAINTENANCE_\w*GO_LIVE_MARK/);
   });
 
   it('refuses before its claim — every condition an operator fixes and redeploys', () => {

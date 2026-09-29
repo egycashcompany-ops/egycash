@@ -79,7 +79,8 @@
 // والdeleted 1 زى ما هى»، «الداتا اللى ممسوحه متظهرش للمستخدم تبقى فى الداتا بيز فقط». Only a row
 // nobody has changed on ECMS is deleted: if any field of it holds a value neither export gave it —
 // a reading corrected, a driver put right — somebody decided about that row here, and it stays,
-// listed.
+// listed, with its closing reading as ECMS has it: what the new chain gives a deleted row there
+// is part of the deletion, and on a row kept live it would reopen the middle of the chain.
 //
 // THE CHAIN'S OWN RULES, unchanged, for everything that is written. Changes run first — the old
 // tails the new book closes, the rows it deleted — and a change that would OPEN a row runs after
@@ -92,6 +93,7 @@
 // has an open period, the row is closed against the earliest reading typed on the new screen when
 // that reading comes after it and above it (`closedByExisting`), and otherwise it is written
 // DELETED and the car is named (`openConflicts`) — the reading is kept and nothing is contested.
+// A take-over that finds such a row already written names it again, as the import names its own.
 // «The earliest reading typed on the new screen» is, here, the earliest live reading on the car
 // that no row of either export accounts for; the import could ask for the chain's head because,
 // on the day it ran, every reading on the car was one somebody had typed.
@@ -634,12 +636,21 @@ export const decideCarSync = (
       continue;
     }
     // A row the old system moved along the chain — to another day, or another opening reading —
-    // is listed; what else changed on it is still decided below.
-    if (change.fields.includes('date')) {
-      decision.unapplied.push(`${label}: date → ${day(next.chain.date)}`);
-    }
-    if (change.fields.includes('outReading')) {
-      decision.unapplied.push(`${label}: outReading ${old.chain.out} → ${next.chain.out}`);
+    // is listed WHOLE, and nothing of it is written. Its other changes belong to the place it
+    // moved to: a closing reading measured from an opening reading ECMS does not hold would write
+    // a distance nobody drove, and a deletion would take away a reading the chain still leans on
+    // where ECMS has it. Moving it is a person's decision, made with the correction flow's checks.
+    const moves = [
+      ...(change.fields.includes('date') ? [`date → ${day(next.chain.date)}`] : []),
+      ...(change.fields.includes('outReading')
+        ? [`outReading ${old.chain.out} → ${next.chain.out}`]
+        : []),
+    ];
+    if (moves.length > 0) {
+      decision.unapplied.push(
+        `${label}: ${moves.join(', ')} — the row would move along the chain, so none of ${change.fields.join(', ')} is written`,
+      );
+      continue;
     }
 
     // Every field this step compares, as ECMS holds it against both chains — a change is decided
@@ -679,11 +690,23 @@ export const decideCarSync = (
       notes: { old: notes === old.chain.notes, next: notes === next.chain.notes },
     } satisfies Record<AppliedField, { old: boolean; next: boolean }>;
 
+    // The old system's deletion, decided BEFORE the fields: it is applied only to a row nobody
+    // decided anything about on ECMS — every field still what one export or the other gave it.
+    const deletedSince = change.fields.includes('deleted') && next.chain.deleted;
+    const edited = APPLIED_FIELDS.filter((field) => !holds[field].old && !holds[field].next);
+    const deleting = deletedSince && !row.isDeleted && edited.length === 0;
+
     const set: Record<string, unknown> = {};
     const applied: AppliedField[] = [];
     let keptIn = false;
     for (const field of APPLIED_FIELDS) {
       if (!change.fields.includes(field)) continue;
+      // The closing reading of a row the old system deleted since belongs to that deletion: the
+      // planner stops closing a deleted row by the next one, so the new chain may give it none.
+      // Where the deletion is kept off (a person changed the row), the row is still a live link
+      // on ECMS, and emptying — or moving — its closing reading would reopen or tear the middle
+      // of the car's history. The deletion's own line on the run says why nothing was written.
+      if (field === 'inReading' && deletedSince && !row.isDeleted && !deleting) continue;
       const verdict = decideField(holds[field].next, holds[field].old);
       if (verdict === 'alreadyNew') {
         decision.changesAlreadyThere += 1;
@@ -729,13 +752,10 @@ export const decideCarSync = (
       }
     }
 
-    let deleting = false;
     let restoring: Pending['restoring'] = null;
     if (change.fields.includes('deleted')) {
       if (next.chain.deleted) {
-        // The old system deleted the row since. Deleted here only if nobody decided anything about
-        // it on ECMS: every field is still what one export or the other gave it.
-        const edited = APPLIED_FIELDS.filter((field) => !holds[field].old && !holds[field].next);
+        // The old system deleted the row since — decided above.
         if (row.isDeleted) {
           decision.changesAlreadyThere += 1;
         } else if (edited.length > 0) {
@@ -748,7 +768,6 @@ export const decideCarSync = (
             new: 'deleted',
           });
         } else {
-          deleting = true;
           Object.assign(set, deletedFields(next.chain.deletion, at));
         }
       } else if (!row.isDeleted) {
@@ -856,8 +875,22 @@ export const decideCarSync = (
 
   // ── The new rows, as the import writes them ──
   for (const planned of car.added) {
-    if (claimedNew.has(planned.id)) {
+    const found = claimedNew.get(planned.id);
+    if (found !== undefined) {
       decision.alreadyThere += 1;
+      // A tail an earlier attempt of this step PARKED — written deleted over a contested open
+      // period, by nobody — is still parked, and is named again: the take-over's outcome replaces
+      // the first attempt's, and a reading kept deleted that no line names is one nobody looks at.
+      // The import names its own buried rows on every run the same way.
+      if (
+        registered &&
+        !planned.chain.deleted &&
+        planned.chain.in === null &&
+        found.isDeleted &&
+        found.deletedBy == null
+      ) {
+        decision.openConflicts.push(`${car.code} ${day(planned.chain.date)}`);
+      }
       continue;
     }
     const { chain } = planned;

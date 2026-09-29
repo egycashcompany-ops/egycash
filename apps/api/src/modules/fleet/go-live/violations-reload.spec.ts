@@ -74,6 +74,7 @@ import {
 import {
   describeViolation,
   runViolationsReloadGoLive,
+  sweepRecordedBeforeCutoff,
   VIOLATIONS_RELOAD_CUTOFF,
   VIOLATIONS_RELOAD_MARK,
 } from './violations-reload';
@@ -386,15 +387,17 @@ describe('the run — sweep first, then the book, and nothing over a failed swee
           lean: () => ({ exec: async () => (previous === null ? null : { outcome: previous }) }),
         }) as never,
     );
-    vi.spyOn(FleetGoLiveRunModel, 'updateOne').mockImplementation(
-      () =>
-        ({
-          exec: async () => {
-            runs.log.push('progress');
-            return {};
-          },
-        }) as never,
-    );
+    // The run row, as far as the sweep's own notes go: what it writes is what a later read finds.
+    vi.spyOn(FleetGoLiveRunModel, 'updateOne').mockImplementation(((
+      _filter: unknown,
+      update: { $set: { outcome: Record<string, unknown> } },
+    ) => ({
+      exec: async () => {
+        runs.log.push('progress');
+        previous = update.$set.outcome;
+        return {};
+      },
+    })) as never);
 
     vi.spyOn(fleetViolationRepository, 'recordedBeforeChangedSince').mockResolvedValue([
       {
@@ -465,6 +468,7 @@ describe('the run — sweep first, then the book, and nothing over a failed swee
     await runViolationsReloadGoLive(dataDir);
     expect(runs.log).toEqual([
       'claim',
+      'progress', // the changed-since list, written down BEFORE the sweep moves `updatedAt`
       'sweep:violations',
       'sweep:grievances',
       'progress',
@@ -511,11 +515,15 @@ describe('the run — sweep first, then the book, and nothing over a failed swee
       new Error('primary stepped down'),
     );
     await runViolationsReloadGoLive(dataDir);
-    expect(runs.log).toEqual(['claim', 'failure']);
+    expect(runs.log).toEqual(['claim', 'progress', 'failure']);
     expect(runs.recordGoLiveFailure).toHaveBeenCalledWith(VIOLATIONS_RELOAD_MARK, {
       stage: 'sweep',
       error: 'primary stepped down',
       failed: 1,
+      // A sweep cut off halfway has already moved `updatedAt` on what it reached: the list it
+      // wrote down first is carried into the failure, so the next attempt still has it.
+      changedSinceCutoff: ['175 2025-03-06: 700 ✓'],
+      changedSinceCutoffCount: 1,
     });
     expect(written).toEqual([]);
     expect(runs.finishGoLiveRun).not.toHaveBeenCalled();
@@ -546,6 +554,61 @@ describe('the run — sweep first, then the book, and nothing over a failed swee
       grievancesWritten: 0,
       grievancesKept: [],
     });
+  });
+});
+
+describe('a take-over after a sweep that never finished', () => {
+  // Kept apart from the run above so its spies are its own: an earlier attempt wrote its list and
+  // died before (or during) the sweep, so this attempt finds the very same changed rows again.
+  afterEach(() => vi.restoreAllMocks());
+
+  it('joins the earlier list rather than adding to it — a row is counted once', async () => {
+    const stash = { changedSinceCutoff: ['175 2025-03-06: 700 ✓'], changedSinceCutoffCount: 1 };
+    vi.spyOn(FleetGoLiveRunModel, 'findOne').mockReturnValue({
+      lean: () => ({ exec: async () => ({ outcome: { stage: 'sweeping', ...stash } }) }),
+    } as never);
+    vi.spyOn(FleetGoLiveRunModel, 'updateOne').mockReturnValue({ exec: async () => ({}) } as never);
+    vi.spyOn(fleetViolationRepository, 'recordedBeforeChangedSince').mockResolvedValue([
+      {
+        kind: 'driver',
+        vehicleId: new Types.ObjectId(V175),
+        vehicleCode: null,
+        year: null,
+        date: new Date('2025-03-06T00:00:00.000Z'),
+        amount: 700,
+        collected: true,
+      },
+    ] as never);
+    vi.spyOn(fleetViolationRepository, 'countRecordedSince').mockResolvedValue(0);
+    vi.spyOn(fleetViolationRepository, 'softDeleteRecordedBefore').mockResolvedValue(1);
+    vi.spyOn(fleetViolationRepository, 'countSweptBefore').mockResolvedValue(1);
+    vi.spyOn(fleetGrievanceRepository, 'softDeleteRecordedBefore').mockResolvedValue(0);
+    vi.spyOn(fleetGrievanceRepository, 'countSweptBefore').mockResolvedValue(0);
+    vi.spyOn(fleetGrievanceRepository, 'recordedBeforeChangedSince').mockResolvedValue([]);
+
+    const sweep = await sweepRecordedBeforeCutoff(new Map([[V175, '175']]));
+    expect(sweep.changedSinceCutoff).toEqual(['175 2025-03-06: 700 ✓']);
+    expect(sweep.changedSinceCutoffCount, 'not 2 — the same row, found twice').toBe(1);
+  });
+
+  it('a row that only holds a refusal is no earlier list at all', async () => {
+    vi.spyOn(FleetGoLiveRunModel, 'findOne').mockReturnValue({
+      lean: () => ({
+        exec: async () => ({ outcome: { refused: true, reason: 'violations-not-done' } }),
+      }),
+    } as never);
+    vi.spyOn(FleetGoLiveRunModel, 'updateOne').mockReturnValue({ exec: async () => ({}) } as never);
+    vi.spyOn(fleetViolationRepository, 'recordedBeforeChangedSince').mockResolvedValue([]);
+    vi.spyOn(fleetViolationRepository, 'countRecordedSince').mockResolvedValue(0);
+    vi.spyOn(fleetViolationRepository, 'softDeleteRecordedBefore').mockResolvedValue(0);
+    vi.spyOn(fleetViolationRepository, 'countSweptBefore').mockResolvedValue(0);
+    vi.spyOn(fleetGrievanceRepository, 'softDeleteRecordedBefore').mockResolvedValue(0);
+    vi.spyOn(fleetGrievanceRepository, 'countSweptBefore').mockResolvedValue(0);
+    vi.spyOn(fleetGrievanceRepository, 'recordedBeforeChangedSince').mockResolvedValue([]);
+
+    const sweep = await sweepRecordedBeforeCutoff(new Map());
+    expect(sweep.changedSinceCutoff).toEqual([]);
+    expect(sweep.changedSinceCutoffCount).toBe(0);
   });
 });
 

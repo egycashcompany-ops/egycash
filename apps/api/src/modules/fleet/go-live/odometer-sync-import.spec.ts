@@ -517,6 +517,20 @@ describe('bringing a change onto the row the import wrote', () => {
     ]);
   });
 
+  it('lists a row the old system MOVED along the chain whole, and writes nothing of it', () => {
+    const newBook = [
+      OLD[0] as ParsedLogRow,
+      book({ ...(OLD[1] as ParsedLogRow), id: 't', date: d('2026-09-03'), in: 190 }),
+    ];
+    const rows = importOf(OLD).get('150') as Stored[];
+    const decision = decideCarSync(carOf(sync(OLD, newBook)), rows, new Map(), AT);
+    expect(decision.unapplied).toEqual([
+      '150 2026-09-02: date → 2026-09-03 — the row would move along the chain, so none of date, inReading is written',
+    ]);
+    expect(decision.updates).toEqual([]);
+    expect(decision.changed).toEqual({});
+  });
+
   it('a row the next new row closes — the book still gives it no closing reading — is closed by the chain', () => {
     const newBook = [
       OLD[0] as ParsedLogRow,
@@ -619,6 +633,51 @@ describe('a row the old system has deleted since', () => {
       isDeleted: true,
       deletedAt: AT,
     });
+  });
+
+  it('a take-over names the tail it parked again — the outcome it writes replaces the first one', () => {
+    const rows = importOf(OLD).get('150') as Stored[];
+    Object.assign(rows[1] as Stored, { driver1Name: 'سائق صححه أحد', __v: 1 });
+    const plan = sync(OLD, NEW);
+    execute(rows, decideCarSync(carOf(plan), rows, new Map(), AT));
+    const again = decideCarSync(carOf(plan), rows, new Map(), AT);
+    expect(again.inserts).toEqual([]);
+    expect(again.updates).toEqual([]);
+    expect(again.alreadyThere).toBe(2);
+    expect(again.openConflicts, 'still parked, still named').toEqual(['150 2026-09-17']);
+  });
+
+  it('a row kept live against the deletion keeps its closing reading — the middle of the chain is never reopened', () => {
+    const oldBook = [
+      book({ id: 'a', date: d('2026-09-01'), out: 100, in: null }),
+      book({ id: 'm', date: d('2026-09-02'), out: 150, in: null }),
+      book({ id: 'z', date: d('2026-09-03'), out: 200, in: 260 }),
+    ];
+    const newBook = [
+      oldBook[0] as ParsedLogRow,
+      book({ ...oldBook[1], id: 'm', deletion: { isDeleted: true, deletedAt } }),
+      oldBook[2] as ParsedLogRow,
+    ];
+    const plan = sync(oldBook, newBook);
+    expect(carOf(plan).changes.map((change) => [change.id, change.fields])).toEqual([
+      ['a', ['inReading']],
+      ['m', ['inReading', 'deleted']],
+    ]);
+    const rows = importOf(oldBook).get('150') as Stored[];
+    Object.assign(rows[1] as Stored, { driver1Name: 'سائق صححه أحد', __v: 1 });
+    const decision = decideCarSync(carOf(plan), rows, new Map(), AT);
+    expect(decision.keptEcmsEdits.map((edit) => [edit.date, edit.field])).toEqual([
+      ['2026-09-02', 'deleted'],
+    ]);
+    expect(
+      decision.updates.map((update) => String(update.id)),
+      'row m is not written at all',
+    ).not.toContain(String(rows[1]?._id));
+    execute(rows, decision);
+    expect(
+      rows.filter((row) => !row.isDeleted && row.inReading === null),
+      'no open period in the middle of the car’s history',
+    ).toEqual([]);
   });
 
   it('a deletion ECMS already has is counted, not written', () => {

@@ -139,7 +139,7 @@ describe('what the notice says', () => {
     );
     expect(markup).toContain('data-go-live-state="done"');
     expect(markup).toContain('استيراد دفتر العداد');
-    expect(markup, 'a count, in words').toContain('قراءات أُضيفت');
+    expect(markup, 'a count, in words').toContain('صفوف أُضيفت');
     expect(markup, 'the names, verbatim, for HR').toContain('أضفهم هناك');
     expect(markup).toContain('عمرو عنتر على على');
     expect(markup).toContain('محمد احمد — 0100026, 0100027');
@@ -245,9 +245,12 @@ describe('it lives on the settings page and nowhere else', () => {
     expect(source).toContain('<GoLiveRunsPanel />');
   });
 
-  it('the panel names all six steps, so none of them quietly stops being reported', () => {
+  it('the panel names every step, so none of them quietly stops being reported', () => {
     const source = readFileSync(join(__dirname, 'components', 'GoLiveNotice.tsx'), 'utf8');
-    for (const step of ['vehicles', 'driver-photos', 'odometer', 'maintenance', 'violations', 'accidents']) {
+    for (const step of [
+      'vehicles', 'driver-photos', 'odometer', 'maintenance', 'violations', 'accidents',
+      'vehicle-changes', 'drivers', 'odometer-sync', 'maintenance-sync', 'violations-reload', 'accidents-clear',
+    ]) {
       expect(source, step).toContain(`'${step}',`);
     }
   });

@@ -26,6 +26,9 @@
 // a visit that runs first takes the last reading from before the 16th — car 153's visit of 27
 // September a reading some 700 km short — and keeps it, correctly by its own rule and forever.
 // The odometer sync waits for nothing of the workshop's, so the two cannot wait on each other.
+// And it is a wait on that step being DONE, not merely started: an odometer sync that refuses or
+// fails holds this one back with it, on purpose, and says so on its own row — a visit that took a
+// reading from a half-applied chain would keep that reading forever.
 //
 // IT IS IDEMPOTENT, which is what makes the lease's take-over safe here. A field this run already
 // wrote reads as «already there» to the next attempt, and a visit it already added is found by the
@@ -49,6 +52,7 @@ import { isNobodyInWorkshop, planMaintenanceImport } from './maintenance-import'
 import { applyMaintenanceSync, planMaintenanceSync } from './maintenance-sync-import';
 import { ODOMETER_GO_LIVE_MARK } from './odometer';
 import { resolveDrivers } from './odometer-import';
+import { ODOMETER_SYNC_GO_LIVE_MARK } from './odometer-sync';
 import { resolveGoLiveDataDir, VEHICLE_GO_LIVE_MARK } from './vehicles';
 
 /**
@@ -94,17 +98,19 @@ export const runMaintenanceSyncGoLive = async (dataDir?: string): Promise<void> 
     return;
   }
 
-  // The workshop book, and the two steps it stands on — see the header. Checked before the admin
-  // so the reason on the row is the one that will actually change between this boot and the next.
+  // The workshop book, the two steps it stands on, and the odometer book's own new export — see
+  // the header. Checked before the admin so the reason on the row is the one that will actually
+  // change between this boot and the next.
   if (
     !(await waitForGoLiveRuns([
       VEHICLE_GO_LIVE_MARK,
       ODOMETER_GO_LIVE_MARK,
       MAINTENANCE_GO_LIVE_MARK,
+      ODOMETER_SYNC_GO_LIVE_MARK,
     ]))
   ) {
     logger.warn(
-      'fleet go-live: the vehicle registry, the odometer book or the workshop book has not finished importing — the new workshop export waits for the next boot; nothing was applied and the run is NOT claimed',
+      'fleet go-live: the vehicle registry, the odometer book, the workshop book or the new odometer export has not finished — the new workshop export waits for the next boot; nothing was applied and the run is NOT claimed',
     );
     await recordGoLiveRefusal(MAINTENANCE_SYNC_GO_LIVE_MARK, { reason: 'maintenance-not-done' });
     return;
@@ -144,16 +150,21 @@ export const runMaintenanceSyncGoLive = async (dataDir?: string): Promise<void> 
     return;
   }
 
-  // HR is asked once for every spelling on the NEW side — the names this run may write, and the
-  // ones the run reports — and once more for the old side's own, which are only compared.
+  // HR is asked once for every spelling this run may WRITE — the new rows' drivers, and a changed
+  // row's driver only where the export changed that driver — and the run reports exactly those:
+  // a name on a changed row that nobody is writing is no news to whoever reads the notice. The
+  // old side's spellings of those same drivers are asked for once more, and only compared.
+  const changedDrivers = (side: 'old' | 'next'): (string | null)[] =>
+    plan.changes.flatMap((change) => [
+      change.fields.includes('driverIn') ? change[side].driver : null,
+      change.fields.includes('driverOut') ? change[side].driver2 : null,
+    ]);
   const newSide = [
     ...plan.added.flatMap((visit) => [visit.driver, visit.driver2]),
-    ...plan.changes.flatMap((change) => [change.next.driver, change.next.driver2]),
+    ...changedDrivers('next'),
   ];
   const drivers = await resolveDrivers(newSide, isNobodyInWorkshop);
-  const oldOnly = plan.changes
-    .flatMap((change) => [change.old.driver, change.old.driver2])
-    .filter((name) => !newSide.includes(name));
+  const oldOnly = changedDrivers('old').filter((name) => !newSide.includes(name));
   const oldDrivers = await resolveDrivers(oldOnly, isNobodyInWorkshop);
   const driverIds = new Map([...oldDrivers.ids, ...drivers.ids]);
   const vehicleIdByCode = await fleetVehicleRepository.codeIndex();

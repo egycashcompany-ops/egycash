@@ -70,3 +70,15 @@ describe('the width a table insists on', () => {
     expect(markup.slice(0, markup.indexOf('<table'))).toContain('overflow-x-auto');
   });
 });
+
+describe('a wide table stays inside its own scroll', () => {
+  // «الشاشة بتبوس كده في التليفون» — the vehicles screen zoomed out on a phone. A cell's
+  // `sr-only` label (absolutely positioned, no positioned ancestor) escaped the scroll's clip and
+  // stretched the whole document to the table's width. The scroll wrapper is its containing block.
+  it('positions the scroll wrapper, so nothing absolutely placed in a cell escapes it', () => {
+    const markup = renderToStaticMarkup(
+      <DataTable columns={columns(12)} rows={ROWS} rowKey={(row) => row.id} />,
+    );
+    expect(markup).toMatch(/^<div class="relative overflow-x-auto/);
+  });
+});

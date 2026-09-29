@@ -308,8 +308,15 @@ export const DataTable = <T,>({
   })();
 
   return (
+    // `relative` IS THE CONTAINING BLOCK, and it is what keeps a wide table inside its own scroll.
+    // A cell's absolutely positioned child with no positioned ancestor — the `sr-only` label of a
+    // file input, on the vehicles screen — takes the page as its containing block, escapes the
+    // `overflow-x-auto` clip, and stretches the DOCUMENT to the table's width: on a phone the
+    // whole screen zoomed out to fit it («الشاشة بتبوس كده في التليفون»). Positioned here, every
+    // such child is clipped by the scroll like the rest of the table.
     <div
       className={cn(
+        'relative',
         stickyHead ? 'h-full overflow-auto' : 'overflow-x-auto',
         !embedded &&
           'rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',

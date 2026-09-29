@@ -22,6 +22,7 @@ import { startViolationsReloadGoLive } from './modules/fleet/go-live/violations-
 import { startAccidentsClearGoLive } from './modules/fleet/go-live/accidents-clear';
 import { startViolationsRestoreGoLive } from './modules/fleet/go-live/violations-restore';
 import { startOdometerFixGoLive } from './modules/fleet/go-live/odometer-fix';
+import { startDriversExtraGoLive } from './modules/fleet/go-live/drivers-extra';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
@@ -48,6 +49,8 @@ const main = async (): Promise<void> => {
   // «حل كل المشاكل دى كلها» — the ticks the reload took back, and cars 150 / 153's readings.
   startViolationsRestoreGoLive();
   startOdometerFixGoLive();
+  // «ضيف عادى» — the drivers' facts and scans of employees outside a driving seat.
+  startDriversExtraGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

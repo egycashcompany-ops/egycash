@@ -142,7 +142,7 @@ export const explainUnmatched = async (
  * Fleet about (ADR-023) before it will plant a scan on a profile — the driver twin of the
  * `fleetVehicle.edit` the vehicle step learned the hard way.
  */
-const goLiveContext = (adminId: string): AuthContext => ({
+export const goLiveContext = (adminId: string): AuthContext => ({
   userId: adminId,
   sessionId: 'go-live:driver-photos',
   branchId: null,

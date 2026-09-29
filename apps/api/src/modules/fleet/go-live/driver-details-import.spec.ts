@@ -242,3 +242,26 @@ describe('the two real books', () => {
     expect(plan.duplicateCodes).toEqual([]);
   });
 });
+
+describe('a drivers-book row that fits two people', () => {
+  // «محمد عبد الله محمد» fits a driver and somebody in another seat; the book is a book of drivers.
+  const two = [
+    { code: '0100028', fullNameAr: 'محمد عبد الله محمد عبد المحسن', phone: null },
+    { code: '0100615', fullNameAr: 'محمد عبد الله محمد حسن', phone: null },
+  ];
+  const row = book({
+    name: 'محمد عبد الله محمد',
+    licenseType: 'أولى',
+    label: 'محمد عبد الله محمد',
+  });
+
+  it('stays ambiguous when nothing tells them apart', () => {
+    expect(planDriverDetails([], [row], two).ambiguousLegacy).toHaveLength(1);
+  });
+
+  it('goes to the one in a driving seat, when exactly one is', () => {
+    const plan = planDriverDetails([], [row], two, new Set(['0100028']));
+    expect(plan.ambiguousLegacy).toEqual([]);
+    expect(plan.drivers).toMatchObject([{ code: '0100028', licenseType: 'اولى' }]);
+  });
+});

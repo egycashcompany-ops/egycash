@@ -315,6 +315,12 @@ export const planDriverDetails = (
   details: readonly DetailsRow[],
   legacy: readonly LegacyDriverRow[],
   roster: readonly Pick<DirectoryEmployee, 'code' | 'fullNameAr' | 'phone'>[],
+  /**
+   * Codes that settle an AMBIGUOUS drivers-book row when exactly one of its candidates is among
+   * them — the people in a driving seat. «محمد عبد الله محمد» fits a driver and an office clerk;
+   * the drivers book is a book of drivers. Empty (the default) settles nothing.
+   */
+  prefer: ReadonlySet<string> = new Set(),
 ): DriverDetailsPlan => {
   const plan: DriverDetailsPlan = {
     drivers: [],
@@ -357,7 +363,13 @@ export const planDriverDetails = (
       plan.deletedRows.push(row.label);
       continue;
     }
-    const match = matchLegacyRow(row, candidates);
+    const found = matchLegacyRow(row, candidates);
+    const preferred =
+      found.kind === 'ambiguous' ? found.codes.filter((code) => prefer.has(code)) : [];
+    const match: LegacyMatch =
+      found.kind === 'ambiguous' && preferred.length === 1
+        ? { kind: 'matched', code: preferred[0] as string, how: 'name' }
+        : found;
     if (match.kind === 'unmatched') {
       plan.unmatchedLegacy.push(row.label);
       continue;

@@ -58,7 +58,18 @@ export const runViolationsRestoreGoLive = async (): Promise<void> => {
       noTwin: outcome.noTwin.slice(0, REPORT_CAP),
       keptSinceReload: outcome.keptSinceReload.slice(0, REPORT_CAP),
       laterTicks: outcome.laterTicks,
+      unreadable: outcome.unreadable.slice(0, REPORT_CAP),
+      failures: outcome.failures.slice(0, REPORT_CAP),
     };
+    if (outcome.failures.length > 0) {
+      // Left unfinished: the next boot after the lease retries, and every write here is guarded,
+      // so what already landed is found landed.
+      await recordGoLiveFailure(VIOLATIONS_RESTORE_MARK, {
+        ...counts,
+        failed: outcome.failures.length,
+      });
+      return;
+    }
     await finishGoLiveRun(VIOLATIONS_RESTORE_MARK, counts);
     logger.info(
       counts,

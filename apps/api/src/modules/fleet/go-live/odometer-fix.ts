@@ -29,7 +29,15 @@ import {
 } from './go-live-run.model';
 import { ODOMETER_SYNC_GO_LIVE_MARK } from './odometer-sync';
 
-export const ODOMETER_FIX_GO_LIVE_MARK = 'go-live:odometer-fix:v1';
+/**
+ * v1 set the two closing readings and found each 29 September reading still blocked — by the
+ * reading typed on ECMS with the same slip: car 150 opened on 24 September at 154,898,652, car
+ * 153 on 23 September at 145,000, both still open and both below or far above the book's chain
+ * around them. v2 takes those two typed rows off (softly — «تبقى فى الداتا بيز فقط»), which is
+ * the owner's «خد قراءة السيستم القديم» applied to the rest of the same slip, and then brings the
+ * book's 29 September readings back.
+ */
+export const ODOMETER_FIX_GO_LIVE_MARK = 'go-live:odometer-fix:v2';
 export const ODOMETER_FIX_GO_LIVE_LEASE_MS = 30 * 60 * 1000;
 
 /** The two readings the sync kept, and the book's figure for each — from its own report. */
@@ -42,6 +50,15 @@ export const TYPED_READINGS = [
 export const PARKED_READINGS = [
   { code: '150', day: '2026-09-29', out: 165764 },
   { code: '153', day: '2026-09-29', out: 145800 },
+] as const;
+
+/**
+ * The two OPEN readings typed on ECMS with the slip — the figures the v1 run listed. Only a live,
+ * open row at exactly this opening figure is taken off: the book never wrote either figure.
+ */
+export const TYPED_OPEN_READINGS = [
+  { code: '150', out: 154898652 },
+  { code: '153', out: 145000 },
 ] as const;
 
 /** Where the car's readings are listed from, when a parked one cannot come back on its own. */
@@ -68,6 +85,8 @@ export interface OdometerFixOutcome {
   stillParked: string[];
   /** Cars the registry does not have — nothing to do. */
   notInRegistry: string[];
+  /** «code: figure» — the open readings typed with the slip, taken off (kept in the database). */
+  typedRemoved: string[];
 }
 
 export const applyOdometerFix = async (): Promise<OdometerFixOutcome> => {
@@ -78,6 +97,7 @@ export const applyOdometerFix = async (): Promise<OdometerFixOutcome> => {
     closedAgainstOpen: [],
     stillParked: [],
     notInRegistry: [],
+    typedRemoved: [],
   };
 
   for (const fix of TYPED_READINGS) {
@@ -111,6 +131,16 @@ export const applyOdometerFix = async (): Promise<OdometerFixOutcome> => {
     if (written.modifiedCount === 1)
       outcome.corrected.push(`${fix.code} ${fix.day}: ${fix.typed} → ${fix.book}`);
     else outcome.correctedAlready.push(`${fix.code} ${fix.day}`);
+  }
+
+  for (const typed of TYPED_OPEN_READINGS) {
+    const vehicle = await fleetVehicleRepository.findByCode(typed.code);
+    if (vehicle === null) continue;
+    const written = await FleetOdometerLogModel.updateOne(
+      { vehicleId: vehicle._id, isDeleted: false, outReading: typed.out, inReading: null },
+      { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: null }, $inc: { __v: 1 } },
+    ).exec();
+    if (written.modifiedCount === 1) outcome.typedRemoved.push(`${typed.code}: ${typed.out}`);
   }
 
   for (const parked of PARKED_READINGS) {

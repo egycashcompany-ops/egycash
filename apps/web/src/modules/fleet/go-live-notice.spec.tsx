@@ -229,7 +229,7 @@ describe('the rules', () => {
  * walls of names, permanent, above the data on every screen in the module: «انا مش عاوز الرسايل
  * تظهر هنا». One page, not six.
  */
-describe('it lives on the settings page and nowhere else', () => {
+describe('it is shown on no screen at all', () => {
   const PAGES = join(__dirname, 'pages');
 
   it('NO fleet screen renders it above its table', () => {
@@ -240,9 +240,9 @@ describe('it lives on the settings page and nowhere else', () => {
     expect(offenders, 'the data goes on the screen; the story of how it got there does not').toEqual([]);
   });
 
-  it('the settings page renders every run in one panel', () => {
+  it('and not on the settings page either — «نحذف الرسايل دى متظهرش خالص»', () => {
     const source = readFileSync(join(PAGES, 'FleetSettingsPage.tsx'), 'utf8');
-    expect(source).toContain('<GoLiveRunsPanel />');
+    expect(source).not.toContain('<GoLiveRunsPanel />');
   });
 
   it('the panel names every step, so none of them quietly stops being reported', () => {

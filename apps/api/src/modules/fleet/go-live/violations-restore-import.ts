@@ -65,8 +65,13 @@ export interface AuditTrailEntry {
 
 /** An audited value, back in the shape the document stores it in. */
 export const docValue = (field: string, value: unknown): unknown => {
-  if (value === null || value === undefined) return null;
-  if (ID_FIELDS.has(field)) return new Types.ObjectId(String(value));
+  if (value === null || value === undefined || value === '') return null;
+  if (ID_FIELDS.has(field)) {
+    // An id the trail did not write as one (the first run failed on exactly this) is not a value
+    // this step can put back: `undefined` drops the field rather than the whole run.
+    const text = String(value);
+    return /^[0-9a-f]{24}$/i.test(text) ? new Types.ObjectId(text) : undefined;
+  }
   if (field === 'date') return value instanceof Date ? value : new Date(String(value));
   return value;
 };
@@ -85,6 +90,8 @@ export interface FineEdits {
   before: Partial<Record<RestorableField, unknown>>;
   after: Partial<Record<RestorableField, unknown>>;
   deleted: { at: Date; by: string } | null;
+  /** Fields whose audited value is not one this step can write back. */
+  unreadable: string[];
 }
 
 /**
@@ -92,7 +99,7 @@ export interface FineEdits {
  * FIRST «old») and the value it was left at (the LAST «new»). A field set and set back nets out.
  */
 export const foldFineEdits = (entries: readonly AuditTrailEntry[]): FineEdits => {
-  const edits: FineEdits = { before: {}, after: {}, deleted: null };
+  const edits: FineEdits = { before: {}, after: {}, deleted: null, unreadable: [] };
   for (const entry of [...entries].sort((a, b) => a.at.getTime() - b.at.getTime())) {
     if (entry.action === 'delete') {
       edits.deleted = { at: entry.at, by: entry.userId ?? '' };
@@ -101,8 +108,14 @@ export const foldFineEdits = (entries: readonly AuditTrailEntry[]): FineEdits =>
     for (const change of entry.changes) {
       const field = change.field as RestorableField;
       if (!(RESTORABLE_FIELDS as readonly string[]).includes(field)) continue;
-      if (!(field in edits.before)) edits.before[field] = docValue(field, change.old);
-      edits.after[field] = docValue(field, change.new);
+      const before = docValue(field, change.old);
+      const after = docValue(field, change.new);
+      if (before === undefined || after === undefined) {
+        edits.unreadable.push(field);
+        continue;
+      }
+      if (!(field in edits.before)) edits.before[field] = before;
+      edits.after[field] = after;
     }
   }
   for (const field of Object.keys(edits.after) as RestorableField[]) {
@@ -151,6 +164,10 @@ export interface RestoreOutcome {
   laterTicks: string[];
   /** Audit entries read in the window, by kind. */
   entries: { fines: number; yearTicks: number };
+  /** Audited values that are not an id this step can write — «id: field». */
+  unreadable: string[];
+  /** Fines or blocks that could not be written, with why. The rest were still restored. */
+  failures: string[];
 }
 
 /**
@@ -170,6 +187,8 @@ export const applyViolationsRestore = async (
     keptSinceReload: [],
     laterTicks: [],
     entries: { fines: 0, yearTicks: 0 },
+    unreadable: [],
+    failures: [],
   };
 
   const trail = (
@@ -230,9 +249,12 @@ export const applyViolationsRestore = async (
       const key = twinKey(doc);
       twins.set(key, [...(twins.get(key) ?? []), doc]);
     }
-    for (const row of swept) {
+    // ONE FINE AT A TIME, each on its own: a fine this step cannot read (the first run failed the
+    // whole restore on one) is listed, and the next fine is still restored.
+    const restoreOne = async (row: FleetViolationDoc): Promise<void> => {
       const edits = foldFineEdits(byFine.get(String(row._id)) ?? []);
-      if (Object.keys(edits.after).length === 0 && edits.deleted === null) continue;
+      for (const field of edits.unreadable) outcome.unreadable.push(`${String(row._id)}: ${field}`);
+      if (Object.keys(edits.after).length === 0 && edits.deleted === null) return;
       const then = atCutoff(row, edits);
       const twin = twins.get(twinKey(then))?.shift();
       if (twin === undefined) {
@@ -244,7 +266,7 @@ export const applyViolationsRestore = async (
             ? String(then.year ?? '—')
             : (then.date?.toISOString().slice(0, 10) ?? '—');
         outcome.noTwin.push(`${code} ${when}: ${then.amount}`);
-        continue;
+        return;
       }
       if (edits.deleted !== null) {
         const written = await FleetViolationModel.updateOne(
@@ -259,17 +281,17 @@ export const applyViolationsRestore = async (
           },
         ).exec();
         if (written.modifiedCount === 1) outcome.deletedAgain += 1;
-        continue;
+        return;
       }
       const set: Record<string, unknown> = {};
       for (const field of Object.keys(edits.after) as RestorableField[]) {
         if (!sameStored((twin as unknown as Record<string, unknown>)[field], edits.before[field])) {
           outcome.keptSinceReload.push(`${String(twin._id)}: ${field}`);
-          continue;
+          return;
         }
         set[field] = edits.after[field];
       }
-      if (Object.keys(set).length === 0) continue;
+      if (Object.keys(set).length === 0) return;
       // The twin as it was read, field by field, rides inside the write: a person correcting it in
       // the meantime keeps their correction.
       const guard: Record<string, unknown> = { _id: twin._id, isDeleted: false, __v: twin.__v };
@@ -284,6 +306,15 @@ export const applyViolationsRestore = async (
       } else {
         for (const field of Object.keys(set))
           outcome.keptSinceReload.push(`${String(twin._id)}: ${field}`);
+      }
+    };
+    for (const row of swept) {
+      try {
+        await restoreOne(row);
+      } catch (error) {
+        outcome.failures.push(
+          `${String(row._id)}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
   }
@@ -309,17 +340,21 @@ export const applyViolationsRestore = async (
       outcome.laterTicks.push(label);
       continue;
     }
-    const written = await FleetViolationModel.updateMany(
-      {
-        isDeleted: false,
-        fromOldBook: true,
-        vehicleId: new Types.ObjectId(vehicleId),
-        collected: { $ne: collected },
-        $or: violationYearBranches([Number(year)]),
-      },
-      { $set: { collected }, $inc: { __v: 1 } },
-    ).exec();
-    outcome.yearTicksRestored += written.modifiedCount;
+    try {
+      const written = await FleetViolationModel.updateMany(
+        {
+          isDeleted: false,
+          fromOldBook: true,
+          vehicleId: new Types.ObjectId(vehicleId),
+          collected: { $ne: collected },
+          $or: violationYearBranches([Number(year)]),
+        },
+        { $set: { collected }, $inc: { __v: 1 } },
+      ).exec();
+      outcome.yearTicksRestored += written.modifiedCount;
+    } catch (error) {
+      outcome.failures.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
   return outcome;
 };

@@ -148,3 +148,21 @@ describe('the step', () => {
     expect(claim).toBeGreaterThan(wait);
   });
 });
+
+describe('a value the trail did not write as an id', () => {
+  // The first production run failed the whole restore on one such value: «input must be a 24
+  // character hex string». It is now dropped for that fine, listed, and the rest carries on.
+  it('is dropped and listed, not thrown', () => {
+    expect(docValue('driverEmployeeId', 'not-an-id')).toBeUndefined();
+    const edits = foldFineEdits([
+      entry({
+        changes: [
+          { field: 'driverEmployeeId', old: 'not-an-id', new: String(other) },
+          { field: 'collected', old: false, new: true },
+        ],
+      }),
+    ]);
+    expect(edits.unreadable).toEqual(['driverEmployeeId']);
+    expect(edits.after).toEqual({ collected: true });
+  });
+});

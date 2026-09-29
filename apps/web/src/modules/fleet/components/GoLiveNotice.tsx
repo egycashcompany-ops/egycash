@@ -34,7 +34,9 @@ export type GoLiveStep =
   | 'odometer-sync'
   | 'maintenance-sync'
   | 'violations-reload'
-  | 'accidents-clear';
+  | 'accidents-clear'
+  | 'violations-restore'
+  | 'odometer-fix';
 
 /** The keys the notice never prints as a line — they are the state, shown as the title. */
 const STATE_KEYS = new Set(['refused', 'refusedAt', 'failedAt']);
@@ -166,6 +168,8 @@ const STEPS: readonly GoLiveStep[] = [
   'maintenance-sync',
   'violations-reload',
   'accidents-clear',
+  'violations-restore',
+  'odometer-fix',
 ];
 
 /**

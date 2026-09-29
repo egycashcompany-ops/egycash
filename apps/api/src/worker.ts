@@ -20,6 +20,8 @@ import { startOdometerSyncGoLive } from './modules/fleet/go-live/odometer-sync';
 import { startMaintenanceSyncGoLive } from './modules/fleet/go-live/maintenance-sync';
 import { startViolationsReloadGoLive } from './modules/fleet/go-live/violations-reload';
 import { startAccidentsClearGoLive } from './modules/fleet/go-live/accidents-clear';
+import { startViolationsRestoreGoLive } from './modules/fleet/go-live/violations-restore';
+import { startOdometerFixGoLive } from './modules/fleet/go-live/odometer-fix';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
@@ -43,6 +45,9 @@ const main = async (): Promise<void> => {
   startMaintenanceSyncGoLive();
   startViolationsReloadGoLive();
   startAccidentsClearGoLive();
+  // «حل كل المشاكل دى كلها» — the ticks the reload took back, and cars 150 / 153's readings.
+  startViolationsRestoreGoLive();
+  startOdometerFixGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

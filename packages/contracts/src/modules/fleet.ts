@@ -2802,3 +2802,73 @@ export interface FleetPersonDto {
   phone: string | null;
   hiredAt: string | null;
 }
+
+// ── Notices (الإخطارات) ──────────────────────────────────────────────────────
+//
+// «عاوز اعمل شاشه جديده للاخطارات ... كل اخطار هيكون فيه داتا مختلفه وشكل الاخطار فى الطباعه
+// مختلف». Each insurer has its own printed form, with its own boxes; a notice is one filled copy
+// of one of them. WHICH boxes a form has is the web client's (it draws the form), so the server
+// stores the answers as a plain map of box → text, and the ticks as box → chosen options.
+//
+// «ومش عاوز اى داتا اجبارى» — nothing on a notice is required. An empty notice is a valid one.
+
+/** The printed forms the screen knows how to fill. */
+export const FLEET_NOTICE_TEMPLATES = ['misrInsurance', 'deltaInsurance'] as const;
+export const FleetNoticeTemplateSchema = z.enum(FLEET_NOTICE_TEMPLATES);
+export type FleetNoticeTemplate = z.infer<typeof FleetNoticeTemplateSchema>;
+
+/**
+ * A box's name — letters and digits only, starting with a letter. It becomes a key inside a stored
+ * document, so nothing Mongo reads as an operator or a path (`$`, `.`) can get in.
+ */
+const noticeKey = z.string().regex(/^[a-zA-Z][a-zA-Z0-9]{0,59}$/u);
+
+const noticeValues = z
+  .record(noticeKey, z.string().max(2000))
+  .refine((values) => Object.keys(values).length <= 200, 'too many boxes');
+const noticeChecks = z
+  .record(noticeKey, z.array(z.string().trim().min(1).max(60)).max(20))
+  .refine((checks) => Object.keys(checks).length <= 50, 'too many choices');
+
+export const CreateFleetNoticeSchema = z
+  .object({
+    template: FleetNoticeTemplateSchema,
+    values: noticeValues.default({}),
+    checks: noticeChecks.default({}),
+    /** What «املأ من السيستم» was pointed at — kept so the notice can be found again by car. */
+    vehicleId: objectId().nullish(),
+    driverEmployeeId: objectId().nullish(),
+    accidentId: objectId().nullish(),
+  })
+  .strict();
+export type CreateFleetNotice = z.infer<typeof CreateFleetNoticeSchema>;
+
+export const UpdateFleetNoticeSchema = z
+  .object({
+    values: noticeValues.optional(),
+    checks: noticeChecks.optional(),
+    vehicleId: objectId().nullish(),
+    driverEmployeeId: objectId().nullish(),
+    accidentId: objectId().nullish(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateFleetNotice = z.infer<typeof UpdateFleetNoticeSchema>;
+
+export const ListFleetNoticesQuerySchema = PaginationQuerySchema.extend({
+  template: FleetNoticeTemplateSchema.optional(),
+});
+export type ListFleetNoticesQuery = z.infer<typeof ListFleetNoticesQuerySchema>;
+
+export interface FleetNoticeDto {
+  id: string;
+  template: FleetNoticeTemplate;
+  values: Record<string, string>;
+  checks: Record<string, string[]>;
+  vehicleId: string | null;
+  driverEmployeeId: string | null;
+  accidentId: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}

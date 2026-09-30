@@ -80,6 +80,7 @@ describe('what the classification decides', () => {
     ['fleet_violations', 'a legal record'],
     ['fleet_odometer_logs', 'a fact about a vehicle'],
     ['fleet_maintenance_visits', 'a record about the vehicle'],
+    ['fleet_notices', 'paperwork already sent to the insurer'],
     ['atm_maintenances', 'a record about the machine'],
     ['hr_job_offers', 'recruitment history'],
   ])('leaves %s completely alone (%s)', (collection) => {

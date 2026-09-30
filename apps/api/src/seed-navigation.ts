@@ -496,6 +496,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetLicensing.view',
       },
       {
+        en: 'Insurance Notices',
+        ar: 'الإخطارات',
+        route: '/fleet/notices',
+        // A notice is a FORM filled in for the insurer — the page glyph, which no other row on this
+        // rail wears.
+        icon: 'file',
+        permission: 'fleetNotice.view',
+      },
+      {
         en: 'Fleet Catalogs',
         ar: 'قوائم الحركة',
         route: '/fleet/catalogs',

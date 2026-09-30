@@ -8,6 +8,9 @@ import {
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
   type CreateFleetAccident,
+  type CreateFleetNotice,
+  type FleetNoticeDto,
+  type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type OrderFleetCatalog,
   type CreateFleetDriverProfile,
@@ -403,3 +406,14 @@ export const setLicensingMark = (body: SetFleetLicensingMark): Promise<FleetLice
  */
 export const listFleetPeople = (includeExited = false): Promise<FleetPersonDto[]> =>
   get<FleetPersonDto[]>(`/fleet/people${includeExited ? '?includeExited=true' : ''}`);
+
+// ── Insurance notices (الإخطارات) ─────────────────────────────────────────────
+export const listNotices = (params: FleetListParams): Promise<Paginated<FleetNoticeDto>> =>
+  getPage<FleetNoticeDto>(`/fleet/notices${buildQuery(params)}`);
+export const getNotice = (id: string): Promise<FleetNoticeDto> =>
+  get<FleetNoticeDto>(`/fleet/notices/${id}`);
+export const createNotice = (body: CreateFleetNotice): Promise<FleetNoticeDto> =>
+  post<FleetNoticeDto>('/fleet/notices', body);
+export const updateNotice = (id: string, body: UpdateFleetNotice): Promise<FleetNoticeDto> =>
+  patch<FleetNoticeDto>(`/fleet/notices/${id}`, body);
+export const deleteNotice = (id: string): Promise<void> => del<void>(`/fleet/notices/${id}`);

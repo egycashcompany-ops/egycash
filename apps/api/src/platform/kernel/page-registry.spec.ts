@@ -23,9 +23,9 @@ describe('the assembled page registry', () => {
   });
 
   // ADR-032 added one page (`platform.delegation`) carrying one key (`delegation.manage`).
-  it('declares 74 pages over 278 permissions', () => {
-    expect(pages).toHaveLength(74);
-    expect(permissions).toHaveLength(278);
+  it('declares 75 pages over 282 permissions', () => {
+    expect(pages).toHaveLength(75);
+    expect(permissions).toHaveLength(282);
   });
 
   /**
@@ -61,14 +61,18 @@ describe('the assembled page registry', () => {
    * reading which papers are still out is a supervisor's question, ticking one is the act of the
    * person who carried them — which is exactly the shape a page is for.
    *
+   * The insurance notices (الإخطارات) add four keys and one page: view, create, edit and delete
+   * over the one screen that fills an insurer's form. All four are assigned, so the unassigned
+   * count does not move.
+   *
    * Its T4 adds ONE key and one page. There is no `trainingRecord.create`, because nobody creates
    * a record directly — it is written by completing a session, and a key that could mint one would
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
    */
-  it('assigns 249 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 253 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(249);
+    expect(assigned).toHaveLength(253);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -93,7 +97,7 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 11, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 12, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

@@ -58,10 +58,14 @@ describe('the signature block is edited from Fleet settings', () => {
   });
 
   it('is what BOTH halves print with — neither panel builds its own', () => {
-    for (const panel of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+    for (const panel of [
+      'components/CompanyViolationsPanel.tsx',
+      'components/DriverViolationsPanel.tsx',
+    ]) {
       const source = read(panel);
       expect(source, `${panel} reads the settings`).toContain('useReportSignatories()');
-      expect(source, `${panel} prints the company form`).toContain('printFleetReport({');
+      // One page or several — the drivers' half prints two in one document.
+      expect(source, `${panel} prints the company form`).toMatch(/printFleetReport\(\s*[[{]/u);
       expect(source, `${panel} passes them on`).toContain('signatories,');
     }
   });
@@ -69,11 +73,14 @@ describe('the signature block is edited from Fleet settings', () => {
   it('leaves the old plain-table print and the CSV behind entirely', () => {
     // They were the thing being replaced: a bare table with no letterhead and no signature, and a
     // CSV the button called «Excel». A file still importing either is a half-migrated screen.
-    for (const panel of ['components/CompanyViolationsPanel.tsx', 'components/DriverViolationsPanel.tsx']) {
+    for (const panel of [
+      'components/CompanyViolationsPanel.tsx',
+      'components/DriverViolationsPanel.tsx',
+    ]) {
       const source = read(panel);
       expect(source, panel).not.toContain('violations-print');
       expect(source, panel).not.toContain('violations-export');
-      expect(source, `${panel} writes a workbook`).toContain('buildXlsx({');
+      expect(source, `${panel} writes a workbook`).toMatch(/buildXlsx(Book)?\(\s*[[{]/u);
     }
   });
 });

@@ -123,8 +123,8 @@ const FONTS =
 const signature = (title: string, name: string): string =>
   `<div class="sig"><div class="office">${esc(title)}</div><div class="who">${esc(name)}</div><div class="on">التوقيع / </div></div>`;
 
-/** The printable document. Exported for its own test — composing it is where the rules live. */
-export const buildFleetReportHtml = (doc: FleetReport): string => {
+/** One page of the document: letterhead, table, totals and the signature block. */
+const pageHtml = (doc: FleetReport): string => {
   const s = doc.signatories;
   const head = [doc.serialHeader, ...doc.header].map((h) => `<th>${esc(h)}</th>`).join('');
   // THE SERIAL IS GENERATED, NOT CARRIED. «م» numbers the printed page — 1, 2, 3 down the sheet —
@@ -148,10 +148,42 @@ export const buildFleetReportHtml = (doc: FleetReport): string => {
         `<div class="total"><div class="tl">${esc(total.label)}</div><div class="tv">${esc(total.value)}</div></div>`,
     )
     .join('');
+  return `<section class="page">
+  <div class="head">
+    <img src="${EGYCASH_LOGO}" alt="EGYCASH" />
+    <div class="rtitle">${esc(doc.title)}</div>
+    <div class="org"><div>ايجى كاش للحلول النقدية</div><div>${esc(doc.department)}</div></div>
+  </div>
+  <hr class="rule" />
+  ${doc.subtitle === '' ? '' : `<p class="sub">${esc(doc.subtitle)}</p>`}
+  ${
+    doc.rows.length === 0
+      ? `<p class="empty">${esc(doc.emptyLabel)}</p>`
+      : `<table><thead><tr>${head}</tr></thead><tbody>${body}${totalRow}</tbody></table>`
+  }
+  ${totals === '' ? '' : `<div class="totals">${totals}</div>`}
+  <div class="signs">${signature(s.preparedByTitle, s.preparedByName)}${signature(s.approvedByTitle, s.approvedByName)}</div>
+  ${
+    s.endorsementNote === '' && s.endorsedByName === ''
+      ? ''
+      : `<div class="endorse"><div>${esc(s.endorsementNote)}</div><div class="who">${esc(s.endorsedByName)}</div><div>التوقيع / </div></div>`
+  }
+</section>`;
+};
+
+/**
+ * The printable document — ONE OR MORE pages, each a whole form with its own letterhead and
+ * signatures. The drivers' report prints two in one go: every fine, then one line per driver
+ * («صورتين ينزلو مره واحده»). Each page after the first starts on a new sheet of paper.
+ */
+export const buildFleetReportsHtml = (docs: readonly FleetReport[]): string => {
+  const doc = docs[0];
+  if (doc === undefined) throw new Error('nothing to print');
   return `<!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>${esc(doc.title)}</title>
 <style>
   ${FONTS}
+  .page + .page { break-before: page; page-break-before: always; }
   * { box-sizing: border-box; }
   @page { size: A4 portrait; margin: 14mm; }
   body { font-family: Tajawal, sans-serif; color: ${BRAND.text}; margin: 0; }
@@ -179,28 +211,13 @@ export const buildFleetReportHtml = (doc: FleetReport): string => {
   .empty { text-align: center; font-size: 12px; color: ${BRAND.muted}; padding: 18px 0; }
 </style></head>
 <body>
-  <div class="head">
-    <img src="${EGYCASH_LOGO}" alt="EGYCASH" />
-    <div class="rtitle">${esc(doc.title)}</div>
-    <div class="org"><div>ايجى كاش للحلول النقدية</div><div>${esc(doc.department)}</div></div>
-  </div>
-  <hr class="rule" />
-  ${doc.subtitle === '' ? '' : `<p class="sub">${esc(doc.subtitle)}</p>`}
-  ${
-    doc.rows.length === 0
-      ? `<p class="empty">${esc(doc.emptyLabel)}</p>`
-      : `<table><thead><tr>${head}</tr></thead><tbody>${body}${totalRow}</tbody></table>`
-  }
-  ${totals === '' ? '' : `<div class="totals">${totals}</div>`}
-  <div class="signs">${signature(s.preparedByTitle, s.preparedByName)}${signature(s.approvedByTitle, s.approvedByName)}</div>
-  ${
-    s.endorsementNote === '' && s.endorsedByName === ''
-      ? ''
-      : `<div class="endorse"><div>${esc(s.endorsementNote)}</div><div class="who">${esc(s.endorsedByName)}</div><div>التوقيع / </div></div>`
-  }
+  ${docs.map(pageHtml).join('\n')}
   ${PRINT_ON_LOAD}
 </body></html>`;
 };
+
+/** The printable document. Exported for its own test — composing it is where the rules live. */
+export const buildFleetReportHtml = (doc: FleetReport): string => buildFleetReportsHtml([doc]);
 
 /**
  * Open the composed document and print it.
@@ -209,11 +226,11 @@ export const buildFleetReportHtml = (doc: FleetReport): string => {
  * The wait is longer than the plain table's was because this page carries the logo, and printing
  * before it decodes would put a company document on paper without its letterhead.
  */
-export const printFleetReport = (doc: FleetReport): void => {
+export const printFleetReport = (doc: FleetReport | readonly FleetReport[]): void => {
   const win = window.open('', '_blank');
   if (win === null) throw new Error('popup blocked');
   win.document.open();
-  win.document.write(buildFleetReportHtml(doc));
+  win.document.write(buildFleetReportsHtml(Array.isArray(doc) ? doc : [doc as FleetReport]));
   win.document.close();
   win.focus();
 };

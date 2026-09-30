@@ -1,5 +1,5 @@
 import { Types, type ClientSession, type FilterQuery } from 'mongoose';
-import { type Paginated } from '@ecms/contracts';
+import { FLEET_UNKNOWN_DRIVER_NAME, type Paginated } from '@ecms/contracts';
 import { BaseRepository, type ListParams } from '../../../shared/base/base.repository';
 import { VEHICLE_CODE_SORT } from '../vehicles/vehicle.repository';
 import { byVehicleOrBookCode } from '../odometer/odometer.repository';
@@ -10,6 +10,9 @@ import {
   type FleetGrievanceDoc,
   type FleetViolationDoc,
 } from './violation.model';
+
+/** «مجهول» with any spacing round it, or an empty name — `isUnknownFleetDriver`'s rule, in Mongo. */
+const UNKNOWN_DRIVER_NAME_PATTERN = new RegExp(`^\\s*(${FLEET_UNKNOWN_DRIVER_NAME})?\\s*$`, 'u');
 
 /** Per-vehicle sums for one year — the aggregate half of the FR-9 rollup. */
 export interface ViolationYearSums {
@@ -178,6 +181,8 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     vehicleCodes?: readonly string[] | undefined;
     /** Several drivers, ORed. `[]` narrows to nothing, exactly as `vehicleIds` does. */
     driverEmployeeId?: readonly string[] | undefined;
+    /** «مجهول» — ORed with `driverEmployeeId`: the fines no employee is named on. */
+    unknownDriver?: 'true' | 'false' | undefined;
     /** The EXACT filed amount. `0` is a real answer, so this is checked against `undefined`. */
     amount?: number | undefined;
     /** Which catalog kinds of violation, ORed. `[]` narrows to nothing, as `vehicleIds` does. */
@@ -194,10 +199,25 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
     if (query.vehicleIds !== undefined) {
       clauses.push(byVehicleOrBookCode(query.vehicleIds, query.vehicleCodes));
     }
-    if (query.driverEmployeeId !== undefined) {
-      clauses.push({
-        driverEmployeeId: { $in: query.driverEmployeeId.map((id) => new Types.ObjectId(id)) },
-      });
+    const unknown = query.unknownDriver === 'true';
+    if (query.driverEmployeeId !== undefined || unknown) {
+      const drivers: FilterQuery<FleetViolationDoc>[] = [];
+      if (query.driverEmployeeId !== undefined) {
+        drivers.push({
+          driverEmployeeId: { $in: query.driverEmployeeId.map((id) => new Types.ObjectId(id)) },
+        });
+      }
+      // «مجهول»: no employee, and the book's word for it or no name at all — the same rule as
+      // `isUnknownFleetDriver`, so the filter finds what the print leaves out.
+      if (unknown) {
+        drivers.push({
+          driverEmployeeId: null,
+          $or: [{ driverName: null }, { driverName: UNKNOWN_DRIVER_NAME_PATTERN }],
+        });
+      }
+      clauses.push(
+        drivers.length === 1 ? (drivers[0] as FilterQuery<FleetViolationDoc>) : { $or: drivers },
+      );
     }
     if (query.amount !== undefined) clauses.push({ amount: query.amount });
     if (query.collected !== undefined) clauses.push({ collected: query.collected });
@@ -359,10 +379,7 @@ class FleetViolationRepository extends BaseRepository<FleetViolationDoc> {
   }
 
   /** The fines named, as they stand — what the move audits against and checks the shape of. */
-  async findByIds(
-    ids: readonly string[],
-    session?: ClientSession,
-  ): Promise<FleetViolationDoc[]> {
+  async findByIds(ids: readonly string[], session?: ClientSession): Promise<FleetViolationDoc[]> {
     if (ids.length === 0) return [];
     return this.model
       .find({ _id: { $in: ids.map((id) => new Types.ObjectId(id)) }, isDeleted: false })
@@ -638,9 +655,7 @@ class FleetGrievanceRepository extends BaseRepository<FleetGrievanceDoc> {
  *
  * Exported for its own test: it is pure, and it is where a multi-year filter goes wrong quietly.
  */
-export const violationYearBranches = (
-  years: readonly number[],
-): FilterQuery<FleetViolationDoc>[] =>
+export const violationYearBranches = (years: readonly number[]): FilterQuery<FleetViolationDoc>[] =>
   years.flatMap((year) => [
     { kind: 'vehicle', year } as FilterQuery<FleetViolationDoc>,
     // Carried onto this year's statement, whatever day it happened on.

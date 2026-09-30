@@ -1,61 +1,42 @@
-// The printed drivers' sheet: ONE line per driver — «يجمع كل مخالفات السائق فى صف واحد يحط
-// الاجمالى». The owner picked sample A: the name, every car code and every date the driver was
-// fined on, the fines counted by type («2 سرعة و 1 حزام»), and what they come to.
-import type { FleetViolationDto } from '@ecms/contracts';
-import { reportMoney } from './fleet-report-print';
+// The drivers' report, printed and exported: TWO pages — «صورتين ينزلو مره واحده».
+//   1. every fine on its own line: date, car code, driver, type, amount — the form as it was;
+//   2. one line per driver: name, EMPLOYEE code, and what their fines come to.
+// A fine with no named driver («مجهول») is on neither: «مينفعش يطبع مخالفات السائقيين فقط».
+import { isUnknownFleetDriver, type FleetViolationDto } from '@ecms/contracts';
 
-export interface DriverSheetInput {
-  rows: readonly FleetViolationDto[];
-  driverOf: (row: FleetViolationDto) => string;
-  codeOf: (row: FleetViolationDto) => string;
-  typeOf: (row: FleetViolationDto) => string;
-  /** The word between two counted types — « و » in Arabic. */
-  and: string;
+/** The fines the report is about — every one that names a driver. */
+export const reportableFines = (rows: readonly FleetViolationDto[]): FleetViolationDto[] =>
+  rows.filter((row) => !isUnknownFleetDriver(row));
+
+/** What the report owes: the fines not yet collected — the board's own «إجمالي السائقين» rule. */
+export const outstandingTotal = (rows: readonly FleetViolationDto[]): number =>
+  rows.filter((row) => !row.collected).reduce((sum, row) => sum + row.amount, 0);
+
+export interface DriverSummaryLine {
+  name: string;
+  /** The employee code; empty for a driver the old book named and HR does not know. */
+  code: string;
+  amount: number;
 }
-
-/** «2026-06-09T…» → «2026/06/09», the way sample A writes it. */
-const dayOf = (date: string | null): string | null =>
-  date === null ? null : date.slice(0, 10).replaceAll('-', '/');
 
 /** A person by their employee id; a book-kept row (no employee) by the name the book wrote. */
 const keyOf = (row: FleetViolationDto, name: string): string =>
   row.driverEmployeeId === null ? `name:${name}` : `id:${row.driverEmployeeId}`;
 
-const unique = (values: readonly string[]): string[] => [
-  ...new Set(values.filter((v) => v !== '')),
-];
-
-/**
- * [name, car codes, dates, fines by type, total] per driver, in the order the board shows them.
- * Dates run newest first; codes follow the dates they were fined on; the types are counted, the
- * most frequent first.
- */
-export const driverSheetRows = (input: DriverSheetInput): string[][] => {
-  const groups = new Map<string, { name: string; rows: FleetViolationDto[] }>();
+/** Page 2 — one line per driver, in the order the board shows them. */
+export const driverSummaryLines = (input: {
+  rows: readonly FleetViolationDto[];
+  driverOf: (row: FleetViolationDto) => string;
+  employeeCodeOf: (row: FleetViolationDto) => string;
+}): DriverSummaryLine[] => {
+  const lines = new Map<string, DriverSummaryLine>();
   for (const row of input.rows) {
     const name = input.driverOf(row);
     const key = keyOf(row, name);
-    const group = groups.get(key);
-    if (group === undefined) groups.set(key, { name, rows: [row] });
-    else group.rows.push(row);
+    const line = lines.get(key);
+    if (line === undefined) {
+      lines.set(key, { name, code: input.employeeCodeOf(row), amount: row.amount });
+    } else line.amount += row.amount;
   }
-  return [...groups.values()].map(({ name, rows }) => {
-    const byDate = [...rows].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''));
-    const counts = new Map<string, number>();
-    for (const row of byDate) {
-      const type = input.typeOf(row);
-      if (type !== '') counts.set(type, (counts.get(type) ?? 0) + 1);
-    }
-    const types = [...counts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([type, count]) => `${String(count)} ${type}`)
-      .join(input.and);
-    return [
-      name,
-      unique(byDate.map(input.codeOf)).join(' ، '),
-      unique(byDate.map((row) => dayOf(row.date) ?? '')).join(' ، '),
-      types,
-      reportMoney(rows.reduce((sum, row) => sum + row.amount, 0)),
-    ];
-  });
+  return [...lines.values()];
 };

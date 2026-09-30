@@ -84,7 +84,8 @@ export const sheetName = (name: string): string => {
 /** A1, B1 … AA1. Columns past Z are why this is a loop and not a lookup. */
 const ref = (col: number, row: number): string => {
   let name = '';
-  for (let n = col; n >= 0; n = Math.floor(n / 26) - 1) name = String.fromCharCode(65 + (n % 26)) + name;
+  for (let n = col; n >= 0; n = Math.floor(n / 26) - 1)
+    name = String.fromCharCode(65 + (n % 26)) + name;
   return `${name}${String(row)}`;
 };
 
@@ -143,8 +144,12 @@ const sheetXml = (sheet: XlsxSheet): string => {
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView rightToLeft="1" workbookViewId="0"/></sheetViews><sheetFormatPr defaultRowHeight="16"/><cols><col min="1" max="1" width="5" customWidth="1"/><col min="2" max="${String(head.length)}" width="18" customWidth="1"/></cols><sheetData>${rows.join('')}</sheetData></worksheet>`;
 };
 
-const WORKBOOK = (name: string): string => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${esc(name)}" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+// ONE WORKBOOK, SEVERAL SHEETS — sheet n is `sheetN.xml`, relationship `rIdN`, and the styles take
+// the id after the last sheet. A one-sheet book comes out exactly as it always has.
+const WORKBOOK = (
+  names: readonly string[],
+): string => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${names.map((name, i) => `<sheet name="${esc(name)}" sheetId="${String(i + 1)}" r:id="rId${String(i + 1)}"/>`).join('')}</sheets></workbook>`;
 
 // Three formats, in the order `S` names them: the body, the bold header on its fill, and the bold
 // total. Excel requires the two zero-index built-ins (`fonts[0]`, `fills[0]`, `fills[1]`) to be
@@ -152,14 +157,18 @@ const WORKBOOK = (name: string): string => `<?xml version="1.0" encoding="UTF-8"
 const STYLES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFECECF7"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"/><right style="thin"/><top style="thin"/><bottom style="thin"/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="2" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
-const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
+const CONTENT_TYPES = (
+  count: number,
+): string => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>${Array.from({ length: count }, (_, i) => `<Override PartName="/xl/worksheets/sheet${String(i + 1)}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
 
 const ROOT_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
 
-const WORKBOOK_RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
+const WORKBOOK_RELS = (
+  count: number,
+): string => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${Array.from({ length: count }, (_, i) => `<Relationship Id="rId${String(i + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${String(i + 1)}.xml"/>`).join('')}<Relationship Id="rId${String(count + 1)}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
 
 // ── The smallest ZIP that is still a ZIP ────────────────────────────────────
 
@@ -275,19 +284,28 @@ const zip = (entries: readonly Entry[]): Blob => {
   });
 };
 
-/** The workbook, ready to hand to `saveBlob`. */
-export const buildXlsx = (sheet: XlsxSheet): Blob => {
-  const name = sheetName(sheet.name);
+/**
+ * A workbook of several sheets, in order — the drivers' report is two: every fine, then one line
+ * per driver. Names are cleaned and must come out distinct; Excel refuses two tabs of one name.
+ */
+export const buildXlsxBook = (sheets: readonly XlsxSheet[]): Blob => {
+  const names = sheets.map((sheet) => sheetName(sheet.name));
   const utf8 = (text: string): Uint8Array => new TextEncoder().encode(text);
   return zip([
-    { name: '[Content_Types].xml', bytes: utf8(CONTENT_TYPES) },
+    { name: '[Content_Types].xml', bytes: utf8(CONTENT_TYPES(sheets.length)) },
     { name: '_rels/.rels', bytes: utf8(ROOT_RELS) },
-    { name: 'xl/workbook.xml', bytes: utf8(WORKBOOK(name)) },
-    { name: 'xl/_rels/workbook.xml.rels', bytes: utf8(WORKBOOK_RELS) },
+    { name: 'xl/workbook.xml', bytes: utf8(WORKBOOK(names)) },
+    { name: 'xl/_rels/workbook.xml.rels', bytes: utf8(WORKBOOK_RELS(sheets.length)) },
     { name: 'xl/styles.xml', bytes: utf8(STYLES) },
-    { name: 'xl/worksheets/sheet1.xml', bytes: utf8(sheetXml({ ...sheet, name })) },
+    ...sheets.map((sheet, i) => ({
+      name: `xl/worksheets/sheet${String(i + 1)}.xml`,
+      bytes: utf8(sheetXml({ ...sheet, name: names[i] ?? sheet.name })),
+    })),
   ]);
 };
+
+/** The workbook, ready to hand to `saveBlob`. */
+export const buildXlsx = (sheet: XlsxSheet): Blob => buildXlsxBook([sheet]);
 
 /** What the reader finds in their downloads: what it is, in Arabic, and the day they took it. */
 export const xlsxFilename = (stem: string, today: string): string => `${stem}-${today}.xlsx`;

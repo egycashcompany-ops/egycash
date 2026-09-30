@@ -1954,11 +1954,29 @@ export const RecordFleetVehicleViolationSchema = z
   .strict();
 export type RecordFleetVehicleViolation = z.infer<typeof RecordFleetVehicleViolationSchema>;
 
+/**
+ * «مجهول» — the driver of a fine nobody could name. «يقدر يسجل اسم سواق مجهول»: a driver fine may
+ * be filed with `driverEmployeeId: null`, and it is stored with no employee and this as its name —
+ * the same spelling the old book used for the same thing, so the two read as one.
+ */
+export const FLEET_UNKNOWN_DRIVER_NAME = 'مجهول';
+
+/** Is this fine's driver «مجهول» — no employee, and either this name or none at all? */
+export const isUnknownFleetDriver = (row: {
+  driverEmployeeId: string | null;
+  driverName: string | null;
+}): boolean => {
+  if (row.driverEmployeeId !== null) return false;
+  const name = (row.driverName ?? '').trim();
+  return name === '' || name === FLEET_UNKNOWN_DRIVER_NAME;
+};
+
 export const RecordFleetDriverViolationSchema = z
   .object({
     vehicleId: objectId(),
     date: z.coerce.date(),
-    driverEmployeeId: objectId(),
+    /** `null` is «مجهول» — see `FLEET_UNKNOWN_DRIVER_NAME`. */
+    driverEmployeeId: objectId().nullable(),
     violationTypeId: objectId(),
     amount: egp(),
   })
@@ -1982,7 +2000,8 @@ export const UpdateFleetViolationSchema = z
     count: z.number().int().min(1).optional(),
     unitValue: egp().optional(),
     date: z.coerce.date().optional(),
-    driverEmployeeId: objectId().optional(),
+    /** `null` sets the driver to «مجهول». */
+    driverEmployeeId: objectId().nullable().optional(),
     amount: egp().optional(),
     version: z.number().int().min(0),
   })
@@ -2067,7 +2086,8 @@ export const RecordFleetDriverViolationsSchema = z
         z
           .object({
             date: z.coerce.date(),
-            driverEmployeeId: objectId(),
+            /** `null` is «مجهول». */
+            driverEmployeeId: objectId().nullable(),
             violationTypeId: objectId(),
             amount: egp(),
           })
@@ -2119,6 +2139,11 @@ export const ListFleetViolationsQuerySchema = PaginationQuerySchema.extend({
    * A single id still parses, as a one-item list, so every saved link keeps working.
    */
   driverEmployeeId: listQuery(objectId()),
+  /**
+   * «مجهول» in the drivers filter — the fines with no named driver. ORed with `driverEmployeeId`:
+   * a reader may ask for «مجهول» and two drivers at once.
+   */
+  unknownDriver: z.enum(['true', 'false']).optional(),
   /**
    * «قيمة المخالفة» — the EXACT amount as filed, not a range.
    *

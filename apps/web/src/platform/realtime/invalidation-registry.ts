@@ -309,6 +309,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'fleet.violationGrievance': [['fleet', 'violations']],
   // The board and nothing else: a tick is a fact about the papers, and no other screen reads it.
   'fleet.vehicleLicensing': [['fleet', 'licensing']],
+  'fleet.notice': [['fleet', 'notices']],
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': [

@@ -16,6 +16,7 @@
 //   /fleet/accidents          fleetAccident.view           FW-8
 //   /fleet/violations         fleetViolation.view          FW-9
 //   /fleet/licensing          fleetLicensing.view          التراخيص
+//   /fleet/notices (+/:tpl)   fleetNotice.view             الإخطارات
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
@@ -36,6 +37,8 @@ import { FixedRosterPage } from './pages/FixedRosterPage';
 import { AccidentsPage } from './pages/AccidentsPage';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { LicensingPage } from './pages/LicensingPage';
+import { NoticesPage } from './pages/NoticesPage';
+import { NoticeEditorPage } from './pages/NoticeEditorPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
@@ -145,6 +148,22 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetLicensing.view">
               <LicensingPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="notices"
+          element={
+            <RequirePermission permission="fleetNotice.view">
+              <NoticesPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="notices/:template"
+          element={
+            <RequirePermission permission="fleetNotice.view">
+              <NoticeEditorPage />
             </RequirePermission>
           }
         />

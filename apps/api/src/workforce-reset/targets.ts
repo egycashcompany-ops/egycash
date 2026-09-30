@@ -105,7 +105,12 @@ const classify = (
       unclassified.push(`${collection} (${[...paths].join(', ')})`);
       continue;
     }
-    targets.push({ collection, action: decision.action, paths: [...paths].sort(), why: decision.why });
+    targets.push({
+      collection,
+      action: decision.action,
+      paths: [...paths].sort(),
+      why: decision.why,
+    });
   }
   if (unclassified.length > 0) {
     throw new Error(`${refusal}\n  ${unclassified.sort().join('\n  ')}`);
@@ -179,7 +184,14 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
     why: 'an accident is a record about the VEHICLE and the money — the driver is named on it',
   },
   fleet_odometer_logs: { action: 'keep', why: 'a reading taken from a vehicle at a moment' },
-  fleet_maintenance_visits: { action: 'keep', why: 'a workshop visit is a record about the vehicle' },
+  fleet_notices: {
+    action: 'keep',
+    why: 'an insurance notice is paperwork already sent to the insurer',
+  },
+  fleet_maintenance_visits: {
+    action: 'keep',
+    why: 'a workshop visit is a record about the vehicle',
+  },
   atm_maintenances: { action: 'keep', why: 'a maintenance visit is a record about the machine' },
   gold_receiving_receipts: { action: 'keep', why: 'a printed financial record of received metal' },
   gold_delivery_receipts: { action: 'keep', why: 'a printed financial record of delivered metal' },
@@ -189,7 +201,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   //
   // `users.employeeId` is the Employee ← one User link. If the employee rule owned this collection
   // it would delete every account in the system, administrators included, on the first run.
-  users: { action: 'users', why: 'accounts are decided by the user rule, never by the employee rule' },
+  users: {
+    action: 'users',
+    why: 'accounts are decided by the user rule, never by the employee rule',
+  },
 };
 
 /**
@@ -269,13 +284,34 @@ export const applicantTargets = (): Target[] =>
  * what a deleted account leaves behind. The audit trail is the conspicuous absence — it records
  * what somebody did, and history is not rewritten because the actor's account was removed.
  */
-export const USER_SCOPED_COLLECTIONS: readonly { collection: string; path: string; why: string }[] = [
-  { collection: 'sessions', path: 'userId', why: 'a live session for a deleted account must not survive' },
-  { collection: 'role_assignments', path: 'userId', why: 'grants to an account that no longer exists' },
-  { collection: 'notification_preferences', path: 'userId', why: 'preferences of a deleted account' },
-  { collection: 'push_subscriptions', path: 'userId', why: 'a push endpoint for a deleted account' },
-  { collection: 'user_applications', path: 'userId', why: 'navigation grants of a deleted account' },
-];
+export const USER_SCOPED_COLLECTIONS: readonly { collection: string; path: string; why: string }[] =
+  [
+    {
+      collection: 'sessions',
+      path: 'userId',
+      why: 'a live session for a deleted account must not survive',
+    },
+    {
+      collection: 'role_assignments',
+      path: 'userId',
+      why: 'grants to an account that no longer exists',
+    },
+    {
+      collection: 'notification_preferences',
+      path: 'userId',
+      why: 'preferences of a deleted account',
+    },
+    {
+      collection: 'push_subscriptions',
+      path: 'userId',
+      why: 'a push endpoint for a deleted account',
+    },
+    {
+      collection: 'user_applications',
+      path: 'userId',
+      why: 'navigation grants of a deleted account',
+    },
+  ];
 
 /** The roles whose holders survive. Everything else about an account is irrelevant to survival. */
 export const SURVIVING_ROLE_KEYS = ['super-admin', 'platform-admin'] as const;

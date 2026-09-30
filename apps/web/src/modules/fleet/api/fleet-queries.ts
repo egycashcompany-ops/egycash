@@ -10,6 +10,8 @@ import {
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
   type CreateFleetAccident,
+  type CreateFleetNotice,
+  type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
   type FleetDriverProfileDto,
@@ -65,6 +67,7 @@ const fleetKeys = {
   maintenance: featureKey(MODULE, 'maintenance'),
   roster: featureKey(MODULE, 'roster'),
   accidents: featureKey(MODULE, 'accidents'),
+  notices: featureKey(MODULE, 'notices'),
   violations: featureKey(MODULE, 'violations'),
   licensing: featureKey(MODULE, 'licensing'),
   people: featureKey(MODULE, 'people'),
@@ -790,3 +793,34 @@ export const useFleetPeople = (enabled = true, includeExited = false) =>
     staleTime: 5 * 60_000,
     enabled,
   });
+
+// ── Insurance notices (الإخطارات) ─────────────────────────────────────────────
+export const useNotices = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'notices', params),
+    queryFn: () => api.listNotices(params),
+    enabled,
+  });
+
+export const useNotice = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'notices', id),
+    queryFn: () => api.getNotice(id),
+    enabled: id !== '',
+  });
+
+const useNoticeMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.notices }),
+  });
+};
+
+export const useCreateNotice = () =>
+  useNoticeMutation((body: CreateFleetNotice) => api.createNotice(body));
+export const useUpdateNotice = () =>
+  useNoticeMutation(({ id, body }: { id: string; body: UpdateFleetNotice }) =>
+    api.updateNotice(id, body),
+  );
+export const useDeleteNotice = () => useNoticeMutation((id: string) => api.deleteNotice(id));

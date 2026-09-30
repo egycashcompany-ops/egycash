@@ -19,6 +19,7 @@ import { buildFleetMaintenanceRouter } from './maintenance/maintenance.routes';
 import { buildFleetRosterRouter } from './roster/roster.routes';
 import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes';
 import { buildFleetLicensingRouter } from './licensing/licensing.routes';
+import { buildFleetNoticesRouter } from './notices/notice.routes';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
 import { buildFleetViolationsRouter } from './violations/violation.routes';
@@ -208,6 +209,19 @@ const licensingPermissions = declarePermissions(
   'fleet.licensing',
 );
 
+/**
+ * The insurance notices (الإخطارات) — filling an insurer's printed form for an accident. Its own
+ * grants: writing a notice is paperwork for the insurer, not a change to the accident file.
+ */
+const noticePermissions = declarePermissions(
+  'fleet',
+  'fleetNotice',
+  { en: 'insurance notices', ar: 'الإخطارات' },
+  ['view', 'create', 'edit', 'delete'],
+  [],
+  'fleet.notices',
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
@@ -220,6 +234,7 @@ export const fleetPermissions: PermissionDef[] = [
   ...accidentPermissions,
   ...violationPermissions,
   ...licensingPermissions,
+  ...noticePermissions,
 ];
 
 /**
@@ -293,6 +308,13 @@ export const fleetPages: PageDef[] = [
     sortOrder: 85,
   },
   {
+    id: 'fleet.notices',
+    moduleId: 'fleet',
+    name: { en: 'Insurance notices', ar: 'الإخطارات' },
+    route: '/fleet/notices',
+    sortOrder: 87,
+  },
+  {
     id: 'fleet.catalogs',
     moduleId: 'fleet',
     name: { en: 'Fleet catalogs', ar: 'قوائم الحركة' },
@@ -330,6 +352,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/accidents', router: buildFleetAccidentsRouter() },
     { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
     { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
+    { prefix: '/fleet/notices', router: buildFleetNoticesRouter() },
     { prefix: '/fleet/people', router: buildFleetPeopleRouter() },
   ],
   collections: [
@@ -347,6 +370,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_violations',
     'fleet_violation_grievances',
     'fleet_vehicle_licensing',
+    'fleet_notices',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is

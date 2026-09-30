@@ -9,6 +9,10 @@ import {
   driverPickLabel,
   driverPickShortLabel,
   driverPickerOptions,
+  pickedDriverId,
+  splitDriverFilter,
+  UNKNOWN_DRIVER,
+  withUnknownOption,
   type DriverPickOption,
 } from './driver-filter-selection';
 
@@ -117,5 +121,45 @@ describe('the one id list the fleet query is asked for', () => {
     const picked = ['a'];
     const result = driverIdFilter(picked, null);
     expect(result).not.toBe(picked);
+  });
+});
+
+describe('«مجهول» on the violations screen', () => {
+  const people = driverPickerOptions([person('a'), person('b')], [], new Map());
+
+  it('heads the list while nothing is typed, and when what is typed fits it', () => {
+    expect(withUnknownOption(people, [], '', 'مجهول').map((o) => o.value)).toEqual([
+      UNKNOWN_DRIVER,
+      'a',
+      'b',
+    ]);
+    expect(withUnknownOption(people, [], 'مجه', 'مجهول')[0]?.value).toBe(UNKNOWN_DRIVER);
+    expect(withUnknownOption(people, [], 'اسم', 'مجهول').map((o) => o.value)).toEqual(['a', 'b']);
+  });
+
+  it('stays in the list once picked, so the chip can be turned off', () => {
+    expect(withUnknownOption([], [UNKNOWN_DRIVER], 'اسم', 'مجهول')[0]?.value).toBe(UNKNOWN_DRIVER);
+  });
+
+  it('files as no employee, and filters as its own flag beside the drivers', () => {
+    expect(pickedDriverId(UNKNOWN_DRIVER)).toBeNull();
+    expect(pickedDriverId('a')).toBe('a');
+    expect(splitDriverFilter(['a', UNKNOWN_DRIVER, 'b'])).toEqual({
+      employeeIds: ['a', 'b'],
+      unknown: true,
+    });
+    expect(splitDriverFilter(['a'])).toEqual({ employeeIds: ['a'], unknown: false });
+  });
+});
+
+describe('the pickers offer the WHOLE roster', () => {
+  it('draws no cap in the picker — «بيجيب السواقيين ناقصين»', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { join, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const here = dirname(fileURLToPath(import.meta.url));
+    const source = readFileSync(join(here, '..', 'components', 'DriverPickerFilter.tsx'), 'utf8');
+    expect(source).not.toContain('SEARCH_SIZE');
+    expect(source).not.toMatch(/found\.slice\(/u);
   });
 });

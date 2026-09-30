@@ -19,11 +19,13 @@ import { useMemo, useState } from 'react';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
-import { driverPickerOptions, type DriverPickOption } from '../lib/driver-filter-selection';
+import {
+  driverPickerOptions,
+  UNKNOWN_DRIVER,
+  withUnknownOption,
+  type DriverPickOption,
+} from '../lib/driver-filter-selection';
 import { useEmployeeRecords, useFleetPeopleMap } from './EmployeeName';
-
-/** How many people one search offers. Enough to pick from, small enough to stay one request. */
-const SEARCH_SIZE = 25;
 
 export const DriverPickerFilter = ({
   value,
@@ -32,6 +34,7 @@ export const DriverPickerFilter = ({
   fullWidth = false,
   placeholder,
   className,
+  withUnknown = false,
 }: {
   /** The employee ids currently filtering, in the order they were picked. */
   value: string[];
@@ -47,6 +50,11 @@ export const DriverPickerFilter = ({
    */
   placeholder?: string;
   className?: string;
+  /**
+   * Offer «مجهول» first — the violations screen only, where a fine may name nobody. Picked, it
+   * is carried as `UNKNOWN_DRIVER`.
+   */
+  withUnknown?: boolean;
 }): JSX.Element => {
   const t = useT();
   const [search, setSearch] = useState('');
@@ -74,7 +82,9 @@ export const DriverPickerFilter = ({
               person.fullNameAr.toLocaleLowerCase().includes(term) ||
               person.code.toLocaleLowerCase().includes(term),
           );
-    return found.slice(0, SEARCH_SIZE);
+    // EVERYONE, not the first 25: «بيجيب السواقيين ناقصين». The list is the drivers screen's own
+    // roster, held in hand, and a few hundred rows is nothing for the list to draw.
+    return found;
   }, [roster, search]);
 
   // What is known about the people ALREADY picked — the same cached records the table's own
@@ -90,19 +100,19 @@ export const DriverPickerFilter = ({
     return map;
   }, [picked, value.join(',')]);
 
-  const options = useMemo(
-    () =>
-      driverPickerOptions(
-        matches.map((person) => ({
-          employeeId: person.employeeId,
-          name: person.fullNameAr,
-          code: person.code,
-        })),
-        value,
-        known,
-      ),
-    [matches, value.join(','), known],
-  );
+  const unknownLabel = t('fleet.violations.unknownDriver');
+  const options = useMemo(() => {
+    const people = driverPickerOptions(
+      matches.map((person) => ({
+        employeeId: person.employeeId,
+        name: person.fullNameAr,
+        code: person.code,
+      })),
+      value.filter((id) => id !== UNKNOWN_DRIVER),
+      known,
+    );
+    return withUnknown ? withUnknownOption(people, value, search, unknownLabel) : people;
+  }, [matches, value.join(','), known, withUnknown, search, unknownLabel]);
 
   return (
     <MultiSelect

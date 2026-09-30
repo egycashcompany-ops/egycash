@@ -103,3 +103,37 @@ export const driverIdFilter = (
   const allowed = new Set(hrMatched);
   return picked.filter((id) => allowed.has(id));
 };
+
+/**
+ * «مجهول» as a picker value. A fine with no named driver has no employee id to pick, so the
+ * pickers on the violations screen carry this in its place — and turn it back into
+ * `driverEmployeeId: null` (a fine) or `unknownDriver=true` (the filter) on the way out.
+ */
+export const UNKNOWN_DRIVER = 'unknown';
+
+/** The employee id a picked value files against: `null` for «مجهول». */
+export const pickedDriverId = (value: string): string | null =>
+  value === UNKNOWN_DRIVER ? null : value;
+
+/** The drivers filter, split into the employees asked for and whether «مجهول» is one of them. */
+export const splitDriverFilter = (
+  values: readonly string[],
+): { employeeIds: string[]; unknown: boolean } => ({
+  employeeIds: values.filter((value) => value !== UNKNOWN_DRIVER),
+  unknown: values.includes(UNKNOWN_DRIVER),
+});
+
+/**
+ * «مجهول» at the head of the list — while nothing is typed, when what is typed fits it, and
+ * always once picked, so the chip can be turned off.
+ */
+export const withUnknownOption = (
+  options: readonly DriverPickerOption[],
+  selected: readonly string[],
+  search: string,
+  label: string,
+): DriverPickerOption[] => {
+  const term = search.trim();
+  const shown = selected.includes(UNKNOWN_DRIVER) || term === '' || label.includes(term);
+  return shown ? [{ value: UNKNOWN_DRIVER, label, shortLabel: label }, ...options] : [...options];
+};

@@ -48,6 +48,7 @@ import { FilterBar } from '../../../shared/ui/FilterBar';
 import { sortQuery, writeSorts, type TableSort } from '../lib/table-sort';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
+import { splitDriverFilter } from '../lib/driver-filter-selection';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import { cn } from '../../../shared/lib/cn';
@@ -65,10 +66,15 @@ import {
   type DriverEntryCard,
   type DriverEntryType,
 } from '../lib/driver-violation-entry';
-import { buildXlsx, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
+import { buildXlsxBook, signatureColumns, xlsxFilename, type XlsxCell } from '../lib/fleet-xlsx';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { printFleetReport, reportMoney, signatureRows } from '../lib/fleet-report-print';
-import { driverSheetRows } from '../lib/driver-violations-sheet';
+import {
+  driverSummaryLines,
+  outstandingTotal,
+  reportableFines,
+  type DriverSummaryLine,
+} from '../lib/driver-violations-sheet';
 
 // The filter bar's rhythm, shared by all four fields — see `FilterField` for why the name sits
 // above the control and why every control is the same width.
@@ -240,6 +246,7 @@ export const DriverViolationsPanel = ({
   };
 
   // ── the board ─────────────────────────────────────────────────────────────
+  const driverFilter = splitDriverFilter(driverEmployeeIds);
   const params = useMemo(
     () => ({
       kind: 'driver' as const,
@@ -257,7 +264,11 @@ export const DriverViolationsPanel = ({
       // `driverEmployeeId`, singular, is the parameter's NAME — it takes a comma-separated list.
       // It used to be sent as `driverEmployeeIds`, which the strict query schema rejected, so every
       // use of this filter answered 400 and emptied the board.
-      ...(driverEmployeeIds.length === 0 ? {} : { driverEmployeeId: driverEmployeeIds.join(',') }),
+      ...(driverFilter.employeeIds.length === 0
+        ? {}
+        : { driverEmployeeId: driverFilter.employeeIds.join(',') }),
+      // «مجهول» in the same box — ORed with the drivers on the server.
+      ...(driverFilter.unknown ? { unknownDriver: 'true' } : {}),
       ...(amount.trim() === '' ? {} : { amount: amount.trim() }),
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
@@ -549,13 +560,28 @@ export const DriverViolationsPanel = ({
 
   const vehicleCodeOf = (row: FleetViolationDto): string =>
     row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? ''));
+  const employeeCodeOf = (row: FleetViolationDto): string =>
+    row.driverEmployeeId === null ? '' : (people.get(row.driverEmployeeId)?.code ?? '');
 
-  /** The printed sheet's columns — sample A, the one the owner picked. */
-  const printHeader = [
+  // THE REPORT — printed and exported alike, «الاكسيل يبقى زى الطباعه». Two pages: every fine,
+  // then one line per driver. A fine naming nobody («مجهول») is on neither, and the total is what
+  // is still owed on the fines that ARE on it.
+  const report = (): {
+    fines: FleetViolationDto[];
+    lines: DriverSummaryLine[];
+    total: number;
+  } => {
+    const fines = reportableFines(rows);
+    return {
+      fines,
+      lines: driverSummaryLines({ rows: fines, driverOf, employeeCodeOf }),
+      total: outstandingTotal(fines),
+    };
+  };
+  /** Page 2's columns: the driver, their EMPLOYEE code, and what their fines come to. */
+  const summaryHeader = [
     t('fleet.violations.report.driverName'),
-    t('fleet.violations.report.vehicleCode'),
-    t('fleet.violations.report.date'),
-    t('fleet.violations.report.violations'),
+    t('fleet.violations.report.employeeCode'),
     t('fleet.violations.report.grandTotal'),
   ];
 
@@ -564,65 +590,87 @@ export const DriverViolationsPanel = ({
    * «200.00» as text hands the reader a column the spreadsheet will not sum, which is the one
    * thing they opened it for.
    */
-  const sheetRows = (): XlsxCell[][] =>
-    rows.map((row) => [
+  const sheetRows = (fines: readonly FleetViolationDto[]): XlsxCell[][] =>
+    fines.map((row) => [
       row.date === null ? '' : row.date.slice(0, 10),
-      row.vehicleCode ?? (row.vehicleId === null ? '' : (codeOf.get(row.vehicleId) ?? '')),
+      vehicleCodeOf(row),
       driverOf(row),
       typeName.get(row.violationTypeId) ?? '',
       row.amount,
     ]);
 
   const onExport = (): void => {
-    const blob = buildXlsx({
-      name: t('fleet.violations.report.driverSheet'),
-      serialHeader: t('fleet.violations.report.serial'),
-      header: exportHeader,
-      rows: sheetRows(),
-      // «القيمة» — two decimals on the face of it, a number underneath.
-      moneyColumns: [4],
-      // THE SAME BLOCK THE PAGE CARRIES, inside the sheet — this is a document somebody
-      // prints and signs, not a dump of the table.
-      trailer: signatureRows(
-        signatories,
-        signatureColumns(6),
-        t('fleet.violations.report.signLine'),
-      ),
-      // The total sits under «المبلغ», where the column it sums is.
-      totals: ['', '', t('fleet.violations.report.grandTotal'), '', pageTotal],
-    });
+    const { fines, lines, total } = report();
+    const trailer = (columns: number): string[][] =>
+      signatureRows(signatories, signatureColumns(columns), t('fleet.violations.report.signLine'));
+    const blob = buildXlsxBook([
+      {
+        name: t('fleet.violations.report.driverSheet'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: exportHeader,
+        rows: sheetRows(fines),
+        // «القيمة» — two decimals on the face of it, a number underneath.
+        moneyColumns: [4],
+        // THE SAME BLOCK THE PAGE CARRIES, inside the sheet — this is a document somebody
+        // prints and signs, not a dump of the table.
+        trailer: trailer(6),
+        // The total sits under «المبلغ», where the column it sums is.
+        totals: ['', '', t('fleet.violations.report.grandTotal'), '', total],
+      },
+      {
+        name: t('fleet.violations.report.driverSummarySheet'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: summaryHeader,
+        rows: lines.map((line) => [line.name, line.code, line.amount]),
+        moneyColumns: [2],
+        trailer: trailer(4),
+        totals: [t('fleet.violations.report.driversLine'), '', total],
+      },
+    ]);
     saveBlob(
       blob,
       xlsxFilename(t('fleet.violations.report.driverSheet'), new Date().toISOString().slice(0, 10)),
     );
   };
   const onPrint = (): void => {
+    const { fines, lines, total } = report();
+    const page = {
+      title: t('fleet.violations.report.driverTitle'),
+      department: t('fleet.violations.report.department'),
+      // NO SUBTITLE — the sent form has none. See the company panel for the whole of it.
+      subtitle: '',
+      // The drivers' sheet carries its total INSIDE the table, on the last line — which is where
+      // the signed copies put it, and where the workbook puts it too.
+      totals: [],
+      totalRow: {
+        label: t('fleet.violations.report.driversLine'),
+        value: reportMoney(total),
+      },
+      signatories,
+      serialHeader: t('fleet.violations.report.serial'),
+      emptyLabel: t('fleet.violations.report.empty'),
+    };
     try {
-      printFleetReport({
-        title: t('fleet.violations.report.driverTitle'),
-        department: t('fleet.violations.report.department'),
-        // NO SUBTITLE — the sent form has none. See the company panel for the whole of it.
-        subtitle: '',
-        // ONE LINE PER DRIVER — «يجمع كل مخالفات السائق فى صف واحد يحط الاجمالى», sample A.
-        header: printHeader,
-        rows: driverSheetRows({
-          rows,
-          driverOf,
-          codeOf: vehicleCodeOf,
-          typeOf: (row) => typeName.get(row.violationTypeId) ?? '',
-          and: t('fleet.violations.report.and'),
-        }),
-        // The drivers' sheet carries its total INSIDE the table, on the last line — which is where
-        // the signed copies put it, and where the workbook puts it too.
-        totals: [],
-        totalRow: {
-          label: t('fleet.violations.report.driversLine'),
-          value: reportMoney(pageTotal),
+      // «صورتين ينزلو مره واحده» — both pages in ONE document, so one click prints both and no
+      // second window is left for a popup blocker to eat.
+      printFleetReport([
+        {
+          ...page,
+          header: exportHeader,
+          rows: fines.map((row) => [
+            row.date === null ? '' : row.date.slice(0, 10),
+            vehicleCodeOf(row),
+            driverOf(row),
+            typeName.get(row.violationTypeId) ?? '',
+            reportMoney(row.amount),
+          ]),
         },
-        signatories,
-        serialHeader: t('fleet.violations.report.serial'),
-        emptyLabel: t('fleet.violations.report.empty'),
-      });
+        {
+          ...page,
+          header: summaryHeader,
+          rows: lines.map((line) => [line.name, line.code, reportMoney(line.amount)]),
+        },
+      ]);
     } catch {
       toast.error(t('fleet.violations.popupBlocked'));
     }
@@ -876,6 +924,7 @@ export const DriverViolationsPanel = ({
                             off by default, and `fullWidth` is what makes the trigger fill the
                             share of the row it was given instead of shrinking to its own text. */}
                         <RegistryDriverPicker
+                          withUnknown
                           value={card.driverEmployeeId === '' ? [] : [card.driverEmployeeId]}
                           onChange={(next) =>
                             patchCard(card.key, { driverEmployeeId: next[0] ?? '' })
@@ -1004,6 +1053,7 @@ export const DriverViolationsPanel = ({
           density={TIGHT}
         >
           <RegistryDriverPicker
+            withUnknown
             value={driverEmployeeIds}
             onChange={(next) => onDriverChange(next.length === 0 ? null : next.join(','))}
             multiple

@@ -6178,6 +6178,64 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
     expect(wrongShape.status).toBe(400);
   });
 
+  it('a driver fine can name «مجهول», and the drivers filter finds it', async () => {
+    // «يقدر يسجل اسم سواق مجهول تبقى فى الاختيارات و فى الفلتر بتاعها برضو يقدر يبحث على مجهول».
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const typeId = await violationTypeIdByName('حزام');
+    const employeeId = await mkEmployee();
+    const batch = await request(app)
+      .post('/api/v1/fleet/violations/driver/batch')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        rows: [
+          { date: '2026-05-10', driverEmployeeId: null, violationTypeId: typeId, amount: 100 },
+          {
+            date: '2026-05-11',
+            driverEmployeeId: employeeId,
+            violationTypeId: typeId,
+            amount: 200,
+          },
+        ],
+      });
+    expect(batch.status).toBe(201);
+    const [unknown, named] =
+      data<
+        {
+          id: string;
+          driverEmployeeId: string | null;
+          driverName: string | null;
+          version: number;
+        }[]
+      >(batch);
+    expect(unknown?.driverEmployeeId).toBeNull();
+    expect(unknown?.driverName).toBe('مجهول');
+
+    const list = async (query: Record<string, string>): Promise<string[]> =>
+      data<{ id: string }[]>(
+        await request(app)
+          .get('/api/v1/fleet/violations')
+          .query({ kind: 'driver', vehicleCodes: v.code, ...query })
+          .set('Authorization', `Bearer ${adminToken}`),
+      ).map((row) => row.id);
+    expect(await list({ unknownDriver: 'true' })).toEqual([unknown?.id]);
+    // ORed with the named drivers — «مجهول» and one driver at once.
+    expect((await list({ unknownDriver: 'true', driverEmployeeId: employeeId })).sort()).toEqual(
+      [unknown?.id, named?.id].sort(),
+    );
+
+    // And an edit can set a named fine to «مجهول».
+    const edited = await request(app)
+      .patch(`/api/v1/fleet/violations/${named?.id ?? ''}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ driverEmployeeId: null, version: named?.version });
+    expect(edited.status).toBe(200);
+    expect(data<{ driverEmployeeId: string | null; driverName: string }>(edited)).toMatchObject({
+      driverEmployeeId: null,
+      driverName: 'مجهول',
+    });
+  });
+
   it('the grievance is ONE figure per (vehicle, year), and the rollup merges everything', async () => {
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const vehicleType = await violationTypeIdByName('رسوم خدمة');

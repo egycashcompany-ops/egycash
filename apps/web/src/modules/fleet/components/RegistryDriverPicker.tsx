@@ -28,6 +28,7 @@ export const RegistryDriverPicker = ({
   density,
   fullWidth = false,
   className,
+  withUnknown = false,
 }: {
   /** Picked employee ids. A single-pick control still carries a list, of at most one. */
   value: string[];
@@ -40,6 +41,8 @@ export const RegistryDriverPicker = ({
   /** Fill the width this control was given — see `MultiSelect`. */
   fullWidth?: boolean;
   className?: string;
+  /** Offer «مجهول» — see `DriverPickerFilter`. */
+  withUnknown?: boolean;
 }): JSX.Element => {
   const t = useT();
   // NO SEATS TO RESOLVE ANY MORE. The picker offers Fleet's own roster, and that roster IS the
@@ -55,6 +58,7 @@ export const RegistryDriverPicker = ({
       onChange={(next) => onChange(multiple ? next : next.slice(-1))}
       placeholder={placeholder ?? t('fleet.drivers.filters.employeeShort')}
       fullWidth={fullWidth}
+      withUnknown={withUnknown}
       {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />

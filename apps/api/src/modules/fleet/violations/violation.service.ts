@@ -5,6 +5,7 @@
 // (vehicle, year), upserted in place under a unique index. §8 publishes `.recorded` and
 // `.grievanceApplied` only: edits and deletes are audited facts, not announcements.
 import {
+  FLEET_UNKNOWN_DRIVER_NAME,
   FleetEvents,
   parseFleetSort,
   type FleetViolationKind,
@@ -60,6 +61,7 @@ const snapshot = (doc: FleetViolationDoc) => ({
   // And the car it is away FROM, so the trail shows both ends of a carry and of the way back.
   homeVehicleId: doc.homeVehicleId === null ? null : String(doc.homeVehicleId),
   driverEmployeeId: doc.driverEmployeeId === null ? null : String(doc.driverEmployeeId),
+  driverName: doc.driverName,
   collected: doc.collected,
 });
 
@@ -71,6 +73,18 @@ const recordedPayload = (doc: FleetViolationDoc) => ({
   year: doc.year,
   amount: doc.amount,
 });
+
+/**
+ * Who a driver fine is filed against: an employee, or — `null` — «مجهول», stored with no employee
+ * and the name the old book used for the same thing. Naming an employee leaves any book-written
+ * name where it is; the screen reads the employee first.
+ */
+const driverOf = (
+  employeeId: string | null,
+): Pick<FleetViolationDoc, 'driverEmployeeId'> & Partial<Pick<FleetViolationDoc, 'driverName'>> =>
+  employeeId === null
+    ? { driverEmployeeId: null, driverName: FLEET_UNKNOWN_DRIVER_NAME }
+    : { driverEmployeeId: new Types.ObjectId(employeeId) };
 
 /** A row's kind IS its ledger: a vehicle statement row is the company's, a driver row the driver's. */
 const sideOf = (kind: FleetViolationKind): FleetViolationSide =>
@@ -163,7 +177,9 @@ class FleetViolationService {
   async recordDriver(input: RecordFleetDriverViolation, by: string): Promise<FleetViolationDoc> {
     await fleetVehicleRepository.getById(input.vehicleId);
     await this.assertViolationType(input.violationTypeId, 'driver');
-    await this.assertDrivers([input.driverEmployeeId], () => 'driverEmployeeId');
+    if (input.driverEmployeeId !== null) {
+      await this.assertDrivers([input.driverEmployeeId], () => 'driverEmployeeId');
+    }
     const doc = await fleetViolationRepository.create(
       {
         kind: 'driver',
@@ -174,7 +190,7 @@ class FleetViolationService {
         count: null,
         unitValue: null,
         date: input.date,
-        driverEmployeeId: new Types.ObjectId(input.driverEmployeeId),
+        ...driverOf(input.driverEmployeeId),
       },
       { by },
     );
@@ -203,7 +219,7 @@ class FleetViolationService {
     // One seat read for the whole batch, and the field path names the ROW that failed so the form
     // can point at the card the reader has to fix.
     await this.assertDrivers(
-      input.rows.map((row) => row.driverEmployeeId),
+      input.rows.flatMap((row) => (row.driverEmployeeId === null ? [] : [row.driverEmployeeId])),
       (employeeId) =>
         `rows.${input.rows.findIndex((row) => row.driverEmployeeId === employeeId)}.driverEmployeeId`,
     );
@@ -219,7 +235,7 @@ class FleetViolationService {
           count: null,
           unitValue: null,
           date: row.date,
-          driverEmployeeId: new Types.ObjectId(row.driverEmployeeId),
+          ...driverOf(row.driverEmployeeId),
           collected: false,
         })),
         { by, session },
@@ -370,8 +386,10 @@ class FleetViolationService {
       if (input.date !== undefined) set.date = input.date;
       if (input.amount !== undefined) set.amount = input.amount;
       if (input.driverEmployeeId !== undefined) {
-        await this.assertDrivers([input.driverEmployeeId], () => 'driverEmployeeId');
-        set.driverEmployeeId = new Types.ObjectId(input.driverEmployeeId);
+        if (input.driverEmployeeId !== null) {
+          await this.assertDrivers([input.driverEmployeeId], () => 'driverEmployeeId');
+        }
+        Object.assign(set, driverOf(input.driverEmployeeId));
       }
     }
 

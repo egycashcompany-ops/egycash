@@ -7,7 +7,12 @@
 // grievance is the ONE per-(vehicle, year) figure — a PUT set/replace, prefilled from the
 // rollup row it was opened on.
 import { useEffect, useState } from 'react';
-import { MAX_PAGE_SIZE, type FleetViolationDto, type Locale } from '@ecms/contracts';
+import {
+  isUnknownFleetDriver,
+  MAX_PAGE_SIZE,
+  type FleetViolationDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { formatMoney } from '../../../shared/lib/format';
@@ -26,6 +31,7 @@ import {
 import { VehicleSelect } from './VehicleSelect';
 import { CatalogSelect } from './CatalogSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
+import { pickedDriverId, UNKNOWN_DRIVER } from '../lib/driver-filter-selection';
 
 const currentYear = (): number => new Date().getFullYear();
 
@@ -266,7 +272,13 @@ export const DriverViolationDialog = ({
     if (!open) return;
     setVehicleId(violation?.vehicleId ?? initialVehicleId);
     setDate(violation?.date === null || violation === null ? '' : violation.date.slice(0, 10));
-    setDriver(violation?.driverEmployeeId ?? '');
+    setDriver(
+      violation === null
+        ? ''
+        : isUnknownFleetDriver(violation)
+          ? UNKNOWN_DRIVER
+          : (violation.driverEmployeeId ?? ''),
+    );
     setViolationTypeId(violation?.violationTypeId ?? '');
     setAmount(violation === null ? '' : String(violation.amount));
   }, [open, violation, initialVehicleId]);
@@ -283,7 +295,7 @@ export const DriverViolationDialog = ({
       await record.mutateAsync({
         vehicleId,
         date: new Date(date),
-        driverEmployeeId: driver,
+        driverEmployeeId: pickedDriverId(driver),
         violationTypeId,
         amount: Number(amount),
       });
@@ -294,7 +306,10 @@ export const DriverViolationDialog = ({
           version: violation.version,
           ...(violationTypeId !== violation.violationTypeId ? { violationTypeId } : {}),
           ...(date !== (violation.date ?? '').slice(0, 10) ? { date: new Date(date) } : {}),
-          ...(driver !== violation.driverEmployeeId ? { driverEmployeeId: driver } : {}),
+          ...(pickedDriverId(driver) !== violation.driverEmployeeId ||
+          (driver === UNKNOWN_DRIVER && !isUnknownFleetDriver(violation))
+            ? { driverEmployeeId: pickedDriverId(driver) }
+            : {}),
           ...(Number(amount) !== violation.amount ? { amount: Number(amount) } : {}),
         },
       });
@@ -361,6 +376,7 @@ export const DriverViolationDialog = ({
               is the same control every other «مين السائق؟» on the screen uses: driving seats
               only, and one page of them already on show when it opens. */}
           <RegistryDriverPicker
+            withUnknown
             value={driver === '' ? [] : [driver]}
             onChange={(next) => setDriver(next[0] ?? '')}
             fullWidth

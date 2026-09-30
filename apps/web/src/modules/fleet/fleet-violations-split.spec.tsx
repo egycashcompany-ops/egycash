@@ -1523,9 +1523,12 @@ describe('the printed report is a company document, not a screenshot', () => {
       'components/DriverViolationsPanel.tsx',
     ]) {
       const source = readFileSync(join(HERE, panel), 'utf8');
-      const at = source.indexOf('printFleetReport({');
+      // The whole of `onPrint` — the drivers' half builds its two pages from one shared `page`,
+      // so the subtitle sits above the call rather than inside it.
+      const at = source.indexOf('const onPrint = ');
       expect(at, `${panel} prints the form`).toBeGreaterThan(-1);
-      const printCall = source.slice(at, source.indexOf('});', at));
+      expect(source.slice(at), `${panel} prints the form`).toMatch(/printFleetReport\(\s*[[{]/u);
+      const printCall = source.slice(at, source.indexOf('\n  };', at));
       expect(printCall, `${panel} spends no currency on the form`).not.toContain('formatMoney');
       // NO SUBTITLE either: a line reading «كل السنوات» under the title is the screen explaining
       // itself, and the sent forms carry none.

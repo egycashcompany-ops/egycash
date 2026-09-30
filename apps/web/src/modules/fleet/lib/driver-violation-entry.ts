@@ -8,6 +8,7 @@
 // It decides NOTHING about which types exist. The caller hands it the driver-side catalog, and a
 // house that adds a fifth kind of driver fine gets a fifth counter with no code change.
 import { type RecordFleetDriverViolations } from '@ecms/contracts';
+import { pickedDriverId } from './driver-filter-selection';
 
 export interface DriverEntryType {
   id: string;
@@ -72,9 +73,7 @@ const isMoney = (value: string): boolean => /^\d+(\.\d{1,2})?$/.test(value.trim(
 /** Which cards are not yet fileable, by key — the panel points at them rather than just refusing. */
 export const incompleteCards = (cards: readonly DriverEntryCard[]): string[] =>
   cards
-    .filter(
-      (card) => card.date === '' || card.driverEmployeeId === '' || !isMoney(card.amount),
-    )
+    .filter((card) => card.date === '' || card.driverEmployeeId === '' || !isMoney(card.amount))
     .map((card) => card.key);
 
 /** Every card named a driver, a day and an amount — and there is at least one card. */
@@ -100,7 +99,8 @@ export const toBatchPayload = (
     vehicleId,
     rows: cards.map((card) => ({
       date: new Date(`${card.date}T00:00:00.000Z`),
-      driverEmployeeId: card.driverEmployeeId,
+      // «مجهول» files with no employee — see `UNKNOWN_DRIVER`.
+      driverEmployeeId: pickedDriverId(card.driverEmployeeId),
       violationTypeId: card.typeId,
       amount: Number(card.amount),
     })),

@@ -22,11 +22,11 @@
 // list, and typing narrows it, codes that START with what was typed first. The whole registry is
 // loaded once (`useAllVehicles`) and filtered here, so clicking shows all of it rather than the
 // twenty-car shortlist a server search answers with.
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { vehicleCodeSearchQuery } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Combobox } from '../../../shared/ui/Combobox';
-import { useAllVehicles, useVehicles } from '../api/fleet-queries';
+import { useAllVehicles, useVehicle, useVehicles } from '../api/fleet-queries';
 import { rankVehicleCodes } from '../lib/vehicle-code-rank';
 
 /** How many matches one search offers — a shortlist to pick from, not a catalogue. */
@@ -60,9 +60,12 @@ export const VehicleCodeCombobox = ({
 }): JSX.Element => {
   const t = useT();
   const [query, setQuery] = useState('');
-  // The code of what is CHOSEN, held apart from the search: the next search will not contain it,
-  // and the box must go on showing the chosen car rather than blanking as the clerk types.
-  const [pickedCode, setPickedCode] = useState('');
+  // What is CHOSEN here — its id with its code — held apart from the search: the next search will
+  // not contain it, and the box must go on showing the chosen car rather than blanking as the
+  // clerk types. The id is kept with the code so a value changed from OUTSIDE (the other entry
+  // bar picking a car) is told apart from this box's own pick, and the old code is not shown
+  // against the new id.
+  const [picked, setPicked] = useState({ id: '', code: '' });
 
   const searched = useVehicles(
     {
@@ -88,30 +91,28 @@ export const VehicleCodeCombobox = ({
   );
 
   // A value handed in from outside — a row being edited, a car carried from another screen — names
-  // a car whose code this control has not searched for. The id is known, the code is not, so the
-  // registry is asked for it once and the box stops reading as empty.
+  // a car whose code this control has not searched for. The id is known, the code is not: the
+  // current list is read first, and a car it does not carry (past the twenty-car shortlist, or
+  // not yet loaded) is asked for by its id, so the box never reads as empty for a car it has.
   const known = useMemo(
     () => [...byCode.entries()].find(([, id]) => id === value)?.[0] ?? '',
     [byCode, value],
   );
-  useEffect(() => {
-    if (value === '') {
-      setPickedCode('');
-      return;
-    }
-    if (known !== '') setPickedCode(known);
-  }, [value, known]);
+  const lookup = useVehicle(value !== '' && known === '' && picked.id !== value ? value : '');
+  const resolved = known !== '' ? known : lookup.data?.id === value ? lookup.data.code : '';
+  const shownCode = value === '' ? '' : picked.id === value ? picked.code : resolved;
 
   return (
     <Combobox
-      value={pickedCode}
+      value={shownCode}
       options={options}
       // The typed text is a SEARCH, never a value: `Combobox` only ever commits an option, so a
       // code the registry does not carry cannot be stored.
       onSearch={setQuery}
       onChange={(code) => {
-        setPickedCode(code);
-        onChange(code === '' ? '' : (byCode.get(code) ?? ''));
+        const id = code === '' ? '' : (byCode.get(code) ?? '');
+        setPicked({ id, code: id === '' ? '' : code });
+        onChange(id);
       }}
       placeholder={placeholder ?? t('common.select')}
       emptyText={t('common.noResults')}

@@ -80,15 +80,22 @@ export const Combobox = ({
   // While closed the box shows the committed value; while open it shows what you are typing.
   const text = open ? query : value;
 
+  const remote = onSearch !== undefined;
   // A stored value the catalog does not carry — a record written before the catalog existed, or
   // imported from elsewhere — stays selectable instead of vanishing the moment the record is
   // opened for editing. Silently blanking it would turn "open and save" into data loss.
+  //
+  // Not while something is TYPED at a remote owner, though: its options are the answer to the
+  // query, and pinning the committed value above them put it on the highlighted first row, so
+  // typing «215» and pressing Enter committed the car already chosen instead of 215.
   const all = useMemo(
-    () => (value !== '' && !options.includes(value) ? [value, ...options] : options),
-    [options, value],
+    () =>
+      value !== '' && !options.includes(value) && !(remote && query.trim() !== '')
+        ? [value, ...options]
+        : options,
+    [options, value, remote, query],
   );
 
-  const remote = onSearch !== undefined;
   const matches = useMemo(() => {
     const q = fold(query);
     if (remote || !open || q === '') return all;
@@ -121,12 +128,22 @@ export const Combobox = ({
     onBlur?.();
   };
 
+  // Open on the catalog's opening answer, whatever was typed last time — the one way the list
+  // opens, from focus, from a click on a box that already has focus (right after a pick), and
+  // from the arrow keys.
+  const openFresh = (): void => {
+    setOpen(true);
+    setQuery('');
+    setActive(0);
+    // The owner's results still hold the last query; ask for the opening answer again.
+    onSearch?.('');
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!open) {
-        setOpen(true);
-        setActive(0);
+        openFresh();
         return;
       }
       setActive((i) => {
@@ -169,11 +186,9 @@ export const Combobox = ({
           if (!open) setOpen(true);
           onSearch?.(e.target.value);
         }}
-        onFocus={() => {
-          setOpen(true);
-          setQuery('');
-          // The owner's results still hold the last query; ask for the opening answer again.
-          onSearch?.('');
+        onFocus={openFresh}
+        onClick={() => {
+          if (!open) openFresh();
         }}
         onKeyDown={onKeyDown}
         onBlur={() => {

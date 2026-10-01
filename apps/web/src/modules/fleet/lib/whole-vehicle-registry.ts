@@ -4,8 +4,8 @@
 // offered «كود السيارة» from one page, or turned a row's vehicle id into its code through it,
 // stopped at the hundredth car by code: the cars after it were not in the list at all, and a row
 // filed against one of them showed «—». `fetchWholeCatalog` walks the pages; this names the
-// question and puts the cars in the order a reader counts them.
-import { type FleetVehicleDto, type Paginated } from '@ecms/contracts';
+// question and keeps the cars in the fleet's own order.
+import { compareFleetVehicleCodes, type FleetVehicleDto, type Paginated } from '@ecms/contracts';
 import { fetchWholeCatalog } from './whole-catalog';
 import { type FleetListParams } from '../api/fleet-api';
 
@@ -24,9 +24,9 @@ export const fetchWholeVehicleRegistry = async (
       sortDir: 'asc',
     }),
   );
-  // «99» before «100», which the server's text order reverses.
-  const items = [...whole.items].sort((a, b) =>
-    a.code.localeCompare(b.code, 'en', { numeric: true }),
-  );
+  // The fleet's own order — 150 upward, then the cars written in words, then «الملاكى» below 150 —
+  // which is what the server already applies to `sortBy: 'code'`; sorted again here so the pages
+  // read as one list however they arrived.
+  const items = [...whole.items].sort((a, b) => compareFleetVehicleCodes(a.code, b.code));
   return { ...whole, items };
 };

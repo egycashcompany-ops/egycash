@@ -793,6 +793,21 @@ describe('«كود السيارة» on the accident form — typed, and every ca
     expect(PAGE).not.toContain('useVehicles(');
   });
 
+  it('commits what was typed, never the car already chosen', () => {
+    // Remote mode pinned the chosen car above the search's answer, on the highlighted first row —
+    // so typing «215» and pressing Enter re-committed the car the file was already on.
+    const COMBOBOX = readFileSync(join(HERE, '../../../shared/ui/Combobox.tsx'), 'utf8');
+    expect(COMBOBOX).toContain("!(remote && query.trim() !== '')");
+    // A click on a box that already has focus — right after a pick — reopens the whole list.
+    expect(COMBOBOX).toMatch(/onClick=\{\(\) => \{\s*if \(!open\) openFresh\(\);/u);
+  });
+
+  it('shows the code of a car the current list does not carry — asked for by its id', () => {
+    expect(BOX).toContain(
+      "useVehicle(value !== '' && known === '' && picked.id !== value ? value : '')",
+    );
+  });
+
   it('says how the box works, in both languages', () => {
     expect(ar('fleet.accidents.vehiclePlaceholder')).toBe('اكتب الكود أو اختر…');
     expect(ar('fleet.accidents.vehicleHint')).toBe('اكتب الكود أو اختر من القائمة — كل السيارات');

@@ -1,12 +1,9 @@
-// التوكيل — every workshop exit's bill. «العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى بس الصف
-// بيكون باللون الاصفر»: a row the workshop opened waits, yellow, until its invoice is recorded.
-//
-// Print and Excel sit in the page header beside the screen's own button, above the filters — as
-// on the vehicles and drivers screens — and the totals sit BETWEEN the filters and the table, as
-// asked. The totals are the server's, over the whole filtered set, never the page.
+// خصم الإيصالات — the papers the driver brings back: fuel off the car's card or out of the custody
+// fund, tyres and washing out of the fund. Entry is a modal («الادخال يكون فى مودال»); the totals sit
+// between the filters and the table; print and Excel are icons on the page's side.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetDealershipInvoiceDto, type Locale } from '@ecms/contracts';
+import { type FleetReceiptDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -23,42 +20,55 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
-import { cn } from '../../../shared/lib/cn';
 import * as fleetApi from '../api/fleet-api';
-import {
-  useDealershipInvoices,
-  useDealershipSummary,
-  useDeleteDealershipInvoice,
-} from '../api/fleet-queries';
+import { useDeleteReceipt, useReceiptSummary, useReceipts } from '../api/fleet-queries';
 import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { DealershipInvoiceDialog } from '../components/DealershipInvoiceDialog';
-import {
-  DealershipImageCell,
-  DealershipImagePreviewDialog,
-} from '../components/DealershipImageCell';
+import { DriverName } from '../components/EmployeeName';
+import { FuelCompanyLogo } from '../components/FuelCardTiles';
+import { ReceiptDialog } from '../components/ReceiptDialog';
+import { ReceiptImageCell, ReceiptImagePreviewDialog } from '../components/ReceiptImageCell';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 
-/** Remembered across visits: the filters and the view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
   'from',
   'to',
   'vehicleCodes',
-  'side',
-  'state',
-  'work',
+  'kind',
+  'source',
+  'driver',
   'size',
   'sort',
 ] as const;
 const DEFAULT_PAGE_SIZE = 25;
-const DEFAULT_SORT = 'outDate:desc';
+const DEFAULT_SORT = 'date:desc';
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
+/** Litres, two decimals, Latin digits — beside the money, which prints the same way. */
+const litresText = (value: number): string => value.toFixed(2);
+const actionButton =
+  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
-export const DealershipPage = (): JSX.Element => {
+/** «الكارت وطنية •••• 2231» or «العهدة». */
+export const ReceiptSourceCell = ({ row }: { row: FleetReceiptDto }): JSX.Element => {
+  const t = useT();
+  if (row.source === 'card' && row.cardCompany !== null) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <FuelCompanyLogo company={row.cardCompany} size="sm" />
+        <span className="tabular-nums" dir="ltr">
+          •••• {(row.cardNumber ?? '').replace(/\s+/g, '').slice(-4)}
+        </span>
+      </span>
+    );
+  }
+  return <Badge tone="warning">{t('fleet.receipts.source.custody')}</Badge>;
+};
+
+export const ReceiptsPage = (): JSX.Element => {
   const t = useT();
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -69,9 +79,9 @@ export const DealershipPage = (): JSX.Element => {
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
-  const side = sp.get('side') ?? '';
-  const state = sp.get('state') ?? '';
-  const work = sp.get('work') ?? '';
+  const kind = sp.get('kind') ?? '';
+  const source = sp.get('source') ?? '';
+  const driver = sp.get('driver') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
   const sortParam = sp.get('sort');
@@ -94,19 +104,18 @@ export const DealershipPage = (): JSX.Element => {
     from !== '' ||
     to !== '' ||
     vehicleCodes.length > 0 ||
-    side !== '' ||
-    state !== '' ||
-    work !== '';
+    kind !== '' ||
+    source !== '' ||
+    driver !== '';
 
-  /** What the reader is looking at — the filters alone, which is also what the totals are asked for. */
   const filters = useMemo(
     () => ({
       from: from || undefined,
       to: to || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
-      side: side || undefined,
-      pending: state === '' ? undefined : state === 'pending',
-      workKind: work || undefined,
+      kind: kind || undefined,
+      source: source || undefined,
+      driver: driver || undefined,
     }),
     [paramsKey],
   );
@@ -114,36 +123,38 @@ export const DealershipPage = (): JSX.Element => {
     () => ({ ...filters, page, pageSize, ...sortQuery(sorts) }),
     [filters, page, pageSize, sorts],
   );
-  const { data, isLoading, isError, error, refetch } = useDealershipInvoices(params);
-  const summary = useDealershipSummary(filters);
+  const { data, isLoading, isError, error, refetch } = useReceipts(params);
+  const summary = useReceiptSummary(filters);
   const rows = data?.items ?? [];
 
-  const [recording, setRecording] = useState<FleetDealershipInvoiceDto | null>(null);
-  const [previewing, setPreviewing] = useState<FleetDealershipInvoiceDto | null>(null);
-  const [deleting, setDeleting] = useState<FleetDealershipInvoiceDto | null>(null);
-  const remove = useDeleteDealershipInvoice();
+  const [editing, setEditing] = useState<FleetReceiptDto | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [previewing, setPreviewing] = useState<FleetReceiptDto | null>(null);
+  const [deleting, setDeleting] = useState<FleetReceiptDto | null>(null);
+  const remove = useDeleteReceipt();
   const confirmDelete = async (): Promise<void> => {
     if (deleting === null) return;
     await remove.mutateAsync(deleting.id);
-    toast.success(t('fleet.dealership.deleted'));
+    toast.success(t('fleet.receipts.deleted'));
     setDeleting(null);
   };
 
-  const money = (value: number | null): string =>
-    value === null ? '—' : formatMoney(value, 'EGP', locale);
-  const sideLabel = (row: FleetDealershipInvoiceDto): string =>
-    row.side === null ? '' : t(`fleet.dealership.side.${row.side}`);
+  const money = (value: number): string => formatMoney(value, 'EGP', locale);
+  const kindLabel = (row: FleetReceiptDto): string => t(`fleet.receipts.kind.${row.kind}`);
+  const fuelLabel = (row: FleetReceiptDto): string =>
+    row.fuelType === null ? '' : t(`fleet.receipts.fuelType.${row.fuelType}`);
+  const sourceLabel = (row: FleetReceiptDto): string =>
+    row.source === 'card'
+      ? `${t(`fleet.fuelCards.company.${row.cardCompany ?? 'wataniya'}`)} ${row.cardNumber ?? ''}`
+      : t('fleet.receipts.source.custody');
   const dash = <span className="text-slate-400">—</span>;
 
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
-  const columns: Column<FleetDealershipInvoiceDto>[] = [
+  const columns: Column<FleetReceiptDto>[] = [
     {
-      key: 'outDate',
-      header: t('fleet.dealership.columns.outDate'),
+      key: 'date',
+      header: t('fleet.receipts.columns.date'),
       sortable: true,
-      render: (row) => <span className="tabular-nums">{formatDate(row.outDate, locale)}</span>,
+      render: (row) => <span className="tabular-nums">{formatDate(row.date, locale)}</span>,
     },
     {
       key: 'vehicleCode',
@@ -152,53 +163,47 @@ export const DealershipPage = (): JSX.Element => {
       render: (row) => row.vehicleCode ?? dash,
     },
     {
-      key: 'workTypeLabel',
-      header: t('fleet.dealership.columns.workType'),
+      key: 'driverName',
+      header: t('fleet.receipts.columns.driver'),
       sortable: true,
-      render: (row) => row.workTypeLabel,
+      render: (row) => <DriverName employeeId={row.driverEmployeeId} name={row.driverName} />,
     },
     {
-      key: 'invoiceNumber',
-      header: t('fleet.dealership.columns.invoiceNumber'),
+      key: 'kind',
+      header: t('fleet.receipts.columns.kind'),
       sortable: true,
-      render: (row) =>
-        row.invoiceNumber === null ? (
-          dash
-        ) : (
-          <span className="tabular-nums">{row.invoiceNumber}</span>
-        ),
+      render: (row) => (
+        <span className="inline-flex items-center gap-2">
+          <Badge tone={row.kind === 'fuel' ? 'info' : 'neutral'}>{kindLabel(row)}</Badge>
+          {row.fuelType !== null && <span className="text-sm">{fuelLabel(row)}</span>}
+        </span>
+      ),
     },
     {
-      key: 'invoiceAmount',
-      header: t('fleet.dealership.columns.invoiceAmount'),
+      key: 'source',
+      header: t('fleet.receipts.columns.source'),
+      sortable: true,
+      render: (row) => <ReceiptSourceCell row={row} />,
+    },
+    {
+      key: 'amount',
+      header: t('fleet.receipts.columns.amount'),
+      sortable: true,
+      align: 'end',
+      render: (row) => <span className="tabular-nums">{money(row.amount)}</span>,
+    },
+    {
+      key: 'litres',
+      header: t('fleet.receipts.columns.litres'),
       sortable: true,
       align: 'end',
       render: (row) =>
-        row.invoiceAmount === null ? (
-          dash
-        ) : (
-          <span className="tabular-nums">{money(row.invoiceAmount)}</span>
-        ),
-    },
-    {
-      key: 'insurer',
-      header: t('fleet.vehicles.fields.insuranceCompany'),
-      render: (row) => row.insuranceCompanyName ?? dash,
-    },
-    {
-      key: 'side',
-      header: t('fleet.dealership.columns.side'),
-      render: (row) =>
-        row.side === null ? (
-          dash
-        ) : (
-          <Badge tone={row.side === 'custody' ? 'warning' : 'info'}>{sideLabel(row)}</Badge>
-        ),
+        row.litres === null ? dash : <span className="tabular-nums">{litresText(row.litres)}</span>,
     },
     {
       key: 'image',
-      header: t('fleet.dealership.columns.image'),
-      render: (row) => <DealershipImageCell row={row} onPreview={setPreviewing} />,
+      header: t('fleet.receipts.columns.image'),
+      render: (row) => <ReceiptImageCell row={row} onPreview={setPreviewing} />,
     },
     {
       key: 'actions',
@@ -206,26 +211,22 @@ export const DealershipPage = (): JSX.Element => {
       align: 'end',
       render: (row) => (
         <span className="inline-flex items-center gap-1">
-          {can('fleetDealership.edit') && row.pending && (
-            <Button size="sm" data-dealership-record={row.id} onClick={() => setRecording(row)}>
-              {t('fleet.dealership.record')}
-            </Button>
-          )}
-          {can('fleetDealership.edit') && !row.pending && (
+          {can('fleetReceipt.edit') && (
             <button
               type="button"
+              data-receipt-edit={row.id}
               className={actionButton}
-              aria-label={t('fleet.dealership.edit')}
-              title={t('fleet.dealership.edit')}
-              onClick={() => setRecording(row)}
+              aria-label={t('fleet.receipts.edit')}
+              title={t('fleet.receipts.edit')}
+              onClick={() => setEditing(row)}
             >
               <EditIcon className="h-4 w-4" />
             </button>
           )}
-          {can('fleetDealership.delete') && (
+          {can('fleetReceipt.delete') && (
             <button
               type="button"
-              data-dealership-delete={row.id}
+              data-receipt-delete={row.id}
               className={actionButton}
               aria-label={t('common.delete')}
               title={t('common.delete')}
@@ -239,89 +240,97 @@ export const DealershipPage = (): JSX.Element => {
     },
   ];
 
-  /** The figures between the filters and the table. */
   const totals: StatStripItem[] = [
     {
-      key: 'dealershipTotal',
-      label: t('fleet.dealership.totals.dealership'),
-      ...(summary.data === undefined ? {} : { value: money(summary.data.dealershipTotal) }),
-    },
-    {
-      key: 'custodyTotal',
-      label: t('fleet.dealership.totals.custody'),
+      key: 'custody',
+      label: t('fleet.receipts.totals.custody'),
       ...(summary.data === undefined ? {} : { value: money(summary.data.custodyTotal) }),
     },
     {
-      key: 'pending',
-      label: t('fleet.dealership.totals.pending'),
-      ...(summary.data === undefined ? {} : { value: String(summary.data.pending) }),
+      key: 'card',
+      label: t('fleet.receipts.totals.card'),
+      ...(summary.data === undefined ? {} : { value: money(summary.data.cardTotal) }),
     },
     {
-      key: 'count',
-      label: t('fleet.dealership.totals.count'),
-      ...(summary.data === undefined ? {} : { value: String(summary.data.count) }),
+      key: 'fuel',
+      label: t('fleet.receipts.totals.fuel'),
+      ...(summary.data === undefined
+        ? {}
+        : {
+            value: t('fleet.receipts.totals.fuelLitres', {
+              amount: money(summary.data.fuelTotal),
+              litres: litresText(summary.data.fuelLitres),
+            }),
+          }),
+    },
+    {
+      key: 'tyresWash',
+      label: t('fleet.receipts.totals.tyresWash'),
+      ...(summary.data === undefined
+        ? {}
+        : { value: money(summary.data.tyresTotal + summary.data.washTotal) }),
     },
   ];
 
   const header = [
-    t('fleet.dealership.columns.outDate'),
+    t('fleet.receipts.columns.date'),
     t('fleet.odometer.columns.vehicle'),
-    t('fleet.dealership.columns.workType'),
-    t('fleet.dealership.columns.invoiceNumber'),
-    t('fleet.dealership.columns.invoiceAmount'),
-    t('fleet.vehicles.fields.insuranceCompany'),
-    t('fleet.dealership.columns.side'),
+    t('fleet.receipts.columns.driver'),
+    t('fleet.receipts.columns.kind'),
+    t('fleet.receipts.columns.source'),
+    t('fleet.receipts.columns.amount'),
+    t('fleet.receipts.columns.litres'),
   ];
   const allRows = () =>
     fetchFilteredRows((pageNo, size) =>
-      fleetApi.listDealershipInvoices({ ...filtersOnly(params), page: pageNo, pageSize: size }),
+      fleetApi.listReceipts({ ...filtersOnly(params), page: pageNo, pageSize: size }),
     );
   const exportSheet = async (): Promise<void> => {
     const all = await allRows();
     saveSheet({
-      name: t('fleet.nav.dealership'),
+      name: t('fleet.nav.receipts'),
       serialHeader: t('fleet.violations.report.serial'),
       header,
       rows: all.map((row) => [
-        formatDate(row.outDate, locale),
+        formatDate(row.date, locale),
         row.vehicleCode ?? '',
-        row.workTypeLabel,
-        row.invoiceNumber ?? '',
-        row.invoiceAmount ?? '',
-        row.insuranceCompanyName ?? '',
-        row.pending ? t('fleet.dealership.pending') : sideLabel(row),
+        row.driverName ?? '',
+        `${kindLabel(row)} ${fuelLabel(row)}`.trim(),
+        sourceLabel(row),
+        row.amount,
+        row.litres ?? '',
       ]),
-      moneyColumns: [4],
+      moneyColumns: [5],
     });
   };
   const onPrint = async (): Promise<void> => {
     const all = await allRows();
     try {
       printFleetReport({
-        title: t('fleet.nav.dealership'),
+        title: t('fleet.nav.receipts'),
         department: t('fleet.violations.report.department'),
         subtitle: '',
         header,
         rows: all.map((row) => [
-          formatDate(row.outDate, locale),
+          formatDate(row.date, locale),
           row.vehicleCode ?? '—',
-          row.workTypeLabel,
-          row.invoiceNumber ?? '—',
-          row.invoiceAmount === null ? '—' : reportMoney(row.invoiceAmount),
-          row.insuranceCompanyName ?? '—',
-          row.pending ? t('fleet.dealership.pending') : sideLabel(row),
+          row.driverName ?? '—',
+          `${kindLabel(row)} ${fuelLabel(row)}`.trim(),
+          sourceLabel(row),
+          reportMoney(row.amount),
+          row.litres === null ? '—' : litresText(row.litres),
         ]),
         totals:
           summary.data === undefined
             ? []
             : [
                 {
-                  label: t('fleet.dealership.totals.dealership'),
-                  value: reportMoney(summary.data.dealershipTotal),
+                  label: t('fleet.receipts.totals.custody'),
+                  value: reportMoney(summary.data.custodyTotal),
                 },
                 {
-                  label: t('fleet.dealership.totals.custody'),
-                  value: reportMoney(summary.data.custodyTotal),
+                  label: t('fleet.receipts.totals.card'),
+                  value: reportMoney(summary.data.cardTotal),
                 },
               ],
         signatories,
@@ -361,13 +370,22 @@ export const DealershipPage = (): JSX.Element => {
   return (
     <PageContainer>
       <PageHeader
-        title={t('fleet.nav.dealership')}
+        title={t('fleet.nav.receipts')}
         breadcrumbs={[
           { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.dealership') },
+          { label: t('fleet.nav.receipts') },
         ]}
         actions={
-          !isError && <DocumentActions name="dealership" onPrint={onPrint} onExport={exportSheet} />
+          <>
+            {!isError && (
+              <DocumentActions name="receipts" onPrint={onPrint} onExport={exportSheet} />
+            )}
+            {can('fleetReceipt.create') && (
+              <Button data-receipt-new="true" onClick={() => setAdding(true)}>
+                + {t('fleet.receipts.new')}
+              </Button>
+            )}
+          </>
         }
       />
       <div className="space-y-4">
@@ -378,53 +396,51 @@ export const DealershipPage = (): JSX.Element => {
               from: null,
               to: null,
               vehicleCodes: null,
-              side: null,
-              state: null,
-              work: null,
+              kind: null,
+              source: null,
+              driver: null,
             })
           }
           trailing={<FilteredCount value={data?.meta.totalItems} />}
         >
-          {dateBound('fleet.dealership.filters.from', from, 'from')}
-          {dateBound('fleet.dealership.filters.to', to, 'to')}
+          {dateBound('fleet.receipts.filters.from', from, 'from')}
+          {dateBound('fleet.receipts.filters.to', to, 'to')}
           <VehicleCodeFilter
             className="shrink-0"
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
           <Select
-            aria-label={t('fleet.dealership.columns.side')}
-            title={t('fleet.dealership.columns.side')}
-            value={side}
-            onChange={(e) => patch({ side: e.target.value || null })}
+            aria-label={t('fleet.receipts.columns.kind')}
+            title={t('fleet.receipts.columns.kind')}
+            value={kind}
+            onChange={(e) => patch({ kind: e.target.value || null })}
             className="w-auto shrink-0"
           >
-            <option value="">{t('fleet.dealership.filters.anySide')}</option>
-            <option value="dealership">{t('fleet.dealership.side.dealership')}</option>
-            <option value="custody">{t('fleet.dealership.side.custody')}</option>
+            <option value="">{t('fleet.receipts.filters.anyKind')}</option>
+            <option value="fuel">{t('fleet.receipts.kind.fuel')}</option>
+            <option value="tyres">{t('fleet.receipts.kind.tyres')}</option>
+            <option value="wash">{t('fleet.receipts.kind.wash')}</option>
           </Select>
           <Select
-            aria-label={t('fleet.dealership.filters.state')}
-            title={t('fleet.dealership.filters.state')}
-            value={state}
-            onChange={(e) => patch({ state: e.target.value || null })}
+            aria-label={t('fleet.receipts.columns.source')}
+            title={t('fleet.receipts.columns.source')}
+            value={source}
+            onChange={(e) => patch({ source: e.target.value || null })}
             className="w-auto shrink-0"
           >
-            <option value="">{t('fleet.dealership.filters.anyState')}</option>
-            <option value="pending">{t('fleet.dealership.pending')}</option>
-            <option value="recorded">{t('fleet.dealership.recorded')}</option>
+            <option value="">{t('fleet.receipts.filters.anySource')}</option>
+            <option value="card">{t('fleet.receipts.source.card')}</option>
+            <option value="custody">{t('fleet.receipts.source.custody')}</option>
           </Select>
-          <Select
-            aria-label={t('fleet.dealership.columns.workType')}
-            title={t('fleet.dealership.columns.workType')}
-            value={work}
-            onChange={(e) => patch({ work: e.target.value || null })}
-            className="w-auto shrink-0"
-          >
-            <option value="">{t('fleet.dealership.filters.anyWork')}</option>
-            <option value="maintenance">{t('fleet.dealership.work.maintenance')}</option>
-            <option value="repair">{t('fleet.dealership.work.repair')}</option>
-          </Select>
+          <Input
+            aria-label={t('fleet.receipts.columns.driver')}
+            title={t('fleet.receipts.columns.driver')}
+            placeholder={t('fleet.receipts.filters.driver')}
+            value={driver}
+            onChange={(e) => patch({ driver: e.target.value || null })}
+            className="w-44 shrink-0"
+          />
         </FilterBar>
 
         {/* «الاجماليات تكون بين الجدول والفلاتر» */}
@@ -439,9 +455,6 @@ export const DealershipPage = (): JSX.Element => {
           onRetry={() => void refetch()}
           sort={sorts}
           onSortChange={changeSort}
-          // The yellow row: left the workshop, no invoice yet. A second signal only — the side
-          // column is empty and the actions say «تسجيل الفاتورة».
-          rowClassName={(row) => cn(row.pending && 'bg-amber-50/80 dark:bg-amber-950/30')}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
@@ -452,12 +465,15 @@ export const DealershipPage = (): JSX.Element => {
         )}
       </div>
 
-      <DealershipInvoiceDialog
-        open={recording !== null}
-        onClose={() => setRecording(null)}
-        row={recording}
+      <ReceiptDialog
+        open={adding || editing !== null}
+        onClose={() => {
+          setAdding(false);
+          setEditing(null);
+        }}
+        row={editing}
       />
-      <DealershipImagePreviewDialog
+      <ReceiptImagePreviewDialog
         open={previewing !== null}
         onClose={() => setPreviewing(null)}
         row={previewing}
@@ -465,7 +481,7 @@ export const DealershipPage = (): JSX.Element => {
       <Dialog
         open={deleting !== null}
         onClose={() => setDeleting(null)}
-        title={t('fleet.dealership.deleteTitle')}
+        title={t('fleet.receipts.deleteTitle')}
         footer={
           <>
             <Button variant="secondary" onClick={() => setDeleting(null)}>
@@ -482,7 +498,7 @@ export const DealershipPage = (): JSX.Element => {
         }
       >
         <p className="text-sm text-slate-600 dark:text-slate-300">
-          {t('fleet.dealership.deleteBody')}
+          {t('fleet.receipts.deleteBody')}
         </p>
       </Dialog>
     </PageContainer>

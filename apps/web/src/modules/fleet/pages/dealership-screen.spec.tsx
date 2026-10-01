@@ -204,11 +204,12 @@ describe('the dealership table', () => {
     expect(PAGE).toContain('useDealershipSummary(filters)');
   });
 
-  it('offers print and Excel as icons beside the page, like the violations screen', () => {
+  it('offers print and Excel as icons in the page header, above the filters, like the vehicles screen', () => {
     const html = render();
     expect(html).toContain('data-print="dealership"');
     expect(html).toContain('data-export="dealership"');
-    expect(PAGE).toContain('<PrinterIcon className="h-6 w-6" />');
+    expect(PAGE).toContain('<DocumentActions name="dealership"');
+    expect(PAGE).not.toContain('order-last');
   });
 
   it('carries the image column exactly as the vehicle licence does — upload, then view / print / delete', () => {

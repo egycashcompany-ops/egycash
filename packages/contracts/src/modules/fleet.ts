@@ -3161,3 +3161,193 @@ export const ListFleetFuelCardMovementsQuerySchema = PaginationQuerySchema.exten
   cardId: objectId(),
 }).strict();
 export type ListFleetFuelCardMovementsQuery = z.infer<typeof ListFleetFuelCardMovementsQuerySchema>;
+
+// ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
+//
+// «وفى شاشه خصم الايصالات بيكون فوق اختار وقود او كاوتش او غسيل». A receipt is one paper the
+// driver brought back: fuel paid with the car's card OR from the custody fund, tyres and washing
+// always from the fund. A fuel receipt taken off a card is a `receipt` movement on that card,
+// written with the receipt in one transaction. What the fund paid — these receipts and the
+// dealership rows on the custody side — is the ledger the custody screen sums.
+
+export const FLEET_RECEIPT_FILE_CATEGORY = 'fleet-receipts';
+
+export const FLEET_RECEIPT_KINDS = ['fuel', 'tyres', 'wash'] as const;
+export const FleetReceiptKindSchema = z.enum(FLEET_RECEIPT_KINDS);
+export type FleetReceiptKind = z.infer<typeof FleetReceiptKindSchema>;
+
+/** Where the money came from: the car's fuel card, or the custody fund. */
+export const FLEET_RECEIPT_SOURCES = ['card', 'custody'] as const;
+export const FleetReceiptSourceSchema = z.enum(FLEET_RECEIPT_SOURCES);
+export type FleetReceiptSource = z.infer<typeof FleetReceiptSourceSchema>;
+
+const receiptCore = {
+  date: z.coerce.date(),
+  vehicleId: objectId(),
+  /** The driver, when one of Fleet's people; `null` for a name typed by hand. */
+  driverEmployeeId: objectId().nullish(),
+  /** The driver's name as shown — a snapshot for a known driver, the typed text otherwise. */
+  driverName: z.string().trim().min(1).max(200).nullish(),
+  kind: FleetReceiptKindSchema,
+  /** The fuel card charged — fuel only; `null` means the custody fund paid. */
+  cardId: objectId().nullish(),
+  /** Fuel only — prices the litres from the fleet settings. */
+  fuelType: FleetFuelTypeSchema.nullish(),
+  amount: egp().positive(),
+};
+
+const receiptRules = (
+  value: {
+    kind: FleetReceiptKind;
+    cardId?: string | null | undefined;
+    fuelType?: FleetFuelType | null | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void => {
+  if (value.kind !== 'fuel' && value.cardId != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['cardId'],
+      message: 'only a fuel receipt is taken off a card — tyres and washing come from the fund',
+    });
+  }
+  if (value.kind !== 'fuel' && value.fuelType != null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fuelType'],
+      message: 'only a fuel receipt names a fuel type',
+    });
+  }
+  if (value.kind === 'fuel' && value.fuelType == null) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['fuelType'],
+      message: 'a fuel receipt needs its fuel type to price the litres',
+    });
+  }
+};
+
+export const CreateFleetReceiptSchema = z.object(receiptCore).strict().superRefine(receiptRules);
+export type CreateFleetReceipt = z.infer<typeof CreateFleetReceiptSchema>;
+
+export const UpdateFleetReceiptSchema = z
+  .object({
+    date: receiptCore.date.optional(),
+    vehicleId: receiptCore.vehicleId.optional(),
+    driverEmployeeId: receiptCore.driverEmployeeId,
+    driverName: receiptCore.driverName,
+    kind: receiptCore.kind,
+    cardId: receiptCore.cardId,
+    fuelType: receiptCore.fuelType,
+    amount: receiptCore.amount.optional(),
+    version: z.number().int().min(0),
+  })
+  .strict()
+  .superRefine(receiptRules);
+export type UpdateFleetReceipt = z.infer<typeof UpdateFleetReceiptSchema>;
+
+const receiptFilters = {
+  vehicleCodes: vehicleCodesQuery(),
+  kind: FleetReceiptKindSchema.optional(),
+  source: FleetReceiptSourceSchema.optional(),
+  /** Part of the driver's name. */
+  driver: z.string().trim().min(1).max(200).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+};
+export const ListFleetReceiptsQuerySchema = PaginationQuerySchema.extend({
+  ...receiptFilters,
+  sort: fleetSortQuery(),
+}).strict();
+export type ListFleetReceiptsQuery = z.infer<typeof ListFleetReceiptsQuerySchema>;
+export const FleetReceiptSummaryQuerySchema = z.object(receiptFilters).strict();
+export type FleetReceiptSummaryQuery = z.infer<typeof FleetReceiptSummaryQuerySchema>;
+
+export interface FleetReceiptDto {
+  id: string;
+  date: string;
+  vehicleId: string;
+  vehicleCode: string | null;
+  driverEmployeeId: string | null;
+  driverName: string | null;
+  kind: FleetReceiptKind;
+  source: FleetReceiptSource;
+  cardId: string | null;
+  cardCompany: FleetFuelCardCompany | null;
+  cardNumber: string | null;
+  fuelType: FleetFuelType | null;
+  /** The price the litres were computed with — the setting's value on the day. */
+  pricePerLitre: number | null;
+  litres: number | null;
+  amount: number;
+  image: FleetLicenseImageDto | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The figures between the filters and the table on the receipts screen. */
+export interface FleetReceiptTotalsDto {
+  count: number;
+  custodyTotal: number;
+  cardTotal: number;
+  fuelTotal: number;
+  fuelLitres: number;
+  tyresTotal: number;
+  washTotal: number;
+}
+
+/** What the custody fund paid for — the dealership (private cars), fuel, tyres, washing. */
+export const FLEET_CUSTODY_SOURCES = ['dealership', 'fuel', 'tyres', 'wash'] as const;
+export const FleetCustodySourceSchema = z.enum(FLEET_CUSTODY_SOURCES);
+export type FleetCustodySource = z.infer<typeof FleetCustodySourceSchema>;
+
+const custodyFilters = {
+  vehicleCodes: vehicleCodesQuery(),
+  source: FleetCustodySourceSchema.optional(),
+  driver: z.string().trim().min(1).max(200).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+};
+export const FleetCustodySummaryQuerySchema = z.object(custodyFilters).strict();
+export type FleetCustodySummaryQuery = z.infer<typeof FleetCustodySummaryQuerySchema>;
+export const ListFleetCustodyMovementsQuerySchema =
+  PaginationQuerySchema.extend(custodyFilters).strict();
+export type ListFleetCustodyMovementsQuery = z.infer<typeof ListFleetCustodyMovementsQuerySchema>;
+
+/** One car's line in «ملخص لكل سيارة». */
+export interface FleetCustodyVehicleRowDto {
+  vehicleId: string | null;
+  vehicleCode: string | null;
+  dealership: number;
+  fuel: number;
+  tyres: number;
+  wash: number;
+  total: number;
+}
+
+export interface FleetCustodySummaryDto {
+  count: number;
+  total: number;
+  dealership: number;
+  fuel: number;
+  tyres: number;
+  wash: number;
+  vehicles: FleetCustodyVehicleRowDto[];
+}
+
+/** One line of «كل الحركات» — a receipt from the fund, or a private car's dealership bill. */
+export interface FleetCustodyMovementDto {
+  id: string;
+  ref: 'receipt' | 'dealershipInvoice';
+  source: FleetCustodySource;
+  date: string;
+  vehicleId: string | null;
+  vehicleCode: string | null;
+  driverEmployeeId: string | null;
+  driverName: string | null;
+  /** The fuel type of a fuel receipt, the work of a dealership bill. */
+  fuelType: FleetFuelType | null;
+  detail: string | null;
+  amount: number;
+}

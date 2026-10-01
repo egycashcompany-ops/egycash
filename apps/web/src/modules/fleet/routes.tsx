@@ -20,6 +20,8 @@
 //   /fleet/dealership         fleetDealership.view         التوكيل
 //   /fleet/fuel-cards         fleetFuelCard.view           بطاقات الوقود
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
+//   /fleet/receipts           fleetReceipt.view            خصم الإيصالات
+//   /fleet/custody            fleetCustody.view            العهدة
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
@@ -45,6 +47,8 @@ import { NoticeEditorPage } from './pages/NoticeEditorPage';
 import { DealershipPage } from './pages/DealershipPage';
 import { FuelCardsPage } from './pages/FuelCardsPage';
 import { FuelChargingPage } from './pages/FuelChargingPage';
+import { ReceiptsPage } from './pages/ReceiptsPage';
+import { CustodyPage } from './pages/CustodyPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
@@ -186,6 +190,22 @@ export default function FleetRoutes(): JSX.Element {
           element={
             <RequirePermission permission="fleetFuelCharge.view">
               <FuelChargingPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="receipts"
+          element={
+            <RequirePermission permission="fleetReceipt.view">
+              <ReceiptsPage />
+            </RequirePermission>
+          }
+        />
+        <Route
+          path="custody"
+          element={
+            <RequirePermission permission="fleetCustody.view">
+              <CustodyPage />
             </RequirePermission>
           }
         />

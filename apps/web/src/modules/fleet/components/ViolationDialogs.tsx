@@ -136,6 +136,7 @@ export const VehicleViolationDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={
         readOnly
           ? t('fleet.violations.deleteTitle')
@@ -318,6 +319,7 @@ export const DriverViolationDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={
         readOnly
           ? t('fleet.violations.deleteTitle')
@@ -423,6 +425,7 @@ export const GrievanceDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={t('fleet.violations.grievanceTitle', { code, year: String(year) })}
       description={t('fleet.violations.grievanceHint')}
       footer={

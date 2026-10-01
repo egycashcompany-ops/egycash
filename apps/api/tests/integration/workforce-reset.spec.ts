@@ -229,6 +229,8 @@ describe('a dry run', () => {
       // A notice already sent to the insurer names the driver it was filed for.
       'fleet_notices',
       'fleet_odometer_logs',
+      // A receipt names the driver who brought it back; it is about the car and the money.
+      'fleet_receipts',
       'fleet_violations',
       'gold_delivery_receipts',
       'gold_receiving_receipts',
@@ -351,8 +353,8 @@ describe('the recruitment pipeline', () => {
     const report = await runReset({ write: false, includeRecruitment: true });
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
-    // The other eight are still off limits.
-    expect(report.untouched).toHaveLength(9);
+    // The other nine are still off limits.
+    expect(report.untouched).toHaveLength(10);
   }, 240_000);
 });
 

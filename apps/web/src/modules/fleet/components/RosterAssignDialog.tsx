@@ -163,6 +163,7 @@ export const RosterAssignDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={t('fleet.roster.assignTitle', { code: row?.code ?? '' })}
       description={t('fleet.roster.assignHint')}
       footer={

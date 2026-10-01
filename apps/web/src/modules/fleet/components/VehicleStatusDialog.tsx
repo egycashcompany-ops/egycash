@@ -63,6 +63,7 @@ export const VehicleStatusDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={t('fleet.vehicles.changeStatus')}
       description={vehicle?.code ?? ''}
       footer={

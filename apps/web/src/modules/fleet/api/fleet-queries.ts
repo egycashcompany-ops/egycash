@@ -16,6 +16,8 @@ import {
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
   type UpdateFleetDealershipInvoice,
+  type CreateFleetReceipt,
+  type UpdateFleetReceipt,
   type UpdateFleetFuelCard,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
@@ -77,6 +79,8 @@ const fleetKeys = {
   notices: featureKey(MODULE, 'notices'),
   dealership: featureKey(MODULE, 'dealership'),
   fuelCards: featureKey(MODULE, 'fuelCards'),
+  receipts: featureKey(MODULE, 'receipts'),
+  custody: featureKey(MODULE, 'custody'),
   violations: featureKey(MODULE, 'violations'),
   licensing: featureKey(MODULE, 'licensing'),
   people: featureKey(MODULE, 'people'),
@@ -956,3 +960,58 @@ export const useApproveFuelCharge = () =>
   );
 export const useTransferFuelBalance = () =>
   useFuelCardMutation((body: TransferFleetFuelBalance) => api.transferFuelBalance(body));
+
+// ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ─────────────────
+export const useReceipts = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'receipts', params),
+    queryFn: () => api.listReceipts(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+export const useReceiptSummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'receipts', { summary: true, ...params }),
+    queryFn: () => api.receiptSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+// A receipt moves money on three screens: its own, the ledger it feeds, and the card it charged.
+const useReceiptMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: fleetKeys.receipts });
+      void qc.invalidateQueries({ queryKey: fleetKeys.custody });
+      void qc.invalidateQueries({ queryKey: fleetKeys.fuelCards });
+    },
+  });
+};
+export const useCreateReceipt = () =>
+  useReceiptMutation((body: CreateFleetReceipt) => api.createReceipt(body));
+export const useUpdateReceipt = () =>
+  useReceiptMutation(({ id, body }: { id: string; body: UpdateFleetReceipt }) =>
+    api.updateReceipt(id, body),
+  );
+export const useDeleteReceipt = () => useReceiptMutation((id: string) => api.deleteReceipt(id));
+export const useUploadReceiptImage = () =>
+  useReceiptMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadReceiptImage(id, file),
+  );
+export const useDeleteReceiptImage = () =>
+  useReceiptMutation((id: string) => api.deleteReceiptImage(id));
+export const useCustodySummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', { summary: true, ...params }),
+    queryFn: () => api.custodySummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+export const useCustodyMovements = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'custody', params),
+    queryFn: () => api.listCustodyMovements(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });

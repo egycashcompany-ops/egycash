@@ -113,6 +113,7 @@ export const FuelTransferDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       size="lg"
       tall
       title={t('fleet.fuelCards.transfer.title')}

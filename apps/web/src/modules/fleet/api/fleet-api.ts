@@ -23,6 +23,12 @@ import {
   type FleetDealershipTotalsDto,
   type FleetNoticeDto,
   type UpdateFleetDealershipInvoice,
+  type CreateFleetReceipt,
+  type UpdateFleetReceipt,
+  type FleetReceiptDto,
+  type FleetReceiptTotalsDto,
+  type FleetCustodySummaryDto,
+  type FleetCustodyMovementDto,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type OrderFleetCatalog,
@@ -489,3 +495,29 @@ export const listFuelCardMovements = (
   params: FleetListParams,
 ): Promise<Paginated<FleetFuelCardMovementDto>> =>
   getPage<FleetFuelCardMovementDto>(`/fleet/fuel-cards/movements${buildQuery(params)}`);
+
+// ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ─────────────────
+export const listReceipts = (params: FleetListParams): Promise<Paginated<FleetReceiptDto>> =>
+  getPage<FleetReceiptDto>(`/fleet/receipts${buildQuery(params)}`);
+export const receiptSummary = (params: FleetListParams): Promise<FleetReceiptTotalsDto> =>
+  get<FleetReceiptTotalsDto>(`/fleet/receipts/summary${buildQuery(params)}`);
+export const createReceipt = (body: CreateFleetReceipt): Promise<FleetReceiptDto> =>
+  post<FleetReceiptDto>('/fleet/receipts', body);
+export const updateReceipt = (id: string, body: UpdateFleetReceipt): Promise<FleetReceiptDto> =>
+  patch<FleetReceiptDto>(`/fleet/receipts/${id}`, body);
+export const deleteReceipt = (id: string): Promise<void> => del<void>(`/fleet/receipts/${id}`);
+export const uploadReceiptImage = (id: string, file: File): Promise<FleetReceiptDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FleetReceiptDto>(`/fleet/receipts/${id}/image`, form);
+};
+export const fetchReceiptImage = (id: string): Promise<Blob> =>
+  fetchBlob(`/fleet/receipts/${id}/image`);
+export const deleteReceiptImage = (id: string): Promise<FleetReceiptDto> =>
+  del<FleetReceiptDto>(`/fleet/receipts/${id}/image`);
+export const custodySummary = (params: FleetListParams): Promise<FleetCustodySummaryDto> =>
+  get<FleetCustodySummaryDto>(`/fleet/custody/summary${buildQuery(params)}`);
+export const listCustodyMovements = (
+  params: FleetListParams,
+): Promise<Paginated<FleetCustodyMovementDto>> =>
+  getPage<FleetCustodyMovementDto>(`/fleet/custody/movements${buildQuery(params)}`);

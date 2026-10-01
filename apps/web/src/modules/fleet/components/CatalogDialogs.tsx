@@ -92,6 +92,7 @@ export const CatalogItemDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={
         item === null
           ? t('fleet.catalogs.addItem', { kind: t(`fleet.catalogs.kind.${kind}`) })
@@ -203,6 +204,7 @@ export const VehicleTypeDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={type === null ? t('fleet.settings.addType') : t('fleet.settings.editType')}
       description={t('fleet.settings.typeHint')}
       footer={

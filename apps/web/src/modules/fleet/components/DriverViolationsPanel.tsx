@@ -39,7 +39,7 @@ import {
   useRecordDriverViolations,
   useMoveViolations,
   useSetViolationCollected,
-  useVehicles,
+  useAllVehicles,
   useViolationsPages,
 } from '../api/fleet-queries';
 import { SideLayer } from '../../../shared/ui/SideLayer';
@@ -172,7 +172,8 @@ export const DriverViolationsPanel = ({
     amount !== '' ||
     settled !== '';
 
-  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
+  // The WHOLE registry: a car past the first hundred by code read as «—».
+  const vehicles = useAllVehicles({ anyStatus: true });
   const codeOf = useMemo(() => {
     const map = new Map<string, string>();
     for (const v of vehicles.data?.items ?? []) map.set(v.id, v.code);

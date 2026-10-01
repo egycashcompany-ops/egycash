@@ -60,7 +60,7 @@ const CODE_SELECTORS = [
   },
   {
     file: 'modules/fleet/components/VehicleCodeCombobox.tsx',
-    what: 'the typed car code on both violation entry rows — company statements and the drivers’ batch bar',
+    what: 'the typed car code on both violation entry rows and the accident form — on the accident form the whole registry is loaded and narrowed in the browser by code alone (`rankVehicleCodes`)',
   },
   {
     file: 'modules/gold/api/gold-api.ts',
@@ -94,7 +94,7 @@ const CLIENT_SIDE_FILTERS = [
 const NOT_A_CODE_SELECTOR = [
   {
     file: 'modules/fleet/components/VehicleSelect.tsx',
-    why: 'a plain dropdown of the whole active registry — it has no search box at all, so there is no term to route',
+    why: 'a plain dropdown of the WHOLE registry (`useAllVehicles`, every page) — it has no search box at all, so there is no term to route',
   },
   {
     file: 'modules/fleet/pages/AccidentsPage.tsx',
@@ -133,7 +133,7 @@ const LIST_ENDPOINT = /\/fleet\/vehicles(?![/\w])\s*(\?|\$\{)/;
  */
 const queryArguments = (source: string): string[] => {
   const found: string[] = [];
-  for (const call of ['useVehicles(', 'useVehicleSearch(']) {
+  for (const call of ['useVehicles(', 'useAllVehicles(', 'useVehicleSearch(']) {
     let at = source.indexOf(call);
     while (at !== -1) {
       let depth = 0;
@@ -239,7 +239,11 @@ describe('the census covers every registry query in the application', () => {
   const found = (): string[] => {
     const out = execFileSync(
       'grep',
-      ['-rEl', String.raw`useVehicles\(|useVehicleSearch\(|/fleet/vehicles(\?|\$\{)`, 'modules'],
+      [
+        '-rEl',
+        String.raw`useVehicles\(|useAllVehicles\(|useVehicleSearch\(|/fleet/vehicles(\?|\$\{)`,
+        'modules',
+      ],
       { cwd: SRC, encoding: 'utf8' },
     );
     return out

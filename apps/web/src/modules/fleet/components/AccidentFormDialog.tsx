@@ -26,7 +26,7 @@ import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAccidentCarBalances, useCreateAccident, useUpdateAccident } from '../api/fleet-queries';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { coverDeficit } from '../lib/accident-transfer-plan';
-import { VehicleSelect } from './VehicleSelect';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { useFleetPeopleMap } from './EmployeeName';
 
@@ -253,8 +253,22 @@ export const AccidentFormDialog = ({
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.odometer.columns.vehicle')} required>
-            <VehicleSelect value={vehicleId} onChange={setVehicleId} anyStatus />
+          {/* «عاوز اكتب» and «كل العربيات تظهر لما ادوس على كود السياره» — typed or picked, from
+              every car in the registry, disposed ones included: an accident is a historical fact. */}
+          <Field
+            label={t('fleet.odometer.columns.vehicle')}
+            required
+            hint={t('fleet.accidents.vehicleHint')}
+          >
+            <VehicleCodeCombobox
+              value={vehicleId}
+              onChange={setVehicleId}
+              anyStatus
+              wholeRegistry
+              ariaLabel={t('fleet.odometer.columns.vehicle')}
+              placeholder={t('fleet.accidents.vehiclePlaceholder')}
+              testId="accident-vehicle"
+            />
           </Field>
           <Field label={t('fleet.accidents.fields.occurredAt')} required>
             <Input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />

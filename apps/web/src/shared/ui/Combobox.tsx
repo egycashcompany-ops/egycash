@@ -27,6 +27,7 @@ export const Combobox = ({
   density = 'default',
   testId,
   ariaLabel,
+  tallList = false,
 }: {
   value: string;
   options: readonly string[];
@@ -63,6 +64,11 @@ export const Combobox = ({
   testId?: string;
   /** The control's own accessible name, when no `<label>` points at it. */
   ariaLabel?: string;
+  /**
+   * A taller open list — for a catalog the reader scrolls through as well as types into, such as
+   * the whole vehicle registry, where seven rows at a time is a keyhole.
+   */
+  tallList?: boolean;
 }): JSX.Element => {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -74,15 +80,22 @@ export const Combobox = ({
   // While closed the box shows the committed value; while open it shows what you are typing.
   const text = open ? query : value;
 
+  const remote = onSearch !== undefined;
   // A stored value the catalog does not carry — a record written before the catalog existed, or
   // imported from elsewhere — stays selectable instead of vanishing the moment the record is
   // opened for editing. Silently blanking it would turn "open and save" into data loss.
+  //
+  // Not while something is TYPED at a remote owner, though: its options are the answer to the
+  // query, and pinning the committed value above them put it on the highlighted first row, so
+  // typing «215» and pressing Enter committed the car already chosen instead of 215.
   const all = useMemo(
-    () => (value !== '' && !options.includes(value) ? [value, ...options] : options),
-    [options, value],
+    () =>
+      value !== '' && !options.includes(value) && !(remote && query.trim() !== '')
+        ? [value, ...options]
+        : options,
+    [options, value, remote, query],
   );
 
-  const remote = onSearch !== undefined;
   const matches = useMemo(() => {
     const q = fold(query);
     if (remote || !open || q === '') return all;
@@ -115,12 +128,22 @@ export const Combobox = ({
     onBlur?.();
   };
 
+  // Open on the catalog's opening answer, whatever was typed last time — the one way the list
+  // opens, from focus, from a click on a box that already has focus (right after a pick), and
+  // from the arrow keys.
+  const openFresh = (): void => {
+    setOpen(true);
+    setQuery('');
+    setActive(0);
+    // The owner's results still hold the last query; ask for the opening answer again.
+    onSearch?.('');
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!open) {
-        setOpen(true);
-        setActive(0);
+        openFresh();
         return;
       }
       setActive((i) => {
@@ -163,11 +186,9 @@ export const Combobox = ({
           if (!open) setOpen(true);
           onSearch?.(e.target.value);
         }}
-        onFocus={() => {
-          setOpen(true);
-          setQuery('');
-          // The owner's results still hold the last query; ask for the opening answer again.
-          onSearch?.('');
+        onFocus={openFresh}
+        onClick={() => {
+          if (!open) openFresh();
         }}
         onKeyDown={onKeyDown}
         onBlur={() => {
@@ -210,7 +231,8 @@ export const Combobox = ({
           id={listId}
           role="listbox"
           className={cn(
-            'absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200',
+            'absolute z-30 mt-1 w-full overflow-y-auto rounded-lg border border-slate-200',
+            tallList ? 'max-h-[26rem]' : 'max-h-64',
             // One step lighter than the page in dark mode: on a near-black background a drop
             // shadow is invisible, so the surface itself has to say "this floats above".
             'bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800',

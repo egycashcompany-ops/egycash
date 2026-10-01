@@ -4253,6 +4253,8 @@ const en: Record<string, string> = {
     'Accident files as recorded — amounts are the entered facts; opening and closing are the backend state.',
   'fleet.accidents.record': 'Record accident',
   'fleet.accidents.edit': 'Edit accident',
+  'fleet.accidents.vehiclePlaceholder': 'Type the code or pick…',
+  'fleet.accidents.vehicleHint': 'Type the code or pick from the list — every car',
   'fleet.accidents.formHint':
     'The facts as they happened; the server stores amounts as entered and derives nothing from them.',
   'fleet.accidents.created': 'Accident recorded',
@@ -11291,6 +11293,8 @@ const ar: Record<string, string> = {
     'ملفات الحوادث كما سُجلت — المبالغ حقائق مدخلة، والفتح والغلق حالة الخادم فقط.',
   'fleet.accidents.record': 'تسجيل حادث',
   'fleet.accidents.edit': 'تعديل الحادث',
+  'fleet.accidents.vehiclePlaceholder': 'اكتب الكود أو اختر…',
+  'fleet.accidents.vehicleHint': 'اكتب الكود أو اختر من القائمة — كل السيارات',
   'fleet.accidents.formHint':
     'الوقائع كما حدثت؛ يخزن الخادم المبالغ كما أُدخلت ولا يشتق منها شيئاً.',
   'fleet.accidents.created': 'تم تسجيل الحادث',

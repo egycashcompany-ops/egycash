@@ -7,12 +7,7 @@
 // grievance is the ONE per-(vehicle, year) figure — a PUT set/replace, prefilled from the
 // rollup row it was opened on.
 import { useEffect, useState } from 'react';
-import {
-  isUnknownFleetDriver,
-  MAX_PAGE_SIZE,
-  type FleetViolationDto,
-  type Locale,
-} from '@ecms/contracts';
+import { isUnknownFleetDriver, type FleetViolationDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { formatMoney } from '../../../shared/lib/format';
@@ -26,7 +21,7 @@ import {
   useRecordVehicleViolation,
   useSetGrievance,
   useUpdateViolation,
-  useVehicles,
+  useAllVehicles,
 } from '../api/fleet-queries';
 import { VehicleSelect } from './VehicleSelect';
 import { CatalogSelect } from './CatalogSelect';
@@ -89,7 +84,8 @@ export const VehicleViolationDialog = ({
   const readOnly = mode === 'delete';
 
   // The car's CODE, which is what a reader recognises — the row carries only its id.
-  const vehicles = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
+  // The WHOLE registry: a car past the first hundred by code read as «—».
+  const vehicles = useAllVehicles({ anyStatus: true });
   const code = (vehicles.data?.items ?? []).find((v) => v.id === vehicleId)?.code ?? '—';
 
   // What the row comes to. The server owns this arithmetic (count × unitValue) and this mirrors it

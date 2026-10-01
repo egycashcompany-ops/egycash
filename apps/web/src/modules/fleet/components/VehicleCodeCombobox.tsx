@@ -17,11 +17,17 @@
 // commits exactly one value and can never commit something that is not an option, while the filter
 // control is irreducibly multi — a list, checkbox rows, and a rule that takes several codes at once
 // from one typed string.
+//
+// `wholeRegistry` is the accident form's mode — «لما ادوس بس على كود السياره» every car is in the
+// list, and typing narrows it, codes that START with what was typed first. The whole registry is
+// loaded once (`useAllVehicles`) and filtered here, so clicking shows all of it rather than the
+// twenty-car shortlist a server search answers with.
 import { useEffect, useMemo, useState } from 'react';
 import { vehicleCodeSearchQuery } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Combobox } from '../../../shared/ui/Combobox';
-import { useVehicles } from '../api/fleet-queries';
+import { useAllVehicles, useVehicles } from '../api/fleet-queries';
+import { rankVehicleCodes } from '../lib/vehicle-code-rank';
 
 /** How many matches one search offers — a shortlist to pick from, not a catalogue. */
 const SEARCH_SIZE = 20;
@@ -33,6 +39,8 @@ export const VehicleCodeCombobox = ({
   testId,
   ariaLabel,
   anyStatus = false,
+  wholeRegistry = false,
+  placeholder,
 }: {
   /** The chosen vehicle's id ('' = none). The box shows its CODE. */
   value: string;
@@ -45,6 +53,10 @@ export const VehicleCodeCombobox = ({
    * can name a car that has since been disposed of, the same reason `VehicleSelect` takes this.
    */
   anyStatus?: boolean;
+  /** Offer EVERY car on opening and narrow as the clerk types — see the head of this file. */
+  wholeRegistry?: boolean;
+  /** What the empty box says; «اختر…» unless given. */
+  placeholder?: string;
 }): JSX.Element => {
   const t = useT();
   const [query, setQuery] = useState('');
@@ -52,20 +64,28 @@ export const VehicleCodeCombobox = ({
   // and the box must go on showing the chosen car rather than blanking as the clerk types.
   const [pickedCode, setPickedCode] = useState('');
 
-  const vehicles = useVehicles({
-    ...vehicleCodeSearchQuery(query),
-    ...(anyStatus ? {} : { status: 'active' }),
-    pageSize: SEARCH_SIZE,
-    sortBy: 'code',
-    sortDir: 'asc',
-  });
+  const searched = useVehicles(
+    {
+      ...vehicleCodeSearchQuery(query),
+      ...(anyStatus ? {} : { status: 'active' }),
+      pageSize: SEARCH_SIZE,
+      sortBy: 'code',
+      sortDir: 'asc',
+    },
+    !wholeRegistry,
+  );
+  const whole = useAllVehicles({ anyStatus }, wholeRegistry);
+  const items = (wholeRegistry ? whole.data : searched.data)?.items;
 
   const byCode = useMemo(() => {
     const map = new Map<string, string>();
-    for (const v of vehicles.data?.items ?? []) map.set(v.code, v.id);
+    for (const v of items ?? []) map.set(v.code, v.id);
     return map;
-  }, [vehicles.data]);
-  const options = useMemo(() => [...byCode.keys()], [byCode]);
+  }, [items]);
+  const options = useMemo(
+    () => (wholeRegistry ? rankVehicleCodes([...byCode.keys()], query) : [...byCode.keys()]),
+    [byCode, query, wholeRegistry],
+  );
 
   // A value handed in from outside — a row being edited, a car carried from another screen — names
   // a car whose code this control has not searched for. The id is known, the code is not, so the
@@ -93,9 +113,10 @@ export const VehicleCodeCombobox = ({
         setPickedCode(code);
         onChange(code === '' ? '' : (byCode.get(code) ?? ''));
       }}
-      placeholder={t('common.select')}
+      placeholder={placeholder ?? t('common.select')}
       emptyText={t('common.noResults')}
       clearLabel={t('common.clear')}
+      tallList={wholeRegistry}
       {...(density === undefined ? {} : { density })}
       {...(testId === undefined ? {} : { testId })}
       {...(ariaLabel === undefined ? {} : { ariaLabel })}

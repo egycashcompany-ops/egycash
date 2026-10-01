@@ -22,7 +22,6 @@
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  MAX_PAGE_SIZE,
   fleetAccidentRemaining,
   splitVehicleCodeList,
   type FleetAccidentDto,
@@ -54,7 +53,7 @@ import {
   useAccidents,
   useDeleteAccident,
   useSetAccidentStatus,
-  useVehicles,
+  useAllVehicles,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { ExportSheetButton } from '../components/ExportSheetButton';
@@ -174,8 +173,9 @@ export const AccidentsPage = (): JSX.Element => {
     from !== '' ||
     to !== '';
 
-  // Unfiltered registry map so files of retired vehicles still resolve to their codes.
-  const vehiclesQuery = useVehicles({ pageSize: MAX_PAGE_SIZE, sortBy: 'code', sortDir: 'asc' });
+  // Unfiltered registry map so files of retired vehicles still resolve to their codes — the WHOLE
+  // registry, not its first page of 100.
+  const vehiclesQuery = useAllVehicles({ anyStatus: true });
   // The row's own code first — the server resolves it, and a file kept from the old book for a
   // car the registry never had carries the book's code and no vehicle at all.
   const codeOf = (r: { vehicleId: string | null; vehicleCode: string | null }): string =>

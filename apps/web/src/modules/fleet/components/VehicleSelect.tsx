@@ -6,7 +6,7 @@
 // guaranteed 409.
 import { useT } from '../../../platform/localization/useT';
 import { Select, type ControlDensity, type ControlTextScale } from '../../../shared/ui/form';
-import { useVehicles } from '../api/fleet-queries';
+import { useAllVehicles } from '../api/fleet-queries';
 
 export const VehicleSelect = ({
   value,
@@ -61,12 +61,9 @@ export const VehicleSelect = ({
   testId?: string;
 }): JSX.Element => {
   const t = useT();
-  const { data } = useVehicles({
-    ...(anyStatus ? {} : { status: 'active' }),
-    pageSize: 100,
-    sortBy: 'code',
-    sortDir: 'asc',
-  });
+  // The WHOLE registry — one page stopped at the hundredth car by code, and every car after it
+  // could not be chosen at all.
+  const { data } = useAllVehicles({ anyStatus });
   const vehicles = (data?.items ?? []).filter(
     (v) => !excludeInWorkshop || !v.inWorkshop || v.id === value,
   );

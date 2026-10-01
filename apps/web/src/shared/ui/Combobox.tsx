@@ -27,6 +27,7 @@ export const Combobox = ({
   density = 'default',
   testId,
   ariaLabel,
+  tallList = false,
 }: {
   value: string;
   options: readonly string[];
@@ -63,6 +64,11 @@ export const Combobox = ({
   testId?: string;
   /** The control's own accessible name, when no `<label>` points at it. */
   ariaLabel?: string;
+  /**
+   * A taller open list — for a catalog the reader scrolls through as well as types into, such as
+   * the whole vehicle registry, where seven rows at a time is a keyhole.
+   */
+  tallList?: boolean;
 }): JSX.Element => {
   const listId = useId();
   const [open, setOpen] = useState(false);
@@ -210,7 +216,8 @@ export const Combobox = ({
           id={listId}
           role="listbox"
           className={cn(
-            'absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200',
+            'absolute z-30 mt-1 w-full overflow-y-auto rounded-lg border border-slate-200',
+            tallList ? 'max-h-[26rem]' : 'max-h-64',
             // One step lighter than the page in dark mode: on a near-black background a drop
             // shadow is invisible, so the surface itself has to say "this floats above".
             'bg-white py-1 shadow-lg dark:border-slate-600 dark:bg-slate-800',

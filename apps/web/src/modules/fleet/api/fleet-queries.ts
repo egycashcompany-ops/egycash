@@ -47,6 +47,7 @@ import {
 } from '@ecms/contracts';
 import { nextViolationsPage } from '../lib/violations-paging';
 import { fetchWholeCatalog } from '../lib/whole-catalog';
+import { fetchWholeVehicleRegistry } from '../lib/whole-vehicle-registry';
 import { detailKey, featureKey, listKey } from '../../../shared/lib/query-keys';
 import { useCan } from '../../../platform/rbac/Can';
 import { useSetSetting } from '../../../platform/settings/settings-api';
@@ -81,6 +82,22 @@ export const useVehicles = (params: FleetListParams, enabled = true) =>
     queryKey: listKey(MODULE, 'vehicles', params),
     queryFn: () => api.listVehicles(params),
     placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/**
+ * THE WHOLE REGISTRY, every page — see `lib/whole-vehicle-registry`. One cache entry under the
+ * `vehicles` subtree, so a vehicle write refreshes it with the rest. `anyStatus` offers every
+ * lifecycle status (historical facts); without it, the active cars only.
+ */
+export const useAllVehicles = (
+  { anyStatus = false }: { anyStatus?: boolean } = {},
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'vehicles', { whole: true, anyStatus }),
+    queryFn: () => fetchWholeVehicleRegistry(api.listVehicles, anyStatus),
+    staleTime: 60_000,
     enabled,
   });
 

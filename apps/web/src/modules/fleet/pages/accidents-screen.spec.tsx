@@ -161,7 +161,8 @@ const render = ({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
   // The registry both the code column and the dropdown read — one key serves both.
-  qc.setQueryData(listKey('fleet', 'vehicles', { pageSize: 100, sortBy: 'code', sortDir: 'asc' }), {
+  // The page reads the WHOLE registry (`useAllVehicles`) — every page, not the first 100.
+  qc.setQueryData(listKey('fleet', 'vehicles', { whole: true, anyStatus: true }), {
     items: [vehicle('v-1', '150'), vehicle('v-2', '151')],
     meta: { page: 1, pageSize: 100, totalItems: 2, totalPages: 1 },
   });
@@ -767,5 +768,33 @@ describe('the Excel carries the log — «الحوادث ضيف السجل فى 
     expect(body).toContain('fleetApi.accidentCarTransfers(vehicleId)');
     expect(body).toContain('logCell(r.vehicleId)');
     expect(body, 'only cars that have a transfer are asked').toContain('r.carHasTransfers');
+  });
+});
+
+describe('«كود السيارة» on the accident form — typed, and every car', () => {
+  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
+  const BOX = readFileSync(join(HERE, '../components/VehicleCodeCombobox.tsx'), 'utf8');
+  const PAGE = readFileSync(join(HERE, 'AccidentsPage.tsx'), 'utf8');
+  const ar = (key: string): string => translate('ar', key);
+
+  it('is a box the clerk can type the code into, offering the whole registry', () => {
+    expect(FORM).toMatch(/<VehicleCodeCombobox[\s\S]*?anyStatus\s+wholeRegistry/u);
+    expect(FORM, 'the single-page dropdown is gone').not.toContain('<VehicleSelect');
+  });
+
+  it('loads every page of the registry and narrows it by code as the clerk types', () => {
+    expect(BOX).toContain('useAllVehicles({ anyStatus }, wholeRegistry)');
+    expect(BOX).toContain('rankVehicleCodes([...byCode.keys()], query)');
+    expect(BOX, 'a list long enough to scroll').toContain('tallList={wholeRegistry}');
+  });
+
+  it('resolves every row’s code from the whole registry, not its first hundred', () => {
+    expect(PAGE).toContain('useAllVehicles({ anyStatus: true })');
+    expect(PAGE).not.toContain('useVehicles(');
+  });
+
+  it('says how the box works, in both languages', () => {
+    expect(ar('fleet.accidents.vehiclePlaceholder')).toBe('اكتب الكود أو اختر…');
+    expect(ar('fleet.accidents.vehicleHint')).toBe('اكتب الكود أو اختر من القائمة — كل السيارات');
   });
 });

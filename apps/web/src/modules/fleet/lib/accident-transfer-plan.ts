@@ -44,3 +44,18 @@ export const planTakes = (sources: readonly TakeSource[], amount: number): TakeP
   });
   return { rows, total: total / 100, short: left > 0 };
 };
+
+/**
+ * «مش انا اللى هكتب المبلغ الماخوذ» — the amount is not typed: the picked cars, in the order
+ * picked, cover this accident's NEGATIVE remaining, each down to zero before the next, until the
+ * accident reaches zero or the cars have nothing left. A remaining of zero or more takes nothing.
+ */
+export const coverDeficit = (
+  sources: readonly TakeSource[],
+  remaining: number,
+): TakePlan & { amount: number } => {
+  const deficit = Math.max(0, -piastres(remaining));
+  const total = sources.reduce((sum, source) => sum + Math.max(0, piastres(source.available)), 0);
+  const plan = planTakes(sources, Math.min(deficit, total) / 100);
+  return { ...plan, amount: plan.rows.reduce((sum, row) => sum + piastres(row.take), 0) / 100 };
+};

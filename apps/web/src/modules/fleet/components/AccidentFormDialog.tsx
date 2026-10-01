@@ -4,8 +4,9 @@
 // refusal). Edits send only the changed fields + the document version.
 //
 // «اختار عربيه و جمبها مبلغ» — optionally, an amount taken from ANOTHER car's remaining and added
-// to this file. The form shows what that car has and what it will have left, and refuses more than
-// it has; the server checks the same figure again inside the transaction that writes it.
+// to this file. The amount is worked out, not typed: the picked cars cover this file's negative
+// remaining, each down to zero in the order picked. The form shows what each car has, gives and
+// keeps; the server checks the same figures again inside the transaction that writes it.
 import { useEffect, useState } from 'react';
 import {
   fleetAccidentRemaining,
@@ -20,10 +21,11 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { cn } from '../../../shared/lib/cn';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useAccidentCarBalances, useCreateAccident, useUpdateAccident } from '../api/fleet-queries';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
-import { planTakes } from '../lib/accident-transfer-plan';
+import { coverDeficit } from '../lib/accident-transfer-plan';
 import { VehicleSelect } from './VehicleSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { useFleetPeopleMap } from './EmployeeName';
@@ -54,11 +56,10 @@ export const AccidentFormDialog = ({
   const [amountCollected, setAmountCollected] = useState('');
   const [paidAmount, setPaidAmount] = useState('');
   const [notes, setNotes] = useState('');
-  // «اختار عربيه و جمبها مبلغ» — the car the amount is TAKEN FROM, and how much. Both optional:
-  // most accidents are recorded without one.
+  // «اختار عربيه و جمبها مبلغ» — the cars the amount is TAKEN FROM. Optional: most accidents are
+  // recorded without one. How much is not typed; it is worked out below.
   // The cars to take from, IN THE ORDER PICKED — the first gives all it has before the next.
   const [fromVehicleIds, setFromVehicleIds] = useState<string[]>([]);
-  const [transferAmount, setTransferAmount] = useState('');
   useEffect(() => {
     if (!open) return;
     setVehicleId(accident?.vehicleId ?? initialVehicleId);
@@ -73,7 +74,6 @@ export const AccidentFormDialog = ({
     setAwaitingNameFor('');
     // A transfer is one act per save: every open starts with none picked.
     setFromVehicleIds([]);
-    setTransferAmount('');
   }, [open, accident, initialVehicleId]);
 
   // The picked drivers' NAMES, from the same roster every other fleet screen reads — the WHOLE
@@ -124,11 +124,19 @@ export const AccidentFormDialog = ({
   // the server leaves it out of the cap, and so does the figure the clerk is shown.
   const leavingFrom = (carId: string): number =>
     accident !== null && accident.vehicleId === carId ? fleetAccidentRemaining(accident) : 0;
-  // A box holding only «.» is not a number; it is read as nothing typed yet.
-  const typed = transferAmount === '' ? 0 : Number(transferAmount);
-  const taking = Number.isFinite(typed) ? typed : 0;
+  // This file's remaining as the form now reads — its own figures, plus what it already took and
+  // gave. Its NEGATIVE part is what the picked cars cover.
+  const targetBefore = fleetAccidentRemaining({
+    companyCost: Number(companyCost) || 0,
+    amountCollected: Number(amountCollected) || 0,
+    paidAmount: Number(paidAmount) || 0,
+    transferredIn: accident?.transferredIn ?? 0,
+    transferredOut: accident?.transferredOut ?? 0,
+  });
   const picked = fromVehicleIds.filter((id) => id !== vehicleId && balanceOf.has(id));
-  const plan = planTakes(
+  // «مش انا اللى هكتب المبلغ الماخوذ» — the amount is worked out: the cars, in the order picked,
+  // each down to zero, until this accident reaches zero or they have nothing left.
+  const plan = coverDeficit(
     picked.map((id) => ({
       vehicleId: id,
       code: balanceOf.get(id)?.vehicleCode ?? '',
@@ -141,8 +149,9 @@ export const AccidentFormDialog = ({
         }),
       ),
     })),
-    taking,
+    targetBefore,
   );
+  const taking = plan.amount;
   const transferring = picked.length > 0;
   const transferProblem = !transferring
     ? null
@@ -150,19 +159,8 @@ export const AccidentFormDialog = ({
       ? // Said, not left as a Save button that is silently off.
         t('fleet.accidents.transfer.loadFailed')
       : taking <= 0
-        ? t('fleet.accidents.transfer.needsAmount')
-        : plan.short
-          ? t('fleet.accidents.transfer.tooMuchAll', { available: money(plan.total) })
-          : null;
-  // This file's remaining as the form now reads — its own figures, plus what it already took and
-  // gave — and what the new transfer would make it.
-  const targetBefore = fleetAccidentRemaining({
-    companyCost: Number(companyCost) || 0,
-    amountCollected: Number(amountCollected) || 0,
-    paidAmount: Number(paidAmount) || 0,
-    transferredIn: accident?.transferredIn ?? 0,
-    transferredOut: accident?.transferredOut ?? 0,
-  });
+        ? t('fleet.accidents.transfer.noDeficit')
+        : null;
   const transfer =
     transferring && transferProblem === null
       ? {
@@ -238,6 +236,8 @@ export const AccidentFormDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      size="xl"
+      tall
       title={accident === null ? t('fleet.accidents.record') : t('fleet.accidents.edit')}
       description={t('fleet.accidents.formHint')}
       footer={
@@ -322,7 +322,10 @@ export const AccidentFormDialog = ({
             {t('fleet.accidents.transfer.title')}
           </legend>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t('fleet.accidents.transfer.fromVehicle')}>
+            <Field
+              label={t('fleet.accidents.transfer.fromVehicle')}
+              hint={t('fleet.accidents.transfer.pickOrder')}
+            >
               <MultiSelect
                 label={t('fleet.accidents.transfer.fromVehicle')}
                 placeholder={t('common.select')}
@@ -337,52 +340,103 @@ export const AccidentFormDialog = ({
                 className="w-full"
               />
             </Field>
-            <Field label={t('fleet.accidents.transfer.amount')}>
-              <MoneyInput
-                value={transferAmount}
-                onChange={setTransferAmount}
-                disabled={!transferring}
-                aria-invalid={transferProblem !== null}
-              />
+            <Field
+              label={t('fleet.accidents.transfer.amount')}
+              hint={t('fleet.accidents.transfer.amountAuto')}
+            >
+              {/* Shown, never typed — «مش انا اللى هكتب المبلغ الماخوذ». */}
+              <div
+                data-transfer-amount="true"
+                aria-readonly="true"
+                className="flex h-10 items-center rounded-md border border-slate-200 bg-slate-100 px-3 text-sm font-bold text-brand-700 dark:border-slate-700 dark:bg-slate-800 dark:text-brand-300"
+              >
+                {money(taking)}
+              </div>
             </Field>
           </div>
           {transferring && (
             <div
               data-transfer-balance="true"
-              className="space-y-1 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+              className="space-y-2 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
             >
-              {/* One line per car, in the order it gives: what it has, what it gives, what is left. */}
-              {plan.rows.map((row) => (
-                <p key={row.vehicleId} data-transfer-car={row.code}>
-                  {t('fleet.accidents.transfer.carLine', {
-                    code: row.code,
-                    available: money(row.available),
-                    take: money(row.take),
-                    left: money(row.left),
-                  })}
-                </p>
-              ))}
-              {picked.length > 1 && (
-                <p className="font-medium">
-                  {t('fleet.accidents.transfer.totalAvailable', { available: money(plan.total) })}
-                </p>
-              )}
-              {transferProblem === null && (
-                <p className="text-sky-700 dark:text-sky-300">
-                  {t('fleet.accidents.transfer.target', {
-                    before: money(targetBefore),
-                    after: money(
-                      fleetAccidentRemaining({
-                        amountCollected: targetBefore,
-                        companyCost: 0,
-                        paidAmount: 0,
-                        transferredIn: taking,
-                      }),
-                    ),
-                  })}
-                </p>
-              )}
+              <p>
+                {t('fleet.accidents.transfer.before')}{' '}
+                <span
+                  className={cn('font-bold', targetBefore < 0 && 'text-red-600 dark:text-red-300')}
+                >
+                  {money(targetBefore)}
+                </span>
+              </p>
+              {/* One row per car, in the order it gives: what it has, what it gives, what is left. */}
+              <table className="w-full text-center tabular-nums">
+                <thead className="text-xs text-sky-700 dark:text-sky-300">
+                  <tr>
+                    <th className="py-1 font-medium">#</th>
+                    <th className="py-1 font-medium">
+                      {t('fleet.accidents.transfer.columns.car')}
+                    </th>
+                    <th className="py-1 font-medium">
+                      {t('fleet.accidents.transfer.columns.available')}
+                    </th>
+                    <th className="py-1 font-medium">
+                      {t('fleet.accidents.transfer.columns.take')}
+                    </th>
+                    <th className="py-1 font-medium">
+                      {t('fleet.accidents.transfer.columns.left')}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {plan.rows.map((row, i) => (
+                    <tr
+                      key={row.vehicleId}
+                      data-transfer-car={row.code}
+                      className="border-t border-sky-200/70 dark:border-sky-900"
+                    >
+                      <td className="py-1 text-sky-600 dark:text-sky-400">{i + 1}</td>
+                      <td className="py-1 font-medium">{row.code}</td>
+                      <td className="py-1">{money(row.available)}</td>
+                      <td className="py-1">{money(row.take)}</td>
+                      <td
+                        className={cn(
+                          'py-1',
+                          row.left === 0 && 'font-bold text-emerald-600 dark:text-emerald-400',
+                        )}
+                      >
+                        {money(row.left)}
+                      </td>
+                    </tr>
+                  ))}
+                  {plan.rows.length > 1 && (
+                    <tr className="border-t border-sky-200/70 font-bold dark:border-sky-900">
+                      <td />
+                      <td className="py-1">{t('fleet.accidents.transfer.columns.total')}</td>
+                      <td className="py-1">{money(plan.total)}</td>
+                      <td className="py-1">{money(taking)}</td>
+                      <td className="py-1">{money(plan.total - taking)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
+          )}
+          {transfer !== undefined && (
+            <p
+              data-transfer-after="true"
+              className="rounded-md bg-emerald-50 px-3 py-2 text-sm font-bold text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+            >
+              {t('fleet.accidents.transfer.after')}{' '}
+              <span>
+                {money(
+                  fleetAccidentRemaining({
+                    amountCollected: targetBefore,
+                    companyCost: 0,
+                    paidAmount: 0,
+                    transferredIn: taking,
+                  }),
+                )}
+              </span>
+            </p>
           )}
           {transferProblem !== null && (
             <p

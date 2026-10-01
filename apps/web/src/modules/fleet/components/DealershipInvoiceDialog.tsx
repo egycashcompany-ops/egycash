@@ -138,6 +138,7 @@ export const DealershipInvoiceDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       size="lg"
       title={t('fleet.dealership.recordTitle', { code: row?.vehicleCode ?? '—' })}
       description={t('fleet.dealership.recordHint')}

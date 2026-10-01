@@ -353,8 +353,8 @@ describe('the recruitment pipeline', () => {
     const report = await runReset({ write: false, includeRecruitment: true });
     expect(report.untouched.map((u) => u.collection)).not.toContain('hr_job_offers');
     expect(report.recruitment.map((r) => r.collection)).toContain('hr_job_offers');
-    // The other eight are still off limits.
-    expect(report.untouched).toHaveLength(9);
+    // The other nine are still off limits.
+    expect(report.untouched).toHaveLength(10);
   }, 240_000);
 });
 

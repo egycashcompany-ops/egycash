@@ -95,6 +95,7 @@ export const FuelCardDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       size="lg"
       title={card === null ? t('fleet.fuelCards.add') : t('fleet.fuelCards.edit')}
       footer={

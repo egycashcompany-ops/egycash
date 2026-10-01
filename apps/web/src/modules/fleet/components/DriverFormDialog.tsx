@@ -270,6 +270,7 @@ export const DriverFormDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
       footer={
         <>

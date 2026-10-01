@@ -17,12 +17,12 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Input, Select } from '../../../shared/ui/form';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import * as fleetApi from '../api/fleet-api';
 import { useDeleteReceipt, useReceiptSummary, useReceipts } from '../api/fleet-queries';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverName } from '../components/EmployeeName';
@@ -376,106 +376,92 @@ export const ReceiptsPage = (): JSX.Element => {
           { label: t('fleet.nav.receipts') },
         ]}
         actions={
-          can('fleetReceipt.create') ? (
-            <Button data-receipt-new="true" onClick={() => setAdding(true)}>
-              + {t('fleet.receipts.new')}
-            </Button>
-          ) : undefined
+          <>
+            {!isError && (
+              <DocumentActions name="receipts" onPrint={onPrint} onExport={exportSheet} />
+            )}
+            {can('fleetReceipt.create') && (
+              <Button data-receipt-new="true" onClick={() => setAdding(true)}>
+                + {t('fleet.receipts.new')}
+              </Button>
+            )}
+          </>
         }
       />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-4">
-          <FilterBar
-            hasActiveFilters={hasActiveFilters}
-            onClear={() =>
-              patch({
-                from: null,
-                to: null,
-                vehicleCodes: null,
-                kind: null,
-                source: null,
-                driver: null,
-              })
-            }
-            trailing={<FilteredCount value={data?.meta.totalItems} />}
-          >
-            {dateBound('fleet.receipts.filters.from', from, 'from')}
-            {dateBound('fleet.receipts.filters.to', to, 'to')}
-            <VehicleCodeFilter
-              className="shrink-0"
-              value={vehicleCodes}
-              onChange={(next) =>
-                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-              }
-            />
-            <Select
-              aria-label={t('fleet.receipts.columns.kind')}
-              title={t('fleet.receipts.columns.kind')}
-              value={kind}
-              onChange={(e) => patch({ kind: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.receipts.filters.anyKind')}</option>
-              <option value="fuel">{t('fleet.receipts.kind.fuel')}</option>
-              <option value="tyres">{t('fleet.receipts.kind.tyres')}</option>
-              <option value="wash">{t('fleet.receipts.kind.wash')}</option>
-            </Select>
-            <Select
-              aria-label={t('fleet.receipts.columns.source')}
-              title={t('fleet.receipts.columns.source')}
-              value={source}
-              onChange={(e) => patch({ source: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.receipts.filters.anySource')}</option>
-              <option value="card">{t('fleet.receipts.source.card')}</option>
-              <option value="custody">{t('fleet.receipts.source.custody')}</option>
-            </Select>
-            <Input
-              aria-label={t('fleet.receipts.columns.driver')}
-              title={t('fleet.receipts.columns.driver')}
-              placeholder={t('fleet.receipts.filters.driver')}
-              value={driver}
-              onChange={(e) => patch({ driver: e.target.value || null })}
-              className="w-44 shrink-0"
-            />
-          </FilterBar>
-
-          {/* «الاجماليات تكون بين الجدول والفلاتر» */}
-          <StatStrip columns={4} labelFirst items={totals} />
-
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => row.id}
-            loading={isLoading}
-            error={isError ? error : undefined}
-            onRetry={() => void refetch()}
-            sort={sorts}
-            onSortChange={changeSort}
+      <div className="space-y-4">
+        <FilterBar
+          hasActiveFilters={hasActiveFilters}
+          onClear={() =>
+            patch({
+              from: null,
+              to: null,
+              vehicleCodes: null,
+              kind: null,
+              source: null,
+              driver: null,
+            })
+          }
+          trailing={<FilteredCount value={data?.meta.totalItems} />}
+        >
+          {dateBound('fleet.receipts.filters.from', from, 'from')}
+          {dateBound('fleet.receipts.filters.to', to, 'to')}
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
-          {data !== undefined && data.meta.totalItems > 0 && (
-            <Pagination
-              meta={data.meta}
-              onPageChange={(p) => patch({ page: String(p) }, false)}
-              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-            />
-          )}
-        </div>
-        {!isError && (
-          <div className="order-last flex shrink-0 flex-col gap-1">
-            <button
-              type="button"
-              data-print="receipts"
-              aria-label={t('common.print')}
-              title={t('common.print')}
-              onClick={() => void onPrint()}
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-            >
-              <PrinterIcon className="h-6 w-6" />
-            </button>
-            <ExportSheetButton name="receipts" onExport={exportSheet} />
-          </div>
+          <Select
+            aria-label={t('fleet.receipts.columns.kind')}
+            title={t('fleet.receipts.columns.kind')}
+            value={kind}
+            onChange={(e) => patch({ kind: e.target.value || null })}
+            className="w-auto shrink-0"
+          >
+            <option value="">{t('fleet.receipts.filters.anyKind')}</option>
+            <option value="fuel">{t('fleet.receipts.kind.fuel')}</option>
+            <option value="tyres">{t('fleet.receipts.kind.tyres')}</option>
+            <option value="wash">{t('fleet.receipts.kind.wash')}</option>
+          </Select>
+          <Select
+            aria-label={t('fleet.receipts.columns.source')}
+            title={t('fleet.receipts.columns.source')}
+            value={source}
+            onChange={(e) => patch({ source: e.target.value || null })}
+            className="w-auto shrink-0"
+          >
+            <option value="">{t('fleet.receipts.filters.anySource')}</option>
+            <option value="card">{t('fleet.receipts.source.card')}</option>
+            <option value="custody">{t('fleet.receipts.source.custody')}</option>
+          </Select>
+          <Input
+            aria-label={t('fleet.receipts.columns.driver')}
+            title={t('fleet.receipts.columns.driver')}
+            placeholder={t('fleet.receipts.filters.driver')}
+            value={driver}
+            onChange={(e) => patch({ driver: e.target.value || null })}
+            className="w-44 shrink-0"
+          />
+        </FilterBar>
+
+        {/* «الاجماليات تكون بين الجدول والفلاتر» */}
+        <StatStrip columns={4} labelFirst items={totals} />
+
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          loading={isLoading}
+          error={isError ? error : undefined}
+          onRetry={() => void refetch()}
+          sort={sorts}
+          onSortChange={changeSort}
+        />
+        {data !== undefined && data.meta.totalItems > 0 && (
+          <Pagination
+            meta={data.meta}
+            onPageChange={(p) => patch({ page: String(p) }, false)}
+            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+          />
         )}
       </div>
 

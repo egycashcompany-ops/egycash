@@ -236,6 +236,7 @@ export const AccidentFormDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       size="xl"
       tall
       title={accident === null ? t('fleet.accidents.record') : t('fleet.accidents.edit')}

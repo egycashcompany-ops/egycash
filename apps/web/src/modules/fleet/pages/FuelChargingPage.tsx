@@ -15,7 +15,6 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { PrinterIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { cn } from '../../../shared/lib/cn';
@@ -25,7 +24,7 @@ import {
   useFuelCardSummary,
   useRequestFuelCharge,
 } from '../api/fleet-queries';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { FuelTransferDialog } from '../components/FuelTransferDialog';
@@ -45,8 +44,6 @@ import { useReportSignatories } from '../lib/use-report-signatories';
 const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'state'] as const;
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 const DAY_MS = 24 * 60 * 60 * 1000;
-const actionButton =
-  'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /**
  * «طلب رصيد»: type an amount and the row colours; ✓ sends it to the card, ✕ takes it back.
@@ -277,137 +274,124 @@ export const FuelChargingPage = (): JSX.Element => {
           { label: t('fleet.nav.fuelCharging') },
         ]}
         actions={
-          <Can permission="fleetFuelCharge.transfer">
-            <Button size="sm" data-fuel-transfer-open="true" onClick={() => setTransferring(true)}>
-              ↔ {t('fleet.fuelCards.transfer.title')}
-            </Button>
-          </Can>
+          <>
+            {!isError && (
+              <DocumentActions name="fuel-charging" onPrint={onPrint} onExport={exportSheet} />
+            )}
+            <Can permission="fleetFuelCharge.transfer">
+              <Button
+                size="sm"
+                data-fuel-transfer-open="true"
+                onClick={() => setTransferring(true)}
+              >
+                ↔ {t('fleet.fuelCards.transfer.title')}
+              </Button>
+            </Can>
+          </>
         }
       />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-4">
-          <FilterBar
-            hasActiveFilters={hasActiveFilters}
-            onClear={() => patch({ vehicleCodes: null, company: null, state: null })}
-            trailing={<FilteredCount value={data === undefined ? undefined : tiles.length} />}
+      <div className="space-y-4">
+        <FilterBar
+          hasActiveFilters={hasActiveFilters}
+          onClear={() => patch({ vehicleCodes: null, company: null, state: null })}
+          trailing={<FilteredCount value={data === undefined ? undefined : tiles.length} />}
+        >
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+          />
+          <Select
+            aria-label={t('fleet.fuelCards.filters.state')}
+            title={t('fleet.fuelCards.filters.state')}
+            value={state}
+            onChange={(e) => patch({ state: e.target.value || null })}
+            className="w-auto shrink-0"
           >
-            <VehicleCodeFilter
-              className="shrink-0"
-              value={vehicleCodes}
-              onChange={(next) =>
-                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-              }
-            />
-            <Select
-              aria-label={t('fleet.fuelCards.filters.state')}
-              title={t('fleet.fuelCards.filters.state')}
-              value={state}
-              onChange={(e) => patch({ state: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.fuelCards.filters.anyState')}</option>
-              <option value="requested">{t('fleet.fuelCards.filters.requested')}</option>
-              <option value="charged">{t('fleet.fuelCards.filters.chargedToday')}</option>
-              <option value="low">{t('fleet.fuelCards.filters.low')}</option>
-            </Select>
-            <Select
-              aria-label={t('fleet.fuelCards.fields.company')}
-              title={t('fleet.fuelCards.fields.company')}
-              value={company}
-              onChange={(e) => patch({ company: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.fuelCards.filters.anyCompany')}</option>
-              {FUEL_CARD_COMPANIES.map((option) => (
-                <option key={option} value={option}>
-                  {t(`fleet.fuelCards.company.${option}`)}
-                </option>
-              ))}
-            </Select>
-          </FilterBar>
+            <option value="">{t('fleet.fuelCards.filters.anyState')}</option>
+            <option value="requested">{t('fleet.fuelCards.filters.requested')}</option>
+            <option value="charged">{t('fleet.fuelCards.filters.chargedToday')}</option>
+            <option value="low">{t('fleet.fuelCards.filters.low')}</option>
+          </Select>
+          <Select
+            aria-label={t('fleet.fuelCards.fields.company')}
+            title={t('fleet.fuelCards.fields.company')}
+            value={company}
+            onChange={(e) => patch({ company: e.target.value || null })}
+            className="w-auto shrink-0"
+          >
+            <option value="">{t('fleet.fuelCards.filters.anyCompany')}</option>
+            {FUEL_CARD_COMPANIES.map((option) => (
+              <option key={option} value={option}>
+                {t(`fleet.fuelCards.company.${option}`)}
+              </option>
+            ))}
+          </Select>
+        </FilterBar>
 
-          <StatStrip columns={4} labelFirst items={totals} />
+        <StatStrip columns={4} labelFirst items={totals} />
 
-          {isError ? (
-            <EmptyState
-              title={t('common.error')}
-              description={String(error)}
-              action={<Button onClick={() => void refetch()}>{t('common.retry')}</Button>}
-            />
-          ) : !isLoading && tiles.length === 0 ? (
-            <EmptyState title={t('fleet.fuelCards.empty')} />
-          ) : (
-            <div className="space-y-3">
-              {tiles.map((tile) => (
-                <VehicleCardTile key={tile.vehicleId} code={tile.code} vehicleId={tile.vehicleId}>
-                  {FUEL_CARD_COMPANIES.map((slot) => {
-                    const card = tile.cards[slot];
-                    if (card === undefined) return <EmptyCardLine key={slot} company={slot} />;
-                    const low =
-                      card.balance < red ? 'red' : card.balance < yellow ? 'yellow' : null;
-                    return (
-                      <CardLine
-                        key={slot}
-                        company={slot}
-                        tone={
-                          card.requestedAmount !== null
-                            ? 'request'
-                            : chargedToday(card)
-                              ? 'charged'
-                              : undefined
+        {isError ? (
+          <EmptyState
+            title={t('common.error')}
+            description={String(error)}
+            action={<Button onClick={() => void refetch()}>{t('common.retry')}</Button>}
+          />
+        ) : !isLoading && tiles.length === 0 ? (
+          <EmptyState title={t('fleet.fuelCards.empty')} />
+        ) : (
+          <div className="space-y-3">
+            {tiles.map((tile) => (
+              <VehicleCardTile key={tile.vehicleId} code={tile.code} vehicleId={tile.vehicleId}>
+                {FUEL_CARD_COMPANIES.map((slot) => {
+                  const card = tile.cards[slot];
+                  if (card === undefined) return <EmptyCardLine key={slot} company={slot} />;
+                  const low = card.balance < red ? 'red' : card.balance < yellow ? 'yellow' : null;
+                  return (
+                    <CardLine
+                      key={slot}
+                      company={slot}
+                      tone={
+                        card.requestedAmount !== null
+                          ? 'request'
+                          : chargedToday(card)
+                            ? 'charged'
+                            : undefined
+                      }
+                    >
+                      <FramedField label={t('fleet.fuelCards.fields.number')} ltr>
+                        {card.number}
+                      </FramedField>
+                      <FramedField
+                        label={t('fleet.fuelCards.fields.balance')}
+                        ltr
+                        above={
+                          low === null ? undefined : (
+                            <WarnBadge tone={low}>
+                              {t(
+                                low === 'red'
+                                  ? 'fleet.fuelCards.balanceRed'
+                                  : 'fleet.fuelCards.balanceYellow',
+                              )}
+                            </WarnBadge>
+                          )
                         }
                       >
-                        <FramedField label={t('fleet.fuelCards.fields.number')} ltr>
-                          {card.number}
-                        </FramedField>
-                        <FramedField
-                          label={t('fleet.fuelCards.fields.balance')}
-                          ltr
-                          above={
-                            low === null ? undefined : (
-                              <WarnBadge tone={low}>
-                                {t(
-                                  low === 'red'
-                                    ? 'fleet.fuelCards.balanceRed'
-                                    : 'fleet.fuelCards.balanceYellow',
-                                )}
-                              </WarnBadge>
-                            )
-                          }
-                        >
-                          {money(card.balance)}
-                        </FramedField>
-                        <ChargeRequest card={card} />
-                        <FramedField
-                          label={t('fleet.fuelCards.fields.lastCharged')}
-                          ltr
-                          className="min-w-[8rem]"
-                        >
-                          {card.lastChargedAt === null
-                            ? '—'
-                            : formatDate(card.lastChargedAt, locale)}
-                        </FramedField>
-                      </CardLine>
-                    );
-                  })}
-                </VehicleCardTile>
-              ))}
-            </div>
-          )}
-        </div>
-        {!isError && (
-          <div className="order-last flex shrink-0 flex-col gap-1">
-            <button
-              type="button"
-              data-print="fuel-charging"
-              aria-label={t('common.print')}
-              title={t('common.print')}
-              onClick={onPrint}
-              className={actionButton}
-            >
-              <PrinterIcon className="h-6 w-6" />
-            </button>
-            <ExportSheetButton name="fuel-charging" onExport={exportSheet} />
+                        {money(card.balance)}
+                      </FramedField>
+                      <ChargeRequest card={card} />
+                      <FramedField
+                        label={t('fleet.fuelCards.fields.lastCharged')}
+                        ltr
+                        className="min-w-[8rem]"
+                      >
+                        {card.lastChargedAt === null ? '—' : formatDate(card.lastChargedAt, locale)}
+                      </FramedField>
+                    </CardLine>
+                  );
+                })}
+              </VehicleCardTile>
+            ))}
           </div>
         )}
       </div>

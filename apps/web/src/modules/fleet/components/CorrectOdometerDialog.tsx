@@ -63,6 +63,7 @@ export const CorrectOdometerDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={t('fleet.odometer.correct')}
       description={t('fleet.odometer.correctHint')}
       footer={

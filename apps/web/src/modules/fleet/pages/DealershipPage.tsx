@@ -1,9 +1,9 @@
 // التوكيل — every workshop exit's bill. «العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى بس الصف
 // بيكون باللون الاصفر»: a row the workshop opened waits, yellow, until its invoice is recorded.
 //
-// The screen follows the violations screen's chrome — print and Excel as icons on the page's far
-// side, the reset as an icon in the bar — and puts the totals BETWEEN the filters and the table,
-// as asked. The totals are the server's, over the whole filtered set, never the page.
+// Print and Excel sit in the page header beside the screen's own button, above the filters — as
+// on the vehicles and drivers screens — and the totals sit BETWEEN the filters and the table, as
+// asked. The totals are the server's, over the whole filtered set, never the page.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { type FleetDealershipInvoiceDto, type Locale } from '@ecms/contracts';
@@ -20,7 +20,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Input, Select } from '../../../shared/ui/form';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { cn } from '../../../shared/lib/cn';
@@ -30,7 +30,7 @@ import {
   useDealershipSummary,
   useDeleteDealershipInvoice,
 } from '../api/fleet-queries';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DealershipInvoiceDialog } from '../components/DealershipInvoiceDialog';
@@ -366,106 +366,89 @@ export const DealershipPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.dealership') },
         ]}
+        actions={
+          !isError && <DocumentActions name="dealership" onPrint={onPrint} onExport={exportSheet} />
+        }
       />
-      {/* «الطباعه والاكسيل ... ايقونز زى شاشه المخالفات» — on the far side of the page, stacked. */}
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-4">
-          <FilterBar
-            hasActiveFilters={hasActiveFilters}
-            onClear={() =>
-              patch({
-                from: null,
-                to: null,
-                vehicleCodes: null,
-                side: null,
-                state: null,
-                work: null,
-              })
-            }
-            trailing={<FilteredCount value={data?.meta.totalItems} />}
-          >
-            {dateBound('fleet.dealership.filters.from', from, 'from')}
-            {dateBound('fleet.dealership.filters.to', to, 'to')}
-            <VehicleCodeFilter
-              className="shrink-0"
-              value={vehicleCodes}
-              onChange={(next) =>
-                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-              }
-            />
-            <Select
-              aria-label={t('fleet.dealership.columns.side')}
-              title={t('fleet.dealership.columns.side')}
-              value={side}
-              onChange={(e) => patch({ side: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.dealership.filters.anySide')}</option>
-              <option value="dealership">{t('fleet.dealership.side.dealership')}</option>
-              <option value="custody">{t('fleet.dealership.side.custody')}</option>
-            </Select>
-            <Select
-              aria-label={t('fleet.dealership.filters.state')}
-              title={t('fleet.dealership.filters.state')}
-              value={state}
-              onChange={(e) => patch({ state: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.dealership.filters.anyState')}</option>
-              <option value="pending">{t('fleet.dealership.pending')}</option>
-              <option value="recorded">{t('fleet.dealership.recorded')}</option>
-            </Select>
-            <Select
-              aria-label={t('fleet.dealership.columns.workType')}
-              title={t('fleet.dealership.columns.workType')}
-              value={work}
-              onChange={(e) => patch({ work: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.dealership.filters.anyWork')}</option>
-              <option value="maintenance">{t('fleet.dealership.work.maintenance')}</option>
-              <option value="repair">{t('fleet.dealership.work.repair')}</option>
-            </Select>
-          </FilterBar>
-
-          {/* «الاجماليات تكون بين الجدول والفلاتر» */}
-          <StatStrip columns={4} labelFirst items={totals} />
-
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => row.id}
-            loading={isLoading}
-            error={isError ? error : undefined}
-            onRetry={() => void refetch()}
-            sort={sorts}
-            onSortChange={changeSort}
-            // The yellow row: left the workshop, no invoice yet. A second signal only — the side
-            // column is empty and the actions say «تسجيل الفاتورة».
-            rowClassName={(row) => cn(row.pending && 'bg-amber-50/80 dark:bg-amber-950/30')}
+      <div className="space-y-4">
+        <FilterBar
+          hasActiveFilters={hasActiveFilters}
+          onClear={() =>
+            patch({
+              from: null,
+              to: null,
+              vehicleCodes: null,
+              side: null,
+              state: null,
+              work: null,
+            })
+          }
+          trailing={<FilteredCount value={data?.meta.totalItems} />}
+        >
+          {dateBound('fleet.dealership.filters.from', from, 'from')}
+          {dateBound('fleet.dealership.filters.to', to, 'to')}
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
-          {data !== undefined && data.meta.totalItems > 0 && (
-            <Pagination
-              meta={data.meta}
-              onPageChange={(p) => patch({ page: String(p) }, false)}
-              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-            />
-          )}
-        </div>
-        {!isError && (
-          <div className="order-last flex shrink-0 flex-col gap-1">
-            <button
-              type="button"
-              data-print="dealership"
-              aria-label={t('common.print')}
-              title={t('common.print')}
-              onClick={() => void onPrint()}
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-            >
-              <PrinterIcon className="h-6 w-6" />
-            </button>
-            <ExportSheetButton name="dealership" onExport={exportSheet} />
-          </div>
+          <Select
+            aria-label={t('fleet.dealership.columns.side')}
+            title={t('fleet.dealership.columns.side')}
+            value={side}
+            onChange={(e) => patch({ side: e.target.value || null })}
+            className="w-auto shrink-0"
+          >
+            <option value="">{t('fleet.dealership.filters.anySide')}</option>
+            <option value="dealership">{t('fleet.dealership.side.dealership')}</option>
+            <option value="custody">{t('fleet.dealership.side.custody')}</option>
+          </Select>
+          <Select
+            aria-label={t('fleet.dealership.filters.state')}
+            title={t('fleet.dealership.filters.state')}
+            value={state}
+            onChange={(e) => patch({ state: e.target.value || null })}
+            className="w-auto shrink-0"
+          >
+            <option value="">{t('fleet.dealership.filters.anyState')}</option>
+            <option value="pending">{t('fleet.dealership.pending')}</option>
+            <option value="recorded">{t('fleet.dealership.recorded')}</option>
+          </Select>
+          <Select
+            aria-label={t('fleet.dealership.columns.workType')}
+            title={t('fleet.dealership.columns.workType')}
+            value={work}
+            onChange={(e) => patch({ work: e.target.value || null })}
+            className="w-auto shrink-0"
+          >
+            <option value="">{t('fleet.dealership.filters.anyWork')}</option>
+            <option value="maintenance">{t('fleet.dealership.work.maintenance')}</option>
+            <option value="repair">{t('fleet.dealership.work.repair')}</option>
+          </Select>
+        </FilterBar>
+
+        {/* «الاجماليات تكون بين الجدول والفلاتر» */}
+        <StatStrip columns={4} labelFirst items={totals} />
+
+        <DataTable
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          loading={isLoading}
+          error={isError ? error : undefined}
+          onRetry={() => void refetch()}
+          sort={sorts}
+          onSortChange={changeSort}
+          // The yellow row: left the workshop, no invoice yet. A second signal only — the side
+          // column is empty and the actions say «تسجيل الفاتورة».
+          rowClassName={(row) => cn(row.pending && 'bg-amber-50/80 dark:bg-amber-950/30')}
+        />
+        {data !== undefined && data.meta.totalItems > 0 && (
+          <Pagination
+            meta={data.meta}
+            onPageChange={(p) => patch({ page: String(p) }, false)}
+            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+          />
         )}
       </div>
 

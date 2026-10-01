@@ -18,12 +18,12 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Input, Select } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, EyeIcon, PlusIcon, PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAllFuelCards, useDeleteFuelCard } from '../api/fleet-queries';
 import { revealFuelCardPassword } from '../api/fleet-api';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { FuelCardDialog } from '../components/FuelCardDialog';
@@ -188,185 +188,168 @@ export const FuelCardsPage = (): JSX.Element => {
           { label: t('fleet.nav.fuelCards') },
         ]}
         actions={
-          <Can permission="fleetFuelCard.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => setAdding({ vehicleId: '' })}
-            >
-              {t('fleet.fuelCards.add')}
-            </Button>
-          </Can>
+          <>
+            {!isError && (
+              <DocumentActions name="fuel-cards" onPrint={onPrint} onExport={exportSheet} />
+            )}
+            <Can permission="fleetFuelCard.create">
+              <Button
+                size="sm"
+                leftIcon={<PlusIcon className="h-4 w-4" />}
+                onClick={() => setAdding({ vehicleId: '' })}
+              >
+                {t('fleet.fuelCards.add')}
+              </Button>
+            </Can>
+          </>
         }
       />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-4">
-          <FilterBar
-            hasActiveFilters={hasActiveFilters}
-            onClear={() =>
-              patch({ vehicleCodes: null, company: null, number: null, expiresBefore: null })
-            }
-            trailing={<FilteredCount value={data === undefined ? undefined : tiles.length} />}
+      <div className="space-y-4">
+        <FilterBar
+          hasActiveFilters={hasActiveFilters}
+          onClear={() =>
+            patch({ vehicleCodes: null, company: null, number: null, expiresBefore: null })
+          }
+          trailing={<FilteredCount value={data === undefined ? undefined : tiles.length} />}
+        >
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+          />
+          <Select
+            aria-label={t('fleet.fuelCards.fields.company')}
+            title={t('fleet.fuelCards.fields.company')}
+            value={company}
+            onChange={(e) => patch({ company: e.target.value || null })}
+            className="w-auto shrink-0"
           >
-            <VehicleCodeFilter
-              className="shrink-0"
-              value={vehicleCodes}
-              onChange={(next) =>
-                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+            <option value="">{t('fleet.fuelCards.filters.anyCompany')}</option>
+            {FUEL_CARD_COMPANIES.map((option) => (
+              <option key={option} value={option}>
+                {t(`fleet.fuelCards.company.${option}`)}
+              </option>
+            ))}
+          </Select>
+          <Input
+            aria-label={t('fleet.fuelCards.filters.number')}
+            placeholder={t('fleet.fuelCards.filters.number')}
+            value={number}
+            onChange={(e) => patch({ number: e.target.value || null })}
+            className="w-48"
+            dir="ltr"
+          />
+          <span className="relative w-40">
+            <Input
+              type="date"
+              dir="ltr"
+              aria-label={t('fleet.fuelCards.filters.expiresBefore')}
+              title={t('fleet.fuelCards.filters.expiresBefore')}
+              value={expiresBefore}
+              onChange={(e) => patch({ expiresBefore: e.target.value || null })}
+              className={
+                expiresBefore === ''
+                  ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0'
+                  : undefined
               }
             />
-            <Select
-              aria-label={t('fleet.fuelCards.fields.company')}
-              title={t('fleet.fuelCards.fields.company')}
-              value={company}
-              onChange={(e) => patch({ company: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.fuelCards.filters.anyCompany')}</option>
-              {FUEL_CARD_COMPANIES.map((option) => (
-                <option key={option} value={option}>
-                  {t(`fleet.fuelCards.company.${option}`)}
-                </option>
-              ))}
-            </Select>
-            <Input
-              aria-label={t('fleet.fuelCards.filters.number')}
-              placeholder={t('fleet.fuelCards.filters.number')}
-              value={number}
-              onChange={(e) => patch({ number: e.target.value || null })}
-              className="w-48"
-              dir="ltr"
-            />
-            <span className="relative w-40">
-              <Input
-                type="date"
-                dir="ltr"
-                aria-label={t('fleet.fuelCards.filters.expiresBefore')}
-                title={t('fleet.fuelCards.filters.expiresBefore')}
-                value={expiresBefore}
-                onChange={(e) => patch({ expiresBefore: e.target.value || null })}
-                className={
-                  expiresBefore === ''
-                    ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0'
-                    : undefined
-                }
-              />
-              {expiresBefore === '' && (
-                <span
-                  aria-hidden="true"
-                  data-date-caption="expiresBefore"
-                  className="pointer-events-none absolute inset-y-0 left-2 right-8 flex items-center justify-center truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
-                >
-                  {t('fleet.fuelCards.filters.expiresBefore')}
-                </span>
-              )}
-            </span>
-          </FilterBar>
+            {expiresBefore === '' && (
+              <span
+                aria-hidden="true"
+                data-date-caption="expiresBefore"
+                className="pointer-events-none absolute inset-y-0 left-2 right-8 flex items-center justify-center truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
+              >
+                {t('fleet.fuelCards.filters.expiresBefore')}
+              </span>
+            )}
+          </span>
+        </FilterBar>
 
-          {isError ? (
-            <EmptyState
-              title={t('common.error')}
-              description={String(error)}
-              action={<Button onClick={() => void refetch()}>{t('common.retry')}</Button>}
-            />
-          ) : !isLoading && tiles.length === 0 ? (
-            <EmptyState title={t('fleet.fuelCards.empty')} />
-          ) : (
-            <div className="space-y-3">
-              {tiles.map((tile) => (
-                <VehicleCardTile key={tile.vehicleId} code={tile.code} vehicleId={tile.vehicleId}>
-                  {FUEL_CARD_COMPANIES.map((slot) => {
-                    const card = tile.cards[slot];
-                    if (card === undefined) {
-                      return (
-                        <EmptyCardLine
-                          key={slot}
-                          company={slot}
-                          {...(can('fleetFuelCard.create')
-                            ? {
-                                onAdd: () =>
-                                  setAdding({ vehicleId: tile.vehicleId, company: slot }),
-                              }
-                            : {})}
-                        />
-                      );
-                    }
+        {isError ? (
+          <EmptyState
+            title={t('common.error')}
+            description={String(error)}
+            action={<Button onClick={() => void refetch()}>{t('common.retry')}</Button>}
+          />
+        ) : !isLoading && tiles.length === 0 ? (
+          <EmptyState title={t('fleet.fuelCards.empty')} />
+        ) : (
+          <div className="space-y-3">
+            {tiles.map((tile) => (
+              <VehicleCardTile key={tile.vehicleId} code={tile.code} vehicleId={tile.vehicleId}>
+                {FUEL_CARD_COMPANIES.map((slot) => {
+                  const card = tile.cards[slot];
+                  if (card === undefined) {
                     return (
-                      <CardLine key={slot} company={slot}>
-                        <FramedField
-                          label={t('fleet.fuelCards.fields.name')}
-                          className="min-w-[11rem]"
-                        >
-                          {card.name}
-                        </FramedField>
-                        <FramedField
-                          label={t('fleet.fuelCards.fields.number')}
-                          ltr
-                          className="min-w-[14rem]"
-                        >
-                          {card.number}
-                        </FramedField>
-                        <FramedField
-                          label={t('fleet.fuelCards.fields.expiresAt')}
-                          ltr
-                          above={
-                            expiresSoon(card) ? (
-                              <WarnBadge tone="yellow">
-                                {t('fleet.fuelCards.expiresSoon')}
-                              </WarnBadge>
-                            ) : undefined
-                          }
-                        >
-                          {formatDate(card.expiresAt, locale)}
-                        </FramedField>
-                        <PasswordField card={card} />
-                        <span className="ms-auto inline-flex items-center gap-1 self-center">
-                          {can('fleetFuelCard.edit') && (
-                            <button
-                              type="button"
-                              data-fuel-edit={card.id}
-                              className={actionButton}
-                              aria-label={t('fleet.fuelCards.edit')}
-                              title={t('fleet.fuelCards.edit')}
-                              onClick={() => setEditing(card)}
-                            >
-                              <EditIcon className="h-4 w-4" />
-                            </button>
-                          )}
-                          {can('fleetFuelCard.delete') && (
-                            <button
-                              type="button"
-                              data-fuel-delete={card.id}
-                              className={actionButton}
-                              aria-label={t('common.delete')}
-                              title={t('common.delete')}
-                              onClick={() => setDeleting(card)}
-                            >
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          )}
-                        </span>
-                      </CardLine>
+                      <EmptyCardLine
+                        key={slot}
+                        company={slot}
+                        {...(can('fleetFuelCard.create')
+                          ? {
+                              onAdd: () => setAdding({ vehicleId: tile.vehicleId, company: slot }),
+                            }
+                          : {})}
+                      />
                     );
-                  })}
-                </VehicleCardTile>
-              ))}
-            </div>
-          )}
-        </div>
-        {!isError && (
-          <div className="order-last flex shrink-0 flex-col gap-1">
-            <button
-              type="button"
-              data-print="fuel-cards"
-              aria-label={t('common.print')}
-              title={t('common.print')}
-              onClick={onPrint}
-              className={actionButton}
-            >
-              <PrinterIcon className="h-6 w-6" />
-            </button>
-            <ExportSheetButton name="fuel-cards" onExport={exportSheet} />
+                  }
+                  return (
+                    <CardLine key={slot} company={slot}>
+                      <FramedField
+                        label={t('fleet.fuelCards.fields.name')}
+                        className="min-w-[11rem]"
+                      >
+                        {card.name}
+                      </FramedField>
+                      <FramedField
+                        label={t('fleet.fuelCards.fields.number')}
+                        ltr
+                        className="min-w-[14rem]"
+                      >
+                        {card.number}
+                      </FramedField>
+                      <FramedField
+                        label={t('fleet.fuelCards.fields.expiresAt')}
+                        ltr
+                        above={
+                          expiresSoon(card) ? (
+                            <WarnBadge tone="yellow">{t('fleet.fuelCards.expiresSoon')}</WarnBadge>
+                          ) : undefined
+                        }
+                      >
+                        {formatDate(card.expiresAt, locale)}
+                      </FramedField>
+                      <PasswordField card={card} />
+                      <span className="ms-auto inline-flex items-center gap-1 self-center">
+                        {can('fleetFuelCard.edit') && (
+                          <button
+                            type="button"
+                            data-fuel-edit={card.id}
+                            className={actionButton}
+                            aria-label={t('fleet.fuelCards.edit')}
+                            title={t('fleet.fuelCards.edit')}
+                            onClick={() => setEditing(card)}
+                          >
+                            <EditIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                        {can('fleetFuelCard.delete') && (
+                          <button
+                            type="button"
+                            data-fuel-delete={card.id}
+                            className={actionButton}
+                            aria-label={t('common.delete')}
+                            title={t('common.delete')}
+                            onClick={() => setDeleting(card)}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </span>
+                    </CardLine>
+                  );
+                })}
+              </VehicleCardTile>
+            ))}
           </div>
         )}
       </div>

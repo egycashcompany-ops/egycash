@@ -18,13 +18,12 @@ import { Badge } from '../../../shared/ui/Badge';
 import { Input, Select } from '../../../shared/ui/form';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { PrinterIcon } from '../../../shared/ui/icons';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { cn } from '../../../shared/lib/cn';
 import * as fleetApi from '../api/fleet-api';
 import { useCustodyMovements, useCustodySummary } from '../api/fleet-queries';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DriverName } from '../components/EmployeeName';
@@ -294,107 +293,91 @@ export const CustodyPage = (): JSX.Element => {
           { label: t('fleet.module.title'), to: '/fleet' },
           { label: t('fleet.nav.custody') },
         ]}
+        actions={
+          !isError && <DocumentActions name="custody" onPrint={onPrint} onExport={exportSheet} />
+        }
       />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1 space-y-4">
-          <FilterBar
-            hasActiveFilters={hasActiveFilters}
-            onClear={() =>
-              patch({ from: null, to: null, vehicleCodes: null, source: null, driver: null })
-            }
-            trailing={<FilteredCount value={data?.meta.totalItems} />}
+      <div className="space-y-4">
+        <FilterBar
+          hasActiveFilters={hasActiveFilters}
+          onClear={() =>
+            patch({ from: null, to: null, vehicleCodes: null, source: null, driver: null })
+          }
+          trailing={<FilteredCount value={data?.meta.totalItems} />}
+        >
+          {dateBound('fleet.receipts.filters.from', from, 'from')}
+          {dateBound('fleet.receipts.filters.to', to, 'to')}
+          <VehicleCodeFilter
+            className="shrink-0"
+            value={vehicleCodes}
+            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
+          />
+          <Select
+            aria-label={t('fleet.custody.columns.source')}
+            title={t('fleet.custody.columns.source')}
+            value={source}
+            onChange={(e) => patch({ source: e.target.value || null })}
+            className="w-auto shrink-0"
           >
-            {dateBound('fleet.receipts.filters.from', from, 'from')}
-            {dateBound('fleet.receipts.filters.to', to, 'to')}
-            <VehicleCodeFilter
-              className="shrink-0"
-              value={vehicleCodes}
-              onChange={(next) =>
-                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-              }
-            />
-            <Select
-              aria-label={t('fleet.custody.columns.source')}
-              title={t('fleet.custody.columns.source')}
-              value={source}
-              onChange={(e) => patch({ source: e.target.value || null })}
-              className="w-auto shrink-0"
-            >
-              <option value="">{t('fleet.custody.filters.anySource')}</option>
-              <option value="dealership">{t('fleet.custody.source.dealership')}</option>
-              <option value="fuel">{t('fleet.custody.source.fuel')}</option>
-              <option value="tyres">{t('fleet.custody.source.tyres')}</option>
-              <option value="wash">{t('fleet.custody.source.wash')}</option>
-            </Select>
-            <Input
-              aria-label={t('fleet.receipts.columns.driver')}
-              title={t('fleet.receipts.columns.driver')}
-              placeholder={t('fleet.receipts.filters.driver')}
-              value={driver}
-              onChange={(e) => patch({ driver: e.target.value || null })}
-              className="w-44 shrink-0"
-            />
-          </FilterBar>
+            <option value="">{t('fleet.custody.filters.anySource')}</option>
+            <option value="dealership">{t('fleet.custody.source.dealership')}</option>
+            <option value="fuel">{t('fleet.custody.source.fuel')}</option>
+            <option value="tyres">{t('fleet.custody.source.tyres')}</option>
+            <option value="wash">{t('fleet.custody.source.wash')}</option>
+          </Select>
+          <Input
+            aria-label={t('fleet.receipts.columns.driver')}
+            title={t('fleet.receipts.columns.driver')}
+            placeholder={t('fleet.receipts.filters.driver')}
+            value={driver}
+            onChange={(e) => patch({ driver: e.target.value || null })}
+            className="w-44 shrink-0"
+          />
+        </FilterBar>
 
-          <StatStrip columns={4} labelFirst items={totals} />
+        <StatStrip columns={4} labelFirst items={totals} />
 
-          <section data-custody-per-vehicle="true" className="space-y-2">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {t('fleet.custody.perVehicle')}
-            </h2>
-            <DataTable
-              columns={vehicleColumns}
-              rows={perVehicle}
-              rowKey={(row) => row.vehicleId ?? `code:${row.vehicleCode ?? ''}`}
-              loading={summary.isLoading}
-              error={summary.isError ? summary.error : undefined}
-              onRetry={() => void summary.refetch()}
-              empty={t('fleet.custody.empty')}
-              rowClassName={(row) =>
-                row.vehicleId === GRAND_TOTAL
-                  ? 'bg-slate-50 font-semibold dark:bg-slate-900'
-                  : undefined
-              }
-            />
-          </section>
+        <section data-custody-per-vehicle="true" className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {t('fleet.custody.perVehicle')}
+          </h2>
+          <DataTable
+            columns={vehicleColumns}
+            rows={perVehicle}
+            rowKey={(row) => row.vehicleId ?? `code:${row.vehicleCode ?? ''}`}
+            loading={summary.isLoading}
+            error={summary.isError ? summary.error : undefined}
+            onRetry={() => void summary.refetch()}
+            empty={t('fleet.custody.empty')}
+            rowClassName={(row) =>
+              row.vehicleId === GRAND_TOTAL
+                ? 'bg-slate-50 font-semibold dark:bg-slate-900'
+                : undefined
+            }
+          />
+        </section>
 
-          <section data-custody-movements="true" className="space-y-2">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              {t('fleet.custody.movements')}
-            </h2>
-            <DataTable
-              columns={columns}
-              rows={rows}
-              rowKey={(row) => `${row.ref}:${row.id}`}
-              loading={isLoading}
-              error={isError ? error : undefined}
-              onRetry={() => void refetch()}
-              empty={t('fleet.custody.empty')}
+        <section data-custody-movements="true" className="space-y-2">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+            {t('fleet.custody.movements')}
+          </h2>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(row) => `${row.ref}:${row.id}`}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            empty={t('fleet.custody.empty')}
+          />
+          {data !== undefined && data.meta.totalItems > 0 && (
+            <Pagination
+              meta={data.meta}
+              onPageChange={(p) => patch({ page: String(p) }, false)}
+              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
             />
-            {data !== undefined && data.meta.totalItems > 0 && (
-              <Pagination
-                meta={data.meta}
-                onPageChange={(p) => patch({ page: String(p) }, false)}
-                onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-              />
-            )}
-          </section>
-        </div>
-        {!isError && (
-          <div className="order-last flex shrink-0 flex-col gap-1">
-            <button
-              type="button"
-              data-print="custody"
-              aria-label={t('common.print')}
-              title={t('common.print')}
-              onClick={() => void onPrint()}
-              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800"
-            >
-              <PrinterIcon className="h-6 w-6" />
-            </button>
-            <ExportSheetButton name="custody" onExport={exportSheet} />
-          </div>
-        )}
+          )}
+        </section>
       </div>
     </PageContainer>
   );

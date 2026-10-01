@@ -216,6 +216,7 @@ const EditCrewDialog = ({
     <Dialog
       open
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={`${t('common.edit')} · ${row.code}`}
       description={t('fleet.fixedRoster.editHint')}
       footer={

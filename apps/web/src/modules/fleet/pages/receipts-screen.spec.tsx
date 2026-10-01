@@ -273,7 +273,7 @@ describe('the receipts table', () => {
     expect(html).toContain('115.74');
   });
 
-  it('offers print and Excel as icons beside the page, and «إيصال جديد» to whoever may create', () => {
+  it('offers print and Excel as icons in the page header, and «إيصال جديد» to whoever may create', () => {
     const html = renderReceipts();
     expect(html).toContain('data-print="receipts"');
     expect(html).toContain('data-export="receipts"');

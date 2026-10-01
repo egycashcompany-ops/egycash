@@ -89,6 +89,7 @@ export const UnavailabilityDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       title={record === null ? t('fleet.attendance.record') : t('fleet.attendance.edit')}
       footer={
         <>

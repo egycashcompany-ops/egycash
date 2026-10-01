@@ -247,6 +247,7 @@ export const ReceiptDialog = ({
     <Dialog
       open={open}
       onClose={onClose}
+      dismissOnOutsideClick={false}
       size="xl"
       tall
       title={row === null ? t('fleet.receipts.new') : t('fleet.receipts.edit')}

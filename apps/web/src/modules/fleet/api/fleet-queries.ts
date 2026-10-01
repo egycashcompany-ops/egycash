@@ -11,6 +11,7 @@ import {
   type CorrectFleetOdometer,
   type CreateFleetAccident,
   type CreateFleetNotice,
+  type UpdateFleetDealershipInvoice,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
@@ -69,6 +70,7 @@ const fleetKeys = {
   roster: featureKey(MODULE, 'roster'),
   accidents: featureKey(MODULE, 'accidents'),
   notices: featureKey(MODULE, 'notices'),
+  dealership: featureKey(MODULE, 'dealership'),
   violations: featureKey(MODULE, 'violations'),
   licensing: featureKey(MODULE, 'licensing'),
   people: featureKey(MODULE, 'people'),
@@ -849,3 +851,44 @@ export const useUpdateNotice = () =>
     api.updateNotice(id, body),
   );
 export const useDeleteNotice = () => useNoticeMutation((id: string) => api.deleteNotice(id));
+
+// ── Dealership invoices (التوكيل) ────────────────────────────────────────────
+export const useDealershipInvoices = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'dealership', params),
+    queryFn: () => api.listDealershipInvoices(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** The figures between the filters and the table — the whole filtered set, never the page. */
+export const useDealershipSummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'dealership', { summary: true, ...params }),
+    queryFn: () => api.dealershipSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+const useDealershipMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.dealership }),
+  });
+};
+
+export const useUpdateDealershipInvoice = () =>
+  useDealershipMutation(({ id, body }: { id: string; body: UpdateFleetDealershipInvoice }) =>
+    api.updateDealershipInvoice(id, body),
+  );
+export const useDeleteDealershipInvoice = () =>
+  useDealershipMutation((id: string) => api.deleteDealershipInvoice(id));
+export const useUploadDealershipImage = () =>
+  useDealershipMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadDealershipImage(id, file),
+  );
+export const useDeleteDealershipImage = () =>
+  useDealershipMutation((id: string) => api.deleteDealershipImage(id));

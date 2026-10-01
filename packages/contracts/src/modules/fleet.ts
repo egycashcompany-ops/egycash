@@ -2454,6 +2454,8 @@ export const FLEET_VEHICLE_FILE_CATEGORY = 'fleet-vehicle-documents';
 export const FLEET_DRIVER_FILE_CATEGORY = 'fleet-driver-documents';
 export const FLEET_ACCIDENT_FILE_CATEGORY = 'fleet-accident-attachments';
 export const FLEET_VIOLATION_FILE_CATEGORY = 'fleet-violation-attachments';
+/** The scanned invoices the dealership screen (التوكيل) attaches to a workshop exit. */
+export const FLEET_DEALERSHIP_FILE_CATEGORY = 'fleet-dealership-invoices';
 
 // ── Declared settings (owner principle 4 — nothing threshold-like hardcoded) ─
 
@@ -2876,4 +2878,107 @@ export interface FleetNoticeDto {
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+// ── Dealership invoices (التوكيل) ─────────────────────────────────────────────
+//
+// «دى العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى بس الصف بيكون باللون الاصفر». Every
+// workshop exit opens one row here (two, when the visit's work type was «صيانة + إصلاح» — each
+// half carries its own invoice). The row is PENDING, and yellow, until its invoice is recorded.
+//
+// WHO PAYS is the row's `side`: a row with an invoice number is the dealership's (التوكيل); a
+// private car (ملاكي) may be recorded with no invoice number, and then the amount comes out of the
+// custody fund (العهدة). The side is stored, not re-derived on every read, because the custody
+// screen sums it in the database.
+
+/** The two sides the invoice's money is on. */
+export const FLEET_DEALERSHIP_SIDES = ['dealership', 'custody'] as const;
+export const FleetDealershipSideSchema = z.enum(FLEET_DEALERSHIP_SIDES);
+export type FleetDealershipSide = z.infer<typeof FleetDealershipSideSchema>;
+
+/** Which half of a workshop exit a row is — one of the two a «صيانة + إصلاح» visit splits into. */
+export const FLEET_DEALERSHIP_WORK_KINDS = ['maintenance', 'repair'] as const;
+export const FleetDealershipWorkKindSchema = z.enum(FLEET_DEALERSHIP_WORK_KINDS);
+export type FleetDealershipWorkKind = z.infer<typeof FleetDealershipWorkKindSchema>;
+
+/**
+ * Record (or correct) the invoice on a row. Nothing but the version is required: a row is edited
+ * piece by piece, and the rule that a non-private car needs an invoice number is checked by the
+ * service when an amount is written, where the car is known.
+ */
+export const UpdateFleetDealershipInvoiceSchema = z
+  .object({
+    invoiceNumber: z.string().trim().min(1).max(60).nullish(),
+    invoiceAmount: egp().nullish(),
+    /** «ملاكي» — preset from the car's operation, and the clerk's to change. */
+    privateCar: z.boolean().optional(),
+    /** The insurer, when the car has one or the clerk names one. `null` clears it. */
+    insuranceCompanyId: objectId().nullish(),
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateFleetDealershipInvoice = z.infer<typeof UpdateFleetDealershipInvoiceSchema>;
+
+const dealershipFilters = {
+  /** The cars named exactly, ORed — resolved to ids against the registry. */
+  vehicleCodes: vehicleCodesQuery(),
+  /** The workshop EXIT date the row carries. */
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  side: FleetDealershipSideSchema.optional(),
+  /** `true` — only rows still waiting for their invoice; `false` — only recorded ones. */
+  pending: booleanQuery().optional(),
+  workKind: FleetDealershipWorkKindSchema.optional(),
+};
+
+export const ListFleetDealershipInvoicesQuerySchema = PaginationQuerySchema.extend({
+  ...dealershipFilters,
+  sort: fleetSortQuery(),
+}).strict();
+export type ListFleetDealershipInvoicesQuery = z.infer<
+  typeof ListFleetDealershipInvoicesQuerySchema
+>;
+
+/** The same filters, without paging — the totals describe every row the filters match. */
+export const FleetDealershipSummaryQuerySchema = z.object(dealershipFilters).strict();
+export type FleetDealershipSummaryQuery = z.infer<typeof FleetDealershipSummaryQuerySchema>;
+
+export interface FleetDealershipInvoiceDto {
+  id: string;
+  /** The workshop visit this row came from. */
+  visitId: string;
+  vehicleId: string | null;
+  /** The registry's code, resolved server-side; the old book's code for a visit with no `vehicleId`. */
+  vehicleCode: string | null;
+  /** The workshop exit date — the row's date. */
+  outDate: string;
+  workKind: FleetDealershipWorkKind;
+  /** «صيانة», «إصلاح», or «إصلاح (كهرباء)» — what the row says in the work-type column. */
+  workTypeLabel: string;
+  privateCar: boolean;
+  insuranceCompanyId: string | null;
+  /** The insurer's name, resolved server-side — `null` when the car has none. */
+  insuranceCompanyName: string | null;
+  invoiceNumber: string | null;
+  invoiceAmount: number | null;
+  image: FleetLicenseImageDto | null;
+  /** `null` while the row waits for its invoice. */
+  side: FleetDealershipSide | null;
+  /** No invoice recorded yet — the yellow row. */
+  pending: boolean;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The figures between the filters and the table. */
+export interface FleetDealershipTotalsDto {
+  /** Every row the filters match. */
+  count: number;
+  /** …of which still waiting for an invoice. */
+  pending: number;
+  /** Recorded invoices on the dealership's side, summed. */
+  dealershipTotal: number;
+  /** Recorded amounts taken from the custody fund, summed. */
+  custodyTotal: number;
 }

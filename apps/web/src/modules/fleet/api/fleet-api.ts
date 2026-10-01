@@ -9,7 +9,10 @@ import {
   type CorrectFleetOdometer,
   type CreateFleetAccident,
   type CreateFleetNotice,
+  type FleetDealershipInvoiceDto,
+  type FleetDealershipTotalsDto,
   type FleetNoticeDto,
+  type UpdateFleetDealershipInvoice,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type OrderFleetCatalog,
@@ -419,3 +422,31 @@ export const createNotice = (body: CreateFleetNotice): Promise<FleetNoticeDto> =
 export const updateNotice = (id: string, body: UpdateFleetNotice): Promise<FleetNoticeDto> =>
   patch<FleetNoticeDto>(`/fleet/notices/${id}`, body);
 export const deleteNotice = (id: string): Promise<void> => del<void>(`/fleet/notices/${id}`);
+
+// ── Dealership invoices (التوكيل) — rows opened by the workshop check-out ──────
+export const listDealershipInvoices = (
+  params: FleetListParams,
+): Promise<Paginated<FleetDealershipInvoiceDto>> =>
+  getPage<FleetDealershipInvoiceDto>(`/fleet/dealership${buildQuery(params)}`);
+export const dealershipSummary = (params: FleetListParams): Promise<FleetDealershipTotalsDto> =>
+  get<FleetDealershipTotalsDto>(`/fleet/dealership/summary${buildQuery(params)}`);
+export const updateDealershipInvoice = (
+  id: string,
+  body: UpdateFleetDealershipInvoice,
+): Promise<FleetDealershipInvoiceDto> =>
+  patch<FleetDealershipInvoiceDto>(`/fleet/dealership/${id}`, body);
+export const deleteDealershipInvoice = (id: string): Promise<void> =>
+  del<void>(`/fleet/dealership/${id}`);
+export const uploadDealershipImage = (
+  id: string,
+  file: File,
+): Promise<FleetDealershipInvoiceDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FleetDealershipInvoiceDto>(`/fleet/dealership/${id}/image`, form);
+};
+/** The BYTES, as the licence image — the file is guarded, so an `<img src>` could not fetch it. */
+export const fetchDealershipImage = (id: string): Promise<Blob> =>
+  fetchBlob(`/fleet/dealership/${id}/image`);
+export const deleteDealershipImage = (id: string): Promise<FleetDealershipInvoiceDto> =>
+  del<FleetDealershipInvoiceDto>(`/fleet/dealership/${id}/image`);

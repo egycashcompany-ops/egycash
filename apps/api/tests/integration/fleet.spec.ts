@@ -1457,7 +1457,10 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
       [1600, null, null], // Sunday, still the open one
     ]);
     // The invariant the whole model rests on: each row hands its closing reading to the next.
-    expect(rows.filter((r) => r.inReading === null), 'exactly one open period').toHaveLength(1);
+    expect(
+      rows.filter((r) => r.inReading === null),
+      'exactly one open period',
+    ).toHaveLength(1);
   });
 
   it('brackets a back-dated reading on BOTH sides — under the day before, over the day after', async () => {
@@ -1507,8 +1510,10 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
       [null, null, null], // Saturday: a day, and no measurement of any kind
       [1600, null, null], // Sunday, still the car's one open period
     ]);
-    expect(rows.filter((r) => r.inReading === null), 'the empty day is NOT a second open period')
-      .toHaveLength(2);
+    expect(
+      rows.filter((r) => r.inReading === null),
+      'the empty day is NOT a second open period',
+    ).toHaveLength(2);
   });
 
   it('the car can still take its next real reading — the open-period index is not confused', async () => {
@@ -1664,12 +1669,10 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
 
     expect((await record(v.id, 1400, '2026-07-11')).status).toBe(201);
     const rows = await logsFor(v.id);
-    expect(rows.map((r) => r.outReading), 'the 10th is still empty').toEqual([
-      1000,
-      null,
-      1400,
-      1600,
-    ]);
+    expect(
+      rows.map((r) => r.outReading),
+      'the 10th is still empty',
+    ).toEqual([1000, null, 1400, 1600]);
   });
 
   it('REFUSES the same empty day twice — two of them say nothing a first does not', async () => {
@@ -1708,9 +1711,10 @@ describe('a vehicle records on as many days as it runs (legacy cars_log)', () =>
     expect((await record(v.id, 1200, '2026-07-10')).status).toBe(201); // Friday < Saturday
 
     const rows = await logsFor(v.id);
-    expect(rows.map((r) => r.outReading), 'in date order, the chain climbs').toEqual([
-      1000, 1200, 1400, 1600,
-    ]);
+    expect(
+      rows.map((r) => r.outReading),
+      'in date order, the chain climbs',
+    ).toEqual([1000, 1200, 1400, 1600]);
     expect(rows.map((r) => r.km)).toEqual([200, 200, 200, null]);
     expect(rows.filter((r) => r.inReading === null)).toHaveLength(1);
   });
@@ -3429,8 +3433,10 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     const opened = data<FleetMaintenanceVisitDto>(
       await checkIn({ ...body, driverInEmployeeId: undefined }),
     );
-    expect(opened.driverInEmployeeId, 'absent means absent — never the roster’s planned driver')
-      .toBeNull();
+    expect(
+      opened.driverInEmployeeId,
+      'absent means absent — never the roster’s planned driver',
+    ).toBeNull();
 
     const noExitDriver = await checkOut(opened.id, {
       outDate: '2026-10-19',
@@ -6267,15 +6273,14 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         ],
       });
     expect(batch.status).toBe(201);
-    const [unknown, named] =
-      data<
-        {
-          id: string;
-          driverEmployeeId: string | null;
-          driverName: string | null;
-          version: number;
-        }[]
-      >(batch);
+    const [unknown, named] = data<
+      {
+        id: string;
+        driverEmployeeId: string | null;
+        driverName: string | null;
+        version: number;
+      }[]
+    >(batch);
     expect(unknown?.driverEmployeeId).toBeNull();
     expect(unknown?.driverName).toBe('مجهول');
 
@@ -6427,7 +6432,13 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       await request(app)
         .post('/api/v1/fleet/violations/vehicle')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ vehicleId: v.id, year: 2026, violationTypeId: vehicleType, count: 2, unitValue: 50 });
+        .send({
+          vehicleId: v.id,
+          year: 2026,
+          violationTypeId: vehicleType,
+          count: 2,
+          unitValue: 50,
+        });
       // One driver fine INSIDE the year being ticked…
       await request(app)
         .post('/api/v1/fleet/violations/driver')
@@ -6645,7 +6656,9 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       expect(returned?.['filedYear'], 'and under its own date again').toBeNull();
       expect(returned?.['homeVehicleId'], 'it is home, so it remembers nowhere else').toBeNull();
       expect(returned?.['date'], 'its own day never moved at all').toContain('2025-07-07');
-      expect(await finesOf(onto.id), 'and nothing is left on the car it was dropped on').toEqual([]);
+      expect(await finesOf(onto.id), 'and nothing is left on the car it was dropped on').toEqual(
+        [],
+      );
     });
 
     it('carried twice, it still goes home to where it STARTED', async () => {
@@ -6697,7 +6710,13 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
         await request(app)
           .post('/api/v1/fleet/violations/vehicle')
           .set('Authorization', `Bearer ${adminToken}`)
-          .send({ vehicleId: v.id, year: 2025, violationTypeId: vehicleType, count: 1, unitValue: 40 }),
+          .send({
+            vehicleId: v.id,
+            year: 2025,
+            violationTypeId: vehicleType,
+            count: 1,
+            unitValue: 40,
+          }),
       );
       const fine = data<{ id: string }>(
         await request(app)
@@ -6720,7 +6739,7 @@ describe('accidents + violations + grievances (§4.6/§4.7, FR-9/FR-10 — FL-6)
       expect(JSON.stringify(refused.body)).toContain('carries its own year');
 
       // ALL OF THEM OR NONE: the driver fine beside it must not have moved on its own.
-      expect((await rollupOf({ year: 2026, vehicleId: v.id })), 'nothing landed in 2026').toEqual([]);
+      expect(await rollupOf({ year: 2026, vehicleId: v.id }), 'nothing landed in 2026').toEqual([]);
       expect((await rollupOf({ year: 2025, vehicleId: v.id }))[0]?.['driverAmount']).toBe(70);
     });
 
@@ -8832,7 +8851,10 @@ describe('the violations board, as the screen actually asks it', () => {
         .query({ kind: 'driver', vehicleId: v.id, pageSize: 50 })
         .set('Authorization', `Bearer ${adminToken}`),
     );
-    expect(fines.map((f) => f.collected), 'the drivers’ half went green too').toEqual([true]);
+    expect(
+      fines.map((f) => f.collected),
+      'the drivers’ half went green too',
+    ).toEqual([true]);
     expect(
       data<{ driverAmount: number }[]>(after)[0]?.driverAmount,
       'the line still reports what the drivers were fined',
@@ -8872,5 +8894,177 @@ describe('the violations board, as the screen actually asks it', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ vehicleId: v.id, year: 2028, collected: true });
     expect(res.status, 'not a 400 about an id').toBe(200);
+  });
+});
+
+// ── التوكيل — the dealership screen's rows, opened by the workshop ──────────────
+describe('dealership invoices (التوكيل) — «العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى»', () => {
+  type Row = {
+    id: string;
+    visitId: string;
+    vehicleId: string | null;
+    vehicleCode: string | null;
+    outDate: string;
+    workKind: string;
+    workTypeLabel: string;
+    privateCar: boolean;
+    insuranceCompanyId: string | null;
+    insuranceCompanyName: string | null;
+    invoiceNumber: string | null;
+    invoiceAmount: number | null;
+    side: string | null;
+    pending: boolean;
+    version: number;
+  };
+  /** The catalog items this screen reads off the car — found by name, made once. */
+  const catalogId = async (kind: string, ar: string): Promise<string> => {
+    const res = await request(app)
+      .get('/api/v1/fleet/catalog-items')
+      .query({ kind, pageSize: MAX_PAGE_SIZE })
+      .set('Authorization', `Bearer ${adminToken}`);
+    const found = data<FleetCatalogItemDto[]>(res).find((item) => item.name.ar === ar);
+    return found === undefined ? (await mkDriverCatalogItem(kind, ar)).id : found.id;
+  };
+  const rowsOf = async (visitId: string): Promise<Row[]> =>
+    data<Row[]>(
+      await request(app)
+        .get('/api/v1/fleet/dealership')
+        .query({ pageSize: MAX_PAGE_SIZE })
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).filter((row) => row.visitId === visitId);
+  /** A closed visit with the given work type, on a car built from `vehicle` overrides. */
+  const exit = async (
+    workTypeAr: string,
+    vehicle: Record<string, unknown> = {},
+  ): Promise<{ vehicleId: string; visitId: string; visitVersion: number }> => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, vehicle));
+    const opened = await request(app)
+      .post('/api/v1/fleet/maintenance')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId: v.id,
+        inDate: '2026-10-01',
+        workshopId: await catalogId('workshop', 'ورشة التوكيل'),
+        workTypeId: await catalogId('workType', workTypeAr),
+        odometerAtService: 50_000,
+        driverInEmployeeId: await someDriver(),
+      });
+    expect(opened.status).toBe(201);
+    const open = data<FleetMaintenanceVisitDto>(opened);
+    const out = await request(app)
+      .post(`/api/v1/fleet/maintenance/${open.id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        outDate: '2026-10-03',
+        exitOdometer: 50_100,
+        version: open.version,
+        driverOutEmployeeId: await someDriver(),
+      });
+    expect(out.status).toBe(200);
+    const closed = data<FleetMaintenanceVisitDto>(out);
+    return { vehicleId: v.id, visitId: closed.id, visitVersion: closed.version };
+  };
+  const record = (row: Row, body: Record<string, unknown>) =>
+    request(app)
+      .patch(`/api/v1/fleet/dealership/${row.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: row.version, ...body });
+
+  it('a check-out opens one PENDING row, carrying the exit date, the insurer and «ملاكي» off the car', async () => {
+    const insurerId = await catalogId('insuranceCompany', 'مصر للتأمين');
+    const privateOp = await catalogId('operation', 'ملاكى');
+    const { visitId, vehicleId } = await exit('صيانة', {
+      insuranceCompanyId: insurerId,
+      operationId: privateOp,
+    });
+    const rows = await rowsOf(visitId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      vehicleId,
+      workKind: 'maintenance',
+      workTypeLabel: 'صيانة',
+      privateCar: true,
+      insuranceCompanyId: insurerId,
+      insuranceCompanyName: 'مصر للتأمين',
+      invoiceNumber: null,
+      invoiceAmount: null,
+      side: null,
+      pending: true,
+    });
+    expect(rows[0]?.outDate.slice(0, 10)).toBe('2026-10-03');
+  });
+
+  it('«صيانة + إصلاح» opens TWO rows, and any other work is «إصلاح (…)»', async () => {
+    const both = await exit('صيانة + إصلاح');
+    expect((await rowsOf(both.visitId)).map((row) => row.workTypeLabel).sort()).toEqual([
+      'إصلاح',
+      'صيانة',
+    ]);
+    const other = await exit('كهرباء');
+    expect((await rowsOf(other.visitId)).map((row) => row.workTypeLabel)).toEqual([
+      'إصلاح (كهرباء)',
+    ]);
+  });
+
+  it('a car that is not «ملاكي» needs an invoice number; a private one without it pays from the custody fund', async () => {
+    const { visitId } = await exit('إصلاح');
+    const [row] = await rowsOf(visitId);
+    if (row === undefined) throw new Error('no row');
+    expect(row.privateCar).toBe(false);
+    expect((await record(row, { invoiceAmount: 850 })).status).toBe(400);
+    const recorded = await record(row, { invoiceNumber: '48213', invoiceAmount: 3250 });
+    expect(recorded.status).toBe(200);
+    expect(data<Row>(recorded)).toMatchObject({
+      invoiceNumber: '48213',
+      invoiceAmount: 3250,
+      side: 'dealership',
+      pending: false,
+    });
+
+    // The clerk may say the car IS private — then the number is optional and the fund pays.
+    const { visitId: privateVisit } = await exit('إصلاح');
+    const [privateRow] = await rowsOf(privateVisit);
+    if (privateRow === undefined) throw new Error('no row');
+    const fromCustody = await record(privateRow, { privateCar: true, invoiceAmount: 850 });
+    expect(fromCustody.status).toBe(200);
+    expect(data<Row>(fromCustody)).toMatchObject({ side: 'custody', privateCar: true });
+  });
+
+  it('sums the whole filtered set between the filters and the table', async () => {
+    const summary = await request(app)
+      .get('/api/v1/fleet/dealership/summary')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(summary.status).toBe(200);
+    const totals = data<{
+      count: number;
+      pending: number;
+      dealershipTotal: number;
+      custodyTotal: number;
+    }>(summary);
+    expect(totals.dealershipTotal).toBeGreaterThanOrEqual(3250);
+    expect(totals.custodyTotal).toBeGreaterThanOrEqual(850);
+    expect(totals.pending).toBeGreaterThanOrEqual(1);
+    expect(totals.count).toBeGreaterThanOrEqual(totals.pending);
+  });
+
+  it('a reopened visit takes its pending rows back — a recorded one stays', async () => {
+    const { visitId, visitVersion } = await exit('صيانة + إصلاح');
+    const rows = await rowsOf(visitId);
+    const kept = rows.find((row) => row.workKind === 'repair');
+    if (kept === undefined) throw new Error('no repair row');
+    expect((await record(kept, { invoiceNumber: '1', invoiceAmount: 10 })).status).toBe(200);
+    const reopened = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visitId}/reopen`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: visitVersion });
+    expect(reopened.status).toBe(200);
+    expect((await rowsOf(visitId)).map((row) => row.workKind)).toEqual(['repair']);
+  });
+
+  it('is its own grant — the branch operator sees nothing here', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/dealership')
+      .set('Authorization', `Bearer ${branchAToken}`);
+    expect(res.status).toBe(403);
   });
 });

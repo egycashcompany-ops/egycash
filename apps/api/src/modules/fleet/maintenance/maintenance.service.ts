@@ -16,6 +16,7 @@ import { auditService } from '../../../platform/audit';
 import { emit } from '../../../platform/kernel/event-bus';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
+import { fleetDealershipService } from '../dealership/dealership.service';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { alarmSortsFor } from './alarm-sort';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
@@ -279,6 +280,8 @@ class FleetMaintenanceService {
       changes: [{ field: 'outDate', old: null, new: updated.outDate }],
     });
     await emit(FleetEvents.MaintenanceCheckedOut, eventPayload(updated, code));
+    // «العربيه اللى بتخرج من الصيانه بتظهر فى الشاشه دى» — the dealership screen's yellow rows.
+    await fleetDealershipService.openForVisit(updated, by);
     return this.withJoins(updated);
   }
 
@@ -310,6 +313,8 @@ class FleetMaintenanceService {
       changes: [{ field: 'outDate', old: before.outDate, new: null }],
     });
     await emit(FleetEvents.MaintenanceReopened, eventPayload(updated, code));
+    // The car is back in the workshop: the dealership rows that still wait for an invoice go too.
+    await fleetDealershipService.withdrawPendingOfVisit(id, by);
     return this.withJoins(updated);
   }
 

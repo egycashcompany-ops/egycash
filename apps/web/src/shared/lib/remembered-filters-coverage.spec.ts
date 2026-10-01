@@ -51,6 +51,7 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/AccidentsPage.tsx', []],
   ['modules/fleet/pages/AttendancePage.tsx', ['date']],
   ['modules/fleet/pages/CatalogsPage.tsx', ['kind']],
+  ['modules/fleet/pages/DealershipPage.tsx', []],
   ['modules/fleet/pages/DriversListPage.tsx', []],
   ['modules/fleet/pages/FixedRosterPage.tsx', []],
   ['modules/fleet/pages/LicensingPage.tsx', []],

@@ -505,6 +505,15 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetNotice.view',
       },
       {
+        en: 'Dealership',
+        ar: 'التوكيل',
+        route: '/fleet/dealership',
+        // A bill from the dealership — the briefcase is the money-and-paper glyph no other row on
+        // this rail wears.
+        icon: 'briefcase',
+        permission: 'fleetDealership.view',
+      },
+      {
         en: 'Fleet Catalogs',
         ar: 'قوائم الحركة',
         route: '/fleet/catalogs',

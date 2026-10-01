@@ -21,6 +21,7 @@ export const FilterField = ({
   active = false,
   density = 'default',
   className,
+  action,
   children,
 }: {
   /** The filter's name, spelled in full — this is the only place it is written. */
@@ -38,29 +39,37 @@ export const FilterField = ({
    */
   density?: 'default' | 'tight';
   className?: string;
+  /**
+   * A small control on the NAME's row, at its far end — «الزرار يكون فوق الخانه». It shares the
+   * row's line box, so the bar's controls stay level whether or not one of them carries it.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }): JSX.Element => (
   // The hook is inert markup a test can measure the bar by — one row, equal widths, names that
   // read in full — without reaching for class names that are free to change.
   <div data-filter-field={label} className={cn('flex min-w-0 flex-col gap-1.5', className)}>
-    <span
-      // The name is VISIBLE, so it needs no tooltip to be discoverable — but it is also
-      // `truncate`, and a name cut off by a narrow column has to stay recoverable by pointer.
-      title={label}
-      className={cn(
-        // `truncate` is the honest end of a name too long for its column, and it is why the
-        // label may never be the thing a caller sizes the column by.
-        //
-        // 12px with a real line box, not 11px squeezed to `leading-none`: at eleven-across this
-        // strip is the only thing telling a reader what each box is, and `leading-none` crops the
-        // Arabic hamza and the descenders that tell «الرخصة» from «الرخصه» at a glance.
-        'truncate text-xs font-medium leading-4',
-        density === 'tight' ? 'px-2' : 'px-3',
-        active ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400',
-      )}
-    >
-      {label}
-    </span>
+    <div className="flex min-w-0 items-center gap-1">
+      <span
+        // The name is VISIBLE, so it needs no tooltip to be discoverable — but it is also
+        // `truncate`, and a name cut off by a narrow column has to stay recoverable by pointer.
+        title={label}
+        className={cn(
+          // `truncate` is the honest end of a name too long for its column, and it is why the
+          // label may never be the thing a caller sizes the column by.
+          //
+          // 12px with a real line box, not 11px squeezed to `leading-none`: at eleven-across this
+          // strip is the only thing telling a reader what each box is, and `leading-none` crops the
+          // Arabic hamza and the descenders that tell «الرخصة» from «الرخصه» at a glance.
+          'truncate text-xs font-medium leading-4',
+          density === 'tight' ? 'px-2' : 'px-3',
+          active ? 'text-brand-600 dark:text-brand-300' : 'text-slate-500 dark:text-slate-400',
+        )}
+      >
+        {label}
+      </span>
+      {action !== undefined && <span className="ms-auto shrink-0 leading-4">{action}</span>}
+    </div>
     {children}
   </div>
 );

@@ -132,16 +132,16 @@ describe('the registers that REFERENCE a car order by its code', () => {
     expect(column(maintenance, 'driverOut')).toContain("sortKey: 'driverOutName'");
   });
 
-  it('orders the two registers by the CAR’s maintenance figures', () => {
-    // «فارق عداد الصيانة» on the odometer board, «منذ الخدمة» and «المتبقي» on the maintenance
-    // one. All three are facts about the VEHICLE, so all three ask for the keys the projection
-    // builds — never for the DTO field the cell happens to read.
+  it('orders the odometer register by the CAR’s maintenance figure', () => {
+    // «فارق عداد الصيانة» is a fact about the VEHICLE, so it asks for the key the projection
+    // builds — never for the DTO field the cell happens to read. The maintenance register no
+    // longer carries «منذ الخدمة» or «المتبقي» at all.
     expect(column(code('pages/OdometerPage.tsx'), 'maintenance')).toContain(
       "sortKey: 'alarmSinceService'",
     );
     const maintenance = code('pages/MaintenancePage.tsx');
-    expect(column(maintenance, 'sinceServiceKm')).toContain("sortKey: 'alarmSinceService'");
-    expect(column(maintenance, 'remainingKm')).toContain("sortKey: 'alarmRemaining'");
+    expect(maintenance).not.toContain("key: 'sinceServiceKm'");
+    expect(maintenance).not.toContain("key: 'remainingKm'");
   });
 });
 

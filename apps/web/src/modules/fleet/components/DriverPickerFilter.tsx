@@ -131,6 +131,8 @@ export const DriverPickerFilter = ({
       // Always searchable: the list IS the search, and a control that grew a search box only once
       // enough people happened to match would teach nobody where to type.
       searchThreshold={0}
+      // «كبر القايمه اللى انا بختار منها السواقيين» — a full name and its code fit on one line.
+      panelWidth="w-80 max-w-[90vw]"
       searchValue={search}
       onSearch={setSearch}
       fullWidth={fullWidth}

@@ -12,24 +12,13 @@
 // the two halves of that field. The derived alarm level (FR-3) is a property of the VEHICLE, not a
 // maintenance status, and is deliberately not offered here as one.
 //
-// THE ALARM COLUMNS ARE THE SERVER'S PROJECTION, READ — never recomputed here. They come from the
-// same `useMaintenanceAlarms` hook, on the same query key, that the alarms board and the odometer
-// log read, so the three screens cannot disagree about a vehicle: one engine (`computeAlarm`),
-// one cache entry. WHICH endpoint serves it is the hook's business, not this screen's — the same
-// projection is exposed behind `fleetMaintenance.view` and behind `fleetOdometer.view`, and the
-// hook picks the door the reader actually holds. A future change to the rule moves all three
-// screens at once because there is only one thing to change.
-//
-// They describe the VEHICLE, not the row. Several visits of one car therefore repeat its figures,
-// which is correct — «متبقٍ ٤٠٠ كم» is a fact about the car, not about the visit being looked at.
-// What IS about the row is `lastServiceVisitId`: the visit that set the current baseline is marked,
-// so a reader can see which service the countdown is measured from.
+// NO ALARM COLUMNS — «عاوز اشيل منذ الخدمه والمتبقى من الجدول». The distance since the last
+// service and the distance left are the alarms board's to show; this register lists visits.
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
   type FleetCatalogItemDto,
-  type FleetMaintenanceAlarmDto,
   type FleetMaintenanceVisitDto,
   type Locale,
 } from '@ecms/contracts';
@@ -63,14 +52,12 @@ import { formatDate, formatNumber, localized } from '../../../shared/lib/format'
 import {
   useDeleteMaintenance,
   useFleetCatalog,
-  useMaintenanceAlarms,
   useMaintenanceVisits,
   useReopenMaintenance,
 } from '../api/fleet-queries';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverName } from '../components/EmployeeName';
-import { RemainingKm } from '../components/AlarmBadge';
 import {
   CheckInDialog,
   CheckOutDialog,
@@ -78,9 +65,11 @@ import {
 } from '../components/MaintenanceDialogs';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
+  'branch',
   'drv',
   'from',
   'notes',
@@ -123,6 +112,9 @@ export const MaintenancePage = (): JSX.Element => {
   // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's «التشغيل», several at once, under the same
   // `operation` parameter the vehicles screen carries.
   const operationIds = csv(sp.get('operation'));
+  // «وحطلى الفرع فى الفلاتر» — the car's branch, several at once, under the `branch` parameter
+  // the vehicles screen carries.
+  const branchIds = csv(sp.get('branch'));
   // WHO, as ids picked off the drivers registry — the same `drv` parameter the drivers screen
   // and the odometer carry, so a filtered link reads the same on all three.
   const drivers = csv(sp.get('drv'));
@@ -161,6 +153,7 @@ export const MaintenancePage = (): JSX.Element => {
     outFrom !== '' ||
     vehicleCodes.length > 0 ||
     operationIds.length > 0 ||
+    branchIds.length > 0 ||
     drivers.length > 0 ||
     workshopIds.length > 0 ||
     workTypeIds.length > 0 ||
@@ -184,6 +177,7 @@ export const MaintenancePage = (): JSX.Element => {
       outFrom: outFrom || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       operationIds: operationIds.length > 0 ? operationIds : undefined,
+      branchIds: branchIds.length > 0 ? branchIds : undefined,
       workshopIds: workshopIds.length > 0 ? workshopIds : undefined,
       workTypeIds: workTypeIds.length > 0 ? workTypeIds : undefined,
       sparePartIds: sparePartIds.length > 0 ? sparePartIds : undefined,
@@ -200,25 +194,6 @@ export const MaintenancePage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useMaintenanceVisits(params);
   const rows = data?.items ?? [];
-
-  /**
-   * The vehicle's maintenance alarm, from the ONE server projection the other two screens read.
-   *
-   * `useMaintenanceAlarms` is the same hook and the same query key the alarms
-   * board and the odometer log use, so all three repaint together and none of them can hold a
-   * different answer for the same car. Nothing about the level, the interval or the thresholds is
-   * decided here — this screen only looks the vehicle up.
-   *
-   * Gated on `fleetOdometer.view` because that is the grant the endpoint carries. A reader who may
-   * see the workshop but not the odometer gets the visits without these two columns rather than a
-   * 403 that would take the whole page down — see the report's open question about that grant.
-   */
-  const alarmsQuery = useMaintenanceAlarms();
-  const alarmByVehicle = useMemo(() => {
-    const map = new Map<string, FleetMaintenanceAlarmDto>();
-    for (const alarm of alarmsQuery.data ?? []) map.set(alarm.vehicleId, alarm);
-    return map;
-  }, [alarmsQuery.data]);
 
   // The three catalogs the screen names — the same admin-owned lists the Fleet Catalogs screen
   // edits, read through the same per-kind cached hook one request at a time.
@@ -324,10 +299,8 @@ export const MaintenancePage = (): JSX.Element => {
    * a blank there would read as data nobody entered. The green row tint says the same thing twice
    * and carries nothing the word does not.
    *
-   * Every genuine figure goes in as a NUMBER so the sheet stays summable — the counter, and the
-   * two alarm distances, whose headings already say «كم». A negative remainder is the overdue
-   * distance, exactly as `RemainingKm` reads it. Nothing here is money, so there are no money
-   * columns. The row's buttons are controls, not facts, so they are left out.
+   * Every genuine figure goes in as a NUMBER so the sheet stays summable — the counter. Nothing
+   * here is money, so there are no money columns. The row's buttons are controls, not facts, so they are left out.
    */
   const exportSheet = async (): Promise<void> => {
     const all = await fetchFilteredRows((pageNo, size) =>
@@ -349,14 +322,9 @@ export const MaintenancePage = (): JSX.Element => {
         t('fleet.maintenance.fields.spareParts'),
         t('fleet.maintenance.legacyParts'),
         t('fleet.maintenance.fields.odometerAtService'),
-        t('fleet.alarms.columns.sinceService'),
-        t('fleet.alarms.columns.remaining'),
         t('fleet.odometer.columns.notes'),
       ],
       rows: all.map((visit) => {
-        // The same join the two alarm columns make, and the same refusal: a car the projection
-        // cannot answer for prints nothing rather than a distance it deliberately withheld.
-        const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
         return [
           formatDate(visit.inDate, locale),
           visit.outDate === null ? t('fleet.maintenance.open') : formatDate(visit.outDate, locale),
@@ -371,8 +339,6 @@ export const MaintenancePage = (): JSX.Element => {
           visit.sparePartIds.map((id) => catalogName.get(id) ?? id).join('، '),
           visit.spareParts.join('، '),
           visit.odometerAtService,
-          alarm?.sinceServiceKm ?? '',
-          alarm?.remainingKm ?? '',
           visit.notes ?? '',
         ];
       }),
@@ -500,45 +466,6 @@ export const MaintenancePage = (): JSX.Element => {
       sortable: true,
       align: 'end',
       render: (visit) => formatNumber(visit.odometerAtService, locale),
-    },
-    {
-      key: 'sinceServiceKm',
-      // A figure about the CAR, computed for the fleet and handed to the query — see
-      // `alarm-sort.ts`; a car the projection cannot answer for sorts with the other blanks.
-      sortable: true,
-      sortKey: 'alarmSinceService',
-      header: t('fleet.alarms.columns.sinceService'),
-      align: 'end',
-      render: (visit) => {
-        const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
-        if (alarm === undefined || alarm.sinceServiceKm === null) return dash;
-        return (
-          <span className="tabular-nums">
-            {t('fleet.odometer.kmValue', { km: formatNumber(alarm.sinceServiceKm, locale) })}
-          </span>
-        );
-      },
-    },
-    {
-      key: 'remainingKm',
-      // A figure about the CAR, computed for the fleet and handed to the query — see
-      // `alarm-sort.ts`; a car the projection cannot answer for sorts with the other blanks.
-      sortable: true,
-      sortKey: 'alarmRemaining',
-      header: t('fleet.alarms.columns.remaining'),
-      align: 'end',
-      render: (visit) => {
-        const alarm = visit.vehicleId === null ? undefined : alarmByVehicle.get(visit.vehicleId);
-        if (alarm === undefined) return dash;
-        // A negative remainder is OVERDUE, and says so — see `RemainingKm`.
-        return (
-          <RemainingKm
-            remainingKm={alarm.remainingKm}
-            locale={locale}
-            formatNumber={formatNumber}
-          />
-        );
-      },
     },
     {
       key: 'notes',
@@ -696,6 +623,7 @@ export const MaintenancePage = (): JSX.Element => {
               outFrom: null,
               vehicleCodes: null,
               operation: null,
+              branch: null,
               drv: null,
               workshops: null,
               workTypes: null,
@@ -721,6 +649,10 @@ export const MaintenancePage = (): JSX.Element => {
             value={operationIds}
             onChange={(next) => patch({ operation: next.length === 0 ? null : next.join(',') })}
             label={t('fleet.vehicles.filters.operation')}
+          />
+          <BranchFilterSelect
+            value={branchIds}
+            onChange={(next) => patch({ branch: next.length === 0 ? null : next.join(',') })}
           />
           {/* Several drivers at once: a visit is matched on its ENTRY driver or its EXIT driver,
               so asking about a crew is one question, not two searches run in turn. */}
@@ -754,6 +686,7 @@ export const MaintenancePage = (): JSX.Element => {
             className="shrink-0"
             showSelectedValues
             label={t('fleet.maintenance.fields.spareParts')}
+            clearSearchOnPick
             options={sparePartOptions}
             value={sparePartIds}
             onChange={(next) => patch({ parts: next.length === 0 ? null : next.join(',') })}

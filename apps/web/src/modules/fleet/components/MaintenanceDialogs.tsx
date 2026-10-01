@@ -149,6 +149,8 @@ const SparePartsField = ({
       // repeating the label. `label` remains the accessible name.
       label={t('fleet.maintenance.fields.spareParts')}
       placeholder={t('common.select')}
+      // «اول ما اختار يمسح اللى فى السيرش» — the next part is typed into an empty box.
+      clearSearchOnPick
       options={options}
       value={value}
       onChange={onChange}
@@ -330,6 +332,8 @@ export const CheckInDialog = ({
       // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
       // لما ادوس على الاكس». Escape still closes it.
       dismissOnOutsideClick={false}
+      // «فورم ادخال الورشه كبرها بالطول» — the parts list opens inside it with room to show.
+      tall
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.checkIn')}
@@ -637,6 +641,8 @@ export const MaintenanceEditDialog = ({
       // A FORM, so a stray click does not throw it away — «لو دوست في اى حته الموديل ميتقفلش غير
       // لما ادوس على الاكس». Escape still closes it.
       dismissOnOutsideClick={false}
+      // «فورم ادخال الورشه كبرها بالطول» — the parts list opens inside it with room to show.
+      tall
       open={open}
       onClose={onClose}
       title={t('fleet.maintenance.edit')}

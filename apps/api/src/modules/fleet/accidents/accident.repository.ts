@@ -75,9 +75,14 @@ class FleetAccidentRepository extends BaseRepository<FleetAccidentDoc> {
   async existingByKey(
     ref: BookRef,
     keyOf: (row: FleetAccidentDoc) => string,
+    /** Only files written at or after this moment — see `accidents-reload.ts`. */
+    since?: Date,
   ): Promise<Map<string, FleetAccidentDoc[]>> {
     const rows = await this.model
-      .find(bookRefFilter<FleetAccidentDoc>(ref))
+      .find({
+        ...bookRefFilter<FleetAccidentDoc>(ref),
+        ...(since === undefined ? {} : { createdAt: { $gte: since } }),
+      })
       .lean<FleetAccidentDoc[]>()
       .exec();
     return groupByKey(rows, keyOf);

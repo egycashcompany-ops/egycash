@@ -146,7 +146,12 @@ const AMOUNT_LABELS: Readonly<Record<string, string>> = {
  * the book's own words for whatever could not be read, so the file still says what it said.
  */
 export const parseAccidents = (raw: unknown): ParseAccidentsResult => {
-  const result: ParseAccidentsResult = { accidents: [], keptDeleted: 0, unreadable: [], rejected: [] };
+  const result: ParseAccidentsResult = {
+    accidents: [],
+    keptDeleted: 0,
+    unreadable: [],
+    rejected: [],
+  };
   if (!Array.isArray(raw)) {
     result.rejected.push({ id: 'file', reason: 'the export is not a JSON array' });
     return result;
@@ -236,7 +241,10 @@ export interface AccidentsPlan {
 
 /** How a file is told from another: when, who, and the three figures — never the status, which a person may change. */
 export const accidentKey = (
-  doc: Pick<FleetAccidentDoc, 'occurredAt' | 'culprit' | 'companyCost' | 'amountCollected' | 'paidAmount'>,
+  doc: Pick<
+    FleetAccidentDoc,
+    'occurredAt' | 'culprit' | 'companyCost' | 'amountCollected' | 'paidAmount'
+  >,
 ): string =>
   `${doc.occurredAt == null ? '' : doc.occurredAt.toISOString()}|${doc.culprit}|${doc.companyCost}|${doc.amountCollected}|${doc.paidAmount}`;
 
@@ -313,11 +321,18 @@ export interface AccidentsImportOutcome {
 export const applyAccidentsImport = async (
   plan: AccidentsPlan,
   by: string,
+  /**
+   * Count as «already there» only files written from this moment on. The reload passes the day
+   * the screen was emptied: the files deleted then are the OLD book's and must not stand in for
+   * the new book's rows, while a file typed since — or written by an earlier, interrupted try of
+   * the reload itself — must.
+   */
+  since?: Date,
 ): Promise<AccidentsImportOutcome> => {
   const outcome: AccidentsImportOutcome = { imported: 0, alreadyThere: 0, failures: [] };
   for (const vehicle of plan.vehicles) {
     try {
-      const existing = await fleetAccidentRepository.existingByKey(vehicle.ref, accidentKey);
+      const existing = await fleetAccidentRepository.existingByKey(vehicle.ref, accidentKey, since);
       const docs: Partial<FleetAccidentDoc>[] = [];
       for (const row of vehicle.rows) {
         if (existing.get(row.key)?.shift() !== undefined) {

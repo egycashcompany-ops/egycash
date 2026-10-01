@@ -95,6 +95,8 @@ export const MultiSelect = ({
   density = 'default',
   placeholder,
   fullWidth = false,
+  clearSearchOnPick = false,
+  panelWidth,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -177,6 +179,17 @@ export const MultiSelect = ({
    * its contents keeps reading exactly as it does today.
    */
   fullWidth?: boolean;
+  /**
+   * Empty the search box the moment an option is picked — «لما اكون بكتب حاجه فى السيرش ...
+   * اول ما اختار يمسح اللى فى السيرش». Off by default; a list searched to pick one thing at a time
+   * (spare parts) turns it on, so the next part is typed into a clean box.
+   */
+  clearSearchOnPick?: boolean;
+  /**
+   * The drop-down's width, when the default is too narrow for what it lists — a driver's full
+   * name with their code beside it. A Tailwind width class.
+   */
+  panelWidth?: string;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -204,8 +217,13 @@ export const MultiSelect = ({
   // `null` = say the label, the way every bar that has not opted in still does.
   const summary =
     showSelectedValues && selected > 0 ? selectionSummary(options, value, SUMMARY_MAX) : null;
-  const toggle = (option: string): void =>
+  const toggle = (option: string): void => {
     onChange(value.includes(option) ? value.filter((v) => v !== option) : [...value, option]);
+    if (clearSearchOnPick && query !== '') {
+      setQuery('');
+      onSearch?.('');
+    }
+  };
 
   return (
     <div ref={boxRef} className={cn('relative', className)}>
@@ -278,7 +296,8 @@ export const MultiSelect = ({
           role="listbox"
           aria-multiselectable
           className={cn(
-            'absolute z-30 mt-1 max-h-72 w-56 overflow-hidden rounded-lg border border-slate-200 shadow-lg',
+            'absolute z-30 mt-1 max-h-72 overflow-hidden rounded-lg border border-slate-200 shadow-lg',
+            panelWidth ?? 'w-56',
             // A step lighter than the page in dark mode: on near-black a shadow says nothing, so
             // the surface itself has to read as floating.
             'bg-white dark:border-slate-600 dark:bg-slate-800',

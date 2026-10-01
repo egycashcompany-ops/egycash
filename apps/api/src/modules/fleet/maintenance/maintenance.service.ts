@@ -427,11 +427,23 @@ class FleetMaintenanceService {
     // «انا اقدر اعمل فلتر ب نوع التشغيل» — the car's operation is the registry's fact too, so it
     // narrows to vehicle ids here exactly as a code does. Both asked means BOTH hold: the cars
     // among those codes that run under one of those operations.
-    if (query.operationIds === undefined) return byCode;
-    const byOperation = await fleetVehicleRepository.idsWithOperations(query.operationIds);
-    if (byCode === undefined) return byOperation;
-    const wanted = new Set(byOperation);
-    return byCode.filter((id) => wanted.has(id));
+    // «الفرع» — the car's branch, the registry's fact again. Every question asked must hold.
+    let scope = byCode;
+    const narrow = (ids: readonly string[]): void => {
+      if (scope === undefined) {
+        scope = [...ids];
+        return;
+      }
+      const wanted = new Set(ids);
+      scope = scope.filter((id) => wanted.has(id));
+    };
+    if (query.operationIds !== undefined) {
+      narrow(await fleetVehicleRepository.idsWithOperations(query.operationIds));
+    }
+    if (query.branchIds !== undefined) {
+      narrow(await fleetVehicleRepository.idsInBranches(query.branchIds));
+    }
+    return scope;
   }
 
   /**
@@ -448,7 +460,9 @@ class FleetMaintenanceService {
         ...(vehicleIds === undefined ? {} : { vehicleIds }),
         // A visit kept from the old book on a car the registry never had matches a typed CODE —
         // but it has no operation on file, so it cannot be one of the operations asked for.
-        ...(query.operationIds === undefined ? {} : { vehicleCodes: undefined }),
+        ...(query.operationIds === undefined && query.branchIds === undefined
+          ? {}
+          : { vehicleCodes: undefined }),
       }),
       query.driverEmployeeIds,
     );

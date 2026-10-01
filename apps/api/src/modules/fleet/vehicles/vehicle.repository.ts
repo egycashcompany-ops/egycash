@@ -252,6 +252,15 @@ class FleetVehicleRepository extends BaseRepository<FleetVehicleDoc> {
    * holds about a hundred cars — a page would silently drop the visits of every car past it.
    * Deleted cars are INCLUDED because their visits are still history the register shows.
    */
+  /** The ids of every vehicle registered to one of these branches — «الفرع» on the workshop register. */
+  async idsInBranches(branchIds: readonly string[]): Promise<string[]> {
+    if (branchIds.length === 0) return [];
+    const ids = await this.model
+      .distinct('_id', { branchId: { $in: branchIds.map((id) => new Types.ObjectId(id)) } })
+      .exec();
+    return ids.map((id) => String(id));
+  }
+
   async idsWithOperations(operationIds: readonly string[]): Promise<string[]> {
     if (operationIds.length === 0) return [];
     const ids = await this.model

@@ -49,6 +49,7 @@ import { sortQuery, writeSorts, type TableSort } from '../lib/table-sort';
 import { FilterField } from '../../../shared/ui/FilterField';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { splitDriverFilter } from '../lib/driver-filter-selection';
+import { offersCompanyCars } from '../lib/company-cars';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import { cn } from '../../../shared/lib/cn';
@@ -94,6 +95,7 @@ const ENTRY_CELL = 'flex-1 basis-0 min-w-[4.5rem]';
 
 export const DriverViolationsPanel = ({
   vehicleCodes,
+  companyVehicleCodes = [],
   driverEmployeeIds,
   typeIds,
   amount,
@@ -113,6 +115,8 @@ export const DriverViolationsPanel = ({
   onDelete,
 }: {
   vehicleCodes: string[];
+  /** The cars the COMPANY half is narrowed to — what «نقل عربيات الشركة» copies over here. */
+  companyVehicleCodes?: readonly string[];
   /** Several drivers at once — a supervisor asks about a crew, not about one person. */
   driverEmployeeIds: string[];
   typeIds: string[];
@@ -153,6 +157,7 @@ export const DriverViolationsPanel = ({
   onDelete: (row: FleetViolationDto) => void;
 }): JSX.Element => {
   const t = useT();
+  const offerCompanyCars = offersCompanyCars(companyVehicleCodes, vehicleCodes);
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const signatories = useReportSignatories();
@@ -1033,6 +1038,24 @@ export const DriverViolationsPanel = ({
           active={vehicleCodes.length > 0}
           className={CELL}
           density={TIGHT}
+          action={
+            // «لما ادوس على الزرار دا يجيب اللى ف مخالفات تتحملها الشركة وفلتر بيهم» — offered
+            // while the company half is narrowed to cars this half is not, and gone once they
+            // match; picking more cars over there brings it back.
+            offerCompanyCars ? (
+              <button
+                type="button"
+                data-use-company-cars
+                onClick={() => onVehicleCodesChange([...companyVehicleCodes])}
+                title={t('fleet.violations.useCompanyCarsHint')}
+                className="whitespace-nowrap rounded bg-brand-50 px-1 text-[11px] font-semibold text-brand-700 dark:bg-brand-950 hover:bg-brand-50 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300 dark:hover:bg-brand-950"
+              >
+                {t('fleet.violations.useCompanyCars', {
+                  count: String(companyVehicleCodes.length),
+                })}
+              </button>
+            ) : undefined
+          }
         >
           <VehicleCodeFilter
             value={vehicleCodes}

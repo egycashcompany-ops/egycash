@@ -194,9 +194,11 @@ describe('there is exactly ONE alarm implementation', () => {
     }
   });
 
-  it('all three read the SAME hook', () => {
+  it('both screens that show an alarm read the SAME hook — and maintenance shows none', () => {
+    // «عاوز اشيل منذ الخدمه والمتبقى من الجدول»: the maintenance register lists visits and no
+    // longer carries the car's distances, so it has no reason to read the projection at all.
+    expect(MAINTENANCE, 'maintenance reads no alarm').not.toMatch(/useMaintenanceAlarms\(/);
     for (const [name, source] of [
-      ['maintenance', MAINTENANCE],
       ['alarms', ALARMS],
       ['odometer', ODOMETER],
     ] as const) {
@@ -216,7 +218,9 @@ describe('there is exactly ONE alarm implementation', () => {
     // But there is ONE key. This is the whole guarantee: one key is one cache entry, so no
     // reader — however many permissions they hold — can end up with two copies of the projection
     // that could answer differently for the same car. A second key is the defect to prevent.
-    expect(QUERIES, "and MODULE is what the seeds below assume").toContain("const MODULE = 'fleet'");
+    expect(QUERIES, 'and MODULE is what the seeds below assume').toContain(
+      "const MODULE = 'fleet'",
+    );
     expect((QUERIES.match(/\[MODULE, 'alarms'\]/g) ?? []).length).toBe(1);
     expect(QUERIES, 'no source name leaks into the key').not.toMatch(
       /\[MODULE, '(?:odometer|maintenance)', 'alarms'\]/,
@@ -240,8 +244,8 @@ describe('there is exactly ONE alarm implementation', () => {
     }
   });
 
-  it('draws a level ONE way — the badge is a component, not three copies', () => {
-    for (const source of [MAINTENANCE, ALARMS, ODOMETER]) {
+  it('draws a level ONE way — the badge is a component, not two copies', () => {
+    for (const source of [ALARMS, ODOMETER]) {
       expect(source).toContain('AlarmBadge');
       // The tone decision itself lives in the component; no screen re-derives it.
       expect(source).not.toMatch(/level === 'red' \? 'danger'/);
@@ -283,22 +287,20 @@ describe('the three screens agree about one vehicle', () => {
     expect(maintenance(), 'maintenance names no level').not.toContain(red);
   });
 
-  it('shows the same SINCE-SERVICE distance where it is shown', () => {
+  it('shows the same SINCE-SERVICE distance where it is shown — no longer on maintenance', () => {
     const since = '٥٬٢٥٠';
-    expect(maintenance(), 'maintenance').toContain(since);
+    expect(maintenance(), 'maintenance carries no since-service column').not.toContain(since);
     expect(alarmsBoard(), 'alarms board').toContain(since);
     expect(odometer(), 'odometer').toContain(since);
   });
 
-  it('shows the same OVERDUE distance, as overdue and not as a negative number', () => {
-    const overdue = '٢٥٠';
-    for (const [name, markup] of [
-      ['maintenance', maintenance()],
-      ['alarms board', alarmsBoard()],
-    ] as const) {
-      expect(markup, name).toContain(overdue);
-      expect(markup, `${name} never prints a bare minus`).not.toContain('-٢٥٠');
-    }
+  it('shows the OVERDUE distance as overdue, not as a negative number', () => {
+    const markup = alarmsBoard();
+    expect(markup, 'alarms board').toContain('٢٥٠');
+    expect(markup, 'never a bare minus').not.toContain('-٢٥٠');
+    expect(maintenance(), 'maintenance carries no remaining column').not.toContain(
+      translate('ar', 'fleet.alarms.columns.remaining'),
+    );
   });
 
   it('shows the LAST SERVICE date on the alarms board, the one screen that still carries it', () => {

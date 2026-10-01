@@ -28,6 +28,7 @@ export const Dialog = ({
   footer,
   size = 'md',
   dismissOnOutsideClick = true,
+  tall = false,
   children,
 }: {
   open: boolean;
@@ -36,6 +37,12 @@ export const Dialog = ({
   description?: string;
   footer?: ReactNode;
   size?: Size;
+  /**
+   * A TALLER body — for a form whose drop-down lists open inside it. The body scrolls at 70% of
+   * the screen by default, and a list opened near its bottom is cut by that edge; a tall body is
+   * never shorter than 65% and grows to whatever the screen leaves after the header and footer.
+   */
+  tall?: boolean;
   /**
    * Does a click OUTSIDE the panel close this dialog?
    *
@@ -73,17 +80,25 @@ export const Dialog = ({
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
-      <div className="absolute inset-0 animate-fade-in bg-slate-900/50 backdrop-blur-sm" aria-hidden="true" />
+      <div
+        className="absolute inset-0 animate-fade-in bg-slate-900/50 backdrop-blur-sm"
+        aria-hidden="true"
+      />
       <div
         ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={cn('relative w-full animate-pop-in rounded-xl bg-white shadow-elevated dark:bg-slate-900', SIZE[size])}
+        className={cn(
+          'relative w-full animate-pop-in rounded-xl bg-white shadow-elevated dark:bg-slate-900',
+          SIZE[size],
+        )}
       >
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-50">{title}</h2>
+            <h2 className="truncate text-base font-semibold text-slate-900 dark:text-slate-50">
+              {title}
+            </h2>
             {description !== undefined && (
               <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{description}</p>
             )}
@@ -97,7 +112,14 @@ export const Dialog = ({
             <CloseIcon />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
+        <div
+          className={cn(
+            'overflow-y-auto px-5 py-4',
+            tall ? 'min-h-[65vh] max-h-[calc(100vh-11rem)]' : 'max-h-[70vh]',
+          )}
+        >
+          {children}
+        </div>
         {footer !== undefined && (
           <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4 dark:border-slate-800">
             {footer}

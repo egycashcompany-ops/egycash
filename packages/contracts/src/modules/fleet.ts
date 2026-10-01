@@ -1243,6 +1243,11 @@ export const ListFleetMaintenanceQuerySchema = PaginationQuerySchema.extend({
    * operation and matches none.
    */
   operationIds: listQuery(objectId()),
+  /**
+   * «الفرع» — visits of cars registered to one of these branches. The branch is the registry's
+   * fact, resolved server-side like `operationIds`; a car the registry never had has no branch.
+   */
+  branchIds: listQuery(objectId()),
   /** Substring over the visit's own note. */
   notes: z.string().trim().min(1).max(100).optional(),
   /** Inclusive bounds on the counter the vehicle went in on. */

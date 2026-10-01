@@ -201,6 +201,7 @@ export const ViolationsPage = (): JSX.Element => {
               patch({ dsort: writeSorts(clickSort(driverSortParam, DRIVER_DEFAULT_SORT, by)) })
             }
             vehicleCodes={driverCodes}
+            companyVehicleCodes={codes}
             driverEmployeeIds={driverEmployeeIds}
             typeIds={typeIds}
             amount={driverAmount}

@@ -267,14 +267,10 @@ const REQUIRED_COLUMNS = [
   'fleet.maintenance.fields.workshop',
   'fleet.maintenance.fields.workType',
   'fleet.maintenance.fields.spareParts',
+  // «العداد عند الصيانة». The vehicle's alarm figures are NOT on this grid: the level and the last
+  // service date came off first, and then «عاوز اشيل منذ الخدمه والمتبقى من الجدول» took the two
+  // distances too — they are the alarms board's subject, and a row here is a visit.
   'fleet.maintenance.fields.odometerAtService',
-  // What is left of the vehicle's derived maintenance alarm, read from the SAME projection the
-  // alarms board and the odometer log read — never recomputed here. The LEVEL and the LAST
-  // SERVICE DATE were taken off this grid by request: a row here is a VISIT, and the level is the
-  // alarms board's own subject. The two distances stay because they are about the visit's car at
-  // the moment it is being read.
-  'fleet.alarms.columns.sinceService',
-  'fleet.alarms.columns.remaining',
   // LAST of the data columns, by request — «الملاحظات تكون اخر حاجه خالص». `actions` still follows
   // it: those are the row's controls, not a fact about the visit.
   'fleet.odometer.columns.notes',
@@ -284,7 +280,7 @@ const REQUIRED_COLUMNS = [
 // ── 1. The table ────────────────────────────────────────────────────────────
 
 describe('the maintenance table', () => {
-  it('renders the twelve columns in the required order, and nothing else', () => {
+  it('renders the eleven columns in the required order, and nothing else', () => {
     // Exact equality, not "each appears after the last": that is what catches a column silently
     // added, dropped or moved rather than only a reordering.
     expect(headers(render())).toEqual(REQUIRED_COLUMNS.map((key) => t(key)));

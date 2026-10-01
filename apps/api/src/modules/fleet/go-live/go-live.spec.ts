@@ -93,6 +93,7 @@ describe('the long-running processes are what import the vehicle registry', () =
     'startMaintenanceSyncGoLive',
     'startViolationsReloadGoLive',
     'startAccidentsClearGoLive',
+    'startAccidentsReloadGoLive',
     'startViolationsRestoreGoLive',
     'startOdometerFixGoLive',
     'startDriversExtraGoLive',

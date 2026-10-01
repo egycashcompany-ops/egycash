@@ -21,6 +21,7 @@ import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes'
 import { buildFleetLicensingRouter } from './licensing/licensing.routes';
 import { buildFleetNoticesRouter } from './notices/notice.routes';
 import { buildFleetDealershipRouter } from './dealership/dealership.routes';
+import { buildFleetFuelCardsRouter } from './fuel-cards/fuel-card.routes';
 import { dealershipFileAuthorizer } from './dealership/dealership-files';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
@@ -230,6 +231,40 @@ const dealershipPermissions = declarePermissions(
   'fleet.dealership',
 );
 
+/**
+ * Fuel cards (الفيز): the registry of cards is one screen, and moving their money — requesting a
+ * charge, approving it, transferring between two cards — is another with its own grants, because
+ * the person who keeps the card list is not always the one who releases money onto it.
+ */
+const fuelCardPermissions = declarePermissions(
+  'fleet',
+  'fleetFuelCard',
+  { en: 'fuel cards', ar: 'بطاقات الوقود' },
+  ['view', 'create', 'edit', 'delete'],
+  [
+    {
+      action: 'reveal',
+      name: { en: 'Reveal fuel card password', ar: 'إظهار كلمة سر بطاقة الوقود' },
+    },
+  ],
+  'fleet.fuel-cards',
+);
+const fuelChargePermissions = declarePermissions(
+  'fleet',
+  'fleetFuelCharge',
+  { en: 'fuel card charging', ar: 'شحن بطاقات الوقود' },
+  ['view'],
+  [
+    { action: 'request', name: { en: 'Request a fuel card charge', ar: 'طلب رصيد لبطاقة وقود' } },
+    { action: 'approve', name: { en: 'Approve a fuel card charge', ar: 'اعتماد شحن بطاقة وقود' } },
+    {
+      action: 'transfer',
+      name: { en: 'Transfer balance between fuel cards', ar: 'تحويل رصيد بين بطاقتي وقود' },
+    },
+  ],
+  'fleet.fuel-charging',
+);
+
 const noticePermissions = declarePermissions(
   'fleet',
   'fleetNotice',
@@ -253,6 +288,8 @@ export const fleetPermissions: PermissionDef[] = [
   ...licensingPermissions,
   ...noticePermissions,
   ...dealershipPermissions,
+  ...fuelCardPermissions,
+  ...fuelChargePermissions,
 ];
 
 /**
@@ -340,6 +377,20 @@ export const fleetPages: PageDef[] = [
     sortOrder: 88,
   },
   {
+    id: 'fleet.fuel-cards',
+    moduleId: 'fleet',
+    name: { en: 'Fuel cards', ar: 'بطاقات الوقود' },
+    route: '/fleet/fuel-cards',
+    sortOrder: 89,
+  },
+  {
+    id: 'fleet.fuel-charging',
+    moduleId: 'fleet',
+    name: { en: 'Fuel card charging', ar: 'شحن الكروت' },
+    route: '/fleet/fuel-cards/charging',
+    sortOrder: 89.5,
+  },
+  {
     id: 'fleet.catalogs',
     moduleId: 'fleet',
     name: { en: 'Fleet catalogs', ar: 'قوائم الحركة' },
@@ -379,6 +430,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
     { prefix: '/fleet/notices', router: buildFleetNoticesRouter() },
     { prefix: '/fleet/dealership', router: buildFleetDealershipRouter() },
+    { prefix: '/fleet/fuel-cards', router: buildFleetFuelCardsRouter() },
     { prefix: '/fleet/people', router: buildFleetPeopleRouter() },
   ],
   collections: [
@@ -398,6 +450,8 @@ export const fleetModule: ModuleManifest = {
     'fleet_vehicle_licensing',
     'fleet_notices',
     'fleet_dealership_invoices',
+    'fleet_fuel_cards',
+    'fleet_fuel_card_movements',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is

@@ -9068,3 +9068,154 @@ describe('dealership invoices (التوكيل) — «العربيه اللى ب�
     expect(res.status).toBe(403);
   });
 });
+
+// ── الفيز — fuel cards, their charging and transfers ───────────────────────────
+describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد شيل اوت و وواحد وطنيه»', () => {
+  type Card = {
+    id: string;
+    vehicleId: string;
+    vehicleCode: string | null;
+    company: string;
+    number: string;
+    hasPassword: boolean;
+    balance: number;
+    requestedAmount: number | null;
+    lastChargedAt: string | null;
+    version: number;
+  };
+  let cardCounter = 7000;
+  const mkCard = async (vehicleId: string, company: string, over: Record<string, unknown> = {}) =>
+    request(app)
+      .post('/api/v1/fleet/fuel-cards')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId,
+        company,
+        name: `كارت ${company}`,
+        number: `5522 8810 ${cardCounter++}`,
+        expiresAt: '2027-03-31',
+        password: '1234',
+        ...over,
+      });
+  const read = async (id: string): Promise<Card> =>
+    data<Card>(
+      await request(app)
+        .get(`/api/v1/fleet/fuel-cards/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const requestCharge = (card: Card, amount: number | null) =>
+    request(app)
+      .patch(`/api/v1/fleet/fuel-cards/${card.id}/request`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ amount, version: card.version });
+  const approve = (card: Card) =>
+    request(app)
+      .post(`/api/v1/fleet/fuel-cards/${card.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: card.version });
+
+  it('keeps one card per company per car, by number, and never lists the password', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const wataniya = await mkCard(v.id, 'wataniya');
+    expect(wataniya.status).toBe(201);
+    expect(data<Card>(wataniya)).toMatchObject({
+      vehicleCode: v.code,
+      company: 'wataniya',
+      hasPassword: true,
+      balance: 0,
+      requestedAmount: null,
+    });
+    expect(JSON.stringify(wataniya.body)).not.toContain('"password"');
+    // A second Wataniya card on the same car is refused; a Chill Out one is the other slot.
+    expect((await mkCard(v.id, 'wataniya')).status).toBe(409);
+    expect((await mkCard(v.id, 'chillout')).status).toBe(201);
+
+    const secret = await request(app)
+      .get(`/api/v1/fleet/fuel-cards/${data<Card>(wataniya).id}/password`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(secret.status).toBe(200);
+    expect(data<{ password: string | null }>(secret).password).toBe('1234');
+  });
+
+  it('a charge request waits on the row until ✓ adds it to the balance, or ✕ takes it back', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const card = data<Card>(await mkCard(v.id, 'chillout'));
+    const requested = await requestCharge(card, 500);
+    expect(requested.status).toBe(200);
+    expect(data<Card>(requested)).toMatchObject({ requestedAmount: 500, balance: 0 });
+
+    const charged = await approve(data<Card>(requested));
+    expect(charged.status).toBe(200);
+    expect(data<Card>(charged)).toMatchObject({ requestedAmount: null, balance: 500 });
+    expect(data<Card>(charged).lastChargedAt).not.toBeNull();
+    // Nothing waiting any more — a second ✓ has nothing to add.
+    expect((await approve(data<Card>(charged))).status).toBe(409);
+
+    const again = data<Card>(await requestCharge(await read(card.id), 200));
+    const cancelled = await requestCharge(again, null);
+    expect(data<Card>(cancelled)).toMatchObject({ requestedAmount: null, balance: 500 });
+
+    const log = await request(app)
+      .get('/api/v1/fleet/fuel-cards/movements')
+      .query({ cardId: card.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ kind: string; amount: number; balanceAfter: number }[]>(log)).toEqual([
+      expect.objectContaining({ kind: 'charge', amount: 500, balanceAfter: 500 }),
+    ]);
+  });
+
+  it('a transfer takes from one card and gives to the other — and never more than the first holds', async () => {
+    const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const from = data<Card>(await mkCard(a.id, 'chillout'));
+    const to = data<Card>(await mkCard(b.id, 'wataniya'));
+    await approve(data<Card>(await requestCharge(from, 1200)));
+    await approve(data<Card>(await requestCharge(to, 300)));
+
+    const tooMuch = await request(app)
+      .post('/api/v1/fleet/fuel-cards/transfer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ fromCardId: from.id, toCardId: to.id, amount: 1200.01 });
+    expect(tooMuch.status).toBe(400);
+
+    const moved = await request(app)
+      .post('/api/v1/fleet/fuel-cards/transfer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ fromCardId: from.id, toCardId: to.id, amount: 500 });
+    expect(moved.status).toBe(200);
+    expect(data<{ from: Card; to: Card; amount: number }>(moved)).toMatchObject({
+      from: { balance: 700 },
+      to: { balance: 800 },
+      amount: 500,
+    });
+    expect((await read(from.id)).balance).toBe(700);
+    expect((await read(to.id)).balance).toBe(800);
+  });
+
+  it('sums the balances by company and counts the requests waiting', async () => {
+    const res = await request(app)
+      .get('/api/v1/fleet/fuel-cards/summary')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    const totals = data<{ wataniyaBalance: number; chilloutBalance: number; cardCount: number }>(
+      res,
+    );
+    expect(totals.wataniyaBalance).toBeGreaterThanOrEqual(800);
+    expect(totals.chilloutBalance).toBeGreaterThanOrEqual(700);
+    expect(totals.cardCount).toBeGreaterThanOrEqual(4);
+  });
+
+  it('refuses to delete a card that still holds money, and keeps the registry behind its own grant', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const card = data<Card>(await mkCard(v.id, 'wataniya'));
+    await approve(data<Card>(await requestCharge(card, 50)));
+    const full = await request(app)
+      .delete(`/api/v1/fleet/fuel-cards/${card.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(full.status).toBe(409);
+    const denied = await request(app)
+      .get('/api/v1/fleet/fuel-cards')
+      .set('Authorization', `Bearer ${branchAToken}`);
+    expect(denied.status).toBe(403);
+  });
+});

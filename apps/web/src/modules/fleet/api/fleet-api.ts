@@ -8,8 +8,18 @@ import {
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
   type CreateFleetAccident,
+  type ApproveFleetFuelCharge,
+  type CreateFleetFuelCard,
   type CreateFleetNotice,
   type FleetDealershipInvoiceDto,
+  type FleetFuelCardDto,
+  type FleetFuelCardMovementDto,
+  type FleetFuelCardSecretDto,
+  type FleetFuelCardTotalsDto,
+  type FleetFuelTransferResultDto,
+  type RequestFleetFuelCharge,
+  type TransferFleetFuelBalance,
+  type UpdateFleetFuelCard,
   type FleetDealershipTotalsDto,
   type FleetNoticeDto,
   type UpdateFleetDealershipInvoice,
@@ -450,3 +460,32 @@ export const fetchDealershipImage = (id: string): Promise<Blob> =>
   fetchBlob(`/fleet/dealership/${id}/image`);
 export const deleteDealershipImage = (id: string): Promise<FleetDealershipInvoiceDto> =>
   del<FleetDealershipInvoiceDto>(`/fleet/dealership/${id}/image`);
+
+// ── Fuel cards (الفيز) ────────────────────────────────────────────────────────
+export const listFuelCards = (params: FleetListParams): Promise<Paginated<FleetFuelCardDto>> =>
+  getPage<FleetFuelCardDto>(`/fleet/fuel-cards${buildQuery(params)}`);
+export const fuelCardSummary = (params: FleetListParams): Promise<FleetFuelCardTotalsDto> =>
+  get<FleetFuelCardTotalsDto>(`/fleet/fuel-cards/summary${buildQuery(params)}`);
+export const revealFuelCardPassword = (id: string): Promise<FleetFuelCardSecretDto> =>
+  get<FleetFuelCardSecretDto>(`/fleet/fuel-cards/${id}/password`);
+export const createFuelCard = (body: CreateFleetFuelCard): Promise<FleetFuelCardDto> =>
+  post<FleetFuelCardDto>('/fleet/fuel-cards', body);
+export const updateFuelCard = (id: string, body: UpdateFleetFuelCard): Promise<FleetFuelCardDto> =>
+  patch<FleetFuelCardDto>(`/fleet/fuel-cards/${id}`, body);
+export const deleteFuelCard = (id: string): Promise<void> => del<void>(`/fleet/fuel-cards/${id}`);
+export const requestFuelCharge = (
+  id: string,
+  body: RequestFleetFuelCharge,
+): Promise<FleetFuelCardDto> => patch<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/request`, body);
+export const approveFuelCharge = (
+  id: string,
+  body: ApproveFleetFuelCharge,
+): Promise<FleetFuelCardDto> => post<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/approve`, body);
+export const transferFuelBalance = (
+  body: TransferFleetFuelBalance,
+): Promise<FleetFuelTransferResultDto> =>
+  post<FleetFuelTransferResultDto>('/fleet/fuel-cards/transfer', body);
+export const listFuelCardMovements = (
+  params: FleetListParams,
+): Promise<Paginated<FleetFuelCardMovementDto>> =>
+  getPage<FleetFuelCardMovementDto>(`/fleet/fuel-cards/movements${buildQuery(params)}`);

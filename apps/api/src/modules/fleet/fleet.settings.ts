@@ -102,4 +102,41 @@ export const registerFleetSettings = (): void => {
     'Printed Fleet reports — the executive who endorses the totals',
     'لواء أ ح / جمال أحمد أبواسماعيل - المدير العام التنفيذى - شركة ايجى كاش للحلول النقدية',
   );
+  // ── Fuel ─────────────────────────────────────────────────────────────────
+  //
+  // Prices per litre, in EGP: what a fuel receipt's amount is divided by to show its litres. They
+  // change when the pump's do, and a receipt is computed with the price of the day it is recorded.
+  const fuelPrice = (key: string, description: string, defaultValue: number): void =>
+    declareSetting({
+      key,
+      description,
+      schema: z.number().nonnegative(),
+      defaultValue,
+      allowedScopes: ['organization'],
+    });
+  fuelPrice(FleetSettingKeys.FuelPricePetrol80, 'Fuel price per litre — petrol 80', 15.75);
+  fuelPrice(FleetSettingKeys.FuelPricePetrol92, 'Fuel price per litre — petrol 92', 17.25);
+  fuelPrice(FleetSettingKeys.FuelPricePetrol95, 'Fuel price per litre — petrol 95', 19);
+  fuelPrice(FleetSettingKeys.FuelPriceDiesel, 'Fuel price per litre — diesel', 15.5);
+  declareSetting({
+    key: FleetSettingKeys.FuelCardExpiryWarnDays,
+    description: 'Days before a fuel card expires that the cards screen flags it',
+    schema: z.number().int().min(1).max(365),
+    defaultValue: 30,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: FleetSettingKeys.FuelCardBalanceYellow,
+    description: 'A fuel card balance below this reads yellow on the charging screen',
+    schema: z.number().nonnegative(),
+    defaultValue: 300,
+    allowedScopes: ['organization'],
+  });
+  declareSetting({
+    key: FleetSettingKeys.FuelCardBalanceRed,
+    description: 'A fuel card balance below this reads red on the charging screen',
+    schema: z.number().nonnegative(),
+    defaultValue: 100,
+    allowedScopes: ['organization'],
+  });
 };

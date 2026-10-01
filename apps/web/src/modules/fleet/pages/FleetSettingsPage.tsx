@@ -36,6 +36,20 @@ const NUMBER_KEYS = [
   FleetSettingKeys.AlarmRedKm,
   FleetSettingKeys.VehicleLicenseWarnDays,
   FleetSettingKeys.DriverLicenseWarnDays,
+  FleetSettingKeys.FuelCardExpiryWarnDays,
+] as const;
+
+/**
+ * Money settings — decimals, not counts: the four fuel prices per litre the receipts screen turns
+ * an amount into litres with, and the two card-balance lines the charging screen colours by.
+ */
+const MONEY_KEYS = [
+  FleetSettingKeys.FuelPricePetrol80,
+  FleetSettingKeys.FuelPricePetrol92,
+  FleetSettingKeys.FuelPricePetrol95,
+  FleetSettingKeys.FuelPriceDiesel,
+  FleetSettingKeys.FuelCardBalanceYellow,
+  FleetSettingKeys.FuelCardBalanceRed,
 ] as const;
 
 /**
@@ -71,6 +85,13 @@ const SETTING_LABELS: Record<string, string> = {
   [FleetSettingKeys.ReportApprovedByName]: 'fleet.settings.keys.reportApprovedByName',
   [FleetSettingKeys.ReportEndorsementNote]: 'fleet.settings.keys.reportEndorsementNote',
   [FleetSettingKeys.ReportEndorsedByName]: 'fleet.settings.keys.reportEndorsedByName',
+  [FleetSettingKeys.FuelPricePetrol80]: 'fleet.settings.keys.fuelPricePetrol80',
+  [FleetSettingKeys.FuelPricePetrol92]: 'fleet.settings.keys.fuelPricePetrol92',
+  [FleetSettingKeys.FuelPricePetrol95]: 'fleet.settings.keys.fuelPricePetrol95',
+  [FleetSettingKeys.FuelPriceDiesel]: 'fleet.settings.keys.fuelPriceDiesel',
+  [FleetSettingKeys.FuelCardExpiryWarnDays]: 'fleet.settings.keys.fuelCardExpiryWarnDays',
+  [FleetSettingKeys.FuelCardBalanceYellow]: 'fleet.settings.keys.fuelCardBalanceYellow',
+  [FleetSettingKeys.FuelCardBalanceRed]: 'fleet.settings.keys.fuelCardBalanceRed',
 };
 
 const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JSX.Element => {
@@ -81,18 +102,22 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
 
   const valueOf = (key: string): unknown => resolved.find((s) => s.key === key)?.value;
   const [numbers, setNumbers] = useState<Record<string, string>>({});
+  const [moneys, setMoneys] = useState<Record<string, string>>({});
   const [texts, setTexts] = useState<Record<string, string>>({});
   const [useHrLeave, setUseHrLeave] = useState(false);
   useEffect(() => {
     setNumbers(Object.fromEntries(NUMBER_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setTexts(Object.fromEntries(TEXT_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
+    setMoneys(Object.fromEntries(MONEY_KEYS.map((key) => [key, String(valueOf(key) ?? '')])));
     setUseHrLeave(valueOf(FleetSettingKeys.UseHrLeave) === true);
   }, [resolved]);
 
   const isText = (key: string): boolean => (TEXT_KEYS as readonly string[]).includes(key);
+  const isMoney = (key: string): boolean => (MONEY_KEYS as readonly string[]).includes(key);
   const dirty = (key: string): boolean => {
     if (key === FleetSettingKeys.UseHrLeave) return useHrLeave !== (valueOf(key) === true);
     if (isText(key)) return texts[key] !== String(valueOf(key) ?? '');
+    if (isMoney(key)) return moneys[key] !== String(valueOf(key) ?? '');
     return numbers[key] !== String(valueOf(key) ?? '');
   };
   const anyDirty = Object.keys(SETTING_LABELS).some(dirty);
@@ -100,6 +125,7 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
     NUMBER_KEYS.every(
       (key) => Number.isInteger(Number(numbers[key])) && Number(numbers[key]) >= 0,
     ) &&
+    MONEY_KEYS.every((key) => Number.isFinite(Number(moneys[key])) && Number(moneys[key]) >= 0) &&
     // A blank default-branch name would resolve to nothing and silently disable the preselect.
     TEXT_KEYS.every((key) => (texts[key] ?? '').trim() !== '');
 
@@ -108,6 +134,10 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
     for (const key of NUMBER_KEYS) {
       if (dirty(key))
         await setSetting.mutateAsync({ key, scope: 'organization', value: Number(numbers[key]) });
+    }
+    for (const key of MONEY_KEYS) {
+      if (dirty(key))
+        await setSetting.mutateAsync({ key, scope: 'organization', value: Number(moneys[key]) });
     }
     for (const key of TEXT_KEYS) {
       if (dirty(key))
@@ -143,6 +173,22 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
                   step={1}
                   value={numbers[key] ?? ''}
                   onChange={(e) => setNumbers((prev) => ({ ...prev, [key]: e.target.value }))}
+                  disabled={!canEdit}
+                  dir="ltr"
+                />
+              </Field>
+            ))}
+          </div>
+          {/* «ضيف كمان ... اسعار الوقود ... والمعاد قبل انتهاء الفيزا ... وقبل ما الرصيد يخلص» */}
+          <div className="grid gap-4 sm:grid-cols-2" data-fleet-fuel-settings="true">
+            {MONEY_KEYS.map((key) => (
+              <Field key={key} label={t(SETTING_LABELS[key] ?? key)}>
+                <Input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={moneys[key] ?? ''}
+                  onChange={(e) => setMoneys((prev) => ({ ...prev, [key]: e.target.value }))}
                   disabled={!canEdit}
                   dir="ltr"
                 />

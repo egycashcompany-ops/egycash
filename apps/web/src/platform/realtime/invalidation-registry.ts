@@ -311,6 +311,7 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   'fleet.vehicleLicensing': [['fleet', 'licensing']],
   'fleet.notice': [['fleet', 'notices']],
   'fleet.dealershipInvoice': [['fleet', 'dealership']],
+  'fleet.fuelCard': [['fleet', 'fuelCards']],
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': [

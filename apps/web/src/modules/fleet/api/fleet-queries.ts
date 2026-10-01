@@ -10,8 +10,13 @@ import {
   type CheckOutFleetMaintenance,
   type CorrectFleetOdometer,
   type CreateFleetAccident,
+  type ApproveFleetFuelCharge,
+  type CreateFleetFuelCard,
   type CreateFleetNotice,
+  type RequestFleetFuelCharge,
+  type TransferFleetFuelBalance,
   type UpdateFleetDealershipInvoice,
+  type UpdateFleetFuelCard,
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
@@ -71,6 +76,7 @@ const fleetKeys = {
   accidents: featureKey(MODULE, 'accidents'),
   notices: featureKey(MODULE, 'notices'),
   dealership: featureKey(MODULE, 'dealership'),
+  fuelCards: featureKey(MODULE, 'fuelCards'),
   violations: featureKey(MODULE, 'violations'),
   licensing: featureKey(MODULE, 'licensing'),
   people: featureKey(MODULE, 'people'),
@@ -892,3 +898,61 @@ export const useUploadDealershipImage = () =>
   );
 export const useDeleteDealershipImage = () =>
   useDealershipMutation((id: string) => api.deleteDealershipImage(id));
+
+// ── Fuel cards (الفيز) ────────────────────────────────────────────────────────
+/**
+ * EVERY card the filters match — the two screens show cards grouped under their car, which is
+ * not a paged question. Walked page by page like a catalog.
+ */
+export const useAllFuelCards = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'fuelCards', { whole: true, ...params }),
+    queryFn: () =>
+      fetchWholeCatalog((page, pageSize) =>
+        api.listFuelCards({ ...params, page, pageSize, sortBy: 'vehicleCode', sortDir: 'asc' }),
+      ),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useFuelCardSummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'fuelCards', { summary: true, ...params }),
+    queryFn: () => api.fuelCardSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+/** The card's log, newest first. */
+export const useFuelCardMovements = (cardId: string) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'fuelCards', { movements: cardId }),
+    queryFn: () => api.listFuelCardMovements({ cardId, pageSize: 100 }),
+    enabled: cardId !== '',
+  });
+
+const useFuelCardMutation = <TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.fuelCards }),
+  });
+};
+
+export const useCreateFuelCard = () =>
+  useFuelCardMutation((body: CreateFleetFuelCard) => api.createFuelCard(body));
+export const useUpdateFuelCard = () =>
+  useFuelCardMutation(({ id, body }: { id: string; body: UpdateFleetFuelCard }) =>
+    api.updateFuelCard(id, body),
+  );
+export const useDeleteFuelCard = () => useFuelCardMutation((id: string) => api.deleteFuelCard(id));
+export const useRequestFuelCharge = () =>
+  useFuelCardMutation(({ id, body }: { id: string; body: RequestFleetFuelCharge }) =>
+    api.requestFuelCharge(id, body),
+  );
+export const useApproveFuelCharge = () =>
+  useFuelCardMutation(({ id, body }: { id: string; body: ApproveFleetFuelCharge }) =>
+    api.approveFuelCharge(id, body),
+  );
+export const useTransferFuelBalance = () =>
+  useFuelCardMutation((body: TransferFleetFuelBalance) => api.transferFuelBalance(body));

@@ -682,15 +682,18 @@ describe('transfers between cars', () => {
     expect(LOG.slice(LOG.lastIndexOf('{mayRemove && (', at), at)).toContain('{mayRemove && (');
   });
 
-  it('offers only cars with something left, several at once, and refuses more than they have', () => {
+  it('offers only cars with something left, several at once, and works the amount out itself', () => {
     expect(FORM, 'the server’s list of cars with remaining > 0').toContain(
       'useAccidentCarBalances(open)',
     );
     expect(FORM, 'never this accident’s own car').toContain('car.vehicleId !== vehicleId');
     expect(FORM, 'several cars').toContain('<MultiSelect');
-    expect(FORM, 'drawn in the order picked').toContain('planTakes(');
-    expect(FORM).toContain("t('fleet.accidents.transfer.carLine'");
-    expect(FORM).toContain("t('fleet.accidents.transfer.tooMuchAll'");
+    expect(FORM, 'drawn in the order picked, until this accident is zero').toContain(
+      'coverDeficit(',
+    );
+    expect(FORM, 'the amount is never typed').not.toContain('setTransferAmount');
+    expect(FORM).toContain("t('fleet.accidents.transfer.columns.take')");
+    expect(FORM).toContain("t('fleet.accidents.transfer.noDeficit')");
     // A picked car with a problem keeps «حفظ» shut.
     expect(FORM).toContain('(!transferring || transfer !== undefined)');
   });
@@ -701,8 +704,13 @@ describe('transfers between cars', () => {
     expect(FORM).toContain('paidAmount: leavingFrom(id)');
   });
 
-  it('reads a box holding only «.» as nothing typed, never as NaN', () => {
-    expect(FORM).toContain('const taking = Number.isFinite(typed) ? typed : 0;');
+  it('takes exactly what covers this accident’s negative remaining', () => {
+    expect(FORM).toContain('const taking = plan.amount;');
+    expect(FORM).toContain('    targetBefore,\n  );');
+  });
+
+  it('opens wide and tall', () => {
+    expect(FORM).toMatch(/<Dialog[^>]*size="xl"\s+tall/u);
   });
 
   it('says so when the car’s figures or the log could not be loaded', () => {

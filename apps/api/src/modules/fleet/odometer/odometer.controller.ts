@@ -8,7 +8,7 @@ import {
   type ListFleetOdometerQuery,
   type RecordFleetOdometer,
 } from '@ecms/contracts';
-import { created, ok, okPage, validated } from '../../../platform/web';
+import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toOdometerLogDto } from '../fleet.mappers';
 import { fleetOdometerService } from './odometer.service';
@@ -68,4 +68,10 @@ export const correctOdometer = async (req: Request, res: Response): Promise<void
     authContext(req).userId,
   );
   ok(res, toOdometerLogDto(doc, vehicleCode));
+};
+
+export const deleteOdometer = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  await fleetOdometerService.softDelete(params.id, authContext(req).userId);
+  noContent(res);
 };

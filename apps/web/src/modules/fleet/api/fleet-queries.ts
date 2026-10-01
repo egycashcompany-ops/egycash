@@ -461,6 +461,14 @@ export const useCorrectOdometer = () => {
   });
 };
 
+export const useDeleteOdometer = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.deleteOdometer(id),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.odometer }),
+  });
+};
+
 const useMaintenanceMutation = <TInput, TResult>(
   mutationFn: (input: TInput) => Promise<TResult>,
 ) => {

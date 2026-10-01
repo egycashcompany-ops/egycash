@@ -195,6 +195,8 @@ export const listOdometerLogs = (
 ): Promise<Paginated<FleetOdometerLogDto>> =>
   getPage<FleetOdometerLogDto>(`/fleet/odometer${buildQuery(params)}`);
 
+/** «عاوز اقدر امسح قراءه» — a soft delete; the server re-links the reading before it. */
+export const deleteOdometer = (id: string): Promise<void> => del<void>(`/fleet/odometer/${id}`);
 export const expectedOdometerReading = (vehicleId: string): Promise<FleetExpectedReadingDto> =>
   get<FleetExpectedReadingDto>(`/fleet/odometer/expected${buildQuery({ vehicleId })}`);
 /**

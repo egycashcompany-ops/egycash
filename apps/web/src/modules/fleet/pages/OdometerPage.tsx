@@ -36,9 +36,11 @@ import { Pagination } from '../../../shared/ui/Pagination';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
-import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
+import { EditIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
+import { Dialog } from '../../../shared/ui/Dialog';
+import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
-import { useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
+import { useDeleteOdometer, useMaintenanceAlarms, useOdometerLogs } from '../api/fleet-queries';
 import { FilteredCount } from '../components/FilteredCount';
 import { cn } from '../../../shared/lib/cn';
 import { AlarmBadge, alarmCellTint } from '../components/AlarmBadge';
@@ -213,6 +215,15 @@ export const OdometerPage = (): JSX.Element => {
 
   const [recordOpen, setRecordOpen] = useState(false);
   const [correcting, setCorrecting] = useState<FleetOdometerLogDto | null>(null);
+  // «عاوز اقدر امسح قراءه» — the reading asked about, until it is confirmed or let go.
+  const [deleting, setDeleting] = useState<FleetOdometerLogDto | null>(null);
+  const remove = useDeleteOdometer();
+  const confirmDelete = async (): Promise<void> => {
+    if (deleting === null) return;
+    await remove.mutateAsync(deleting.id);
+    toast.success(t('fleet.odometer.deleted'));
+    setDeleting(null);
+  };
 
   const actionButton =
     'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
@@ -452,22 +463,38 @@ export const OdometerPage = (): JSX.Element => {
         );
       },
     },
-    ...(can('fleetOdometer.correct')
+    ...(can('fleetOdometer.correct') || can('fleetOdometer.delete')
       ? [
           {
             key: 'actions',
             header: t('fleet.vehicles.columns.actions'),
             align: 'end',
             render: (log: FleetOdometerLogDto) => (
-              <button
-                type="button"
-                className={actionButton}
-                aria-label={t('fleet.odometer.correct')}
-                title={t('fleet.odometer.correct')}
-                onClick={() => setCorrecting(log)}
-              >
-                <EditIcon className="h-4 w-4" />
-              </button>
+              <span className="inline-flex items-center gap-1">
+                {can('fleetOdometer.correct') && (
+                  <button
+                    type="button"
+                    className={actionButton}
+                    aria-label={t('fleet.odometer.correct')}
+                    title={t('fleet.odometer.correct')}
+                    onClick={() => setCorrecting(log)}
+                  >
+                    <EditIcon className="h-4 w-4" />
+                  </button>
+                )}
+                {can('fleetOdometer.delete') && (
+                  <button
+                    type="button"
+                    data-odometer-delete={log.id}
+                    className={actionButton}
+                    aria-label={t('common.delete')}
+                    title={t('common.delete')}
+                    onClick={() => setDeleting(log)}
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </span>
             ),
           } satisfies Column<FleetOdometerLogDto>,
         ]
@@ -662,6 +689,39 @@ export const OdometerPage = (): JSX.Element => {
         onClose={() => setCorrecting(null)}
         log={correcting}
       />
+      <Dialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={t('fleet.odometer.deleteTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => void confirmDelete()}
+            >
+              {t('common.delete')}
+            </Button>
+          </>
+        }
+      >
+        {deleting !== null && (
+          <div className="space-y-2 text-sm text-slate-600 dark:text-slate-300">
+            <p className="font-medium text-slate-800 dark:text-slate-100">
+              {t('fleet.odometer.deleteWhich', {
+                code: deleting.vehicleCode ?? '—',
+                date: formatDate(deleting.date, locale),
+                reading:
+                  deleting.outReading === null ? '—' : formatNumber(deleting.outReading, locale),
+              })}
+            </p>
+            <p>{t('fleet.odometer.deleteBody')}</p>
+          </div>
+        )}
+      </Dialog>
     </PageContainer>
   );
 };

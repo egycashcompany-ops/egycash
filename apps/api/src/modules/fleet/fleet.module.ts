@@ -104,7 +104,8 @@ const odometerPermissions = declarePermissions(
   'fleet',
   'fleetOdometer',
   { en: 'odometer log', ar: 'عدادات السيارات' },
-  ['view'],
+  // `delete` — «عاوز اقدر امسح قراءه»: a soft delete that re-links the chain around the row.
+  ['view', 'delete'],
   [
     { action: 'record', name: { en: 'Record odometer reading', ar: 'تسجيل قراءة عداد' } },
     // The ONLY way past the monotonic guard (FR-2) — a distinct, audited grant by design.

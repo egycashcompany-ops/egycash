@@ -42,6 +42,7 @@ import {
   maintenanceAlarmSweep,
 } from '../../src/modules/fleet/sweeps/fleet-sweeps';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
+import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
@@ -1285,6 +1286,73 @@ describe('odometer continuity (FR-2, §4.3 — FL-4)', () => {
       .set('Authorization', `Bearer ${branchAToken}`)
       .send({ vehicleId: v.id, reading: 10, date: '2026-07-10' });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('deleting a reading — «عاوز اقدر امسح قراءه»', () => {
+  type Row = { id: string; outReading: number; inReading: number | null; km: number | null };
+  const record = (vehicleId: string, reading: number, date: string) =>
+    request(app)
+      .post('/api/v1/fleet/odometer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ vehicleId, reading, date });
+  const chain = async (vehicleId: string): Promise<Row[]> =>
+    data<Row[]>(
+      await request(app)
+        .get('/api/v1/fleet/odometer')
+        .query({ vehicleId, pageSize: 10, sortBy: 'outReading', sortDir: 'asc' })
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  const remove = (id: string | undefined, token = adminToken) =>
+    request(app).delete(`/api/v1/fleet/odometer/${id}`).set('Authorization', `Bearer ${token}`);
+
+  it('a middle reading: the one before it now closes where it closed', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 100, '2026-07-10');
+    await record(v.id, 150, '2026-07-11');
+    await record(v.id, 200, '2026-07-12');
+    const middle = (await chain(v.id)).find((row) => row.outReading === 150);
+    expect((await remove(middle?.id)).status).toBe(204);
+
+    const after = await chain(v.id);
+    expect(after).toHaveLength(2);
+    expect(after[0]).toMatchObject({ outReading: 100, inReading: 200, km: 100 });
+    expect(after[1]).toMatchObject({ outReading: 200, inReading: null, km: null });
+    // Gone from the screen, kept in the database.
+    const kept = await FleetOdometerLogModel.findById(middle?.id).lean();
+    expect(kept).toMatchObject({ isDeleted: true });
+  });
+
+  it('the open reading: the one before it is open again, and the next reading closes it', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 1000, '2026-07-10');
+    await record(v.id, 1500, '2026-07-11');
+    const open = (await chain(v.id)).find((row) => row.outReading === 1500);
+    expect((await remove(open?.id)).status).toBe(204);
+    expect(await chain(v.id)).toMatchObject([{ outReading: 1000, inReading: null, km: null }]);
+
+    expect((await record(v.id, 1300, '2026-07-12')).status).toBe(201);
+    expect(await chain(v.id)).toMatchObject([
+      { outReading: 1000, inReading: 1300, km: 300 },
+      { outReading: 1300, inReading: null },
+    ]);
+  });
+
+  it('the first reading: removed, nothing else changes', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 10, '2026-07-10');
+    await record(v.id, 40, '2026-07-11');
+    const first = (await chain(v.id)).find((row) => row.outReading === 10);
+    expect((await remove(first?.id)).status).toBe(204);
+    expect(await chain(v.id)).toMatchObject([{ outReading: 40, inReading: null }]);
+  });
+
+  it('needs its own grant — the branch operator cannot delete', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    await record(v.id, 10, '2026-07-10');
+    const [row] = await chain(v.id);
+    expect((await remove(row?.id, branchAToken)).status).toBe(403);
+    expect(await chain(v.id)).toHaveLength(1);
   });
 });
 

@@ -23,9 +23,9 @@ describe('the assembled page registry', () => {
   });
 
   // ADR-032 added one page (`platform.delegation`) carrying one key (`delegation.manage`).
-  it('declares 75 pages over 282 permissions', () => {
+  it('declares 75 pages over 283 permissions', () => {
     expect(pages).toHaveLength(75);
-    expect(permissions).toHaveLength(282);
+    expect(permissions).toHaveLength(283);
   });
 
   /**
@@ -70,9 +70,9 @@ describe('the assembled page registry', () => {
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
    */
-  it('assigns 253 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 254 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(253);
+    expect(assigned).toHaveLength(254);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

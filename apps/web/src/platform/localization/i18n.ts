@@ -3903,6 +3903,11 @@ const en: Record<string, string> = {
   'fleet.odometer.recordHint':
     'One reading closes the open period and opens the next, in a single transaction.',
   'fleet.odometer.recorded': 'Reading recorded.',
+  'fleet.odometer.deleteTitle': 'Delete this reading?',
+  'fleet.odometer.deleteWhich': 'Car {{code}} — {{date}} — reading {{reading}}',
+  'fleet.odometer.deleteBody':
+    'The reading leaves the log and every figure, and is kept in the database. The reading before it is re-linked: it closes on the reading after it, or is open again if this was the last.',
+  'fleet.odometer.deleted': 'Reading deleted.',
   'fleet.odometer.correct': 'Correct reading',
   'fleet.odometer.correctHint':
     'A shared reading lives on two rows — the server rewrites the neighbour atomically and refuses anything that breaks the chain. Fully audited.',
@@ -10928,6 +10933,11 @@ const ar: Record<string, string> = {
   'fleet.odometer.record': 'تسجيل قراءة',
   'fleet.odometer.recordHint': 'القراءة الواحدة تغلق الفترة المفتوحة وتفتح التالية في عملية واحدة.',
   'fleet.odometer.recorded': 'تم تسجيل القراءة.',
+  'fleet.odometer.deleteTitle': 'حذف هذه القراءة؟',
+  'fleet.odometer.deleteWhich': 'السيارة {{code}} — {{date}} — العداد {{reading}}',
+  'fleet.odometer.deleteBody':
+    'تُزال القراءة من السجل ومن كل الحسابات وتبقى محفوظة في قاعدة البيانات. وتُربط القراءة السابقة لها بما بعدها، أو تعود فترة مفتوحة إن كانت هذه آخر قراءة.',
+  'fleet.odometer.deleted': 'تم حذف القراءة.',
   'fleet.odometer.correct': 'تصحيح القراءة',
   'fleet.odometer.correctHint':
     'القراءة المشتركة تعيش على صفين — الخادم يعيد كتابة الصف المجاور ذرّياً ويرفض أي تصحيح يكسر السلسلة. مسجَّل بالكامل في التدقيق.',

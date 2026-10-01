@@ -13,6 +13,7 @@ import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   correctOdometer,
+  deleteOdometer,
   expectedOdometerReading,
   listOdometerLogs,
   odometerBracket,
@@ -71,6 +72,14 @@ export const buildFleetOdometerRouter = (): Router => {
     authorize('fleetOdometer.correct'),
     validate({ body: CorrectFleetOdometerSchema, params: IdParamSchema }),
     asyncHandler(correctOdometer),
+  );
+  // «عاوز اقدر امسح قراءه» — a soft delete; the reading before it is re-linked to what follows.
+  router.delete(
+    '/:id',
+    authenticate,
+    authorize('fleetOdometer.delete'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(deleteOdometer),
   );
   return router;
 };

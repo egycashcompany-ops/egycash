@@ -1059,6 +1059,8 @@ describe('the actions respect the existing grants', () => {
           'fleetOdometer.view',
           'fleetOdometer.record',
           'fleetOdometer.correct',
+          // «عاوز اقدر امسح قراءه» — the one grant added since, declared in `fleet.module.ts`.
+          'fleetOdometer.delete',
           'fleetDriver.view',
         ],
         `${key} is an existing grant`,
@@ -1243,5 +1245,31 @@ describe('recording a reading', () => {
     // hint, which is the opposite of asking the user for it, so the claim is about the form state.
     expect(source).not.toMatch(/useState.*\bkm\b/i);
     expect(source).not.toContain('record.mutateAsync({ km');
+  });
+});
+
+// ── «عاوز اقدر امسح قراءه» ───────────────────────────────────────────────────
+
+describe('deleting a reading', () => {
+  it('puts a delete button in every row for a reader who may delete', () => {
+    const html = render({ permissions: [...ALL, 'fleetOdometer.delete'] });
+    expect(tbody(html)).toContain('data-odometer-delete="o1"');
+  });
+
+  it('shows no delete button without the grant — correcting is not deleting', () => {
+    expect(tbody(render())).not.toContain('data-odometer-delete=');
+  });
+
+  it('keeps the actions column for a reader who may only delete', () => {
+    const html = render({ permissions: ['fleetOdometer.view', 'fleetOdometer.delete'] });
+    expect(headers(html)).toContain(t('fleet.vehicles.columns.actions'));
+    expect(tbody(html)).toContain('data-odometer-delete="o1"');
+  });
+
+  it('asks before deleting, naming the car, the day and the reading', () => {
+    const page = readFileSync(join(HERE, 'pages/OdometerPage.tsx'), 'utf8');
+    expect(page).toContain("title={t('fleet.odometer.deleteTitle')}");
+    expect(page).toContain("t('fleet.odometer.deleteWhich'");
+    expect(t('fleet.odometer.deleteTitle')).toBe('حذف هذه القراءة؟');
   });
 });

@@ -569,6 +569,54 @@ class FleetOdometerService {
       vehicleCode: (await fleetVehicleRepository.codesByIds([vehicleId])).get(vehicleId) ?? null,
     };
   }
+
+  /**
+   * «عاوز اقدر امسح قراءه» — a SOFT delete: the row leaves every screen and every figure and stays
+   * in the database marked deleted, with who and when.
+   *
+   * The chain is re-linked around it. The reading before it closed ON this row's opening reading —
+   * the one shared fact — so it now closes where this row closed: on the next reading's opening
+   * (a middle row), or not at all (this was the open period, and the one before it is open again).
+   * The first row, a day recorded with no reading, and a row from the old book with no registry car
+   * have nothing before them to re-link and are simply removed. A reading before it that does NOT
+   * close on this row (an old book that never chained) is left exactly as it is.
+   */
+  async softDelete(id: string, by: string): Promise<void> {
+    const relinked = await unitOfWork(async (session) => {
+      const entry = await fleetOdometerRepository.getById(id);
+      const { prev } =
+        entry.outReading === null || entry.vehicleId === null
+          ? { prev: null }
+          : await fleetOdometerRepository.findNeighbors(entry, session);
+      // First, so a reopened period never meets this one in the one-open-period index.
+      await fleetOdometerRepository.softDeleteById(id, { by, session });
+      if (prev === null || prev.inReading === null || prev.inReading !== entry.outReading) {
+        return null;
+      }
+      const inReading = entry.inReading;
+      await fleetOdometerRepository.updateById(
+        String(prev._id),
+        { inReading, km: inReading === null ? null : inReading - (prev.outReading as number) },
+        { by, version: prev.__v, session },
+      );
+      return { id: String(prev._id), old: prev.inReading, new: inReading };
+    });
+
+    await auditService.record({ entityRef: entityRef(id), action: 'delete' });
+    if (relinked !== null) {
+      await auditService.record({
+        entityRef: entityRef(relinked.id),
+        action: 'correct',
+        changes: [
+          {
+            field: 'inReading',
+            old: String(relinked.old),
+            new: relinked.new === null ? null : String(relinked.new),
+          },
+        ],
+      });
+    }
+  }
 }
 
 export const fleetOdometerService = new FleetOdometerService();

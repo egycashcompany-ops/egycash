@@ -2602,6 +2602,19 @@ export const FleetSettingKeys = {
   /** The line asking for endorsement, above the executive who gives it. */
   ReportEndorsementNote: 'fleet.report.endorsementNote',
   ReportEndorsedByName: 'fleet.report.endorsedByName',
+  /**
+   * Fuel prices, EGP per litre — what the receipts screen turns an amount into litres with:
+   * «يظهر جامبه عدد اللترات على اساس القيم اللى حاططها فى شاشه /fleet/settings».
+   */
+  FuelPricePetrol80: 'fleet.fuel.price.petrol80',
+  FuelPricePetrol92: 'fleet.fuel.price.petrol92',
+  FuelPricePetrol95: 'fleet.fuel.price.petrol95',
+  FuelPriceDiesel: 'fleet.fuel.price.diesel',
+  /** Days before a fuel card's expiry that the cards screen flags it. */
+  FuelCardExpiryWarnDays: 'fleet.fuelCard.expiryWarnDays',
+  /** A card balance below this reads yellow on the charging screen; below `BalanceRed`, red. */
+  FuelCardBalanceYellow: 'fleet.fuelCard.balanceYellow',
+  FuelCardBalanceRed: 'fleet.fuelCard.balanceRed',
 } as const;
 export type FleetSettingKey = (typeof FleetSettingKeys)[keyof typeof FleetSettingKeys];
 
@@ -2982,3 +2995,169 @@ export interface FleetDealershipTotalsDto {
   /** Recorded amounts taken from the custody fund, summed. */
   custodyTotal: number;
 }
+
+// ── Fuel cards (الفيز) and their charging ────────────────────────────────────
+//
+// «فى شاشه للفيز هيكون فيها اسم الكارت رقم الكارت وتاريخ الانتهاء و كود العربيه والباسورد و اسم
+// الشركه بالشعار». Every car carries up to two cards, one per company, and each card holds a
+// BALANCE that charging adds to, a transfer moves between two cards, and a fuel receipt (the
+// receipts screen) takes from. The balance is stored on the card and every change is a movement
+// in the card's own log, so «كان كام وبقى كام» is always answerable.
+
+/** The two fuel companies the fleet buys from. Their logos ship with the web client. */
+export const FLEET_FUEL_CARD_COMPANIES = ['wataniya', 'chillout'] as const;
+export const FleetFuelCardCompanySchema = z.enum(FLEET_FUEL_CARD_COMPANIES);
+export type FleetFuelCardCompany = z.infer<typeof FleetFuelCardCompanySchema>;
+
+/** What the pump sells, each priced in settings. */
+export const FLEET_FUEL_TYPES = ['petrol80', 'petrol92', 'petrol95', 'diesel'] as const;
+export const FleetFuelTypeSchema = z.enum(FLEET_FUEL_TYPES);
+export type FleetFuelType = z.infer<typeof FleetFuelTypeSchema>;
+
+/** The setting that prices one fuel type, per litre. */
+export const FLEET_FUEL_PRICE_KEY: Record<FleetFuelType, string> = {
+  petrol80: FleetSettingKeys.FuelPricePetrol80,
+  petrol92: FleetSettingKeys.FuelPricePetrol92,
+  petrol95: FleetSettingKeys.FuelPricePetrol95,
+  diesel: FleetSettingKeys.FuelPriceDiesel,
+};
+
+const fuelCardCore = {
+  vehicleId: objectId(),
+  company: FleetFuelCardCompanySchema,
+  name: z.string().trim().min(1).max(120),
+  number: z.string().trim().min(4).max(40),
+  expiresAt: z.coerce.date(),
+  /** Kept, shown only to a reader holding `fleetFuelCard.reveal`. `null` = none. */
+  password: z.string().trim().max(120).nullish(),
+};
+
+export const CreateFleetFuelCardSchema = z.object(fuelCardCore).strict();
+export type CreateFleetFuelCard = z.infer<typeof CreateFleetFuelCardSchema>;
+
+export const UpdateFleetFuelCardSchema = z
+  .object({
+    vehicleId: fuelCardCore.vehicleId.optional(),
+    company: fuelCardCore.company.optional(),
+    name: fuelCardCore.name.optional(),
+    number: fuelCardCore.number.optional(),
+    expiresAt: fuelCardCore.expiresAt.optional(),
+    password: fuelCardCore.password,
+    version: z.number().int().min(0),
+  })
+  .strict();
+export type UpdateFleetFuelCard = z.infer<typeof UpdateFleetFuelCardSchema>;
+
+const fuelCardFilters = {
+  vehicleCodes: vehicleCodesQuery(),
+  company: FleetFuelCardCompanySchema.optional(),
+  /** Part of the card number. */
+  number: z.string().trim().min(1).max(40).optional(),
+  expiresBefore: z.coerce.date().optional(),
+  /** `true` — only cards with a charge request waiting. */
+  requested: booleanQuery().optional(),
+  /** Only cards whose balance is below this. */
+  balanceBelow: z.coerce.number().nonnegative().optional(),
+};
+export const ListFleetFuelCardsQuerySchema = PaginationQuerySchema.extend({
+  ...fuelCardFilters,
+  sort: fleetSortQuery(),
+}).strict();
+export type ListFleetFuelCardsQuery = z.infer<typeof ListFleetFuelCardsQuerySchema>;
+export const FleetFuelCardSummaryQuerySchema = z.object(fuelCardFilters).strict();
+export type FleetFuelCardSummaryQuery = z.infer<typeof FleetFuelCardSummaryQuerySchema>;
+
+export interface FleetFuelCardDto {
+  id: string;
+  vehicleId: string;
+  /** The registry's code, resolved server-side. */
+  vehicleCode: string | null;
+  company: FleetFuelCardCompany;
+  name: string;
+  number: string;
+  expiresAt: string;
+  /** Whether a password is on file — the password itself is fetched separately, under its grant. */
+  hasPassword: boolean;
+  balance: number;
+  /** «طلب رصيد» written and not yet approved; `null` when none. */
+  requestedAmount: number | null;
+  requestedAt: string | null;
+  /** When the balance was last added to — the green row for a day. */
+  lastChargedAt: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FleetFuelCardSecretDto {
+  password: string | null;
+}
+
+/** The figures between the filters and the cards on the charging screen. */
+export interface FleetFuelCardTotalsDto {
+  wataniyaBalance: number;
+  chilloutBalance: number;
+  requestedCount: number;
+  requestedAmount: number;
+  /** Added to balances within the last 24 hours. */
+  chargedTodayAmount: number;
+  cardCount: number;
+}
+
+/** «طلب رصيد» — write the amount; `null` takes the request back (the ✕). */
+export const RequestFleetFuelChargeSchema = z
+  .object({ amount: egp().positive().nullable(), version: z.number().int().min(0) })
+  .strict();
+export type RequestFleetFuelCharge = z.infer<typeof RequestFleetFuelChargeSchema>;
+
+/** The ✓ — the requested amount joins the balance. */
+export const ApproveFleetFuelChargeSchema = z.object({ version: z.number().int().min(0) }).strict();
+export type ApproveFleetFuelCharge = z.infer<typeof ApproveFleetFuelChargeSchema>;
+
+export const TransferFleetFuelBalanceSchema = z
+  .object({
+    fromCardId: objectId(),
+    toCardId: objectId(),
+    amount: egp().positive(),
+  })
+  .strict()
+  .refine((value) => value.fromCardId !== value.toCardId, {
+    message: 'a card cannot transfer to itself',
+    path: ['toCardId'],
+  });
+export type TransferFleetFuelBalance = z.infer<typeof TransferFleetFuelBalanceSchema>;
+
+/** What a transfer did to both cards — «اللى انا اخدت منها كانت كام وبقت كام». */
+export interface FleetFuelTransferResultDto {
+  from: FleetFuelCardDto;
+  to: FleetFuelCardDto;
+  amount: number;
+}
+
+export const FLEET_FUEL_MOVEMENT_KINDS = [
+  'charge',
+  'transferIn',
+  'transferOut',
+  'receipt',
+] as const;
+export const FleetFuelMovementKindSchema = z.enum(FLEET_FUEL_MOVEMENT_KINDS);
+export type FleetFuelMovementKind = z.infer<typeof FleetFuelMovementKindSchema>;
+
+/** One line of a card's log. `amount` is signed: what the balance moved by. */
+export interface FleetFuelCardMovementDto {
+  id: string;
+  cardId: string;
+  kind: FleetFuelMovementKind;
+  amount: number;
+  balanceAfter: number;
+  /** The other card of a transfer. */
+  counterpartCardId: string | null;
+  counterpartNumber: string | null;
+  at: string;
+  createdAt: string;
+}
+
+export const ListFleetFuelCardMovementsQuerySchema = PaginationQuerySchema.extend({
+  cardId: objectId(),
+}).strict();
+export type ListFleetFuelCardMovementsQuery = z.infer<typeof ListFleetFuelCardMovementsQuerySchema>;

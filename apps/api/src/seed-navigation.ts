@@ -514,6 +514,23 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetDealership.view',
       },
       {
+        en: 'Fuel Cards',
+        ar: 'بطاقات الوقود',
+        route: '/fleet/fuel-cards',
+        // A card is read by its number — the QR glyph is the one square "scan me" shape on this
+        // rail, and nothing else here wears it.
+        icon: 'qr',
+        permission: 'fleetFuelCard.view',
+      },
+      {
+        en: 'Fuel Card Charging',
+        ar: 'شحن الكروت',
+        route: '/fleet/fuel-cards/charging',
+        // Balances going up and down — the chart.
+        icon: 'chart',
+        permission: 'fleetFuelCharge.view',
+      },
+      {
         en: 'Fleet Catalogs',
         ar: 'قوائم الحركة',
         route: '/fleet/catalogs',

@@ -1,0 +1,264 @@
+// The two fuel-card screens, proven against what they produce: one tile per car with Wataniya
+// above Chill Out, every fact in its own frame, the warnings ABOVE the frame they are about, the
+// request box with its ✓ ✕, and the balances summed between the filters and the tiles.
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it, vi } from 'vitest';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Provider } from 'react-redux';
+import { configureStore } from '@reduxjs/toolkit';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  FleetSettingKeys,
+  type FleetFuelCardDto,
+  type FleetFuelCardTotalsDto,
+  type Locale,
+  type MeDto,
+} from '@ecms/contracts';
+import { localeSlice } from '../../../store/localeSlice';
+import { authSlice } from '../../../store/authSlice';
+import { uiSlice } from '../../../store/uiSlice';
+import { listKey } from '../../../shared/lib/query-keys';
+import { translate } from '../../../platform/localization/i18n';
+import { FuelCardsPage } from './FuelCardsPage';
+import { FuelChargingPage } from './FuelChargingPage';
+import { groupByVehicle } from '../components/FuelCardTiles';
+
+(globalThis as Record<string, unknown>).document ??= { body: {} };
+vi.mock('react-dom', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>('react-dom');
+  return { ...actual, createPortal: (node: unknown) => node };
+});
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ar = (key: string): string => translate('ar', key);
+
+const me = (permissions: string[]): MeDto =>
+  ({
+    id: 'u-1',
+    email: 'user@ecms.local',
+    username: null,
+    mustChangePassword: false,
+    name: { firstName: { ar: 'أ', en: 'A' }, lastName: { ar: 'ب', en: 'B' } },
+    locale: 'ar',
+    theme: 'system',
+    navLayout: 'rail',
+    branchId: null,
+    branchIds: [],
+    employeeId: null,
+    permissions: Object.fromEntries(permissions.map((key) => [key, 'organization' as const])),
+    isPrivileged: false,
+    flags: {},
+    totpEnabled: true,
+    external: null,
+  }) as unknown as MeDto;
+
+const card = (over: Partial<FleetFuelCardDto> = {}): FleetFuelCardDto => ({
+  id: 'c-1',
+  vehicleId: 'v-204',
+  vehicleCode: '204',
+  company: 'wataniya',
+  name: 'كارت وطنية 204',
+  number: '7045 1120 0098 2231',
+  expiresAt: '2099-03-31T00:00:00.000Z',
+  hasPassword: true,
+  balance: 640,
+  requestedAmount: null,
+  requestedAt: null,
+  lastChargedAt: null,
+  version: 0,
+  createdAt: '2026-10-01T00:00:00.000Z',
+  updatedAt: '2026-10-01T00:00:00.000Z',
+  ...over,
+});
+
+const totals: FleetFuelCardTotalsDto = {
+  wataniyaBalance: 2400,
+  chilloutBalance: 6350,
+  requestedCount: 1,
+  requestedAmount: 500,
+  chargedTodayAmount: 300,
+  cardCount: 4,
+};
+
+const ALL = [
+  'fleetFuelCard.view',
+  'fleetFuelCard.create',
+  'fleetFuelCard.edit',
+  'fleetFuelCard.delete',
+  'fleetFuelCard.reveal',
+  'fleetFuelCharge.view',
+  'fleetFuelCharge.request',
+  'fleetFuelCharge.approve',
+  'fleetFuelCharge.transfer',
+];
+
+const render = (
+  page: 'cards' | 'charging',
+  {
+    permissions = ALL,
+    cards = [card()],
+    filters,
+  }: { permissions?: string[]; cards?: FleetFuelCardDto[]; filters?: Record<string, unknown> } = {},
+): string => {
+  const store = configureStore({
+    reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
+    preloadedState: {
+      locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+      auth: { me: me(permissions), status: 'signedIn' as const },
+      ui: { theme: 'light' as const, sidebarOpen: false },
+    },
+  });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
+  });
+  const params =
+    filters ??
+    (page === 'cards'
+      ? { vehicleCodes: undefined, company: undefined, number: undefined, expiresBefore: undefined }
+      : {
+          vehicleCodes: undefined,
+          company: undefined,
+          requested: undefined,
+          balanceBelow: undefined,
+        });
+  qc.setQueryData(listKey('fleet', 'fuelCards', { whole: true, ...params }), {
+    items: cards,
+    meta: { page: 1, pageSize: 100, totalItems: cards.length, totalPages: 1 },
+  });
+  qc.setQueryData(listKey('fleet', 'fuelCards', { summary: true, ...params }), totals);
+  qc.setQueryData(
+    ['settings', 'me'],
+    [
+      { key: FleetSettingKeys.FuelCardExpiryWarnDays, value: 30, resolvedFrom: 'default' },
+      { key: FleetSettingKeys.FuelCardBalanceYellow, value: 300, resolvedFrom: 'default' },
+      { key: FleetSettingKeys.FuelCardBalanceRed, value: 100, resolvedFrom: 'default' },
+    ],
+  );
+  const path = page === 'cards' ? '/fleet/fuel-cards' : '/fleet/fuel-cards/charging';
+  return renderToStaticMarkup(
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/fleet/fuel-cards" element={<FuelCardsPage />} />
+            <Route path="/fleet/fuel-cards/charging" element={<FuelChargingPage />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>
+    </Provider>,
+  );
+};
+
+describe('one tile per car, Wataniya above Chill Out', () => {
+  it('groups a flat list of cards under their cars, keeping the company slots', () => {
+    const tiles = groupByVehicle([
+      card({ id: 'a', company: 'chillout' }),
+      card({ id: 'b', company: 'wataniya' }),
+      card({ id: 'c', vehicleId: 'v-178', vehicleCode: '178', company: 'chillout' }),
+    ]);
+    expect(tiles.map((tile) => tile.code)).toEqual(['204', '178']);
+    expect(Object.keys(tiles[0]?.cards ?? {}).sort()).toEqual(['chillout', 'wataniya']);
+    expect(tiles[1]?.cards.wataniya).toBeUndefined();
+  });
+
+  it('draws the code on the tile, the logos top and bottom, and every fact in a frame', () => {
+    const html = render('cards');
+    expect(html).toContain('data-fuel-vehicle="v-204"');
+    const wataniya = html.indexOf('data-fuel-line="wataniya"');
+    const chillout = html.indexOf('data-fuel-line="chillout"');
+    expect(wataniya).toBeGreaterThan(-1);
+    expect(chillout, 'the second slot is drawn even with no card in it').toBeGreaterThan(wataniya);
+    expect(html).toContain('/fleet-fuel-cards/wataniya.png');
+    expect(html).toContain('/fleet-fuel-cards/chillout.png');
+    for (const label of ['fields.name', 'fields.number', 'fields.expiresAt', 'fields.password']) {
+      expect(html).toContain(ar(`fleet.fuelCards.${label}`));
+    }
+    expect(html, 'the empty slot offers to add').toContain('data-fuel-add="chillout"');
+  });
+
+  it('hides the password behind the eye, and the eye behind its grant', () => {
+    expect(render('cards')).toContain('data-fuel-reveal="c-1"');
+    expect(render('cards', { permissions: ['fleetFuelCard.view'] })).not.toContain(
+      'data-fuel-reveal=',
+    );
+    expect(render('cards')).not.toContain('1234');
+  });
+
+  it('warns ABOVE the expiry frame when the card expires within the setting’s days', () => {
+    const soon = render('cards', {
+      cards: [card({ expiresAt: new Date(Date.now() + 5 * 86_400_000).toISOString() })],
+    });
+    const badge = soon.indexOf(ar('fleet.fuelCards.expiresSoon'));
+    const frame = soon.indexOf(ar('fleet.fuelCards.fields.expiresAt'), badge);
+    expect(badge).toBeGreaterThan(-1);
+    expect(frame, 'the badge comes before the frame it is about').toBeGreaterThan(badge);
+    expect(render('cards')).not.toContain(ar('fleet.fuelCards.expiresSoon'));
+  });
+});
+
+describe('charging', () => {
+  it('sums the balances by company between the filters and the tiles', () => {
+    const html = render('charging');
+    const filters = html.indexOf(ar('fleet.fuelCards.filters.anyState'));
+    const strip = html.indexOf('6,350.00');
+    const tile = html.indexOf('data-fuel-vehicle=');
+    expect(strip).toBeGreaterThan(filters);
+    expect(tile).toBeGreaterThan(strip);
+    expect(html).toContain(ar('fleet.fuelCards.totals.wataniya'));
+  });
+
+  it('colours a row with a request waiting and shows its ✓ ✕; a charged one reads green for a day', () => {
+    const html = render('charging', {
+      cards: [
+        card({ id: 'req', requestedAmount: 500, requestedAt: '2026-10-01T10:00:00.000Z' }),
+        card({
+          id: 'chg',
+          vehicleId: 'v-178',
+          vehicleCode: '178',
+          company: 'chillout',
+          lastChargedAt: new Date().toISOString(),
+        }),
+      ],
+    });
+    const req = html.slice(
+      html.indexOf('data-fuel-line="wataniya"'),
+      html.indexOf('data-fuel-vehicle="v-178"'),
+    );
+    expect(req).toContain('bg-amber-50');
+    expect(req).toContain('data-fuel-tick="req"');
+    expect(req).toContain('data-fuel-cross="req"');
+    const chg = html.slice(html.indexOf('data-fuel-vehicle="v-178"'));
+    expect(chg).toContain('bg-emerald-50');
+  });
+
+  it('warns above the balance frame below the yellow line, and in red below the red line', () => {
+    const html = render('charging', {
+      cards: [
+        card({ id: 'y', balance: 150 }),
+        card({ id: 'r', vehicleId: 'v-156', vehicleCode: '156', balance: 40 }),
+      ],
+    });
+    expect(html).toContain(ar('fleet.fuelCards.balanceYellow'));
+    expect(html).toContain(ar('fleet.fuelCards.balanceRed'));
+    const badge = html.indexOf(ar('fleet.fuelCards.balanceYellow'));
+    expect(html.indexOf(ar('fleet.fuelCards.fields.balance'), badge)).toBeGreaterThan(badge);
+  });
+
+  it('offers the transfer only to a reader who may move balances', () => {
+    expect(render('charging')).toContain('data-fuel-transfer-open="true"');
+    expect(render('charging', { permissions: ['fleetFuelCharge.view'] })).not.toContain(
+      'data-fuel-transfer-open=',
+    );
+  });
+
+  it('the transfer says what each card was and becomes, and never gives more than the first holds', () => {
+    const DIALOG = readFileSync(join(HERE, '../components/FuelTransferDialog.tsx'), 'utf8');
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.fromLine'");
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.toLine'");
+    expect(DIALOG).toContain('const enough = from !== null && value <= from.balance;');
+    expect(ar('fleet.fuelCards.transfer.fromLine')).toContain('كان {{before}} ويصبح {{after}}');
+  });
+});

@@ -20,6 +20,8 @@ import { buildFleetRosterRouter } from './roster/roster.routes';
 import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes';
 import { buildFleetLicensingRouter } from './licensing/licensing.routes';
 import { buildFleetNoticesRouter } from './notices/notice.routes';
+import { buildFleetDealershipRouter } from './dealership/dealership.routes';
+import { dealershipFileAuthorizer } from './dealership/dealership-files';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
 import { buildFleetViolationsRouter } from './violations/violation.routes';
@@ -214,6 +216,20 @@ const licensingPermissions = declarePermissions(
  * The insurance notices (الإخطارات) — filling an insurer's printed form for an accident. Its own
  * grants: writing a notice is paperwork for the insurer, not a change to the accident file.
  */
+/**
+ * The dealership screen (التوكيل) — every workshop exit's bill. Rows are OPENED by the maintenance
+ * check-out, so there is no `create`: what a clerk does here is write the invoice on a row the
+ * workshop opened, or take a wrong one away.
+ */
+const dealershipPermissions = declarePermissions(
+  'fleet',
+  'fleetDealership',
+  { en: 'dealership invoices', ar: 'فواتير التوكيل' },
+  ['view', 'edit', 'delete'],
+  [],
+  'fleet.dealership',
+);
+
 const noticePermissions = declarePermissions(
   'fleet',
   'fleetNotice',
@@ -236,6 +252,7 @@ export const fleetPermissions: PermissionDef[] = [
   ...violationPermissions,
   ...licensingPermissions,
   ...noticePermissions,
+  ...dealershipPermissions,
 ];
 
 /**
@@ -316,6 +333,13 @@ export const fleetPages: PageDef[] = [
     sortOrder: 87,
   },
   {
+    id: 'fleet.dealership',
+    moduleId: 'fleet',
+    name: { en: 'Dealership', ar: 'التوكيل' },
+    route: '/fleet/dealership',
+    sortOrder: 88,
+  },
+  {
     id: 'fleet.catalogs',
     moduleId: 'fleet',
     name: { en: 'Fleet catalogs', ar: 'قوائم الحركة' },
@@ -354,6 +378,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
     { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
     { prefix: '/fleet/notices', router: buildFleetNoticesRouter() },
+    { prefix: '/fleet/dealership', router: buildFleetDealershipRouter() },
     { prefix: '/fleet/people', router: buildFleetPeopleRouter() },
   ],
   collections: [
@@ -372,11 +397,16 @@ export const fleetModule: ModuleManifest = {
     'fleet_violation_grievances',
     'fleet_vehicle_licensing',
     'fleet_notices',
+    'fleet_dealership_invoices',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is
   // guarded exactly as the fleet routes are.
-  fileEntityAuthorizers: [vehicleFileAuthorizer, driverProfileFileAuthorizer],
+  fileEntityAuthorizers: [
+    vehicleFileAuthorizer,
+    driverProfileFileAuthorizer,
+    dealershipFileAuthorizer,
+  ],
   eventSubscriptions: [
     {
       // Design §9.1 — leaving the company leaves the driver pool. Event-driven, no HR import.

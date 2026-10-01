@@ -9,6 +9,7 @@ import { startGoLiveReset } from './go-live/reset';
 import { applyFleetVocabulary, planFleetVocabulary } from './go-live/vocabulary';
 import { ensureVehicleDocsCategory } from './vehicles/vehicle-files';
 import { ensureDriverDocsCategory } from './driver-profiles/driver-files';
+import { ensureDealershipDocsCategory } from './dealership/dealership-files';
 import { runFleetMigrations } from './fleet.migration';
 
 export const seedFleet = async (): Promise<void> => {
@@ -23,6 +24,7 @@ export const seedFleet = async (): Promise<void> => {
   // The Files categories the licence images write into — before any upload can ask for one.
   await ensureVehicleDocsCategory();
   await ensureDriverDocsCategory();
+  await ensureDealershipDocsCategory();
 
   await fleetCatalogItemService.ensure({
     kind: 'workType',

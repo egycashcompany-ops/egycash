@@ -146,6 +146,7 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'fleet.violationGrievance': { permission: 'fleetViolation.view' },
   'fleet.vehicleLicensing': { permission: 'fleetLicensing.view' },
   'fleet.notice': { permission: 'fleetNotice.view' },
+  'fleet.dealershipInvoice': { permission: 'fleetDealership.view' },
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': { permission: 'itAsset.view' },

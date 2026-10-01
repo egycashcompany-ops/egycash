@@ -531,6 +531,23 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetFuelCharge.view',
       },
       {
+        en: 'Custody Receipts',
+        ar: 'خصم الإيصالات',
+        route: '/fleet/receipts',
+        // The papers the driver brings back land in a tray — the inbox, which no other row on
+        // this rail wears.
+        icon: 'inbox',
+        permission: 'fleetReceipt.view',
+      },
+      {
+        en: 'Custody Ledger',
+        ar: 'العهدة',
+        route: '/fleet/custody',
+        // The fund is a pile everything else here stacks onto — the layers glyph.
+        icon: 'layers',
+        permission: 'fleetCustody.view',
+      },
+      {
         en: 'Fleet Catalogs',
         ar: 'قوائم الحركة',
         route: '/fleet/catalogs',

@@ -50,6 +50,7 @@ import { FleetVehicleLicensingModel } from './licensing/licensing.model';
 import { FleetNoticeModel } from './notices/notice.model';
 import { FleetDealershipInvoiceModel } from './dealership/dealership.model';
 import { FleetFuelCardModel, FleetFuelCardMovementModel } from './fuel-cards/fuel-card.model';
+import { FleetReceiptModel } from './receipts/receipt.model';
 
 /**
  * Every Fleet collection, listed once.
@@ -80,6 +81,7 @@ export const fleetIndexedModels = (): { collection: string; model: Model<never> 
       FleetDealershipInvoiceModel,
       FleetFuelCardModel,
       FleetFuelCardMovementModel,
+      FleetReceiptModel,
     ] as unknown as Model<never>[]
   ).map((model) => ({ collection: model.collection.name, model }));
 

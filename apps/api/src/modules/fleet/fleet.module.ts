@@ -22,6 +22,9 @@ import { buildFleetLicensingRouter } from './licensing/licensing.routes';
 import { buildFleetNoticesRouter } from './notices/notice.routes';
 import { buildFleetDealershipRouter } from './dealership/dealership.routes';
 import { buildFleetFuelCardsRouter } from './fuel-cards/fuel-card.routes';
+import { buildFleetReceiptsRouter } from './receipts/receipt.routes';
+import { buildFleetCustodyRouter } from './custody/custody.routes';
+import { receiptFileAuthorizer } from './receipts/receipt-files';
 import { dealershipFileAuthorizer } from './dealership/dealership-files';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
@@ -265,6 +268,28 @@ const fuelChargePermissions = declarePermissions(
   'fleet.fuel-charging',
 );
 
+/**
+ * Receipts (خصم الإيصالات): fuel, tyres and washing the driver paid for — off the car's fuel card
+ * or out of the custody fund. The custody screen (العهدة) only READS: it is the fund's ledger,
+ * summed from these receipts and from the dealership's custody-side bills.
+ */
+const receiptPermissions = declarePermissions(
+  'fleet',
+  'fleetReceipt',
+  { en: 'custody receipts', ar: 'إيصالات العهدة' },
+  ['view', 'create', 'edit', 'delete'],
+  [],
+  'fleet.receipts',
+);
+const custodyPermissions = declarePermissions(
+  'fleet',
+  'fleetCustody',
+  { en: 'custody ledger', ar: 'العهدة' },
+  ['view'],
+  [],
+  'fleet.custody',
+);
+
 const noticePermissions = declarePermissions(
   'fleet',
   'fleetNotice',
@@ -290,6 +315,8 @@ export const fleetPermissions: PermissionDef[] = [
   ...dealershipPermissions,
   ...fuelCardPermissions,
   ...fuelChargePermissions,
+  ...receiptPermissions,
+  ...custodyPermissions,
 ];
 
 /**
@@ -391,6 +418,20 @@ export const fleetPages: PageDef[] = [
     sortOrder: 89.5,
   },
   {
+    id: 'fleet.receipts',
+    moduleId: 'fleet',
+    name: { en: 'Custody receipts', ar: 'خصم الإيصالات' },
+    route: '/fleet/receipts',
+    sortOrder: 89.7,
+  },
+  {
+    id: 'fleet.custody',
+    moduleId: 'fleet',
+    name: { en: 'Custody ledger', ar: 'العهدة' },
+    route: '/fleet/custody',
+    sortOrder: 89.8,
+  },
+  {
     id: 'fleet.catalogs',
     moduleId: 'fleet',
     name: { en: 'Fleet catalogs', ar: 'قوائم الحركة' },
@@ -431,6 +472,8 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/notices', router: buildFleetNoticesRouter() },
     { prefix: '/fleet/dealership', router: buildFleetDealershipRouter() },
     { prefix: '/fleet/fuel-cards', router: buildFleetFuelCardsRouter() },
+    { prefix: '/fleet/receipts', router: buildFleetReceiptsRouter() },
+    { prefix: '/fleet/custody', router: buildFleetCustodyRouter() },
     { prefix: '/fleet/people', router: buildFleetPeopleRouter() },
   ],
   collections: [
@@ -452,6 +495,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_dealership_invoices',
     'fleet_fuel_cards',
     'fleet_fuel_card_movements',
+    'fleet_receipts',
   ],
   // ADR-023 — a vehicle's files answer to the VEHICLE's grants and data scope, and a driver's
   // files to the DRIVER PROFILE's, so reaching either through the platform's own file endpoints is
@@ -460,6 +504,7 @@ export const fleetModule: ModuleManifest = {
     vehicleFileAuthorizer,
     driverProfileFileAuthorizer,
     dealershipFileAuthorizer,
+    receiptFileAuthorizer,
   ],
   eventSubscriptions: [
     {

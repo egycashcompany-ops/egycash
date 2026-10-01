@@ -192,6 +192,10 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
     action: 'keep',
     why: 'a workshop visit is a record about the vehicle',
   },
+  fleet_receipts: {
+    action: 'keep',
+    why: 'a fuel, tyre or washing receipt is a record about the vehicle and the money — the driver is named on it',
+  },
   atm_maintenances: { action: 'keep', why: 'a maintenance visit is a record about the machine' },
   gold_receiving_receipts: { action: 'keep', why: 'a printed financial record of received metal' },
   gold_delivery_receipts: { action: 'keep', why: 'a printed financial record of delivered metal' },

@@ -229,6 +229,8 @@ describe('a dry run', () => {
       // A notice already sent to the insurer names the driver it was filed for.
       'fleet_notices',
       'fleet_odometer_logs',
+      // A receipt names the driver who brought it back; it is about the car and the money.
+      'fleet_receipts',
       'fleet_violations',
       'gold_delivery_receipts',
       'gold_receiving_receipts',

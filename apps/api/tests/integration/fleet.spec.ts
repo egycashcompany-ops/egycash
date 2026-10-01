@@ -9219,3 +9219,250 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
     expect(denied.status).toBe(403);
   });
 });
+
+// ── خصم الإيصالات and العهدة — receipts off a card or the fund, and the fund's ledger ─────────
+describe('receipts (خصم الإيصالات) and the custody ledger (العهدة)', () => {
+  type Card = { id: string; balance: number; version: number };
+  type Receipt = {
+    id: string;
+    vehicleCode: string | null;
+    driverEmployeeId: string | null;
+    driverName: string | null;
+    kind: string;
+    source: string;
+    cardId: string | null;
+    cardCompany: string | null;
+    fuelType: string | null;
+    pricePerLitre: number | null;
+    litres: number | null;
+    amount: number;
+    version: number;
+  };
+  let receiptCardCounter = 9000;
+  const readCard = async (id: string): Promise<Card> =>
+    data<Card>(
+      await request(app)
+        .get(`/api/v1/fleet/fuel-cards/${id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+  /** A card on the car, already holding `balance`. */
+  const chargedCard = async (vehicleId: string, balance: number): Promise<Card> => {
+    const made = await request(app)
+      .post('/api/v1/fleet/fuel-cards')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        vehicleId,
+        company: 'wataniya',
+        name: 'كارت وطنية',
+        number: `7045 1120 ${receiptCardCounter++}`,
+        expiresAt: '2027-03-31',
+      });
+    expect(made.status).toBe(201);
+    const card = data<Card>(made);
+    const requested = data<Card>(
+      await request(app)
+        .patch(`/api/v1/fleet/fuel-cards/${card.id}/request`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ amount: balance, version: card.version }),
+    );
+    const approved = await request(app)
+      .post(`/api/v1/fleet/fuel-cards/${card.id}/approve`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ version: requested.version });
+    expect(approved.status).toBe(200);
+    return data<Card>(approved);
+  };
+  const post = (body: Record<string, unknown>) =>
+    request(app)
+      .post('/api/v1/fleet/receipts')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ date: '2026-10-01', ...body });
+
+  it('a fuel receipt off the card takes the money off it, prices the litres, and gives it back when deleted', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const card = await chargedCard(v.id, 1000);
+    const res = await post({
+      vehicleId: v.id,
+      kind: 'fuel',
+      cardId: card.id,
+      fuelType: 'petrol92',
+      amount: 345,
+      driverName: 'أيمن حسن',
+    });
+    expect(res.status).toBe(201);
+    const receipt = data<Receipt>(res);
+    expect(receipt).toMatchObject({
+      vehicleCode: v.code,
+      kind: 'fuel',
+      source: 'card',
+      cardCompany: 'wataniya',
+      fuelType: 'petrol92',
+      pricePerLitre: 17.25,
+      litres: 20,
+      driverName: 'أيمن حسن',
+    });
+    expect((await readCard(card.id)).balance).toBe(655);
+    const log = await request(app)
+      .get('/api/v1/fleet/fuel-cards/movements')
+      .query({ cardId: card.id })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<{ kind: string; amount: number }[]>(log)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'receipt', amount: -345 })]),
+    );
+
+    const gone = await request(app)
+      .delete(`/api/v1/fleet/receipts/${receipt.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(gone.status).toBe(204);
+    expect((await readCard(card.id)).balance).toBe(1000);
+  });
+
+  it('refuses more than the card holds, a card of another car, and a card on tyres', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const other = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const card = await chargedCard(v.id, 100);
+    const tooMuch = await post({
+      vehicleId: v.id,
+      kind: 'fuel',
+      cardId: card.id,
+      fuelType: 'diesel',
+      amount: 100.5,
+    });
+    expect(tooMuch.status).toBe(400);
+    expect((await readCard(card.id)).balance).toBe(100);
+    const wrongCar = await post({
+      vehicleId: other.id,
+      kind: 'fuel',
+      cardId: card.id,
+      fuelType: 'diesel',
+      amount: 10,
+    });
+    expect(wrongCar.status).toBe(400);
+    const tyresOnCard = await post({ vehicleId: v.id, kind: 'tyres', cardId: card.id, amount: 10 });
+    expect(tyresOnCard.status).toBe(400);
+    const noFuelType = await post({ vehicleId: v.id, kind: 'fuel', amount: 10 });
+    expect(noFuelType.status).toBe(400);
+  });
+
+  it('fuel from the fund, tyres and washing go to the custody ledger with a private car’s dealership bill', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const fuel = await post({
+      vehicleId: v.id,
+      kind: 'fuel',
+      fuelType: 'petrol80',
+      amount: 315,
+      driverName: 'محمد رأفت',
+    });
+    expect(fuel.status).toBe(201);
+    expect(data<Receipt>(fuel)).toMatchObject({ source: 'custody', cardId: null, litres: 20 });
+    expect((await post({ vehicleId: v.id, kind: 'tyres', amount: 1400 })).status).toBe(201);
+    expect(
+      (await post({ vehicleId: v.id, kind: 'wash', amount: 120, date: '2026-10-02' })).status,
+    ).toBe(201);
+
+    const totals = await request(app)
+      .get('/api/v1/fleet/receipts/summary')
+      .query({ vehicleCodes: v.code })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<Record<string, number>>(totals)).toMatchObject({
+      count: 3,
+      custodyTotal: 1835,
+      cardTotal: 0,
+      fuelTotal: 315,
+      fuelLitres: 20,
+      tyresTotal: 1400,
+      washTotal: 120,
+    });
+
+    const ledger = await request(app)
+      .get('/api/v1/fleet/custody/summary')
+      .query({ vehicleCodes: v.code })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(ledger.status).toBe(200);
+    expect(data<Record<string, unknown>>(ledger)).toMatchObject({
+      count: 3,
+      total: 1835,
+      dealership: 0,
+      fuel: 315,
+      tyres: 1400,
+      wash: 120,
+      vehicles: [{ vehicleCode: v.code, fuel: 315, tyres: 1400, wash: 120, total: 1835 }],
+    });
+    const movements = await request(app)
+      .get('/api/v1/fleet/custody/movements')
+      .query({ vehicleCodes: v.code, source: 'fuel' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(
+      data<{ ref: string; source: string; driverName: string | null; fuelType: string | null }[]>(
+        movements,
+      ),
+    ).toEqual(
+      [
+        { ref: 'receipt', source: 'fuel', driverName: 'محمد رأفت', fuelType: 'petrol80' } as never,
+      ].map((row) => expect.objectContaining(row)),
+    );
+    // The driver filter finds the typed name; a bill names nobody and is left out.
+    const byDriver = await request(app)
+      .get('/api/v1/fleet/custody/movements')
+      .query({ vehicleCodes: v.code, driver: 'رأفت' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<unknown[]>(byDriver)).toHaveLength(1);
+  });
+
+  it('editing a receipt moves the money between cards, and the screens are their own grants', async () => {
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const card = await chargedCard(v.id, 500);
+    const receipt = data<Receipt>(
+      await post({
+        vehicleId: v.id,
+        kind: 'fuel',
+        cardId: card.id,
+        fuelType: 'petrol95',
+        amount: 190,
+      }),
+    );
+    expect((await readCard(card.id)).balance).toBe(310);
+    // Re-pointed to the fund: the card is whole again.
+    const moved = await request(app)
+      .patch(`/api/v1/fleet/receipts/${receipt.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        kind: 'fuel',
+        cardId: null,
+        fuelType: 'petrol95',
+        amount: 190,
+        version: receipt.version,
+      });
+    expect(moved.status).toBe(200);
+    expect(data<Receipt>(moved)).toMatchObject({ source: 'custody', cardId: null, litres: 10 });
+    expect((await readCard(card.id)).balance).toBe(500);
+    // And back onto the card with another amount.
+    const back = await request(app)
+      .patch(`/api/v1/fleet/receipts/${receipt.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        kind: 'fuel',
+        cardId: card.id,
+        fuelType: 'petrol95',
+        amount: 95,
+        version: data<Receipt>(moved).version,
+      });
+    expect(back.status).toBe(200);
+    expect((await readCard(card.id)).balance).toBe(405);
+
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/fleet/receipts')
+          .set('Authorization', `Bearer ${branchAToken}`)
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .get('/api/v1/fleet/custody/summary')
+          .set('Authorization', `Bearer ${branchAToken}`)
+      ).status,
+    ).toBe(403);
+  });
+});

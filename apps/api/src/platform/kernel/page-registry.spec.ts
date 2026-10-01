@@ -23,9 +23,9 @@ describe('the assembled page registry', () => {
   });
 
   // ADR-032 added one page (`platform.delegation`) carrying one key (`delegation.manage`).
-  it('declares 78 pages over 295 permissions', () => {
-    expect(pages).toHaveLength(78);
-    expect(permissions).toHaveLength(295);
+  it('declares 80 pages over 300 permissions', () => {
+    expect(pages).toHaveLength(80);
+    expect(permissions).toHaveLength(300);
   });
 
   /**
@@ -77,9 +77,9 @@ describe('the assembled page registry', () => {
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
    */
-  it('assigns 266 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 271 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(266);
+    expect(assigned).toHaveLength(271);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -104,7 +104,7 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 15, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 17, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

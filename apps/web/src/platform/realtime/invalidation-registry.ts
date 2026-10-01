@@ -310,8 +310,18 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // The board and nothing else: a tick is a fact about the papers, and no other screen reads it.
   'fleet.vehicleLicensing': [['fleet', 'licensing']],
   'fleet.notice': [['fleet', 'notices']],
-  'fleet.dealershipInvoice': [['fleet', 'dealership']],
+  // A private car's bill is also a line of the custody ledger.
+  'fleet.dealershipInvoice': [
+    ['fleet', 'dealership'],
+    ['fleet', 'custody'],
+  ],
   'fleet.fuelCard': [['fleet', 'fuelCards']],
+  // A receipt is its own row, a line of the ledger, and money off a card.
+  'fleet.receipt': [
+    ['fleet', 'receipts'],
+    ['fleet', 'custody'],
+    ['fleet', 'fuelCards'],
+  ],
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': [

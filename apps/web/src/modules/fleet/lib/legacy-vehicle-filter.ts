@@ -34,3 +34,14 @@ export const migrateLegacyVehicleCodeParam = (
   if ((next.get(key) ?? '').trim() === '') next.set(key, legacy);
   return next;
 };
+
+/**
+ * The registry's answer for `migrateLegacyVehicleCodeParam`: does a car carry EXACTLY this code?
+ *
+ * Exact, against the whole registry. A substring answer read `?code=61` as car 161 and sent a
+ * link that did name car 61 to `search=` instead of ticking it.
+ */
+export const legacyCodeNamesAVehicle = (
+  vehicles: readonly { code: string }[],
+  code: string | null,
+): boolean => code !== null && vehicles.some((v) => v.code === code);

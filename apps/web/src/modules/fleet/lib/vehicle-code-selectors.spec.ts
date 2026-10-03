@@ -351,14 +351,112 @@ describe('every Fleet car picker offers the WHOLE registry', () => {
       })
       .sort();
     expect(passing).toEqual([
-      // «إنذارات الصيانة» — the board of every active car.
+      // Both rosters — every active car on the day's board.
       'modules/fleet/pages/FixedRosterPage.tsx',
       // «التراخيص» — the «ت» licence-class cars, as the owner asked.
       'modules/fleet/pages/LicensingPage.tsx',
+      // «إنذارات الصيانة» — the board of every active car.
       'modules/fleet/pages/MaintenanceAlarmsPage.tsx',
-      // Both rosters — every active car on the day's board.
       'modules/fleet/pages/RosterPage.tsx',
     ]);
+  });
+});
+
+/**
+ * Which cars each form's car box offers — the WHOLE registry, at the status scope that form has
+ * always had («زى ما هما»):
+ *
+ *   • `any`     — a historical fact that may name a car disposed of since: every status.
+ *   • `active`  — fuel cards and transfers: the active cars.
+ *   • `checkIn` — the maintenance check-in: the active cars, less those already in a workshop.
+ *
+ * A new form's car box joins this table, or the census below fails.
+ */
+const CAR_BOX_SCOPES: readonly {
+  file: string;
+  scope: 'any' | 'active' | 'checkIn';
+  boxes?: number;
+}[] = [
+  { file: 'modules/fleet/components/AccidentFormDialog.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/CompanyViolationsPanel.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/DriverViolationsPanel.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/ReceiptDialog.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/RecordOdometerDialog.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/FuelCardDialog.tsx', scope: 'active' },
+  // From, and to.
+  { file: 'modules/fleet/components/FuelTransferDialog.tsx', scope: 'active', boxes: 2 },
+  { file: 'modules/fleet/components/MaintenanceDialogs.tsx', scope: 'checkIn' },
+];
+
+/** The props of every `<VehicleCodeCombobox … />` element in a file, comments left out. */
+const carBoxes = (file: string): string[] => {
+  const source = code(file);
+  const boxes: string[] = [];
+  let at = source.indexOf('<VehicleCodeCombobox');
+  while (at !== -1) {
+    boxes.push(source.slice(at, source.indexOf('/>', at)));
+    at = source.indexOf('<VehicleCodeCombobox', at + 1);
+  }
+  return boxes;
+};
+
+describe('each form’s car box keeps its status scope', () => {
+  it.each(CAR_BOX_SCOPES.map((entry) => ({ ...entry })))(
+    '$file offers the $scope cars',
+    ({ file, scope, boxes = 1 }) => {
+      const found = carBoxes(file);
+      expect(found, `${file} car boxes`).toHaveLength(boxes);
+      for (const box of found) {
+        expect(box, 'every status').toMatch(
+          scope === 'any' ? /\banyStatus\b/u : /^(?![\s\S]*\banyStatus\b)/u,
+        );
+        expect(box, 'cars already in a workshop').toMatch(
+          scope === 'checkIn' ? /\bexcludeInWorkshop\b/u : /^(?![\s\S]*\bexcludeInWorkshop\b)/u,
+        );
+      }
+    },
+  );
+
+  it('the table covers every car box in the application', () => {
+    const using = execFileSync('grep', ['-rl', '<VehicleCodeCombobox', 'modules'], {
+      cwd: SRC,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter((line) => line !== '' && !line.includes('.spec.'))
+      .filter((file) => carBoxes(file).length > 0)
+      .sort();
+    expect(using).toEqual(CAR_BOX_SCOPES.map((entry) => entry.file).sort());
+  });
+
+  /**
+   * A code carried in from a page's filter is resolved against the SAME list the box offers: a
+   * narrower list would leave a code the box shows but never turns into an id, so Save would stay
+   * off with nothing said.
+   */
+  it('a carried-in code is resolved against the list its box offers', () => {
+    const odometer = code('modules/fleet/components/RecordOdometerDialog.tsx');
+    expect(odometer).toContain("useAllVehicles({ anyStatus: true }, open && pickedCode !== '')");
+    expect(odometer).toContain('resolveCarriedVehicleCode(registry.data.items, pickedCode)');
+    expect(odometer).toContain('pendingCode={pickedCode}');
+
+    const checkIn = code('modules/fleet/components/MaintenanceDialogs.tsx');
+    expect(checkIn).toContain("useAllVehicles({}, open && pickedCode !== '')");
+    expect(checkIn).toMatch(
+      /resolveCarriedVehicleCode\(registry\.data\.items, pickedCode, \{\s*excludeInWorkshop: true,\s*\}\)/u,
+    );
+    expect(checkIn).toContain('pendingCode={pickedCode}');
+
+    const box = code('modules/fleet/components/VehicleCodeCombobox.tsx');
+    expect(box, 'the box offers by the same rule').toContain(
+      'vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value })',
+    );
+  });
+
+  it('a legacy `?code=` link is read against the whole registry, exactly', () => {
+    const page = code('modules/fleet/pages/VehiclesListPage.tsx');
+    expect(page).toMatch(/useAllVehicles\(\s*\{ anyStatus: true \},/u);
+    expect(page).toContain('legacyCodeNamesAVehicle(legacyLookup.data?.items ?? [], legacyCode)');
   });
 });
 

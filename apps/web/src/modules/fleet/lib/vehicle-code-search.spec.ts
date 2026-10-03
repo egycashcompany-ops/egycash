@@ -8,6 +8,10 @@
 // The other two layers are pinned where they live: `vehicleCodeSearchQuery` against the endpoint's
 // own `.strict()` schema in the contracts suite, and `vehicleIdentifierFilter('code', …)` refusing
 // a plate in the API suite. Together the three make one chain — box → query → server filter.
+//
+// Fleet's own car boxes no longer send this request: they load the WHOLE registry and narrow it in
+// the browser (`registryVehicleCodeOptions`, `rankVehicleCodes`, pinned in their own specs). The
+// server code search here is what a selector OUTSIDE Fleet still sends.
 import { describe, expect, it } from 'vitest';
 import { vehicleCodeSearchQuery, type FleetRosterRowDto } from '@ecms/contracts';
 import { visibleRows } from './roster-view';
@@ -27,7 +31,7 @@ const buildQuery = (params: Record<string, unknown>): string => {
   return query === '' ? '' : `?${query}`;
 };
 
-/** The URL a code picker sends for what was typed — the same call shape all four of them make. */
+/** The URL a server-searching code picker sends for what was typed. */
 const url = (typed: string): string =>
   `/fleet/vehicles${buildQuery({ ...vehicleCodeSearchQuery(typed), pageSize: 50 })}`;
 

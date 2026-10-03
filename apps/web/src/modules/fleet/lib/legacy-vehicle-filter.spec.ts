@@ -1,6 +1,6 @@
 // A saved registry link, read after the vehicle filter split into two controls.
 import { describe, expect, it } from 'vitest';
-import { migrateLegacyVehicleCodeParam } from './legacy-vehicle-filter';
+import { legacyCodeNamesAVehicle, migrateLegacyVehicleCodeParam } from './legacy-vehicle-filter';
 
 const run = (query: string, namesAVehicle: boolean): string | null => {
   const next = migrateLegacyVehicleCodeParam(new URLSearchParams(query), namesAVehicle);
@@ -50,5 +50,16 @@ describe('a link written before the vehicle-code picker', () => {
 
   it('keeps a hyphenated legacy code whole on its way to the picker', () => {
     expect(run('code=A-15', true)).toBe('vehicleCodes=A-15');
+  });
+});
+
+describe('legacyCodeNamesAVehicle — the registry answer the migration is given', () => {
+  it('is EXACT: `?code=61` does not name car 161', () => {
+    expect(legacyCodeNamesAVehicle([{ code: '161' }], '61')).toBe(false);
+    expect(legacyCodeNamesAVehicle([{ code: '161' }, { code: '61' }], '61')).toBe(true);
+  });
+
+  it('names nothing without a legacy value', () => {
+    expect(legacyCodeNamesAVehicle([{ code: '61' }], null)).toBe(false);
   });
 });

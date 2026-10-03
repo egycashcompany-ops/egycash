@@ -25,6 +25,7 @@ import {
   useAllVehicles,
   useRosterDay,
 } from '../api/fleet-queries';
+import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { OptionalDriverField } from './OptionalDriverField';
 
@@ -103,10 +104,10 @@ export const RecordOdometerDialog = ({
   useEffect(() => {
     if (pickedCode === '' || vehicleId !== '') return;
     if (registry.data === undefined) return;
-    const found = registry.data.items.find((v) => v.code === pickedCode);
+    const found = resolveCarriedVehicleCode(registry.data.items, pickedCode);
     // No car carries it: let it go, so the box reads empty rather than holding a code it cannot save.
-    if (found === undefined) setPickedCode('');
-    else setVehicleId(found.id);
+    if (found === null) setPickedCode('');
+    else setVehicleId(found);
   }, [registry.data, pickedCode, vehicleId]);
 
   // Who the DUTY ROSTER says is on this car that day — the same board the roster screen shows,

@@ -121,8 +121,8 @@ const KEY = (over: Record<string, unknown> = {}) =>
   listKey('fleet', 'maintenance', { ...BASE_PARAMS, ...over });
 
 const CATALOG_KEY = (kind: string) => listKey('fleet', 'catalogs', { kind });
-const VEHICLE_SEARCH_KEY = (search?: string) =>
-  listKey('fleet', 'vehicles', { search, pageSize: 20, sortBy: 'code', sortDir: 'asc' });
+/** The WHOLE registry the car filter reads — every page, every status. */
+const WHOLE_REGISTRY_KEY = () => listKey('fleet', 'vehicles', { whole: true, anyStatus: true });
 
 const catalogs = (qc: QueryClient): void => {
   qc.setQueryData(
@@ -151,7 +151,7 @@ const client = (
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(KEY(keyOver), pageOf(visits, metaOver));
   qc.setQueryData(
-    VEHICLE_SEARCH_KEY(),
+    WHOLE_REGISTRY_KEY(),
     pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
   );
   catalogs(qc);

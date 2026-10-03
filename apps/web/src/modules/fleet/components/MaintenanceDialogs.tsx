@@ -28,6 +28,7 @@ import {
   workshopOdometerBreach,
   workshopOdometerWarningKey,
 } from '../lib/workshop-odometer-warning';
+import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
 import { CatalogSelect } from './CatalogSelect';
 
 /**
@@ -238,11 +239,13 @@ export const CheckInDialog = ({
   useEffect(() => {
     if (pickedCode === '' || vehicleId !== '') return;
     if (registry.data === undefined) return;
-    const found = registry.data.items.find((v) => v.code === pickedCode && v.inWorkshop !== true);
+    const found = resolveCarriedVehicleCode(registry.data.items, pickedCode, {
+      excludeInWorkshop: true,
+    });
     // No active car carries it, or it is already in a workshop: let it go, so the box reads empty
     // rather than holding a code the check-in cannot take.
-    if (found === undefined) setPickedCode('');
-    else setVehicleId(found.id);
+    if (found === null) setPickedCode('');
+    else setVehicleId(found);
   }, [registry.data, pickedCode, vehicleId]);
 
   const expected = useExpectedReading(

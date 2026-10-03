@@ -57,14 +57,8 @@ const VEHICLE_ID = 'v1';
 /** Two drivers to pick, as real employee ids — what `drv` carries now. */
 const DRIVER_A = '64b1f0dddddddddddddddd01';
 const DRIVER_B = '64b1f0dddddddddddddddd02';
-/** The registry SEARCH the filter and the dialog now make — a shortlist for a query, not a page. */
-const VEHICLE_SEARCH_KEY = (search?: string) =>
-  listKey('fleet', 'vehicles', {
-    search,
-    pageSize: 20,
-    sortBy: 'code',
-    sortDir: 'asc',
-  });
+/** The WHOLE registry the car filter and the dialog's car box read — every page, every status. */
+const WHOLE_REGISTRY_KEY = () => listKey('fleet', 'vehicles', { whole: true, anyStatus: true });
 const log = (o: Partial<FleetOdometerLogDto> = {}): FleetOdometerLogDto => ({
   id: 'o1',
   vehicleId: VEHICLE_ID,
@@ -138,7 +132,7 @@ const client = (
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(ODOMETER_KEY(keyOver), pageOf(logs));
   qc.setQueryData(
-    VEHICLE_SEARCH_KEY(),
+    WHOLE_REGISTRY_KEY(),
     pageOf([
       { id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' },
       { id: 'v2', code: '151', plateNumber: 'س ص 151' },
@@ -248,7 +242,7 @@ describe('the odometer table', () => {
       meta: { page: 2, pageSize: 25, totalItems: 28, totalPages: 2 },
     });
     qc.setQueryData(
-      VEHICLE_SEARCH_KEY(),
+      WHOLE_REGISTRY_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     qc.setQueryData(['fleet', 'alarms'], [alarm()]);
@@ -364,11 +358,11 @@ describe('the odometer table', () => {
   it('shows the code of a vehicle the registry answers for only on a LATER page', () => {
     // The blocker this replaces: the code was joined in the browser from ONE page of the
     // registry, capped at `MAX_PAGE_SIZE`, so every car past that page printed a dash. Here the
-    // registry search answers with a DIFFERENT car entirely — the way it would for a car the
-    // shortlist does not carry — and the row still names its own.
+    // registry the page holds carries a DIFFERENT car only, and the row still names its own — the
+    // code comes with the row.
     const qc = client([log({ vehicleId: 'v101', vehicleCode: '101' })]);
     qc.setQueryData(
-      VEHICLE_SEARCH_KEY(),
+      WHOLE_REGISTRY_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     // The second cell is the code column (the date comes first now the serial is gone).
@@ -504,7 +498,7 @@ describe('the server answers the whole question — the page never slices', () =
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     qc.setQueryData(key, page);
     qc.setQueryData(
-      VEHICLE_SEARCH_KEY(),
+      WHOLE_REGISTRY_KEY(),
       pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
     );
     qc.setQueryData(['fleet', 'alarms'], [alarm()]);
@@ -779,7 +773,7 @@ describe('the filter bar', () => {
     // hundreds. Rendered here with two chosen, straight off the real page.
     const qc = client([log()], [alarm()], { vehicleCodes: ['ZZ0104', 'ZZ0105'] });
     qc.setQueryData(
-      VEHICLE_SEARCH_KEY(),
+      WHOLE_REGISTRY_KEY(),
       pageOf([
         { id: 'v1', code: 'ZZ0104', plateNumber: 'س ص 104' },
         { id: 'v2', code: 'ZZ0105', plateNumber: 'س ص 105' },
@@ -813,7 +807,7 @@ describe('the filter bar', () => {
     // choices had altered what travels, this would be a cache miss and the table would be empty.
     const qc = client([log()], [alarm()], { vehicleCodes: ['ZZ0104', 'ZZ0105'], alerts: ['red'] });
     qc.setQueryData(
-      VEHICLE_SEARCH_KEY(),
+      WHOLE_REGISTRY_KEY(),
       pageOf([{ id: 'v1', code: 'ZZ0104', plateNumber: 'س ص 104' }]),
     );
     const body = tbody(
@@ -1121,7 +1115,7 @@ describe('recording a reading', () => {
     // way clicking the box listed only some codes. The shared picker loads the whole registry —
     // every lifecycle status, as this dialog has always offered — and narrows it as the operator
     // types.
-    expect(source).toMatch(/<VehicleCodeCombobox[\s\S]*?anyStatus/u);
+    expect(source).toMatch(/<VehicleCodeCombobox(?:(?!\/>)[\s\S])*?\banyStatus\b/u);
     expect(source).not.toContain('useVehicles(');
     expect(source).not.toContain('vehicleCodeSearchQuery(');
     expect(source).not.toMatch(/pageSize\s*:/u);
@@ -1161,7 +1155,7 @@ describe('recording a reading', () => {
     const html = renderDialog({ qc, initialVehicleCode: '999' });
     const box = html.slice(html.indexOf('role="combobox"'));
     expect(/value="([^"]*)"/.exec(box)?.[1]).toBe('');
-    expect(source).toContain("if (found === undefined) setPickedCode('');");
+    expect(source).toContain("if (found === null) setPickedCode('');");
   });
 
   it('cannot save a code the registry does not carry', () => {

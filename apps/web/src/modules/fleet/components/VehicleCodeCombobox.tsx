@@ -26,6 +26,7 @@ import { useMemo, useState } from 'react';
 import { useT } from '../../../platform/localization/useT';
 import { Combobox } from '../../../shared/ui/Combobox';
 import { useAllVehicles, useVehicle } from '../api/fleet-queries';
+import { vehicleCodeEntries } from '../lib/vehicle-code-options';
 import { rankVehicleCodes } from '../lib/vehicle-code-rank';
 
 export const VehicleCodeCombobox = ({
@@ -79,14 +80,10 @@ export const VehicleCodeCombobox = ({
   const whole = useAllVehicles({ anyStatus });
   const items = whole.data?.items;
 
-  const byCode = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of items ?? []) {
-      if (excludeInWorkshop && v.inWorkshop === true && v.id !== value) continue;
-      map.set(v.code, v.id);
-    }
-    return map;
-  }, [items, excludeInWorkshop, value]);
+  const byCode = useMemo(
+    () => vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value }),
+    [items, excludeInWorkshop, value],
+  );
   const options = useMemo(() => rankVehicleCodes([...byCode.keys()], query), [byCode, query]);
 
   // A value handed in from outside — a row being edited, a car carried from another screen — is an

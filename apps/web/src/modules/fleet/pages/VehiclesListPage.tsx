@@ -25,7 +25,10 @@ import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { ExportSheetButton } from '../components/ExportSheetButton';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import * as fleetApi from '../api/fleet-api';
-import { migrateLegacyVehicleCodeParam } from '../lib/legacy-vehicle-filter';
+import {
+  legacyCodeNamesAVehicle,
+  migrateLegacyVehicleCodeParam,
+} from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -153,7 +156,7 @@ export const VehiclesListPage = (): JSX.Element => {
     { anyStatus: true },
     legacyCode !== null && legacyCode.trim() !== '',
   );
-  const legacyNamesAVehicle = (legacyLookup.data?.items ?? []).some((v) => v.code === legacyCode);
+  const legacyNamesAVehicle = legacyCodeNamesAVehicle(legacyLookup.data?.items ?? [], legacyCode);
   useEffect(() => {
     // Nothing is rewritten until the lookup has answered: migrating early would send every link to
     // `search`, including the ones that name a car.

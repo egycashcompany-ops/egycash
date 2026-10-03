@@ -332,7 +332,7 @@ describe('the receipt modal', () => {
 
   it('offers every car — the whole registry — and uploads the photo with the receipt', () => {
     // Every car-code box in Fleet offers the whole registry now; the receipt asks for every status.
-    expect(FORM).toMatch(/<VehicleCodeCombobox[\s\S]*?anyStatus/u);
+    expect(FORM).toMatch(/<VehicleCodeCombobox(?:(?!\/>)[\s\S])*?\banyStatus\b/u);
     expect(FORM).toContain('if (file !== null) await upload.mutateAsync({ id: saved.id, file });');
   });
 });

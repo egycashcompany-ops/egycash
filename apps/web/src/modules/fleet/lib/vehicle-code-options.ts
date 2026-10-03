@@ -112,3 +112,42 @@ export const registryVehicleCodeOptions = (
     .filter((code, at, all) => all.indexOf(code) === at);
   return [...kept, ...matched].map((code) => ({ value: code, label: code, shortLabel: code }));
 };
+
+export interface RegistryVehicle {
+  id: string;
+  code: string;
+  inWorkshop?: boolean;
+}
+
+/**
+ * What a single-car code box offers — every code the registry it loaded carries, each with its
+ * car's id.
+ *
+ * `excludeInWorkshop` is the check-in's rule: a car already in a workshop cannot be checked in
+ * again (the server refuses it under FR-4), so it is not offered — unless it is the car ALREADY
+ * chosen, which must stay nameable or the box would blank under the clerk.
+ */
+export const vehicleCodeEntries = (
+  items: readonly RegistryVehicle[],
+  options: { excludeInWorkshop?: boolean; chosenId?: string } = {},
+): Map<string, string> => {
+  const entries = new Map<string, string>();
+  for (const v of items) {
+    if (options.excludeInWorkshop === true && v.inWorkshop === true && v.id !== options.chosenId) {
+      continue;
+    }
+    entries.set(v.code, v.id);
+  }
+  return entries;
+};
+
+/**
+ * The id of the car a code carried in from a page's filter names — among the cars the box OFFERS,
+ * by the same rule — or `null` when it offers none such, so the dialog lets the code go rather than
+ * holding one it cannot save.
+ */
+export const resolveCarriedVehicleCode = (
+  items: readonly RegistryVehicle[],
+  code: string,
+  options: { excludeInWorkshop?: boolean } = {},
+): string | null => vehicleCodeEntries(items, options).get(code) ?? null;

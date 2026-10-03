@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   narrowVehicleCodeOptions,
   registryVehicleCodeOptions,
+  resolveCarriedVehicleCode,
+  vehicleCodeEntries,
   vehicleCodeLabel,
   vehicleCodeOptions,
 } from './vehicle-code-options';
@@ -142,5 +144,42 @@ describe('registryVehicleCodeOptions — every car, narrowed by the typed code',
   it('keeps a chosen code the registry no longer carries, once', () => {
     const shown = values(registryVehicleCodeOptions([v('150')], '', ['999', '999']));
     expect(shown).toEqual(['999', '150']);
+  });
+});
+
+describe('vehicleCodeEntries / resolveCarriedVehicleCode — what a single-car box offers', () => {
+  const registry = [
+    { id: 'a', code: '150' },
+    { id: 'b', code: '161', inWorkshop: true },
+    { id: 'c', code: '61' },
+  ];
+
+  it('offers every car the loaded registry carries, each with its id', () => {
+    expect([...vehicleCodeEntries(registry)]).toEqual([
+      ['150', 'a'],
+      ['161', 'b'],
+      ['61', 'c'],
+    ]);
+  });
+
+  it('the check-in leaves out a car already in a workshop — but never the car already chosen', () => {
+    expect([...vehicleCodeEntries(registry, { excludeInWorkshop: true }).keys()]).toEqual([
+      '150',
+      '61',
+    ]);
+    expect(
+      [...vehicleCodeEntries(registry, { excludeInWorkshop: true, chosenId: 'b' }).keys()],
+      'the chosen car stays nameable',
+    ).toEqual(['150', '161', '61']);
+  });
+
+  it('resolves a carried-in code EXACTLY, among the cars the box offers', () => {
+    expect(resolveCarriedVehicleCode(registry, '61')).toBe('c');
+    expect(resolveCarriedVehicleCode(registry, '6'), 'no car carries it').toBeNull();
+    expect(resolveCarriedVehicleCode(registry, '161')).toBe('b');
+    expect(
+      resolveCarriedVehicleCode(registry, '161', { excludeInWorkshop: true }),
+      'the check-in cannot take a car already in a workshop',
+    ).toBeNull();
   });
 });

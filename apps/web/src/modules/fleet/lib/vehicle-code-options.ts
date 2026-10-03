@@ -9,7 +9,9 @@
 //
 // Kept out of the components because it is the part with a rule in it, and the part a node-env
 // test can reach: a closed dropdown renders no options at all.
+import { compareFleetVehicleCodes } from '@ecms/contracts';
 import { matchesVehicleCode } from './vehicle-code-match';
+import { rankVehicleCodes } from './vehicle-code-rank';
 
 export interface VehicleCodeOption {
   value: string;
@@ -86,3 +88,27 @@ export const narrowVehicleCodeOptions = <T extends { value: string }>(
   options.filter(
     (option) => selected.includes(option.value) || matchesVehicleCode(option.value, typed),
   );
+
+/**
+ * The WHOLE registry as the filter's options — «لازم تظهر كلها» — narrowed by what is being typed.
+ *
+ * Every car is offered in the fleet's own order while nothing is typed; a typed fragment keeps the
+ * codes it matches, those that START with it first (`rankVehicleCodes`, the single-car picker's
+ * order). A code already CHOSEN that the fragment hides — or that the registry no longer carries —
+ * is kept in front, so a filter you can set stays one you can unset.
+ */
+export const registryVehicleCodeOptions = (
+  vehicles: readonly { code: string }[],
+  typed: string,
+  selected: readonly string[],
+): VehicleCodeOption[] => {
+  const codes = [...new Set(vehicles.map((vehicle) => vehicle.code))].sort(
+    compareFleetVehicleCodes,
+  );
+  const matched = rankVehicleCodes(codes, typed);
+  const shown = new Set(matched);
+  const kept = selected
+    .filter((code) => !shown.has(code))
+    .filter((code, at, all) => all.indexOf(code) === at);
+  return [...kept, ...matched].map((code) => ({ value: code, label: code, shortLabel: code }));
+};

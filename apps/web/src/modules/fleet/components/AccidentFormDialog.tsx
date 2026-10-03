@@ -265,7 +265,6 @@ export const AccidentFormDialog = ({
               value={vehicleId}
               onChange={setVehicleId}
               anyStatus
-              wholeRegistry
               ariaLabel={t('fleet.odometer.columns.vehicle')}
               placeholder={t('fleet.accidents.vehiclePlaceholder')}
               testId="accident-vehicle"

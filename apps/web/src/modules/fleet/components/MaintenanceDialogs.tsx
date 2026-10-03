@@ -3,16 +3,11 @@
 // the custody and the exit date), and the facts edit. All version-aware; the counter hint is
 // the server's expected reading, never a client computation.
 import { useEffect, useMemo, useState } from 'react';
-import {
-  vehicleCodeSearchQuery,
-  type FleetMaintenanceVisitDto,
-  type Locale,
-} from '@ecms/contracts';
+import { type FleetMaintenanceVisitDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Combobox } from '../../../shared/ui/Combobox';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -25,11 +20,10 @@ import {
   useCheckOutMaintenance,
   useExpectedReading,
   useOdometerBracket,
+  useAllVehicles,
   useUpdateMaintenance,
-  useVehicles,
 } from '../api/fleet-queries';
 import { useCan } from '../../../platform/rbac/Can';
-import { vehicleCodeLabel } from '../lib/vehicle-code-options';
 import {
   workshopOdometerBreach,
   workshopOdometerWarningKey,
@@ -62,10 +56,9 @@ const useNotCountingWarning = (workTypeId: string): string | undefined => {
   return t('fleet.maintenance.workTypeNotCounting');
 };
 import { OptionalDriverField } from './OptionalDriverField';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
-/** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
-const VEHICLE_SEARCH_SIZE = 20;
 
 /**
  * The parts fitted, chosen from the `sparePart` catalog — the same admin-owned vocabulary the
@@ -209,12 +202,8 @@ export const CheckInDialog = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [vehicleId, setVehicleId] = useState('');
-  // What the registry is being asked for, and the code already chosen. The chosen one is held
-  // separately because the search moves on: the next query will not contain it, and the box must
-  // go on showing what is selected rather than blanking as the operator types. Both are seeded
-  // from the prop rather than only by the reset effect — an effect runs after the first paint, so
-  // a carried-over car would flash as an empty box.
-  const [codeQuery, setCodeQuery] = useState(initialVehicleCode);
+  // A code carried in from the page's filter, until the registry has turned it into an id. Seeded
+  // from the prop, not only from the reset effect, so the first paint already knows it.
   const [pickedCode, setPickedCode] = useState(initialVehicleCode);
   const [inDate, setInDate] = useState(today());
   const [workshopId, setWorkshopId] = useState('');
@@ -228,7 +217,6 @@ export const CheckInDialog = ({
     if (open) {
       setVehicleId('');
       setPickedCode(initialVehicleCode);
-      setCodeQuery(initialVehicleCode);
       setInDate(today());
       setWorkshopId('');
       setWorkTypeId('');
@@ -239,48 +227,23 @@ export const CheckInDialog = ({
     }
   }, [open, initialVehicleCode]);
 
-  // The car is picked by CODE and typed into, not scrolled to, and the options are what the
-  // SERVER matched for what was typed. A page of the registry filtered in the browser would let
-  // only the first `MAX_PAGE_SIZE` cars by code be checked in at all — car 101 could not be
-  // chosen, so it could not enter a workshop.
+  // The car is picked by CODE and typed into, from the WHOLE registry of active cars
+  // (`VehicleCodeCombobox`) — every one of them, where it used to be a twenty-car server shortlist.
+  // Cars already IN a workshop are left out, as before: the server refuses them under FR-4, and
+  // this only spares a guaranteed 409.
   //
-  // Cars already IN a workshop are dropped from the shortlist, as the old select did: the server
-  // refuses them under FR-4 anyway, and this only spares a guaranteed 409. It trims what the
-  // server matched — it never stands in for the search.
-  //
-  // Matched on the CODE alone (`vehicleCodeSearchQuery`) — the same question the box's label asks,
-  // and the same one every other vehicle picker in the application now asks.
-  const vehicles = useVehicles(
-    {
-      status: 'active',
-      ...vehicleCodeSearchQuery(codeQuery),
-      pageSize: VEHICLE_SEARCH_SIZE,
-      sortBy: 'code',
-      sortDir: 'asc',
-    },
-    open,
-  );
-  const byCode = useMemo(() => {
-    const map = new Map<string, { id: string; label: string }>();
-    for (const v of vehicles.data?.items ?? []) {
-      if (v.inWorkshop === true && v.id !== vehicleId) continue;
-      map.set(v.code, { id: v.id, label: vehicleCodeLabel(v) });
-    }
-    return map;
-  }, [vehicles.data, vehicleId]);
-  const codeOptions = useMemo(() => [...byCode.keys()], [byCode]);
-  // What the box shows: the code of the resolved car, or — before the registry has answered for a
-  // code carried in from the filter — that code itself.
-  const codeOf = (id: string): string =>
-    ([...byCode.entries()].find(([, v]) => v.id === id)?.[0] ?? '') || pickedCode;
-
   // A code carried in from the page's filter names a car this dialog has not got an id for. The
-  // opening search IS that code, so the id arrives with its answer and is taken here, once.
+  // registry the picker loads is read for it here, once — the same cached list.
+  const registry = useAllVehicles({}, open && pickedCode !== '');
   useEffect(() => {
     if (pickedCode === '' || vehicleId !== '') return;
-    const found = byCode.get(pickedCode);
-    if (found !== undefined) setVehicleId(found.id);
-  }, [byCode, pickedCode, vehicleId]);
+    if (registry.data === undefined) return;
+    const found = registry.data.items.find((v) => v.code === pickedCode && v.inWorkshop !== true);
+    // No active car carries it, or it is already in a workshop: let it go, so the box reads empty
+    // rather than holding a code the check-in cannot take.
+    if (found === undefined) setPickedCode('');
+    else setVehicleId(found.id);
+  }, [registry.data, pickedCode, vehicleId]);
 
   const expected = useExpectedReading(
     vehicleId,
@@ -351,19 +314,17 @@ export const CheckInDialog = ({
     >
       <div className="space-y-4">
         <Field label={t('fleet.odometer.fields.vehicle')} required>
-          <Combobox
-            value={codeOf(vehicleId)}
-            options={codeOptions}
-            onChange={(code) => {
-              setVehicleId(byCode.get(code)?.id ?? '');
-              setPickedCode(byCode.get(code) === undefined ? '' : code);
+          <VehicleCodeCombobox
+            value={vehicleId}
+            onChange={(id) => {
+              setVehicleId(id);
+              setPickedCode('');
             }}
-            onSearch={setCodeQuery}
+            excludeInWorkshop
+            // A carried-in code is named from the first paint, while it is being resolved.
+            pendingCode={pickedCode}
             placeholder={t('fleet.odometer.vehiclePlaceholder')}
-            emptyText={
-              vehicles.isFetching ? t('common.loading') : t('fleet.odometer.vehicleNotFound')
-            }
-            clearLabel={t('common.clear')}
+            emptyText={t('fleet.odometer.vehicleNotFound')}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">

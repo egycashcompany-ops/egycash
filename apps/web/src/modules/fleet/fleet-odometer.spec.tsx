@@ -742,31 +742,29 @@ describe('the filter bar', () => {
     expect(bar, 'the driver picker is medium').toContain('w-56');
   });
 
-  it('asks the REGISTRY for codes matching what was typed, not the first page of it', () => {
-    // The property is the same one this page has always had; it moved into the control every
-    // screen now shares, so it is asserted where it lives — once, instead of once per page.
+  it('offers EVERY car, narrowed by the code still being typed', () => {
+    // «اكواد السيارات … لازم تظهر كلها من شاشة السيارات». The control every screen shares loads the
+    // whole registry and narrows it here — it used to search the server for the first fifty codes.
     const source = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
-    // What reaches the registry is the fragment still being TYPED, not the whole box: a box
-    // reading `150 - ` would otherwise search for a car called `150 - ` and answer "no results"
-    // over a half-written list. `consume` is what separates the two — see its own spec.
+    // What narrows the list is the fragment still being TYPED, not the whole box: a box reading
+    // `150 - ` would otherwise look for a car called `150 - ` and answer "no results" over a
+    // half-written list. `consume` is what separates the two — see its own spec.
     expect(source).toContain('onSearch={consume}');
-    // And it asks about the CODE. This read `search: search.trim()` until the whole application
-    // was made to name a car by its code: Fleet's `search` spans plate, chassis and motor too, so
-    // a control labelled with the code offered whichever car carried the typed text in any of the
-    // four — under a code nobody had written. `vehicleCodeSearchQuery` is that query, one helper
-    // for every car box in the application; it is proven against the endpoint's own schema in the
-    // contracts suite, and the census in `vehicle-code-selectors.spec.ts` holds the other boxes.
-    expect(source).toContain('vehicleCodeSearchQuery(search)');
+    expect(source).toContain('useAllVehicles({ anyStatus: true }, remote)');
+    // By the CODE alone — never Fleet's `search`, which spans plate, chassis and motor too.
+    expect(source).not.toContain('vehicleCodeSearchQuery(');
     expect(source).not.toContain('search: search.trim()');
     expect(source).not.toContain('MAX_PAGE_SIZE');
   });
 
-  it('builds its options from the search, with the selection kept reachable', () => {
+  it('builds its options from the whole registry, with the selection kept reachable', () => {
     // `MultiSelect` renders its list only once opened, and the node-env suite cannot open it — so
-    // the rule itself lives in `vehicleCodeOptions` and is proven in its own spec. What belongs
-    // here is that the control feeds it the search's answer and the current selection, and no more.
+    // the rule itself lives in `registryVehicleCodeOptions` and is proven in its own spec. What
+    // belongs here is that the control feeds it the registry, the typed fragment and the selection.
     const source = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
-    expect(source).toContain('vehicleCodeOptions(vehicles.data?.items ?? [], value)');
+    expect(source).toContain(
+      'registryVehicleCodeOptions(vehicles.data?.items ?? [], search, value)',
+    );
   });
 
   it('renders that one control rather than assembling its own', () => {
@@ -1118,39 +1116,59 @@ describe('recording a reading', () => {
     expect(source).not.toContain('VehicleSelect');
   });
 
-  it('searches the REGISTRY for a code, so any car in the fleet can be recorded', () => {
-    // The blocker: the options were one page of the registry filtered in the browser, so a car
-    // past `MAX_PAGE_SIZE` by code could not be picked — and therefore could not have a reading
-    // recorded at all. The typed query now goes to the server.
-    expect(source).toContain('onSearch={setCodeQuery}');
-    // The CODE, not the four-identifier `search` this asserted before — see the filter bar's own
-    // case above for why a box labelled with the code must never ask the wider question.
-    expect(source).toContain('vehicleCodeSearchQuery(codeQuery)');
-    expect(source).not.toContain('search: codeQuery.trim()');
-    expect(source).not.toContain('pageSize: MAX_PAGE_SIZE');
-    // A picked code outlives the search that found it, or the box blanks as the operator types on.
-    expect(source).toContain('pickedCode');
+  it('offers EVERY car in the fleet, so any car can be recorded', () => {
+    // The options were once one page of the registry, then a twenty-car server shortlist: either
+    // way clicking the box listed only some codes. The shared picker loads the whole registry —
+    // every lifecycle status, as this dialog has always offered — and narrows it as the operator
+    // types.
+    expect(source).toMatch(/<VehicleCodeCombobox[\s\S]*?anyStatus/u);
+    expect(source).not.toContain('useVehicles(');
+    expect(source).not.toContain('vehicleCodeSearchQuery(');
+    expect(source).not.toMatch(/pageSize\s*:/u);
+    // A code carried in from the filter is held until the registry turns it into an id.
+    expect(source).toContain('pendingCode={pickedCode}');
   });
 
   it('SHOWS a carried-over code straight away, however far down the registry its car sits', () => {
     // The code is shown from the first paint, before the registry has answered for it — an effect
     // runs after the paint, so seeding only there would flash an empty vehicle box. Rendered here
-    // with the registry answering about a DIFFERENT car, the way a shortlist would.
-    for (const code of ['150', 'ZZ0104']) {
-      const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-      qc.setQueryData(
-        VEHICLE_SEARCH_KEY(),
-        pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
-      );
+    // before the registry has arrived, and with a registry that carries the car.
+    const shown = (qc: QueryClient, code: string): string | undefined => {
       const html = renderDialog({ qc, initialVehicleCode: code });
       const box = html.slice(html.indexOf('role="combobox"'));
-      expect(/value="([^"]*)"/.exec(box)?.[1], `${code} is shown`).toBe(code);
+      return /value="([^"]*)"/.exec(box)?.[1];
+    };
+    for (const code of ['150', 'ZZ0104']) {
+      const before = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      expect(shown(before, code), `${code} is shown before the registry arrives`).toBe(code);
+      const carrying = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      carrying.setQueryData(
+        listKey('fleet', 'vehicles', { whole: true, anyStatus: true }),
+        pageOf([{ id: VEHICLE_ID, code, plateNumber: `س ص ${code}` }]),
+      );
+      expect(shown(carrying, code), `${code} is shown once the registry carries it`).toBe(code);
     }
   });
 
+  it('does NOT hold a carried-over code that no car in the registry carries', () => {
+    // A code from a stale link names no car: the box reads empty rather than showing a value the
+    // save would refuse with no reason given.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(
+      listKey('fleet', 'vehicles', { whole: true, anyStatus: true }),
+      pageOf([{ id: VEHICLE_ID, code: '151', plateNumber: 'س ص 151' }]),
+    );
+    const html = renderDialog({ qc, initialVehicleCode: '999' });
+    const box = html.slice(html.indexOf('role="combobox"'));
+    expect(/value="([^"]*)"/.exec(box)?.[1]).toBe('');
+    expect(source).toContain("if (found === undefined) setPickedCode('');");
+  });
+
   it('cannot save a code the registry does not carry', () => {
-    // `Combobox` only ever commits a value that IS an option, and an unmatched code maps to ''.
-    expect(source).toContain("setVehicleId(byCode.get(code)?.id ?? '')");
+    // `Combobox` only ever commits a value that IS an option, and the picker hands back the car's
+    // id — an unmatched code maps to '', and an empty car cannot be saved.
+    const picker = readFileSync(join(HERE, 'components/VehicleCodeCombobox.tsx'), 'utf8');
+    expect(picker).toContain("const id = code === '' ? '' : (byCode.get(code) ?? '');");
     expect(source).toContain("vehicleId !== ''");
   });
 

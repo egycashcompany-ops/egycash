@@ -627,14 +627,15 @@ describe('the filter bar', () => {
     expect(source).not.toMatch(/w-36[\s\S]{0,80}shrink-0/);
   });
 
-  it('offers the vehicle codes as a SEARCH, never as a page of the registry', () => {
-    // Now the shared control's property — one implementation for the six screens that filter by
-    // car, so the page asserts that it renders it rather than re-proving what it no longer owns.
+  it('offers EVERY car in the code filter, never a page or a shortlist of the registry', () => {
+    // The shared control's property — one implementation for every screen that filters by car, so
+    // the page asserts that it renders it rather than re-proving what it no longer owns.
     const page = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(page).toContain('<VehicleCodeFilter');
     const control = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
     expect(control).toContain('onSearch={consume}');
-    expect(control).toContain('vehicleCodeOptions');
+    expect(control).toContain('useAllVehicles({ anyStatus: true }, remote)');
+    expect(control).toContain('registryVehicleCodeOptions(');
   });
 
   it('resets to page 1 when a filter changes, and not when the page does', () => {

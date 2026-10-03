@@ -119,7 +119,6 @@ export const FuelCardDialog = ({
             <VehicleCodeCombobox
               value={vehicleId}
               onChange={setVehicleId}
-              wholeRegistry
               ariaLabel={t('fleet.odometer.columns.vehicle')}
               placeholder={t('fleet.accidents.vehiclePlaceholder')}
               testId="fuel-card-vehicle"

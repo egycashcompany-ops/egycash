@@ -17,14 +17,31 @@
 // Pure: no database, no service. The boot step (`translateCatalogEnglishNames`) and the two write
 // paths (catalog items, vehicle types) all ask this one function.
 
-const ARABIC_LETTER = /[ء-يٮ-ۓۺ-ۿ]/u;
+import { FLEET_VOCABULARY_PAIRS } from '../go-live/vocabulary-names';
+
+/**
+ * Arabic letters, as a pattern source the boot step's database query reuses — the base block and
+ * the presentation forms (Arabic copied out of a PDF arrives as those, and is still Arabic). The
+ * escapes are resolved by the string itself, so the pattern holds the letters: the database's
+ * regex engine does not read `\u` escapes.
+ */
+export const ARABIC_LETTER_SOURCE =
+  '[\u0621-\u064A\u066E-\u06D3\u06FA-\u06FF\uFB50-\uFDFF\uFE70-\uFEFC]';
+const ARABIC_LETTER = new RegExp(ARABIC_LETTER_SOURCE, 'u');
+const ARABIC_LETTERS = new RegExp(ARABIC_LETTER_SOURCE, 'gu');
 
 /** Does this text carry an Arabic letter — the test an English name must pass. */
 export const hasArabicLetters = (text: string): boolean => ARABIC_LETTER.test(text);
 
+/**
+ * The letters as they are typed: presentation forms back to their base letters (NFKC), and the
+ * tatweel that only stretches a word («صيانـة») dropped.
+ */
+const plain = (name: string): string => name.normalize('NFKC').replace(/ـ/gu, '');
+
 /** The lookup key: hamza forms, taa marbuta, alef maqsura and spacing folded flat. */
 const keyOf = (name: string): string =>
-  name
+  plain(name)
     .replace(/[آأإٱ]/gu, 'ا')
     .replace(/[ً-ٰٟ]/gu, '')
     .replace(/ة/gu, 'ه')
@@ -60,7 +77,7 @@ export const FLEET_TRANSLATIONS: Readonly<Record<string, string>> = {
   'نقل اموال': 'Cash transport',
   // Workshops and work types
   'تكنو بوش': 'Techno Bosch',
-  صيانه: 'Maintenance',
+  صيانه: 'Periodic maintenance',
   // Driver job grades
   سائق: 'Driver',
   'سائق أ': 'Driver A',
@@ -124,18 +141,29 @@ const LETTERS: Readonly<Record<string, string>> = {
   پ: 'p',
   چ: 'ch',
   ڤ: 'v',
+  ی: 'y',
+  ې: 'y',
+  ک: 'k',
+  گ: 'g',
+  ۀ: 'h',
+  ە: 'h',
 };
 
 /** Arabic letters spelt in Latin ones, word by word, each word capitalised. */
 export const transliterate = (ar: string): string =>
-  ar
+  plain(ar)
     .replace(/[ً-ٰٟ]/gu, '')
     .split(/\s+/u)
+    .map((word) =>
+      // A letter with no Latin spelling here is dropped rather than kept: an English name must not
+      // carry Arabic, or its own box would refuse it.
+      [...word]
+        .map((ch) => LETTERS[ch] ?? ch)
+        .join('')
+        .replace(ARABIC_LETTERS, ''),
+    )
     .filter((word) => word !== '')
-    .map((word) => {
-      const latin = [...word].map((ch) => LETTERS[ch] ?? ch).join('');
-      return latin.charAt(0).toUpperCase() + latin.slice(1);
-    })
+    .map((latin) => latin.charAt(0).toUpperCase() + latin.slice(1))
     .join(' ');
 
 /**
@@ -144,7 +172,7 @@ export const transliterate = (ar: string): string =>
  */
 export const englishName = (
   ar: string,
-  known: Iterable<readonly [string, string]> = [],
+  known: Iterable<readonly [string, string]> = FLEET_VOCABULARY_PAIRS,
 ): string => {
   const key = keyOf(ar);
   for (const [arabic, english] of known) {
@@ -159,8 +187,15 @@ export const englishName = (
 /**
  * A name as it may be STORED: its English half kept when it is English, translated when it still
  * carries Arabic letters (an import, or a part typed once into one box and saved as both halves).
+ *
+ * Only an ARABIC name is translated from. Halves saved the wrong way round (a Latin «Arabic» and an
+ * Arabic «English») are left alone: rebuilding the English from the Latin half would overwrite the
+ * only Arabic the row has.
  */
 export const withEnglishName = <T extends { ar: string; en: string }>(
   name: T,
-  known: Iterable<readonly [string, string]> = [],
-): T => (hasArabicLetters(name.en) ? { ...name, en: englishName(name.ar, known) } : name);
+  known: Iterable<readonly [string, string]> = FLEET_VOCABULARY_PAIRS,
+): T =>
+  hasArabicLetters(name.en) && hasArabicLetters(name.ar)
+    ? { ...name, en: englishName(name.ar, known) }
+    : name;

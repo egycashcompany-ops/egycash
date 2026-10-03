@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   applyInputChange,
   applyInputRule,
+  caretAfterNormalise,
+  caretAfterRefusal,
   insertedText,
   inputRuleReason,
   normalizeForRule,
@@ -90,5 +92,45 @@ describe('an edit to a value saved before the rule existed', () => {
       value: null,
       reason: 'englishOnly',
     });
+  });
+});
+
+describe('what rides along on copied text', () => {
+  it('direction marks around a copied phone number or amount are not letters', () => {
+    // WhatsApp on an Arabic phone wraps a number in LRE…PDF; a PDF adds LRM/RLM.
+    expect(applyInputRule('phone', '\u202A+20 10 1234 5678\u202C')).toEqual({
+      value: '+201012345678',
+      reason: null,
+    });
+    expect(applyInputRule('integer', '\u200F48213').value).toBe('48213');
+    expect(applyInputRule('decimal', '\u202A1,250.50\u202C').value).toBe('1250.50');
+    expect(applyInputRule('digits', '\u2066\u20661234 5678\u2069').value).toBe('1234 5678');
+  });
+
+  it('keeps the joiners an Arabic name is shaped with', () => {
+    expect(applyInputRule('arabic', 'عبد\u200Cالله').value).toBe('عبد\u200Cالله');
+  });
+
+  it('Arabic copied out of a PDF (presentation forms) is still Arabic', () => {
+    expect(applyInputRule('english', '\uFED3\uFEE0\uFED8\uFEAE').reason).toBe('englishOnly');
+    expect(applyInputRule('arabic', '\uFED3\uFEE0\uFED8\uFEAE').reason).toBeNull();
+  });
+});
+
+describe('where the caret goes', () => {
+  it('after a refused keystroke, where the user was typing', () => {
+    // «WDB|9066» + «ء» refused: the caret stays after WDB, not at the end.
+    expect(caretAfterRefusal(4, 8, 7)).toBe(3);
+    // A refused paste of five characters at the start.
+    expect(caretAfterRefusal(5, 12, 7)).toBe(0);
+    expect(caretAfterRefusal(9, 8, 7), 'never past the end').toBe(7);
+  });
+
+  it('after a rewritten keystroke, after the same characters', () => {
+    // «48|213», typed «٥» → «48٥213» rewritten «485213»: the caret follows the 5.
+    expect(caretAfterNormalise('integer', '48٥213', 3, '485213')).toBe(3);
+    // A grouping comma typed mid-number is dropped: the caret does not move past the next digit.
+    expect(caretAfterNormalise('integer', '48,213', 3, '48213')).toBe(2);
+    expect(caretAfterNormalise('phone', '0100 123', 5, '0100123')).toBe(4);
   });
 });

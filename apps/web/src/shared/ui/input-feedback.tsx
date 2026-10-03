@@ -45,6 +45,11 @@ export const useInputFeedback = (): {
       else if (element !== null) {
         element.setCustomValidity(message);
         element.reportValidity();
+        // The bubble is only a message: the box still holds its last good value. Left set, the
+        // custom validity would also block the form around it from submitting — so it goes as
+        // soon as the user moves on (Save blurs the box first; Enter is a keydown first).
+        element.addEventListener('blur', () => clear(element), { once: true });
+        element.addEventListener('keydown', () => clear(element), { once: true });
       }
       if (timer.current !== null) clearTimeout(timer.current);
       timer.current = setTimeout(() => clear(element), SHOWN_MS);

@@ -18,6 +18,8 @@ import {
 import { cn } from '../lib/cn';
 import {
   applyInputChange,
+  caretAfterNormalise,
+  caretAfterRefusal,
   inputRuleAttributes,
   type InputRule,
   type InputRuleReason,
@@ -175,18 +177,35 @@ const useRuledControl = <E extends HTMLInputElement | HTMLTextAreaElement>(
   const why = (reason: InputRuleReason): string => t(`common.input.${reason}`);
   const before = (): string =>
     typeof value === 'string' || typeof value === 'number' ? String(value) : accepted.current;
+  /** Put the caret back — writing a value moves it to the end. */
+  const place = (element: E, at: number): void => {
+    try {
+      element.setSelectionRange(at, at);
+    } catch {
+      // A box with no caret to place.
+    }
+  };
   return {
     flash: feedback.flash,
     onChange: (event: ChangeEvent<E>): void => {
       const element = event.currentTarget;
-      const result = applyInputChange(rule, before(), element.value);
+      const typed = element.value;
+      const caret = element.selectionStart ?? typed.length;
+      const result = applyInputChange(rule, before(), typed);
       if (result.reason !== null) {
-        // Refused: the caller is never told, so the controlled value stays what it was.
+        // Refused: the caller is never told, so the controlled value stays what it was — written
+        // back here, with the caret where the user was typing, so React finds nothing to restore.
+        const kept = before();
+        element.value = kept;
+        place(element, caretAfterRefusal(caret, typed.length, kept.length));
         feedback.show(element, why(result.reason));
         return;
       }
       feedback.clear(element);
-      if (result.value !== element.value) element.value = result.value;
+      if (result.value !== typed) {
+        element.value = result.value;
+        place(element, caretAfterNormalise(rule, typed, caret, result.value));
+      }
       accepted.current = result.value;
       onChange?.(event);
     },

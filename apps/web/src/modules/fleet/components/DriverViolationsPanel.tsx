@@ -276,7 +276,11 @@ export const DriverViolationsPanel = ({
         : { driverEmployeeId: driverFilter.employeeIds.join(',') }),
       // «مجهول» in the same box — ORed with the drivers on the server.
       ...(driverFilter.unknown ? { unknownDriver: 'true' } : {}),
-      ...(amount.trim() === '' ? {} : { amount: amount.trim() }),
+      // A lone «.» is on its way to «.5»: it filters nothing until a digit follows, rather than
+      // reaching the server as a number it cannot read.
+      ...(amount.trim() === '' || !Number.isFinite(Number(amount.trim()))
+        ? {}
+        : { amount: amount.trim() }),
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),

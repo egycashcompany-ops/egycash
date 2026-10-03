@@ -20,7 +20,7 @@ import {
   separatorDelete,
   typedBeforeCaret,
 } from '../lib/money-input';
-import { applyInputRule } from '../lib/input-rules';
+import { applyInputRule, caretAfterRefusal, INVISIBLE_MARKS } from '../lib/input-rules';
 import { useT } from '../../platform/localization/useT';
 import { Input, type InputProps } from './form';
 import { useInputFeedback } from './input-feedback';
@@ -83,9 +83,16 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
         data-input-rule="decimal"
         onChange={(event) => {
           const element = event.currentTarget;
-          if (!AMOUNT_CHARACTERS.test(element.value)) {
+          // Direction marks copied along with a number are not letters; `sanitizeAmount` drops them.
+          if (!AMOUNT_CHARACTERS.test(element.value.replace(INVISIBLE_MARKS, ''))) {
             feedback.show(element, t('common.input.numbersOnly'));
-            element.value = groupAmount(value);
+            // Back to what it held, with the caret where the user was typing — writing a value
+            // moves it to the end, and the next digit would land there.
+            const shown = groupAmount(value);
+            const typed = element.value.length;
+            const at = caretAfterRefusal(element.selectionStart ?? typed, typed, shown.length);
+            element.value = shown;
+            element.setSelectionRange(at, at);
             return;
           }
           feedback.clear(element);

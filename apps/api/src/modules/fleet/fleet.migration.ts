@@ -13,9 +13,12 @@
 import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { FleetCatalogItemModel } from './catalogs/catalog-item.model';
-import { withEnglishName } from './catalogs/catalog-english';
+import {
+  ARABIC_LETTER_SOURCE,
+  hasArabicLetters,
+  withEnglishName,
+} from './catalogs/catalog-english';
 import { FleetVehicleTypeModel } from './vehicle-types/vehicle-type.model';
-import { FLEET_VOCABULARY } from './go-live/vocabulary';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
 import { FleetDriverProfileModel } from './driver-profiles/driver-profile.model';
 import { FleetOdometerLogModel } from './odometer/odometer.model';
@@ -233,21 +236,31 @@ export const migrateDriverSpecializations = async (): Promise<{
 export const translateCatalogEnglishNames = async (): Promise<{
   catalog: number;
   types: number;
+  swapped: number;
 }> => {
-  const known = FLEET_VOCABULARY.flatMap((list) =>
-    list.names.map((name) => [name.ar, name.en] as const),
-  );
-  const arabicInEnglish = { 'name.en': { $regex: '[\u0621-\u064A]' } };
+  const arabicInEnglish = { 'name.en': { $regex: ARABIC_LETTER_SOURCE } };
   let catalog = 0;
+  let types = 0;
+  // Halves saved the wrong way round — a Latin «Arabic» beside an Arabic «English». Translating
+  // from the Latin half would overwrite the only Arabic the row has, so these are left for a person
+  // and named in the log instead.
+  const swapped: string[] = [];
   for (const item of await FleetCatalogItemModel.find(arabicInEnglish, { name: 1 }).lean()) {
-    const name = withEnglishName(item.name, known);
+    if (!hasArabicLetters(item.name.ar)) {
+      swapped.push(String(item._id));
+      continue;
+    }
+    const name = withEnglishName(item.name);
     if (name.en === item.name.en) continue;
     await FleetCatalogItemModel.updateOne({ _id: item._id }, { $set: { 'name.en': name.en } });
     catalog += 1;
   }
-  let types = 0;
   for (const type of await FleetVehicleTypeModel.find(arabicInEnglish, { name: 1 }).lean()) {
-    const name = withEnglishName(type.name, known);
+    if (!hasArabicLetters(type.name.ar)) {
+      swapped.push(String(type._id));
+      continue;
+    }
+    const name = withEnglishName(type.name);
     if (name.en === type.name.en) continue;
     await FleetVehicleTypeModel.updateOne({ _id: type._id }, { $set: { 'name.en': name.en } });
     types += 1;
@@ -255,7 +268,13 @@ export const translateCatalogEnglishNames = async (): Promise<{
   if (catalog + types > 0) {
     logger.info({ catalog, types }, 'fleet: English names translated from their Arabic');
   }
-  return { catalog, types };
+  if (swapped.length > 0) {
+    logger.warn(
+      { ids: swapped },
+      'fleet: catalog names whose two halves look swapped — left as they are',
+    );
+  }
+  return { catalog, types, swapped: swapped.length };
 };
 
 /**

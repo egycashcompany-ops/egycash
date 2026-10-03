@@ -21,11 +21,20 @@ export type InputRule = 'integer' | 'decimal' | 'digits' | 'phone' | 'arabic' | 
 export type InputRuleReason = 'numbersOnly' | 'arabicOnly' | 'englishOnly' | 'plateOnly';
 
 const LATIN_LETTER = /[A-Za-z]/u;
-// Arabic LETTERS only — the block also holds the Arabic-Indic digits, which are not a script.
-const ARABIC_LETTER = /[ء-يٮ-ۓۺ-ۿ]/u;
+// Arabic LETTERS only — the block also holds the Arabic-Indic digits, which are not a script. The
+// presentation forms are included: Arabic copied out of a PDF arrives as them, and is still Arabic.
+const ARABIC_LETTER = /[\u0621-\u064A\u066E-\u06D3\u06FA-\u06FF\uFB50-\uFDFF\uFE70-\uFEFC]/u;
+
+/**
+ * Direction marks and other invisible characters that ride along on copied text — a phone number
+ * copied from WhatsApp on an Arabic phone arrives wrapped in them. They are not part of any value,
+ * so they are dropped before anything is checked. The joiners (U+200C/U+200D) are not in this list:
+ * they shape Arabic letters and belong to the name.
+ */
+export const INVISIBLE_MARKS = /[\u061C\u200B\u200E\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/gu;
 
 export const normalizeForRule = (rule: InputRule, raw: string): string => {
-  const ascii = asciiDigits(raw);
+  const ascii = asciiDigits(raw.replace(INVISIBLE_MARKS, ''));
   switch (rule) {
     case 'integer':
       // A pasted «48,213» or «48 213» is the number 48213.
@@ -112,6 +121,26 @@ export const applyInputChange = (
     ? { value: normalizeForRule(rule, after), reason: null }
     : { value: null, reason };
 };
+
+/**
+ * Where the caret belongs when an edit is REFUSED and the box goes back to what it held: where the
+ * user was typing, less what the refused edit added. Writing a value moves the caret to the end,
+ * and the next character would then land there instead of where the user is looking.
+ */
+export const caretAfterRefusal = (caret: number, typedLength: number, keptLength: number): number =>
+  Math.max(0, Math.min(keptLength, caret - (typedLength - keptLength)));
+
+/**
+ * Where the caret belongs when an accepted edit was rewritten canonical (١٢ → 12, a grouping comma
+ * dropped): after the same characters it followed. Normalisation maps or drops characters one at a
+ * time, so the normalised text before the caret is exactly the prefix of the normalised value.
+ */
+export const caretAfterNormalise = (
+  rule: InputRule,
+  typed: string,
+  caret: number,
+  normalised: string,
+): number => Math.min(normalised.length, normalizeForRule(rule, typed.slice(0, caret)).length);
 
 /** How a field of this kind should ask the on-screen keyboard, and which way it reads. */
 export const inputRuleAttributes = (

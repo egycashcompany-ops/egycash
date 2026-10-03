@@ -6,9 +6,11 @@
 // user concludes the list is broken.
 //
 // Shared so every search box in the app agrees on what "matches" means — one definition, not one
-// per control.
+// per control. Digits fold too: «١٥٠» and «150» are the same number whichever keyboard typed it.
+import { asciiDigits } from '@ecms/contracts';
+
 export const fold = (value: string): string =>
-  value
+  asciiDigits(value)
     .trim()
     .toLowerCase()
     .replace(/[ً-ْٰ]/g, '')

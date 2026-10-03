@@ -7192,6 +7192,9 @@ describe('fleet catalogs — licence class, operation, insurance company', () =>
     await FleetCatalogItemModel.updateOne({ _id: id }, { $set: { 'name.en': 'ميكروباص' } });
     await FleetVehicleTypeModel.updateOne({ _id: suzuki }, { $set: { 'name.en': 'سوزوكى' } });
     const typed = await mkCatalogItem('operation', 'تشغيل مكتوب', 'Typed by hand');
+    // Halves saved the wrong way round: the only Arabic is in the English half, so it is left.
+    const swapped = await mkCatalogItem('operation', 'Bosch swapped', 'Placeholder');
+    await FleetCatalogItemModel.updateOne({ _id: swapped }, { $set: { 'name.en': 'بوش' } });
     const first = await translateCatalogEnglishNames();
     expect(first.catalog).toBeGreaterThanOrEqual(1);
     expect(first.types).toBeGreaterThanOrEqual(1);
@@ -7202,7 +7205,13 @@ describe('fleet catalogs — licence class, operation, insurance company', () =>
     expect((await FleetVehicleTypeModel.findById(suzuki).lean())?.name.en).toBe('Suzuki');
     // An English name somebody typed is never touched, and a second boot finds nothing to do.
     expect((await FleetCatalogItemModel.findById(typed).lean())?.name.en).toBe('Typed by hand');
-    expect(await translateCatalogEnglishNames()).toEqual({ catalog: 0, types: 0 });
+    expect(first.swapped, 'the swapped row is named, not rewritten').toBeGreaterThanOrEqual(1);
+    expect((await FleetCatalogItemModel.findById(swapped).lean())?.name).toEqual({
+      ar: 'Bosch swapped',
+      en: 'بوش',
+    });
+    const second = await translateCatalogEnglishNames();
+    expect({ catalog: second.catalog, types: second.types }).toEqual({ catalog: 0, types: 0 });
   });
 
   it('only a workType may count for the alarm — the new kinds cannot claim it', async () => {

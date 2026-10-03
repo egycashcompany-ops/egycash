@@ -4,6 +4,7 @@
 import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
+  FLEET_CUSTODY_SOURCES,
   type FleetCustodyMovementDto,
   type FleetCustodyVehicleRowDto,
   type Locale,
@@ -15,7 +16,8 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Badge } from '../../../shared/ui/Badge';
-import { Input, Select } from '../../../shared/ui/form';
+import { Input } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate, formatMoney } from '../../../shared/lib/format';
@@ -46,7 +48,7 @@ export const CustodyPage = (): JSX.Element => {
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
-  const source = sp.get('source') ?? '';
+  const sources = csv(sp.get('source'));
   const driver = sp.get('driver') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
   const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
@@ -62,14 +64,14 @@ export const CustodyPage = (): JSX.Element => {
     setSp(next);
   };
   const hasActiveFilters =
-    from !== '' || to !== '' || vehicleCodes.length > 0 || source !== '' || driver !== '';
+    from !== '' || to !== '' || vehicleCodes.length > 0 || sources.length > 0 || driver !== '';
 
   const filters = useMemo(
     () => ({
       from: from || undefined,
       to: to || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
-      source: source || undefined,
+      source: sources.length > 0 ? sources : undefined,
       driver: driver || undefined,
     }),
     [paramsKey],
@@ -312,19 +314,19 @@ export const CustodyPage = (): JSX.Element => {
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
-          <Select
-            aria-label={t('fleet.custody.columns.source')}
-            title={t('fleet.custody.columns.source')}
-            value={source}
-            onChange={(e) => patch({ source: e.target.value || null })}
-            className="w-auto shrink-0"
-          >
-            <option value="">{t('fleet.custody.filters.anySource')}</option>
-            <option value="dealership">{t('fleet.custody.source.dealership')}</option>
-            <option value="fuel">{t('fleet.custody.source.fuel')}</option>
-            <option value="tyres">{t('fleet.custody.source.tyres')}</option>
-            <option value="wash">{t('fleet.custody.source.wash')}</option>
-          </Select>
+          {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — four sources, so several at once. */}
+          <MultiSelect
+            clearable
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.custody.columns.source')}
+            options={FLEET_CUSTODY_SOURCES.map((value) => ({
+              value,
+              label: t(`fleet.custody.source.${value}`),
+            }))}
+            value={sources}
+            onChange={(next) => patch({ source: next.length === 0 ? null : next.join(',') })}
+          />
           <Input
             aria-label={t('fleet.receipts.columns.driver')}
             title={t('fleet.receipts.columns.driver')}

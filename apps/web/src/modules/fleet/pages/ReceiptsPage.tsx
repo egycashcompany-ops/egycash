@@ -3,7 +3,7 @@
 // between the filters and the table; print and Excel are icons on the page's side.
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { type FleetReceiptDto, type Locale } from '@ecms/contracts';
+import { FLEET_RECEIPT_KINDS, type FleetReceiptDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
@@ -15,6 +15,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Input, Select } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, TrashIcon } from '../../../shared/ui/icons';
@@ -79,7 +80,7 @@ export const ReceiptsPage = (): JSX.Element => {
   const from = sp.get('from') ?? '';
   const to = sp.get('to') ?? '';
   const vehicleCodes = csv(sp.get('vehicleCodes'));
-  const kind = sp.get('kind') ?? '';
+  const kinds = csv(sp.get('kind'));
   const source = sp.get('source') ?? '';
   const driver = sp.get('driver') ?? '';
   const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
@@ -104,7 +105,7 @@ export const ReceiptsPage = (): JSX.Element => {
     from !== '' ||
     to !== '' ||
     vehicleCodes.length > 0 ||
-    kind !== '' ||
+    kinds.length > 0 ||
     source !== '' ||
     driver !== '';
 
@@ -113,7 +114,7 @@ export const ReceiptsPage = (): JSX.Element => {
       from: from || undefined,
       to: to || undefined,
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
-      kind: kind || undefined,
+      kind: kinds.length > 0 ? kinds : undefined,
       source: source || undefined,
       driver: driver || undefined,
     }),
@@ -410,18 +411,19 @@ export const ReceiptsPage = (): JSX.Element => {
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
-          <Select
-            aria-label={t('fleet.receipts.columns.kind')}
-            title={t('fleet.receipts.columns.kind')}
-            value={kind}
-            onChange={(e) => patch({ kind: e.target.value || null })}
-            className="w-auto shrink-0"
-          >
-            <option value="">{t('fleet.receipts.filters.anyKind')}</option>
-            <option value="fuel">{t('fleet.receipts.kind.fuel')}</option>
-            <option value="tyres">{t('fleet.receipts.kind.tyres')}</option>
-            <option value="wash">{t('fleet.receipts.kind.wash')}</option>
-          </Select>
+          {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three kinds, so several at once. */}
+          <MultiSelect
+            clearable
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.receipts.columns.kind')}
+            options={FLEET_RECEIPT_KINDS.map((value) => ({
+              value,
+              label: t(`fleet.receipts.kind.${value}`),
+            }))}
+            value={kinds}
+            onChange={(next) => patch({ kind: next.length === 0 ? null : next.join(',') })}
+          />
           <Select
             aria-label={t('fleet.receipts.columns.source')}
             title={t('fleet.receipts.columns.source')}

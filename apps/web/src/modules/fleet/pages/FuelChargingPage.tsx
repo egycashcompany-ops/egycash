@@ -11,6 +11,7 @@ import { useMySettings } from '../../../platform/settings/settings-api';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Button } from '../../../shared/ui/Button';
 import { Select } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { StatStrip, type StatStripItem } from '../../../shared/ui/StatStrip';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
@@ -38,12 +39,23 @@ import {
   groupByVehicle,
 } from '../components/FuelCardTiles';
 import { saveSheet } from '../lib/fleet-sheet';
+import {
+  CHARGING_STATES,
+  cardsInStates,
+  chargedToday,
+  readChargingStates,
+  type ChargingState,
+} from '../lib/charging-state';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
 
 const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'state'] as const;
+const STATE_LABEL: Record<ChargingState, string> = {
+  requested: 'fleet.fuelCards.filters.requested',
+  charged: 'fleet.fuelCards.filters.chargedToday',
+  low: 'fleet.fuelCards.filters.low',
+};
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * «طلب رصيد»: type an amount and the row colours; ✓ sends it to the card, ✕ takes it back.
@@ -143,7 +155,9 @@ export const FuelChargingPage = (): JSX.Element => {
 
   const vehicleCodes = csv(sp.get('vehicleCodes'));
   const company = sp.get('company') ?? '';
-  const state = sp.get('state') ?? '';
+  const states = readChargingStates(sp.get('state'));
+  // One state the server can narrow by: the totals then count exactly the cards shown, as before.
+  const onlyState = states.length === 1 ? states[0] : undefined;
   const paramsKey = sp.toString();
   const patch = (updates: Record<string, string | null>): void => {
     const next = new URLSearchParams(sp);
@@ -153,7 +167,7 @@ export const FuelChargingPage = (): JSX.Element => {
     }
     setSp(next);
   };
-  const hasActiveFilters = vehicleCodes.length > 0 || company !== '' || state !== '';
+  const hasActiveFilters = vehicleCodes.length > 0 || company !== '' || states.length > 0;
 
   // The colour lines — «قبل ما الرصيد بتاع الفيزا يخلص اقدر ادى انذار احمر واصفر».
   const settings = useMySettings();
@@ -166,18 +180,18 @@ export const FuelChargingPage = (): JSX.Element => {
     () => ({
       vehicleCodes: vehicleCodes.length > 0 ? vehicleCodes : undefined,
       company: company || undefined,
-      requested: state === 'requested' ? true : undefined,
-      balanceBelow: state === 'low' ? yellow : undefined,
+      requested: onlyState === 'requested' ? true : undefined,
+      balanceBelow: onlyState === 'low' ? yellow : undefined,
     }),
     [paramsKey, yellow],
   );
   const { data, isLoading, isError, error, refetch } = useAllFuelCards(filters);
   const summary = useFuelCardSummary(filters);
-  const cards = useMemo(() => {
-    const all = data?.items ?? [];
-    if (state !== 'charged') return all;
-    return all.filter((card) => chargedToday(card));
-  }, [data, state]);
+  // Several states read as ANY of them; the server narrows by one at most, so the rest is done here.
+  const cards = useMemo(
+    () => cardsInStates(data?.items ?? [], states, yellow),
+    [data, paramsKey, yellow],
+  );
   const tiles = useMemo(() => groupByVehicle(cards), [cards]);
   const [transferring, setTransferring] = useState(false);
 
@@ -216,7 +230,7 @@ export const FuelChargingPage = (): JSX.Element => {
     t('fleet.fuelCards.fields.lastCharged'),
   ];
   const rows = () =>
-    (data?.items ?? []).map((card) => [
+    cards.map((card) => [
       card.vehicleCode ?? '',
       t(`fleet.fuelCards.company.${card.company}`),
       card.number,
@@ -301,18 +315,19 @@ export const FuelChargingPage = (): JSX.Element => {
             value={vehicleCodes}
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
-          <Select
-            aria-label={t('fleet.fuelCards.filters.state')}
-            title={t('fleet.fuelCards.filters.state')}
-            value={state}
-            onChange={(e) => patch({ state: e.target.value || null })}
-            className="w-auto shrink-0"
-          >
-            <option value="">{t('fleet.fuelCards.filters.anyState')}</option>
-            <option value="requested">{t('fleet.fuelCards.filters.requested')}</option>
-            <option value="charged">{t('fleet.fuelCards.filters.chargedToday')}</option>
-            <option value="low">{t('fleet.fuelCards.filters.low')}</option>
-          </Select>
+          {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three states, so several at once. */}
+          <MultiSelect
+            clearable
+            className="shrink-0"
+            showSelectedValues
+            label={t('fleet.fuelCards.filters.state')}
+            options={CHARGING_STATES.map((value) => ({
+              value,
+              label: t(STATE_LABEL[value]),
+            }))}
+            value={states}
+            onChange={(next) => patch({ state: next.length === 0 ? null : next.join(',') })}
+          />
           <Select
             aria-label={t('fleet.fuelCards.fields.company')}
             title={t('fleet.fuelCards.fields.company')}
@@ -403,7 +418,3 @@ export const FuelChargingPage = (): JSX.Element => {
     </PageContainer>
   );
 };
-
-/** «الصف يتلون بالاخضر لمدة يوم» — charged within the last 24 hours. */
-const chargedToday = (card: FleetFuelCardDto): boolean =>
-  card.lastChargedAt !== null && Date.now() - new Date(card.lastChargedAt).getTime() <= DAY_MS;

@@ -28,7 +28,12 @@ import {
 } from '@ecms/contracts';
 import mongoose, { Types } from 'mongoose';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
-import { migrateFixedCrewIndex } from '../../src/modules/fleet/fleet.migration';
+import {
+  migrateFixedCrewIndex,
+  translateCatalogEnglishNames,
+} from '../../src/modules/fleet/fleet.migration';
+import { FleetCatalogItemModel } from '../../src/modules/fleet/catalogs/catalog-item.model';
+import { FleetVehicleTypeModel } from '../../src/modules/fleet/vehicle-types/vehicle-type.model';
 import {
   inspectLegacyWorkTypes,
   retireLegacyWorkTypes,
@@ -7162,6 +7167,51 @@ describe('fleet catalogs — licence class, operation, insurance company', () =>
       .send({ isActive: false, version: 0 });
     expect(res.status).toBe(200);
     expect(data<FleetCatalogItemDto>(res).isActive).toBe(false);
+  });
+
+  it('«ترجمهم انت» — an English half that holds Arabic is translated on the way in and at boot', async () => {
+    // On the way in: an import knows one string per name and sends it as both halves.
+    const res = await request(app)
+      .post('/api/v1/fleet/catalog-items')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ kind: 'operation', name: { ar: 'ميكروباص', en: 'ميكروباص' } });
+    expect(res.status).toBe(201);
+    const id = data<FleetCatalogItemDto>(res).id;
+    expect(data<FleetCatalogItemDto>(res).name).toEqual({ ar: 'ميكروباص', en: 'Microbus' });
+
+    // At boot: rows written before this rule, Arabic in the English half, are translated once —
+    // the house's own English first, a transliteration for a name nobody has translated yet.
+    const typeRes = await request(app)
+      .post('/api/v1/fleet/vehicle-types')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: { ar: 'سوزوكى', en: 'سوزوكى' }, maintenanceIntervalKm: 0 });
+    expect(typeRes.status).toBe(201);
+    const suzuki = data<FleetVehicleTypeDto>(typeRes).id;
+    expect(data<FleetVehicleTypeDto>(typeRes).name.en, 'a vehicle type too').toBe('Suzuki');
+
+    await FleetCatalogItemModel.updateOne({ _id: id }, { $set: { 'name.en': 'ميكروباص' } });
+    await FleetVehicleTypeModel.updateOne({ _id: suzuki }, { $set: { 'name.en': 'سوزوكى' } });
+    const typed = await mkCatalogItem('operation', 'تشغيل مكتوب', 'Typed by hand');
+    // Halves saved the wrong way round: the only Arabic is in the English half, so it is left.
+    const swapped = await mkCatalogItem('operation', 'Bosch swapped', 'Placeholder');
+    await FleetCatalogItemModel.updateOne({ _id: swapped }, { $set: { 'name.en': 'بوش' } });
+    const first = await translateCatalogEnglishNames();
+    expect(first.catalog).toBeGreaterThanOrEqual(1);
+    expect(first.types).toBeGreaterThanOrEqual(1);
+    expect((await FleetCatalogItemModel.findById(id).lean())?.name).toEqual({
+      ar: 'ميكروباص',
+      en: 'Microbus',
+    });
+    expect((await FleetVehicleTypeModel.findById(suzuki).lean())?.name.en).toBe('Suzuki');
+    // An English name somebody typed is never touched, and a second boot finds nothing to do.
+    expect((await FleetCatalogItemModel.findById(typed).lean())?.name.en).toBe('Typed by hand');
+    expect(first.swapped, 'the swapped row is named, not rewritten').toBeGreaterThanOrEqual(1);
+    expect((await FleetCatalogItemModel.findById(swapped).lean())?.name).toEqual({
+      ar: 'Bosch swapped',
+      en: 'بوش',
+    });
+    const second = await translateCatalogEnglishNames();
+    expect({ catalog: second.catalog, types: second.types }).toEqual({ catalog: 0, types: 0 });
   });
 
   it('only a workType may count for the alarm — the new kinds cannot claim it', async () => {

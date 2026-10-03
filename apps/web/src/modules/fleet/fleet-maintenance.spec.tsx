@@ -805,11 +805,10 @@ describe('the check-out dialog', () => {
   it('asks for the exit reading, and marks it required', () => {
     const markup = open();
     expect(markup).toContain(t('fleet.maintenance.fields.exitOdometer'));
-    // The label carries the required marker, and the control is a whole-number counter.
-    // Matched by pattern rather than by the literal attribute: the repo's money-input guard scans
-    // every .tsx for that literal, and a spec quoting it reads to the guard as a field.
-    expect(/type=.number./.test(markup), 'a numeric control').toBe(true);
-    expect(markup).toContain('step="1"');
+    // The label carries the required marker, and the control is a whole-number counter: it takes
+    // digits only and refuses anything else with the reason, typed or pasted.
+    expect(markup, 'a whole-number control').toContain('data-input-rule="integer"');
+    expect(markup).toMatch(/inputmode="numeric"/iu);
     expect(markup).toContain('*');
   });
 
@@ -823,9 +822,9 @@ describe('the check-out dialog', () => {
     // It matters more than a saved keystroke: this reading becomes the alarm's baseline, so a
     // digit mistyped while copying it does not stay in this row, it moves the next service.
     const markup = open(visit({ odometerAtService: 120000 }));
-    // The ONE `type="number"` control on this dialog is the exit reading; the slice runs from the
+    // The ONE whole-number control on this dialog is the exit reading; the slice runs from the
     // start of that tag to its close so nothing from a neighbouring field can satisfy the match.
-    const at = markup.indexOf('type="number"');
+    const at = markup.indexOf('data-input-rule="integer"');
     expect(at, 'the numeric control is rendered').toBeGreaterThan(-1);
     const tag = markup.slice(markup.lastIndexOf('<input', at), markup.indexOf('/>', at) + 2);
     expect(tag, 'prefilled, not empty').toContain('value="120000"');

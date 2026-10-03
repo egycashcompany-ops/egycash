@@ -19,6 +19,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../shared/ui/form';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -611,13 +612,11 @@ export const CompanyViolationsPanel = ({
             className="flex-[1.38] basis-0 min-w-[3.5rem]"
           >
             <div className="w-full">
-              <Input
+              <MoneyInput
                 data-company-form="value"
                 aria-label={t('fleet.violations.fields.unitValue')}
                 value={formValue}
-                onChange={(e) => setFormValue(e.target.value)}
-                dir="ltr"
-                inputMode="decimal"
+                onChange={setFormValue}
                 density="tight"
               />
             </div>
@@ -634,8 +633,7 @@ export const CompanyViolationsPanel = ({
                 aria-label={t('fleet.violations.fields.count')}
                 value={formCount}
                 onChange={(e) => setFormCount(e.target.value)}
-                dir="ltr"
-                inputMode="numeric"
+                rule="integer"
                 density="tight"
               />
             </div>

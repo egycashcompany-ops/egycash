@@ -31,6 +31,7 @@ import { splitVehicleCodeList } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
+import { asciiDigits } from '../../../shared/lib/format';
 import { useAllVehicles } from '../api/fleet-queries';
 import { readTypedVehicleCodes } from '../lib/typed-vehicle-codes';
 import { narrowVehicleCodeOptions, registryVehicleCodeOptions } from '../lib/vehicle-code-options';
@@ -87,7 +88,8 @@ export const VehicleCodeFilter = ({
     // `MultiSelect` asks with '' every time it opens: a list loaded a while ago is asked again, so a
     // car registered since — by anyone — is on offer without reloading the page.
     if (raw === '' && remote && vehicles.isStale) void vehicles.refetch();
-    const { chosen, typing } = readTypedVehicleCodes(raw);
+    // A code pasted in Arabic-Indic digits («١٥٠») is the same code (150).
+    const { chosen, typing } = readTypedVehicleCodes(asciiDigits(raw));
     add(chosen);
     setSearch(typing);
   };

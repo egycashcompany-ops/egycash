@@ -399,6 +399,7 @@ export const LicensingPage = (): JSX.Element => {
             value={plate}
             onChange={(e) => patch({ plate: e.target.value || null })}
             textScale="comfortable"
+            rule="plate"
           />
         </div>
         <div className="min-w-[8rem] flex-1">
@@ -408,6 +409,7 @@ export const LicensingPage = (): JSX.Element => {
             value={chassis}
             onChange={(e) => patch({ chassis: e.target.value || null })}
             textScale="comfortable"
+            rule="english"
           />
         </div>
         {/* ONE MONTH, not a pair of dates — «واحد بس بيجيب الشهر بس». A renewal run is a month's

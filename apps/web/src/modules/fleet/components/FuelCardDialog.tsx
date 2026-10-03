@@ -152,7 +152,7 @@ export const FuelCardDialog = ({
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
           <Field label={t('fleet.fuelCards.fields.number')} required>
-            <Input value={number} onChange={(e) => setNumber(e.target.value)} dir="ltr" />
+            <Input value={number} onChange={(e) => setNumber(e.target.value)} rule="digits" />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">

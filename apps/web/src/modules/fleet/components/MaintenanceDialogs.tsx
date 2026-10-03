@@ -348,9 +348,7 @@ export const CheckInDialog = ({
             warning={counterWarningText}
           >
             <Input
-              type="number"
-              min={0}
-              step={1}
+              rule="integer"
               value={odometer}
               onChange={(e) => setOdometer(e.target.value)}
               dir="ltr"
@@ -506,9 +504,7 @@ export const CheckOutDialog = ({
           warning={belowEntry ? undefined : counterWarningText}
         >
           <Input
-            type="number"
-            min={0}
-            step={1}
+            rule="integer"
             value={exitOdometer}
             onChange={(e) => setExitOdometer(e.target.value)}
             error={belowEntry}
@@ -632,9 +628,7 @@ export const MaintenanceEditDialog = ({
           warning={counterWarningText}
         >
           <Input
-            type="number"
-            min={0}
-            step={1}
+            rule="integer"
             value={odometer}
             onChange={(e) => setOdometer(e.target.value)}
             dir="ltr"

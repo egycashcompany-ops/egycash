@@ -20,10 +20,18 @@ import {
   separatorDelete,
   typedBeforeCaret,
 } from '../lib/money-input';
-import { Input } from './form';
+import { applyInputRule, caretAfterRefusal, INVISIBLE_MARKS } from '../lib/input-rules';
+import { useT } from '../../platform/localization/useT';
+import { Input, type InputProps } from './form';
+import { useInputFeedback } from './input-feedback';
+
+/** Anything an amount can be written with — digits of either script, points and separators. */
+const AMOUNT_CHARACTERS = /^[\d٠-٩۰-۹.,٫٬\s]*$/u;
 
 export interface MoneyInputProps
-  extends Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> {
+  extends
+    Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>,
+    Pick<InputProps, 'density' | 'textScale'> {
   /** The canonical amount — `''`, `'1000'`, `'1000.5'`. Never grouped. */
   value: string;
   /** Receives the canonical amount, so the caller stores exactly what it stored before. */
@@ -32,8 +40,12 @@ export interface MoneyInputProps
 }
 
 export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
-  ({ value, onChange, ...rest }, forwarded) => {
+  ({ value, onChange, onPaste, error, ...rest }, forwarded) => {
     const own = useRef<HTMLInputElement | null>(null);
+    const t = useT();
+    // «لو رقم وانا بعمل لصق ل نص يمنع ويظهر رساله فيها السبب»: an amount refuses letters, typed or
+    // pasted, and says why — where it used to drop them silently.
+    const feedback = useInputFeedback();
 
     // Write the grouped text and the caret onto the element NOW, then report the canonical value
     // upward. Doing both in the same tick is what keeps the caret still: React re-renders with the
@@ -67,9 +79,36 @@ export const MoneyInput = forwardRef<HTMLInputElement, MoneyInputProps>(
         // it replaces already carried.
         dir="ltr"
         value={groupAmount(value)}
+        error={error === true || feedback.flash}
+        data-input-rule="decimal"
         onChange={(event) => {
           const element = event.currentTarget;
+          // Direction marks copied along with a number are not letters; `sanitizeAmount` drops them.
+          if (!AMOUNT_CHARACTERS.test(element.value.replace(INVISIBLE_MARKS, ''))) {
+            feedback.show(element, t('common.input.numbersOnly'));
+            // Back to what it held, with the caret where the user was typing — writing a value
+            // moves it to the end, and the next digit would land there.
+            const shown = groupAmount(value);
+            const typed = element.value.length;
+            const at = caretAfterRefusal(element.selectionStart ?? typed, typed, shown.length);
+            element.value = shown;
+            element.setSelectionRange(at, at);
+            return;
+          }
+          feedback.clear(element);
           commit(element.value, element.selectionStart ?? element.value.length);
+        }}
+        onPaste={(event) => {
+          onPaste?.(event);
+          if (event.defaultPrevented) return;
+          const pasted = event.clipboardData.getData('text');
+          if (applyInputRule('decimal', pasted).reason !== null) {
+            event.preventDefault();
+            feedback.show(
+              event.currentTarget,
+              t('common.input.pasteRefused', { reason: t('common.input.numbersOnly') }),
+            );
+          }
         }}
         onKeyDown={(event) => {
           const element = event.currentTarget;

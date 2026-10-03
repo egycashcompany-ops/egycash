@@ -80,9 +80,7 @@ export const CorrectOdometerDialog = ({
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t('fleet.odometer.columns.outReading')} required>
           <Input
-            type="number"
-            min={0}
-            step={1}
+            rule="integer"
             value={outReading}
             onChange={(e) => setOutReading(e.target.value)}
             dir="ltr"
@@ -93,9 +91,7 @@ export const CorrectOdometerDialog = ({
           hint={log?.inReading === null ? t('fleet.odometer.openPeriodHint') : undefined}
         >
           <Input
-            type="number"
-            min={0}
-            step={1}
+            rule="integer"
             value={inReading}
             onChange={(e) => setInReading(e.target.value)}
             disabled={log?.inReading === null}

@@ -13,6 +13,7 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from './catalog-item.repository';
 import { type FleetCatalogItemDoc } from './catalog-item.model';
+import { withEnglishName } from './catalog-english';
 
 /** The order a list currently reads in: its places first (unplaced read as last), then by name. */
 const byCurrentOrder = (a: FleetCatalogItemDoc, b: FleetCatalogItemDoc): number =>
@@ -45,7 +46,9 @@ class FleetCatalogItemService {
     const doc = await fleetCatalogItemRepository.create(
       {
         kind: input.kind,
-        name: input.name,
+        // An English half that still carries Arabic — an import knows one string per name and
+        // sends it twice — is translated on the way in («ترجمهم انت»).
+        name: withEnglishName(input.name),
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
         isActive: true,
@@ -83,7 +86,9 @@ class FleetCatalogItemService {
     return fleetCatalogItemRepository.create(
       {
         kind: input.kind,
-        name: input.name,
+        // An English half that still carries Arabic — an import knows one string per name and
+        // sends it twice — is translated on the way in («ترجمهم انت»).
+        name: withEnglishName(input.name),
         countsForAlarm: input.countsForAlarm,
         violationSide: input.violationSide ?? null,
         isActive: true,
@@ -177,7 +182,7 @@ class FleetCatalogItemService {
       throw new ConflictError('only a violationType has a side');
     }
     const set: Partial<FleetCatalogItemDoc> = {};
-    if (input.name !== undefined) set.name = input.name;
+    if (input.name !== undefined) set.name = withEnglishName(input.name);
     if (input.countsForAlarm !== undefined) set.countsForAlarm = input.countsForAlarm;
     if (input.violationSide !== undefined) set.violationSide = input.violationSide;
     if (input.isActive !== undefined) set.isActive = input.isActive;

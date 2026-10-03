@@ -19,6 +19,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Field, Input, Select } from '../../../shared/ui/form';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   CheckIcon,
@@ -275,7 +276,11 @@ export const DriverViolationsPanel = ({
         : { driverEmployeeId: driverFilter.employeeIds.join(',') }),
       // «مجهول» in the same box — ORed with the drivers on the server.
       ...(driverFilter.unknown ? { unknownDriver: 'true' } : {}),
-      ...(amount.trim() === '' ? {} : { amount: amount.trim() }),
+      // A lone «.» is on its way to «.5»: it filters nothing until a digit follows, rather than
+      // reaching the server as a number it cannot read.
+      ...(amount.trim() === '' || !Number.isFinite(Number(amount.trim()))
+        ? {}
+        : { amount: amount.trim() }),
       ...(typeIds.length === 0 ? {} : { violationTypeId: typeIds.join(',') }),
       ...(settled === '' ? {} : { collected: settled === 'true' }),
     }),
@@ -800,8 +805,7 @@ export const DriverViolationsPanel = ({
                   // control's own `bg-white` and lost, so every counter rendered plain white while
                   // the source said otherwise.
                   tone={violationTypeColour(type.id, { index: typeIndex.get(type.id) })}
-                  dir="ltr"
-                  inputMode="numeric"
+                  rule="integer"
                 />
               </Field>
             ))}
@@ -940,14 +944,12 @@ export const DriverViolationsPanel = ({
                         />
                       </div>
                       <div className="w-28 shrink-0">
-                        <Input
+                        <MoneyInput
                           data-entry-amount={card.key}
                           aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`}
                           placeholder={t('fleet.violations.fields.amount')}
                           value={card.amount}
-                          onChange={(e) => patchCard(card.key, { amount: e.target.value })}
-                          dir="ltr"
-                          inputMode="decimal"
+                          onChange={(amount) => patchCard(card.key, { amount })}
                         />
                       </div>
                     </div>
@@ -1147,8 +1149,7 @@ export const DriverViolationsPanel = ({
             title={t('fleet.violations.fields.amount')}
             value={amount}
             onValueChange={(next) => onAmountChange(next || null)}
-            dir="ltr"
-            inputMode="decimal"
+            rule="decimal"
             density={TIGHT}
           />
         </FilterField>

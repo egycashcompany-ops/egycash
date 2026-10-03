@@ -25,6 +25,7 @@
 import { useMemo, useState } from 'react';
 import { useT } from '../../../platform/localization/useT';
 import { Combobox } from '../../../shared/ui/Combobox';
+import { asciiDigits } from '../../../shared/lib/format';
 import { useAllVehicles, useVehicle } from '../api/fleet-queries';
 import { vehicleCodeEntries } from '../lib/vehicle-code-options';
 import { rankVehicleCodes } from '../lib/vehicle-code-rank';
@@ -49,7 +50,7 @@ export const VehicleCodeCombobox = ({
   ariaLabel?: string;
   /**
    * Offer the WHOLE registry, any lifecycle status — for recording historical facts. A statement
-   * can name a car that has since been disposed of, the same reason `VehicleSelect` takes this.
+   * can name a car that has since been disposed of.
    */
   anyStatus?: boolean;
   /**
@@ -112,7 +113,8 @@ export const VehicleCodeCombobox = ({
         // `Combobox` asks with '' every time it opens: a list loaded a while ago is asked again, so
         // a car registered since — by anyone — is on offer without reloading the page.
         if (typed === '' && whole.isStale) void whole.refetch();
-        setQuery(typed);
+        // A code pasted in Arabic-Indic digits («١٥٠») is the same code (150).
+        setQuery(asciiDigits(typed));
       }}
       onChange={(code) => {
         const id = code === '' ? '' : (byCode.get(code) ?? '');

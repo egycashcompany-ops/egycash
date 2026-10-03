@@ -13,6 +13,12 @@
 import { logger } from '../../infrastructure/logging/logger';
 import { fleetCatalogItemService } from './catalogs/catalog-item.service';
 import { FleetCatalogItemModel } from './catalogs/catalog-item.model';
+import {
+  ARABIC_LETTER_SOURCE,
+  hasArabicLetters,
+  withEnglishName,
+} from './catalogs/catalog-english';
+import { FleetVehicleTypeModel } from './vehicle-types/vehicle-type.model';
 import { FleetVehicleModel } from './vehicles/vehicle.model';
 import { FleetDriverProfileModel } from './driver-profiles/driver-profile.model';
 import { FleetOdometerLogModel } from './odometer/odometer.model';
@@ -217,6 +223,61 @@ export const migrateDriverSpecializations = async (): Promise<{
 };
 
 /**
+ * «ترجمهم انت» — the catalog and vehicle-type names whose ENGLISH half still holds Arabic.
+ *
+ * The legacy imports knew one string per name and stored it in both halves, so the English box
+ * opened on «فلتر زيت» and — now that it is English-only — could not be saved without retyping a
+ * translation. Each such name gets the house's English: the vocabulary's own pair when it has one,
+ * `FLEET_TRANSLATIONS` next, a transliteration last (`catalog-english.ts`).
+ *
+ * Only the English half is written, and only where it carries an Arabic letter: an English name
+ * somebody typed is never touched, the Arabic half never changes, and a second boot finds nothing.
+ */
+export const translateCatalogEnglishNames = async (): Promise<{
+  catalog: number;
+  types: number;
+  swapped: number;
+}> => {
+  const arabicInEnglish = { 'name.en': { $regex: ARABIC_LETTER_SOURCE } };
+  let catalog = 0;
+  let types = 0;
+  // Halves saved the wrong way round — a Latin «Arabic» beside an Arabic «English». Translating
+  // from the Latin half would overwrite the only Arabic the row has, so these are left for a person
+  // and named in the log instead.
+  const swapped: string[] = [];
+  for (const item of await FleetCatalogItemModel.find(arabicInEnglish, { name: 1 }).lean()) {
+    if (!hasArabicLetters(item.name.ar)) {
+      swapped.push(String(item._id));
+      continue;
+    }
+    const name = withEnglishName(item.name);
+    if (name.en === item.name.en) continue;
+    await FleetCatalogItemModel.updateOne({ _id: item._id }, { $set: { 'name.en': name.en } });
+    catalog += 1;
+  }
+  for (const type of await FleetVehicleTypeModel.find(arabicInEnglish, { name: 1 }).lean()) {
+    if (!hasArabicLetters(type.name.ar)) {
+      swapped.push(String(type._id));
+      continue;
+    }
+    const name = withEnglishName(type.name);
+    if (name.en === type.name.en) continue;
+    await FleetVehicleTypeModel.updateOne({ _id: type._id }, { $set: { 'name.en': name.en } });
+    types += 1;
+  }
+  if (catalog + types > 0) {
+    logger.info({ catalog, types }, 'fleet: English names translated from their Arabic');
+  }
+  if (swapped.length > 0) {
+    logger.warn(
+      { ids: swapped },
+      'fleet: catalog names whose two halves look swapped — left as they are',
+    );
+  }
+  return { catalog, types, swapped: swapped.length };
+};
+
+/**
  * Build `ux_fixed_vehicle`, the index that makes "one vehicle, one fixed crew" a database fact.
  *
  * The schema declares it, but `autoIndex` is off outside development
@@ -335,6 +396,8 @@ export const runFleetMigrations = async (): Promise<void> => {
   await migrateViolationTypeSides();
   // After the seed above has created «نقل اموال» and «ATM» — it reads the catalog, never writes it.
   await migrateDriverSpecializations();
+  // After every step above that may create a catalog item — so the names it made are English too.
+  await translateCatalogEnglishNames();
   await reportBranchlessVehicles();
   await migrateFixedCrewIndex();
   // The two open-row uniques, in their earlier shape, go before the builder can put them back.

@@ -141,6 +141,7 @@ export const UnavailabilityDialog = ({
           <Input
             value={form.reason}
             onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
+            rule="arabic"
           />
         </Field>
         <Field label={t('fleet.attendance.fields.notes')}>

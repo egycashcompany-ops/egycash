@@ -26,7 +26,7 @@ import {
   useVehicle,
   useVehicleTypes,
 } from '../api/fleet-queries';
-import { VehicleSelect } from '../components/VehicleSelect';
+import { VehicleCodeCombobox } from '../components/VehicleCodeCombobox';
 import { RegistryDriverPicker } from '../components/RegistryDriverPicker';
 import { useFleetPeopleMap } from '../components/EmployeeName';
 import { NoticeSheet } from '../components/NoticeSheet';
@@ -46,6 +46,9 @@ const savedLabel = (notice: FleetNoticeDto, untitled: string): string => {
     .join(' · ');
   return `${notice.updatedAt.slice(0, 10)} — ${about === '' ? untitled : about}`;
 };
+
+/** The form's mobile, phone, fax and national-id boxes — numbers only. */
+const PHONE_FIELD = /(?:Mobile|Phone|Fax|Nid)$/u;
 
 export const NoticeEditorPage = (): JSX.Element => {
   const t = useT();
@@ -249,6 +252,7 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
         {...common}
         type={field.kind === 'date' ? 'date' : 'text'}
         onChange={(event) => setValue(field.key, event.target.value)}
+        {...(PHONE_FIELD.test(field.key) ? { rule: 'phone' as const } : {})}
       />
     );
   };
@@ -349,11 +353,11 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
             </h2>
             <div className="grid gap-3 sm:grid-cols-3">
               <Field label={t('fleet.notices.vehicle')}>
-                <VehicleSelect
+                <VehicleCodeCombobox
                   value={vehicleId}
                   anyStatus
-                  allLabel={t('fleet.notices.none')}
-                  fullWidth
+                  ariaLabel={t('fleet.notices.vehicle')}
+                  placeholder={t('fleet.notices.none')}
                   onChange={(next) => {
                     armed.current.vehicle = next !== '';
                     setVehicleId(next);

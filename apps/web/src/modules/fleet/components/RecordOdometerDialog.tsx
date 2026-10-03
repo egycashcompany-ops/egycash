@@ -237,9 +237,7 @@ export const RecordOdometerDialog = ({
                 : {})}
           >
             <Input
-              type="number"
-              min={0}
-              step={1}
+              rule="integer"
               value={reading}
               onChange={(e) => setReading(e.target.value)}
               dir="ltr"

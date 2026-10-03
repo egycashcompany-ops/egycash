@@ -208,20 +208,24 @@ export const VehicleFormDialog = ({
             </Select>
           </Field>
           <Field label={t('fleet.vehicles.fields.plate')} required>
-            <Input value={form.plateNumber} onChange={(e) => set('plateNumber')(e.target.value)} />
+            <Input
+              value={form.plateNumber}
+              onChange={(e) => set('plateNumber')(e.target.value)}
+              rule="plate"
+            />
           </Field>
           <Field label={t('fleet.vehicles.fields.chassis')} required>
             <Input
               value={form.chassisNumber}
               onChange={(e) => set('chassisNumber')(e.target.value)}
-              dir="ltr"
+              rule="english"
             />
           </Field>
           <Field label={t('fleet.vehicles.fields.motor')} required>
             <Input
               value={form.motorNumber}
               onChange={(e) => set('motorNumber')(e.target.value)}
-              dir="ltr"
+              rule="english"
             />
           </Field>
           <Field label={t('fleet.vehicles.fields.joinedAt')} required>
@@ -300,13 +304,13 @@ export const VehicleFormDialog = ({
             </Select>
           </Field>
           <Field label={t('fleet.vehicles.fields.issi')}>
-            <Input value={form.issi} onChange={(e) => set('issi')(e.target.value)} dir="ltr" />
+            <Input value={form.issi} onChange={(e) => set('issi')(e.target.value)} rule="integer" />
           </Field>
           <Field label={t('fleet.vehicles.fields.motorolaSn')}>
             <Input
               value={form.motorolaSn}
               onChange={(e) => set('motorolaSn')(e.target.value)}
-              dir="ltr"
+              rule="english"
             />
           </Field>
 

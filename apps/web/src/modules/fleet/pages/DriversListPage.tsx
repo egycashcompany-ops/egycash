@@ -828,6 +828,7 @@ export const DriversListPage = (): JSX.Element => {
                 density={TIGHT}
                 value={hrFilter.address}
                 onValueChange={(next) => patch({ addr: next || null })}
+                rule="arabic"
               />
             </FilterField>
           )}
@@ -843,7 +844,7 @@ export const DriversListPage = (): JSX.Element => {
                 density={TIGHT}
                 value={hrFilter.phone}
                 onValueChange={(next) => patch({ phone: next || null })}
-                dir="ltr"
+                rule="phone"
               />
             </FilterField>
           )}
@@ -859,6 +860,7 @@ export const DriversListPage = (): JSX.Element => {
                 density={TIGHT}
                 value={hrFilter.governorate}
                 onValueChange={(next) => patch({ gov: next || null })}
+                rule="arabic"
               />
             </FilterField>
           )}

@@ -359,8 +359,7 @@ export const DriverFormDialog = ({
                 aria-label={t('fleet.drivers.columns.phone')}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
-                dir="ltr"
-                inputMode="tel"
+                rule="phone"
               />
             </Field>
           )}

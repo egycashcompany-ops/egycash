@@ -30,7 +30,7 @@ const text = (rel: string): string => readFileSync(join(SRC, rel), 'utf8');
 
 /** Every control whose job is to let someone pick a car. */
 const SELECTORS = [
-  'modules/fleet/components/VehicleSelect.tsx',
+  'modules/fleet/components/VehicleCodeCombobox.tsx',
   'modules/fleet/lib/vehicle-code-options.ts',
   'modules/gold/components/VehiclePicker.tsx',
 ] as const;
@@ -53,10 +53,11 @@ describe('a car offered for selection is named by its code alone', () => {
     expect(JOINS_TWO_VALUES.test(rendered), `${path} joins two values into one label`).toBe(false);
   });
 
-  it('keeps the plate out of the fleet dropdown while the data still carries it', () => {
-    const select = text('modules/fleet/components/VehicleSelect.tsx');
-    expect(select).toContain('{vehicle.code}');
-    expect(select).not.toContain('vehicle.plateNumber');
+  it('keeps the plate out of the fleet car box while the data still carries it', () => {
+    const box = text('modules/fleet/components/VehicleCodeCombobox.tsx');
+    // The options are the codes themselves.
+    expect(box).toContain('rankVehicleCodes([...byCode.keys()], query)');
+    expect(box).not.toContain('plateNumber');
   });
 
   it('names the car by code in the Gold picker, and still hands the plate to the receipt', () => {

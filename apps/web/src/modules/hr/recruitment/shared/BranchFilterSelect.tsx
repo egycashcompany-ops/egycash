@@ -16,9 +16,12 @@ import { useBranches } from '../job-offers/api/job-offer-queries';
 export const BranchFilterSelect = ({
   value,
   onChange,
+  clearable = false,
 }: {
   value: readonly string[];
   onChange: (branchIds: string[]) => void;
+  /** A ✕ that clears every pick — see `MultiSelect`. Fleet's bars turn it on. */
+  clearable?: boolean;
 }): JSX.Element | null => {
   const t = useT();
   const can = useCan();
@@ -30,6 +33,7 @@ export const BranchFilterSelect = ({
 
   return (
     <MultiSelect
+      clearable={clearable}
       label={t('recruitment.filters.branch')}
       value={value}
       onChange={onChange}

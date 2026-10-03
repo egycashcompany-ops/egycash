@@ -259,3 +259,48 @@ describe('FilterBar reset', () => {
     expect(bar('ar', true)).toContain('aria-label="مسح عوامل التصفية"');
   });
 });
+
+describe('clearable — «امسح اللى اختارته كله» in one press', () => {
+  const picked = (clearable: boolean, value: string[], locale: Locale = 'en'): string =>
+    render(
+      <MultiSelect
+        label="Cars"
+        options={CARS}
+        value={value}
+        onChange={noop}
+        clearable={clearable}
+        showSelectedValues
+      />,
+      locale,
+    );
+
+  it('puts a ✕ beside the closed trigger once something is picked', () => {
+    const html = picked(true, ['ZZ0104', 'ZZ0105']);
+    expect(html).toContain('data-multiselect-clear="true"');
+    expect(html).toContain('aria-label="Clear all — Cars"');
+  });
+
+  it('labels it in Arabic too', () => {
+    expect(picked(true, ['ZZ0104'], 'ar')).toContain('title="مسح الكل"');
+  });
+
+  it('shows no ✕ while nothing is picked', () => {
+    expect(picked(true, [])).not.toContain('data-multiselect-clear');
+  });
+
+  it('leaves every screen that has not asked for it exactly as it was', () => {
+    expect(picked(false, ['ZZ0104'])).not.toContain('data-multiselect-clear');
+  });
+
+  it('puts the ✕ AFTER the trigger, outside it — a button cannot hold another', () => {
+    const html = picked(true, ['ZZ0104']);
+    const triggerEnd = html.indexOf('</button>', html.indexOf('aria-haspopup="listbox"'));
+    expect(html.indexOf('data-multiselect-clear')).toBeGreaterThan(triggerEnd);
+    // …and the trigger still reads as before: the chosen value, not the ✕'s label.
+    expect(trigger(html)).toBe('ZZ0104');
+  });
+
+  it('makes room at the trigger’s end so the chosen values never run under the ✕', () => {
+    expect(picked(true, ['ZZ0104'])).toMatch(/aria-haspopup="listbox"[^>]*class="[^"]*\bpe-9\b/u);
+  });
+});

@@ -651,6 +651,7 @@ export const MaintenancePage = (): JSX.Element => {
             label={t('fleet.vehicles.filters.operation')}
           />
           <BranchFilterSelect
+            clearable
             value={branchIds}
             onChange={(next) => patch({ branch: next.length === 0 ? null : next.join(',') })}
           />
@@ -667,6 +668,7 @@ export const MaintenancePage = (): JSX.Element => {
             </div>
           )}
           <MultiSelect
+            clearable
             className="shrink-0"
             showSelectedValues
             label={t('fleet.maintenance.fields.workshop')}
@@ -675,6 +677,7 @@ export const MaintenancePage = (): JSX.Element => {
             onChange={(next) => patch({ workshops: next.length === 0 ? null : next.join(',') })}
           />
           <MultiSelect
+            clearable
             className="shrink-0"
             showSelectedValues
             label={t('fleet.maintenance.fields.workType')}
@@ -683,6 +686,7 @@ export const MaintenancePage = (): JSX.Element => {
             onChange={(next) => patch({ workTypes: next.length === 0 ? null : next.join(',') })}
           />
           <MultiSelect
+            clearable
             className="shrink-0"
             showSelectedValues
             label={t('fleet.maintenance.fields.spareParts')}

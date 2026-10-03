@@ -49,6 +49,7 @@ export const CatalogMultiSelect = ({
 
   return (
     <MultiSelect
+      clearable
       label={label}
       {...(placeholder === undefined ? {} : { placeholder })}
       // The values are individually meaningful — WHICH classes, not how many — so the trigger

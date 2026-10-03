@@ -623,6 +623,7 @@ export const OdometerPage = (): JSX.Element => {
             </div>
           )}
           <MultiSelect
+            clearable
             className="shrink-0"
             showSelectedValues
             label={t('fleet.odometer.columns.alert')}

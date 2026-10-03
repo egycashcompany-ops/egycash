@@ -1101,6 +1101,7 @@ export const DriverViolationsPanel = ({
               options are the driver side of the live catalog — the same list the counters above
               are built from, so the bar filters by exactly what it can file. */}
           <MultiSelect
+            clearable
             label={t('fleet.violations.fields.type')}
             placeholder={t('common.filters.all')}
             options={typeOptions}
@@ -1160,6 +1161,27 @@ export const DriverViolationsPanel = ({
           view while the rows move under it — «عاوز اثبت راس الجدول بتاع السواقيين». A wrapper that
           scrolled here instead would carry the head away with it, whatever the head was told to
           do: sticky sticks to the nearest scrolling ancestor, and that would be this div. */}
+      {/* «امسح اللى اختارته كله»: the ticks are a multi-pick too. The header box cannot undo a
+          partial pick — clicking it while some rows are ticked selects them ALL — so a ticked
+          ledger says how many are ticked and offers to clear them in one press. */}
+      {mayMove && selection.count > 0 && (
+        <div
+          data-ledger-selection="true"
+          className="mb-2 flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm dark:border-brand-900/60 dark:bg-brand-950/40"
+        >
+          <span className="font-medium text-brand-800 dark:text-brand-200">
+            {t('bulk.selected', { n: selection.count })}
+          </span>
+          <button
+            type="button"
+            data-ledger-clear="true"
+            onClick={selection.clear}
+            className="ms-auto rounded-md px-2 py-0.5 font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+          >
+            {t('common.filters.clearAll')}
+          </button>
+        </div>
+      )}
       <div className="min-h-0 flex-1">
         <DataTable
           columns={columns}

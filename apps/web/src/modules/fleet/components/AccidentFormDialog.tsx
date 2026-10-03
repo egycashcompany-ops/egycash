@@ -341,6 +341,7 @@ export const AccidentFormDialog = ({
               hint={t('fleet.accidents.transfer.pickOrder')}
             >
               <MultiSelect
+                clearable
                 label={t('fleet.accidents.transfer.fromVehicle')}
                 placeholder={t('common.select')}
                 options={offered.map((car) => ({

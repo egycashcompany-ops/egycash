@@ -802,6 +802,7 @@ export const DriversListPage = (): JSX.Element => {
               density={TIGHT}
             >
               <MultiSelect
+                clearable
                 label={t('fleet.drivers.columns.branch')}
                 placeholder={t('common.filters.all')}
                 options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}

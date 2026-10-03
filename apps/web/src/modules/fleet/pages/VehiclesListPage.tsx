@@ -713,6 +713,7 @@ export const VehiclesListPage = (): JSX.Element => {
               twice and add the two counts up by hand. Branch has taken several since it was
               written; the other five now read the same way. */}
           <MultiSelect
+            clearable
             className="shrink-0"
             showSelectedValues
             chips
@@ -731,6 +732,7 @@ export const VehiclesListPage = (): JSX.Element => {
             label={t('fleet.vehicles.filters.licenseClass')}
           />
           <BranchFilterSelect
+            clearable
             value={branchIds}
             onChange={(ids) => patch({ branch: writeList(ids) })}
           />
@@ -750,6 +752,7 @@ export const VehiclesListPage = (): JSX.Element => {
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}
           <MultiSelect
+            clearable
             className="shrink-0"
             showSelectedValues
             label={t('fleet.vehicles.columns.status')}

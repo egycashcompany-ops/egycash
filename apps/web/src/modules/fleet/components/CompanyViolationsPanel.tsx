@@ -735,6 +735,7 @@ export const CompanyViolationsPanel = ({
               ledger, and a one-answer dropdown made the comparison something the reader held in
               their head between two loads. */}
           <MultiSelect
+            clearable
             label={t('fleet.violations.fields.year')}
             placeholder={t('common.filters.all')}
             options={offeredYears.map((y) => ({ value: String(y), label: String(y) }))}

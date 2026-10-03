@@ -138,6 +138,7 @@ const SparePartsField = ({
 
   return (
     <MultiSelect
+      clearable
       showSelectedValues
       // The `<Field>` above already names this; the trigger says what to DO with it instead of
       // repeating the label. `label` remains the accessible name.

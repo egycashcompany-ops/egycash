@@ -105,6 +105,7 @@ export const VehicleCodeFilter = ({
 
   return (
     <MultiSelect
+      clearable
       label={t('fleet.vehicles.fields.code')}
       options={shown}
       value={value}

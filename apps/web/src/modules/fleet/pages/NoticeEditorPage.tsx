@@ -275,6 +275,19 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
             </button>
           );
         })}
+        {/* A check that takes SEVERAL answers can be cleared in one press — «امسح اللى اختارته كله». */}
+        {check.multiple === true && (answers.checks[check.key] ?? []).length > 0 && (
+          <button
+            type="button"
+            data-notice-check-clear={check.key}
+            onClick={() =>
+              setAnswers((prev) => ({ ...prev, checks: { ...prev.checks, [check.key]: [] } }))
+            }
+            className="rounded-full px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+          >
+            {t('common.filters.clearAll')}
+          </button>
+        )}
       </div>
     </Field>
   );

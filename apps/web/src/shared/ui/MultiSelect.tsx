@@ -16,7 +16,7 @@ import { type ControlDensity } from './form';
 import { foldIncludes } from '../lib/fold';
 import { useOnClickOutside } from '../lib/useOnClickOutside';
 import { useT } from '../../platform/localization/useT';
-import { CheckIcon, ChevronIcon, SearchIcon } from './icons';
+import { CheckIcon, ChevronIcon, CloseIcon, SearchIcon } from './icons';
 
 /** Names shown in full before the tail collapses to `+n`. Three fit a filter-bar trigger. */
 const SUMMARY_MAX = 3;
@@ -97,6 +97,7 @@ export const MultiSelect = ({
   fullWidth = false,
   clearSearchOnPick = false,
   panelWidth,
+  clearable = false,
   className,
 }: {
   /** What the filter asks. Shown in the trigger while nothing is selected. */
@@ -190,6 +191,14 @@ export const MultiSelect = ({
    * name with their code beside it. A Tailwind width class.
    */
   panelWidth?: string;
+  /**
+   * «اعملى اوبشن ان يكون في حاجة ادوس عليها امسح اللى اختارته كله». A ✕ beside the CLOSED trigger
+   * that clears every pick in one press, shown once something is picked — and the panel's own
+   * «مسح الكل» row pinned under the list, where a long list can no longer scroll it out of the
+   * panel. Opt-in so the screens that have not asked for it look exactly as they did; Fleet turns
+   * it on for every multi-pick (`fleet-multi-clear.spec.ts`).
+   */
+  clearable?: boolean;
   className?: string;
 }): JSX.Element => {
   const t = useT();
@@ -225,71 +234,103 @@ export const MultiSelect = ({
     }
   };
 
+  const clearAll = (): void => {
+    onChange([]);
+    if (query !== '') {
+      setQuery('');
+      onSearch?.('');
+    }
+  };
+  const showClear = clearable && selected > 0;
+
   return (
     <div ref={boxRef} className={cn('relative', className)}>
-      <button
-        type="button"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-label={label}
-        // The same question the screen reader gets, for a pointer — a trigger sized by its bar
-        // can be narrower than the words on it, and then this is the only way to read them.
-        title={label}
-        onClick={() => {
-          setOpen((o) => !o);
-          setQuery('');
-          // The owner's results still hold the last query; ask for the opening answer again.
-          onSearch?.('');
-        }}
-        className={cn(
-          'inline-flex items-center rounded-lg border py-2 text-sm',
-          // `justify-between` as well as `w-full`: once the trigger is wider than its own text the
-          // chevron belongs at the far edge, the way a `<select>`'s does, not tucked against the
-          // label with dead space after it.
-          fullWidth && 'w-full justify-between',
-          // Only the GUTTERS tighten. The type size stays `text-sm`, which is what `Input` and
-          // `Select` are at BOTH densities — `density` moves their padding and nothing else. This
-          // used to drop to `text-xs`, and the 4px of line-height it lost made the trigger 34px
-          // tall in a row of 38px boxes: on the violations bar that showed as two filters sitting
-          // lower than the two beside them, and on the drivers registry as one short box among
-          // ten. A row of controls is only one row if the controls are one height.
-          density === 'tight' ? 'gap-1 px-2' : 'gap-1.5 px-3',
-          // Never wider than the box it was given. A no-op for every bar that sizes this control
-          // to its content, and the thing that keeps a trigger inside its lane when a caller
-          // sizes it instead — a filter bar holding eleven controls on one row does.
-          'max-w-full',
-          'focus:border-brand-400 focus:outline-none',
-          selected > 0
-            ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-200'
-            : 'border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
-        )}
-      >
-        {/* Nothing chosen: the question. Something chosen: the answer — and the answer replaces
+      {/* The trigger and its ✕ share one box, so the ✕ sits on the trigger's own end however the
+          bar sizes it. The ✕ comes AFTER the trigger in the markup: it is a second control, never
+          a part of the button (a button cannot hold another). */}
+      <div className={cn('relative max-w-full', fullWidth ? 'flex w-full' : 'inline-flex')}>
+        <button
+          type="button"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={label}
+          // The same question the screen reader gets, for a pointer — a trigger sized by its bar
+          // can be narrower than the words on it, and then this is the only way to read them.
+          title={label}
+          onClick={() => {
+            setOpen((o) => !o);
+            setQuery('');
+            // The owner's results still hold the last query; ask for the opening answer again.
+            onSearch?.('');
+          }}
+          className={cn(
+            'inline-flex items-center rounded-lg border py-2 text-sm',
+            // `justify-between` as well as `w-full`: once the trigger is wider than its own text the
+            // chevron belongs at the far edge, the way a `<select>`'s does, not tucked against the
+            // label with dead space after it.
+            fullWidth && 'w-full justify-between',
+            // Only the GUTTERS tighten. The type size stays `text-sm`, which is what `Input` and
+            // `Select` are at BOTH densities — `density` moves their padding and nothing else. This
+            // used to drop to `text-xs`, and the 4px of line-height it lost made the trigger 34px
+            // tall in a row of 38px boxes: on the violations bar that showed as two filters sitting
+            // lower than the two beside them, and on the drivers registry as one short box among
+            // ten. A row of controls is only one row if the controls are one height.
+            density === 'tight' ? 'gap-1 px-2' : 'gap-1.5 px-3',
+            // Room at the end for the ✕, so the chosen values never run under it.
+            showClear && (density === 'tight' ? 'pe-8' : 'pe-9'),
+            // Never wider than the box it was given. A no-op for every bar that sizes this control
+            // to its content, and the thing that keeps a trigger inside its lane when a caller
+            // sizes it instead — a filter bar holding eleven controls on one row does.
+            'max-w-full',
+            'focus:border-brand-400 focus:outline-none',
+            selected > 0
+              ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-200'
+              : 'border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
+          )}
+        >
+          {/* Nothing chosen: the question. Something chosen: the answer — and the answer replaces
             the question rather than sitting beside it, because the row has no space for both and
             `aria-label` already tells a screen reader which filter this is. */}
-        {summary === null ? (
-          <span
-            // `truncate`, like the chosen-values branch below: the question can be longer than a
-            // narrow trigger, and an ellipsis is the honest end of it. It also carries
-            // `overflow: hidden`, which is what lets this shrink inside the flex button at all.
-            className={cn('truncate', placeholder !== undefined && 'text-slate-400')}
-          >
-            {placeholder ?? label}
-          </span>
-        ) : (
-          <span className="max-w-48 truncate" title={summary}>
-            {summary}
-          </span>
-        )}
-        {/* The count IS the "this list is filtered" signal — never hide it behind a colour alone.
+          {summary === null ? (
+            <span
+              // `truncate`, like the chosen-values branch below: the question can be longer than a
+              // narrow trigger, and an ellipsis is the honest end of it. It also carries
+              // `overflow: hidden`, which is what lets this shrink inside the flex button at all.
+              className={cn('truncate', placeholder !== undefined && 'text-slate-400')}
+            >
+              {placeholder ?? label}
+            </span>
+          ) : (
+            <span className="max-w-48 truncate" title={summary}>
+              {summary}
+            </span>
+          )}
+          {/* The count IS the "this list is filtered" signal — never hide it behind a colour alone.
             It is redundant once the values are named, so it steps aside there. */}
-        {summary === null && selected > 0 && (
-          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
-            {selected}
-          </span>
+          {summary === null && selected > 0 && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-semibold text-white">
+              {selected}
+            </span>
+          )}
+          <ChevronIcon className="h-4 w-4 shrink-0 text-slate-400" />
+        </button>
+        {showClear && (
+          <button
+            type="button"
+            data-multiselect-clear="true"
+            aria-label={`${t('common.filters.clearAll')} — ${label}`}
+            title={t('common.filters.clearAll')}
+            onClick={clearAll}
+            className={cn(
+              'absolute inset-y-0 my-auto inline-flex h-6 w-6 items-center justify-center rounded-md',
+              density === 'tight' ? 'end-1' : 'end-1.5',
+              'text-brand-600 hover:bg-brand-100 hover:text-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300 dark:hover:bg-brand-900',
+            )}
+          >
+            <CloseIcon className="h-3.5 w-3.5" />
+          </button>
         )}
-        <ChevronIcon className="h-4 w-4 shrink-0 text-slate-400" />
-      </button>
+      </div>
 
       {open && (
         <div
@@ -297,6 +338,9 @@ export const MultiSelect = ({
           aria-multiselectable
           className={cn(
             'absolute z-30 mt-1 max-h-72 overflow-hidden rounded-lg border border-slate-200 shadow-lg',
+            // A column, so the list SHRINKS to leave the search, the chips and «مسح الكل» on screen.
+            // Without it the list kept its own height and pushed the footer out of the panel.
+            clearable && 'flex flex-col',
             panelWidth ?? 'w-56',
             // A step lighter than the page in dark mode: on near-black a shadow says nothing, so
             // the surface itself has to read as floating.
@@ -304,7 +348,7 @@ export const MultiSelect = ({
           )}
         >
           {searchable && (
-            <div className="border-b border-slate-100 p-2 dark:border-slate-700">
+            <div className="shrink-0 border-b border-slate-100 p-2 dark:border-slate-700">
               <div className="relative">
                 <SearchIcon className="pointer-events-none absolute inset-y-0 start-2 my-auto h-4 w-4 text-slate-400" />
                 <input
@@ -330,7 +374,12 @@ export const MultiSelect = ({
           )}
 
           {chips && selected > 0 && (
-            <div className="flex flex-wrap gap-1 border-b border-slate-100 p-2 dark:border-slate-700">
+            <div
+              className={cn(
+                'flex flex-wrap gap-1 border-b border-slate-100 p-2 dark:border-slate-700',
+                clearable && 'max-h-24 shrink-0 overflow-y-auto',
+              )}
+            >
               {value.map((selectedValue) => {
                 // A chip says what the OPTION says, not what the value is — `optionLabel`, the
                 // same function the trigger's summary uses, so the two always agree.
@@ -360,7 +409,7 @@ export const MultiSelect = ({
             </div>
           )}
 
-          <ul className="max-h-52 overflow-y-auto py-1">
+          <ul className={cn('overflow-y-auto py-1', clearable ? 'min-h-0 flex-1' : 'max-h-52')}>
             {matches.length === 0 && (
               <li className="px-3 py-2 text-sm text-slate-400">
                 {searching ? t('common.loading') : t('common.noResults')}
@@ -396,13 +445,19 @@ export const MultiSelect = ({
           </ul>
 
           {selected > 0 && (
-            <div className="border-t border-slate-100 p-1.5 dark:border-slate-700">
+            <div className="shrink-0 border-t border-slate-100 p-1.5 dark:border-slate-700">
               <button
                 type="button"
-                onClick={() => onChange([])}
-                className="w-full rounded-md px-2 py-1.5 text-start text-sm text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700"
+                {...(clearable ? { 'data-multiselect-clear-all': 'true' } : {})}
+                onClick={clearable ? clearAll : () => onChange([])}
+                className={cn(
+                  'w-full rounded-md px-2 py-1.5 text-start text-sm hover:bg-slate-100 dark:hover:bg-slate-700',
+                  clearable
+                    ? 'font-medium text-red-600 dark:text-red-400'
+                    : 'text-slate-500 dark:text-slate-400',
+                )}
               >
-                {t('common.filters.clearOne')}
+                {clearable ? t('common.filters.clearAll') : t('common.filters.clearOne')}
               </button>
             </div>
           )}

@@ -332,6 +332,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
             onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
           />
           <MultiSelect
+            clearable
             className="shrink-0"
             label={t('fleet.alarms.allAlarms')}
             options={levelOptions}

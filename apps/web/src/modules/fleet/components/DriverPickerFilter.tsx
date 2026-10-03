@@ -35,6 +35,7 @@ export const DriverPickerFilter = ({
   placeholder,
   className,
   withUnknown = false,
+  clearable = true,
 }: {
   /** The employee ids currently filtering, in the order they were picked. */
   value: string[];
@@ -55,6 +56,8 @@ export const DriverPickerFilter = ({
    * is carried as `UNKNOWN_DRIVER`.
    */
   withUnknown?: boolean;
+  /** A ✕ that clears every picked driver — on by default; a single-driver pick turns it off. */
+  clearable?: boolean;
 }): JSX.Element => {
   const t = useT();
   const [search, setSearch] = useState('');
@@ -116,6 +119,7 @@ export const DriverPickerFilter = ({
 
   return (
     <MultiSelect
+      clearable={clearable}
       label={t('fleet.drivers.filters.employee')}
       // The trigger has ONE row and the question is a long one, so the row says the short form
       // and the full «اسم السائق أو كود الموظف» stays on `aria-label`, where the screen reader

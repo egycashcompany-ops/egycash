@@ -59,6 +59,8 @@ export const RegistryDriverPicker = ({
       placeholder={placeholder ?? t('fleet.drivers.filters.employeeShort')}
       fullWidth={fullWidth}
       withUnknown={withUnknown}
+      // «امسح اللى اختارته كله» is a MULTI-pick's: one driver per fine has nothing to clear in bulk.
+      clearable={multiple}
       {...(density === undefined ? {} : { density })}
       {...(className === undefined ? {} : { className })}
     />

@@ -427,6 +427,7 @@ export const LicensingPage = (): JSX.Element => {
             tell two identically-named entries apart by their position. */}
         <div className="w-40 shrink-0">
           <MultiSelect
+            clearable
             label={t('fleet.licensing.columns.insurance')}
             options={stepOptions}
             value={insurance}
@@ -437,6 +438,7 @@ export const LicensingPage = (): JSX.Element => {
         </div>
         <div className="w-40 shrink-0">
           <MultiSelect
+            clearable
             label={t('fleet.licensing.columns.tax')}
             options={stepOptions}
             value={tax}

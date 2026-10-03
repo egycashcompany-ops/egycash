@@ -27,6 +27,7 @@ import {
 import { useT } from '../../platform/localization/useT';
 import { ChevronIcon } from './icons';
 import { FieldFeedbackProvider, useInputFeedback } from './input-feedback';
+import { FieldMissingProvider, useFieldMissing } from './required-fields';
 
 const controlBase =
   'w-full rounded-lg border bg-white py-2 text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
@@ -85,12 +86,18 @@ export const Field = ({
   hint,
   warning,
   error,
+  missing = false,
   className,
   children,
 }: {
   label?: string;
   htmlFor?: string;
   required?: boolean;
+  /**
+   * Save was pressed without this value (`useRequiredFields`): the label and the box turn red and
+   * «حقل مطلوب» is written under it — unless an `error` says something more precise.
+   */
+  missing?: boolean;
   hint?: string | undefined;
   /**
    * Advice, not failure. An `error` says the save will be refused; a `warning` says the value is
@@ -110,18 +117,27 @@ export const Field = ({
 }): JSX.Element => {
   // A refused keystroke or paste, reported by the control inside (`rule`) — see `input-feedback`.
   const [refused, setRefused] = useState<string | null>(null);
+  const t = useT();
   return (
-    <div className={cn('space-y-1.5', className)}>
+    <div
+      className={cn('space-y-1.5', className)}
+      {...(missing ? { 'data-field-missing': 'true' } : {})}
+    >
       {label !== undefined && (
         <label
           htmlFor={htmlFor}
-          className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+          className={cn(
+            'block text-sm font-medium',
+            missing ? 'text-red-600 dark:text-red-400' : 'text-slate-700 dark:text-slate-200',
+          )}
         >
           {label}
           {required && <span className="text-red-500"> *</span>}
         </label>
       )}
-      <FieldFeedbackProvider value={setRefused}>{children}</FieldFeedbackProvider>
+      <FieldMissingProvider missing={missing}>
+        <FieldFeedbackProvider value={setRefused}>{children}</FieldFeedbackProvider>
+      </FieldMissingProvider>
       {refused !== null ? (
         <p
           role="alert"
@@ -132,6 +148,10 @@ export const Field = ({
         </p>
       ) : error !== undefined ? (
         <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+      ) : missing ? (
+        <p data-field-missing-note="true" className="text-xs text-red-600 dark:text-red-400">
+          {t('common.validation.required')}
+        </p>
       ) : warning !== undefined ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">{warning}</p>
       ) : hint !== undefined ? (
@@ -264,6 +284,7 @@ const inputElement = (
   return (
     <input
       ref={ref}
+      {...(red ? { 'aria-invalid': true } : {})}
       {...(rule === undefined ? {} : { ...inputRuleAttributes(rule), 'data-input-rule': rule })}
       className={cn(
         tone === undefined ? controlBase : controlBaseUntinted,
@@ -285,20 +306,27 @@ const inputElement = (
   );
 };
 
-const RuledInput = forwardRef<HTMLInputElement, InputProps & { rule: InputRule }>(
-  ({ onChange, onPaste, ...props }, ref) =>
-    inputElement(props, ref, useRuledControl(props.rule, props.value, onChange, onPaste)),
+const RuledInput = forwardRef<HTMLInputElement, InputProps & { rule: InputRule; missing: boolean }>(
+  ({ onChange, onPaste, missing, ...props }, ref) => {
+    const ruled = useRuledControl(props.rule, props.value, onChange, onPaste);
+    return inputElement(props, ref, { ...ruled, flash: ruled.flash || missing });
+  },
 );
 RuledInput.displayName = 'RuledInput';
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ onChange, onPaste, ...props }, ref) => {
+    // A `Field` marked missing turns its box red (`required-fields.tsx`).
+    const missing = useFieldMissing();
     const { rule } = props;
-    if (rule === undefined) return inputElement(props, ref, unruled(onChange, onPaste));
+    if (rule === undefined) {
+      return inputElement(props, ref, { ...unruled(onChange, onPaste), flash: missing });
+    }
     return (
       <RuledInput
         {...props}
         rule={rule}
+        missing={missing}
         ref={ref}
         {...(onChange === undefined ? {} : { onChange })}
         {...(onPaste === undefined ? {} : { onPaste })}
@@ -346,20 +374,27 @@ const textareaElement = (
   />
 );
 
-const RuledTextarea = forwardRef<HTMLTextAreaElement, TextareaProps & { rule: InputRule }>(
-  ({ onChange, onPaste, ...props }, ref) =>
-    textareaElement(props, ref, useRuledControl(props.rule, props.value, onChange, onPaste)),
-);
+const RuledTextarea = forwardRef<
+  HTMLTextAreaElement,
+  TextareaProps & { rule: InputRule; missing: boolean }
+>(({ onChange, onPaste, missing, ...props }, ref) => {
+  const ruled = useRuledControl(props.rule, props.value, onChange, onPaste);
+  return textareaElement(props, ref, { ...ruled, flash: ruled.flash || missing });
+});
 RuledTextarea.displayName = 'RuledTextarea';
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
   ({ onChange, onPaste, ...props }, ref) => {
+    const missing = useFieldMissing();
     const { rule } = props;
-    if (rule === undefined) return textareaElement(props, ref, unruled(onChange, onPaste));
+    if (rule === undefined) {
+      return textareaElement(props, ref, { ...unruled(onChange, onPaste), flash: missing });
+    }
     return (
       <RuledTextarea
         {...props}
         rule={rule}
+        missing={missing}
         ref={ref}
         {...(onChange === undefined ? {} : { onChange })}
         {...(onPaste === undefined ? {} : { onPaste })}
@@ -378,32 +413,36 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
   (
     { error = false, textScale = 'compact', density = 'default', className, children, ...rest },
     ref,
-  ) => (
-    <div className="relative">
-      <select
-        ref={ref}
-        className={cn(
-          controlBase,
-          controlGutter(density),
-          controlText(textScale),
-          ring(error),
-          // The reserve the chevron sits in, and the pair moves together — a `pe` without the
-          // matching `end` would either overlap the text or leave a gap where the arrow is not.
-          density === 'tight' ? 'appearance-none pe-6' : 'appearance-none pe-9',
-          className,
-        )}
-        {...rest}
-      >
-        {children}
-      </select>
-      <ChevronIcon
-        className={cn(
-          'pointer-events-none absolute inset-y-0 my-auto h-4 w-4 text-slate-400',
-          density === 'tight' ? 'end-1.5' : 'end-3',
-        )}
-      />
-    </div>
-  ),
+  ) => {
+    // A `Field` marked missing turns its box red (`required-fields.tsx`).
+    const missing = useFieldMissing();
+    return (
+      <div className="relative">
+        <select
+          ref={ref}
+          className={cn(
+            controlBase,
+            controlGutter(density),
+            controlText(textScale),
+            ring(error || missing),
+            // The reserve the chevron sits in, and the pair moves together — a `pe` without the
+            // matching `end` would either overlap the text or leave a gap where the arrow is not.
+            density === 'tight' ? 'appearance-none pe-6' : 'appearance-none pe-9',
+            className,
+          )}
+          {...rest}
+        >
+          {children}
+        </select>
+        <ChevronIcon
+          className={cn(
+            'pointer-events-none absolute inset-y-0 my-auto h-4 w-4 text-slate-400',
+            density === 'tight' ? 'end-1.5' : 'end-3',
+          )}
+        />
+      </div>
+    );
+  },
 );
 Select.displayName = 'Select';
 

@@ -22,6 +22,11 @@ import { useMySettings } from '../../../platform/settings/settings-api';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
+import {
+  MissingFieldsBanner,
+  useFieldMissing,
+  useRequiredFields,
+} from '../../../shared/ui/required-fields';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatMoney } from '../../../shared/lib/format';
@@ -80,7 +85,7 @@ const KindSwitch = ({
 };
 
 /** The car's two cards, one to pick — dimmed when the fund pays. */
-const CardPick = ({
+export const CardPick = ({
   cards,
   value,
   onChange,
@@ -93,6 +98,9 @@ const CardPick = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // A `Field` marked missing turns the cards red, as it does a box — they are buttons, not an
+  // `Input`, so they read the mark themselves.
+  const missing = useFieldMissing();
   return (
     <div className={cn('flex gap-3', !enabled && 'opacity-50')}>
       {cards.map((card) => (
@@ -105,9 +113,12 @@ const CardPick = ({
           onClick={() => onChange(card.id)}
           className={cn(
             'flex flex-1 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-start text-sm',
-            value === card.id
-              ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/40'
-              : 'border-slate-300 dark:border-slate-700',
+            value === card.id && 'bg-brand-50 dark:bg-brand-950/40',
+            missing
+              ? 'border-red-400'
+              : value === card.id
+                ? 'border-brand-500'
+                : 'border-slate-300 dark:border-slate-700',
           )}
         >
           <FuelCompanyLogo company={card.company} size="sm" />
@@ -227,8 +238,18 @@ export const ReceiptDialog = ({
   const before = card === null ? 0 : card.balance + (row?.cardId === card.id ? row.amount : 0);
   const after = card === null ? 0 : round(before - value);
   const enough = !byCard || card === null || !amountOk || after >= 0;
-  const complete =
-    date !== '' && vehicleId !== '' && amountOk && (!byCard || card !== null) && enough;
+  // Save stays pressable: pressing it short of these names them and turns their boxes red
+  // (`useRequiredFields`). The card is asked for only when it pays; an amount the card cannot cover
+  // is the amount's, and the line under the form still says how much the card holds.
+  const required = useRequiredFields(
+    [
+      { key: 'date', label: t('fleet.receipts.columns.date'), ok: date !== '' },
+      { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
+      { key: 'card', label: t('fleet.receipts.fields.card'), ok: !byCard || card !== null },
+      { key: 'amount', label: t('fleet.receipts.columns.amount'), ok: amountOk && enough },
+    ],
+    open,
+  );
 
   const create = useCreateReceipt();
   const update = useUpdateReceipt();
@@ -302,16 +323,21 @@ export const ReceiptDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={pending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         <KindSwitch value={kind} onChange={setKind} />
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={t('fleet.receipts.columns.date')} required>
+          <Field
+            label={t('fleet.receipts.columns.date')}
+            required
+            missing={required.isMissing('date')}
+          >
             <Input
               type="date"
               dir="ltr"
@@ -320,7 +346,11 @@ export const ReceiptDialog = ({
               data-receipt-date="true"
             />
           </Field>
-          <Field label={t('fleet.odometer.columns.vehicle')} required>
+          <Field
+            label={t('fleet.odometer.columns.vehicle')}
+            required
+            missing={required.isMissing('vehicle')}
+          >
             <VehicleCodeCombobox
               value={vehicleId}
               onChange={setVehicleId}
@@ -351,7 +381,12 @@ export const ReceiptDialog = ({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={t('fleet.receipts.fields.card')} className="sm:col-span-2">
+          <Field
+            label={t('fleet.receipts.fields.card')}
+            required={byCard}
+            missing={required.isMissing('card')}
+            className="sm:col-span-2"
+          >
             {cardsState.kind === 'noCar' ? (
               <p className="text-sm text-slate-400">{t('fleet.receipts.fields.pickCar')}</p>
             ) : cardsState.kind === 'loading' ? (
@@ -409,6 +444,7 @@ export const ReceiptDialog = ({
             <Field
               label={t('fleet.receipts.columns.amount')}
               required
+              missing={required.isMissing('amount')}
               {...(litres === null
                 ? {}
                 : {
@@ -416,6 +452,10 @@ export const ReceiptDialog = ({
                       litres: litres.toFixed(2),
                     }),
                   })}
+              // Typed, but more than the card holds: say so rather than «required».
+              {...(required.isMissing('amount') && amountOk && card !== null && !enough
+                ? { error: t('fleet.receipts.summary.notEnough', { balance: money(card.balance) }) }
+                : {})}
             >
               <MoneyInput value={amount} onChange={setAmount} data-receipt-amount="true" />
             </Field>

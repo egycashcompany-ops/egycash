@@ -39,6 +39,7 @@ import { ViolationsPage } from './pages/ViolationsPage';
 import { CompanyViolationsDetailLayer } from './components/CompanyViolationsDetailLayer';
 import { COLLECTED_ROW, FROM_OLD_BOOK_ROW, violationRowTone } from './components/ViolationRowTone';
 import {
+  amountComplete,
   cardLabel,
   entryCards,
   entryComplete,
@@ -1984,5 +1985,163 @@ describe('the company entry row gives its width to the figures that are typed', 
     expect(open, 'one line on a desktop').toContain('md:flex-nowrap');
     expect(open, 'wrapping is the phone fallback').toContain('flex-wrap');
     expect(open, 'never a sideways scroll in a form').not.toContain('overflow-x');
+  });
+});
+
+/**
+ * SAVE PRESSES, AND A MISSING VALUE IS NAMED — «يجيلوا مسدج انه فى كذا وكذا وكذا المفروض يدخلهم
+ * والخانات نفسها تتقلب باللون الاحمر».
+ *
+ * Every Save on this screen used to be `disabled` until the form was complete, which swallowed the
+ * click and said nothing. Now the press is guarded (`useRequiredFields`): with something missing
+ * nothing is sent, a banner names each value and each box turns red. The dialogs and the entry
+ * layer portal out of a static render, so — as above — what is pinned is the source: the guard,
+ * the rule list a missing value is named from, and the boxes that are marked with it.
+ */
+describe('Save presses, and a missing value is named rather than swallowed', () => {
+  const source = (file: string): string =>
+    readFileSync(join(HERE, file), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/\/\/[^\n]*/g, '');
+  const DIALOGS = source('components/ViolationDialogs.tsx');
+  const COMPANY = source('components/CompanyViolationsPanel.tsx');
+  const DRIVER = source('components/DriverViolationsPanel.tsx');
+  /** One dialog's own source, from its `export` to the next one's. */
+  const dialog = (name: string, next?: string): string =>
+    DIALOGS.slice(
+      DIALOGS.indexOf(`export const ${name}`),
+      next === undefined ? DIALOGS.length : DIALOGS.indexOf(`export const ${next}`),
+    );
+  const VEHICLE = dialog('VehicleViolationDialog', 'DriverViolationDialog');
+  const DRIVER_DIALOG = dialog('DriverViolationDialog', 'GrievanceDialog');
+  const GRIEVANCE = dialog('GrievanceDialog');
+  /** The rule list handed to `useRequiredFields`. */
+  const rules = (code: string): string =>
+    code.slice(code.indexOf('useRequiredFields('), code.indexOf('const submit'));
+  /** The opening tag of the button a hook names — `data-company-save` and the like. */
+  const saveTag = (markup: string, hook: string): string => {
+    const at = markup.indexOf(hook);
+    expect(at, `${hook} is rendered`).toBeGreaterThan(-1);
+    return markup.slice(markup.lastIndexOf('<button', at), markup.indexOf('>', at));
+  };
+
+  it('no Save is disabled for being incomplete — each press goes through the guard', () => {
+    for (const [name, code, save] of [
+      ['the statement dialog', VEHICLE, 'submit'],
+      ['the driver dialog', DRIVER_DIALOG, 'submit'],
+      ['the grievance dialog', GRIEVANCE, 'submit'],
+      ['the company bar', COMPANY, 'save'],
+      ['the drivers layer', DRIVER, 'save'],
+    ] as const) {
+      expect(code, `${name} guards its save`).toContain(`onClick={required.guard(${save})}`);
+      expect(code, `${name} names what is missing`).toMatch(
+        /<MissingFieldsBanner\s+missing=\{required\.missing\}\s+attempt=\{required\.attempt\}/u,
+      );
+      expect(code, `${name} no longer shuts on a completeness flag`).not.toMatch(
+        /disabled=\{!(complete|canSave|isMoney\(total\))\}/,
+      );
+    }
+  });
+
+  it('the company bar presses with nothing typed in it — only a permission shuts it', () => {
+    // The ATTRIBUTE, not the word: the button's classes carry `disabled:` variants either way.
+    expect(saveTag(page(), 'data-company-save="true"'), 'a recorder can press it').not.toContain(
+      'disabled=""',
+    );
+    expect(
+      saveTag(page({ permissions: ['fleetViolation.view'] }), 'data-company-save="true"'),
+      'a reader who may not record cannot',
+    ).toContain('disabled=""');
+    expect(COMPANY).toContain('disabled={!mayRecord}');
+    expect(DRIVER, 'and the drivers layer the same').toContain('disabled={!mayRecord}');
+  });
+
+  it('nothing is red before the first press', () => {
+    const markup = page();
+    expect(markup, 'no banner').not.toContain('data-missing-fields');
+    expect(markup, 'no marked box').not.toContain('data-field-missing');
+  });
+
+  it('the statement dialog refuses each thing its Save used to refuse', () => {
+    const list = rules(VEHICLE);
+    for (const key of ['vehicle', 'year', 'type', 'count', 'unitValue']) {
+      expect(list, `${key} is a rule`).toContain(`key: '${key}'`);
+      expect(VEHICLE, `and ${key}'s box is marked`).toContain(`required.isMissing('${key}')`);
+    }
+    // The year the server accepts, both ends — a year past 2100 was a 422 behind a live button.
+    expect(list).toContain('Number(year) >= 2000');
+    expect(list).toContain('Number(year) <= 2100');
+    expect(list, 'a count of at least one').toContain('Number(count) >= 1');
+    expect(list, 'and a real money figure').toContain('ok: isMoney(unitValue)');
+  });
+
+  it('the driver dialog refuses each thing its Save used to refuse — «مجهول» included as an answer', () => {
+    const list = rules(DRIVER_DIALOG);
+    for (const key of ['vehicle', 'date', 'type', 'driver', 'amount']) {
+      expect(list, `${key} is a rule`).toContain(`key: '${key}'`);
+      expect(DRIVER_DIALOG, `and ${key}'s box is marked`).toContain(`required.isMissing('${key}')`);
+    }
+    expect(list, 'the unknown driver is a non-empty pick').toContain("ok: driver !== ''");
+    expect(list).toContain('ok: isMoney(amount)');
+  });
+
+  it('the grievance figure is required, and its box is marked', () => {
+    expect(rules(GRIEVANCE)).toContain('ok: isMoney(total)');
+    expect(GRIEVANCE).toContain("required.isMissing('total')");
+  });
+
+  it('the company bar names the car, the type, the unit value and the count — each starred', () => {
+    const list = COMPANY.slice(
+      COMPANY.indexOf('useRequiredFields('),
+      COMPANY.indexOf('const save'),
+    );
+    for (const [key, label] of [
+      ['entryVehicle', 'fleet.odometer.columns.vehicle'],
+      ['type', 'fleet.violations.fields.type'],
+      ['unitValue', 'fleet.violations.fields.unitValue'],
+      ['count', 'fleet.violations.fields.count'],
+    ] as const) {
+      expect(list, `${key} is a rule`).toContain(`key: '${key}'`);
+      const at = COMPANY.indexOf(`required.isMissing('${key}')`);
+      expect(at, `${key}'s box is marked`).toBeGreaterThan(-1);
+      const field = COMPANY.slice(COMPANY.lastIndexOf('<Field', at), at);
+      expect(field, `${key} is its own field`).toContain(`label={t('${label}')}`);
+      expect(field, `${key} carries the star`).toMatch(/\brequired\s/);
+    }
+    // A filed statement empties the type, the value and the count; the marks clear with it.
+    expect(list).toContain('record.data');
+  });
+
+  it('the drivers layer names the car and each card’s day, person and money', () => {
+    const list = DRIVER.slice(DRIVER.indexOf('useRequiredFields('), DRIVER.indexOf('const save'));
+    expect(list, 'the car').toContain("key: 'entryVehicle'");
+    for (const part of ['date', 'driver', 'amount']) {
+      expect(list, `each card's ${part}`).toContain(`key: \`\${card.key}:${part}\``);
+      expect(DRIVER, `and its box is marked`).toContain(
+        `required.isMissing(\`\${card.key}:${part}\`)`,
+      );
+    }
+    // The banner names the card the way its own boxes are labelled — «سرعة - 2 · السائق».
+    expect(list).toContain('`${cardLabel(card)} · ${t(');
+    const marked = DRIVER.indexOf("required.isMissing('entryVehicle')");
+    const field = DRIVER.slice(DRIVER.lastIndexOf('<Field', marked), marked);
+    expect(field, 'the car box carries the star').toMatch(/\brequired\s/);
+    // The marks reset when the layer closes — a stack counted after a save starts clean.
+    expect(list).toContain('cards.length > 0');
+  });
+
+  it('a card is complete by the lib’s rule, so the marks and the batch cannot disagree', () => {
+    // The per-part rules must refuse exactly what `entryComplete` refuses; the money is asked of
+    // the lib itself rather than a second copy of its pattern.
+    const [card] = entryCards([{ id: DT_SPEED, name: 'سرعة' }], { [DT_SPEED]: 1 });
+    const filled = { ...(card as DriverEntryCard), date: '2026-02-01', driverEmployeeId: E1 };
+    for (const amount of ['', 'abc', '1.234', '-5']) {
+      expect(entryComplete([{ ...filled, amount }]), `«${amount}» refused`).toBe(false);
+      expect(amountComplete(amount), `«${amount}» is marked`).toBe(false);
+    }
+    expect(entryComplete([{ ...filled, amount: '400.50' }])).toBe(true);
+    expect(amountComplete('400.50')).toBe(true);
+    // The panel marks a card's money by that same rule, on the card's own amount.
+    expect(DRIVER).toContain('ok: amountComplete(card.amount)');
   });
 });

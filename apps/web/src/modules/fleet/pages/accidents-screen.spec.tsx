@@ -569,8 +569,8 @@ describe('the filter bar', () => {
 // ── the culprit's NAME, which is what made the form unsubmittable ───────────
 //
 // «المتسبب» became a single control — the drivers picker — which is also responsible for writing
-// the culprit NAME the contract requires (`culprit: z.string().trim().min(1)`) and `complete`
-// gates Save on. The name was read out of `drivers`, a map keyed on the employee id ALREADY in
+// the culprit NAME the contract requires (`culprit: z.string().trim().min(1)`) and Save refuses
+// to go without. The name was read out of `drivers`, a map keyed on the employee id ALREADY in
 // state; inside the picker's `onChange` the chosen id is by construction NOT that id, and on a
 // create there has never been one, so the lookup always missed and the name was written as ''.
 // Save then sat disabled with nothing on screen saying why: NO ACCIDENT COULD BE RECORDED, and
@@ -601,7 +601,7 @@ describe('the culprit’s name outlives the moment it was picked', () => {
     expect(CODE).toMatch(/if \(next\.length === 0\) \{[\s\S]{0,120}setCulprit\(''\)/);
   });
 
-  it('says why Save is disabled while the name is on its way', () => {
+  it('says why Save waits while the name is on its way', () => {
     // The state that used to be permanent and silent is now temporary and announced.
     expect(SOURCE).toContain('fleet.accidents.culpritNameLoading');
     // Both language blocks carry it — a key present in one only renders the raw key to half the
@@ -695,8 +695,9 @@ describe('transfers between cars', () => {
     expect(FORM, 'the amount is never typed').not.toContain('setTransferAmount');
     expect(FORM).toContain("t('fleet.accidents.transfer.columns.take')");
     expect(FORM).toContain("t('fleet.accidents.transfer.noDeficit')");
-    // A picked car with a problem keeps «حفظ» shut.
-    expect(FORM).toContain('(!transferring || transfer !== undefined)');
+    // A picked car with a problem refuses «حفظ», and marks the field it was picked in.
+    expect(FORM).toContain('ok: !transferring || transfer !== undefined');
+    expect(FORM).toContain("missing={required.isMissing('transfer')}");
   });
 
   it('leaves the file being moved off a source car out of what that car can give', () => {
@@ -723,6 +724,58 @@ describe('transfers between cars', () => {
   it('sends the transfer with the file — on a new one and on an edit', () => {
     expect(FORM).toContain('...(transfer === undefined ? {} : { transfer }),');
     expect(FORM).toContain('if (transfer !== undefined) body.transfer = transfer;');
+  });
+});
+
+// ── «يجيلوا مسدج انه فى كذا وكذا وكذا المفروض يدخلهم» ─────────────────────────────
+//
+// Save used to sit disabled until every required value was in, and a disabled button swallows the
+// click and says nothing. It stays pressable now: pressing it with something missing sends
+// nothing, lists what is missing at the top of the form and turns those boxes red. This suite
+// cannot click, so what is pinned is that every rule the old gate held is still a rule, each on
+// the field it belongs to.
+describe('Save names what is missing instead of sitting disabled', () => {
+  const FORM = readFileSync(join(HERE, '../components/AccidentFormDialog.tsx'), 'utf8');
+  const RULES = FORM.slice(FORM.indexOf('useRequiredFields('), FORM.indexOf('const submit'));
+
+  it('keeps Save pressable and sends it through the guard', () => {
+    expect(FORM, 'the old gate is gone').not.toContain('disabled={!complete}');
+    expect(FORM).toContain('<Button loading={pending} onClick={required.guard(submit)}>');
+    expect(FORM, 'the banner opens the form').toMatch(
+      /<div className="space-y-4">\s*<MissingFieldsBanner\s+missing=\{required\.missing\}\s+attempt=\{required\.attempt\}\s*\/>/u,
+    );
+  });
+
+  it('still refuses every value the old gate refused, each on its own field', () => {
+    expect(RULES).toContain("ok: vehicleId !== ''");
+    expect(RULES).toContain("ok: occurredAt !== ''");
+    expect(RULES).toContain("ok: culprit.trim() !== ''");
+    expect(RULES).toContain("ok: statement.trim() !== ''");
+    // An amount is a real, non-negative figure — an empty box is not zero.
+    expect(FORM).toContain("isAmount = (v: string): boolean => v !== '' &&");
+    expect(FORM).toContain("v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;");
+    for (const key of [
+      'vehicle',
+      'occurredAt',
+      'culprit',
+      'statement',
+      'companyCost',
+      'amountCollected',
+      'paidAmount',
+      'transfer',
+    ]) {
+      expect(RULES, `${key} is a rule`).toContain(`key: '${key}'`);
+      expect(FORM, `${key} turns red when it is missing`).toContain(
+        `missing={required.isMissing('${key}')}`,
+      );
+    }
+    for (const amount of ['companyCost', 'amountCollected', 'paidAmount']) {
+      expect(RULES, `${amount} must be a figure ≥ 0`).toContain(`ok: isAmount(${amount})`);
+    }
+  });
+
+  it('starts clean every time the form is opened', () => {
+    expect(RULES).toMatch(/\],\s*open,\s*\);/u);
   });
 });
 

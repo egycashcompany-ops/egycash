@@ -20,6 +20,7 @@ import { formatMoney } from '../../../shared/lib/format';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { cn } from '../../../shared/lib/cn';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -92,8 +93,8 @@ export const AccidentFormDialog = ({
    * `drivers` is keyed on the id ALREADY in state, because that is what `useEmployeeRecords` was
    * asked for. Inside the picker's `onChange` the chosen id is by construction NOT that id (and on
    * a create it is the first id there has ever been, so the map is empty), so reading the name out
-   * of `drivers` at pick time always missed — and the culprit name, which `complete` requires and
-   * the contract enforces, was written as ''. Save then stayed disabled with nothing on screen
+   * of `drivers` at pick time always missed — and the culprit name, which Save requires and the
+   * contract enforces, was written as ''. Save then stayed disabled with nothing on screen
    * saying why: no accident could be recorded, and on an edit, changing the driver wiped the name
    * it had.
    *
@@ -179,16 +180,43 @@ export const AccidentFormDialog = ({
     amountCollected: Number(amountCollected),
     paidAmount: Number(paidAmount),
   };
-  const complete =
-    vehicleId !== '' &&
-    occurredAt !== '' &&
-    culprit.trim() !== '' &&
-    statement.trim() !== '' &&
-    [companyCost, amountCollected, paidAmount].every(
-      (v) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0,
-    ) &&
-    // A car picked to take from must be a DIFFERENT car with enough on it, and an amount.
-    (!transferring || transfer !== undefined);
+  const isAmount = (v: string): boolean => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0;
+  // Save stays pressable: pressing it with any of these empty — or an amount below zero, or a
+  // transfer that cannot be made — names them and turns their boxes red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
+      { key: 'occurredAt', label: t('fleet.accidents.fields.occurredAt'), ok: occurredAt !== '' },
+      { key: 'culprit', label: t('fleet.accidents.fields.culprit'), ok: culprit.trim() !== '' },
+      {
+        key: 'statement',
+        label: t('fleet.accidents.fields.statement'),
+        ok: statement.trim() !== '',
+      },
+      {
+        key: 'companyCost',
+        label: t('fleet.accidents.fields.companyCost'),
+        ok: isAmount(companyCost),
+      },
+      {
+        key: 'amountCollected',
+        label: t('fleet.accidents.fields.amountCollected'),
+        ok: isAmount(amountCollected),
+      },
+      {
+        key: 'paidAmount',
+        label: t('fleet.accidents.fields.paidAmount'),
+        ok: isAmount(paidAmount),
+      },
+      // A car picked to take from must be a DIFFERENT car with enough on it, and an amount.
+      {
+        key: 'transfer',
+        label: t('fleet.accidents.transfer.fromVehicle'),
+        ok: !transferring || transfer !== undefined,
+      },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     if (accident === null) {
@@ -246,19 +274,21 @@ export const AccidentFormDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={pending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         <div className="grid gap-4 sm:grid-cols-2">
           {/* «عاوز اكتب» and «كل العربيات تظهر لما ادوس على كود السياره» — typed or picked, from
               every car in the registry, disposed ones included: an accident is a historical fact. */}
           <Field
             label={t('fleet.odometer.columns.vehicle')}
             required
+            missing={required.isMissing('vehicle')}
             hint={t('fleet.accidents.vehicleHint')}
           >
             <VehicleCodeCombobox
@@ -270,7 +300,11 @@ export const AccidentFormDialog = ({
               testId="accident-vehicle"
             />
           </Field>
-          <Field label={t('fleet.accidents.fields.occurredAt')} required>
+          <Field
+            label={t('fleet.accidents.fields.occurredAt')}
+            required
+            missing={required.isMissing('occurredAt')}
+          >
             <Input type="date" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
           </Field>
         </div>
@@ -283,8 +317,9 @@ export const AccidentFormDialog = ({
         <Field
           label={t('fleet.accidents.fields.culprit')}
           required
-          // Save is disabled until the NAME is in hand, so while it is on its way the form says so
-          // rather than presenting a dead button with no reason. It is the state that used to be
+          missing={required.isMissing('culprit')}
+          // Save refuses until the NAME is in hand, so while it is on its way the form says so
+          // rather than leaving a refused press with no reason. It is the state that used to be
           // permanent and silent.
           {...(awaitingNameFor === '' ? {} : { warning: t('fleet.accidents.culpritNameLoading') })}
         >
@@ -311,17 +346,33 @@ export const AccidentFormDialog = ({
             className="w-full"
           />
         </Field>
-        <Field label={t('fleet.accidents.fields.statement')} required>
+        <Field
+          label={t('fleet.accidents.fields.statement')}
+          required
+          missing={required.isMissing('statement')}
+        >
           <Textarea rows={3} value={statement} onChange={(e) => setStatement(e.target.value)} />
         </Field>
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={t('fleet.accidents.fields.companyCost')} required>
+          <Field
+            label={t('fleet.accidents.fields.companyCost')}
+            required
+            missing={required.isMissing('companyCost')}
+          >
             <MoneyInput value={companyCost} onChange={setCompanyCost} />
           </Field>
-          <Field label={t('fleet.accidents.fields.amountCollected')} required>
+          <Field
+            label={t('fleet.accidents.fields.amountCollected')}
+            required
+            missing={required.isMissing('amountCollected')}
+          >
             <MoneyInput value={amountCollected} onChange={setAmountCollected} />
           </Field>
-          <Field label={t('fleet.accidents.fields.paidAmount')} required>
+          <Field
+            label={t('fleet.accidents.fields.paidAmount')}
+            required
+            missing={required.isMissing('paidAmount')}
+          >
             <MoneyInput value={paidAmount} onChange={setPaidAmount} />
           </Field>
         </div>
@@ -338,7 +389,12 @@ export const AccidentFormDialog = ({
           <div className="grid gap-3 sm:grid-cols-2">
             <Field
               label={t('fleet.accidents.transfer.fromVehicle')}
+              missing={required.isMissing('transfer')}
               hint={t('fleet.accidents.transfer.pickOrder')}
+              // Cars picked that cannot be taken from: the reason, not «required».
+              {...(required.isMissing('transfer') && transferProblem !== null
+                ? { error: transferProblem }
+                : {})}
             >
               <MultiSelect
                 clearable

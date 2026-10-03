@@ -9,6 +9,7 @@ import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useCorrectOdometer } from '../api/fleet-queries';
 
@@ -28,7 +29,8 @@ export const CorrectOdometerDialog = ({
   const [notes, setNotes] = useState('');
   useEffect(() => {
     if (open && log !== null) {
-      setOutReading(String(log.outReading));
+      // A day recorded WITHOUT a reading has none to correct: the box starts empty and stays shut.
+      setOutReading(log.outReading === null ? '' : String(log.outReading));
       setInReading(log.inReading === null ? '' : String(log.inReading));
       setDate(log.date.slice(0, 10));
       setNotes(log.notes ?? '');
@@ -36,6 +38,21 @@ export const CorrectOdometerDialog = ({
   }, [open, log]);
 
   const correct = useCorrectOdometer();
+  // A day recorded without a reading: the server refuses any reading on it («record the reading for
+  // that date instead»), and its date and note are corrected like any other row's.
+  const noReading = log?.outReading === null;
+  // The opening reading cannot be emptied. Pressing «تصحيح القراءة» with it blank used to leave it
+  // unchanged without a word; now it is named, and its box turns red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      {
+        key: 'outReading',
+        label: t('fleet.odometer.columns.outReading'),
+        ok: noReading || (outReading !== '' && Number.isInteger(Number(outReading))),
+      },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     if (log === null) return;
@@ -71,18 +88,28 @@ export const CorrectOdometerDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button variant="danger" loading={correct.isPending} onClick={() => void submit()}>
+          <Button variant="danger" loading={correct.isPending} onClick={required.guard(submit)}>
             {t('fleet.odometer.correct')}
           </Button>
         </>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('fleet.odometer.columns.outReading')} required>
+        <MissingFieldsBanner
+          missing={required.missing}
+          attempt={required.attempt}
+          className="sm:col-span-2"
+        />
+        <Field
+          label={t('fleet.odometer.columns.outReading')}
+          required={!noReading}
+          missing={required.isMissing('outReading')}
+        >
           <Input
             rule="integer"
             value={outReading}
             onChange={(e) => setOutReading(e.target.value)}
+            disabled={noReading}
             dir="ltr"
           />
         </Field>

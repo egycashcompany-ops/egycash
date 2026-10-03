@@ -10,6 +10,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate, formatNumber } from '../../../shared/lib/format';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -259,7 +260,7 @@ export const CheckInDialog = ({
   // as it stood then, not as it stands now.
   const bracket = useOdometerBracket(vehicleId, inDate, open && vehicleId !== '' && inDate !== '');
   const odometerNumber = Number(odometer);
-  // Advice only — see `workshop-odometer-warning`. It is deliberately absent from `complete`
+  // Advice only — see `workshop-odometer-warning`. It is deliberately absent from `required`
   // below: a suspicious counter is still a counter somebody may have good reason to record.
   const counterWarningText = counterWarning(
     odometer === '' ? null : odometerNumber,
@@ -267,14 +268,23 @@ export const CheckInDialog = ({
     t,
     locale,
   );
-  const complete =
-    vehicleId !== '' &&
-    inDate !== '' &&
-    workshopId !== '' &&
-    workTypeId !== '' &&
-    odometer !== '' &&
-    Number.isInteger(odometerNumber);
-  // THE DRIVER IS NOT PART OF `complete` — «سائق الدخول ميكونش اجبارى يكون اختيارى». The car is in
+  // Save stays pressable: pressing it with any of these empty names them and turns their boxes red
+  // (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'vehicle', label: t('fleet.odometer.fields.vehicle'), ok: vehicleId !== '' },
+      { key: 'inDate', label: t('fleet.maintenance.fields.inDate'), ok: inDate !== '' },
+      {
+        key: 'odometer',
+        label: t('fleet.maintenance.fields.odometerAtService'),
+        ok: odometer !== '' && Number.isInteger(odometerNumber),
+      },
+      { key: 'workshop', label: t('fleet.maintenance.fields.workshop'), ok: workshopId !== '' },
+      { key: 'workType', label: t('fleet.maintenance.fields.workType'), ok: workTypeId !== '' },
+    ],
+    open,
+  );
+  // THE DRIVER IS NOT PART OF `required` — «سائق الدخول ميكونش اجبارى يكون اختيارى». The car is in
   // the workshop whether or not the person opening the visit can say who drove it there, and the
   // server stores the absence rather than refusing the visit.
 
@@ -310,14 +320,19 @@ export const CheckInDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={checkIn.isPending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={checkIn.isPending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={t('fleet.odometer.fields.vehicle')} required>
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <Field
+          label={t('fleet.odometer.fields.vehicle')}
+          required
+          missing={required.isMissing('vehicle')}
+        >
           <VehicleCodeCombobox
             value={vehicleId}
             onChange={(id) => {
@@ -332,12 +347,17 @@ export const CheckInDialog = ({
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.maintenance.fields.inDate')} required>
+          <Field
+            label={t('fleet.maintenance.fields.inDate')}
+            required
+            missing={required.isMissing('inDate')}
+          >
             <Input type="date" value={inDate} onChange={(e) => setInDate(e.target.value)} />
           </Field>
           <Field
             label={t('fleet.maintenance.fields.odometerAtService')}
             required
+            missing={required.isMissing('odometer')}
             hint={
               expected.data?.expectedReading == null
                 ? undefined
@@ -354,12 +374,17 @@ export const CheckInDialog = ({
               dir="ltr"
             />
           </Field>
-          <Field label={t('fleet.maintenance.fields.workshop')} required>
+          <Field
+            label={t('fleet.maintenance.fields.workshop')}
+            required
+            missing={required.isMissing('workshop')}
+          >
             <CatalogSelect kind="workshop" value={workshopId} onChange={setWorkshopId} />
           </Field>
           <Field
             label={t('fleet.maintenance.fields.workType')}
             required
+            missing={required.isMissing('workType')}
             {...(notCounting === undefined ? {} : { warning: notCounting })}
           >
             <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />
@@ -436,6 +461,20 @@ export const CheckOutDialog = ({
     t,
     locale,
   );
+  // Save stays pressable (`useRequiredFields`). A reading below the entry one is named with the
+  // empty values, and its Field still says why — `exitBelowEntry` outranks «حقل مطلوب».
+  const required = useRequiredFields(
+    [
+      { key: 'driverOut', label: t('fleet.maintenance.fields.driverOut'), ok: driverOut !== '' },
+      { key: 'outDate', label: t('fleet.maintenance.fields.outDate'), ok: outDate !== '' },
+      {
+        key: 'exitOdometer',
+        label: t('fleet.maintenance.fields.exitOdometer'),
+        ok: exitValid && !belowEntry,
+      },
+    ],
+    open,
+  );
 
   const checkOut = useCheckOutMaintenance();
 
@@ -469,30 +508,40 @@ export const CheckOutDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button
-            loading={checkOut.isPending}
-            disabled={outDate === '' || !exitValid || belowEntry || driverOut === ''}
-            onClick={() => void submit()}
-          >
+          <Button loading={checkOut.isPending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
+        <MissingFieldsBanner
+          missing={required.missing}
+          attempt={required.attempt}
+          className="sm:col-span-2"
+        />
         <div className="sm:col-span-2">
           {/* Who drove it away. Required, like the exit reading beside it — and, like the
               check-in driver, distinct from the custody employee the server records. */}
-          <Field label={t('fleet.maintenance.fields.driverOut')} required>
+          <Field
+            label={t('fleet.maintenance.fields.driverOut')}
+            required
+            missing={required.isMissing('driverOut')}
+          >
             <OptionalDriverField value={driverOut} onChange={setDriverOut} />
           </Field>
         </div>
-        <Field label={t('fleet.maintenance.fields.outDate')} required>
+        <Field
+          label={t('fleet.maintenance.fields.outDate')}
+          required
+          missing={required.isMissing('outDate')}
+        >
           <Input type="date" value={outDate} onChange={(e) => setOutDate(e.target.value)} />
         </Field>
         <Field
           label={t('fleet.maintenance.fields.exitOdometer')}
           required
+          missing={required.isMissing('exitOdometer')}
           hint={
             visit === null
               ? undefined
@@ -570,12 +619,19 @@ export const MaintenanceEditDialog = ({
     t,
     locale,
   );
-  const complete =
-    inDate !== '' &&
-    workshopId !== '' &&
-    workTypeId !== '' &&
-    odometer !== '' &&
-    Number.isInteger(odometerNumber);
+  const required = useRequiredFields(
+    [
+      { key: 'inDate', label: t('fleet.maintenance.fields.inDate'), ok: inDate !== '' },
+      {
+        key: 'odometer',
+        label: t('fleet.maintenance.fields.odometerAtService'),
+        ok: odometer !== '' && Number.isInteger(odometerNumber),
+      },
+      { key: 'workshop', label: t('fleet.maintenance.fields.workshop'), ok: workshopId !== '' },
+      { key: 'workType', label: t('fleet.maintenance.fields.workType'), ok: workTypeId !== '' },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     if (visit === null) return;
@@ -612,19 +668,29 @@ export const MaintenanceEditDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={update.isPending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={update.isPending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={t('fleet.maintenance.fields.inDate')} required>
+        <MissingFieldsBanner
+          missing={required.missing}
+          attempt={required.attempt}
+          className="sm:col-span-2"
+        />
+        <Field
+          label={t('fleet.maintenance.fields.inDate')}
+          required
+          missing={required.isMissing('inDate')}
+        >
           <Input type="date" value={inDate} onChange={(e) => setInDate(e.target.value)} />
         </Field>
         <Field
           label={t('fleet.maintenance.fields.odometerAtService')}
           required
+          missing={required.isMissing('odometer')}
           warning={counterWarningText}
         >
           <Input
@@ -634,12 +700,17 @@ export const MaintenanceEditDialog = ({
             dir="ltr"
           />
         </Field>
-        <Field label={t('fleet.maintenance.fields.workshop')} required>
+        <Field
+          label={t('fleet.maintenance.fields.workshop')}
+          required
+          missing={required.isMissing('workshop')}
+        >
           <CatalogSelect kind="workshop" value={workshopId} onChange={setWorkshopId} />
         </Field>
         <Field
           label={t('fleet.maintenance.fields.workType')}
           required
+          missing={required.isMissing('workType')}
           {...(notCounting === undefined ? {} : { warning: notCounting })}
         >
           <CatalogSelect kind="workType" value={workTypeId} onChange={setWorkTypeId} />

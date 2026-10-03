@@ -248,6 +248,19 @@ describe('recording the invoice', () => {
     expect(FORM).toMatch(/privateCar && invoiceNumber\.trim\(\) === ''\s*\?\s*'custody'\s*:\s*'dealership'/u);
   });
 
+  it('keeps Save pressable and names what is missing — the number only when the car is not private', () => {
+    expect(FORM).toContain('onClick={required.guard(submit)}');
+    expect(FORM).not.toContain('disabled={!complete}');
+    const rules = FORM.slice(FORM.indexOf('useRequiredFields('));
+    const list = rules.slice(0, rules.indexOf(');'));
+    // A typed insurer that is new and not being added to the catalogs has nowhere to go either.
+    for (const rule of ['ok: amountOk', 'ok: numberOk', 'ok: insurerOk']) {
+      expect(list, `the save requires ${rule}`).toContain(rule);
+    }
+    expect(FORM).toContain("missing={required.isMissing('invoiceNumber')}");
+    expect(FORM).toContain('required={!privateCar}');
+  });
+
   it('lets a typed insurer be added to the catalogs and written onto the car — through those screens’ own calls', () => {
     expect(FORM).toContain('list="dealership-insurers"');
     expect(FORM).toContain("kind: 'insuranceCompany'");

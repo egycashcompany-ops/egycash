@@ -11,6 +11,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { cn } from '../lib/cn';
 import { fold } from '../lib/fold';
 import { ChevronIcon, CloseIcon } from './icons';
+import { useFieldMissing } from './required-fields';
 
 export const Combobox = ({
   value,
@@ -70,6 +71,9 @@ export const Combobox = ({
    */
   tallList?: boolean;
 }): JSX.Element => {
+  // A `Field` marked missing turns this box red, as it does an `Input`.
+  const missing = useFieldMissing();
+  const red = error || missing;
   const listId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -202,7 +206,7 @@ export const Combobox = ({
           density === 'tight' ? 'px-2 pe-12' : 'px-3 pe-16',
           'placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50',
           'dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800',
-          error
+          red
             ? 'border-red-400 focus:border-red-500'
             : 'border-slate-300 focus:border-brand-400 dark:border-slate-700',
         )}

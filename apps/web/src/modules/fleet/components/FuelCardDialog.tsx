@@ -6,6 +6,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { useCreateFuelCard, useUpdateFuelCard } from '../api/fleet-queries';
@@ -52,8 +53,17 @@ export const FuelCardDialog = ({
   const create = useCreateFuelCard();
   const update = useUpdateFuelCard();
   const pending = create.isPending || update.isPending;
-  const complete =
-    vehicleId !== '' && name.trim() !== '' && number.trim().length >= 4 && expiresAt !== '';
+  // Save stays pressable: pressing it with any of these empty — or a number under four digits —
+  // names them and turns their boxes red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
+      { key: 'name', label: t('fleet.fuelCards.fields.name'), ok: name.trim() !== '' },
+      { key: 'number', label: t('fleet.fuelCards.fields.number'), ok: number.trim().length >= 4 },
+      { key: 'expiresAt', label: t('fleet.fuelCards.fields.expiresAt'), ok: expiresAt !== '' },
+    ],
+    open,
+  );
 
   /** The stored password, fetched under its own grant only when the clerk asks to see it. */
   const showPassword = async (): Promise<void> => {
@@ -103,17 +113,19 @@ export const FuelCardDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={pending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label={t('fleet.odometer.columns.vehicle')}
             required
+            missing={required.isMissing('vehicle')}
             hint={t('fleet.accidents.vehicleHint')}
           >
             <VehicleCodeCombobox
@@ -148,15 +160,31 @@ export const FuelCardDialog = ({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.fuelCards.fields.name')} required>
+          <Field
+            label={t('fleet.fuelCards.fields.name')}
+            required
+            missing={required.isMissing('name')}
+          >
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
-          <Field label={t('fleet.fuelCards.fields.number')} required>
+          <Field
+            label={t('fleet.fuelCards.fields.number')}
+            required
+            missing={required.isMissing('number')}
+            // Typed, but too short to be a card: say so rather than «required».
+            {...(required.isMissing('number') && number.trim() !== ''
+              ? { error: t('fleet.fuelCards.errors.numberShort') }
+              : {})}
+          >
             <Input value={number} onChange={(e) => setNumber(e.target.value)} rule="digits" />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.fuelCards.fields.expiresAt')} required>
+          <Field
+            label={t('fleet.fuelCards.fields.expiresAt')}
+            required
+            missing={required.isMissing('expiresAt')}
+          >
             <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
           </Field>
           <Field

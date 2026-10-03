@@ -15,6 +15,7 @@ import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input, Select } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useCreateCatalogItem,
@@ -55,7 +56,15 @@ export const CatalogItemDialog = ({
   const create = useCreateCatalogItem();
   const update = useUpdateCatalogItem();
   const pending = create.isPending || update.isPending;
-  const complete = nameAr.trim() !== '' && nameEn.trim() !== '';
+  // Save stays pressable: pressing it with either name empty names it and turns its box red
+  // (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'nameAr', label: t('fleet.catalogs.fields.nameAr'), ok: nameAr.trim() !== '' },
+      { key: 'nameEn', label: t('fleet.catalogs.fields.nameEn'), ok: nameEn.trim() !== '' },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     const name = { ar: nameAr.trim(), en: nameEn.trim() };
@@ -104,17 +113,26 @@ export const CatalogItemDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={pending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={t('fleet.catalogs.fields.nameAr')} required>
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <Field
+          label={t('fleet.catalogs.fields.nameAr')}
+          required
+          missing={required.isMissing('nameAr')}
+        >
           <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} rule="arabic" />
         </Field>
-        <Field label={t('fleet.catalogs.fields.nameEn')} required>
+        <Field
+          label={t('fleet.catalogs.fields.nameEn')}
+          required
+          missing={required.isMissing('nameEn')}
+        >
           <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} rule="english" />
         </Field>
         {kind === 'workType' && (
@@ -178,8 +196,21 @@ export const VehicleTypeDialog = ({
   const update = useUpdateVehicleType();
   const pending = create.isPending || update.isPending;
   const interval = Number(intervalKm);
-  const complete =
-    nameAr.trim() !== '' && nameEn.trim() !== '' && Number.isInteger(interval) && interval >= 0;
+  // Save stays pressable: pressing it with any of these empty names them and turns their boxes red
+  // (`useRequiredFields`). An emptied interval is missing, not «no rule» — `Number('')` is 0, and
+  // a cleared box would otherwise save as 0 and silently drop the type's maintenance rule.
+  const required = useRequiredFields(
+    [
+      { key: 'nameAr', label: t('fleet.catalogs.fields.nameAr'), ok: nameAr.trim() !== '' },
+      { key: 'nameEn', label: t('fleet.catalogs.fields.nameEn'), ok: nameEn.trim() !== '' },
+      {
+        key: 'intervalKm',
+        label: t('fleet.settings.fields.intervalKm'),
+        ok: intervalKm.trim() !== '' && Number.isInteger(interval) && interval >= 0,
+      },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     const name = { ar: nameAr.trim(), en: nameEn.trim() };
@@ -212,22 +243,32 @@ export const VehicleTypeDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={pending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={t('fleet.catalogs.fields.nameAr')} required>
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <Field
+          label={t('fleet.catalogs.fields.nameAr')}
+          required
+          missing={required.isMissing('nameAr')}
+        >
           <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} rule="arabic" />
         </Field>
-        <Field label={t('fleet.catalogs.fields.nameEn')} required>
+        <Field
+          label={t('fleet.catalogs.fields.nameEn')}
+          required
+          missing={required.isMissing('nameEn')}
+        >
           <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} rule="english" />
         </Field>
         <Field
           label={t('fleet.settings.fields.intervalKm')}
           required
+          missing={required.isMissing('intervalKm')}
           hint={t('fleet.settings.intervalHint')}
         >
           <Input

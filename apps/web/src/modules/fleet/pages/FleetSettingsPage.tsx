@@ -24,6 +24,7 @@ import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
@@ -122,13 +123,36 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
     return numbers[key] !== String(valueOf(key) ?? '');
   };
   const anyDirty = Object.keys(SETTING_LABELS).some(dirty);
-  const valid =
-    NUMBER_KEYS.every(
-      (key) => Number.isInteger(Number(numbers[key])) && Number(numbers[key]) >= 0,
-    ) &&
-    MONEY_KEYS.every((key) => Number.isFinite(Number(moneys[key])) && Number(moneys[key]) >= 0) &&
-    // A blank default-branch name would resolve to nothing and silently disable the preselect.
-    TEXT_KEYS.every((key) => (texts[key] ?? '').trim() !== '');
+  /** Filled in, and a whole number (`integer`) or an amount (`money`) not below zero. */
+  const isAmount = (value: string | undefined, integer: boolean): boolean => {
+    const trimmed = (value ?? '').trim();
+    const n = Number(trimmed);
+    // An emptied box is missing, not zero — `Number('')` is 0, and saving it would write 0.
+    return trimmed !== '' && (integer ? Number.isInteger(n) : Number.isFinite(n)) && n >= 0;
+  };
+  // Save stays pressable once something changed: pressing it with a box empty or invalid names it
+  // and turns it red (`useRequiredFields`) instead of writing it.
+  const required = useRequiredFields(
+    [
+      ...NUMBER_KEYS.map((key) => ({
+        key,
+        label: t(SETTING_LABELS[key] ?? key),
+        ok: isAmount(numbers[key], true),
+      })),
+      ...MONEY_KEYS.map((key) => ({
+        key,
+        label: t(SETTING_LABELS[key] ?? key),
+        ok: isAmount(moneys[key], false),
+      })),
+      // A blank default-branch name would resolve to nothing and silently disable the preselect.
+      ...TEXT_KEYS.map((key) => ({
+        key,
+        label: t(SETTING_LABELS[key] ?? key),
+        ok: (texts[key] ?? '').trim() !== '',
+      })),
+    ],
+    resolved,
+  );
 
   const save = async (): Promise<void> => {
     // Organization scope — one write per changed key; the server audits each.
@@ -165,9 +189,15 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
       />
       <CardBody>
         <div className="space-y-4">
+          <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
           <div className="grid gap-4 sm:grid-cols-2">
             {NUMBER_KEYS.map((key) => (
-              <Field key={key} label={t(SETTING_LABELS[key] ?? key)}>
+              <Field
+                key={key}
+                label={t(SETTING_LABELS[key] ?? key)}
+                required
+                missing={required.isMissing(key)}
+              >
                 <Input
                   rule="integer"
                   value={numbers[key] ?? ''}
@@ -180,7 +210,12 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
           {/* «ضيف كمان ... اسعار الوقود ... والمعاد قبل انتهاء الفيزا ... وقبل ما الرصيد يخلص» */}
           <div className="grid gap-4 sm:grid-cols-2" data-fleet-fuel-settings="true">
             {MONEY_KEYS.map((key) => (
-              <Field key={key} label={t(SETTING_LABELS[key] ?? key)}>
+              <Field
+                key={key}
+                label={t(SETTING_LABELS[key] ?? key)}
+                required
+                missing={required.isMissing(key)}
+              >
                 <MoneyInput
                   value={moneys[key] ?? ''}
                   onChange={(next) => setMoneys((prev) => ({ ...prev, [key]: next }))}
@@ -194,6 +229,8 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
               <Field
                 key={key}
                 label={t(SETTING_LABELS[key] ?? key)}
+                required
+                missing={required.isMissing(key)}
                 hint={t('fleet.settings.keys.defaultBranchNameHint')}
               >
                 <Input
@@ -219,8 +256,8 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
             <div className="flex justify-end">
               <Button
                 loading={setSetting.isPending}
-                disabled={!anyDirty || !valid}
-                onClick={() => void save()}
+                disabled={!anyDirty}
+                onClick={required.guard(save)}
               >
                 {t('common.save')}
               </Button>

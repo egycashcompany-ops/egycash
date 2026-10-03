@@ -357,8 +357,11 @@ describe('the warning reaches all three dialogs', () => {
 describe('a warning is not a refusal', () => {
   it('nothing in the dialogs gates Save on it', () => {
     const source = read('components/MaintenanceDialogs.tsx');
-    for (const block of source.split('const complete =').slice(1)) {
-      expect(block.slice(0, block.indexOf(';'))).not.toContain('counterWarningText');
+    // Each dialog's required-field list — what a Save is refused over.
+    const lists = source.split('useRequiredFields(').slice(1);
+    expect(lists, 'the three dialogs each guard their Save').toHaveLength(3);
+    for (const block of lists) {
+      expect(block.slice(0, block.indexOf(');'))).not.toContain('counterWarningText');
     }
     expect(source, 'no button is disabled by it').not.toMatch(/disabled=\{[^}]*counterWarningText/);
     expect(source, 'and it is never raised as an error').not.toMatch(

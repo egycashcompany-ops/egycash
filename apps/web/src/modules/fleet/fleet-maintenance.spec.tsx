@@ -702,8 +702,9 @@ describe('the check-in dialog', () => {
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
     // Still asked for — the car does have a driver and naming them is the point of the field.
     expect(code).toContain("t('fleet.maintenance.fields.driverIn')");
-    // …but not part of what makes the form complete, and not starred.
-    const at = code.indexOf('const complete =');
+    // …but not one of the fields the save requires, and not starred.
+    const at = code.indexOf('const required = useRequiredFields(');
+    expect(at, 'the check-in names what its save requires').toBeGreaterThan(-1);
     expect(code.slice(at, code.indexOf(';', at)), 'the gate says nothing about it').not.toContain(
       'driverIn',
     );
@@ -720,11 +721,15 @@ describe('the check-in dialog', () => {
     // The two doors are deliberately different, and a change that relaxed both would be reading
     // the instruction as «drivers are optional» rather than as the one it actually named.
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
-    const at = source.indexOf("t('fleet.maintenance.fields.driverOut')");
+    const at = source.indexOf("label={t('fleet.maintenance.fields.driverOut')}");
     expect(at, 'the exit driver is asked for').toBeGreaterThan(-1);
     // The star sits on the `<Field>` AFTER its label prop, so the slice runs forwards.
-    expect(source.slice(at, source.indexOf('>', at) + 1), 'and starred').toContain('required');
-    expect(source, 'and gates the save').toContain("driverOut === ''");
+    const field = source.slice(at, source.indexOf('>', at) + 1);
+    expect(field, 'and starred').toContain('required');
+    expect(field, 'and turns red when it is missing').toContain(
+      "missing={required.isMissing('driverOut')}",
+    );
+    expect(source, 'and gates the save').toContain("ok: driverOut !== ''");
   });
 
   it('lets a part that is NOT on the list be typed, and turns it into a catalog item', () => {
@@ -801,6 +806,23 @@ describe('the check-out dialog', () => {
         </QueryClientProvider>
       </Provider>,
     );
+  /**
+   * The Save button's own attributes — the footer's last button. The class list is dropped first:
+   * Tailwind's `disabled:` variants live in it and would match the attribute being looked for.
+   */
+  const saveButtonAttributes = (markup: string): string => {
+    const at = markup.lastIndexOf('<button');
+    return markup.slice(at, markup.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
+  };
+  /** The check-out dialog's own code, comments left out. */
+  const checkOutSource = (): string => {
+    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    return code.slice(
+      code.indexOf('export const CheckOutDialog'),
+      code.indexOf('export const MaintenanceEditDialog'),
+    );
+  };
 
   it('asks for the exit reading, and marks it required', () => {
     const markup = open();
@@ -860,15 +882,28 @@ describe('the check-out dialog', () => {
   });
 
   it('cannot be saved before the exit DRIVER is chosen, prefilled reading or not', () => {
-    // Nothing clicks in this suite; what is proven is that the save button RENDERS disabled on a
-    // freshly opened dialog, which is the state a click would have to get past. The reading now
-    // arrives prefilled, so the driver is what is still missing — and that is the point: the one
-    // field this door cannot infer is the one that still gates it.
+    // Nothing clicks in this suite. Save stays PRESSABLE on a freshly opened dialog — a disabled
+    // button said nothing about why — and the press is what the guard answers: with the driver
+    // still empty it names it and sends nothing. The reading now arrives prefilled, so the driver
+    // is what is still missing — and that is the point: the one field this door cannot infer is
+    // the one that still gates it.
     const markup = open();
-    const save = markup.slice(markup.lastIndexOf('<button'), markup.length);
-    expect(save).toContain('disabled');
-    const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
-    expect(source, 'and the gate still names the reading too').toContain('!exitValid');
+    expect(markup.slice(markup.lastIndexOf('<button')), 'the last button is Save').toContain(
+      t('common.save'),
+    );
+    expect(saveButtonAttributes(markup), 'Save is pressable').not.toContain('disabled');
+    expect(markup, 'and nothing is red before the first press').not.toContain(
+      'data-missing-fields',
+    );
+    expect(markup).not.toContain('data-field-missing');
+    const checkOut = checkOutSource();
+    expect(checkOut, 'the press goes through the guard').toContain(
+      'onClick={required.guard(submit)}',
+    );
+    expect(checkOut, 'which names the driver').toContain("ok: driverOut !== ''");
+    expect(checkOut, 'and the gate still names the reading too').toContain(
+      'ok: exitValid && !belowEntry',
+    );
   });
 
   it('sends the exit reading and the exit DRIVER, and gates the save on both', () => {
@@ -878,18 +913,33 @@ describe('the check-out dialog', () => {
     // The below-entry refusal is stated on the client too, so a typo does not cost a round-trip,
     // and neither a missing reading nor a missing driver can reach the server from here.
     expect(source).toContain('belowEntry');
-    expect(source).toContain(
-      "disabled={outDate === '' || !exitValid || belowEntry || driverOut === ''}",
+    const checkOut = checkOutSource();
+    const rules = checkOut.slice(checkOut.indexOf('useRequiredFields('));
+    const list = rules.slice(0, rules.indexOf(');'));
+    for (const rule of [
+      "ok: driverOut !== ''",
+      "ok: outDate !== ''",
+      'ok: exitValid && !belowEntry',
+    ]) {
+      expect(list, `the save requires ${rule}`).toContain(rule);
+    }
+    expect(checkOut).toContain('onClick={required.guard(submit)}');
+    // The below-entry refusal keeps its own words under the field; «حقل مطلوب» does not replace it.
+    expect(checkOut).toContain(
+      "error={belowEntry ? t('fleet.maintenance.exitBelowEntry') : undefined}",
     );
   });
 
   it('asks for the exit driver, and refuses to save without one', () => {
     const markup = open();
     expect(markup).toContain(t('fleet.maintenance.fields.driverOut'));
-    // Rendered with the form empty, the save button is already disabled — the state a click
-    // would have to get past. Nothing clicks in this suite.
-    const save = markup.slice(markup.lastIndexOf('<button'));
-    expect(save).toContain('disabled');
+    // Rendered with the form empty, Save is pressable and the guard is what refuses: the driver is
+    // one of the fields it requires, and its Field turns red when the press finds it empty.
+    // Nothing clicks in this suite.
+    expect(saveButtonAttributes(markup)).not.toContain('disabled');
+    const checkOut = checkOutSource();
+    expect(checkOut).toContain("key: 'driverOut'");
+    expect(checkOut).toContain("missing={required.isMissing('driverOut')}");
   });
 });
 
@@ -949,7 +999,7 @@ describe('the maintenance and odometer dialogs say what a choice will cost', () 
     expect(code, 'fired on a zero-distance period').toContain('derivedKm === 0');
     expect(code, 'as advice, not as a refusal').toContain('warning: t(');
     // The submit guard must not have grown a clause about it.
-    const submit = code.slice(code.indexOf('const canSubmit'), code.indexOf('return ('));
+    const submit = code.slice(code.indexOf('useRequiredFields('), code.indexOf('const submit'));
     expect(submit, 'a standing day stays recordable').not.toContain('derivedKm === 0');
   });
 

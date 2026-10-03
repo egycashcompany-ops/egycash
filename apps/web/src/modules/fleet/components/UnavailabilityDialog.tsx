@@ -8,6 +8,7 @@ import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useRecordUnavailability, useUpdateUnavailability } from '../api/fleet-queries';
 import { EmployeeSearchPicker } from './EmployeeSearchPicker';
@@ -55,8 +56,22 @@ export const UnavailabilityDialog = ({
   const update = useUpdateUnavailability();
   const busy = create.isPending || update.isPending;
 
-  const complete =
-    form.employeeId !== '' && form.from !== '' && form.to !== '' && form.reason.trim() !== '';
+  // Save stays pressable: pressing it with any of these empty names them and turns their boxes red
+  // (`useRequiredFields`). An end before the start is one the server refuses, so «to» reads as
+  // missing until it is on or after «from» rather than sending a save that can only fail.
+  const required = useRequiredFields(
+    [
+      { key: 'driver', label: t('fleet.attendance.fields.driver'), ok: form.employeeId !== '' },
+      { key: 'from', label: t('fleet.attendance.fields.from'), ok: form.from !== '' },
+      {
+        key: 'to',
+        label: t('fleet.attendance.fields.to'),
+        ok: form.to !== '' && (form.from === '' || form.to >= form.from),
+      },
+      { key: 'reason', label: t('fleet.attendance.fields.reason'), ok: form.reason.trim() !== '' },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     const notes = form.notes.trim() === '' ? null : form.notes.trim();
@@ -96,36 +111,53 @@ export const UnavailabilityDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={busy} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={busy} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         {record === null && fixedEmployeeId === null ? (
-          <Field label={t('fleet.attendance.fields.driver')} required>
+          <Field
+            label={t('fleet.attendance.fields.driver')}
+            required
+            missing={required.isMissing('driver')}
+          >
             <EmployeeSearchPicker
               value={form.employeeId}
               onPick={(employeeId) => setForm((prev) => ({ ...prev, employeeId }))}
             />
           </Field>
         ) : (
-          <Field label={t('fleet.attendance.fields.driver')}>
+          <Field label={t('fleet.attendance.fields.driver')} missing={required.isMissing('driver')}>
             <p className="text-sm">
               <EmployeeName employeeId={form.employeeId} />
             </p>
           </Field>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.attendance.fields.from')} required>
+          <Field
+            label={t('fleet.attendance.fields.from')}
+            required
+            missing={required.isMissing('from')}
+          >
             <Input
               type="date"
               value={form.from}
               onChange={(e) => setForm((prev) => ({ ...prev, from: e.target.value }))}
             />
           </Field>
-          <Field label={t('fleet.attendance.fields.to')} required>
+          <Field
+            label={t('fleet.attendance.fields.to')}
+            required
+            missing={required.isMissing('to')}
+            // Given, but before the start: say so rather than «required».
+            {...(required.isMissing('to') && form.to !== ''
+              ? { error: t('fleet.attendance.toBeforeFrom') }
+              : {})}
+          >
             <Input
               type="date"
               value={form.to}
@@ -136,6 +168,7 @@ export const UnavailabilityDialog = ({
         <Field
           label={t('fleet.attendance.fields.reason')}
           required
+          missing={required.isMissing('reason')}
           hint={t('fleet.attendance.reasonHint')}
         >
           <Input

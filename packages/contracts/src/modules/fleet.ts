@@ -3248,7 +3248,8 @@ export type UpdateFleetReceipt = z.infer<typeof UpdateFleetReceiptSchema>;
 
 const receiptFilters = {
   vehicleCodes: vehicleCodesQuery(),
-  kind: FleetReceiptKindSchema.optional(),
+  /** One kind or several — `?kind=tyres,wash`. A link with one kind still reads as before. */
+  kind: listQuery(FleetReceiptKindSchema),
   source: FleetReceiptSourceSchema.optional(),
   /** Part of the driver's name. */
   driver: z.string().trim().min(1).max(200).optional(),
@@ -3304,7 +3305,8 @@ export type FleetCustodySource = z.infer<typeof FleetCustodySourceSchema>;
 
 const custodyFilters = {
   vehicleCodes: vehicleCodesQuery(),
-  source: FleetCustodySourceSchema.optional(),
+  /** One source or several — `?source=dealership,fuel`. A link with one still reads as before. */
+  source: listQuery(FleetCustodySourceSchema),
   driver: z.string().trim().min(1).max(200).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),

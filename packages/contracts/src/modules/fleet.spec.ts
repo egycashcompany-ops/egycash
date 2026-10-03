@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   ChangeFleetVehicleStatusSchema,
+  FleetCustodySummaryQuerySchema,
+  ListFleetReceiptsQuerySchema,
   CreateFleetCatalogItemSchema,
   CreateFleetUnavailabilitySchema,
   FleetAccidentTransferInputSchema,
@@ -570,5 +572,26 @@ describe('taking from another car’s remaining — the transfer input', () => {
     expect(
       fleetAccidentRemaining({ amountCollected: 1500, companyCost: 500, paidAmount: 1300 }),
     ).toBe(700);
+  });
+});
+
+describe('receipt kinds and custody sources take several — «اختيار متعدد»', () => {
+  it('a receipts filter reads one kind or several, and a saved one-kind link still reads', () => {
+    expect(ListFleetReceiptsQuerySchema.parse({ kind: 'tyres,wash' }).kind).toEqual([
+      'tyres',
+      'wash',
+    ]);
+    expect(ListFleetReceiptsQuerySchema.parse({ kind: 'fuel' }).kind).toEqual(['fuel']);
+    expect(ListFleetReceiptsQuerySchema.parse({ kind: '' }).kind).toBeUndefined();
+    expect(ListFleetReceiptsQuerySchema.safeParse({ kind: 'fuel,petrol' }).success).toBe(false);
+  });
+
+  it('a custody filter reads one source or several', () => {
+    expect(FleetCustodySummaryQuerySchema.parse({ source: 'dealership,fuel' }).source).toEqual([
+      'dealership',
+      'fuel',
+    ]);
+    expect(FleetCustodySummaryQuerySchema.parse({ source: 'wash' }).source).toEqual(['wash']);
+    expect(FleetCustodySummaryQuerySchema.safeParse({ source: 'card' }).success).toBe(false);
   });
 });

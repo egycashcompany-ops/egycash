@@ -21,7 +21,8 @@ interface TotalsRow {
 export interface ReceiptFilterInput {
   /** Resolved from the typed codes; `[]` narrows to nothing, as every id list on this module does. */
   vehicleIds?: readonly string[] | undefined;
-  kind?: FleetReceiptKind | undefined;
+  /** Any of these kinds. */
+  kind?: readonly FleetReceiptKind[] | undefined;
   source?: FleetReceiptSource | undefined;
   driver?: string | undefined;
   from?: Date | undefined;
@@ -41,7 +42,7 @@ class FleetReceiptRepository extends BaseRepository<FleetReceiptDoc> {
     if (query.vehicleIds !== undefined) {
       clauses.push({ vehicleId: { $in: query.vehicleIds.map((id) => new Types.ObjectId(id)) } });
     }
-    if (query.kind !== undefined) clauses.push({ kind: query.kind });
+    if (query.kind !== undefined) clauses.push({ kind: { $in: [...query.kind] } });
     if (query.source !== undefined) clauses.push({ source: query.source });
     if (query.driver !== undefined) {
       clauses.push({ driverName: { $regex: escapeRegex(query.driver), $options: 'i' } });

@@ -50,16 +50,24 @@ class FleetCustodyService {
       query.vehicleCodes === undefined
         ? undefined
         : await fleetVehicleRepository.idsByCodes(query.vehicleCodes);
-    const wantsReceipts = query.source === undefined || RECEIPT_SOURCES.includes(query.source);
+    // The receipt kinds among the chosen sources — or every kind when no source is chosen.
+    const receiptKinds =
+      query.source === undefined
+        ? undefined
+        : (query.source.filter((source) => RECEIPT_SOURCES.includes(source)) as (
+            'fuel' | 'tyres' | 'wash'
+          )[]);
+    const wantsReceipts = receiptKinds === undefined || receiptKinds.length > 0;
     // A dealership bill names no driver, so a driver filter leaves the bills out.
     const wantsDealership =
-      (query.source === undefined || query.source === 'dealership') && query.driver === undefined;
+      (query.source === undefined || query.source.includes('dealership')) &&
+      query.driver === undefined;
 
     const receipts: Movement[] = [];
     if (wantsReceipts) {
       const filter = fleetReceiptRepository.receiptFilter({
         vehicleIds,
-        kind: query.source === undefined ? undefined : (query.source as 'fuel' | 'tyres' | 'wash'),
+        kind: receiptKinds,
         source: 'custody',
         driver: query.driver,
         from: query.from,

@@ -9,7 +9,9 @@
 //
 // Kept out of the components because it is the part with a rule in it, and the part a node-env
 // test can reach: a closed dropdown renders no options at all.
+import { compareFleetVehicleCodes } from '@ecms/contracts';
 import { matchesVehicleCode } from './vehicle-code-match';
+import { rankVehicleCodes } from './vehicle-code-rank';
 
 export interface VehicleCodeOption {
   value: string;
@@ -86,3 +88,66 @@ export const narrowVehicleCodeOptions = <T extends { value: string }>(
   options.filter(
     (option) => selected.includes(option.value) || matchesVehicleCode(option.value, typed),
   );
+
+/**
+ * The WHOLE registry as the filter's options — «لازم تظهر كلها» — narrowed by what is being typed.
+ *
+ * Every car is offered in the fleet's own order while nothing is typed; a typed fragment keeps the
+ * codes it matches, those that START with it first (`rankVehicleCodes`, the single-car picker's
+ * order). A code already CHOSEN that the fragment hides — or that the registry no longer carries —
+ * is kept in front, so a filter you can set stays one you can unset.
+ */
+export const registryVehicleCodeOptions = (
+  vehicles: readonly { code: string }[],
+  typed: string,
+  selected: readonly string[],
+): VehicleCodeOption[] => {
+  const codes = [...new Set(vehicles.map((vehicle) => vehicle.code))].sort(
+    compareFleetVehicleCodes,
+  );
+  const matched = rankVehicleCodes(codes, typed);
+  const shown = new Set(matched);
+  const kept = selected
+    .filter((code) => !shown.has(code))
+    .filter((code, at, all) => all.indexOf(code) === at);
+  return [...kept, ...matched].map((code) => ({ value: code, label: code, shortLabel: code }));
+};
+
+export interface RegistryVehicle {
+  id: string;
+  code: string;
+  inWorkshop?: boolean;
+}
+
+/**
+ * What a single-car code box offers — every code the registry it loaded carries, each with its
+ * car's id.
+ *
+ * `excludeInWorkshop` is the check-in's rule: a car already in a workshop cannot be checked in
+ * again (the server refuses it under FR-4), so it is not offered — unless it is the car ALREADY
+ * chosen, which must stay nameable or the box would blank under the clerk.
+ */
+export const vehicleCodeEntries = (
+  items: readonly RegistryVehicle[],
+  options: { excludeInWorkshop?: boolean; chosenId?: string } = {},
+): Map<string, string> => {
+  const entries = new Map<string, string>();
+  for (const v of items) {
+    if (options.excludeInWorkshop === true && v.inWorkshop === true && v.id !== options.chosenId) {
+      continue;
+    }
+    entries.set(v.code, v.id);
+  }
+  return entries;
+};
+
+/**
+ * The id of the car a code carried in from a page's filter names — among the cars the box OFFERS,
+ * by the same rule — or `null` when it offers none such, so the dialog lets the code go rather than
+ * holding one it cannot save.
+ */
+export const resolveCarriedVehicleCode = (
+  items: readonly RegistryVehicle[],
+  code: string,
+  options: { excludeInWorkshop?: boolean } = {},
+): string | null => vehicleCodeEntries(items, options).get(code) ?? null;

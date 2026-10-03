@@ -40,35 +40,48 @@ const code = (rel: string): string =>
     .join('\n');
 
 /**
- * Every control whose job is to pick or filter A CAR, and which reaches the registry to do it.
+ * «اكواد السيارات فى الادخال او الفلاتر لازم لازم تظهر كلها من شاشة السيارات فى اى شاشه من شاشات
+ * الحركه … ولما نعمل شاشات تانى لازم تكون كدا».
  *
- * Each must build its query with `vehicleCodeSearchQuery` and must not send `search` — the two
- * halves of one rule, asserted separately so a failure says which half broke.
+ * The two controls every Fleet screen picks or filters a car with. Each loads the WHOLE registry
+ * (`useAllVehicles`, every page) and narrows it in the browser by CODE alone — no shortlist, no
+ * page, no server search. A car picker on a new screen is one of these, or it fails the census
+ * below: it would have to query the registry itself, and that query belongs to no bucket.
  */
-const CODE_SELECTORS = [
+const WHOLE_REGISTRY_PICKERS = [
   {
     file: 'modules/fleet/components/VehicleCodeFilter.tsx',
-    what: 'the multi-select on the filtered fleet screens (odometer, maintenance, alarms, registry, accidents, violations) and — with `options`, over rows already in hand — both roster boards',
-  },
-  {
-    file: 'modules/fleet/components/RecordOdometerDialog.tsx',
-    what: 'the vehicle picker on «تسجيل قراءة عداد»',
-  },
-  {
-    file: 'modules/fleet/components/MaintenanceDialogs.tsx',
-    what: 'the vehicle picker on the maintenance check-in',
+    what: 'the car filter on every Fleet filter bar (a board that already holds its cars passes them as `options`)',
   },
   {
     file: 'modules/fleet/components/VehicleCodeCombobox.tsx',
-    what: 'the typed car code on both violation entry rows and the accident form — on the accident form the whole registry is loaded and narrowed in the browser by code alone (`rankVehicleCodes`)',
+    what: 'the typed single car on every Fleet form — violations, accidents, odometer, maintenance, fuel cards, receipts',
   },
+] as const;
+
+/** Where the registry's ONE-PAGE hook may be named: its definition, and the registry's own table. */
+const ONE_PAGE_ALLOWED = new Set([
+  'modules/fleet/api/fleet-queries.ts',
+  'modules/fleet/pages/VehiclesListPage.tsx',
+]);
+
+/** Where the list endpoint's call may be named — the transport, and the registry's own export. */
+const LIST_CALL_ALLOWED = new Set([
+  'modules/fleet/api/fleet-api.ts',
+  'modules/fleet/api/fleet-queries.ts',
+  'modules/fleet/lib/whole-vehicle-registry.ts',
+  'modules/fleet/pages/VehiclesListPage.tsx',
+]);
+
+/**
+ * Every control OUTSIDE Fleet that picks a car by asking the registry. Each must build its query
+ * with `vehicleCodeSearchQuery` and must not send `search` — the two halves of one rule, asserted
+ * separately so a failure says which half broke.
+ */
+const CODE_SELECTORS = [
   {
     file: 'modules/gold/api/gold-api.ts',
     what: "Gold's receiving picker, through its own module's call",
-  },
-  {
-    file: 'modules/fleet/pages/VehiclesListPage.tsx',
-    what: 'the legacy `?code=` link lookup — literally "does a car carry this code?"',
   },
 ] as const;
 
@@ -92,6 +105,18 @@ const CLIENT_SIDE_FILTERS = [
  * does not belong.
  */
 const NOT_A_CODE_SELECTOR = [
+  {
+    file: 'modules/fleet/pages/VehiclesListPage.tsx',
+    why: 'the registry screen itself — its table is paged on purpose — plus the legacy `?code=` link check, answered exactly against the whole registry',
+  },
+  {
+    file: 'modules/fleet/components/RecordOdometerDialog.tsx',
+    why: 'turns a code carried in from the filter into an id, against the same whole registry its `VehicleCodeCombobox` loads',
+  },
+  {
+    file: 'modules/fleet/components/MaintenanceDialogs.tsx',
+    why: 'turns a code carried in from the filter into an id, against the same whole registry its `VehicleCodeCombobox` loads',
+  },
   {
     file: 'modules/fleet/components/VehicleSelect.tsx',
     why: 'a plain dropdown of the WHOLE registry (`useAllVehicles`, every page) — it has no search box at all, so there is no term to route',
@@ -184,6 +209,34 @@ const objectLiterals = (query: string): string[] => {
   return regions;
 };
 
+/**
+ * Every way the registry's list can be reached: its hooks, its API call, and its endpoint written
+ * out — with a query, or bare and concatenated (`'/fleet/vehicles' + …`).
+ */
+const REGISTRY_GREP = String.raw`\b(useVehicles|useAllVehicles|useVehicleSearch|listVehicles|searchVehicles)\b|/fleet/vehicles(\?|\$\{|['"\`][[:space:]]*[+),])`;
+const REGISTRY_NAMES =
+  /\b(?:useVehicles|useAllVehicles|useVehicleSearch|listVehicles|searchVehicles)\b|\/fleet\/vehicles(?:\?|\$\{|['"`]\s*[+),])/u;
+
+/**
+ * Every module file that reaches the vehicle registry's LIST endpoint — through either hook, or
+ * by naming the endpoint itself. Broader than the buckets above on purpose: the point is to
+ * catch what nobody thought to register.
+ */
+const found = (): string[] => {
+  const out = execFileSync('grep', ['-rEl', REGISTRY_GREP, 'modules'], {
+    cwd: SRC,
+    encoding: 'utf8',
+  });
+  return (
+    out
+      .split('\n')
+      .filter((line) => line !== '' && !line.includes('.spec.'))
+      // A name only in a comment is not a query.
+      .filter((file) => REGISTRY_NAMES.test(code(file)))
+      .sort()
+  );
+};
+
 /** A `search` FIELD: `search:`, the `{ search }` shorthand, or `search=` written into a URL. */
 const SEARCH_FIELD = /\bsearch\s*[:,}]/;
 const SEARCH_IN_URL = /[?&]search=/;
@@ -192,7 +245,222 @@ const SEARCH_IN_URL = /[?&]search=/;
 const sendsMultiFieldSearch = (query: string): boolean =>
   SEARCH_IN_URL.test(query) || objectLiterals(query).some((o) => SEARCH_FIELD.test(o));
 
-describe('every vehicle-code selector searches the CODE', () => {
+describe('every Fleet car picker offers the WHOLE registry', () => {
+  it.each(WHOLE_REGISTRY_PICKERS.map((p) => ({ ...p })))(
+    'loads every page of the registry — $what',
+    ({ file }) => {
+      expect(code(file)).toContain('useAllVehicles(');
+    },
+  );
+
+  it.each(WHOLE_REGISTRY_PICKERS.map((p) => ({ ...p })))(
+    'asks for no page and no shortlist — $what',
+    ({ file }) => {
+      const source = code(file);
+      expect(source, 'a one-page registry query').not.toContain('useVehicles(');
+      expect(source, 'a server-side code search').not.toContain('vehicleCodeSearchQuery(');
+      expect(source, 'a capped list').not.toMatch(/pageSize\s*:/u);
+      expect(source, 'a size cap').not.toMatch(/SEARCH_SIZE/u);
+    },
+  );
+
+  it('narrows by the code, starting-with first, in the single-car picker', () => {
+    expect(code('modules/fleet/components/VehicleCodeCombobox.tsx')).toContain(
+      'rankVehicleCodes([...byCode.keys()], query)',
+    );
+  });
+
+  it('narrows the registry by the typed code in the filter', () => {
+    expect(code('modules/fleet/components/VehicleCodeFilter.tsx')).toMatch(
+      /registryVehicleCodeOptions\(\s*vehicles\.data\?\.items \?\? \[\],\s*search,\s*value\s*\)/u,
+    );
+  });
+
+  /**
+   * THE RULE FOR EVERY SCREEN, INCLUDING THE NEXT ONE. Nothing under Fleet may pick a car from one
+   * page of the registry or from a server shortlist. Judged on whole WORDS in comment-stripped
+   * code, so a renamed import, a direct `listVehicles` call or a hook added under `api/` is seen
+   * the same as the old shape. Each name has an exact list of places it may appear, and why.
+   */
+  it('no Fleet file asks the registry for a page or a shortlist of cars', () => {
+    const fleet = found().filter((file) => file.startsWith('modules/fleet/'));
+    const offenders: string[] = [];
+    for (const file of fleet) {
+      const source = code(file);
+      if (/\bvehicleCodeSearchQuery\b/u.test(source))
+        offenders.push(`${file}: a server code search`);
+      if (/\buseVehicles\b/u.test(source) && !ONE_PAGE_ALLOWED.has(file)) {
+        offenders.push(`${file}: one page of the registry (useVehicles)`);
+      }
+      if (/\blistVehicles\b/u.test(source) && !LIST_CALL_ALLOWED.has(file)) {
+        offenders.push(`${file}: a direct registry list call (listVehicles)`);
+      }
+    }
+    expect(
+      offenders,
+      'a Fleet screen picks a car from a page or a shortlist of the registry. Use VehicleCodeCombobox (one car) or VehicleCodeFilter (a filter) — both offer every car',
+    ).toEqual([]);
+  });
+
+  it('the one-page query is the registry screen’s own table, and only that', () => {
+    const page = code('modules/fleet/pages/VehiclesListPage.tsx');
+    expect(page.match(/\buseVehicles\([^)]*\)/gu)).toEqual(['useVehicles(params)']);
+    // …and its export, which walks the filtered pages itself.
+    expect(page.match(/\blistVehicles\(/gu)).toHaveLength(1);
+    const queries = code('modules/fleet/api/fleet-queries.ts');
+    // `useVehicles` and `useAllVehicles` — no third hook built on the list endpoint.
+    expect(queries.match(/\blistVehicles\b/gu)).toHaveLength(2);
+  });
+
+  it('`useAllVehicles` really walks every page', () => {
+    const queries = code('modules/fleet/api/fleet-queries.ts');
+    const hook = queries.slice(
+      queries.indexOf('export const useAllVehicles'),
+      queries.indexOf('export const useVehicle ='),
+    );
+    expect(hook).toContain('fetchWholeVehicleRegistry(api.listVehicles, anyStatus)');
+    expect(hook).not.toMatch(/pageSize/u);
+  });
+
+  it('the two pickers cut nothing off the list in the browser either', () => {
+    for (const { file } of WHOLE_REGISTRY_PICKERS) {
+      expect(code(file), `${file} slices its options`).not.toMatch(/\.(?:slice|splice)\(/u);
+    }
+  });
+
+  /**
+   * A filter given its OWN options does not load the registry. Only the boards the owner kept
+   * that way may do it — each already holds every car it reports on.
+   */
+  it('only the boards pass their own options to the car filter', () => {
+    const passing = execFileSync('grep', ['-rlE', '<VehicleCodeFilter', 'modules'], {
+      cwd: SRC,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter((line) => line !== '' && !line.includes('.spec.'))
+      .filter((file) => {
+        const source = code(file);
+        let at = source.indexOf('<VehicleCodeFilter');
+        while (at !== -1) {
+          const end = source.indexOf('/>', at);
+          if (/\boptions=/u.test(source.slice(at, end))) return true;
+          at = source.indexOf('<VehicleCodeFilter', at + 1);
+        }
+        return false;
+      })
+      .sort();
+    expect(passing).toEqual([
+      // Both rosters — every active car on the day's board.
+      'modules/fleet/pages/FixedRosterPage.tsx',
+      // «التراخيص» — the «ت» licence-class cars, as the owner asked.
+      'modules/fleet/pages/LicensingPage.tsx',
+      // «إنذارات الصيانة» — the board of every active car.
+      'modules/fleet/pages/MaintenanceAlarmsPage.tsx',
+      'modules/fleet/pages/RosterPage.tsx',
+    ]);
+  });
+});
+
+/**
+ * Which cars each form's car box offers — the WHOLE registry, at the status scope that form has
+ * always had («زى ما هما»):
+ *
+ *   • `any`     — a historical fact that may name a car disposed of since: every status.
+ *   • `active`  — fuel cards and transfers: the active cars.
+ *   • `checkIn` — the maintenance check-in: the active cars, less those already in a workshop.
+ *
+ * A new form's car box joins this table, or the census below fails.
+ */
+const CAR_BOX_SCOPES: readonly {
+  file: string;
+  scope: 'any' | 'active' | 'checkIn';
+  boxes?: number;
+}[] = [
+  { file: 'modules/fleet/components/AccidentFormDialog.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/CompanyViolationsPanel.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/DriverViolationsPanel.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/ReceiptDialog.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/RecordOdometerDialog.tsx', scope: 'any' },
+  { file: 'modules/fleet/components/FuelCardDialog.tsx', scope: 'active' },
+  // From, and to.
+  { file: 'modules/fleet/components/FuelTransferDialog.tsx', scope: 'active', boxes: 2 },
+  { file: 'modules/fleet/components/MaintenanceDialogs.tsx', scope: 'checkIn' },
+];
+
+/** The props of every `<VehicleCodeCombobox … />` element in a file, comments left out. */
+const carBoxes = (file: string): string[] => {
+  const source = code(file);
+  const boxes: string[] = [];
+  let at = source.indexOf('<VehicleCodeCombobox');
+  while (at !== -1) {
+    boxes.push(source.slice(at, source.indexOf('/>', at)));
+    at = source.indexOf('<VehicleCodeCombobox', at + 1);
+  }
+  return boxes;
+};
+
+describe('each form’s car box keeps its status scope', () => {
+  it.each(CAR_BOX_SCOPES.map((entry) => ({ ...entry })))(
+    '$file offers the $scope cars',
+    ({ file, scope, boxes = 1 }) => {
+      const found = carBoxes(file);
+      expect(found, `${file} car boxes`).toHaveLength(boxes);
+      for (const box of found) {
+        expect(box, 'every status').toMatch(
+          scope === 'any' ? /\banyStatus\b/u : /^(?![\s\S]*\banyStatus\b)/u,
+        );
+        expect(box, 'cars already in a workshop').toMatch(
+          scope === 'checkIn' ? /\bexcludeInWorkshop\b/u : /^(?![\s\S]*\bexcludeInWorkshop\b)/u,
+        );
+      }
+    },
+  );
+
+  it('the table covers every car box in the application', () => {
+    const using = execFileSync('grep', ['-rl', '<VehicleCodeCombobox', 'modules'], {
+      cwd: SRC,
+      encoding: 'utf8',
+    })
+      .split('\n')
+      .filter((line) => line !== '' && !line.includes('.spec.'))
+      .filter((file) => carBoxes(file).length > 0)
+      .sort();
+    expect(using).toEqual(CAR_BOX_SCOPES.map((entry) => entry.file).sort());
+  });
+
+  /**
+   * A code carried in from a page's filter is resolved against the SAME list the box offers: a
+   * narrower list would leave a code the box shows but never turns into an id, so Save would stay
+   * off with nothing said.
+   */
+  it('a carried-in code is resolved against the list its box offers', () => {
+    const odometer = code('modules/fleet/components/RecordOdometerDialog.tsx');
+    expect(odometer).toContain("useAllVehicles({ anyStatus: true }, open && pickedCode !== '')");
+    expect(odometer).toContain('resolveCarriedVehicleCode(registry.data.items, pickedCode)');
+    expect(odometer).toContain('pendingCode={pickedCode}');
+
+    const checkIn = code('modules/fleet/components/MaintenanceDialogs.tsx');
+    expect(checkIn).toContain("useAllVehicles({}, open && pickedCode !== '')");
+    expect(checkIn).toMatch(
+      /resolveCarriedVehicleCode\(registry\.data\.items, pickedCode, \{\s*excludeInWorkshop: true,\s*\}\)/u,
+    );
+    expect(checkIn).toContain('pendingCode={pickedCode}');
+
+    const box = code('modules/fleet/components/VehicleCodeCombobox.tsx');
+    expect(box, 'the box offers by the same rule').toContain(
+      'vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value })',
+    );
+  });
+
+  it('a legacy `?code=` link is read against the whole registry, exactly', () => {
+    const page = code('modules/fleet/pages/VehiclesListPage.tsx');
+    expect(page).toMatch(/useAllVehicles\(\s*\{ anyStatus: true \},/u);
+    expect(page).toContain('legacyCodeNamesAVehicle(legacyLookup.data?.items ?? [], legacyCode)');
+  });
+});
+
+describe('every vehicle-code selector outside Fleet searches the CODE', () => {
   it.each(CODE_SELECTORS.map((s) => ({ ...s })))(
     'builds its query with vehicleCodeSearchQuery — $what',
     ({ file }) => {
@@ -214,6 +482,15 @@ describe('every vehicle-code selector searches the CODE', () => {
   );
 });
 
+describe('a file that reads the registry for another reason picks no car with it', () => {
+  it.each(
+    NOT_A_CODE_SELECTOR.filter((n) => n.file.startsWith('modules/fleet/')).map((n) => ({ ...n })),
+  )('renders no raw Combobox over the registry — $file', ({ file }) => {
+    // A car is picked with VehicleCodeCombobox; `\b` does not match inside that name.
+    expect(code(file)).not.toMatch(/<Combobox\b/u);
+  });
+});
+
 describe('every client-side vehicle filter matches the CODE', () => {
   it.each(CLIENT_SIDE_FILTERS.map((f) => ({ ...f })))(
     'goes through matchesVehicleCode — $what',
@@ -231,27 +508,6 @@ describe('every client-side vehicle filter matches the CODE', () => {
 });
 
 describe('the census covers every registry query in the application', () => {
-  /**
-   * Every module file that reaches the vehicle registry's LIST endpoint — through either hook, or
-   * by naming the endpoint itself. Broader than the buckets above on purpose: the point is to
-   * catch what nobody thought to register.
-   */
-  const found = (): string[] => {
-    const out = execFileSync(
-      'grep',
-      [
-        '-rEl',
-        String.raw`useVehicles\(|useAllVehicles\(|useVehicleSearch\(|/fleet/vehicles(\?|\$\{)`,
-        'modules',
-      ],
-      { cwd: SRC, encoding: 'utf8' },
-    );
-    return out
-      .split('\n')
-      .filter((line) => line !== '' && !line.includes('.spec.'))
-      .sort();
-  };
-
   /**
    * THE INVARIANT, and the reason this is a census rather than five assertions.
    *
@@ -284,6 +540,7 @@ describe('the census covers every registry query in the application', () => {
    * needs to be guessed.
    */
   const CLASSIFIED = new Set<string>([
+    ...WHOLE_REGISTRY_PICKERS.map((p) => p.file),
     ...CODE_SELECTORS.map((s) => s.file),
     ...CLIENT_SIDE_FILTERS.map((f) => f.file),
     ...NOT_A_CODE_SELECTOR.map((n) => n.file),
@@ -291,6 +548,8 @@ describe('the census covers every registry query in the application', () => {
     // this census classifies. They are exempt from CLASSIFICATION, never from the invariant above.
     'modules/fleet/api/fleet-api.ts',
     'modules/fleet/api/fleet-queries.ts',
+    // Walks the pages of whatever list call it is handed — `useAllVehicles` hands it the registry's.
+    'modules/fleet/lib/whole-vehicle-registry.ts',
     'modules/gold/api/gold-queries.ts',
     // The picker's markup; its query is `gold-api.ts`, classified above.
     'modules/gold/components/VehiclePicker.tsx',
@@ -300,7 +559,7 @@ describe('the census covers every registry query in the application', () => {
     const unclassified = found().filter((file) => !CLASSIFIED.has(file));
     expect(
       unclassified,
-      'a new file queries the vehicle registry and belongs to no bucket in this census — add it to CODE_SELECTORS, CLIENT_SIDE_FILTERS or NOT_A_CODE_SELECTOR (with a reason)',
+      'a new file queries the vehicle registry and belongs to no bucket in this census — a car picker uses VehicleCodeCombobox or VehicleCodeFilter; anything else goes in NOT_A_CODE_SELECTOR (with a reason)',
     ).toEqual([]);
   });
 
@@ -308,8 +567,8 @@ describe('the census covers every registry query in the application', () => {
     // The other direction: a stale entry would make the census look complete while guarding a
     // file nobody calls any more.
     const live = new Set(found());
-    const stale = [...CODE_SELECTORS, ...CLIENT_SIDE_FILTERS, ...NOT_A_CODE_SELECTOR]
-      .map((e) => e.file)
+    // EVERY classified file — the transport entries too: a dead exemption is a silent one.
+    const stale = [...CLASSIFIED]
       // The two roster filters hold rows rather than fetch them; they are never in `found()`.
       .filter((f) => !CLIENT_SIDE_FILTERS.some((c) => c.file === f))
       .filter((f) => !live.has(f));
@@ -322,7 +581,7 @@ describe('the census covers every registry query in the application', () => {
     // exactly the two places whose job is to publish it.
     const namesEndpoint = execFileSync(
       'grep',
-      ['-rEl', String.raw`/fleet/vehicles(\?|\$\{)`, 'modules'],
+      ['-rEl', String.raw`/fleet/vehicles(\?|\$\{|['"\`][[:space:]]*[+),])`, 'modules'],
       { cwd: SRC, encoding: 'utf8' },
     )
       .split('\n')

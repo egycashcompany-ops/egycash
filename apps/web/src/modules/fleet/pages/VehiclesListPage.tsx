@@ -14,7 +14,6 @@ import {
   type Locale,
   type LocalizedString,
   splitVehicleCodeList,
-  vehicleCodeSearchQuery,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -26,7 +25,10 @@ import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { ExportSheetButton } from '../components/ExportSheetButton';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import * as fleetApi from '../api/fleet-api';
-import { migrateLegacyVehicleCodeParam } from '../lib/legacy-vehicle-filter';
+import {
+  legacyCodeNamesAVehicle,
+  migrateLegacyVehicleCodeParam,
+} from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -47,6 +49,7 @@ import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
 import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import {
+  useAllVehicles,
   useDeleteVehicle,
   useFleetCatalog,
   useVehicleTypes,
@@ -145,17 +148,15 @@ export const VehiclesListPage = (): JSX.Element => {
   // history entry the reader has to press Back through twice.
   const legacyCode = sp.get('code');
   // Which of the two controls the old text meant depends on the REGISTRY, not on the text: a value
-  // that names a car is a pick, one that does not is a substring search. So it is looked up — one
-  // search, and only while such a link is being read.
-  // Asked of the CODE, not of `search`: the question is literally "does a car carry this code?",
-  // and the four-identifier search answers a wider one. With `pageSize: 1` that mattered — a car
-  // whose PLATE contained the value could come back first and be the only row read, so a link that
-  // did name a car migrated to `search=` instead of ticking it.
-  const legacyLookup = useVehicles(
-    { ...vehicleCodeSearchQuery(legacyCode ?? ''), pageSize: 1, sortBy: 'code', sortDir: 'asc' },
+  // that names a car is a pick, one that does not is a substring search. So it is looked up — only
+  // while such a link is being read — against the WHOLE registry, exactly: «does a car carry this
+  // code?». It used to read ONE row of a substring search, so `?code=61` read car 161 first and a
+  // link that did name car 61 migrated to `search=` instead of ticking it.
+  const legacyLookup = useAllVehicles(
+    { anyStatus: true },
     legacyCode !== null && legacyCode.trim() !== '',
   );
-  const legacyNamesAVehicle = (legacyLookup.data?.items ?? []).some((v) => v.code === legacyCode);
+  const legacyNamesAVehicle = legacyCodeNamesAVehicle(legacyLookup.data?.items ?? [], legacyCode);
   useEffect(() => {
     // Nothing is rewritten until the lookup has answered: migrating early would send every link to
     // `search`, including the ones that name a car.

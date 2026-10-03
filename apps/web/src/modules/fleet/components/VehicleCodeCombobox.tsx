@@ -7,30 +7,27 @@
 // واحد بس». Scrolling a dropdown to find «213» is slower than typing three digits of it, and a
 // clerk filing a statement is reading the code off a piece of paper.
 //
-// AND THE DROPDOWN COULD NOT SEE THE WHOLE FLEET. `VehicleSelect` fetches ONE page of the registry
-// at `pageSize: MAX_PAGE_SIZE` — a hard server cap of 100 — sorted by code. On a fleet of more
-// than a hundred cars, every car past the hundredth was simply not offerable, and a row already
-// filed against one of them showed the empty «اختر…» row as though no car had been chosen. The
-// search belongs on the SERVER, which is what `vehicleCodeSearchQuery` asks it.
+// AND EVERY CAR IS IN THE LIST. «اكواد السيارات فى الادخال او الفلاتر لازم لازم تظهر كلها من شاشة
+// السيارات فى اى شاشه من شاشات الحركه». The registry is loaded whole (`useAllVehicles`, every
+// page) and narrowed HERE as the clerk types — codes that START with what was typed first. It used
+// to ask the server for a twenty-car shortlist per keystroke, so clicking the box offered the first
+// twenty codes and nothing past them; the accident form had already moved to the whole list, and
+// now every caller has. `lib/vehicle-code-selectors.spec.ts` keeps it that way for new screens.
 //
 // It is `Combobox` rather than `VehicleCodeFilter` because the answer here is ONE car: `Combobox`
 // commits exactly one value and can never commit something that is not an option, while the filter
 // control is irreducibly multi — a list, checkbox rows, and a rule that takes several codes at once
 // from one typed string.
 //
-// `wholeRegistry` is the accident form's mode — «لما ادوس بس على كود السياره» every car is in the
-// list, and typing narrows it, codes that START with what was typed first. The whole registry is
-// loaded once (`useAllVehicles`) and filtered here, so clicking shows all of it rather than the
-// twenty-car shortlist a server search answers with.
+// WHICH cars is the caller's, unchanged by any of this: `anyStatus` for a historical fact (every
+// lifecycle status, as the vehicles screen lists), the active cars otherwise; `excludeInWorkshop`
+// for the workshop check-in, which the server refuses for a car already inside.
 import { useMemo, useState } from 'react';
-import { vehicleCodeSearchQuery } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { Combobox } from '../../../shared/ui/Combobox';
-import { useAllVehicles, useVehicle, useVehicles } from '../api/fleet-queries';
+import { useAllVehicles, useVehicle } from '../api/fleet-queries';
+import { vehicleCodeEntries } from '../lib/vehicle-code-options';
 import { rankVehicleCodes } from '../lib/vehicle-code-rank';
-
-/** How many matches one search offers — a shortlist to pick from, not a catalogue. */
-const SEARCH_SIZE = 20;
 
 export const VehicleCodeCombobox = ({
   value,
@@ -39,8 +36,10 @@ export const VehicleCodeCombobox = ({
   testId,
   ariaLabel,
   anyStatus = false,
-  wholeRegistry = false,
+  excludeInWorkshop = false,
   placeholder,
+  pendingCode = '',
+  emptyText,
 }: {
   /** The chosen vehicle's id ('' = none). The box shows its CODE. */
   value: string;
@@ -53,10 +52,21 @@ export const VehicleCodeCombobox = ({
    * can name a car that has since been disposed of, the same reason `VehicleSelect` takes this.
    */
   anyStatus?: boolean;
-  /** Offer EVERY car on opening and narrow as the clerk types — see the head of this file. */
-  wholeRegistry?: boolean;
+  /**
+   * Leave out the cars already IN a workshop — the check-in's list. The car already chosen stays,
+   * so an edit never blanks its own value.
+   */
+  excludeInWorkshop?: boolean;
   /** What the empty box says; «اختر…» unless given. */
   placeholder?: string;
+  /**
+   * A code the caller already KNOWS but has not turned into an id yet — carried in from a page
+   * filtered to one car. Shown as the box's value from the first paint while nothing is chosen, so
+   * the box never flashes empty before the registry answers.
+   */
+  pendingCode?: string;
+  /** What an empty list says; «لا توجد نتائج» unless given. */
+  emptyText?: string;
 }): JSX.Element => {
   const t = useT();
   const [query, setQuery] = useState('');
@@ -67,40 +77,30 @@ export const VehicleCodeCombobox = ({
   // against the new id.
   const [picked, setPicked] = useState({ id: '', code: '' });
 
-  const searched = useVehicles(
-    {
-      ...vehicleCodeSearchQuery(query),
-      ...(anyStatus ? {} : { status: 'active' }),
-      pageSize: SEARCH_SIZE,
-      sortBy: 'code',
-      sortDir: 'asc',
-    },
-    !wholeRegistry,
-  );
-  const whole = useAllVehicles({ anyStatus }, wholeRegistry);
-  const items = (wholeRegistry ? whole.data : searched.data)?.items;
+  const whole = useAllVehicles({ anyStatus });
+  const items = whole.data?.items;
 
-  const byCode = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const v of items ?? []) map.set(v.code, v.id);
-    return map;
-  }, [items]);
-  const options = useMemo(
-    () => (wholeRegistry ? rankVehicleCodes([...byCode.keys()], query) : [...byCode.keys()]),
-    [byCode, query, wholeRegistry],
+  const byCode = useMemo(
+    () => vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value }),
+    [items, excludeInWorkshop, value],
   );
+  const options = useMemo(() => rankVehicleCodes([...byCode.keys()], query), [byCode, query]);
 
-  // A value handed in from outside — a row being edited, a car carried from another screen — names
-  // a car whose code this control has not searched for. The id is known, the code is not: the
-  // current list is read first, and a car it does not carry (past the twenty-car shortlist, or
-  // not yet loaded) is asked for by its id, so the box never reads as empty for a car it has.
+  // A value handed in from outside — a row being edited, a car carried from another screen — is an
+  // id. The list is read first; a car it does not carry (another status, or the list not loaded
+  // yet) is asked for by its id, so the box never reads as empty for a car it has.
   const known = useMemo(
     () => [...byCode.entries()].find(([, id]) => id === value)?.[0] ?? '',
     [byCode, value],
   );
   const lookup = useVehicle(value !== '' && known === '' && picked.id !== value ? value : '');
   const resolved = known !== '' ? known : lookup.data?.id === value ? lookup.data.code : '';
-  const shownCode = value === '' ? '' : picked.id === value ? picked.code : resolved;
+  // A carried-in code is named until the registry arrives, and while it names a car this box offers;
+  // once the list is in and no such car is on it, the box is empty rather than showing a code that
+  // cannot be saved.
+  const pendingShown = pendingCode !== '' && (whole.isPending || byCode.has(pendingCode));
+  const shownCode =
+    value === '' ? (pendingShown ? pendingCode : '') : picked.id === value ? picked.code : resolved;
 
   return (
     <Combobox
@@ -108,16 +108,21 @@ export const VehicleCodeCombobox = ({
       options={options}
       // The typed text is a SEARCH, never a value: `Combobox` only ever commits an option, so a
       // code the registry does not carry cannot be stored.
-      onSearch={setQuery}
+      onSearch={(typed) => {
+        // `Combobox` asks with '' every time it opens: a list loaded a while ago is asked again, so
+        // a car registered since — by anyone — is on offer without reloading the page.
+        if (typed === '' && whole.isStale) void whole.refetch();
+        setQuery(typed);
+      }}
       onChange={(code) => {
         const id = code === '' ? '' : (byCode.get(code) ?? '');
         setPicked({ id, code: id === '' ? '' : code });
         onChange(id);
       }}
       placeholder={placeholder ?? t('common.select')}
-      emptyText={t('common.noResults')}
+      emptyText={whole.isLoading ? t('common.loading') : (emptyText ?? t('common.noResults'))}
       clearLabel={t('common.clear')}
-      tallList={wholeRegistry}
+      tallList
       {...(density === undefined ? {} : { density })}
       {...(testId === undefined ? {} : { testId })}
       {...(ariaLabel === undefined ? {} : { ariaLabel })}

@@ -1024,9 +1024,13 @@ describe('the next round of reports, as rules the markup carries', () => {
       expect(tag, `${which} announces itself as a combobox`).toContain('role="combobox"');
     }
     const source = readFileSync(join(HERE, 'components/VehicleCodeCombobox.tsx'), 'utf8');
-    expect(source, 'the typing is a SERVER search, not a filter over one page').toContain(
-      'vehicleCodeSearchQuery(query)',
+    // «لازم تظهر كلها»: every car is on offer — the whole registry, narrowed by what is typed —
+    // never a page and never a twenty-car shortlist.
+    expect(source, 'the whole registry is loaded').toContain('useAllVehicles({ anyStatus })');
+    expect(source, 'and narrowed by the typed code').toContain(
+      'rankVehicleCodes([...byCode.keys()], query)',
     );
+    expect(source, 'no server shortlist').not.toContain('vehicleCodeSearchQuery(');
     // `Combobox` only ever commits an option, which is what «واحد بس» has to mean here: a code no
     // car carries cannot be stored, however it was typed.
     expect(source, 'and the value is a single vehicle id').toContain(

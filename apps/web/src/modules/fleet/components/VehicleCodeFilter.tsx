@@ -19,21 +19,21 @@
 // A code cannot contain a space, so the space around a dash is what makes it a separator:
 // `215 - 216` is two cars and `A-15` is one code, always, with no second reading.
 //
-// The options come from the registry a shortlist at a time (`onSearch`), never from one page of
-// it: a fleet outgrows any page, and a joined-against list would silently stop at its size. Alarms
-// is the exception and passes its own `options` — it already holds the whole board, and there the
-// typing narrows the list here rather than in a request nobody sends.
+// EVERY CAR IS ON OFFER. «اكواد السيارات فى الادخال او الفلاتر لازم لازم تظهر كلها من شاشة
+// السيارات». The options are the WHOLE registry (`useAllVehicles`, every page, every lifecycle
+// status — what the vehicles screen lists), narrowed here as the reader types. They used to come
+// from a server search capped at fifty, so opening the box offered the first fifty codes and no
+// way to scroll to the rest. A board that already holds every car it reports on (alarms,
+// licensing, both rosters) passes its own `options` instead, and is narrowed the same way.
+// `lib/vehicle-code-selectors.spec.ts` keeps new screens on this control.
 import { useMemo, useState } from 'react';
-import { splitVehicleCodeList, vehicleCodeSearchQuery } from '@ecms/contracts';
+import { splitVehicleCodeList } from '@ecms/contracts';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
 import { type ControlDensity } from '../../../shared/ui/form';
 import { useT } from '../../../platform/localization/useT';
-import { useVehicles } from '../api/fleet-queries';
+import { useAllVehicles } from '../api/fleet-queries';
 import { readTypedVehicleCodes } from '../lib/typed-vehicle-codes';
-import { narrowVehicleCodeOptions, vehicleCodeOptions } from '../lib/vehicle-code-options';
-
-/** How many cars one search offers. Enough to pick from, small enough to stay one request. */
-const SEARCH_SIZE = 50;
+import { narrowVehicleCodeOptions, registryVehicleCodeOptions } from '../lib/vehicle-code-options';
 
 export const VehicleCodeFilter = ({
   value,
@@ -48,8 +48,8 @@ export const VehicleCodeFilter = ({
   value: string[];
   onChange: (next: string[]) => void;
   /**
-   * Options to offer INSTEAD of searching the registry — for a screen that already holds every
-   * car it reports on (the alarm board). Omit it and the control asks the registry.
+   * Options to offer INSTEAD of the whole registry — for a board that already holds every car it
+   * reports on (alarms, licensing, both rosters). Omit it and every car is offered.
    */
   options?: MultiSelectOption[];
   className?: string;
@@ -67,9 +67,13 @@ export const VehicleCodeFilter = ({
 }): JSX.Element => {
   const t = useT();
   // What is still being TYPED — the trailing fragment, after the completed codes have been taken
-  // into the selection. It is both the registry's search term and the box's text.
+  // into the selection. It narrows the list and is the box's text.
   const [search, setSearch] = useState('');
   const remote = options === undefined;
+
+  // The whole registry, only when this control sources its own options; a board passes its own.
+  // Every lifecycle status, as the vehicles screen lists them: a filter asks about history too.
+  const vehicles = useAllVehicles({ anyStatus: true }, remote);
 
   const add = (codes: readonly string[]): void => {
     if (codes.length === 0) return;
@@ -80,33 +84,21 @@ export const VehicleCodeFilter = ({
 
   /** The rule, and why, live beside their own test in `readTypedVehicleCodes`. */
   const consume = (raw: string): void => {
+    // `MultiSelect` asks with '' every time it opens: a list loaded a while ago is asked again, so a
+    // car registered since — by anyone — is on offer without reloading the page.
+    if (raw === '' && remote && vehicles.isStale) void vehicles.refetch();
     const { chosen, typing } = readTypedVehicleCodes(raw);
     add(chosen);
     setSearch(typing);
   };
 
-  // Only asked when this control is sourcing its own options; the alarm board passes its own.
-  // `code`, never `search`: this control is labelled with the code and offers what it matched, so
-  // it has to match on the code. `search` spans plate, chassis and motor too — typing a plate here
-  // used to offer whichever car carries it, listed under a code the reader never typed.
-  const vehicles = useVehicles(
-    {
-      ...vehicleCodeSearchQuery(search),
-      pageSize: SEARCH_SIZE,
-      sortBy: 'code',
-      sortDir: 'asc',
-    },
-    remote,
-  );
-
-  // Searched: the registry already answered for the fragment being typed. Passed in: nothing did,
-  // so the fragment narrows the list HERE — `MultiSelect` treats an `onSearch` handler as proof
-  // that somebody else is filtering, and this control passes one on every screen because that is
-  // how a typed code is taken into the selection.
+  // Either way the fragment narrows the list HERE, by CODE alone — `MultiSelect` treats an
+  // `onSearch` handler as proof that somebody else is filtering, and this control passes one on
+  // every screen because that is how a typed code is taken into the selection.
   const shown = useMemo(
     () =>
       options === undefined
-        ? vehicleCodeOptions(vehicles.data?.items ?? [], value)
+        ? registryVehicleCodeOptions(vehicles.data?.items ?? [], search, value)
         : narrowVehicleCodeOptions(options, search, value),
     [options, vehicles.data, search, value.join(',')],
   );
@@ -127,7 +119,7 @@ export const VehicleCodeFilter = ({
       searchThreshold={0}
       searchValue={search}
       onSearch={consume}
-      {...(remote ? { searching: vehicles.isFetching } : {})}
+      {...(remote ? { searching: vehicles.isLoading } : {})}
       // Enter takes whatever is left in the box, separator or not — the last code of a list needs
       // no trailing punctuation to be meant.
       onCommitSearch={(raw) => {

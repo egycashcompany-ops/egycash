@@ -10,28 +10,26 @@
 // answers. What the operator loses without it is the SIGHT of the distance they are about to
 // record, so the dialog previews it from the server's own expected reading rather than asking.
 import { useEffect, useMemo, useState } from 'react';
-import { vehicleCodeSearchQuery, type Locale } from '@ecms/contracts';
+import { type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Combobox } from '../../../shared/ui/Combobox';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
 import {
   useExpectedReading,
   useRecordOdometer,
+  useAllVehicles,
   useRosterDay,
-  useVehicles,
 } from '../api/fleet-queries';
-import { vehicleCodeLabel } from '../lib/vehicle-code-options';
+import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { OptionalDriverField } from './OptionalDriverField';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
-/** How many matches a code search offers at once — a shortlist to pick from, not a catalogue. */
-const VEHICLE_SEARCH_SIZE = 20;
 
 export const RecordOdometerDialog = ({
   open,
@@ -52,13 +50,8 @@ export const RecordOdometerDialog = ({
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [vehicleId, setVehicleId] = useState('');
-  // What the registry is being asked for, and the code already chosen. The chosen one is held
-  // separately because the search moves on: the next query will not contain it, and the box must
-  // go on showing what is selected rather than blanking as the operator types.
-  // Seeded from the prop, not only from the reset effect: an effect runs AFTER the first paint,
-  // so a carried-over car would flash as an empty box before appearing. The effect still handles
-  // every later opening — this component stays mounted between them.
-  const [codeQuery, setCodeQuery] = useState(initialVehicleCode);
+  // A code carried in from the page's filter, until the registry has turned it into an id. Seeded
+  // from the prop, not only from the reset effect, so the first paint already knows it.
   const [pickedCode, setPickedCode] = useState(initialVehicleCode);
   const [reading, setReading] = useState('');
   const [date, setDate] = useState(today());
@@ -69,7 +62,6 @@ export const RecordOdometerDialog = ({
     if (open) {
       setVehicleId('');
       setPickedCode(initialVehicleCode);
-      setCodeQuery(initialVehicleCode);
       setReading('');
       setDate(today());
       setDriver1('');
@@ -101,49 +93,22 @@ export const RecordOdometerDialog = ({
    */
   const dayHasPassed = date !== '' && date < today();
 
-  // The vehicle is picked by CODE and typed into, not scrolled to: a registry runs to hundreds of
-  // cars and "150" is what the operator knows the car as. `Combobox` only ever commits a value
-  // that IS an option, so a code the registry does not carry cannot be saved.
+  // The vehicle is picked by CODE and typed into, from the WHOLE registry — every car on the
+  // vehicles screen, any lifecycle status, as this dialog has always offered (`VehicleCodeCombobox`).
+  // It used to search the server for a twenty-car shortlist, so clicking the box listed the first
+  // twenty codes and nothing past them.
   //
-  // The options are what the SERVER matched for what was typed, a shortlist at a time. They used
-  // to be one page of the registry filtered in the browser, which meant the operator could only
-  // ever record a reading for a car in the first `MAX_PAGE_SIZE` by code — car 101 could not be
-  // chosen at all, and so could not be recorded.
-  //
-  // Matched on the CODE alone (`vehicleCodeSearchQuery`), which is what the box asks for. It used
-  // to send `search`, the registry page's four-identifier box, so typing a plate offered a car
-  // under a code nobody had typed.
-  const vehicles = useVehicles(
-    {
-      ...vehicleCodeSearchQuery(codeQuery),
-      pageSize: VEHICLE_SEARCH_SIZE,
-      sortBy: 'code',
-      sortDir: 'asc',
-    },
-    open,
-  );
-  const byCode = useMemo(() => {
-    const map = new Map<string, { id: string; label: string }>();
-    for (const v of vehicles.data?.items ?? []) {
-      map.set(v.code, { id: v.id, label: vehicleCodeLabel(v) });
-    }
-    return map;
-  }, [vehicles.data]);
-  const codeOptions = useMemo(() => [...byCode.keys()], [byCode]);
-  // What the box shows: the code of the resolved car, or — before the registry has answered for a
-  // code carried in from the filter — that code itself. Clearing the box clears both, so an empty
-  // selection still reads as empty.
-  const codeOf = (id: string): string =>
-    ([...byCode.entries()].find(([, v]) => v.id === id)?.[0] ?? '') || pickedCode;
-
-  // A code carried in from the page's filter names a car this dialog has not got an id for — the
-  // caller no longer holds the registry to look one up in. The opening search IS that code, so
-  // the id arrives with its answer and is taken here, once.
+  // A code carried in from the page's filter names a car this dialog has not got an id for. The
+  // registry the picker loads is read for it here, once — the same cached list.
+  const registry = useAllVehicles({ anyStatus: true }, open && pickedCode !== '');
   useEffect(() => {
     if (pickedCode === '' || vehicleId !== '') return;
-    const found = byCode.get(pickedCode);
-    if (found !== undefined) setVehicleId(found.id);
-  }, [byCode, pickedCode, vehicleId]);
+    if (registry.data === undefined) return;
+    const found = resolveCarriedVehicleCode(registry.data.items, pickedCode);
+    // No car carries it: let it go, so the box reads empty rather than holding a code it cannot save.
+    if (found === null) setPickedCode('');
+    else setVehicleId(found);
+  }, [registry.data, pickedCode, vehicleId]);
 
   // Who the DUTY ROSTER says is on this car that day — the same board the roster screen shows,
   // read through the same hook. It PREFILLS the two slots rather than replacing them: a roster
@@ -235,19 +200,17 @@ export const RecordOdometerDialog = ({
     >
       <div className="space-y-4">
         <Field label={t('fleet.odometer.fields.vehicle')} required>
-          <Combobox
-            value={codeOf(vehicleId)}
-            options={codeOptions}
-            onChange={(code) => {
-              setVehicleId(byCode.get(code)?.id ?? '');
-              setPickedCode(byCode.get(code) === undefined ? '' : code);
+          <VehicleCodeCombobox
+            value={vehicleId}
+            onChange={(id) => {
+              setVehicleId(id);
+              setPickedCode('');
             }}
-            onSearch={setCodeQuery}
+            anyStatus
+            // A carried-in code is named from the first paint, while it is being resolved.
+            pendingCode={pickedCode}
             placeholder={t('fleet.odometer.vehiclePlaceholder')}
-            emptyText={
-              vehicles.isFetching ? t('common.loading') : t('fleet.odometer.vehicleNotFound')
-            }
-            clearLabel={t('common.clear')}
+            emptyText={t('fleet.odometer.vehicleNotFound')}
           />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">

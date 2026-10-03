@@ -778,14 +778,16 @@ describe('«كود السيارة» on the accident form — typed, and every ca
   const ar = (key: string): string => translate('ar', key);
 
   it('is a box the clerk can type the code into, offering the whole registry', () => {
-    expect(FORM).toMatch(/<VehicleCodeCombobox[\s\S]*?anyStatus\s+wholeRegistry/u);
+    expect(FORM).toMatch(/<VehicleCodeCombobox(?:(?!\/>)[\s\S])*?\banyStatus\b/u);
     expect(FORM, 'the single-page dropdown is gone').not.toContain('<VehicleSelect');
   });
 
   it('loads every page of the registry and narrows it by code as the clerk types', () => {
-    expect(BOX).toContain('useAllVehicles({ anyStatus }, wholeRegistry)');
+    // Every car-code box in Fleet does this now — the accident form was the first.
+    expect(BOX).toContain('useAllVehicles({ anyStatus })');
     expect(BOX).toContain('rankVehicleCodes([...byCode.keys()], query)');
-    expect(BOX, 'a list long enough to scroll').toContain('tallList={wholeRegistry}');
+    expect(BOX, 'a list long enough to scroll').toMatch(/^\s*tallList\s*$/mu);
+    expect(BOX, 'no shortlist mode is left').not.toContain('wholeRegistry');
   });
 
   it('resolves every row’s code from the whole registry, not its first hundred', () => {

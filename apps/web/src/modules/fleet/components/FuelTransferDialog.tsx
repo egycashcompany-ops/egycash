@@ -143,7 +143,6 @@ export const FuelTransferDialog = ({
               <VehicleCodeCombobox
                 value={fromVehicle}
                 onChange={setFromVehicle}
-                wholeRegistry
                 ariaLabel={t('fleet.fuelCards.transfer.from')}
                 placeholder={t('fleet.accidents.vehiclePlaceholder')}
                 testId="fuel-transfer-from"
@@ -168,7 +167,6 @@ export const FuelTransferDialog = ({
               <VehicleCodeCombobox
                 value={toVehicle}
                 onChange={setToVehicle}
-                wholeRegistry
                 ariaLabel={t('fleet.fuelCards.transfer.to')}
                 placeholder={t('fleet.accidents.vehiclePlaceholder')}
                 testId="fuel-transfer-to"

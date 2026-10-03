@@ -2,6 +2,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   narrowVehicleCodeOptions,
+  registryVehicleCodeOptions,
+  resolveCarriedVehicleCode,
+  vehicleCodeEntries,
   vehicleCodeLabel,
   vehicleCodeOptions,
 } from './vehicle-code-options';
@@ -110,5 +113,73 @@ describe('narrowVehicleCodeOptions', () => {
 
   it('offers nothing when nothing matches and nothing is chosen', () => {
     expect(narrowVehicleCodeOptions(opts('150', '213'), '999', [])).toEqual([]);
+  });
+});
+
+describe('registryVehicleCodeOptions — every car, narrowed by the typed code', () => {
+  const values = (options: { value: string }[]): string[] => options.map((o) => o.value);
+  // 213 cars, in no particular order — the filter must offer all of them, not the first fifty.
+  const fleet = Array.from({ length: 213 }, (_, at) => v(String(150 + ((at * 37) % 213))));
+
+  it('offers EVERY car when nothing is typed, in the fleet’s own order', () => {
+    const shown = values(registryVehicleCodeOptions(fleet, '', []));
+    expect(shown).toHaveLength(213);
+    expect(shown.slice(0, 3)).toEqual(['150', '151', '152']);
+    expect(shown.at(-1)).toBe('362');
+  });
+
+  it('puts the codes that START with what was typed first', () => {
+    const shown = values(
+      registryVehicleCodeOptions([v('121'), v('210'), v('215'), v('321')], '21', []),
+    );
+    // …then the codes that only contain it, in the fleet's order: 150 upward before the ones below.
+    expect(shown).toEqual(['210', '215', '321', '121']);
+  });
+
+  it('keeps a chosen code that the typing hides, in front', () => {
+    const shown = values(registryVehicleCodeOptions([v('150'), v('215'), v('216')], '21', ['150']));
+    expect(shown).toEqual(['150', '215', '216']);
+  });
+
+  it('keeps a chosen code the registry no longer carries, once', () => {
+    const shown = values(registryVehicleCodeOptions([v('150')], '', ['999', '999']));
+    expect(shown).toEqual(['999', '150']);
+  });
+});
+
+describe('vehicleCodeEntries / resolveCarriedVehicleCode — what a single-car box offers', () => {
+  const registry = [
+    { id: 'a', code: '150' },
+    { id: 'b', code: '161', inWorkshop: true },
+    { id: 'c', code: '61' },
+  ];
+
+  it('offers every car the loaded registry carries, each with its id', () => {
+    expect([...vehicleCodeEntries(registry)]).toEqual([
+      ['150', 'a'],
+      ['161', 'b'],
+      ['61', 'c'],
+    ]);
+  });
+
+  it('the check-in leaves out a car already in a workshop — but never the car already chosen', () => {
+    expect([...vehicleCodeEntries(registry, { excludeInWorkshop: true }).keys()]).toEqual([
+      '150',
+      '61',
+    ]);
+    expect(
+      [...vehicleCodeEntries(registry, { excludeInWorkshop: true, chosenId: 'b' }).keys()],
+      'the chosen car stays nameable',
+    ).toEqual(['150', '161', '61']);
+  });
+
+  it('resolves a carried-in code EXACTLY, among the cars the box offers', () => {
+    expect(resolveCarriedVehicleCode(registry, '61')).toBe('c');
+    expect(resolveCarriedVehicleCode(registry, '6'), 'no car carries it').toBeNull();
+    expect(resolveCarriedVehicleCode(registry, '161')).toBe('b');
+    expect(
+      resolveCarriedVehicleCode(registry, '161', { excludeInWorkshop: true }),
+      'the check-in cannot take a car already in a workshop',
+    ).toBeNull();
   });
 });

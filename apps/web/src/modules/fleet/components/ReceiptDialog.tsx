@@ -324,7 +324,6 @@ export const ReceiptDialog = ({
             <VehicleCodeCombobox
               value={vehicleId}
               onChange={setVehicleId}
-              wholeRegistry
               anyStatus
               testId="receipt-vehicle"
             />

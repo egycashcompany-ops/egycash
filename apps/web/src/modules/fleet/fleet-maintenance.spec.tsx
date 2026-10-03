@@ -121,8 +121,8 @@ const KEY = (over: Record<string, unknown> = {}) =>
   listKey('fleet', 'maintenance', { ...BASE_PARAMS, ...over });
 
 const CATALOG_KEY = (kind: string) => listKey('fleet', 'catalogs', { kind });
-const VEHICLE_SEARCH_KEY = (search?: string) =>
-  listKey('fleet', 'vehicles', { search, pageSize: 20, sortBy: 'code', sortDir: 'asc' });
+/** The WHOLE registry the car filter reads — every page, every status. */
+const WHOLE_REGISTRY_KEY = () => listKey('fleet', 'vehicles', { whole: true, anyStatus: true });
 
 const catalogs = (qc: QueryClient): void => {
   qc.setQueryData(
@@ -151,7 +151,7 @@ const client = (
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   qc.setQueryData(KEY(keyOver), pageOf(visits, metaOver));
   qc.setQueryData(
-    VEHICLE_SEARCH_KEY(),
+    WHOLE_REGISTRY_KEY(),
     pageOf([{ id: VEHICLE_ID, code: '150', plateNumber: 'س ص 150' }]),
   );
   catalogs(qc);
@@ -627,14 +627,15 @@ describe('the filter bar', () => {
     expect(source).not.toMatch(/w-36[\s\S]{0,80}shrink-0/);
   });
 
-  it('offers the vehicle codes as a SEARCH, never as a page of the registry', () => {
-    // Now the shared control's property — one implementation for the six screens that filter by
-    // car, so the page asserts that it renders it rather than re-proving what it no longer owns.
+  it('offers EVERY car in the code filter, never a page or a shortlist of the registry', () => {
+    // The shared control's property — one implementation for every screen that filters by car, so
+    // the page asserts that it renders it rather than re-proving what it no longer owns.
     const page = readFileSync(join(HERE, 'pages/MaintenancePage.tsx'), 'utf8');
     expect(page).toContain('<VehicleCodeFilter');
     const control = readFileSync(join(HERE, 'components/VehicleCodeFilter.tsx'), 'utf8');
     expect(control).toContain('onSearch={consume}');
-    expect(control).toContain('vehicleCodeOptions');
+    expect(control).toContain('useAllVehicles({ anyStatus: true }, remote)');
+    expect(control).toContain('registryVehicleCodeOptions(');
   });
 
   it('resets to page 1 when a filter changes, and not when the page does', () => {

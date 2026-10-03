@@ -13,6 +13,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   type FleetCustodyMovementDto,
   type FleetCustodySummaryDto,
+  type FleetFuelCardDto,
+  type FleetVehicleDto,
   type FleetReceiptDto,
   type FleetReceiptTotalsDto,
   type Locale,
@@ -21,10 +23,11 @@ import {
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
-import { listKey } from '../../../shared/lib/query-keys';
+import { detailKey, listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { ReceiptsPage } from './ReceiptsPage';
 import { CustodyPage } from './CustodyPage';
+import { ReceiptDialog } from '../components/ReceiptDialog';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -305,10 +308,10 @@ describe('the receipts table', () => {
 describe('the receipt modal', () => {
   it('asks the kind first — «وقود / كاوتش / غسيل» — and takes a card only for fuel', () => {
     expect(FORM).toContain('<KindSwitch value={kind} onChange={setKind} />');
-    expect(FORM).toContain('const byCard = isFuel && useCard;');
+    expect(FORM).toContain('const byCard = isFuel && useCard && !noCards;');
     expect(FORM).toContain('cardId: byCard ? cardId : null,');
     expect(FORM).toContain('fuelType: isFuel ? fuelType : null,');
-    expect(FORM).toContain('disabled={!isFuel}');
+    expect(FORM).toContain('disabled={!isFuel || noCards}');
   });
 
   it('reads the driver off the daily roster for the date and the car, and lets the clerk type over it', () => {
@@ -376,5 +379,114 @@ describe('the custody ledger', () => {
     expect(fuel).toContain('أيمن حسن مصطفى');
     expect(html).toContain('data-print="custody"');
     expect(html).toContain('data-export="custody"');
+  });
+});
+
+describe('the card after a car is picked — «هل فى كارت واحد على العربيه او اتنين او مفيش»', () => {
+  const fuelCard = (over: Partial<FleetFuelCardDto>): FleetFuelCardDto =>
+    ({
+      id: 'c-1',
+      vehicleId: 'v-160',
+      vehicleCode: '160',
+      company: 'wataniya',
+      name: 'كارت وطنية 160',
+      number: '7045 1120 0098 4410',
+      expiresAt: '2099-01-01T00:00:00.000Z',
+      hasPassword: false,
+      balance: 1200,
+      requestedAmount: null,
+      requestedAt: null,
+      lastChargedAt: null,
+      version: 0,
+      createdAt: '2026-10-01T00:00:00.000Z',
+      updatedAt: '2026-10-01T00:00:00.000Z',
+      ...over,
+    }) as FleetFuelCardDto;
+
+  /** The modal open on a fuel receipt of car 160, the car's cards already read. */
+  const openOn = (cards: FleetFuelCardDto[], over: Partial<FleetReceiptDto> = {}): string => {
+    const qc = client();
+    qc.setQueryData(detailKey('fleet', 'vehicles', 'v-160'), {
+      id: 'v-160',
+      code: '160',
+    } as FleetVehicleDto);
+    qc.setQueryData(listKey('fleet', 'fuelCards', { whole: true, vehicleCodes: ['160'] }), {
+      items: cards,
+      meta: { page: 1, pageSize: 100, totalItems: cards.length, totalPages: 1 },
+    });
+    const row = receipt({
+      vehicleId: 'v-160',
+      vehicleCode: '160',
+      cardId: null,
+      cardCompany: null,
+      cardNumber: null,
+      amount: 500,
+      ...over,
+    });
+    return mount(
+      qc,
+      ['fleetReceipt.view', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog open onClose={() => undefined} row={row} />,
+    );
+  };
+
+  it('never asks for a car once one is picked', () => {
+    const html = openOn([fuelCard({})], { cardId: 'c-1' });
+    expect(html).not.toContain(ar('fleet.receipts.fields.pickCar'));
+  });
+
+  it('one card: shows it and says what it was and becomes', () => {
+    const html = openOn([fuelCard({})], { cardId: 'c-1' });
+    expect(html).toContain('data-receipt-card="c-1"');
+    expect(html).toContain('data-receipt-summary="card"');
+    expect(html).toContain('1,200.00');
+  });
+
+  it('two cards and none picked: shows both and asks which one, in amber', () => {
+    const html = openOn([
+      fuelCard({}),
+      fuelCard({ id: 'c-2', company: 'chillout', number: '5522 8810 3340 1177' }),
+    ]);
+    expect(html).toContain('data-receipt-card="c-1"');
+    expect(html).toContain('data-receipt-card="c-2"');
+    expect(html).toContain('data-receipt-summary="pickCard"');
+    expect(html).toContain(ar('fleet.receipts.summary.pickCard'));
+    expect(html).toContain('bg-amber-50');
+  });
+
+  it('no card: says so, turns the tick off and locks it, and the fund pays', () => {
+    const html = openOn([]);
+    expect(html).toContain('data-receipt-cards="none"');
+    expect(html).toContain(ar('fleet.receipts.fields.noCardCustody'));
+    expect(html).toContain('data-receipt-source="custody"');
+    expect(html).toContain('data-receipt-summary="custody"');
+    const tick = html.slice(
+      html.indexOf('data-receipt-use-card'),
+      html.indexOf('data-receipt-use-card') + 400,
+    );
+    expect(tick).toContain('disabled');
+    expect(html).not.toContain(ar('fleet.receipts.fields.pickCar'));
+  });
+
+  it('only another car’s cards in hand: still LOADING, never «no cards»', () => {
+    const qc = client();
+    qc.setQueryData(detailKey('fleet', 'vehicles', 'v-160'), {
+      id: 'v-160',
+      code: '160',
+    } as FleetVehicleDto);
+    const html = mount(
+      qc,
+      ['fleetReceipt.view', 'fleetReceipt.edit'],
+      '/fleet/receipts',
+      <ReceiptDialog
+        open
+        onClose={() => undefined}
+        row={receipt({ vehicleId: 'v-160', vehicleCode: '160', cardId: 'c-1' })}
+      />,
+    );
+    expect(html).toContain('data-receipt-cards="loading"');
+    expect(html).toContain('data-receipt-summary="loading"');
+    expect(html).not.toContain(ar('fleet.receipts.fields.noCards'));
   });
 });

@@ -38,6 +38,7 @@ import { useFleetPeopleMap } from './EmployeeName';
 import { FuelCompanyLogo } from './FuelCardTiles';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
+import { receiptCardsState, settleReceiptCardId } from '../lib/receipt-cards';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const round = (value: number): number => Math.round(value * 100) / 100;
@@ -137,16 +138,18 @@ export const ReceiptDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [kind, setKind] = useState<FleetReceiptKind>('fuel');
-  const [date, setDate] = useState(today());
-  const [vehicleId, setVehicleId] = useState('');
-  const [driver, setDriver] = useState('');
+  // Seeded from the row on the first paint — an edit never flashes an empty form — and reset on
+  // every open by the effect below.
+  const [kind, setKind] = useState<FleetReceiptKind>(row?.kind ?? 'fuel');
+  const [date, setDate] = useState(row === null ? today() : row.date.slice(0, 10));
+  const [vehicleId, setVehicleId] = useState(row?.vehicleId ?? '');
+  const [driver, setDriver] = useState(row?.driverName ?? '');
   // Whether the clerk has written in the driver box — a roster name never overwrites typing.
-  const [driverTouched, setDriverTouched] = useState(false);
-  const [useCard, setUseCard] = useState(true);
-  const [cardId, setCardId] = useState('');
-  const [fuelType, setFuelType] = useState<FleetFuelType>('petrol92');
-  const [amount, setAmount] = useState('');
+  const [driverTouched, setDriverTouched] = useState(row !== null);
+  const [useCard, setUseCard] = useState(row === null ? true : row.source === 'card');
+  const [cardId, setCardId] = useState(row?.cardId ?? '');
+  const [fuelType, setFuelType] = useState<FleetFuelType>(row?.fuelType ?? 'petrol92');
+  const [amount, setAmount] = useState(row === null ? '' : String(row.amount));
   const [file, setFile] = useState<File | null>(null);
   const [inputKey, setInputKey] = useState(0);
 
@@ -169,16 +172,26 @@ export const ReceiptDialog = ({
   const vehicle = useVehicle(vehicleId);
   const code = vehicle.data?.id === vehicleId ? vehicle.data.code : '';
   const cards = useAllFuelCards({ vehicleCodes: [code] }, open && code !== '');
-  const carCards = useMemo(
-    () => (cards.data?.items ?? []).filter((card) => card.vehicleId === vehicleId),
-    [cards.data, vehicleId],
+  // No car, loading, failed, or the car's own cards — see `receiptCardsState`.
+  const cardsState = useMemo(
+    () =>
+      receiptCardsState({
+        vehicleId,
+        code,
+        items: cards.data?.items,
+        placeholder: cards.isPlaceholderData,
+        failed: cards.isError || vehicle.isError,
+      }),
+    [vehicleId, code, cards.data, cards.isPlaceholderData, cards.isError, vehicle.isError],
   );
+  const carCards = cardsState.kind === 'ready' ? cardsState.cards : [];
+  // «مفيش» — a car with no card: the receipt can only come from the custody fund.
+  const noCards = cardsState.kind === 'ready' && carCards.length === 0;
   useEffect(() => {
-    // A card picked for another car is no card of this one.
-    if (cardId !== '' && carCards.length > 0 && !carCards.some((card) => card.id === cardId)) {
-      setCardId('');
-    }
-  }, [carCards, cardId]);
+    // The only card is picked on its own; another car's card is dropped.
+    const next = settleReceiptCardId(cardsState, cardId);
+    if (next !== cardId) setCardId(next);
+  }, [cardsState, cardId]);
 
   // «اسم السائق — لو موجود فى اليوم دا»: the roster's first seat for the car on the date.
   const people = useFleetPeopleMap();
@@ -208,7 +221,7 @@ export const ReceiptDialog = ({
   const litres = kind === 'fuel' && amountOk && price > 0 ? round(value / price) : null;
 
   const isFuel = kind === 'fuel';
-  const byCard = isFuel && useCard;
+  const byCard = isFuel && useCard && !noCards;
   const card = byCard ? (carCards.find((c) => c.id === cardId) ?? null) : null;
   // On an edit, the card already holds this receipt's money back once the edit lands.
   const before = card === null ? 0 : card.balance + (row?.cardId === card.id ? row.amount : 0);
@@ -222,6 +235,38 @@ export const ReceiptDialog = ({
   const upload = useUploadReceiptImage();
   const pending = create.isPending || update.isPending || upload.isPending;
   const money = (n: number): string => formatMoney(n, 'EGP', locale);
+
+  // The line under the form: where the money comes from, or what is still missing to know.
+  const summary: { key: string; tone: 'plain' | 'ask' | 'bad'; text: string } = !byCard
+    ? {
+        key: 'custody',
+        tone: 'plain',
+        text: t('fleet.receipts.summary.custody', { amount: money(amountOk ? value : 0) }),
+      }
+    : cardsState.kind === 'noCar'
+      ? { key: 'noCar', tone: 'plain', text: t('fleet.receipts.fields.pickCar') }
+      : cardsState.kind === 'loading'
+        ? { key: 'loading', tone: 'plain', text: t('fleet.receipts.fields.loadingCards') }
+        : cardsState.kind === 'failed'
+          ? { key: 'failed', tone: 'bad', text: t('fleet.receipts.fields.cardsFailed') }
+          : card === null
+            ? { key: 'pickCard', tone: 'ask', text: t('fleet.receipts.summary.pickCard') }
+            : !enough
+              ? {
+                  key: 'notEnough',
+                  tone: 'bad',
+                  text: t('fleet.receipts.summary.notEnough', { balance: money(card.balance) }),
+                }
+              : {
+                  key: 'card',
+                  tone: 'plain',
+                  text: t('fleet.receipts.summary.card', {
+                    company: t(`fleet.fuelCards.company.${card.company}`),
+                    code,
+                    before: money(before),
+                    after: money(amountOk ? after : before),
+                  }),
+                };
 
   const submit = async (): Promise<void> => {
     const body = {
@@ -307,10 +352,20 @@ export const ReceiptDialog = ({
         </div>
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label={t('fleet.receipts.fields.card')} className="sm:col-span-2">
-            {vehicleId === '' ? (
+            {cardsState.kind === 'noCar' ? (
               <p className="text-sm text-slate-400">{t('fleet.receipts.fields.pickCar')}</p>
-            ) : carCards.length === 0 ? (
-              <p className="text-sm text-slate-400">{t('fleet.receipts.fields.noCards')}</p>
+            ) : cardsState.kind === 'loading' ? (
+              <p data-receipt-cards="loading" className="text-sm text-slate-400">
+                {t('fleet.receipts.fields.loadingCards')}
+              </p>
+            ) : cardsState.kind === 'failed' ? (
+              <p data-receipt-cards="failed" className="text-sm text-red-600 dark:text-red-400">
+                {t('fleet.receipts.fields.cardsFailed')}
+              </p>
+            ) : noCards ? (
+              <p data-receipt-cards="none" className="text-sm text-slate-400">
+                {t('fleet.receipts.fields.noCards')}
+              </p>
             ) : (
               <CardPick cards={carCards} value={cardId} onChange={setCardId} enabled={byCard} />
             )}
@@ -318,14 +373,16 @@ export const ReceiptDialog = ({
               <Checkbox
                 data-receipt-use-card="true"
                 label={
-                  isFuel
-                    ? useCard
-                      ? t('fleet.receipts.fields.useCard')
-                      : t('fleet.receipts.fields.noCardFund')
-                    : t('fleet.receipts.fields.fundOnly')
+                  !isFuel
+                    ? t('fleet.receipts.fields.fundOnly')
+                    : noCards
+                      ? t('fleet.receipts.fields.noCardCustody')
+                      : useCard
+                        ? t('fleet.receipts.fields.useCard')
+                        : t('fleet.receipts.fields.noCardFund')
                 }
                 checked={byCard}
-                disabled={!isFuel}
+                disabled={!isFuel || noCards}
                 onChange={(e) => setUseCard(e.target.checked)}
               />
             </div>
@@ -375,25 +432,17 @@ export const ReceiptDialog = ({
         </Field>
         <p
           data-receipt-source={byCard ? 'card' : 'custody'}
+          data-receipt-summary={summary.key}
           className={cn(
             'rounded-md px-3 py-2 text-sm',
-            byCard && !enough
-              ? 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200'
-              : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+            summary.tone === 'bad' && 'bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200',
+            summary.tone === 'ask' &&
+              'bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200',
+            summary.tone === 'plain' &&
+              'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
           )}
         >
-          {byCard
-            ? card === null
-              ? t('fleet.receipts.fields.pickCar')
-              : !enough
-                ? t('fleet.receipts.summary.notEnough', { balance: money(card.balance) })
-                : t('fleet.receipts.summary.card', {
-                    company: t(`fleet.fuelCards.company.${card.company}`),
-                    code,
-                    before: money(before),
-                    after: money(amountOk ? after : before),
-                  })
-            : t('fleet.receipts.summary.custody', { amount: money(amountOk ? value : 0) })}
+          {summary.text}
         </p>
       </div>
     </Dialog>

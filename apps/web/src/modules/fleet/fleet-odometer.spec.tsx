@@ -37,6 +37,7 @@ import { formatDate, formatNumber } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
+import { CorrectOdometerDialog } from './components/CorrectOdometerDialog';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
 // tree in place is enough to read what the dialog produces.
@@ -1166,6 +1167,42 @@ describe('recording a reading', () => {
     expect(source).toContain("vehicleId !== ''");
   });
 
+  it('keeps Save pressable, and names what is missing instead of saying nothing', () => {
+    // A disabled Save swallowed the click with no word of why. Now the press is answered: the
+    // guard sends nothing while a required value is missing, and names it. Nothing clicks in this
+    // suite, so what is proven is the freshly opened state — pressable, and nothing red yet.
+    const html = renderDialog({
+      qc: new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    });
+    const at = html.lastIndexOf('<button');
+    expect(html.slice(at), 'the last button is Save').toContain(t('common.save'));
+    // The class list is dropped first: Tailwind's `disabled:` variants live in it.
+    const save = html.slice(at, html.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
+    expect(save, 'Save is pressable').not.toContain('disabled');
+    expect(html, 'nothing is red before the first press').not.toContain('data-missing-fields');
+    expect(html).not.toContain('data-field-missing');
+    expect(source).toContain('onClick={required.guard(submit)}');
+    expect(source).toContain(
+      '<MissingFieldsBanner missing={required.missing} attempt={required.attempt} />',
+    );
+  });
+
+  it('requires the reading only on a day that has not passed, as its star says', () => {
+    const rules = source.slice(
+      source.indexOf('useRequiredFields('),
+      source.indexOf('const submit'),
+    );
+    expect(rules).toContain("ok: vehicleId !== ''");
+    expect(rules).toContain("ok: date !== ''");
+    expect(rules, 'the same rule the star reads').toContain('ok: readingGiven || dayHasPassed');
+    expect(source).toContain('required={!dayHasPassed}');
+    for (const key of ['vehicle', 'reading', 'date']) {
+      expect(source, `${key} turns red when it is missing`).toContain(
+        `missing={required.isMissing('${key}')}`,
+      );
+    }
+  });
+
   it('prefills the two slots from the DUTY ROSTER for that day and vehicle', () => {
     expect(source).toContain('useRosterDay');
     expect(source).toContain('row.vehicleId === vehicleId');
@@ -1257,6 +1294,80 @@ describe('recording a reading', () => {
     // hint, which is the opposite of asking the user for it, so the claim is about the form state.
     expect(source).not.toMatch(/useState.*\bkm\b/i);
     expect(source).not.toContain('record.mutateAsync({ km');
+  });
+});
+
+// ── Correcting ──────────────────────────────────────────────────────────────
+
+describe('correcting a reading', () => {
+  const source = readFileSync(join(HERE, 'components/CorrectOdometerDialog.tsx'), 'utf8');
+
+  it('refuses an emptied opening reading by naming it, rather than skipping it in silence', () => {
+    // An empty opening reading used to be left unchanged without a word. It is starred, so the
+    // press now names it and turns its box red, and nothing is sent.
+    const rules = source.slice(
+      source.indexOf('useRequiredFields('),
+      source.indexOf('const submit'),
+    );
+    expect(rules).toContain("key: 'outReading'");
+    expect(rules).toContain(
+      "ok: noReading || (outReading !== '' && Number.isInteger(Number(outReading)))",
+    );
+    expect(source).toContain("missing={required.isMissing('outReading')}");
+    expect(source, 'the danger button goes through the guard').toContain(
+      'onClick={required.guard(submit)}',
+    );
+    expect(source).toMatch(
+      /<MissingFieldsBanner\s+missing=\{required\.missing\}\s+attempt=\{required\.attempt\}/u,
+    );
+  });
+
+  /**
+   * A day recorded WITHOUT a reading still has a date and a note to correct, and the server refuses
+   * any reading on it. Requiring one there would leave such a row uncorrectable: its reading box
+   * starts empty and shut, carries no star, and never holds the text «null».
+   */
+  const renderCorrect = (row: FleetOdometerLogDto): string => {
+    const store = configureStore({
+      reducer: { locale: localeSlice.reducer, auth: authSlice.reducer },
+      preloadedState: {
+        locale: { locale: 'ar' as Locale, dir: 'rtl' as const },
+        auth: {
+          me: {
+            id: 'u1',
+            permissions: Object.fromEntries(ALL.map((k) => [k, 'organization'])),
+          } as unknown as MeDto,
+          status: 'signedIn' as const,
+        },
+      },
+    });
+    return renderToStaticMarkup(
+      <Provider store={store}>
+        <QueryClientProvider client={new QueryClient()}>
+          <CorrectOdometerDialog open onClose={() => undefined} log={row} />
+        </QueryClientProvider>
+      </Provider>,
+    );
+  };
+  const outBox = (html: string): string => {
+    const at = html.indexOf(t('fleet.odometer.columns.outReading'));
+    return html.slice(at, html.indexOf('/>', html.indexOf('<input', at)));
+  };
+
+  it('leaves a day recorded without a reading correctable — its reading box shut, unstarred', () => {
+    const html = renderCorrect(log({ outReading: null, inReading: null }));
+    expect(outBox(html), 'the box is shut').toMatch(/<input[^>]*\sdisabled=""/u);
+    expect(outBox(html), 'and not starred').not.toContain('text-red-500');
+    expect(html, 'never the text «null»').not.toContain('value="null"');
+    expect(source, 'it is seeded empty').toContain(
+      "setOutReading(log.outReading === null ? '' : String(log.outReading));",
+    );
+  });
+
+  it('still requires the reading on a day that has one', () => {
+    const html = renderCorrect(log({ outReading: 120000, inReading: 120150 }));
+    expect(outBox(html)).not.toMatch(/<input[^>]*\sdisabled=""/u);
+    expect(outBox(html), 'starred').toContain('text-red-500');
   });
 });
 

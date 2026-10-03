@@ -7,6 +7,11 @@ import { useAppSelector } from '../../../store';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field } from '../../../shared/ui/form';
+import {
+  MissingFieldsBanner,
+  useFieldMissing,
+  useRequiredFields,
+} from '../../../shared/ui/required-fields';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatMoney } from '../../../shared/lib/format';
@@ -15,7 +20,7 @@ import { useTransferFuelBalance } from '../api/fleet-queries';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { FuelCompanyLogo } from './FuelCardTiles';
 
-const CardPick = ({
+export const CardPick = ({
   cards,
   value,
   onChange,
@@ -28,8 +33,15 @@ const CardPick = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  // A `Field` marked missing turns the cards red, as it does a box — they are buttons, not an
+  // `Input`, so they read the mark themselves.
+  const missing = useFieldMissing();
   if (cards.length === 0) {
-    return <p className="text-sm text-slate-400">{t('fleet.fuelCards.transfer.pickCar')}</p>;
+    return (
+      <p className={cn('text-sm', missing ? 'text-red-600 dark:text-red-400' : 'text-slate-400')}>
+        {t('fleet.fuelCards.transfer.pickCar')}
+      </p>
+    );
   }
   return (
     <div className="flex gap-3">
@@ -42,9 +54,12 @@ const CardPick = ({
           onClick={() => onChange(card.id)}
           className={cn(
             'flex flex-1 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-start text-sm',
-            value === card.id
-              ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/40'
-              : 'border-slate-300 dark:border-slate-700',
+            value === card.id && 'bg-brand-50 dark:bg-brand-950/40',
+            missing
+              ? 'border-red-400'
+              : value === card.id
+                ? 'border-brand-500'
+                : 'border-slate-300 dark:border-slate-700',
           )}
         >
           <FuelCompanyLogo company={card.company} size="sm" />
@@ -100,6 +115,39 @@ export const FuelTransferDialog = ({
     from !== null && to !== null && from.id !== to.id && Number.isFinite(value) && value > 0;
   const enough = from !== null && value <= from.balance;
   const money = (n: number): string => formatMoney(n, 'EGP', locale);
+  // The button stays pressable: pressing it short of a valid transfer names what is missing and
+  // turns it red (`useRequiredFields`). The same card on both sides is the «to» card's fault; more
+  // than the first card holds is the amount's, which keeps its own «not enough» line.
+  const required = useRequiredFields(
+    [
+      {
+        key: 'fromVehicle',
+        label: `${t('fleet.fuelCards.transfer.from')} · ${t('fleet.odometer.columns.vehicle')}`,
+        ok: fromVehicle !== '',
+      },
+      {
+        key: 'fromCard',
+        label: `${t('fleet.fuelCards.transfer.from')} · ${t('fleet.fuelCards.fields.card')}`,
+        ok: from !== null,
+      },
+      {
+        key: 'toVehicle',
+        label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.odometer.columns.vehicle')}`,
+        ok: toVehicle !== '',
+      },
+      {
+        key: 'toCard',
+        label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.fuelCards.fields.card')}`,
+        ok: to !== null && to.id !== from?.id,
+      },
+      {
+        key: 'amount',
+        label: t('fleet.fuelCards.transfer.amount'),
+        ok: Number.isFinite(value) && value > 0 && (from === null || enough),
+      },
+    ],
+    open,
+  );
 
   const transfer = useTransferFuelBalance();
   const submit = async (): Promise<void> => {
@@ -123,23 +171,24 @@ export const FuelTransferDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button
-            loading={transfer.isPending}
-            disabled={!valid || !enough}
-            onClick={() => void submit()}
-          >
+          <Button loading={transfer.isPending} onClick={required.guard(submit)}>
             {t('fleet.fuelCards.transfer.action')}
           </Button>
         </>
       }
     >
       <div className="space-y-5">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         <section className="space-y-3">
           <h3 className="border-b border-slate-200 pb-1 text-sm font-semibold dark:border-slate-700">
             {t('fleet.fuelCards.transfer.from')}
           </h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('fleet.odometer.columns.vehicle')} required>
+            <Field
+              label={t('fleet.odometer.columns.vehicle')}
+              required
+              missing={required.isMissing('fromVehicle')}
+            >
               <VehicleCodeCombobox
                 value={fromVehicle}
                 onChange={setFromVehicle}
@@ -148,7 +197,11 @@ export const FuelTransferDialog = ({
                 testId="fuel-transfer-from"
               />
             </Field>
-            <Field label={t('fleet.fuelCards.fields.card')} required>
+            <Field
+              label={t('fleet.fuelCards.fields.card')}
+              required
+              missing={required.isMissing('fromCard')}
+            >
               <CardPick
                 cards={byVehicle(fromVehicle)}
                 value={fromCard}
@@ -163,7 +216,11 @@ export const FuelTransferDialog = ({
             {t('fleet.fuelCards.transfer.to')}
           </h3>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={t('fleet.odometer.columns.vehicle')} required>
+            <Field
+              label={t('fleet.odometer.columns.vehicle')}
+              required
+              missing={required.isMissing('toVehicle')}
+            >
               <VehicleCodeCombobox
                 value={toVehicle}
                 onChange={setToVehicle}
@@ -172,7 +229,15 @@ export const FuelTransferDialog = ({
                 testId="fuel-transfer-to"
               />
             </Field>
-            <Field label={t('fleet.fuelCards.fields.card')} required>
+            <Field
+              label={t('fleet.fuelCards.fields.card')}
+              required
+              missing={required.isMissing('toCard')}
+              // The same card on both sides: say so rather than «required».
+              {...(required.isMissing('toCard') && to !== null
+                ? { error: t('fleet.fuelCards.transfer.sameCard') }
+                : {})}
+            >
               <CardPick
                 cards={byVehicle(toVehicle)}
                 value={toCard}
@@ -186,6 +251,7 @@ export const FuelTransferDialog = ({
           <Field
             label={t('fleet.fuelCards.transfer.amount')}
             required
+            missing={required.isMissing('amount')}
             {...(from !== null && !enough && value > 0
               ? { error: t('fleet.fuelCards.transfer.notEnough', { balance: money(from.balance) }) }
               : {})}

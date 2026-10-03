@@ -13,6 +13,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { localized } from '../../../shared/lib/format';
 import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queries';
@@ -107,16 +108,29 @@ export const VehicleFormDialog = ({
     setForm((prev) => ({ ...prev, [key]: value }));
 
   // Branch joins the required set: the API refuses a branchless vehicle, so the form does too
-  // rather than letting the user submit into a 422.
-  const complete =
-    form.code.trim() !== '' &&
-    form.typeId !== '' &&
-    form.plateNumber.trim() !== '' &&
-    form.chassisNumber.trim() !== '' &&
-    form.motorNumber.trim() !== '' &&
-    form.joinedAt !== '' &&
-    form.licenseExpiresAt !== '' &&
-    form.branchId !== '';
+  // rather than letting the user submit into a 422. Save stays pressable: pressing it with any of
+  // these empty names them and turns their boxes red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'code', label: t('fleet.vehicles.fields.code'), ok: form.code.trim() !== '' },
+      { key: 'type', label: t('fleet.vehicles.fields.type'), ok: form.typeId !== '' },
+      { key: 'plate', label: t('fleet.vehicles.fields.plate'), ok: form.plateNumber.trim() !== '' },
+      {
+        key: 'chassis',
+        label: t('fleet.vehicles.fields.chassis'),
+        ok: form.chassisNumber.trim() !== '',
+      },
+      { key: 'motor', label: t('fleet.vehicles.fields.motor'), ok: form.motorNumber.trim() !== '' },
+      { key: 'joinedAt', label: t('fleet.vehicles.fields.joinedAt'), ok: form.joinedAt !== '' },
+      {
+        key: 'licenseExpiresAt',
+        label: t('fleet.vehicles.fields.licenseExpiresAt'),
+        ok: form.licenseExpiresAt !== '',
+      },
+      { key: 'branch', label: t('fleet.vehicles.fields.branch'), ok: form.branchId !== '' },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     const opt = (value: string): string | null => (value.trim() === '' ? null : value.trim());
@@ -165,6 +179,14 @@ export const VehicleFormDialog = ({
     toast.success(t('fleet.vehicles.licenseImage.uploaded'));
   };
 
+  const branchHint = can('branch.view')
+    ? defaultBranch.data?.branchId == null && vehicle === null
+      ? t('fleet.vehicles.fields.defaultBranchMissing', {
+          name: defaultBranch.data?.configuredName ?? '',
+        })
+      : undefined
+    : t('fleet.vehicles.fields.branchNoPermission');
+
   const hasImage = vehicle?.licenseImage != null;
   const typeName =
     (types.data?.items ?? []).find((type) => type.id === form.typeId)?.name ?? null;
@@ -185,17 +207,30 @@ export const VehicleFormDialog = ({
             <Button variant="secondary" onClick={onClose}>
               {t('common.cancel')}
             </Button>
-            <Button loading={busy} disabled={!complete} onClick={() => void submit()}>
+            <Button loading={busy} onClick={required.guard(submit)}>
               {t('common.save')}
             </Button>
           </>
         }
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.vehicles.fields.code')} required>
+          <MissingFieldsBanner
+            missing={required.missing}
+            attempt={required.attempt}
+            className="sm:col-span-2"
+          />
+          <Field
+            label={t('fleet.vehicles.fields.code')}
+            required
+            missing={required.isMissing('code')}
+          >
             <Input value={form.code} onChange={(e) => set('code')(e.target.value)} dir="ltr" />
           </Field>
-          <Field label={t('fleet.vehicles.fields.type')} required>
+          <Field
+            label={t('fleet.vehicles.fields.type')}
+            required
+            missing={required.isMissing('type')}
+          >
             <Select value={form.typeId} onChange={(e) => set('typeId')(e.target.value)}>
               <option value="">{t('common.select')}</option>
               {(types.data?.items ?? [])
@@ -207,35 +242,55 @@ export const VehicleFormDialog = ({
                 ))}
             </Select>
           </Field>
-          <Field label={t('fleet.vehicles.fields.plate')} required>
+          <Field
+            label={t('fleet.vehicles.fields.plate')}
+            required
+            missing={required.isMissing('plate')}
+          >
             <Input
               value={form.plateNumber}
               onChange={(e) => set('plateNumber')(e.target.value)}
               rule="plate"
             />
           </Field>
-          <Field label={t('fleet.vehicles.fields.chassis')} required>
+          <Field
+            label={t('fleet.vehicles.fields.chassis')}
+            required
+            missing={required.isMissing('chassis')}
+          >
             <Input
               value={form.chassisNumber}
               onChange={(e) => set('chassisNumber')(e.target.value)}
               rule="english"
             />
           </Field>
-          <Field label={t('fleet.vehicles.fields.motor')} required>
+          <Field
+            label={t('fleet.vehicles.fields.motor')}
+            required
+            missing={required.isMissing('motor')}
+          >
             <Input
               value={form.motorNumber}
               onChange={(e) => set('motorNumber')(e.target.value)}
               rule="english"
             />
           </Field>
-          <Field label={t('fleet.vehicles.fields.joinedAt')} required>
+          <Field
+            label={t('fleet.vehicles.fields.joinedAt')}
+            required
+            missing={required.isMissing('joinedAt')}
+          >
             <Input
               type="date"
               value={form.joinedAt}
               onChange={(e) => set('joinedAt')(e.target.value)}
             />
           </Field>
-          <Field label={t('fleet.vehicles.fields.licenseExpiresAt')} required>
+          <Field
+            label={t('fleet.vehicles.fields.licenseExpiresAt')}
+            required
+            missing={required.isMissing('licenseExpiresAt')}
+          >
             <Input
               type="date"
               value={form.licenseExpiresAt}
@@ -284,15 +339,13 @@ export const VehicleFormDialog = ({
           <Field
             label={t('fleet.vehicles.fields.branch')}
             required
-            hint={
-              can('branch.view')
-                ? (defaultBranch.data?.branchId == null && vehicle === null
-                    ? t('fleet.vehicles.fields.defaultBranchMissing', {
-                        name: defaultBranch.data?.configuredName ?? '',
-                      })
-                    : undefined)
-                : t('fleet.vehicles.fields.branchNoPermission')
-            }
+            missing={required.isMissing('branch')}
+            hint={branchHint}
+            // Missing, the line under the box says WHY it is empty — no permission to list the
+            // branches, or no default to preselect — rather than only «حقل مطلوب».
+            {...(required.isMissing('branch') && branchHint !== undefined
+              ? { error: branchHint }
+              : {})}
           >
             <Select value={form.branchId} onChange={(e) => set('branchId')(e.target.value)}>
               <option value="">{t('common.select')}</option>

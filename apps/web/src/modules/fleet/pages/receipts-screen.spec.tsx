@@ -335,6 +335,24 @@ describe('the receipt modal', () => {
     expect(FORM).toMatch(/<VehicleCodeCombobox(?:(?!\/>)[\s\S])*?\banyStatus\b/u);
     expect(FORM).toContain('if (file !== null) await upload.mutateAsync({ id: saved.id, file });');
   });
+
+  it('keeps Save pressable and names what is missing — the card only when it pays', () => {
+    expect(FORM).toContain('onClick={required.guard(submit)}');
+    const rules = FORM.slice(FORM.indexOf('useRequiredFields('));
+    const list = rules.slice(0, rules.indexOf(');'));
+    for (const rule of [
+      "ok: date !== ''",
+      "ok: vehicleId !== ''",
+      'ok: !byCard || card !== null',
+      // More than the card holds is refused, and the line under the form still says so.
+      'ok: amountOk && enough',
+    ]) {
+      expect(list, `the save requires ${rule}`).toContain(rule);
+    }
+    // The card is starred exactly when it pays, and turns red when it is missing.
+    expect(FORM).toContain('required={byCard}');
+    expect(FORM).toContain("missing={required.isMissing('card')}");
+  });
 });
 
 describe('the custody ledger', () => {
@@ -454,6 +472,13 @@ describe('the card after a car is picked — «هل فى كارت واحد عل�
     expect(html).toContain('data-receipt-summary="pickCard"');
     expect(html).toContain(ar('fleet.receipts.summary.pickCard'));
     expect(html).toContain('bg-amber-50');
+    // Save is still pressable — the press names the card — and nothing is red before it.
+    const at = html.lastIndexOf('<button');
+    expect(html.slice(at), 'the last button is Save').toContain(ar('common.save'));
+    const save = html.slice(at, html.indexOf('>', at) + 1).replace(/class="[^"]*"/, '');
+    expect(save, 'Save is pressable').not.toContain('disabled');
+    expect(html).not.toContain('data-missing-fields');
+    expect(html).not.toContain('data-field-missing');
   });
 
   it('no card: says so, turns the tick off and locks it, and the fund pays', () => {

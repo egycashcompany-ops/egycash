@@ -17,6 +17,7 @@ import { foldIncludes } from '../lib/fold';
 import { useOnClickOutside } from '../lib/useOnClickOutside';
 import { useT } from '../../platform/localization/useT';
 import { CheckIcon, ChevronIcon, CloseIcon, SearchIcon } from './icons';
+import { useFieldMissing } from './required-fields';
 
 /** Names shown in full before the tail collapses to `+n`. Three fit a filter-bar trigger. */
 const SUMMARY_MAX = 3;
@@ -202,6 +203,8 @@ export const MultiSelect = ({
   className?: string;
 }): JSX.Element => {
   const t = useT();
+  // A `Field` marked missing turns this trigger red, as it does an `Input`.
+  const missing = useFieldMissing();
   const [open, setOpen] = useState(false);
   const [ownQuery, setOwnQuery] = useState('');
   // Controlled when the owner passes `searchValue`; its own otherwise.
@@ -283,9 +286,11 @@ export const MultiSelect = ({
             // sizes it instead — a filter bar holding eleven controls on one row does.
             'max-w-full',
             'focus:border-brand-400 focus:outline-none',
-            selected > 0
-              ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-200'
-              : 'border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
+            missing
+              ? 'border-red-400 bg-white text-slate-700 dark:bg-slate-900 dark:text-slate-200'
+              : selected > 0
+                ? 'border-brand-300 bg-brand-50 text-brand-800 dark:border-brand-700 dark:bg-brand-950 dark:text-brand-200'
+                : 'border-slate-300 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
           )}
         >
           {/* Nothing chosen: the question. Something chosen: the answer — and the answer replaces

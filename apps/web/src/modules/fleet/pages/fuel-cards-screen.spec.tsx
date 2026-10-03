@@ -260,5 +260,34 @@ describe('charging', () => {
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.toLine'");
     expect(DIALOG).toContain('const enough = from !== null && value <= from.balance;');
     expect(ar('fleet.fuelCards.transfer.fromLine')).toContain('كان {{before}} ويصبح {{after}}');
+    // The button stays pressable; the press goes through the guard, which refuses — and names —
+    // more than the first card holds, and the same card on both sides.
+    expect(DIALOG).toContain('onClick={required.guard(submit)}');
+    expect(DIALOG).not.toContain('disabled={');
+    expect(DIALOG).toContain(
+      'ok: Number.isFinite(value) && value > 0 && (from === null || enough),',
+    );
+    expect(DIALOG).toContain('ok: to !== null && to.id !== from?.id,');
+    // The «not enough» line stays under the amount, and the amount box turns red with it.
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.notEnough'");
+    expect(DIALOG).toContain("missing={required.isMissing('amount')}");
+  });
+});
+
+describe('the card form', () => {
+  it('names what a card cannot be saved without, rather than greying Save out', () => {
+    const DIALOG = readFileSync(join(HERE, '../components/FuelCardDialog.tsx'), 'utf8');
+    expect(DIALOG).toContain('onClick={required.guard(submit)}');
+    expect(DIALOG).not.toContain('disabled={');
+    const rules = DIALOG.slice(DIALOG.indexOf('useRequiredFields('));
+    const list = rules.slice(0, rules.indexOf(');'));
+    for (const rule of [
+      "ok: vehicleId !== ''",
+      "ok: name.trim() !== ''",
+      'ok: number.trim().length >= 4',
+      "ok: expiresAt !== ''",
+    ]) {
+      expect(list, `the save requires ${rule}`).toContain(rule);
+    }
   });
 });

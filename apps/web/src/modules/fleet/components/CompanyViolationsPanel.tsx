@@ -20,6 +20,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ErrorState } from '../../../shared/ui/states/ErrorState';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -226,6 +227,18 @@ export const CompanyViolationsPanel = ({
 
   const isMoney = /^\d+(\.\d{1,3})?$/.test(formValue.trim());
   const isCount = /^\d+$/.test(formCount.trim()) && Number(formCount) >= 1;
+  // Save stays pressable: pressing it with any of these empty names them and turns their boxes red
+  // (`useRequiredFields`). The marks clear when a statement is filed — `record.data` is a new row
+  // each time — so the boxes that save empties are not red the moment the bar is ready again.
+  const required = useRequiredFields(
+    [
+      { key: 'entryVehicle', label: t('fleet.odometer.columns.vehicle'), ok: formVehicleId !== '' },
+      { key: 'type', label: t('fleet.violations.fields.type'), ok: formType !== '' },
+      { key: 'unitValue', label: t('fleet.violations.fields.unitValue'), ok: isMoney },
+      { key: 'count', label: t('fleet.violations.fields.count'), ok: isCount },
+    ],
+    record.data,
+  );
   const canSave = mayRecord && formVehicleId !== '' && formType !== '' && isMoney && isCount;
 
   const save = async (): Promise<void> => {
@@ -465,6 +478,7 @@ export const CompanyViolationsPanel = ({
         {t('fleet.violations.companyTitle')}
       </h2>
 
+      <MissingFieldsBanner missing={required.missing} attempt={required.attempt} className="mb-2" />
       <div className="mb-3 flex items-start gap-3">
         {/* ORDER IS THE POINT: this row is RTL, so a child listed LAST is drawn on the LEFT. The
             entry bar is written first and the two document actions after it, which puts the export
@@ -553,6 +567,7 @@ export const CompanyViolationsPanel = ({
           <Field
             label={t('fleet.odometer.columns.vehicle')}
             required
+            missing={required.isMissing('entryVehicle')}
             // «كبر كود العربيه شويه».
             className="flex-[1.3] basis-0 min-w-[4.25rem]"
           >
@@ -577,6 +592,7 @@ export const CompanyViolationsPanel = ({
           <Field
             label={t('fleet.violations.fields.type')}
             required
+            missing={required.isMissing('type')}
             // The floor came down again, and for the same reason it came down the first time:
             // the year's measured floor had to come from somewhere, and at 1536 every choice in
             // this select is already truncated — so what changes is how much of a sentence is
@@ -606,6 +622,8 @@ export const CompanyViolationsPanel = ({
           </Field>
           <Field
             label={t('fleet.violations.fields.unitValue')}
+            required
+            missing={required.isMissing('unitValue')}
             // «وهتقلل شويه صغيره من قيمة الوحدة و العدد». A typed MONEY figure — «1250.50» is
             // seven characters — so it keeps most of what it was given last round and hands a
             // little of it back to the year and the code.
@@ -624,6 +642,8 @@ export const CompanyViolationsPanel = ({
           <span className="shrink-0 pb-2 text-sm font-medium text-slate-400">×</span>
           <Field
             label={t('fleet.violations.fields.count')}
+            required
+            missing={required.isMissing('count')}
             // «و العدد». Typed too, and still well clear of the 42px it used to compress to.
             className="flex-[1.12] basis-0 min-w-[3rem]"
           >
@@ -673,11 +693,14 @@ export const CompanyViolationsPanel = ({
                 : '—'}
             </output>
           </Field>
+          {/* A reader who may not record still sees the bar — it is the screen's shape — but its
+              Save stays shut: a permission is not something they could fill in. Everyone else
+              can always press it, and a missing value is named rather than swallowed. */}
           <Button
             data-company-save="true"
-            disabled={!canSave}
+            disabled={!mayRecord}
             loading={record.isPending}
-            onClick={() => void save()}
+            onClick={required.guard(save)}
             className="mb-0.5 shrink-0"
           >
             {t('common.save')}

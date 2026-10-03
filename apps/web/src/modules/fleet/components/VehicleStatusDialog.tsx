@@ -12,6 +12,7 @@ import { useT } from '../../../platform/localization/useT';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Select, Textarea } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { useChangeVehicleStatus } from '../api/fleet-queries';
 
@@ -43,7 +44,19 @@ export const VehicleStatusDialog = ({
 
   const change = useChangeVehicleStatus();
   const needsReason = status !== '' && status !== 'active';
-  const ready = status !== '' && (!needsReason || reason.trim() !== '');
+  // Save stays pressable: pressing it without a status, or without the reason leaving service
+  // needs, names them and turns their boxes red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'status', label: t('fleet.vehicles.fields.newStatus'), ok: status !== '' },
+      {
+        key: 'reason',
+        label: t('fleet.vehicles.fields.reason'),
+        ok: !needsReason || reason.trim() !== '',
+      },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     if (vehicle === null || status === '') return;
@@ -74,8 +87,7 @@ export const VehicleStatusDialog = ({
           <Button
             variant={status === 'disposed' ? 'danger' : 'primary'}
             loading={change.isPending}
-            disabled={!ready}
-            onClick={() => void submit()}
+            onClick={required.guard(submit)}
           >
             {t('common.save')}
           </Button>
@@ -83,7 +95,12 @@ export const VehicleStatusDialog = ({
       }
     >
       <div className="space-y-4">
-        <Field label={t('fleet.vehicles.fields.newStatus')} required>
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <Field
+          label={t('fleet.vehicles.fields.newStatus')}
+          required
+          missing={required.isMissing('status')}
+        >
           <Select
             value={status}
             onChange={(e) => setStatus(e.target.value as FleetVehicleStatus | '')}
@@ -100,6 +117,7 @@ export const VehicleStatusDialog = ({
           <Field
             label={t('fleet.vehicles.fields.reason')}
             required
+            missing={required.isMissing('reason')}
             hint={status === 'disposed' ? t('fleet.vehicles.disposedWarning') : undefined}
           >
             <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />

@@ -15,6 +15,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   useRecordDriverViolation,
@@ -95,14 +96,26 @@ export const VehicleViolationDialog = ({
   const times = Number(count);
   const total = isMoney(unitValue) && Number.isInteger(times) && times >= 1 ? money * times : null;
 
-  const complete =
-    vehicleId !== '' &&
-    violationTypeId !== '' &&
-    Number.isInteger(Number(year)) &&
-    Number(year) >= 2000 &&
-    Number.isInteger(Number(count)) &&
-    Number(count) >= 1 &&
-    isMoney(unitValue);
+  // Save stays pressable: pressing it with any of these empty — or a year outside the server's
+  // 2000–2100, a count below one — names them and turns their boxes red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
+      {
+        key: 'year',
+        label: t('fleet.violations.fields.year'),
+        ok: Number.isInteger(Number(year)) && Number(year) >= 2000 && Number(year) <= 2100,
+      },
+      { key: 'type', label: t('fleet.violations.fields.type'), ok: violationTypeId !== '' },
+      {
+        key: 'count',
+        label: t('fleet.violations.fields.count'),
+        ok: Number.isInteger(Number(count)) && Number(count) >= 1,
+      },
+      { key: 'unitValue', label: t('fleet.violations.fields.unitValue'), ok: isMoney(unitValue) },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     if (violation === null) {
@@ -155,7 +168,7 @@ export const VehicleViolationDialog = ({
               {t('fleet.violations.delete')}
             </Button>
           ) : (
-            <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+            <Button loading={pending} onClick={required.guard(submit)}>
               {t('common.save')}
             </Button>
           )}
@@ -163,6 +176,7 @@ export const VehicleViolationDialog = ({
       }
     >
       <fieldset disabled={readOnly} className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         {/* THE CAR AND THE YEAR ARE CORRECTABLE, on a filed row as much as on a new one.
             They used to be frozen once filed — the car shown as plain text, the year's box
             disabled — on the argument that moving a fine is a different act from correcting one.
@@ -170,7 +184,11 @@ export const VehicleViolationDialog = ({
             and is keyed against another, or lands in the wrong year, and the only way back was to
             delete the row and re-file it, which throws away the row's history to fix a typo.
             The DELETE path still shows them read-only, because the whole `fieldset` is. */}
-        <Field label={t('fleet.odometer.columns.vehicle')} required>
+        <Field
+          label={t('fleet.odometer.columns.vehicle')}
+          required
+          missing={required.isMissing('vehicle')}
+        >
           <VehicleCodeCombobox
             value={vehicleId}
             onChange={setVehicleId}
@@ -185,7 +203,14 @@ export const VehicleViolationDialog = ({
           </p>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.violations.fields.year')} required>
+          <Field
+            label={t('fleet.violations.fields.year')}
+            required
+            missing={required.isMissing('year')}
+            {...(required.isMissing('year') && year.trim() !== ''
+              ? { error: t('fleet.violations.yearRange') }
+              : {})}
+          >
             <Input
               rule="integer"
               value={year}
@@ -193,7 +218,11 @@ export const VehicleViolationDialog = ({
               dir="ltr"
             />
           </Field>
-          <Field label={t('fleet.violations.fields.type')} required>
+          <Field
+            label={t('fleet.violations.fields.type')}
+            required
+            missing={required.isMissing('type')}
+          >
             <CatalogSelect
               kind="violationType"
               violationSide="company"
@@ -204,7 +233,14 @@ export const VehicleViolationDialog = ({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.violations.fields.count')} required>
+          <Field
+            label={t('fleet.violations.fields.count')}
+            required
+            missing={required.isMissing('count')}
+            {...(required.isMissing('count') && count.trim() !== ''
+              ? { error: t('fleet.violations.countMin') }
+              : {})}
+          >
             <Input
               rule="integer"
               value={count}
@@ -215,6 +251,7 @@ export const VehicleViolationDialog = ({
           <Field
             label={t('fleet.violations.fields.unitValue')}
             required
+            missing={required.isMissing('unitValue')}
             hint={t('fleet.violations.amountHint')}
           >
             <MoneyInput value={unitValue} onChange={(next) => setUnitValue(next)} />
@@ -279,8 +316,26 @@ export const DriverViolationDialog = ({
   const update = useUpdateViolation();
   const pending = record.isPending || update.isPending;
 
-  const complete =
-    vehicleId !== '' && date !== '' && driver !== '' && violationTypeId !== '' && isMoney(amount);
+  // Save stays pressable — see the vehicle dialog. The car's box is on the record form only (an
+  // edit keeps the row's own car); a row from the old book has none, and is refused as it always
+  // was, now with the reason named.
+  const required = useRequiredFields(
+    [
+      // The car box is shown only when recording; an edit never sends the car, so a fine from the
+      // old book that has none can still be corrected.
+      {
+        key: 'vehicle',
+        label: t('fleet.odometer.columns.vehicle'),
+        ok: violation !== null || vehicleId !== '',
+      },
+      { key: 'date', label: t('fleet.violations.fields.date'), ok: date !== '' },
+      { key: 'type', label: t('fleet.violations.fields.type'), ok: violationTypeId !== '' },
+      // «مجهول» is an answer: `UNKNOWN_DRIVER` is not empty.
+      { key: 'driver', label: t('fleet.violations.fields.driver'), ok: driver !== '' },
+      { key: 'amount', label: t('fleet.violations.fields.amount'), ok: isMoney(amount) },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     if (violation === null) {
@@ -333,7 +388,7 @@ export const DriverViolationDialog = ({
               {t('fleet.violations.delete')}
             </Button>
           ) : (
-            <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+            <Button loading={pending} onClick={required.guard(submit)}>
               {t('common.save')}
             </Button>
           )}
@@ -341,8 +396,13 @@ export const DriverViolationDialog = ({
       }
     >
       <fieldset disabled={readOnly} className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
         {violation === null && (
-          <Field label={t('fleet.odometer.columns.vehicle')} required>
+          <Field
+            label={t('fleet.odometer.columns.vehicle')}
+            required
+            missing={required.isMissing('vehicle')}
+          >
             <VehicleCodeCombobox
               value={vehicleId}
               onChange={setVehicleId}
@@ -353,10 +413,18 @@ export const DriverViolationDialog = ({
           </Field>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.violations.fields.date')} required>
+          <Field
+            label={t('fleet.violations.fields.date')}
+            required
+            missing={required.isMissing('date')}
+          >
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
-          <Field label={t('fleet.violations.fields.type')} required>
+          <Field
+            label={t('fleet.violations.fields.type')}
+            required
+            missing={required.isMissing('type')}
+          >
             <CatalogSelect
               kind="violationType"
               violationSide="driver"
@@ -366,7 +434,11 @@ export const DriverViolationDialog = ({
             />
           </Field>
         </div>
-        <Field label={t('fleet.violations.fields.driver')} required>
+        <Field
+          label={t('fleet.violations.fields.driver')}
+          required
+          missing={required.isMissing('driver')}
+        >
           {/* THE DRIVERS REGISTRY, and it lists BEFORE anything is typed.
               This was `OptionalEmployeeField`, which searched the whole payroll and showed
               nothing at all until a letter was typed — so clearing a driver and coming back to
@@ -382,7 +454,11 @@ export const DriverViolationDialog = ({
             className="w-full"
           />
         </Field>
-        <Field label={t('fleet.violations.fields.amount')} required>
+        <Field
+          label={t('fleet.violations.fields.amount')}
+          required
+          missing={required.isMissing('amount')}
+        >
           <MoneyInput value={amount} onChange={(next) => setAmount(next)} />
         </Field>
       </fieldset>
@@ -415,6 +491,17 @@ export const GrievanceDialog = ({
   }, [open, current]);
 
   const set = useSetGrievance();
+  // Save stays pressable: an empty figure is named and its box turns red (`useRequiredFields`).
+  const required = useRequiredFields(
+    [
+      {
+        key: 'total',
+        label: t('fleet.violations.fields.totalBeforeGrievance'),
+        ok: isMoney(total),
+      },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     await set.mutateAsync({ vehicleId, year, totalBeforeGrievance: Number(total) });
@@ -434,15 +521,22 @@ export const GrievanceDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={set.isPending} disabled={!isMoney(total)} onClick={() => void submit()}>
+          <Button loading={set.isPending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
-      <Field label={t('fleet.violations.fields.totalBeforeGrievance')} required>
-        <MoneyInput value={total} onChange={setTotal} />
-      </Field>
+      <div className="space-y-4">
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <Field
+          label={t('fleet.violations.fields.totalBeforeGrievance')}
+          required
+          missing={required.isMissing('total')}
+        >
+          <MoneyInput value={total} onChange={setTotal} />
+        </Field>
+      </div>
     </Dialog>
   );
 };

@@ -13,6 +13,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Checkbox, Field, Input } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate, localized } from '../../../shared/lib/format';
@@ -88,7 +89,16 @@ export const DealershipInvoiceDialog = ({
   const numberOk = privateCar || invoiceNumber.trim() !== '';
   // A new insurer the clerk may not add has nowhere to go — the row cannot point at a name.
   const insurerOk = !isNewInsurer || (mayAddInsurer && addToCatalog);
-  const complete = row !== null && amountOk && numberOk && insurerOk;
+  // Save stays pressable: pressing it short of these names them and turns their boxes red
+  // (`useRequiredFields`). Without a row there is nothing to save — `submit` returns on its own.
+  const required = useRequiredFields(
+    [
+      { key: 'invoiceAmount', label: t('fleet.dealership.columns.invoiceAmount'), ok: amountOk },
+      { key: 'invoiceNumber', label: t('fleet.dealership.columns.invoiceNumber'), ok: numberOk },
+      { key: 'insurer', label: t('fleet.vehicles.fields.insuranceCompany'), ok: insurerOk },
+    ],
+    open,
+  );
   const side = !amountOk
     ? null
     : privateCar && invoiceNumber.trim() === ''
@@ -147,7 +157,7 @@ export const DealershipInvoiceDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={pending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={pending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
@@ -155,6 +165,7 @@ export const DealershipInvoiceDialog = ({
     >
       {row !== null && (
         <div className="space-y-4">
+          <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
           {/* The grey facts: what the workshop knew. Read, not written. */}
           <div className="grid gap-4 sm:grid-cols-3">
             <Field label={t('fleet.dealership.columns.outDate')}>
@@ -170,6 +181,16 @@ export const DealershipInvoiceDialog = ({
           <div className="grid gap-4 sm:grid-cols-3">
             <Field
               label={t('fleet.vehicles.fields.insuranceCompany')}
+              missing={required.isMissing('insurer')}
+              // Only ever missing as a NEW name that is not being added to the catalog: say what to
+              // do about it — tick «add», or (without the grant to add one) pick from the list.
+              {...(required.isMissing('insurer')
+                ? {
+                    error: mayAddInsurer
+                      ? t('fleet.dealership.insurerAddOrClear')
+                      : t('fleet.dealership.insurerCannotAdd'),
+                  }
+                : {})}
               hint={
                 row.insuranceCompanyName === null
                   ? t('fleet.dealership.insurerNone')
@@ -202,7 +223,11 @@ export const DealershipInvoiceDialog = ({
                 />
               </div>
             </Field>
-            <Field label={t('fleet.dealership.columns.invoiceAmount')} required>
+            <Field
+              label={t('fleet.dealership.columns.invoiceAmount')}
+              required
+              missing={required.isMissing('invoiceAmount')}
+            >
               <MoneyInput value={invoiceAmount} onChange={setInvoiceAmount} />
             </Field>
           </div>
@@ -210,6 +235,7 @@ export const DealershipInvoiceDialog = ({
             <Field
               label={t('fleet.dealership.columns.invoiceNumber')}
               required={!privateCar}
+              missing={required.isMissing('invoiceNumber')}
               {...(privateCar ? { hint: t('fleet.dealership.invoiceNumberOptional') } : {})}
             >
               <Input

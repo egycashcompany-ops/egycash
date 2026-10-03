@@ -12,6 +12,8 @@
 import { useMemo, useState } from 'react';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
+import { cn } from '../../../shared/lib/cn';
+import { useFieldMissing } from '../../../shared/ui/required-fields';
 import { SearchInput } from '../../../shared/ui/SearchInput';
 import { useFleetPeopleMap } from './EmployeeName';
 
@@ -28,6 +30,9 @@ export const EmployeeSearchPicker = ({
   const [search, setSearch] = useState('');
   const allowed = can('fleetDriver.view');
   const roster = useFleetPeopleMap();
+  // A `Field` marked missing rings the search box red, as it does an `Input`: `SearchInput` is its
+  // own box and does not read the mark itself.
+  const missing = useFieldMissing();
 
   /** The roster, narrowed by what has been typed — name or code, ten at a time as before. */
   const matches = useMemo(() => {
@@ -56,6 +61,7 @@ export const EmployeeSearchPicker = ({
         value={search}
         onChange={setSearch}
         placeholder={t('fleet.drivers.pickerPlaceholder')}
+        className={cn(missing && 'rounded-lg ring-1 ring-red-400')}
       />
       {search.trim() !== '' && (
         <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800">

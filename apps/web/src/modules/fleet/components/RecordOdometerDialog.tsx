@@ -17,6 +17,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
 import {
@@ -143,7 +144,21 @@ export const RecordOdometerDialog = ({
 
   const readingNumber = Number(reading);
   const readingGiven = reading !== '' && Number.isInteger(readingNumber);
-  const complete = vehicleId !== '' && date !== '' && (readingGiven || dayHasPassed);
+  // Save stays pressable: pressing it with any of these empty names them and turns their boxes red
+  // (`useRequiredFields`). The reading is one of them only on a day that has not passed, as its
+  // star says.
+  const required = useRequiredFields(
+    [
+      { key: 'vehicle', label: t('fleet.odometer.fields.vehicle'), ok: vehicleId !== '' },
+      {
+        key: 'reading',
+        label: t('fleet.odometer.fields.reading'),
+        ok: readingGiven || dayHasPassed,
+      },
+      { key: 'date', label: t('fleet.odometer.fields.date'), ok: date !== '' },
+    ],
+    open,
+  );
 
   const submit = async (): Promise<void> => {
     await record.mutateAsync({
@@ -192,14 +207,19 @@ export const RecordOdometerDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
-          <Button loading={record.isPending} disabled={!complete} onClick={() => void submit()}>
+          <Button loading={record.isPending} onClick={required.guard(submit)}>
             {t('common.save')}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label={t('fleet.odometer.fields.vehicle')} required>
+        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+        <Field
+          label={t('fleet.odometer.fields.vehicle')}
+          required
+          missing={required.isMissing('vehicle')}
+        >
           <VehicleCodeCombobox
             value={vehicleId}
             onChange={(id) => {
@@ -229,6 +249,7 @@ export const RecordOdometerDialog = ({
           <Field
             label={t('fleet.odometer.fields.reading')}
             required={!dayHasPassed}
+            missing={required.isMissing('reading')}
             hint={dayHasPassed ? t('fleet.odometer.readingOptionalHint') : expectedHint}
             {...(dayHasPassed && !readingGiven
               ? { warning: t('fleet.odometer.recordingWithoutReading') }
@@ -243,7 +264,11 @@ export const RecordOdometerDialog = ({
               dir="ltr"
             />
           </Field>
-          <Field label={t('fleet.odometer.fields.date')} required>
+          <Field
+            label={t('fleet.odometer.fields.date')}
+            required
+            missing={required.isMissing('date')}
+          >
             <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </Field>
         </div>

@@ -20,6 +20,7 @@ import { Button } from '../../../shared/ui/Button';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Field, Input, Select } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
+import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import {
   CheckIcon,
@@ -59,6 +60,7 @@ import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { DriverName, useEmployeeRecords } from './EmployeeName';
 import { FromOldBookLegend, violationRowTone } from './ViolationRowTone';
 import {
+  amountComplete,
   cardLabel,
   entryCards,
   entryComplete,
@@ -232,6 +234,33 @@ export const DriverViolationsPanel = ({
     setCards((held) => held.map((card) => (card.key === key ? { ...card, ...patch } : card)));
 
   const missing = incompleteCards(cards);
+  // Save stays pressable: pressing it with the car or any card's day, person or money missing
+  // names each one — «سرعة - 2 · السائق» — and turns its box red (`useRequiredFields`). The
+  // layer's own open state resets the marks, so a stack counted after a save starts clean.
+  const required = useRequiredFields(
+    [
+      { key: 'entryVehicle', label: t('fleet.odometer.columns.vehicle'), ok: formVehicleId !== '' },
+      ...cards.flatMap((card) => [
+        {
+          key: `${card.key}:date`,
+          label: `${cardLabel(card)} · ${t('fleet.violations.fields.date')}`,
+          ok: card.date !== '',
+        },
+        {
+          key: `${card.key}:driver`,
+          label: `${cardLabel(card)} · ${t('fleet.violations.fields.driver')}`,
+          ok: card.driverEmployeeId !== '',
+        },
+        {
+          key: `${card.key}:amount`,
+          label: `${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`,
+          // The lib's own money rule — the one the batch is refused by.
+          ok: amountComplete(card.amount),
+        },
+      ]),
+    ],
+    cards.length > 0,
+  );
   const canSave = mayRecord && formVehicleId !== '' && entryComplete(cards) && !record.isPending;
 
   const save = async (): Promise<void> => {
@@ -737,7 +766,12 @@ export const DriverViolationsPanel = ({
           // over the bar. A native `<select>` popup escaped that; a typed combobox cannot.
           className="flex min-w-0 flex-1 flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/50"
         >
-          <Field label={t('fleet.odometer.columns.vehicle')} className={ENTRY_CELL}>
+          <Field
+            label={t('fleet.odometer.columns.vehicle')}
+            required
+            missing={required.isMissing('entryVehicle')}
+            className={ENTRY_CELL}
+          >
             {/* TYPED OR PICKED, exactly as the company half now does it — the owner asked for
                 both rows: «انه يقدر يكتب برضو وهتكون واحد بس». The typing is only ever a SEARCH:
                 the control commits an option or nothing, so a code no car carries still cannot be
@@ -863,11 +897,13 @@ export const DriverViolationsPanel = ({
             >
               {t('common.cancel')}
             </Button>
+            {/* Shut only for a reader who may not record — a permission is not something they
+                could fill in. A missing car or card value is named on press instead. */}
             <Button
               data-driver-save="true"
-              disabled={!canSave}
+              disabled={!mayRecord}
               loading={record.isPending}
-              onClick={() => void save()}
+              onClick={required.guard(save)}
             >
               {t('common.save')}
             </Button>
@@ -881,6 +917,11 @@ export const DriverViolationsPanel = ({
             </p>
           ) : (
             <>
+              <MissingFieldsBanner
+                missing={required.missing}
+                attempt={required.attempt}
+                className="mb-2"
+              />
               {/* NO scroll box of its own. This was `max-h-72 overflow-y-auto`, a 288px window
                   nested inside the drawer's own scroller — and an `overflow` ancestor CLIPS the
                   absolutely-positioned dropdown of the driver picker inside each card, so the
@@ -910,12 +951,18 @@ export const DriverViolationsPanel = ({
                         They used to wrap onto three lines because the layer was 512px wide and the
                         date alone asked for 160 of it. The layer is now the width of the ledger it
                         covers, so the row fits — `min-w-0` on the middle field is what lets the
-                        driver's name truncate instead of pushing the money off the end. */}
-                    <div className="flex flex-nowrap items-center gap-2">
+                        driver's name truncate instead of pushing the money off the end.
+                        Each is a `Field` with no label, so a press with it empty turns its box red
+                        and writes «حقل مطلوب» under it; `items-start` keeps the other two boxes
+                        where they were when that line appears under one of them. */}
+                    <div className="flex flex-nowrap items-start gap-2">
                       {/* The width is on the WRAPPER. `Input` carries its own `w-full` and `cn`
                           is a plain joiner, so a `w-36` handed to it loses — measured, the date
                           rendered 750px and squeezed the driver beside it to 26. */}
-                      <div className="w-36 shrink-0">
+                      <Field
+                        className="w-36 shrink-0"
+                        missing={required.isMissing(`${card.key}:date`)}
+                      >
                         <Input
                           type="date"
                           data-entry-date={card.key}
@@ -924,8 +971,11 @@ export const DriverViolationsPanel = ({
                           onChange={(e) => patchCard(card.key, { date: e.target.value })}
                           dir="ltr"
                         />
-                      </div>
-                      <div className="min-w-0 flex-1">
+                      </Field>
+                      <Field
+                        className="min-w-0 flex-1"
+                        missing={required.isMissing(`${card.key}:driver`)}
+                      >
                         {/* The REGISTRY, not the payroll: the server files a fine only against a
                             person who HAS a driver profile, so offering anyone else was offering a
                             400 the reader could do nothing about — «بعض الحقول تحتاج إلى مراجعة»
@@ -942,8 +992,11 @@ export const DriverViolationsPanel = ({
                           fullWidth
                           className="w-full"
                         />
-                      </div>
-                      <div className="w-28 shrink-0">
+                      </Field>
+                      <Field
+                        className="w-28 shrink-0"
+                        missing={required.isMissing(`${card.key}:amount`)}
+                      >
                         <MoneyInput
                           data-entry-amount={card.key}
                           aria-label={`${cardLabel(card)} · ${t('fleet.violations.fields.amount')}`}
@@ -951,12 +1004,13 @@ export const DriverViolationsPanel = ({
                           value={card.amount}
                           onChange={(amount) => patchCard(card.key, { amount })}
                         />
-                      </div>
+                      </Field>
                     </div>
                   </li>
                 ))}
               </ul>
-              {/* WHY SAVE IS OFF, in words — and the CAR comes first.
+              {/* WHAT STILL STANDS BETWEEN THE CARDS AND A SAVE, in words, before Save is pressed —
+                  and the CAR comes first.
                   The counters are shut until a car is picked, so this cannot be how a batch STARTS
                   any more. It is still reachable the other way round: pick a car, count, then set
                   the car back to «اختر…» with the cards already open. Named first because it

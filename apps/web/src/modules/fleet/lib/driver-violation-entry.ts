@@ -68,12 +68,18 @@ export const entryCards = (
 /** «سرعة - 2». The type's own name, never a legacy one-letter code. */
 export const cardLabel = (card: DriverEntryCard): string => `${card.typeName} - ${card.ordinal}`;
 
-const isMoney = (value: string): boolean => /^\d+(\.\d{1,2})?$/.test(value.trim());
+/**
+ * Is a card's money fileable — the one rule for it, asked by the batch below and by the panel that
+ * turns a card's amount box red, so the two can never disagree.
+ */
+export const amountComplete = (value: string): boolean => /^\d+(\.\d{1,2})?$/.test(value.trim());
 
 /** Which cards are not yet fileable, by key — the panel points at them rather than just refusing. */
 export const incompleteCards = (cards: readonly DriverEntryCard[]): string[] =>
   cards
-    .filter((card) => card.date === '' || card.driverEmployeeId === '' || !isMoney(card.amount))
+    .filter(
+      (card) => card.date === '' || card.driverEmployeeId === '' || !amountComplete(card.amount),
+    )
     .map((card) => card.key);
 
 /** Every card named a driver, a day and an amount — and there is at least one card. */
@@ -82,7 +88,7 @@ export const entryComplete = (cards: readonly DriverEntryCard[]): boolean =>
 
 /** What the cards add up to, for the panel's own footer. Non-numeric amounts count as nothing. */
 export const entryTotal = (cards: readonly DriverEntryCard[]): number =>
-  cards.reduce((sum, card) => sum + (isMoney(card.amount) ? Number(card.amount) : 0), 0);
+  cards.reduce((sum, card) => sum + (amountComplete(card.amount) ? Number(card.amount) : 0), 0);
 
 /**
  * The ONE request the bar sends. Throws rather than sending a half-filled card: the batch is

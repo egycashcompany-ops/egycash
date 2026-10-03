@@ -23,6 +23,7 @@ import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Button } from '../../../shared/ui/Button';
 import { StatusBadge } from '../../../shared/ui/Badge';
 import { Checkbox, Field, Input } from '../../../shared/ui/form';
+import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
 import { formatNumber } from '../../../shared/lib/format';
@@ -168,13 +169,10 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
             {NUMBER_KEYS.map((key) => (
               <Field key={key} label={t(SETTING_LABELS[key] ?? key)}>
                 <Input
-                  type="number"
-                  min={0}
-                  step={1}
+                  rule="integer"
                   value={numbers[key] ?? ''}
                   onChange={(e) => setNumbers((prev) => ({ ...prev, [key]: e.target.value }))}
                   disabled={!canEdit}
-                  dir="ltr"
                 />
               </Field>
             ))}
@@ -183,14 +181,10 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
           <div className="grid gap-4 sm:grid-cols-2" data-fleet-fuel-settings="true">
             {MONEY_KEYS.map((key) => (
               <Field key={key} label={t(SETTING_LABELS[key] ?? key)}>
-                <Input
-                  type="number"
-                  min={0}
-                  step={0.01}
+                <MoneyInput
                   value={moneys[key] ?? ''}
-                  onChange={(e) => setMoneys((prev) => ({ ...prev, [key]: e.target.value }))}
+                  onChange={(next) => setMoneys((prev) => ({ ...prev, [key]: next }))}
                   disabled={!canEdit}
-                  dir="ltr"
                 />
               </Field>
             ))}
@@ -206,6 +200,11 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
                   value={texts[key] ?? ''}
                   onChange={(e) => setTexts((prev) => ({ ...prev, [key]: e.target.value }))}
                   disabled={!canEdit}
+                  // The signatories' names and titles print in Arabic; the branch name matches a
+                  // branch as it is written.
+                  {...(key === FleetSettingKeys.DefaultBranchName
+                    ? {}
+                    : { rule: 'arabic' as const })}
                 />
               </Field>
             ))}

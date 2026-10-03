@@ -440,6 +440,7 @@ export const ReceiptsPage = (): JSX.Element => {
             value={driver}
             onChange={(e) => patch({ driver: e.target.value || null })}
             className="w-44 shrink-0"
+            rule="arabic"
           />
         </FilterBar>
 

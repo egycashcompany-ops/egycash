@@ -118,10 +118,6 @@ const NOT_A_CODE_SELECTOR = [
     why: 'turns a code carried in from the filter into an id, against the same whole registry its `VehicleCodeCombobox` loads',
   },
   {
-    file: 'modules/fleet/components/VehicleSelect.tsx',
-    why: 'a plain dropdown of the WHOLE registry (`useAllVehicles`, every page) — it has no search box at all, so there is no term to route',
-  },
-  {
     file: 'modules/fleet/pages/AccidentsPage.tsx',
     why: 'an unfiltered id→code map so a retired car’s file still prints its code; the screen’s actual filter is VehicleCodeFilter',
   },
@@ -382,6 +378,9 @@ const CAR_BOX_SCOPES: readonly {
   { file: 'modules/fleet/components/DriverViolationsPanel.tsx', scope: 'any' },
   { file: 'modules/fleet/components/ReceiptDialog.tsx', scope: 'any' },
   { file: 'modules/fleet/components/RecordOdometerDialog.tsx', scope: 'any' },
+  // Edit, and record.
+  { file: 'modules/fleet/components/ViolationDialogs.tsx', scope: 'any', boxes: 2 },
+  { file: 'modules/fleet/pages/NoticeEditorPage.tsx', scope: 'any' },
   { file: 'modules/fleet/components/FuelCardDialog.tsx', scope: 'active' },
   // From, and to.
   { file: 'modules/fleet/components/FuelTransferDialog.tsx', scope: 'active', boxes: 2 },

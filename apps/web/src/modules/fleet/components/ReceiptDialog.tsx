@@ -341,6 +341,7 @@ export const ReceiptDialog = ({
               }}
               placeholder={t('fleet.receipts.fields.driverPlaceholder')}
               data-receipt-driver="true"
+              rule="arabic"
             />
             <datalist id="receipt-drivers">
               {names.map((name) => (

@@ -6,13 +6,25 @@ import {
   forwardRef,
   useEffect,
   useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type ForwardedRef,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
 import { cn } from '../lib/cn';
+import {
+  applyInputChange,
+  inputRuleAttributes,
+  type InputRule,
+  type InputRuleReason,
+} from '../lib/input-rules';
+import { useT } from '../../platform/localization/useT';
 import { ChevronIcon } from './icons';
+import { FieldFeedbackProvider, useInputFeedback } from './input-feedback';
 
 const controlBase =
   'w-full rounded-lg border bg-white py-2 text-slate-800 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-800';
@@ -93,27 +105,107 @@ export const Field = ({
    */
   className?: string;
   children: ReactNode;
-}): JSX.Element => (
-  <div className={cn('space-y-1.5', className)}>
-    {label !== undefined && (
-      <label
-        htmlFor={htmlFor}
-        className="block text-sm font-medium text-slate-700 dark:text-slate-200"
-      >
-        {label}
-        {required && <span className="text-red-500"> *</span>}
-      </label>
-    )}
-    {children}
-    {error !== undefined ? (
-      <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-    ) : warning !== undefined ? (
-      <p className="text-xs text-amber-600 dark:text-amber-400">{warning}</p>
-    ) : hint !== undefined ? (
-      <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
-    ) : null}
-  </div>
-);
+}): JSX.Element => {
+  // A refused keystroke or paste, reported by the control inside (`rule`) — see `input-feedback`.
+  const [refused, setRefused] = useState<string | null>(null);
+  return (
+    <div className={cn('space-y-1.5', className)}>
+      {label !== undefined && (
+        <label
+          htmlFor={htmlFor}
+          className="block text-sm font-medium text-slate-700 dark:text-slate-200"
+        >
+          {label}
+          {required && <span className="text-red-500"> *</span>}
+        </label>
+      )}
+      <FieldFeedbackProvider value={setRefused}>{children}</FieldFeedbackProvider>
+      {refused !== null ? (
+        <p
+          role="alert"
+          data-input-refused="true"
+          className="text-xs text-red-600 dark:text-red-400"
+        >
+          ⛔ {refused}
+        </p>
+      ) : error !== undefined ? (
+        <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+      ) : warning !== undefined ? (
+        <p className="text-xs text-amber-600 dark:text-amber-400">{warning}</p>
+      ) : hint !== undefined ? (
+        <p className="text-xs text-slate-500 dark:text-slate-400">{hint}</p>
+      ) : null}
+    </div>
+  );
+};
+
+interface Ruled<E extends HTMLInputElement | HTMLTextAreaElement> {
+  /** The control should read as refused right now — its border goes red. */
+  flash: boolean;
+  onChange?: (event: ChangeEvent<E>) => void;
+  onPaste?: (event: ClipboardEvent<E>) => void;
+}
+
+/** A box with no rule: its own handlers, untouched. */
+const unruled = <E extends HTMLInputElement | HTMLTextAreaElement>(
+  onChange: ((event: ChangeEvent<E>) => void) | undefined,
+  onPaste: ((event: ClipboardEvent<E>) => void) | undefined,
+): Ruled<E> => ({
+  flash: false,
+  ...(onChange === undefined ? {} : { onChange }),
+  ...(onPaste === undefined ? {} : { onPaste }),
+});
+
+/**
+ * Enforce `rule` on a text control — the keystrokes and the pastes it refuses, the message it
+ * gives, and the canonical value (Arabic-Indic digits to ASCII, a grouped number ungrouped) it
+ * hands the caller. Shared by `Input` and `Textarea`, and called only for a box that HAS a rule:
+ * a plain box renders exactly as before, needing neither the locale nor a `Field` around it.
+ */
+const useRuledControl = <E extends HTMLInputElement | HTMLTextAreaElement>(
+  rule: InputRule,
+  value: unknown,
+  onChange: ((event: ChangeEvent<E>) => void) | undefined,
+  onPaste: ((event: ClipboardEvent<E>) => void) | undefined,
+): Ruled<E> => {
+  const t = useT();
+  const feedback = useInputFeedback();
+  // What the box held before this edit: the controlled value, or the last one this hook let in.
+  const accepted = useRef('');
+  const why = (reason: InputRuleReason): string => t(`common.input.${reason}`);
+  const before = (): string =>
+    typeof value === 'string' || typeof value === 'number' ? String(value) : accepted.current;
+  return {
+    flash: feedback.flash,
+    onChange: (event: ChangeEvent<E>): void => {
+      const element = event.currentTarget;
+      const result = applyInputChange(rule, before(), element.value);
+      if (result.reason !== null) {
+        // Refused: the caller is never told, so the controlled value stays what it was.
+        feedback.show(element, why(result.reason));
+        return;
+      }
+      feedback.clear(element);
+      if (result.value !== element.value) element.value = result.value;
+      accepted.current = result.value;
+      onChange?.(event);
+    },
+    onPaste: (event: ClipboardEvent<E>): void => {
+      onPaste?.(event);
+      if (event.defaultPrevented) return;
+      const element = event.currentTarget;
+      const pasted = event.clipboardData.getData('text');
+      const start = element.selectionStart ?? element.value.length;
+      const end = element.selectionEnd ?? start;
+      const after = element.value.slice(0, start) + pasted + element.value.slice(end);
+      const result = applyInputChange(rule, element.value, after);
+      if (result.reason !== null) {
+        event.preventDefault();
+        feedback.show(element, t('common.input.pasteRefused', { reason: why(result.reason) }));
+      }
+    },
+  };
+};
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   /**
@@ -126,49 +218,135 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: boolean;
   textScale?: ControlTextScale;
   density?: ControlDensity;
+  /**
+   * What this box may hold — numbers only, Arabic only, English only… (`input-rules.ts`). A
+   * keystroke or a paste that breaks it is refused with the reason; an acceptable one is stored
+   * canonical. Omit it and the box takes anything, exactly as before.
+   */
+  rule?: InputRule;
 }
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  (
-    { error = false, textScale = 'compact', density = 'default', tone, className, ...rest },
-    ref,
-  ) => (
+
+type InputElementProps = Omit<InputProps, 'onChange' | 'onPaste'>;
+
+const inputElement = (
+  {
+    error = false,
+    textScale = 'compact',
+    density = 'default',
+    tone,
+    className,
+    rule,
+    ...rest
+  }: InputElementProps,
+  ref: ForwardedRef<HTMLInputElement>,
+  ruled: Ruled<HTMLInputElement>,
+): JSX.Element => {
+  const red = error || ruled.flash;
+  return (
     <input
       ref={ref}
+      {...(rule === undefined ? {} : { ...inputRuleAttributes(rule), 'data-input-rule': rule })}
       className={cn(
         tone === undefined ? controlBase : controlBaseUntinted,
         controlGutter(density),
         controlText(textScale),
         // A tinted control brings its own border colour with the rest of the tone; only an ERROR
         // overrides it, because a field that will not save has to say so louder than its subject.
-        tone === undefined || error ? ring(error) : '',
+        tone === undefined || red ? ring(red) : '',
         tone,
         className,
       )}
       {...rest}
+      // A ruled box is text: `type="number"` would empty itself on a typed letter rather than
+      // refuse it, and drop a pasted one without a word. `rule` brings the numeric keyboard.
+      {...(rule !== undefined && rest.type === 'number' ? { type: 'text' } : {})}
+      {...(ruled.onChange === undefined ? {} : { onChange: ruled.onChange })}
+      {...(ruled.onPaste === undefined ? {} : { onPaste: ruled.onPaste })}
     />
-  ),
+  );
+};
+
+const RuledInput = forwardRef<HTMLInputElement, InputProps & { rule: InputRule }>(
+  ({ onChange, onPaste, ...props }, ref) =>
+    inputElement(props, ref, useRuledControl(props.rule, props.value, onChange, onPaste)),
+);
+RuledInput.displayName = 'RuledInput';
+
+export const Input = forwardRef<HTMLInputElement, InputProps>(
+  ({ onChange, onPaste, ...props }, ref) => {
+    const { rule } = props;
+    if (rule === undefined) return inputElement(props, ref, unruled(onChange, onPaste));
+    return (
+      <RuledInput
+        {...props}
+        rule={rule}
+        ref={ref}
+        {...(onChange === undefined ? {} : { onChange })}
+        {...(onPaste === undefined ? {} : { onPaste })}
+      />
+    );
+  },
 );
 Input.displayName = 'Input';
 
 export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: boolean;
   textScale?: ControlTextScale;
+  /** What this box may hold — see `Input`'s `rule`. */
+  rule?: InputRule;
 }
+
+type TextareaElementProps = Omit<TextareaProps, 'onChange' | 'onPaste'>;
+
+const textareaElement = (
+  {
+    error = false,
+    textScale = 'compact',
+    className,
+    rows = 4,
+    rule,
+    ...rest
+  }: TextareaElementProps,
+  ref: ForwardedRef<HTMLTextAreaElement>,
+  ruled: Ruled<HTMLTextAreaElement>,
+): JSX.Element => (
+  <textarea
+    ref={ref}
+    rows={rows}
+    {...(rule === undefined ? {} : { ...inputRuleAttributes(rule), 'data-input-rule': rule })}
+    className={cn(
+      controlBase,
+      controlGutter('default'),
+      controlText(textScale),
+      ring(error || ruled.flash),
+      className,
+    )}
+    {...rest}
+    {...(ruled.onChange === undefined ? {} : { onChange: ruled.onChange })}
+    {...(ruled.onPaste === undefined ? {} : { onPaste: ruled.onPaste })}
+  />
+);
+
+const RuledTextarea = forwardRef<HTMLTextAreaElement, TextareaProps & { rule: InputRule }>(
+  ({ onChange, onPaste, ...props }, ref) =>
+    textareaElement(props, ref, useRuledControl(props.rule, props.value, onChange, onPaste)),
+);
+RuledTextarea.displayName = 'RuledTextarea';
+
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
-  ({ error = false, textScale = 'compact', className, rows = 4, ...rest }, ref) => (
-    <textarea
-      ref={ref}
-      rows={rows}
-      className={cn(
-        controlBase,
-        controlGutter('default'),
-        controlText(textScale),
-        ring(error),
-        className,
-      )}
-      {...rest}
-    />
-  ),
+  ({ onChange, onPaste, ...props }, ref) => {
+    const { rule } = props;
+    if (rule === undefined) return textareaElement(props, ref, unruled(onChange, onPaste));
+    return (
+      <RuledTextarea
+        {...props}
+        rule={rule}
+        ref={ref}
+        {...(onChange === undefined ? {} : { onChange })}
+        {...(onPaste === undefined ? {} : { onPaste })}
+      />
+    );
+  },
 );
 Textarea.displayName = 'Textarea';
 

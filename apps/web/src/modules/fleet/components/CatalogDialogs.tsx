@@ -112,10 +112,10 @@ export const CatalogItemDialog = ({
     >
       <div className="space-y-4">
         <Field label={t('fleet.catalogs.fields.nameAr')} required>
-          <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+          <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} rule="arabic" />
         </Field>
         <Field label={t('fleet.catalogs.fields.nameEn')} required>
-          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} dir="ltr" />
+          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} rule="english" />
         </Field>
         {kind === 'workType' && (
           <Checkbox
@@ -220,10 +220,10 @@ export const VehicleTypeDialog = ({
     >
       <div className="space-y-4">
         <Field label={t('fleet.catalogs.fields.nameAr')} required>
-          <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} />
+          <Input value={nameAr} onChange={(e) => setNameAr(e.target.value)} rule="arabic" />
         </Field>
         <Field label={t('fleet.catalogs.fields.nameEn')} required>
-          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} dir="ltr" />
+          <Input value={nameEn} onChange={(e) => setNameEn(e.target.value)} rule="english" />
         </Field>
         <Field
           label={t('fleet.settings.fields.intervalKm')}
@@ -231,9 +231,7 @@ export const VehicleTypeDialog = ({
           hint={t('fleet.settings.intervalHint')}
         >
           <Input
-            type="number"
-            min={0}
-            step={1}
+            rule="integer"
             value={intervalKm}
             onChange={(e) => setIntervalKm(e.target.value)}
             dir="ltr"

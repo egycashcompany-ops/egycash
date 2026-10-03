@@ -687,6 +687,7 @@ export const VehiclesListPage = (): JSX.Element => {
               placeholder={t('fleet.vehicles.columns.plate')}
               value={plate}
               onChange={(e) => patch({ plate: e.target.value || null })}
+              rule="plate"
             />
           </div>
           <div className="w-40">
@@ -695,7 +696,7 @@ export const VehiclesListPage = (): JSX.Element => {
               placeholder={t('fleet.vehicles.columns.chassis')}
               value={chassis}
               onChange={(e) => patch({ chassis: e.target.value || null })}
-              dir="ltr"
+              rule="english"
             />
           </div>
           <div className="w-40">
@@ -704,7 +705,7 @@ export const VehiclesListPage = (): JSX.Element => {
               placeholder={t('fleet.vehicles.columns.motor')}
               value={motor}
               onChange={(e) => patch({ motor: e.target.value || null })}
-              dir="ltr"
+              rule="english"
             />
           </div>
           {/* The dropdowns: make, then the three catalog references, then branch and status —

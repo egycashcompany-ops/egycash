@@ -237,7 +237,7 @@ export const FuelCardsPage = (): JSX.Element => {
             value={number}
             onChange={(e) => patch({ number: e.target.value || null })}
             className="w-48"
-            dir="ltr"
+            rule="digits"
           />
           <span className="relative w-40">
             <Input

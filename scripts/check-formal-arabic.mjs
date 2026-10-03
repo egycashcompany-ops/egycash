@@ -119,6 +119,8 @@ const DATA_FILES = [
   'apps/api/src/modules/fleet/go-live/vocabulary.ts',
   // The old books' own spellings of the licence classes («اتانية» …), matched against, never shown.
   'apps/api/src/modules/fleet/go-live/driver-details-import.ts',
+  // The legacy books' catalog names, as stored («صراف الى» …), looked up to give them their English.
+  'apps/api/src/modules/fleet/catalogs/catalog-english.ts',
   'packages/contracts/src/common/egypt-geography.ts',
   'apps/web/src/shared/national-id/transliterate.ts',
 ];

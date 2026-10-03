@@ -23,7 +23,7 @@ import {
   useUpdateViolation,
   useAllVehicles,
 } from '../api/fleet-queries';
-import { VehicleSelect } from './VehicleSelect';
+import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { CatalogSelect } from './CatalogSelect';
 import { RegistryDriverPicker } from './RegistryDriverPicker';
 import { pickedDriverId, UNKNOWN_DRIVER } from '../lib/driver-filter-selection';
@@ -171,12 +171,12 @@ export const VehicleViolationDialog = ({
             delete the row and re-file it, which throws away the row's history to fix a typo.
             The DELETE path still shows them read-only, because the whole `fieldset` is. */}
         <Field label={t('fleet.odometer.columns.vehicle')} required>
-          <VehicleSelect
+          <VehicleCodeCombobox
             value={vehicleId}
             onChange={setVehicleId}
             anyStatus
-            fullWidth
             ariaLabel={t('fleet.odometer.columns.vehicle')}
+            placeholder={t('fleet.accidents.vehiclePlaceholder')}
           />
           {/* The code stays on the page under the picker, for the reader who came to CONFIRM a
               row rather than change it — and it is what the delete dialog is really asking about. */}
@@ -187,10 +187,7 @@ export const VehicleViolationDialog = ({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('fleet.violations.fields.year')} required>
             <Input
-              type="number"
-              min={2000}
-              max={2100}
-              step={1}
+              rule="integer"
               value={year}
               onChange={(e) => setYear(e.target.value)}
               dir="ltr"
@@ -209,9 +206,7 @@ export const VehicleViolationDialog = ({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t('fleet.violations.fields.count')} required>
             <Input
-              type="number"
-              min={1}
-              step={1}
+              rule="integer"
               value={count}
               onChange={(e) => setCount(e.target.value)}
               dir="ltr"
@@ -348,7 +343,13 @@ export const DriverViolationDialog = ({
       <fieldset disabled={readOnly} className="space-y-4">
         {violation === null && (
           <Field label={t('fleet.odometer.columns.vehicle')} required>
-            <VehicleSelect value={vehicleId} onChange={setVehicleId} anyStatus />
+            <VehicleCodeCombobox
+              value={vehicleId}
+              onChange={setVehicleId}
+              anyStatus
+              ariaLabel={t('fleet.odometer.columns.vehicle')}
+              placeholder={t('fleet.accidents.vehiclePlaceholder')}
+            />
           </Field>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
@@ -440,14 +441,7 @@ export const GrievanceDialog = ({
       }
     >
       <Field label={t('fleet.violations.fields.totalBeforeGrievance')} required>
-        <Input
-          type="number"
-          min={0}
-          step="0.01"
-          value={total}
-          onChange={(e) => setTotal(e.target.value)}
-          dir="ltr"
-        />
+        <MoneyInput value={total} onChange={setTotal} />
       </Field>
     </Dialog>
   );

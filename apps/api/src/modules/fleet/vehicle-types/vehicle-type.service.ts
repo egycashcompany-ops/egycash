@@ -11,6 +11,7 @@ import { auditService } from '../../../platform/audit';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleTypeRepository } from './vehicle-type.repository';
 import { type FleetVehicleTypeDoc } from './vehicle-type.model';
+import { withEnglishName } from '../catalogs/catalog-english';
 
 const entityRef = (id: string) => ({
   moduleId: 'fleet',
@@ -31,7 +32,12 @@ class FleetVehicleTypeService {
       throw new ConflictError(`Vehicle type "${input.name.ar}" already exists`);
     }
     const doc = await fleetVehicleTypeRepository.create(
-      { name: input.name, maintenanceIntervalKm: input.maintenanceIntervalKm, isActive: true },
+      {
+        // An English half that still carries Arabic is translated on the way in, as a catalog's is.
+        name: withEnglishName(input.name),
+        maintenanceIntervalKm: input.maintenanceIntervalKm,
+        isActive: true,
+      },
       { by },
     );
     await auditService.record({
@@ -63,7 +69,7 @@ class FleetVehicleTypeService {
   ): Promise<FleetVehicleTypeDoc> {
     const before = await fleetVehicleTypeRepository.getById(id);
     const set: Partial<FleetVehicleTypeDoc> = {};
-    if (input.name !== undefined) set.name = input.name;
+    if (input.name !== undefined) set.name = withEnglishName(input.name);
     if (input.maintenanceIntervalKm !== undefined) {
       set.maintenanceIntervalKm = input.maintenanceIntervalKm;
     }

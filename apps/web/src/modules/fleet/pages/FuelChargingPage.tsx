@@ -40,7 +40,6 @@ import { saveSheet } from '../lib/fleet-sheet';
 import {
   CHARGING_STATES,
   cardsInStates,
-  chargedToday,
   readChargingStates,
   type ChargingState,
 } from '../lib/charging-state';
@@ -104,7 +103,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
       className={cn(
         'flex items-center gap-1.5 rounded-md border bg-[#0b0f19] px-2 py-1 transition-colors',
         'focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
-        waiting ? 'border-amber-500/60' : 'border-slate-800',
+        'border-slate-800',
       )}
     >
       <span className="whitespace-nowrap text-[10px] text-slate-500">
@@ -163,19 +162,26 @@ const ChargeRow = ({
   const t = useT();
   const low = card.balance < red ? 'red' : card.balance < yellow ? 'yellow' : null;
   const waiting = card.requestedAmount !== null;
-  const charged = chargedToday(card);
+  // «الاخضر فى حالة لو اتشحن اليوم» — charged on today's date, not within the last 24 hours.
+  const charged =
+    card.lastChargedAt !== null &&
+    new Date(card.lastChargedAt).toDateString() === new Date().toDateString();
   return (
     <div
       data-fuel-line={card.company}
       data-fuel-card={card.id}
       className={cn(
         // «الصف بتاع الفيزا يكون بكل بياناته على صف واحد» — never wraps; a narrow screen scrolls it.
-        'flex flex-nowrap items-center justify-between gap-3 overflow-x-auto rounded-xl border bg-[#111827] px-3 py-2.5 transition hover:shadow-md',
+        'flex flex-nowrap items-center justify-between gap-3 overflow-x-auto rounded-xl border px-3 py-2.5 transition hover:shadow-md',
+        // The whole line carries its state: amber while a request waits, green when charged today,
+        // red when the balance is about to run out.
         waiting
-          ? 'border-amber-500/50'
+          ? 'border-amber-500/60 bg-amber-500/15'
           : charged
-            ? 'border-emerald-500/50'
-            : 'border-slate-800 hover:border-slate-700/80',
+            ? 'border-emerald-500/60 bg-emerald-500/15'
+            : low === 'red'
+              ? 'border-red-500/60 bg-red-500/15'
+              : 'border-slate-800 bg-[#111827] hover:border-slate-700/80',
       )}
     >
       <div className="flex min-w-[190px] shrink-0 items-center gap-3">

@@ -569,11 +569,10 @@ export const VehicleFuelGroup = ({
               data-fuel-code={code}
               className={cn(
                 'rounded-lg border px-3.5 py-0.5 font-black shadow-inner',
-                // A car's code is a number, drawn large; a label on no car («سفر 1», «اسبير») is
-                // words, and reads at a normal size.
-                /^\d+$/u.test(code)
-                  ? cn('text-2xl tracking-wider md:text-3xl', NUM)
-                  : 'py-1 text-base font-bold',
+                // A car's code and a label on no car («سفر 1», «اسبير») are the same size — the code in
+                // the figures' monospace, the label in the words' type.
+                'text-2xl tracking-wider md:text-3xl',
+                /^\d+$/u.test(code) && NUM,
                 held === 0
                   ? 'border-slate-700 bg-slate-800 text-white'
                   : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400',

@@ -39,14 +39,14 @@ import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { groupCardNumber, ungroupCardNumber } from '../lib/fuel-card-number';
 
 /** The design's type: Cairo for words, JetBrains Mono for codes and numbers. */
-const SANS = "[font-family:'Cairo',sans-serif]";
-const MONO = "[font-family:'JetBrains_Mono','Cairo',monospace]";
+export const SANS = "[font-family:'Cairo',sans-serif]";
+export const MONO = "[font-family:'JetBrains_Mono','Cairo',monospace]";
 
 /** «يدعم صيغ PNG, JPG بحد أقصى 5MB» — the design's limit, held here so the words are true. */
 const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 
 /** The two designs' classes. `add` is «إضافة كارت», `edit` is «تعديل الكارت». */
-const LOOK = {
+export const LOOK = {
   add: {
     panel:
       'max-w-2xl bg-[#121c3f]/95 border-[#2b3b6b] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] backdrop-blur-xl',
@@ -84,7 +84,7 @@ const LOOK = {
 } as const;
 
 /** A box of the design: the field colours, focus ring and the red glow of a refused value. */
-const boxTone = (look: (typeof LOOK)['add' | 'edit']): string =>
+export const boxTone = (look: (typeof LOOK)['add' | 'edit']): string =>
   cn(
     '!rounded-xl !px-4 !text-[15px] border font-medium text-white',
     look.box,
@@ -95,6 +95,22 @@ const boxTone = (look: (typeof LOOK)['add' | 'edit']): string =>
     'aria-[invalid=true]:!border-rose-500/70 aria-[invalid=true]:!text-rose-300',
     'aria-[invalid=true]:focus:!border-rose-500/70 aria-[invalid=true]:focus:!ring-rose-500',
     'aria-[invalid=true]:shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)]',
+  );
+
+/** The car box of the design: `Combobox` styles its own input, so the look is laid on from outside. */
+export const carBoxClass = (editing: boolean): string =>
+  cn(
+    '[&_input]:!rounded-xl [&_input]:!ps-4 [&_input]:!pe-20 [&_input]:shadow-inner',
+    '[&_input]:!text-white [&_input]:!font-medium [&_input]:placeholder:!text-slate-400',
+    '[&_input:focus]:!border-indigo-500 [&_input:focus]:ring-1 [&_input:focus]:ring-indigo-500 [&_input]:focus-visible:!ring-offset-0',
+    editing
+      ? "[&_input]:!border-[#2b3b6b] [&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-base [&_input]:font-semibold [&_input]:[font-family:'JetBrains_Mono','Cairo',monospace] [&_input]:placeholder:[font-family:'Cairo',sans-serif] [&_input]:placeholder:!text-sm [&_input]:placeholder:font-normal"
+      : '[&_input]:!border-[#2b3b6b] [&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-[15px]',
+    // The clear × and the chevron, with the design's rule between them.
+    '[&_.end-2]:!end-3 [&_.end-2]:!gap-1.5 [&_.end-2_svg]:!h-4 [&_.end-2_svg]:!w-4',
+    '[&_.end-2_button]:!p-1 [&_.end-2_button:hover]:!text-rose-400',
+    '[&_.end-2_button]:relative [&_.end-2_button]:after:absolute [&_.end-2_button]:after:-end-1 [&_.end-2_button]:after:top-1/2 [&_.end-2_button]:after:h-4 [&_.end-2_button]:after:w-px [&_.end-2_button]:after:-translate-y-1/2 [&_.end-2_button]:after:bg-slate-700 [&_.end-2_button]:me-1',
+    '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-[#131d35]',
   );
 
 /** The design's calendar button, lightened for the dark box — each design its own filter. */
@@ -115,7 +131,7 @@ const BangIcon = (): JSX.Element => (
 );
 
 /** The design's stroke icons, drawn as the design draws them. */
-const Stroke = ({ d, className }: { d: string[]; className: string }): JSX.Element => (
+export const Stroke = ({ d, className }: { d: string[]; className: string }): JSX.Element => (
   <svg
     className={className}
     fill="none"
@@ -129,10 +145,10 @@ const Stroke = ({ d, className }: { d: string[]; className: string }): JSX.Eleme
     ))}
   </svg>
 );
-const CARD_PATH = [
+export const CARD_PATH = [
   'M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z',
 ];
-const CLOSE_PATH = ['M6 18L18 6M6 6l12 12'];
+export const CLOSE_PATH = ['M6 18L18 6M6 6l12 12'];
 const IMAGE_PATH = [
   'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z',
 ];
@@ -148,7 +164,7 @@ export const CHILLOUT_LOGO = '/fleet-fuel-cards/chillout-red-wide.png';
  * The company marks: Wataniya's logo as the screens have always shown it, in the design's white
  * circle; Chill Out's wordmark, which is wide, in a red pill of the same height so it reads.
  */
-const DesignLogo = ({
+export const DesignLogo = ({
   company,
   editing,
 }: {
@@ -181,7 +197,7 @@ const DesignLogo = ({
  * «حقل مطلوب» or the grey hint. Carries what `Field` carries to the box inside — whether Save
  * found it empty, and the message of a refused keystroke — so the rules work unchanged.
  */
-const DesignField = ({
+export const DesignField = ({
   label,
   required = false,
   missing = false,
@@ -544,21 +560,7 @@ export const FuelCardDialog = ({
               label={t('fleet.odometer.columns.vehicle')}
               hint={t('fleet.fuelCards.carHint')}
             >
-              <div
-                className={cn(
-                  '[&_input]:!rounded-xl [&_input]:!ps-4 [&_input]:!pe-20 [&_input]:shadow-inner',
-                  '[&_input]:!text-white [&_input]:!font-medium [&_input]:placeholder:!text-slate-400',
-                  '[&_input:focus]:!border-indigo-500 [&_input:focus]:ring-1 [&_input:focus]:ring-indigo-500 [&_input]:focus-visible:!ring-offset-0',
-                  editing
-                    ? "[&_input]:!border-[#2b3b6b] [&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-base [&_input]:font-semibold [&_input]:[font-family:'JetBrains_Mono','Cairo',monospace] [&_input]:placeholder:[font-family:'Cairo',sans-serif] [&_input]:placeholder:!text-sm [&_input]:placeholder:font-normal"
-                    : '[&_input]:!border-[#2b3b6b] [&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-[15px]',
-                  // The clear × and the chevron, with the design's rule between them.
-                  '[&_.end-2]:!end-3 [&_.end-2]:!gap-1.5 [&_.end-2_svg]:!h-4 [&_.end-2_svg]:!w-4',
-                  '[&_.end-2_button]:!p-1 [&_.end-2_button:hover]:!text-rose-400',
-                  '[&_.end-2_button]:relative [&_.end-2_button]:after:absolute [&_.end-2_button]:after:-end-1 [&_.end-2_button]:after:top-1/2 [&_.end-2_button]:after:h-4 [&_.end-2_button]:after:w-px [&_.end-2_button]:after:-translate-y-1/2 [&_.end-2_button]:after:bg-slate-700 [&_.end-2_button]:me-1',
-                  '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-[#131d35]',
-                )}
-              >
+              <div className={carBoxClass(editing)}>
                 <VehicleCodeCombobox
                   value={vehicleId}
                   onChange={setVehicleId}

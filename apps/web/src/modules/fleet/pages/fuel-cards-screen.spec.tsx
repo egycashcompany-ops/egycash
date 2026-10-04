@@ -373,11 +373,11 @@ describe('charging', () => {
       html.indexOf('data-fuel-line="wataniya"'),
       html.indexOf('data-fuel-tile="v-178"'),
     );
-    expect(req).toContain('border-amber-500/50');
+    expect(req).toContain('bg-amber-500/15');
     expect(req).toContain('data-fuel-tick="req"');
     expect(req).toContain('data-fuel-cross="req"');
     const chg = html.slice(html.indexOf('data-fuel-tile="v-178"'));
-    expect(chg).toContain('border-emerald-500/50');
+    expect(chg).toContain('bg-emerald-500/15');
   });
 
   it('marks the balance below the yellow line, and in red below the red line', () => {
@@ -409,7 +409,7 @@ describe('charging', () => {
     expect(DIALOG).toContain("'fleet.fuelCards.transfer.taken'");
     expect(DIALOG).toContain("'fleet.fuelCards.transfer.given'");
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.becomes')");
-    expect(DIALOG).toContain('money(card.balance + sign * value)');
+    expect(DIALOG).toContain('amount: card.balance + sign * value');
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.doneDetail'");
     expect(DIALOG).toContain('const enough = from !== null && value <= from.balance;');
     expect(ar('fleet.fuelCards.transfer.was')).toBe('كان');

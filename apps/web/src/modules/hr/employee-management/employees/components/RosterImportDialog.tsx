@@ -195,6 +195,9 @@ export const RosterImportDialog = ({
   // been turned off. Both mean the button would write nothing, so it is not offered.
   const selectedTotal = selected.reduce((sum, a) => sum + sizeOf(a), 0);
   const nothingToDo = counts !== undefined && selectedTotal === 0;
+  /** «الاستقالات · صف 51» — the same way a refused row is pointed at, so the two read alike. */
+  const rowRef = (ref: { sheet: 'master' | 'resignation'; rowNumber: number }): string =>
+    `${t(`employees.roster.sheet.${ref.sheet}`)} · ${t('employees.roster.row')} ${ref.rowNumber}`;
 
   const error = run.error;
 
@@ -436,6 +439,32 @@ export const RosterImportDialog = ({
                       {t(`employees.roster.sheet.${r.sheet}`)} · {t('employees.roster.row')}{' '}
                       {r.rowNumber}
                       {r.code === null ? '' : ` · ${r.code}`} — {localized(r.reason, locale)}
+                    </li>
+                  ))}
+                </ul>
+              </Section>
+            )}
+
+            {/*
+              Repeated rows that disagreed. The person was NOT held back — «خد واحد منهم وضيفه ..
+              لكن متمنعش البيانات كلها إنها تتحط» — so this is amber, not the rose of a refusal:
+              it names the row that was used and the rows set aside, so a wrong pick is caught
+              here, before anything is written, rather than found later on somebody's file.
+            */}
+            {report.disagreeingCopies.length > 0 && (
+              <Section title={t('employees.roster.copiesTitle')}>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {t('employees.roster.copiesHint')}
+                </p>
+                <ul className="max-h-40 space-y-1 overflow-auto text-xs text-amber-800 dark:text-amber-200">
+                  {report.disagreeingCopies.map((c) => (
+                    <li key={`${c.kept.sheet}:${c.kept.rowNumber}`}>
+                      {t('employees.roster.copiesLine', {
+                        name: c.name,
+                        code: c.code,
+                        kept: rowRef(c.kept),
+                        dropped: c.dropped.map(rowRef).join(t('employees.roster.copiesJoin')),
+                      })}
                     </li>
                   ))}
                 </ul>

@@ -982,6 +982,18 @@ export interface RosterRejectedRowDto {
   reason: LocalizedString;
 }
 
+/**
+ * Repeated rows of one person that did NOT say the same thing. The person was not held back — one
+ * copy was kept — and this names the kept row and the rows set aside, so a wrong pick is visible
+ * before it is applied. Copies that agree on every cell are not listed.
+ */
+export interface RosterDisagreeingCopiesDto {
+  code: string;
+  name: string;
+  kept: { sheet: RosterSheet; rowNumber: number };
+  dropped: { sheet: RosterSheet; rowNumber: number }[];
+}
+
 /** What part of the org structure a note is about. Closed, labelled by the UI. */
 export const ROSTER_ORG_SUBJECTS = ['branch', 'department', 'section', 'jobTitle'] as const;
 export type RosterOrgSubject = (typeof ROSTER_ORG_SUBJECTS)[number];
@@ -1041,4 +1053,5 @@ export interface RosterImportReportDto {
   refused: RosterRefusedChangeDto[];
   rejected: RosterRejectedRowDto[];
   orgProblems: { what: RosterOrgSubject; detail: LocalizedString }[];
+  disagreeingCopies: RosterDisagreeingCopiesDto[];
 }

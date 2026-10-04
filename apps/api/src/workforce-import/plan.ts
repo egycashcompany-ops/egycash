@@ -11,8 +11,9 @@
 //   2. IN WHAT ORDER. A person who left and came back has to be created, exited and rehired in that
 //      sequence, so their exit rows are sorted before their serving row. Building them the other way
 //      round hits the national-id guard and fails.
-//   3. WHAT MUST NOT BE IMPORTED AT ALL. Rows that contradict each other, or that lack what the
-//      registry requires, become report lines rather than guesses.
+//   3. WHAT MUST NOT BE IMPORTED AT ALL. Rows that lack what the registry requires become report
+//      lines rather than guesses. Repeated rows are NOT among them: one copy is kept and the person
+//      goes in — see `collapseCopies`.
 import { rowReasons } from './reasons';
 import { formatEmployeeNumber } from '../modules/hr/employee-management/employees/employee-number';
 import {
@@ -113,9 +114,28 @@ export interface Rejection {
   reason: LocalizedString;
 }
 
+/** Where a row lives, so the screen can point at it. */
+export interface RowRef {
+  sheet: 'master' | 'resignation';
+  rowNumber: number;
+}
+
+/**
+ * Copies of one employment that did NOT say the same thing. One was kept and the person went in;
+ * this is how the preview tells somebody which, so a wrong pick is caught before it is applied.
+ * Identical copies are not listed — there is nothing to check.
+ */
+export interface DisagreeingCopies {
+  code: string;
+  name: string;
+  kept: RowRef;
+  dropped: RowRef[];
+}
+
 export interface ImportPlan {
   people: PersonPlan[];
   rejected: Rejection[];
+  disagreeing: DisagreeingCopies[];
 }
 
 /** `0100004` → `010` + `0004`. The only place the legacy code is taken apart. */
@@ -126,10 +146,6 @@ const splitCode = (code: string): { branchCode: string; number: string } | null 
   if (m === null) return null;
   return { branchCode: m[1] as string, number: m[2] as string };
 };
-
-/** Two dates are the same calendar day. Both are built at UTC midnight, so this is equality. */
-const sameDay = (a: Date | null, b: Date | null): boolean =>
-  a !== null && b !== null && a.getTime() === b.getTime();
 
 /**
  * What joins a person's rows across the two sheets.
@@ -177,23 +193,11 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
   }
 
   const people: PersonPlan[] = [];
+  const disagreeing: DisagreeingCopies[] = [];
   for (const group of byIdentity.values()) {
-    const ordered = [...group].sort(orderSpells);
-
-    // Contradictory copies of ONE period — not two periods. Reject the whole person rather than
-    // importing an arbitrary half of a contradiction.
-    const duplicate = findDuplicatePeriod(ordered);
-    if (duplicate !== null) {
-      for (const row of ordered) {
-        rejected.push({
-          sheet: row.sheet,
-          rowNumber: row.rowNumber,
-          code: row.code,
-          reason: rowReasons.duplicatePeriod(duplicate.sameExit),
-        });
-      }
-      continue;
-    }
+    const collapsed = collapseCopies(group);
+    disagreeing.push(...collapsed.disagreeing);
+    const ordered = collapsed.spells.sort(orderSpells);
 
     const current = ordered[ordered.length - 1] as SourceRow;
     // A person's code comes from the row that describes them TODAY. For the seven rehired under a
@@ -221,7 +225,7 @@ export const buildPlan = (rows: readonly SourceRow[]): ImportPlan => {
     });
   }
 
-  return { people, rejected: rejected.sort(bySheetThenRow) };
+  return { people, rejected: rejected.sort(bySheetThenRow), disagreeing };
 };
 
 /**
@@ -269,27 +273,92 @@ const orderSpells = (a: SourceRow, b: SourceRow): number => {
 };
 
 /**
- * Two rows describe the same PERIOD rather than two periods when their hire dates agree. One
- * employment cannot start twice.
+ * ONE ROW PER EMPLOYMENT. Two rows of one person with the same hire date describe one employment,
+ * not two — an employment cannot start twice — so exactly one of them is kept and the person goes in.
  *
- * This catches both shapes the go-live workbook contains, which is why the rule is about the hire
- * date rather than about which sheet a row came from:
+ * Which one, in the owner's words:
  *
- *   • Three codes appear twice WITHIN the Resignation sheet with identical hire AND exit dates
- *     (`0100417`, `0300857`, `0100954`) — one employment entered twice. Importing them as two
- *     spells would invent a period of service that never happened.
- *   • Three people appear on BOTH sheets with the same hire date (`0100313`, `0200810`,
- *     `0501600`/`0501484`) — serving and exited for the same employment at once. A genuine rehire
- *     has a LATER hire date on the serving row, which is true of the other 25 who appear on both.
+ *   • ON BOTH SHEETS — «لو فى أسماء فى الشيتين .. دا معناه إن الراجل جه وأتعين وبعدين مشي ..
+ *     فأنت هتعتمد الأتنين.. توظفه وبعدين تمشية .. دا لو مكانش متوظف أصلاً». The Resignation row is
+ *     kept: it is the same employment with its ending written on it. Nothing else is needed for
+ *     the rest of that sentence — a person kept from the Resignation sheet is created and exited if
+ *     the registry has never seen them, and only exited if it already has (`run.ts`).
+ *   • THE SAME SHEET TWICE — «لو فى بيانات متكرره خد واحد منهم وضيفه .. لكن متمنعش البيانات
+ *     كلها إنها تتحط». The LAST copy is kept. A list pasted twice is the case this was written
+ *     for (36 leavers, rows 2–37 and again 38–73), and there the lower copy is the later paste —
+ *     the one with the insurance status filled in.
+ *
+ * This replaced a refusal. The planner used to hold the WHOLE person back on any repeat, calling
+ * byte-identical copies «conflicting»: 78 rows of one upload were refused, 66 of them over copies
+ * that agreed on every cell. A person was kept out of the registry to protect against a choice
+ * between two answers that were the same.
+ *
+ * What is not lost is the check. Copies that DISAGREE come back in `disagreeing`, naming the row
+ * kept and the rows set aside, so the preview shows it before anything is written. On both sheets
+ * the exit is expected to differ — that is the ending — so only a difference elsewhere counts.
  */
-const findDuplicatePeriod = (ordered: readonly SourceRow[]): { sameExit: boolean } | null => {
-  for (let i = 1; i < ordered.length; i += 1) {
-    const previous = ordered[i - 1] as SourceRow;
-    const row = ordered[i] as SourceRow;
-    if (!sameDay(previous.hiredAt, row.hiredAt)) continue;
-    return { sameExit: sameDay(previous.exit?.effectiveDate ?? null, row.exit?.effectiveDate ?? null) };
+const collapseCopies = (
+  rows: readonly SourceRow[],
+): { spells: SourceRow[]; disagreeing: DisagreeingCopies[] } => {
+  const byHireDay = new Map<number, SourceRow[]>();
+  for (const row of rows) {
+    // Every row here has a hire date: `unusableReason` refused the ones without.
+    const day = (row.hiredAt as Date).getTime();
+    const copies = byHireDay.get(day);
+    if (copies === undefined) byHireDay.set(day, [row]);
+    else copies.push(row);
   }
-  return null;
+
+  const spells: SourceRow[] = [];
+  const disagreeing: DisagreeingCopies[] = [];
+  for (const copies of byHireDay.values()) {
+    const kept = keptCopy(copies);
+    spells.push(kept);
+    const dropped = copies.filter((c) => c !== kept);
+    if (dropped.some((c) => !sayTheSame(kept, c))) {
+      disagreeing.push({
+        code: kept.code as string,
+        name: kept.fullNameAr as string,
+        kept: { sheet: kept.sheet, rowNumber: kept.rowNumber },
+        dropped: dropped.map((c) => ({ sheet: c.sheet, rowNumber: c.rowNumber })),
+      });
+    }
+  }
+  return { spells, disagreeing };
+};
+
+/** The Resignation copy when there is one — it carries the ending — and otherwise the last row. */
+const keptCopy = (copies: readonly SourceRow[]): SourceRow => {
+  const ended = copies.filter((c) => c.sheet === 'resignation');
+  const pool = ended.length > 0 ? ended : copies;
+  return pool.reduce((a, b) => (b.rowNumber > a.rowNumber ? b : a));
+};
+
+/**
+ * Whether two copies say the same thing about the person. Where they sit never counts; across the
+ * two sheets the exit does not count either, because the Resignation copy is the one with the ending.
+ */
+const sayTheSame = (kept: SourceRow, other: SourceRow): boolean => {
+  const ignored = kept.sheet === other.sheet ? WHERE : WHERE_AND_ENDING;
+  const a = kept as unknown as Record<string, unknown>;
+  const b = other as unknown as Record<string, unknown>;
+  return Object.keys(a).every((key) => ignored.has(key) || sameValue(a[key], b[key]));
+};
+
+const WHERE = new Set(['sheet', 'rowNumber']);
+const WHERE_AND_ENDING = new Set([...WHERE, 'exit']);
+
+const sameValue = (a: unknown, b: unknown): boolean => {
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime();
+  }
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return a === b;
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  const keys = Object.keys(x);
+  return (
+    keys.length === Object.keys(y).length && keys.every((key) => sameValue(x[key], y[key]))
+  );
 };
 
 const bySheetThenRow = (a: Rejection, b: Rejection): number =>

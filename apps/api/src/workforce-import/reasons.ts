@@ -39,12 +39,6 @@ export const rowReasons = {
       'تاريخ الخروج سابق لتاريخ التعيين — أحدهما غير صحيح',
       'exit date is before the hiring date — one of the two is wrong',
     ),
-  duplicatePeriod: (sameExit: boolean) =>
-    both(
-      `صفوف مكرّرة متعارضة لنفس فترة العمل (نفس تاريخ التعيين${sameExit ? ' وتاريخ الخروج' : ''}) — تتطلب قرارًا من مسؤول قبل الاستيراد`,
-      `conflicting duplicate rows for one employment (same hire date${sameExit ? ' and exit date' : ''})` +
-        ' — needs a human decision before import',
-    ),
   badCodeShape: (code: string) =>
     both(
       `كود الموظف «${code}» ليس على صيغة <٣ أرقام للفرع><٤ أرقام للرقم>`,

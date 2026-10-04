@@ -2485,6 +2485,11 @@ const en: Record<string, string> = {
   'employees.roster.addedExitedHint': 'These come from the Resignation sheet, so they join the registry already exited. The employees list hides exited people unless the view filter is set to All.',
   'employees.roster.refusedTitle': 'Asked for, but not done',
   'employees.roster.rejectedTitle': 'Rows that could not be read',
+  'employees.roster.copiesTitle': 'Repeated rows that did not match — one was used',
+  'employees.roster.copiesHint':
+    'The employee was not held back. If the row used is the wrong one, correct the file and upload it again.',
+  'employees.roster.copiesLine': '{{name}} · {{code}} — used {{kept}}; set aside {{dropped}}',
+  'employees.roster.copiesJoin': ', ',
   'employees.roster.orgProblemsTitle': 'Organization structure',
   'employees.roster.row': 'row',
   'employees.roster.field.fullNameAr': 'Arabic name',
@@ -9776,6 +9781,11 @@ const ar: Record<string, string> = {
     'مطلوب في الملف ولن يُنفَّذ',
   'employees.roster.rejectedTitle':
     'صفوف تعذّرت قراءتها',
+  'employees.roster.copiesTitle': 'صفوف مكرّرة غير متطابقة — اعتُمد صف واحد منها',
+  'employees.roster.copiesHint':
+    'لم يُستبعد الموظف. إذا كان الصف المعتمد غير صحيح، فصحّح الملف ثم أعد رفعه.',
+  'employees.roster.copiesLine': '{{name}} · {{code}} — اعتُمد {{kept}}، واستُبعد {{dropped}}',
+  'employees.roster.copiesJoin': '، ',
   'employees.roster.orgProblemsTitle': 'الهيكل التنظيمي',
   'employees.roster.row': 'صف',
   'employees.roster.field.fullNameAr': 'الاسم بالعربي',

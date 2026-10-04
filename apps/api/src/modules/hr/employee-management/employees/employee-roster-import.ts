@@ -100,6 +100,7 @@ const toDto = (report: ImportReport, names: OrgNames): RosterImportReportDto => 
     reason: r.reason,
   })),
   orgProblems: report.orgProblems,
+  disagreeingCopies: report.disagreeing,
 });
 
 export const importEmployeeRoster = async (req: Request, res: Response): Promise<void> => {

@@ -59,6 +59,11 @@ import {
   type ItVendorDto,
   type ItPersonDto,
   type ItTechniciansPageDto,
+  type HandOverItAssets,
+  type ItCustodyReceiptDocumentDto,
+  type ItCustodyReceiptDto,
+  type ItHandOverResultDto,
+  type PreviewItCustodyReceipt,
   type OrgUnitOptionDto,
   type UserDto,
   type Paginated,
@@ -71,6 +76,7 @@ import {
 import {
   buildQuery,
   del,
+  fetchBlob,
   get,
   getPage,
   patch,
@@ -202,6 +208,33 @@ export const transferAsset = (id: string, body: TransferItAsset): Promise<ItAsse
   post<ItAssetDto>(`/it/assets/${id}/transfer`, body);
 export const disposeAsset = (id: string, body: DisposeItAsset): Promise<ItAssetDto> =>
   post<ItAssetDto>(`/it/assets/${id}/dispose`, body);
+
+// ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
+// Printed BEFORE the hand-over (`preview` writes nothing), recorded WITH it (`handOver` opens the
+// intervals and the receipt in one transaction), printed again after (`getCustodyReceipt`), and
+// the employee's signed copy filed against it.
+
+/** `kind` is a server default, so the dialogs may leave it out — the input type, not the output. */
+export const previewCustodyReceipt = (
+  body: Omit<PreviewItCustodyReceipt, 'kind'> & { kind?: PreviewItCustodyReceipt['kind'] },
+): Promise<ItCustodyReceiptDocumentDto> =>
+  post<ItCustodyReceiptDocumentDto>('/it/custody-receipts/preview', body);
+export const handOverAssets = (body: HandOverItAssets): Promise<ItHandOverResultDto> =>
+  post<ItHandOverResultDto>('/it/custody-receipts', body);
+export const getCustodyReceipt = (id: string): Promise<ItCustodyReceiptDto> =>
+  get<ItCustodyReceiptDto>(`/it/custody-receipts/${id}`);
+/** A receipt for custody handed over before receipts existed. */
+export const issueAssignmentReceipt = (assignmentId: string): Promise<ItCustodyReceiptDto> =>
+  post<ItCustodyReceiptDto>(`/it/assignments/${assignmentId}/receipt`, {});
+export const uploadReceiptSignedCopy = (id: string, file: File): Promise<ItCustodyReceiptDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<ItCustodyReceiptDto>(`/it/custody-receipts/${id}/signed-copy`, form);
+};
+export const fetchReceiptSignedCopy = (id: string): Promise<Blob> =>
+  fetchBlob(`/it/custody-receipts/${id}/signed-copy`);
+export const deleteReceiptSignedCopy = (id: string): Promise<ItCustodyReceiptDto> =>
+  del<ItCustodyReceiptDto>(`/it/custody-receipts/${id}/signed-copy`);
 
 /** The asset's business history — rendered from `it_asset_events`, never from the audit trail. */
 export const listAssetHistory = (

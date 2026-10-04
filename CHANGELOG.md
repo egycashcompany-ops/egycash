@@ -9,6 +9,40 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **IT custody receipts (إيصال استلام) — printed before the hand-over, signed copy filed after.**
+  Handing a device to an employee now goes through the company's own paper form
+  (EGYCASH-IT-F-14-02): the hand-over dialog takes one or more in-stock assets, each with its
+  condition and notes, and offers «طباعة الإيصال» first — the letterhead, the table of items with
+  serial numbers, the declaration and the signature block, filled in with the employee's name and
+  job title. «تسليم» records the hand-over only once that receipt is printed, and is withheld
+  again if anything changes after printing. Every asset on the paper is handed over in one
+  transaction with the receipt, or none is.
+
+  The receipt is printed again at any time from the asset, the custody register (new «إيصال
+  الاستلام» column) and the employee's history, where its signed copy — a phone photo or a scanned
+  PDF — is uploaded once the employee signs, then viewed, replaced or withdrawn; rows show
+  «بانتظار التوقيع» until it is. A transfer to a new holder prints its own receipt before it is
+  recorded; custody handed over before receipts existed can be issued one. The custody register
+  also gains «تسليم عهدة», to hand several assets over from scratch.
+
+  API: `/it/custody-receipts` (`POST /preview`, `POST /`, `GET /:id`, `GET|POST|DELETE
+  /:id/signed-copy`) and `POST /it/assignments/:id/receipt`; intervals carry `receiptId` and
+  `receiptSigned`; the single-asset assign writes a one-line receipt too. New collection
+  `it_custody_receipts`; no new permission (writes ride `itAsset.assign`, reads `itAsset.view`).
+
+### Changed
+
+- **The IT asset register starts again from the one asset the owner keeps.** «شيل كل الأصول معادا
+  AST-00005 وخليه AST-00001»: on the first boot after this deploy, every IT asset except AST-00005
+  is deleted — softly, so it leaves every screen and stays in the database — with its custody, its
+  maintenance plans and orders and its software installations; tickets and history are not
+  touched. AST-00005 becomes AST-00001 and the next asset registered is AST-00002. It happens once,
+  in one transaction; when AST-00005 is not on the register nothing is deleted and the step does
+  not run again. The QR label stuck on that device still reads AST-00005 and has to be printed
+  again from its page.
+
 ### Removed
 
 - **Dependabot is switched off, by the owner's decision.** `.github/dependabot.yml` is deleted, so

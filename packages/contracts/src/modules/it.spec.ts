@@ -53,6 +53,9 @@ import {
   UpdateItAssetSchema,
   UpdateItTicketPrioritySchema,
   UpdateItTicketSchema,
+  HandOverItAssetsSchema,
+  IT_HAND_OVER_MAX_LINES,
+  PreviewItCustodyReceiptSchema,
 } from './it.js';
 
 const oid = (n: number): string => n.toString(16).padStart(24, '0');
@@ -562,5 +565,57 @@ describe('it people contracts', () => {
   it('filters the asset register by the person holding an asset now', () => {
     expect(ListItAssetsQuerySchema.safeParse({ holderEmployeeId: oid(1) }).success).toBe(true);
     expect(ListItAssetsQuerySchema.safeParse({ holderEmployeeId: 'x' }).success).toBe(false);
+  });
+});
+
+// FR-18 — the custody receipt: one employee, one or more assets, one paper.
+describe('it custody receipt contracts', () => {
+  const line = (n: number) => ({ assetId: oid(n), conditionOnIssue: 'N', notes: 'Mouse&KeyBord' });
+
+  it('a hand-over names the employee and lists at least one asset', () => {
+    expect(HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [line(2)] }).success).toBe(
+      true,
+    );
+    expect(HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [] }).success).toBe(false);
+    expect(HandOverItAssetsSchema.safeParse({ lines: [line(2)] }).success).toBe(false);
+  });
+
+  it('lists an asset once per paper, and no more lines than a page holds', () => {
+    const twice = HandOverItAssetsSchema.safeParse({
+      employeeId: oid(1),
+      lines: [line(2), { assetId: oid(2) }],
+    });
+    expect(twice.success).toBe(false);
+    const many = Array.from({ length: IT_HAND_OVER_MAX_LINES + 1 }, (_, i) => line(i + 10));
+    expect(HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: many }).success).toBe(
+      false,
+    );
+  });
+
+  it('refuses an expected return before the hand-over, and a field it does not know', () => {
+    expect(
+      HandOverItAssetsSchema.safeParse({
+        employeeId: oid(1),
+        lines: [line(2)],
+        assignedAt: '2026-10-04T10:00:00.000Z',
+        expectedReturnAt: '2026-10-01T10:00:00.000Z',
+      }).success,
+    ).toBe(false);
+    expect(
+      HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [line(2)], kind: 'handOver' })
+        .success,
+    ).toBe(false);
+  });
+
+  it('a preview defaults to a hand-over; a transfer’s paper carries exactly one asset', () => {
+    const parsed = PreviewItCustodyReceiptSchema.parse({ employeeId: oid(1), lines: [line(2)] });
+    expect(parsed.kind).toBe('handOver');
+    expect(
+      PreviewItCustodyReceiptSchema.safeParse({
+        kind: 'transfer',
+        employeeId: oid(1),
+        lines: [line(2), line(3)],
+      }).success,
+    ).toBe(false);
   });
 });

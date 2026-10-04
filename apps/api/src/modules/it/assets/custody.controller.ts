@@ -19,12 +19,14 @@ import {
   toItAssetHistoryEntryDto,
   type ItAssetLabels,
   type ItHolderLabels,
+  type ItReceiptStates,
 } from '../it.mappers';
 import { getDirectoryEmployees } from '../../../platform/directory';
 import { type ItAssetAssignmentDoc } from './assignment.model';
 import { itAssetRepository } from './asset.repository';
 import { itAssetCustodyService } from './custody.service';
 import { itAssetAssignmentService } from './assignment.service';
+import { itCustodyReceiptRepository } from './receipt.repository';
 
 type IdParam = { id: string };
 
@@ -109,12 +111,29 @@ const assetLabels = async (
   );
 };
 
+/**
+ * Whether each row's receipt has its signed copy (FR-18) — the register's «بانتظار التوقيع». Read
+ * unscoped by id: the rows were already read under the caller's scope, and all this adds is one
+ * yes/no per receipt they already reference.
+ */
+const receiptStates = async (rows: readonly ItAssetAssignmentDoc[]): Promise<ItReceiptStates> => {
+  const ids = rows.flatMap((row) => (row.receiptId == null ? [] : [String(row.receiptId)]));
+  const receipts = await itCustodyReceiptRepository.findByIdsSystem(ids);
+  return new Map(
+    receipts.map((receipt) => [String(receipt._id), { signed: receipt.signedCopy !== null }]),
+  );
+};
+
 export const listItAssetAssignments = async (req: Request, res: Response): Promise<void> => {
   const { params, query } = validated<never, ListItAssignmentsQuery, IdParam>(req);
   const scope = custodyScope(req);
   const page = await itAssetAssignmentService.listForAsset(params.id, query, scope);
-  const [holders, assets] = await Promise.all([holderLabels(page.items), assetLabels(page.items, scope)]);
-  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets));
+  const [holders, assets, receipts] = await Promise.all([
+    holderLabels(page.items),
+    assetLabels(page.items, scope),
+    receiptStates(page.items),
+  ]);
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets, receipts));
 };
 
 /** The cross-asset custody register — "what is out, and who has it". */
@@ -122,6 +141,10 @@ export const listItAssignments = async (req: Request, res: Response): Promise<vo
   const { query } = validated<never, ListItAssignmentsQuery>(req);
   const scope = custodyScope(req);
   const page = await itAssetAssignmentService.list(query, scope);
-  const [holders, assets] = await Promise.all([holderLabels(page.items), assetLabels(page.items, scope)]);
-  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets));
+  const [holders, assets, receipts] = await Promise.all([
+    holderLabels(page.items),
+    assetLabels(page.items, scope),
+    receiptStates(page.items),
+  ]);
+  okPage(res, page, (doc) => toItAssetAssignmentDto(doc, holders, assets, receipts));
 };

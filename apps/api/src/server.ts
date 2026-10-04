@@ -31,6 +31,7 @@ import { startOdometerFixGoLive } from './modules/fleet/go-live/odometer-fix';
 import { startDriversExtraGoLive } from './modules/fleet/go-live/drivers-extra';
 import { startFuelCardsGoLive } from './modules/fleet/go-live/fuel-cards';
 import { startFuelCardPhotosGoLive } from './modules/fleet/go-live/fuel-card-photos';
+import { startItAssetRestartGoLive } from './modules/it/go-live/asset-restart';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -85,6 +86,9 @@ const main = async (): Promise<void> => {
   // The owner's two fuel-card sheets, after the cars they go on.
   startFuelCardsGoLive();
   startFuelCardPhotosGoLive();
+  // «شيل كل الأصول معادا AST-00005 وخليه AST-00001» — confirmed by the owner on 4 October: the IT
+  // asset register restarted, once, softly (see the file).
+  startItAssetRestartGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

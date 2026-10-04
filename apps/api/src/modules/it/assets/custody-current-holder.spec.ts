@@ -17,10 +17,30 @@ const mocks = vi.hoisted(() => ({
   findOpenForAsset: vi.fn(),
   createAssignment: vi.fn(),
   updateAssignment: vi.fn(),
+  createReceipt: vi.fn(),
 }));
 
 vi.mock('../../../platform/directory', () => ({
   getDirectoryEmployee: mocks.getDirectoryEmployee,
+}));
+// Who the receipt names is read through the directory too — the same answer the leaver rule is
+// judged on, so the mock below is the one fact both decisions see.
+vi.mock('./receipt-holder', () => ({
+  readReceiptHolder: async (id: string) => {
+    const employee = (await mocks.getDirectoryEmployee(id)) as DirectoryEmployee | null;
+    return {
+      employee,
+      employeeCode: employee?.code ?? null,
+      employeeName: employee?.fullNameAr ?? null,
+      jobTitle: null,
+    };
+  },
+}));
+vi.mock('./receipt.repository', () => ({
+  itCustodyReceiptRepository: {
+    create: mocks.createReceipt,
+    ensureCollection: vi.fn(async () => undefined),
+  },
 }));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/kernel/event-bus', () => ({ emit: vi.fn(async () => undefined) }));
@@ -91,6 +111,7 @@ beforeEach(() => {
     __v: 0,
   });
   mocks.createAssignment.mockResolvedValue({ _id: new Types.ObjectId() });
+  mocks.createReceipt.mockImplementation(async (data: Record<string, unknown>) => data);
   mocks.updateAssignment.mockResolvedValue({});
   mocks.updateAsset.mockResolvedValue(asset('assigned'));
 });

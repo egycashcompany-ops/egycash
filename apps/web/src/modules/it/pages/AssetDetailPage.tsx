@@ -36,6 +36,7 @@ import {
 import { AssetStatusBadge } from '../components/AssetStatusBadge';
 import { AssetFormDialog } from '../components/AssetFormDialog';
 import { AssetHistoryList } from '../components/AssetHistoryList';
+import { CustodyReceiptActions } from '../components/CustodyReceipt';
 import {
   AssignAssetDialog,
   DisposeAssetDialog,
@@ -368,6 +369,15 @@ export const AssetDetailPage = (): JSX.Element => {
                   label={t('it.custody.conditionOnIssue')}
                   value={openAssignment.conditionOnIssue}
                 />
+                {/* FR-18 — the receipt the holder signed: print it again, file the signed copy. */}
+                <div className="py-2 sm:col-span-2">
+                  <dt className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('it.custody.receipt.column')}
+                  </dt>
+                  <dd className="mt-0.5">
+                    <CustodyReceiptActions assignment={openAssignment} />
+                  </dd>
+                </div>
               </dl>
             )}
           </CardBody>

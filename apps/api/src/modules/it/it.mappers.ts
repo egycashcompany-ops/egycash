@@ -13,6 +13,7 @@ import {
   type ItTicketPriorityDto,
   type ItAssetAssignmentDto,
   type ItAssetDto,
+  type ItCustodyReceiptDto,
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
   type ItVendorDto,
@@ -24,6 +25,7 @@ import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
 import { type ItVendorDoc } from './vendors/vendor.model';
 import { type ItAssetDoc } from './assets/asset.model';
 import { type ItAssetAssignmentDoc } from './assets/assignment.model';
+import { type ItCustodyReceiptDoc } from './assets/receipt.model';
 import { type ItAssetEventDoc } from './assets/asset-event.model';
 import { type ItTicketDoc } from './tickets/ticket.model';
 import { type ItTicketEventDoc } from './tickets/ticket-event.model';
@@ -129,13 +131,18 @@ export type ItHolderLabels = ReadonlyMap<string, { code: string; fullNameAr: str
 /** The asset behind each interval — what was received, resolved the same way and handed in. */
 export type ItAssetLabels = ReadonlyMap<string, { assetCode: string; name: string }>;
 
+/** Whether each receipt on a page has its signed copy — one read per page, like the labels. */
+export type ItReceiptStates = ReadonlyMap<string, { signed: boolean }>;
+
 export const toItAssetAssignmentDto = (
   doc: ItAssetAssignmentDoc,
   holders?: ItHolderLabels,
   assets?: ItAssetLabels,
+  receipts?: ItReceiptStates,
 ): ItAssetAssignmentDto => {
   const holder = holders?.get(String(doc.assignedToEmployeeId));
   const asset = assets?.get(String(doc.assetId));
+  const receiptId = doc.receiptId == null ? null : String(doc.receiptId);
   return {
     id: String(doc._id),
     assetId: String(doc.assetId),
@@ -153,11 +160,47 @@ export const toItAssetAssignmentDto = (
     conditionOnReturn: doc.conditionOnReturn,
     notes: doc.notes,
     branchId: String(doc.branchId),
+    receiptId,
+    receiptSigned: receiptId === null ? null : (receipts?.get(receiptId)?.signed ?? false),
     version: doc.__v,
     createdAt: iso(doc.createdAt),
     updatedAt: iso(doc.updatedAt),
   };
 };
+
+/** A custody receipt — the paper as it was printed, plus whether its signed copy is in. */
+export const toItCustodyReceiptDto = (doc: ItCustodyReceiptDoc): ItCustodyReceiptDto => ({
+  id: String(doc._id),
+  issuedAt: iso(doc.issuedAt),
+  employeeId: String(doc.employeeId),
+  employeeName: doc.employeeName,
+  employeeCode: doc.employeeCode,
+  jobTitle: doc.jobTitle == null ? null : { ar: doc.jobTitle.ar, en: doc.jobTitle.en },
+  lines: doc.lines.map((line) => ({
+    assetId: String(line.assetId),
+    assignmentId: String(line.assignmentId),
+    assetCode: line.assetCode,
+    name: line.name,
+    serialNumber: line.serialNumber,
+    conditionOnIssue: line.conditionOnIssue,
+    notes: line.notes,
+  })),
+  issuedByUserId: doc.issuedByUserId === null ? null : String(doc.issuedByUserId),
+  branchId: String(doc.branchId),
+  signedCopy:
+    doc.signedCopy === null
+      ? null
+      : {
+          fileId: String(doc.signedCopy.fileId),
+          fileName: doc.signedCopy.fileName,
+          mime: doc.signedCopy.mime,
+          size: doc.signedCopy.size,
+          uploadedAt: iso(doc.signedCopy.uploadedAt),
+        },
+  version: doc.__v,
+  createdAt: iso(doc.createdAt),
+  updatedAt: iso(doc.updatedAt),
+});
 
 /**
  * History entry (design §2.3). The stored key is `subjectId` — uniform across the module's

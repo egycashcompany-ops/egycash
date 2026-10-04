@@ -4972,6 +4972,48 @@ const en: Record<string, string> = {
   'it.custody.conditionHint': 'Recorded on the custody chain — the detail a dispute turns on.',
   'it.custody.conditionNoted': 'Condition',
   'it.custody.returnBeforeAssign': 'The due date cannot precede the assignment.',
+  // FR-18 — the custody receipt (إيصال استلام): printed first, recorded after, signed copy filed.
+  'it.custody.receipt.title': 'Hand over custody',
+  'it.custody.receipt.print': 'Print receipt',
+  'it.custody.receipt.handOver': 'Hand over',
+  'it.custody.receipt.printFirst':
+    'Print the receipt first. Once it is printed, record the hand-over; upload the signed copy later.',
+  'it.custody.receipt.printedNowHandOver':
+    'The receipt is printed — record the hand-over now. Upload its signed copy once the employee signs it.',
+  'it.custody.receipt.changedSincePrint':
+    'The details changed after printing — print the receipt again before recording.',
+  'it.custody.receipt.transferPrintFirst':
+    'The new holder signs a receipt: print it before you record the transfer.',
+  'it.custody.receipt.printedNowTransfer': 'The receipt is printed — record the transfer now.',
+  'it.custody.receipt.lines': 'Items',
+  'it.custody.receipt.linesHint':
+    'Every item listed here goes on one receipt the employee signs. Only assets in stock can be added.',
+  'it.custody.receipt.addLine': 'Add an item — search by code or name',
+  'it.custody.receipt.removeLine': 'Remove item',
+  'it.custody.receipt.condition': 'Condition (e.g. N for new)',
+  'it.custody.receipt.lineNotes': 'Notes (e.g. mouse and keyboard)',
+  'it.custody.receipt.handedOver':
+    'Handed over. Upload the receipt once the employee signs it.',
+  'it.custody.receipt.preparing': 'Preparing the receipt…',
+  'it.custody.receipt.popupBlocked':
+    'The browser blocked the print window. Allow pop-ups for this site and try again.',
+  'it.custody.receipt.column': 'Receipt',
+  'it.custody.receipt.signed': 'Signed',
+  'it.custody.receipt.awaitingSignature': 'Awaiting signature',
+  'it.custody.receipt.uploadSigned': 'Upload the signed receipt',
+  'it.custody.receipt.viewSigned': 'View the signed receipt',
+  'it.custody.receipt.signedTitle': 'Signed receipt',
+  'it.custody.receipt.replaceSigned': 'Replace',
+  'it.custody.receipt.deleteSigned': 'Delete the signed copy',
+  'it.custody.receipt.deleteSignedBody':
+    'The signed copy is removed from this receipt. The receipt itself stays and can be printed again.',
+  'it.custody.receipt.uploaded': 'Signed receipt uploaded',
+  'it.custody.receipt.deleted': 'Signed copy deleted',
+  'it.custody.receipt.loadFailed': 'The signed copy could not be loaded.',
+  'it.custody.receipt.openNewTab': 'Open in a new tab',
+  'it.custody.receipt.issue': 'Issue receipt',
+  'it.custody.receipt.issueHint':
+    'This custody was handed over before receipts existed — issue one and print it.',
   'it.custody.transferHint':
     'A transfer is one movement, recorded as one fact: change the holder, the branch, or both.',
   'it.custody.disposalMethod': 'Method',
@@ -12248,6 +12290,45 @@ const ar: Record<string, string> = {
   'it.custody.conditionHint': 'تُسجَّل في سلسلة العهدة — وهي التفصيلة التي يُحسم بها أي نزاع.',
   'it.custody.conditionNoted': 'الحالة',
   'it.custody.returnBeforeAssign': 'موعد الإعادة لا يسبق تاريخ التسليم.',
+  'it.custody.receipt.title': 'تسليم عهدة',
+  'it.custody.receipt.print': 'طباعة الإيصال',
+  'it.custody.receipt.handOver': 'تسليم',
+  'it.custody.receipt.printFirst':
+    'اطبع إيصال الاستلام أولًا، ثم سجّل التسليم بعد الطباعة، وارفع صورة الإيصال الموقّع لاحقًا.',
+  'it.custody.receipt.printedNowHandOver':
+    'طُبع الإيصال؛ سجّل التسليم الآن، ثم ارفع صورة الإيصال بعد توقيع الموظف عليه.',
+  'it.custody.receipt.changedSincePrint':
+    'تغيّرت البيانات بعد الطباعة؛ اطبع الإيصال مرة أخرى قبل التسجيل.',
+  'it.custody.receipt.transferPrintFirst':
+    'يوقّع المستلم الجديد على إيصال استلام؛ اطبعه قبل تسجيل النقل.',
+  'it.custody.receipt.printedNowTransfer': 'طُبع الإيصال؛ سجّل النقل الآن.',
+  'it.custody.receipt.lines': 'الأصناف',
+  'it.custody.receipt.linesHint':
+    'تُدرج كل الأصناف هنا في إيصال واحد يوقّع عليه الموظف، ولا يُضاف إلا ما هو في المخزن.',
+  'it.custody.receipt.addLine': 'إضافة صنف — ابحث بالكود أو الاسم',
+  'it.custody.receipt.removeLine': 'حذف الصنف',
+  'it.custody.receipt.condition': 'الحالة (مثال: N للجديد)',
+  'it.custody.receipt.lineNotes': 'ملاحظات (مثال: ماوس وكيبورد)',
+  'it.custody.receipt.handedOver': 'تم التسليم. ارفع صورة الإيصال بعد توقيع الموظف عليه.',
+  'it.custody.receipt.preparing': 'جارٍ تجهيز الإيصال…',
+  'it.custody.receipt.popupBlocked':
+    'منع المتصفح نافذة الطباعة؛ اسمح بالنوافذ المنبثقة لهذا الموقع ثم أعد المحاولة.',
+  'it.custody.receipt.column': 'إيصال الاستلام',
+  'it.custody.receipt.signed': 'موقّع',
+  'it.custody.receipt.awaitingSignature': 'بانتظار التوقيع',
+  'it.custody.receipt.uploadSigned': 'رفع صورة الإيصال الموقّع',
+  'it.custody.receipt.viewSigned': 'عرض الإيصال الموقّع',
+  'it.custody.receipt.signedTitle': 'الإيصال الموقّع',
+  'it.custody.receipt.replaceSigned': 'استبدال',
+  'it.custody.receipt.deleteSigned': 'حذف النسخة الموقّعة',
+  'it.custody.receipt.deleteSignedBody':
+    'تُحذف النسخة الموقّعة من هذا الإيصال، ويبقى الإيصال نفسه قابلًا للطباعة مرة أخرى.',
+  'it.custody.receipt.uploaded': 'رُفع الإيصال الموقّع',
+  'it.custody.receipt.deleted': 'حُذفت النسخة الموقّعة',
+  'it.custody.receipt.loadFailed': 'تعذّر تحميل النسخة الموقّعة.',
+  'it.custody.receipt.openNewTab': 'فتح في نافذة جديدة',
+  'it.custody.receipt.issue': 'إصدار إيصال',
+  'it.custody.receipt.issueHint': 'سُلّمت هذه العهدة قبل العمل بالإيصالات؛ أصدر لها إيصالًا واطبعه.',
   'it.custody.transferHint':
     'النقل حركة واحدة تُسجَّل كواقعة واحدة: غيّر المستلِم أو الفرع أو كليهما.',
   'it.custody.disposalMethod': 'الطريقة',

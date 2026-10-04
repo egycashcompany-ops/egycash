@@ -328,6 +328,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
     ['it', 'assets'],
     ['it', 'custody'],
   ],
+  // FR-18 — a receipt's signed copy shows on the custody rows («بانتظار التوقيع» / «موقّع»).
+  'it.custodyReceipt': [['it', 'custody']],
   'it.catalogItem': [
     ['it', 'catalogs'],
     ['it', 'priorities'],

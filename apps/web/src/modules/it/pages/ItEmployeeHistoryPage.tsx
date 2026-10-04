@@ -34,6 +34,7 @@ import {
   useItTickets,
 } from '../api/it-queries';
 import { PersonStatusBadge } from '../components/PersonStatusBadge';
+import { CustodyReceiptActions } from '../components/CustodyReceipt';
 import { TicketStatusBadge } from '../components/TicketStatusBadge';
 
 const PAGE_SIZE = 10;
@@ -171,6 +172,12 @@ export const ItEmployeeHistoryPage = (): JSX.Element => {
         key: 'conditionOnIssue',
         header: t('it.custody.conditionOnIssue'),
         render: (a) => a.conditionOnIssue ?? '—',
+      },
+      {
+        // FR-18 — what they signed for: print it again, file or view the signed copy.
+        key: 'receipt',
+        header: t('it.custody.receipt.column'),
+        render: (a) => <CustodyReceiptActions assignment={a} />,
       },
     ];
     const closed: Column<ItAssetAssignmentDto>[] = [

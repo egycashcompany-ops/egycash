@@ -116,3 +116,28 @@ describe('the custody asset label', () => {
     expect(dto.assetName).toBeNull();
   });
 });
+
+// FR-18 — the register says whether the holder's receipt is signed, and never guesses it.
+describe('the custody receipt on a register row', () => {
+  const RECEIPT = new Types.ObjectId();
+
+  it('an interval from before receipts has none — both fields null, not «unsigned»', () => {
+    const dto = toItAssetAssignmentDto(assignment());
+    expect(dto.receiptId).toBeNull();
+    expect(dto.receiptSigned).toBeNull();
+  });
+
+  it('names its receipt and whether the signed copy is filed', () => {
+    const row = { ...assignment(), receiptId: RECEIPT } as ItAssetAssignmentDoc;
+    const signed = toItAssetAssignmentDto(
+      row,
+      undefined,
+      undefined,
+      new Map([[String(RECEIPT), { signed: true }]]),
+    );
+    expect(signed.receiptId).toBe(String(RECEIPT));
+    expect(signed.receiptSigned).toBe(true);
+    // A receipt the page did not resolve is shown as awaiting its signature — the safe reading.
+    expect(toItAssetAssignmentDto(row, undefined, undefined, new Map()).receiptSigned).toBe(false);
+  });
+});

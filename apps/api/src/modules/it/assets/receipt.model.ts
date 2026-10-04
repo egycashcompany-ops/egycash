@@ -1,0 +1,98 @@
+// `it_custody_receipts` — إيصال استلام, the paper an employee signs for what they were handed (FR-18).
+//
+// One receipt per HAND-OVER, not per asset: the company's form (EGYCASH-IT-F-14-02) lists every
+// item handed over together in one table, under one signature. Each line names the custody
+// interval it opened, and each interval names its receipt back (`receiptId`).
+//
+// The lines and the employee are a SNAPSHOT of what was printed. The receipt is the document the
+// employee signed; reprinting it after the asset was renamed, or the employee's title changed,
+// must reproduce that paper — not compose a different one under the same signature.
+import { Schema, model, type Types } from 'mongoose';
+import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+
+export interface ItCustodyReceiptLineSub {
+  assetId: Types.ObjectId;
+  assignmentId: Types.ObjectId;
+  assetCode: string;
+  name: string;
+  serialNumber: string | null;
+  conditionOnIssue: string | null;
+  notes: string | null;
+}
+
+/** The signed paper, scanned or photographed — Files owns the bytes, the receipt owns the link. */
+export interface ItCustodyReceiptSignedCopySub {
+  fileId: Types.ObjectId;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: Date;
+}
+
+export interface ItCustodyReceiptDoc extends BaseDocFields {
+  employeeId: Types.ObjectId;
+  employeeCode: string | null;
+  employeeName: string | null;
+  jobTitle: { ar: string; en: string } | null;
+  /** The hand-over's own date — what the paper prints as «التاريخ». */
+  issuedAt: Date;
+  issuedByUserId: Types.ObjectId | null;
+  /** The first line's branch — the receipt's data-scope anchor, like an interval's. */
+  branchId: Types.ObjectId;
+  lines: ItCustodyReceiptLineSub[];
+  signedCopy: ItCustodyReceiptSignedCopySub | null;
+}
+
+const lineSchema = new Schema<ItCustodyReceiptLineSub>(
+  {
+    assetId: { type: Schema.Types.ObjectId, required: true },
+    assignmentId: { type: Schema.Types.ObjectId, required: true },
+    assetCode: { type: String, required: true },
+    name: { type: String, required: true },
+    serialNumber: { type: String, default: null },
+    conditionOnIssue: { type: String, default: null },
+    notes: { type: String, default: null },
+  },
+  { _id: false },
+);
+
+const signedCopySchema = new Schema<ItCustodyReceiptSignedCopySub>(
+  {
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, required: true },
+    mime: { type: String, required: true },
+    size: { type: Number, required: true },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
+const receiptSchema = new Schema<ItCustodyReceiptDoc>(
+  {
+    employeeId: { type: Schema.Types.ObjectId, required: true },
+    employeeCode: { type: String, default: null },
+    employeeName: { type: String, default: null },
+    jobTitle: {
+      type: new Schema({ ar: String, en: String }, { _id: false }),
+      default: null,
+    },
+    issuedAt: { type: Date, required: true },
+    issuedByUserId: { type: Schema.Types.ObjectId, default: null },
+    branchId: { type: Schema.Types.ObjectId, required: true },
+    lines: { type: [lineSchema], required: true },
+    signedCopy: { type: signedCopySchema, default: null },
+    ...baseFields,
+  },
+  baseSchemaOptions,
+);
+
+// An employee's receipts, newest first — their history page.
+receiptSchema.index({ employeeId: 1, issuedAt: -1 }, { name: 'ix_employee_issued' });
+// The receipt an asset was handed over on.
+receiptSchema.index({ 'lines.assetId': 1 }, { name: 'ix_line_asset' });
+
+export const ItCustodyReceiptModel = model<ItCustodyReceiptDoc>(
+  'ItCustodyReceipt',
+  receiptSchema,
+  'it_custody_receipts',
+);

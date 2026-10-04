@@ -152,6 +152,8 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
 
   // ── IT ─────────────────────────────────────────────────────────────────────
   'it.asset': { permission: 'itAsset.view' },
+  // FR-18 — a receipt names who signed for which assets: exactly what the custody register shows.
+  'it.custodyReceipt': { permission: 'itAsset.view' },
   'it.catalogItem': { permission: 'itCatalog.manage' },
   'it.license': { permission: 'itLicense.view' },
   'it.maintenanceOrder': { permission: 'itMaintenance.view' },

@@ -97,6 +97,19 @@ const SHEETS = {
   ],
 };
 
+/**
+ * A car as the step reads it: its code and id. Every physical identifier is unique among live cars
+ * (`ux_plate`, `ux_chassis`, `ux_motor`), so each raw car carries its own — two with none collide.
+ */
+const rawCar = (code: string) => ({
+  code,
+  plateNumber: `س ص ${code}`,
+  chassisNumber: `CH-FUEL-${code}`,
+  motorNumber: `MO-FUEL-${code}`,
+  status: 'active',
+  isDeleted: false,
+});
+
 const run = async () =>
   FleetGoLiveRunModel.findOne({ key: FUEL_CARDS_GO_LIVE_MARK })
     .lean<{ status: string; outcome: Record<string, unknown> | null } | null>()
@@ -149,10 +162,11 @@ beforeAll(async () => {
 
   // The step reads only a car's code and id — the cars are written raw, as the import left them.
   await FleetVehicleModel.collection.insertMany([
-    { _id: car61, code: '61', isDeleted: false },
-    { _id: car62, code: '62', isDeleted: false },
+    { _id: car61, ...rawCar('61') },
+    { _id: car62, ...rawCar('62') },
   ]);
-  await FleetFuelCardModel.collection.insertOne({
+  // Through the model, so it carries the timestamps and version the screen's DTO reads.
+  await FleetFuelCardModel.create({
     vehicleId: car62,
     label: null,
     company: 'wataniya',
@@ -214,7 +228,7 @@ describe('the fuel-card sheets, as a boot step', () => {
 
     const list = await request(app)
       .get('/api/v1/fleet/fuel-cards')
-      .query({ limit: 50 })
+      .query({ pageSize: 50 })
       .set('Authorization', `Bearer ${adminToken}`);
     expect(list.status).toBe(200);
     type Row = {
@@ -347,9 +361,7 @@ describe('a card on no car, through the API', () => {
     const third = new Types.ObjectId();
     await FleetVehicleModel.collection.insertOne({
       _id: third,
-      code: '63',
-      status: 'active',
-      isDeleted: false,
+      ...rawCar('63'),
     });
     const onCar = await request(app)
       .patch(`/api/v1/fleet/fuel-cards/${created.id}`)

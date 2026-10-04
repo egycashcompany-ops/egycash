@@ -196,31 +196,6 @@ describe('order — the sequence the registry must be walked in', () => {
 });
 
 describe('refusal — rows that cannot become anything true', () => {
-  /**
-   * Q4, and the reason it is a refusal rather than a merge: three codes appear twice with the SAME
-   * hire and exit dates. That is one employment entered twice, not somebody who left and came back,
-   * and importing it as two spells would invent a period of service that never happened.
-   */
-  it('rejects a person whose rows are two copies of one employment', () => {
-    const { people, rejected } = buildPlan([
-      exited({ rowNumber: 11, code: '0100417' }),
-      exited({ rowNumber: 12, code: '0100417' }),
-    ]);
-    expect(people).toHaveLength(0);
-    expect(rejected).toHaveLength(2); // the whole person is held back, not an arbitrary half
-    expect(rejected[0]?.reason.en).toContain('conflicting duplicate rows');
-    expect(rejected[0]?.reason.en).toContain('exit date');
-  });
-
-  it('still refuses when only the hire dates match — one period cannot start twice', () => {
-    const { rejected } = buildPlan([
-      exited({ rowNumber: 11, exit: { type: 'resignation', effectiveDate: new Date('2021-01-01T00:00:00.000Z'), reason: 'استقالة', note: null } }),
-      exited({ rowNumber: 12, exit: { type: 'resignation', effectiveDate: new Date('2022-01-01T00:00:00.000Z'), reason: 'استقالة', note: null } }),
-    ]);
-    expect(rejected).toHaveLength(2);
-    expect(rejected[0]?.reason).not.toContain('exit date');
-  });
-
   it('accepts a genuine second spell — different hire dates are two employments', () => {
     const { people, rejected } = buildPlan([
       exited({ rowNumber: 11, hiredAt: new Date('2015-01-01T00:00:00.000Z') }),
@@ -263,36 +238,6 @@ describe('refusal — rows that cannot become anything true', () => {
       }),
     ]);
     expect(rejected[0]?.reason.en).toContain('سبب غريب');
-  });
-
-  /**
-   * The other half of the cross-sheet rule. A person cannot be serving AND exited for the same
-   * employment; three people in the go-live sheet are recorded that way, and a genuine rehire is
-   * distinguished from them by starting later.
-   */
-  it('rejects someone recorded as serving and exited for the SAME hire date', () => {
-    const { people, rejected } = buildPlan([
-      exited({
-        rowNumber: 50,
-        code: '0100313',
-        hiredAt: new Date('2022-02-01T00:00:00.000Z'),
-        exit: {
-          type: 'resignation',
-          effectiveDate: new Date('2025-10-31T00:00:00.000Z'),
-          reason: 'استقالة',
-          note: null,
-        },
-      }),
-      row({
-        sheet: 'master',
-        rowNumber: 60,
-        code: '0100313',
-        hiredAt: new Date('2022-02-01T00:00:00.000Z'),
-      }),
-    ]);
-    expect(people).toHaveLength(0);
-    expect(rejected).toHaveLength(2);
-    expect(rejected[0]?.reason.en).toContain('conflicting duplicate rows');
   });
 
   /** Two go-live rows end before they begin. One of the two dates is wrong and nothing can say which. */
@@ -349,5 +294,136 @@ describe('refusal — rows that cannot become anything true', () => {
       ['master', 20],
       ['resignation', 30],
     ]);
+  });
+});
+
+describe('repeated rows — one copy is kept and the person goes in', () => {
+  const day = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
+  const leaving = (
+    type: 'resignation' | 'termination',
+    on: string,
+    reason: string,
+  ): SourceRow['exit'] => ({ type, effectiveDate: day(on), reason, note: null });
+
+  /**
+   * «لو فى بيانات متكرره خد واحد منهم وضيفه .. لكن متمنعش البيانات كلها إنها تتحط». The upload
+   * that prompted this had 36 leavers pasted twice, and the planner refused all 72 rows — 66 of them
+   * copies that agreed on every cell. One employment entered twice is still ONE employment: one
+   * spell, never an invented second period of service.
+   */
+  it('takes one of two identical copies and lets the person in', () => {
+    const { people, rejected, disagreeing } = buildPlan([
+      exited({ rowNumber: 3, code: '0102544' }),
+      exited({ rowNumber: 39, code: '0102544' }),
+    ]);
+    expect(rejected).toHaveLength(0);
+    expect(people).toHaveLength(1);
+    expect(people[0]?.spells).toHaveLength(1);
+    // Nothing to check: there was no choice to make between them.
+    expect(disagreeing).toHaveLength(0);
+  });
+
+  /**
+   * Copies that DISAGREE. The person still goes in — the owner was explicit that a repeat must not
+   * keep the data out — and the LAST copy is the one kept: in a list pasted twice the lower copy is
+   * the later paste. The real case: row 15 says «انقطاع», row 51 says «استقالة».
+   */
+  it('keeps the last of two copies that disagree, and names both rows', () => {
+    const { people, rejected, disagreeing } = buildPlan([
+      exited({ rowNumber: 15, code: '0101845', exit: leaving('termination', '2026-09-01', 'انقطاع') }),
+      exited({ rowNumber: 51, code: '0101845', exit: leaving('resignation', '2026-09-01', 'استقالة') }),
+    ]);
+    expect(rejected).toHaveLength(0);
+    expect(people[0]?.spells.map((s) => s.rowNumber)).toEqual([51]);
+    expect(people[0]?.current.exit?.type).toBe('resignation');
+    expect(disagreeing).toEqual([
+      {
+        code: '0101845',
+        name: 'جمال احمد محمد',
+        kept: { sheet: 'resignation', rowNumber: 51 },
+        dropped: [{ sheet: 'resignation', rowNumber: 15 }],
+      },
+    ]);
+  });
+
+  it('picks by row number, not by the order the rows arrive in', () => {
+    const { people } = buildPlan([
+      exited({ rowNumber: 51, code: '0101845', exit: leaving('resignation', '2026-09-01', 'استقالة') }),
+      exited({ rowNumber: 15, code: '0101845', exit: leaving('termination', '2026-09-01', 'انقطاع') }),
+    ]);
+    expect(people[0]?.spells.map((s) => s.rowNumber)).toEqual([51]);
+  });
+
+  /** A blank cell against a filled one is still a disagreement — the screen says which was used. */
+  it('lists copies that differ only in a cell one of them left blank', () => {
+    const blank = exited({ rowNumber: 2, code: '0102689' });
+    const filled = exited({
+      rowNumber: 38,
+      code: '0102689',
+      insurance: { ...blank.insurance, status: 'notInsured' },
+    });
+    const { people, disagreeing } = buildPlan([blank, filled]);
+    expect(people[0]?.current.insurance.status).toBe('notInsured');
+    expect(disagreeing.map((d) => d.kept.rowNumber)).toEqual([38]);
+  });
+
+  /**
+   * «لو فى أسماء فى الشيتين .. دا معناه إن الراجل جه وأتعين وبعدين مشي .. فأنت هتعتمد الأتنين..
+   * توظفه وبعدين تمشية». Same person, same hire date, on BOTH sheets: one employment that ended.
+   * The Resignation copy is kept because the ending is written on it — even when the Master row
+   * sits lower in its sheet — and the person is NOT serving. This used to be a refusal of both rows.
+   */
+  it('reads someone on both sheets with one hire date as hired and then left', () => {
+    const hired = day('2026-09-07');
+    const { people, rejected, disagreeing } = buildPlan([
+      row({ sheet: 'master', rowNumber: 90, code: '0102724', hiredAt: hired }),
+      exited({
+        rowNumber: 5,
+        code: '0102724',
+        hiredAt: hired,
+        exit: leaving('termination', '2026-09-24', 'انقطاع'),
+      }),
+    ]);
+    expect(rejected).toHaveLength(0);
+    expect(people).toHaveLength(1);
+    expect(people[0]?.serving).toBe(false);
+    expect(people[0]?.spells.map((s) => [s.sheet, s.rowNumber])).toEqual([['resignation', 5]]);
+    expect(people[0]?.current.exit?.effectiveDate).toEqual(day('2026-09-24'));
+    // The ending IS the difference between the two copies, so there is nothing to flag.
+    expect(disagreeing).toHaveLength(0);
+  });
+
+  it('flags a both-sheets pair that differs somewhere other than the ending', () => {
+    const hired = day('2026-09-08');
+    const { people, disagreeing } = buildPlan([
+      row({ sheet: 'master', rowNumber: 16, code: '0702733', hiredAt: hired, primaryPhone: '01000000001' }),
+      exited({
+        rowNumber: 89,
+        code: '0702733',
+        hiredAt: hired,
+        primaryPhone: '01000000002',
+        exit: leaving('resignation', '2026-09-30', 'استقالة'),
+      }),
+    ]);
+    expect(people[0]?.serving).toBe(false);
+    expect(disagreeing).toEqual([
+      {
+        code: '0702733',
+        name: 'جمال احمد محمد',
+        kept: { sheet: 'resignation', rowNumber: 89 },
+        dropped: [{ sheet: 'master', rowNumber: 16 }],
+      },
+    ]);
+  });
+
+  /** The rule is about one employment. A later hire date is a rehire and stays two spells. */
+  it('still keeps a genuine rehire across the sheets as two spells, serving', () => {
+    const { people, disagreeing } = buildPlan([
+      exited({ rowNumber: 7, hiredAt: day('2019-01-01'), exit: leaving('resignation', '2021-06-30', 'استقالة') }),
+      row({ sheet: 'master', rowNumber: 30, hiredAt: day('2024-03-01') }),
+    ]);
+    expect(people[0]?.spells.map((s) => s.sheet)).toEqual(['resignation', 'master']);
+    expect(people[0]?.serving).toBe(true);
+    expect(disagreeing).toHaveLength(0);
   });
 });

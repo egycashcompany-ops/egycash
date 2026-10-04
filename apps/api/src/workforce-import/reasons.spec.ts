@@ -23,7 +23,7 @@ const every: { name: string; value: { ar: string; en: string } }[] = [
   ...Object.entries(rowReasons).map(([name, fn]) => ({
     name: `rowReasons.${name}`,
     value: (fn as (...a: unknown[]) => { ar: string; en: string })(
-      name === 'duplicatePeriod' ? true : name === 'badCodeShape' ? '0100313' : 'انقطاع',
+      name === 'badCodeShape' ? '0100313' : 'انقطاع',
     ),
   })),
   ...Object.entries(personReasons)
@@ -75,7 +75,6 @@ describe('the English half did not move', () => {
   /** `plan.spec.ts` pins these; operators have read them in logs. Only the screen changed. */
   it('keeps the phrases the existing tests and logs already know', () => {
     expect(rowReasons.exitReasonBlank().en).toBe('exit reason is blank — fill it in and re-run');
-    expect(rowReasons.duplicatePeriod(true).en).toContain('conflicting duplicate rows');
     expect(rowReasons.badCodeShape('X').en).toContain('not <3-digit branch><4-digit number>');
     expect(rowReasons.exitBeforeHire().en).toContain('before the hiring date');
     expect(refusalReasons.nationalIdDiffers().en).toContain('already holds a different National ID');

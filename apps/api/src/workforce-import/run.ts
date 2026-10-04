@@ -18,7 +18,13 @@ import { auditService } from '../platform/audit';
 import { Types } from 'mongoose';
 import { type AuthContext } from '../shared/types';
 import { readWorkbook, type WorkbookSource } from './read-workbook';
-import { buildPlan, type PersonPlan, type Rejection, type SourceRow } from './plan';
+import {
+  buildPlan,
+  type DisagreeingCopies,
+  type PersonPlan,
+  type Rejection,
+  type SourceRow,
+} from './plan';
 import { personReasons, refusalReasons } from './reasons';
 import { OrgResolver, deriveBranchCodes, type OrgProblem } from './org';
 import { maritalStatus } from './vocabulary';
@@ -118,6 +124,8 @@ export interface ImportReport {
   refused: { code: string; path: string; from: string; to: string; reason: LocalizedString }[];
   orgProblems: OrgProblem[];
   ambiguousSites: { site: string; counts: Record<string, number> }[];
+  /** Repeated rows that did not agree — one was kept, and the preview names which. */
+  disagreeing: DisagreeingCopies[];
 }
 
 /**
@@ -267,6 +275,7 @@ export const runImport = async (opts: {
     refused: refusedChanges,
     orgProblems: resolver.problems,
     ambiguousSites: ambiguous,
+    disagreeing: plan.disagreeing,
   };
 };
 

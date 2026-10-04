@@ -93,22 +93,26 @@ export const WarnBadge = ({
 export const VehicleCardTile = ({
   code,
   vehicleId,
+  noCar = false,
   children,
 }: {
   code: string;
   vehicleId: string;
+  /** A card on no car («سفر 1», «اسبير») — its tile says so under the label. */
+  noCar?: boolean;
   children: ReactNode;
 }): JSX.Element => {
   const t = useT();
   return (
     <div
       data-fuel-vehicle={vehicleId}
+      {...(noCar ? { 'data-fuel-no-car': 'true' } : {})}
       className="flex overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
     >
       <div className="flex w-28 shrink-0 flex-col items-center justify-center border-e border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
         <span className="text-2xl font-bold text-slate-900 dark:text-slate-100">{code}</span>
         <span className="text-[11px] text-slate-500 dark:text-slate-400">
-          {t('fleet.odometer.columns.vehicle')}
+          {noCar ? t('fleet.fuelCards.noCar') : t('fleet.odometer.columns.vehicle')}
         </span>
       </div>
       <div className="flex min-w-0 flex-1 flex-col divide-y divide-slate-100 dark:divide-slate-800">
@@ -168,12 +172,31 @@ export const EmptyCardLine = ({
   );
 };
 
-/** The cars on the screen, each with its two slots — grouped from a flat list of cards. */
+/** Where a card sits: its car's id, or `label:<label>` for a card on no car. */
+export const fuelCardPlace = (card: FleetFuelCardDto): string =>
+  card.vehicleId ?? `label:${card.label ?? card.id}`;
+
+/** The labels of the cards on no car, each once — offered where a car is picked. */
+export const noCarPlaces = (cards: readonly FleetFuelCardDto[]): { id: string; code: string }[] => {
+  const places = new Map<string, string>();
+  for (const card of cards) {
+    if (card.vehicleId === null) places.set(fuelCardPlace(card), card.label ?? '—');
+  }
+  return [...places].map(([id, code]) => ({ id, code }));
+};
+
+/**
+ * The cars on the screen, each with its two slots — grouped from a flat list of cards. A card on
+ * no car is a tile of its own label («سفر 1», «تويوتا اللواء»), so the label's two companies sit
+ * together the way a car's do.
+ */
 export const groupByVehicle = (
   cards: readonly FleetFuelCardDto[],
 ): {
+  /** The car's id, or `label:<label>` for the tile of a card on no car. */
   vehicleId: string;
   code: string;
+  noCar: boolean;
   cards: Partial<Record<FleetFuelCardCompany, FleetFuelCardDto>>;
 }[] => {
   const map = new Map<
@@ -181,17 +204,20 @@ export const groupByVehicle = (
     {
       vehicleId: string;
       code: string;
+      noCar: boolean;
       cards: Partial<Record<FleetFuelCardCompany, FleetFuelCardDto>>;
     }
   >();
   for (const card of cards) {
-    const entry = map.get(card.vehicleId) ?? {
-      vehicleId: card.vehicleId,
-      code: card.vehicleCode ?? '—',
+    const key = fuelCardPlace(card);
+    const entry = map.get(key) ?? {
+      vehicleId: key,
+      code: card.vehicleId === null ? (card.label ?? '—') : (card.vehicleCode ?? '—'),
+      noCar: card.vehicleId === null,
       cards: {},
     };
     entry.cards[card.company] = card;
-    map.set(card.vehicleId, entry);
+    map.set(key, entry);
   }
   return [...map.values()];
 };

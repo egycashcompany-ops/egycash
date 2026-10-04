@@ -41,6 +41,7 @@ export const VehicleCodeCombobox = ({
   placeholder,
   pendingCode = '',
   emptyText,
+  extra,
 }: {
   /** The chosen vehicle's id ('' = none). The box shows its CODE. */
   value: string;
@@ -68,6 +69,11 @@ export const VehicleCodeCombobox = ({
   pendingCode?: string;
   /** What an empty list says; «لا توجد نتائج» unless given. */
   emptyText?: string;
+  /**
+   * Places that are not cars but are picked like one — the fuel cards on no car («سفر 1»,
+   * «تويوتا اللواء»), offered after the registry under their label, with the caller's own id.
+   */
+  extra?: readonly { id: string; code: string }[];
 }): JSX.Element => {
   const t = useT();
   const [query, setQuery] = useState('');
@@ -81,10 +87,13 @@ export const VehicleCodeCombobox = ({
   const whole = useAllVehicles({ anyStatus });
   const items = whole.data?.items;
 
-  const byCode = useMemo(
-    () => vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value }),
-    [items, excludeInWorkshop, value],
-  );
+  const byCode = useMemo(() => {
+    const entries = vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value });
+    if (extra === undefined || extra.length === 0) return entries;
+    const merged = new Map(entries);
+    for (const place of extra) if (!merged.has(place.code)) merged.set(place.code, place.id);
+    return merged;
+  }, [items, excludeInWorkshop, value, extra]);
   const options = useMemo(() => rankVehicleCodes([...byCode.keys()], query), [byCode, query]);
 
   // A value handed in from outside — a row being edited, a car carried from another screen — is an

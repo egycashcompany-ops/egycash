@@ -23,6 +23,7 @@ import { FleetVehicleModel } from './vehicles/vehicle.model';
 import { FleetDriverProfileModel } from './driver-profiles/driver-profile.model';
 import { FleetOdometerLogModel } from './odometer/odometer.model';
 import { FleetMaintenanceVisitModel } from './maintenance/maintenance.model';
+import { FleetFuelCardModel } from './fuel-cards/fuel-card.model';
 import {
   FIXED_CREW_VEHICLE_INDEX_KEY,
   FIXED_CREW_VEHICLE_INDEX_OPTIONS,
@@ -367,6 +368,9 @@ export const retireOpenRowIndexes = async (): Promise<{ dropped: string[] }> => 
   for (const [model, name, keys] of [
     [FleetOdometerLogModel, 'ux_open_period', ['vehicleId', 'outReading']],
     [FleetMaintenanceVisitModel, 'ux_open_visit', ['vehicleId']],
+    // One card per company per CAR: a card on no car («سفر 1»…«سفر 6», all one company) is
+    // outside the rule, which the earlier filter did not say.
+    [FleetFuelCardModel, 'ux_fuel_card_vehicle_company', ['vehicleId']],
   ] as const) {
     try {
       const existing = await model.collection

@@ -29,6 +29,8 @@ import { startAccidentsReloadGoLive } from './modules/fleet/go-live/accidents-re
 import { startViolationsRestoreGoLive } from './modules/fleet/go-live/violations-restore';
 import { startOdometerFixGoLive } from './modules/fleet/go-live/odometer-fix';
 import { startDriversExtraGoLive } from './modules/fleet/go-live/drivers-extra';
+import { startFuelCardsGoLive } from './modules/fleet/go-live/fuel-cards';
+import { startFuelCardPhotosGoLive } from './modules/fleet/go-live/fuel-card-photos';
 import { buildApp } from './app';
 
 const main = async (): Promise<void> => {
@@ -80,6 +82,9 @@ const main = async (): Promise<void> => {
   startOdometerFixGoLive();
   // «ضيف عادى» — the drivers' facts and scans of employees outside a driving seat.
   startDriversExtraGoLive();
+  // The owner's two fuel-card sheets, after the cars they go on.
+  startFuelCardsGoLive();
+  startFuelCardPhotosGoLive();
 
   const app = buildApp();
   const server = app.listen(env.PORT, () => {

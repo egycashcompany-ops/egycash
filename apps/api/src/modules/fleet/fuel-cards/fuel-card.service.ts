@@ -18,6 +18,8 @@ import {
   parseFleetSort,
 } from '@ecms/contracts';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
+import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
+import { type AuthContext } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
@@ -25,6 +27,7 @@ import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { fleetFuelCardMovementRepository, fleetFuelCardRepository } from './fuel-card.repository';
 import { type FleetFuelCardDoc, type FleetFuelCardMovementDoc } from './fuel-card.model';
+import { resolveFuelCardDocsCategoryId } from './fuel-card-files';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'fuelCard', entityId: id });
 const piastres = (egp: number): number => Math.round(egp * 100);
@@ -37,17 +40,28 @@ export interface FuelCardWithCode {
 
 export const toFuelCardDto = ({ doc, vehicleCode }: FuelCardWithCode): FleetFuelCardDto => ({
   id: String(doc._id),
-  vehicleId: String(doc.vehicleId),
-  vehicleCode,
+  vehicleId: doc.vehicleId == null ? null : String(doc.vehicleId),
+  vehicleCode: doc.vehicleId == null ? null : vehicleCode,
+  label: doc.vehicleId == null ? (doc.label ?? null) : null,
   company: doc.company,
   name: doc.name,
   number: doc.number,
-  expiresAt: doc.expiresAt.toISOString(),
+  expiresAt: doc.expiresAt?.toISOString() ?? null,
   hasPassword: doc.password !== null && doc.password !== undefined && doc.password !== '',
   balance: doc.balance,
   requestedAmount: doc.requestedAmount ?? null,
   requestedAt: doc.requestedAt?.toISOString() ?? null,
   lastChargedAt: doc.lastChargedAt?.toISOString() ?? null,
+  image:
+    doc.image == null
+      ? null
+      : {
+          fileId: String(doc.image.fileId),
+          fileName: doc.image.fileName,
+          mime: doc.image.mime,
+          size: doc.image.size,
+          uploadedAt: doc.image.uploadedAt.toISOString(),
+        },
   version: doc.__v,
   createdAt: doc.createdAt.toISOString(),
   updatedAt: doc.updatedAt.toISOString(),
@@ -70,18 +84,19 @@ export const toFuelMovementDto = (
 
 /** The password never enters the audit trail. */
 const snapshot = (doc: FleetFuelCardDoc) => ({
-  vehicleId: String(doc.vehicleId),
+  vehicleId: doc.vehicleId == null ? null : String(doc.vehicleId),
+  label: doc.label ?? null,
   company: doc.company,
   name: doc.name,
   number: doc.number,
-  expiresAt: doc.expiresAt.toISOString(),
+  expiresAt: doc.expiresAt?.toISOString() ?? null,
   hasPassword: doc.password !== null && doc.password !== '',
 });
 
 class FleetFuelCardService {
   private async codesFor(docs: readonly FleetFuelCardDoc[]): Promise<Map<string, string>> {
     return fleetVehicleRepository.codesByIds([
-      ...new Set(docs.map((doc) => String(doc.vehicleId))),
+      ...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)]))),
     ]);
   }
 
@@ -142,10 +157,12 @@ class FleetFuelCardService {
   }
 
   async create(input: CreateFleetFuelCard, by: string): Promise<FuelCardWithCode> {
-    await this.assertVehicle(input.vehicleId);
+    if (input.vehicleId !== null) await this.assertVehicle(input.vehicleId);
     const doc = await fleetFuelCardRepository.create(
       {
-        vehicleId: new Types.ObjectId(input.vehicleId),
+        vehicleId: input.vehicleId === null ? null : new Types.ObjectId(input.vehicleId),
+        // A card on a car is named by the car; the label is only for a card on none.
+        label: input.vehicleId === null ? (input.label ?? null) : null,
         company: input.company,
         name: input.name,
         number: input.number,
@@ -168,9 +185,23 @@ class FleetFuelCardService {
 
   async update(id: string, input: UpdateFleetFuelCard, by: string): Promise<FuelCardWithCode> {
     const before = await fleetFuelCardRepository.getById(id);
-    if (input.vehicleId !== undefined) await this.assertVehicle(input.vehicleId);
+    if (input.vehicleId !== undefined && input.vehicleId !== null) {
+      await this.assertVehicle(input.vehicleId);
+    }
     const set: Partial<FleetFuelCardDoc> = {};
-    if (input.vehicleId !== undefined) set.vehicleId = new Types.ObjectId(input.vehicleId);
+    if (input.vehicleId !== undefined) {
+      set.vehicleId = input.vehicleId === null ? null : new Types.ObjectId(input.vehicleId);
+    }
+    // A card on no car is known by its label; a card on a car is named by the car and keeps none.
+    const onNoCar =
+      input.vehicleId === undefined ? before.vehicleId == null : input.vehicleId === null;
+    if (onNoCar) {
+      const label = input.label === undefined ? (before.label ?? null) : (input.label ?? null);
+      if (label === null || label === '') throw new ConflictError('a card on no car needs a label');
+      set.label = label;
+    } else {
+      set.label = null;
+    }
     if (input.company !== undefined) set.company = input.company;
     if (input.name !== undefined) set.name = input.name;
     if (input.number !== undefined) set.number = input.number;
@@ -427,6 +458,95 @@ class FleetFuelCardService {
     ];
     const cards = await fleetFuelCardRepository.findByIdsSystem(counterparts);
     return { ...page, numbers: new Map(cards.map((card) => [String(card._id), card.number])) };
+  }
+
+  // ── The photo (Files owns the bytes, the card owns the link) ──────────────
+
+  /** «صوره كل فيزا» — the first upload creates the file, a later one adds a version of it. */
+  async setImage(ctx: AuthContext, id: string, binary: UploadedBinary): Promise<FuelCardWithCode> {
+    const before = await fleetFuelCardRepository.getById(id);
+    const current = before.image ?? null;
+    const isFirst = current === null;
+    let file: FileDoc;
+    if (current === null) {
+      file = await fileService.upload(
+        ctx,
+        {
+          moduleId: 'fleet',
+          entityType: 'fuelCard',
+          entityId: id,
+          categoryId: await resolveFuelCardDocsCategoryId(),
+          displayName: `fuel card ${before.number}`,
+          visibility: 'private',
+          tags: [],
+        },
+        binary,
+      );
+    } else {
+      file = await fileService.replace(ctx, String(current.fileId), binary);
+    }
+    let updated: FleetFuelCardDoc;
+    try {
+      updated = await fleetFuelCardRepository.updateById(
+        id,
+        {
+          image: {
+            fileId: file._id,
+            fileName: file.originalName,
+            mime: file.mime,
+            size: file.size,
+            uploadedAt: new Date(),
+          },
+        },
+        { by: ctx.userId, version: before.__v },
+      );
+    } catch (error) {
+      // A first upload the card never came to point at is an orphan — withdrawn. A replace added
+      // a version to the group the card already points at, which is history, not an orphan.
+      if (isFirst) await fileService.softDelete(ctx, String(file._id)).catch(() => undefined);
+      throw error;
+    }
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [
+        {
+          field: 'image',
+          old: current === null ? null : String(current.fileId),
+          new: String(file._id),
+        },
+      ],
+    });
+    return this.withCode(updated);
+  }
+
+  async readImage(
+    ctx: AuthContext,
+    id: string,
+  ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
+    const card = await fleetFuelCardRepository.getById(id);
+    if (card.image == null) throw new NotFoundError('this card has no photo');
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(card.image.fileId));
+    return { buffer, mime: doc.mime, fileName: doc.originalName };
+  }
+
+  async deleteImage(ctx: AuthContext, id: string): Promise<FuelCardWithCode> {
+    const before = await fleetFuelCardRepository.getById(id);
+    if (before.image == null) throw new ConflictError('this card has no photo to delete');
+    const fileId = String(before.image.fileId);
+    const updated = await fleetFuelCardRepository.updateById(
+      id,
+      { image: null },
+      { by: ctx.userId, version: before.__v },
+    );
+    // After the card write, so a failed detach never leaves the card pointing at a deleted file.
+    await fileService.softDelete(ctx, fileId).catch(() => undefined);
+    await auditService.record({
+      entityRef: entityRef(id),
+      action: 'update',
+      changes: [{ field: 'image', old: fileId, new: null }],
+    });
+    return this.withCode(updated);
   }
 }
 

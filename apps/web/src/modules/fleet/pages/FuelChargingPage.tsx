@@ -231,7 +231,7 @@ export const FuelChargingPage = (): JSX.Element => {
   ];
   const rows = () =>
     cards.map((card) => [
-      card.vehicleCode ?? '',
+      card.vehicleCode ?? card.label ?? '',
       t(`fleet.fuelCards.company.${card.company}`),
       card.number,
       card.balance,
@@ -357,7 +357,12 @@ export const FuelChargingPage = (): JSX.Element => {
         ) : (
           <div className="space-y-3">
             {tiles.map((tile) => (
-              <VehicleCardTile key={tile.vehicleId} code={tile.code} vehicleId={tile.vehicleId}>
+              <VehicleCardTile
+                key={tile.vehicleId}
+                code={tile.code}
+                vehicleId={tile.vehicleId}
+                noCar={tile.noCar}
+              >
                 {FUEL_CARD_COMPANIES.map((slot) => {
                   const card = tile.cards[slot];
                   if (card === undefined) return <EmptyCardLine key={slot} company={slot} />;

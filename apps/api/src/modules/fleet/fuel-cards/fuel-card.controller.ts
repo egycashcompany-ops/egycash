@@ -11,6 +11,7 @@ import {
   type UpdateFleetFuelCard,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
+import { ValidationError } from '../../../shared/errors';
 import { authContext } from '../../../platform/auth';
 import { fleetFuelCardService, toFuelCardDto, toFuelMovementDto } from './fuel-card.service';
 
@@ -89,4 +90,35 @@ export const listFuelCardMovements = async (req: Request, res: Response): Promis
       doc.counterpartCardId == null ? null : (numbers.get(String(doc.counterpartCardId)) ?? null),
     ),
   );
+};
+
+export const uploadFuelCardImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const uploaded = req.file;
+  if (uploaded === undefined) {
+    throw new ValidationError([
+      { field: 'file', code: 'REQUIRED', message: 'a file part named "file" is required' },
+    ]);
+  }
+  const card = await fleetFuelCardService.setImage(authContext(req), params.id, {
+    originalName: uploaded.originalname,
+    mime: uploaded.mimetype,
+    size: uploaded.size,
+    buffer: uploaded.buffer,
+  });
+  ok(res, toFuelCardDto(card));
+};
+
+export const getFuelCardImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const image = await fleetFuelCardService.readImage(authContext(req), params.id);
+  res.setHeader('Content-Type', image.mime);
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(image.fileName)}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.send(image.buffer);
+};
+
+export const deleteFuelCardImage = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  ok(res, toFuelCardDto(await fleetFuelCardService.deleteImage(authContext(req), params.id)));
 };

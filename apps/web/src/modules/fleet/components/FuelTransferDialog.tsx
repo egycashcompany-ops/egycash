@@ -4,9 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { type FleetFuelCardDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
-import { Field } from '../../../shared/ui/form';
+import { createPortal } from 'react-dom';
 import {
   MissingFieldsBanner,
   useFieldMissing,
@@ -18,7 +16,19 @@ import { formatMoney } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useTransferFuelBalance } from '../api/fleet-queries';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
-import { FuelCompanyLogo, fuelCardPlace, noCarPlaces } from './FuelCardTiles';
+import { fuelCardPlace, noCarPlaces } from './FuelCardTiles';
+import { Spinner } from '../../../shared/ui/Spinner';
+import {
+  CLOSE_PATH,
+  DesignField,
+  DesignLogo,
+  LOOK,
+  MONO,
+  SANS,
+  Stroke,
+  boxTone,
+  carBoxClass,
+} from './FuelCardDialog';
 import { groupCardNumber } from '../lib/fuel-card-number';
 
 export const CardPick = ({
@@ -47,37 +57,68 @@ export const CardPick = ({
       </p>
     );
   }
+  // «خلى الكروت بالطول»: one card under the other, each a long line — logo and company, number,
+  // balance — rather than squares side by side.
   return (
-    <div className="flex gap-3">
-      {cards.map((card) => (
-        <button
-          key={card.id}
-          type="button"
-          data-fuel-transfer-card={`${side}:${card.id}`}
-          aria-pressed={value === card.id}
-          onClick={() => onChange(card.id)}
-          className={cn(
-            'flex flex-1 flex-col items-start gap-1 rounded-lg border px-3 py-2 text-start text-sm',
-            value === card.id && 'bg-brand-50 dark:bg-brand-950/40',
-            missing
-              ? 'border-red-400'
-              : value === card.id
-                ? 'border-brand-500'
-                : 'border-slate-300 dark:border-slate-700',
-          )}
-        >
-          <FuelCompanyLogo company={card.company} size="sm" />
-          <span className="tabular-nums" dir="ltr">
-            {groupCardNumber(card.number)}
-          </span>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            {t('fleet.fuelCards.fields.balance')}{' '}
-            <b className="text-slate-800 dark:text-slate-100">
-              {formatMoney(card.balance, 'EGP', locale)}
-            </b>
-          </span>
-        </button>
-      ))}
+    <div className="space-y-2.5">
+      {cards.map((card) => {
+        const chosen = value === card.id;
+        return (
+          <button
+            key={card.id}
+            type="button"
+            data-fuel-transfer-card={`${side}:${card.id}`}
+            aria-pressed={chosen}
+            onClick={() => onChange(card.id)}
+            className={cn(
+              'relative flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-3 text-start transition-all',
+              missing
+                ? 'border-red-400 bg-[#0a1233]/80'
+                : chosen
+                  ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.28),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-4px_rgba(108,99,255,0.6)]'
+                  : 'border-[#2b3b6b] bg-[#0a1233]/80 hover:bg-slate-800/60',
+            )}
+          >
+            {chosen && !missing && (
+              <span className="absolute -end-1.5 -top-1.5 rounded-full bg-indigo-500 p-0.5 text-white shadow">
+                <svg
+                  className="h-3.5 w-3.5"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                  aria-hidden="true"
+                >
+                  <path
+                    clipRule="evenodd"
+                    fillRule="evenodd"
+                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                  />
+                </svg>
+              </span>
+            )}
+            <span className="flex min-w-[9rem] items-center gap-3">
+              <DesignLogo company={card.company} editing={false} />
+              <span className="whitespace-nowrap text-[15px] font-bold text-white">
+                {t(`fleet.fuelCards.company.${card.company}`)}
+              </span>
+            </span>
+            <span
+              className={cn(
+                'whitespace-nowrap text-sm font-medium tracking-wider text-slate-200',
+                MONO,
+              )}
+              dir="ltr"
+            >
+              {groupCardNumber(card.number)}
+            </span>
+            <span className="whitespace-nowrap text-[13px] font-medium text-slate-300">
+              {t('fleet.fuelCards.fields.balance')}{' '}
+              <b className={cn('text-[15px] text-emerald-400', MONO)}>
+                {formatMoney(card.balance, 'EGP', locale)}
+              </b>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 };
@@ -91,7 +132,7 @@ export const FuelTransferDialog = ({
   onClose: () => void;
   /** Every card on the screen — the cars' cards are picked out of it. */
   cards: readonly FleetFuelCardDto[];
-}): JSX.Element => {
+}): JSX.Element | null => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [fromVehicle, setFromVehicle] = useState('');
@@ -186,185 +227,265 @@ export const FuelTransferDialog = ({
     onClose();
   };
 
-  return (
-    <Dialog
-      open={open}
-      onClose={onClose}
-      dismissOnOutsideClick={false}
-      size="lg"
-      tall
-      title={t('fleet.fuelCards.transfer.title')}
-      description={t('fleet.fuelCards.transfer.hint')}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose}>
-            {t('common.cancel')}
-          </Button>
-          <Button loading={transfer.isPending} onClick={required.guard(submit)}>
-            {t('fleet.fuelCards.transfer.action')}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
-        <section className="space-y-3">
-          <h3 className="border-b border-slate-200 pb-1 text-sm font-semibold dark:border-slate-700">
-            {t('fleet.fuelCards.transfer.from')}
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label={t('fleet.odometer.columns.vehicle')}
-              required
-              missing={required.isMissing('fromVehicle')}
-            >
-              <VehicleCodeCombobox
-                value={fromVehicle}
-                onChange={setFromVehicle}
-                ariaLabel={t('fleet.fuelCards.transfer.from')}
-                placeholder={t('fleet.accidents.vehiclePlaceholder')}
-                testId="fuel-transfer-from"
-                extra={places}
-              />
-            </Field>
-            <Field
-              label={t('fleet.fuelCards.fields.card')}
-              required
-              missing={required.isMissing('fromCard')}
-            >
-              <CardPick
-                cards={byVehicle(fromVehicle)}
-                value={fromCard}
-                onChange={setFromCard}
-                side="from"
-              />
-            </Field>
-          </div>
-        </section>
-        <section className="space-y-3">
-          <h3 className="border-b border-slate-200 pb-1 text-sm font-semibold dark:border-slate-700">
-            {t('fleet.fuelCards.transfer.to')}
-          </h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field
-              label={t('fleet.odometer.columns.vehicle')}
-              required
-              missing={required.isMissing('toVehicle')}
-            >
-              <VehicleCodeCombobox
-                value={toVehicle}
-                onChange={setToVehicle}
-                ariaLabel={t('fleet.fuelCards.transfer.to')}
-                placeholder={t('fleet.accidents.vehiclePlaceholder')}
-                testId="fuel-transfer-to"
-                extra={places}
-              />
-            </Field>
-            <Field
-              label={t('fleet.fuelCards.fields.card')}
-              required
-              missing={required.isMissing('toCard')}
-              // The same card on both sides: say so rather than «required».
-              {...(required.isMissing('toCard') && to !== null
-                ? { error: t('fleet.fuelCards.transfer.sameCard') }
-                : {})}
-            >
-              <CardPick
-                cards={toChoices}
-                value={toCard}
-                onChange={setToCard}
-                side="to"
-                {...(toVehicle !== '' && fromCompany !== null && toChoices.length === 0
-                  ? {
-                      emptyText: t('fleet.fuelCards.transfer.otherCompany', {
-                        company: t(`fleet.fuelCards.company.${fromCompany}`),
-                      }),
-                    }
-                  : {})}
-              />
-            </Field>
-          </div>
-        </section>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label={t('fleet.fuelCards.transfer.amount')}
-            required
-            missing={required.isMissing('amount')}
-            {...(from !== null && !enough && value > 0
-              ? { error: t('fleet.fuelCards.transfer.notEnough', { balance: money(from.balance) }) }
-              : {})}
-          >
-            <MoneyInput value={amount} onChange={setAmount} />
-          </Field>
-        </div>
-        {valid && enough && from !== null && to !== null && (
-          <div
-            data-fuel-transfer-summary="true"
-            className="space-y-3 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
-          >
-            {/* «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام» —
-                each card on its own line: what it held, what moves, what it will hold. */}
-            {(
-              [
-                { side: 'from', card: from, sign: -1 },
-                { side: 'to', card: to, sign: 1 },
-              ] as const
-            ).map(({ side, card, sign }) => (
-              <div key={side} data-fuel-transfer-line={side} className="space-y-1">
-                <p className="font-semibold">
-                  {t(
-                    side === 'from'
-                      ? 'fleet.fuelCards.transfer.fromCard'
-                      : 'fleet.fuelCards.transfer.toCard',
-                    {
-                      company: t(`fleet.fuelCards.company.${card.company}`),
-                      code: card.vehicleCode ?? card.label ?? '—',
-                    },
-                  )}
-                </p>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <span className="rounded bg-white/60 px-2 py-1 dark:bg-slate-900/60">
-                    <span className="block text-[11px] opacity-70">
-                      {t('fleet.fuelCards.transfer.was')}
-                    </span>
-                    <b className="tabular-nums" dir="ltr">
-                      {money(card.balance)}
-                    </b>
-                  </span>
-                  <span className="rounded bg-white/60 px-2 py-1 dark:bg-slate-900/60">
-                    <span className="block text-[11px] opacity-70">
-                      {t(
-                        side === 'from'
-                          ? 'fleet.fuelCards.transfer.taken'
-                          : 'fleet.fuelCards.transfer.given',
-                      )}
-                    </span>
-                    <b
-                      className={cn(
-                        'tabular-nums',
-                        sign < 0
-                          ? 'text-red-600 dark:text-red-400'
-                          : 'text-emerald-600 dark:text-emerald-400',
-                      )}
-                      dir="ltr"
-                    >
-                      {money(value)}
-                    </b>
-                  </span>
-                  <span className="rounded bg-white/60 px-2 py-1 dark:bg-slate-900/60">
-                    <span className="block text-[11px] opacity-70">
-                      {t('fleet.fuelCards.transfer.becomes')}
-                    </span>
-                    <b className="tabular-nums" dir="ltr">
-                      {money(card.balance + sign * value)}
-                    </b>
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+  if (!open) return null;
+  const look = LOOK.add;
+  const box = boxTone(look);
+  const heading = (text: string): JSX.Element => (
+    <h3 className="border-b border-[#2b3b6b]/60 pb-2 text-[15px] font-bold text-white">{text}</h3>
+  );
+
+  return createPortal(
+    <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4">
+      <div
+        className="fixed inset-0 animate-fade-in bg-[#03060c]/80 backdrop-blur-md"
+        aria-hidden="true"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('fleet.fuelCards.transfer.title')}
+        data-fuel-transfer-form="true"
+        className={cn(
+          SANS,
+          'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-100 antialiased',
+          look.panel,
         )}
+      >
+        <header className={cn('flex items-center justify-between border-b px-6', look.header)}>
+          <div className="flex items-center gap-3">
+            <div className={cn('flex items-center justify-center rounded-xl border', look.icon)}>
+              <Stroke
+                d={['M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4']}
+                className="h-5 w-5"
+              />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold tracking-wide text-white">
+                {t('fleet.fuelCards.transfer.title')}
+              </h2>
+              <p className={cn('text-[13px] font-medium text-slate-300', look.subtitle)}>
+                {t('fleet.fuelCards.transfer.hint')}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={t('common.close')}
+            className={cn(
+              'flex items-center text-slate-400 transition-all hover:text-white focus:outline-none',
+              look.close,
+            )}
+          >
+            <Stroke d={CLOSE_PATH} className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className={cn('max-h-[calc(100vh-9rem)] space-y-6 overflow-y-auto', look.body)}>
+          <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+          <section className="space-y-4">
+            {heading(t('fleet.fuelCards.transfer.from'))}
+            <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+              <DesignField
+                label={t('fleet.odometer.columns.vehicle')}
+                required
+                missing={required.isMissing('fromVehicle')}
+              >
+                <div className={carBoxClass(false)}>
+                  <VehicleCodeCombobox
+                    value={fromVehicle}
+                    onChange={setFromVehicle}
+                    ariaLabel={t('fleet.fuelCards.transfer.from')}
+                    placeholder={t('fleet.accidents.vehiclePlaceholder')}
+                    testId="fuel-transfer-from"
+                    extra={places}
+                  />
+                </div>
+              </DesignField>
+              <div className="md:col-span-2">
+                <DesignField
+                  label={t('fleet.fuelCards.fields.card')}
+                  required
+                  missing={required.isMissing('fromCard')}
+                  endAdornment={null}
+                >
+                  <CardPick
+                    cards={byVehicle(fromVehicle)}
+                    value={fromCard}
+                    onChange={setFromCard}
+                    side="from"
+                  />
+                </DesignField>
+              </div>
+            </div>
+          </section>
+          <section className="space-y-4">
+            {heading(t('fleet.fuelCards.transfer.to'))}
+            <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+              <DesignField
+                label={t('fleet.odometer.columns.vehicle')}
+                required
+                missing={required.isMissing('toVehicle')}
+              >
+                <div className={carBoxClass(false)}>
+                  <VehicleCodeCombobox
+                    value={toVehicle}
+                    onChange={setToVehicle}
+                    ariaLabel={t('fleet.fuelCards.transfer.to')}
+                    placeholder={t('fleet.accidents.vehiclePlaceholder')}
+                    testId="fuel-transfer-to"
+                    extra={places}
+                  />
+                </div>
+              </DesignField>
+              <div className="md:col-span-2">
+                <DesignField
+                  label={t('fleet.fuelCards.fields.card')}
+                  required
+                  missing={required.isMissing('toCard')}
+                  endAdornment={null}
+                  // The same card on both sides: say so rather than «required».
+                  error={
+                    required.isMissing('toCard') && to !== null
+                      ? t('fleet.fuelCards.transfer.sameCard')
+                      : undefined
+                  }
+                >
+                  <CardPick
+                    cards={toChoices}
+                    value={toCard}
+                    onChange={setToCard}
+                    side="to"
+                    {...(toVehicle !== '' && fromCompany !== null && toChoices.length === 0
+                      ? {
+                          emptyText: t('fleet.fuelCards.transfer.otherCompany', {
+                            company: t(`fleet.fuelCards.company.${fromCompany}`),
+                          }),
+                        }
+                      : {})}
+                  />
+                </DesignField>
+              </div>
+            </div>
+          </section>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+            <DesignField
+              label={t('fleet.fuelCards.transfer.amount')}
+              required
+              missing={required.isMissing('amount')}
+              error={
+                from !== null && !enough && value > 0
+                  ? t('fleet.fuelCards.transfer.notEnough', { balance: money(from.balance) })
+                  : undefined
+              }
+            >
+              <MoneyInput
+                value={amount}
+                onChange={setAmount}
+                placeholder="0.00"
+                tone={cn(box, MONO, '!py-3 !pl-10 text-right')}
+              />
+            </DesignField>
+          </div>
+          {valid && enough && from !== null && to !== null && (
+            <div
+              data-fuel-transfer-summary="true"
+              className="space-y-4 rounded-xl border border-[#2b3b6b] bg-[#0a1233] p-4"
+            >
+              {/* «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام» —
+                  each card on its own line: what it held, what moves, what it will hold. */}
+              {(
+                [
+                  { side: 'from', card: from, sign: -1 },
+                  { side: 'to', card: to, sign: 1 },
+                ] as const
+              ).map(({ side, card, sign }) => (
+                <div key={side} data-fuel-transfer-line={side} className="space-y-2">
+                  <p className="flex items-center gap-2 text-[15px] font-bold text-white">
+                    <span
+                      className={cn(
+                        'h-2 w-2 rounded-full',
+                        sign < 0 ? 'bg-rose-400' : 'bg-emerald-400',
+                      )}
+                    />
+                    {t(
+                      side === 'from'
+                        ? 'fleet.fuelCards.transfer.fromCard'
+                        : 'fleet.fuelCards.transfer.toCard',
+                      {
+                        company: t(`fleet.fuelCards.company.${card.company}`),
+                        code: card.vehicleCode ?? card.label ?? '—',
+                      },
+                    )}
+                  </p>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    {[
+                      {
+                        label: t('fleet.fuelCards.transfer.was'),
+                        amount: card.balance,
+                        tone: 'text-white',
+                      },
+                      {
+                        label: t(
+                          side === 'from'
+                            ? 'fleet.fuelCards.transfer.taken'
+                            : 'fleet.fuelCards.transfer.given',
+                        ),
+                        amount: value,
+                        tone: sign < 0 ? 'text-rose-400' : 'text-emerald-400',
+                      },
+                      {
+                        label: t('fleet.fuelCards.transfer.becomes'),
+                        amount: card.balance + sign * value,
+                        tone: 'text-white',
+                      },
+                    ].map((cell) => (
+                      <span
+                        key={cell.label}
+                        className="rounded-lg border border-[#2b3b6b]/70 bg-[#121c3f] px-2 py-2"
+                      >
+                        <span className="block text-[12px] font-medium text-slate-300">
+                          {cell.label}
+                        </span>
+                        <b className={cn('text-[15px]', MONO, cell.tone)} dir="ltr">
+                          {money(cell.amount)}
+                        </b>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className={cn('mt-6 flex items-center justify-start gap-3 border-t', look.footer)}>
+            <button
+              type="button"
+              data-fuel-transfer-submit="true"
+              aria-busy={transfer.isPending}
+              onClick={required.guard(submit)}
+              className={cn(
+                'flex items-center gap-2 rounded-xl py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98]',
+                look.save,
+              )}
+            >
+              {transfer.isPending && <Spinner className="h-4 w-4" />}
+              <span>{t('fleet.fuelCards.transfer.action')}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className={cn(
+                'rounded-xl border bg-[#1a2550] py-2.5 text-[15px] font-bold text-slate-100 transition-all hover:bg-slate-700/80 hover:text-white active:scale-[0.98]',
+                look.cancel,
+              )}
+            >
+              {t('common.cancel')}
+            </button>
+          </div>
+        </div>
       </div>
-    </Dialog>
+    </div>,
+    document.body,
   );
 };

@@ -1,5 +1,6 @@
 // The go-live FUEL CARDS, as a boot step — the owner's two sheets of cards («عاوز اضيف دول عندى فى
-// شاشة البطاقات») onto the fuel-cards screen, with their balances and passwords.
+// شاشة البطاقات») onto the fuel-cards screen, with their balances, passwords and expiry dates. The
+// photo of each card follows in its own step (`fuel-card-photos.ts`).
 //
 // The shape of every go-live step (`vehicles.ts` at length): refusals before the claim, the lease,
 // not on the boot's critical path, nothing here can fail a boot. What the sheets say, and where

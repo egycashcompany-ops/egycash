@@ -14,18 +14,22 @@ import {
 import { authenticate } from '../../../platform/auth';
 import { authorize } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
+import { multipartSingle } from '../license-image-upload';
 import {
   approveFuelCharge,
   createFuelCard,
   deleteFuelCard,
+  deleteFuelCardImage,
   fuelCardSummary,
   getFuelCard,
+  getFuelCardImage,
   listFuelCardMovements,
   listFuelCards,
   requestFuelCharge,
   revealFuelCardPassword,
   transferFuelBalance,
   updateFuelCard,
+  uploadFuelCardImage,
 } from './fuel-card.controller';
 
 const IdParamSchema = z.object({ id: objectId() }).strict();
@@ -97,6 +101,29 @@ export const buildFleetFuelCardsRouter = (): Router => {
     authorize('fleetFuelCard.delete'),
     validate({ params: IdParamSchema }),
     asyncHandler(deleteFuelCard),
+  );
+  // The photo of the card — whoever may edit the card may manage it, whoever may view may see it.
+  router.get(
+    '/:id/image',
+    authenticate,
+    authorize('fleetFuelCard.view'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(getFuelCardImage),
+  );
+  router.post(
+    '/:id/image',
+    authenticate,
+    authorize('fleetFuelCard.edit'),
+    multipartSingle(),
+    validate({ params: IdParamSchema }),
+    asyncHandler(uploadFuelCardImage),
+  );
+  router.delete(
+    '/:id/image',
+    authenticate,
+    authorize('fleetFuelCard.edit'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(deleteFuelCardImage),
   );
   router.patch(
     '/:id/request',

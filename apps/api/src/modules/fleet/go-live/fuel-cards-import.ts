@@ -13,8 +13,11 @@
 // NOTHING IS DROPPED. A code the registry does not know any more, or a car that already holds a
 // card of that company, is not a reason to leave a card out: it is imported on no car, labelled
 // with the code it came with, and named in the run's outcome so it can be moved onto its car.
-// The expiry dates are not in these sheets («تاريخ الانتهاء هبعته … فى فايل تانى»): every card is
-// imported with none.
+// THE EXPIRY DATES came after the sheets («تاريخ الانتهاء هبعته مع صوره كل فيزا فى فايل تانى»): a
+// photo of each card and two expiry sheets. A renewed card keeps its number and gets a later
+// date, so the latest date printed on the card's own photo wins over an older sheet row; each
+// is stored as the last day of its month («VALID THRU»). A card neither source dates is imported
+// with none, and its date is typed in later.
 import { Types } from 'mongoose';
 import { FLEET_FUEL_CARD_COMPANIES, type FleetFuelCardCompany } from '@ecms/contracts';
 import { FleetFuelCardModel } from '../fuel-cards/fuel-card.model';
@@ -27,6 +30,8 @@ export interface FuelCardRow {
   number: string;
   name: string;
   balance: number;
+  /** «VALID THRU» as a day, `YYYY-MM-DD`; `null` when neither the photo nor the sheets date it. */
+  expiresAt: string | null;
   password: string | null;
   /** The code as the sheet wrote it — kept for the report. */
   sheetCode: string;
@@ -61,12 +66,15 @@ export const parseFuelCards = (raw: unknown): { rows: FuelCardRow[]; rejected: s
     const sheetCode = text(card.sheetCode) ?? '';
     const balance = card.balance;
     const password = card.password === null ? null : text(card.password);
+    const expiresAt = card.expiresAt === null ? null : text(card.expiresAt);
     const where = `#${index + 1} ${number ?? '?'} (${sheetCode})`;
     if (!isCompany(card.company)) rejected.push(`${where}: unknown company`);
     else if (number === null || !/^\d{4,40}$/u.test(number)) rejected.push(`${where}: bad number`);
     else if (name === null) rejected.push(`${where}: no name`);
     else if (typeof balance !== 'number' || !Number.isFinite(balance)) {
       rejected.push(`${where}: bad balance`);
+    } else if (expiresAt !== null && !/^\d{4}-\d{2}-\d{2}$/u.test(expiresAt)) {
+      rejected.push(`${where}: bad expiry`);
     } else if ((vehicleCode === null) === (label === null)) {
       rejected.push(`${where}: needs a car code or a label, not both`);
     } else if (seen.has(number)) rejected.push(`${where}: number appears twice`);
@@ -77,6 +85,7 @@ export const parseFuelCards = (raw: unknown): { rows: FuelCardRow[]; rejected: s
         number,
         name,
         balance: Math.round(balance * 100) / 100,
+        expiresAt,
         password,
         sheetCode,
         vehicleCode,
@@ -164,7 +173,7 @@ export const applyFuelCards = async (
         company: row.company,
         name: row.name,
         number: row.number,
-        expiresAt: null,
+        expiresAt: row.expiresAt === null ? null : new Date(`${row.expiresAt}T00:00:00.000Z`),
         password: row.password,
         balance: row.balance,
         requestedAmount: null,

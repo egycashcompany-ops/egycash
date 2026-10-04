@@ -66,6 +66,7 @@ const card = (id: string, over: Partial<FleetFuelCardDto> = {}): FleetFuelCardDt
   requestedAmount: null,
   requestedAt: null,
   lastChargedAt: null,
+  image: null,
   version: 0,
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-01T00:00:00.000Z',

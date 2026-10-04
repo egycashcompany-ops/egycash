@@ -25,6 +25,7 @@ import { startViolationsRestoreGoLive } from './modules/fleet/go-live/violations
 import { startOdometerFixGoLive } from './modules/fleet/go-live/odometer-fix';
 import { startDriversExtraGoLive } from './modules/fleet/go-live/drivers-extra';
 import { startFuelCardsGoLive } from './modules/fleet/go-live/fuel-cards';
+import { startFuelCardPhotosGoLive } from './modules/fleet/go-live/fuel-card-photos';
 
 const main = async (): Promise<void> => {
   initSentry('worker');
@@ -56,6 +57,7 @@ const main = async (): Promise<void> => {
   startDriversExtraGoLive();
   // The owner's two fuel-card sheets, after the cars they go on.
   startFuelCardsGoLive();
+  startFuelCardPhotosGoLive();
 
   const workers = startWorkers();
   await schedulerService.startSchedules();

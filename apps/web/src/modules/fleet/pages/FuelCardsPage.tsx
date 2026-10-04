@@ -27,6 +27,7 @@ import { DocumentActions } from '../components/DocumentActions';
 import { FilteredCount } from '../components/FilteredCount';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { FuelCardDialog } from '../components/FuelCardDialog';
+import { FuelCardImageControl, FuelCardImageDialog } from '../components/FuelCardImage';
 import {
   CardLine,
   EmptyCardLine,
@@ -127,6 +128,10 @@ export const FuelCardsPage = (): JSX.Element => {
     company?: FleetFuelCardCompany;
   } | null>(null);
   const [editing, setEditing] = useState<FleetFuelCardDto | null>(null);
+  // The card whose photo is open, read from the list each render so a replaced photo shows at once.
+  const [viewingId, setViewingId] = useState<string | null>(null);
+  const viewing = viewingId === null ? null : (cards.find((c) => c.id === viewingId) ?? null);
+  const viewingCode = viewing === null ? '' : (viewing.vehicleCode ?? viewing.label ?? '—');
   const [deleting, setDeleting] = useState<FleetFuelCardDto | null>(null);
   const remove = useDeleteFuelCard();
   const confirmDelete = async (): Promise<void> => {
@@ -330,6 +335,12 @@ export const FuelCardsPage = (): JSX.Element => {
                         {formatDate(card.expiresAt, locale)}
                       </FramedField>
                       <PasswordField card={card} />
+                      <FramedField
+                        label={t('fleet.fuelCards.image.title')}
+                        className="min-w-[7rem]"
+                      >
+                        <FuelCardImageControl card={card} onOpen={(c) => setViewingId(c.id)} />
+                      </FramedField>
                       <span className="ms-auto inline-flex items-center gap-1 self-center">
                         {can('fleetFuelCard.edit') && (
                           <button
@@ -372,8 +383,17 @@ export const FuelCardsPage = (): JSX.Element => {
           setEditing(null);
         }}
         card={editing}
+        photoCard={editing === null ? null : (cards.find((c) => c.id === editing.id) ?? editing)}
+        onOpenPhoto={(c) => setViewingId(c.id)}
         initialVehicleId={adding?.vehicleId ?? ''}
         {...(adding?.company === undefined ? {} : { initialCompany: adding.company })}
+      />
+      {/* After the form, so the photo opened from it sits above it. */}
+      <FuelCardImageDialog
+        open={viewing !== null}
+        onClose={() => setViewingId(null)}
+        card={viewing}
+        code={viewingCode}
       />
       <Dialog
         open={deleting !== null}

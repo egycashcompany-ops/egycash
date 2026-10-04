@@ -25,6 +25,7 @@ import { buildFleetFuelCardsRouter } from './fuel-cards/fuel-card.routes';
 import { buildFleetReceiptsRouter } from './receipts/receipt.routes';
 import { buildFleetCustodyRouter } from './custody/custody.routes';
 import { receiptFileAuthorizer } from './receipts/receipt-files';
+import { fuelCardFileAuthorizer } from './fuel-cards/fuel-card-files';
 import { dealershipFileAuthorizer } from './dealership/dealership-files';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
@@ -505,6 +506,7 @@ export const fleetModule: ModuleManifest = {
     driverProfileFileAuthorizer,
     dealershipFileAuthorizer,
     receiptFileAuthorizer,
+    fuelCardFileAuthorizer,
   ],
   eventSubscriptions: [
     {

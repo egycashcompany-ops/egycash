@@ -479,6 +479,15 @@ export const createFuelCard = (body: CreateFleetFuelCard): Promise<FleetFuelCard
 export const updateFuelCard = (id: string, body: UpdateFleetFuelCard): Promise<FleetFuelCardDto> =>
   patch<FleetFuelCardDto>(`/fleet/fuel-cards/${id}`, body);
 export const deleteFuelCard = (id: string): Promise<void> => del<void>(`/fleet/fuel-cards/${id}`);
+export const uploadFuelCardImage = (id: string, file: File): Promise<FleetFuelCardDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/image`, form);
+};
+export const fetchFuelCardImage = (id: string): Promise<Blob> =>
+  fetchBlob(`/fleet/fuel-cards/${id}/image`);
+export const deleteFuelCardImage = (id: string): Promise<FleetFuelCardDto> =>
+  del<FleetFuelCardDto>(`/fleet/fuel-cards/${id}/image`);
 export const requestFuelCharge = (
   id: string,
   body: RequestFleetFuelCharge,

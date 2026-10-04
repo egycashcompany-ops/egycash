@@ -1,0 +1,226 @@
+// «صوره كل فيزا» — the photo of a fuel card: on the card's line a frame with the eye (or the upload
+// for a card with none), and the dialog that shows it large, replaces it and deletes it. The bytes
+// are guarded, so they are fetched with the session and shown as an object URL.
+import { useEffect, useState } from 'react';
+import { type FleetFuelCardDto } from '@ecms/contracts';
+import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
+import { Dialog } from '../../../shared/ui/Dialog';
+import { Button } from '../../../shared/ui/Button';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { EyeIcon, UploadIcon } from '../../../shared/ui/icons';
+import { ZoomableImage } from './ZoomableImage';
+import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
+import { fetchFuelCardImage } from '../api/fleet-api';
+import { useDeleteFuelCardImage, useUploadFuelCardImage } from '../api/fleet-queries';
+
+const iconButton =
+  'inline-flex cursor-pointer rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200';
+
+const useFuelCardImageUrl = (
+  cardId: string,
+  fileId: string | null,
+): { url: string | null; loading: boolean; failed: boolean } => {
+  const [state, setState] = useState<{ url: string | null; loading: boolean; failed: boolean }>({
+    url: null,
+    loading: false,
+    failed: false,
+  });
+  useEffect(() => {
+    if (fileId === null || cardId === '') {
+      setState({ url: null, loading: false, failed: false });
+      return;
+    }
+    let objectUrl: string | null = null;
+    let cancelled = false;
+    setState({ url: null, loading: true, failed: false });
+    void fetchFuelCardImage(cardId)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setState({ url: objectUrl, loading: false, failed: false });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ url: null, loading: false, failed: true });
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl !== null) URL.revokeObjectURL(objectUrl);
+    };
+  }, [cardId, fileId]);
+  return state;
+};
+
+/** A file input dressed as a button: picking a file uploads it onto the card. */
+export const FuelCardImageUpload = ({
+  card,
+  label,
+  className,
+  children,
+}: {
+  card: FleetFuelCardDto;
+  label: string;
+  className?: string;
+  children: JSX.Element | string;
+}): JSX.Element => {
+  const t = useT();
+  const upload = useUploadFuelCardImage();
+  const [inputKey, setInputKey] = useState(0);
+  const pick = async (file: File | undefined): Promise<void> => {
+    if (file === undefined) return;
+    await upload.mutateAsync({ id: card.id, file });
+    toast.success(t('fleet.fuelCards.image.uploaded'));
+    setInputKey((k) => k + 1);
+  };
+  return (
+    <label data-fuel-image-upload={card.id} className={className ?? iconButton} title={label}>
+      {children}
+      <input
+        key={inputKey}
+        type="file"
+        accept={LICENSE_IMAGE_ACCEPT}
+        className="hidden"
+        disabled={upload.isPending}
+        aria-label={label}
+        onChange={(e) => void pick(e.target.files?.[0])}
+      />
+    </label>
+  );
+};
+
+/** The photo, large — with «تغيير الصورة» and «حذف الصورة» for a reader who may edit the card. */
+export const FuelCardImageDialog = ({
+  open,
+  onClose,
+  card,
+  code,
+}: {
+  open: boolean;
+  onClose: () => void;
+  card: FleetFuelCardDto | null;
+  /** What the tile calls the card's place — the car's code, or the label of a card on no car. */
+  code: string;
+}): JSX.Element => {
+  const t = useT();
+  const can = useCan();
+  const mayEdit = can('fleetFuelCard.edit');
+  const fileId = card?.image?.fileId ?? null;
+  const { url, loading, failed } = useFuelCardImageUrl(card?.id ?? '', open ? fileId : null);
+  const remove = useDeleteFuelCardImage();
+  const [confirming, setConfirming] = useState(false);
+  const confirmDelete = async (): Promise<void> => {
+    if (card === null) return;
+    await remove.mutateAsync(card.id);
+    toast.success(t('fleet.fuelCards.image.deleted'));
+    setConfirming(false);
+    onClose();
+  };
+  return (
+    <>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        size="xl"
+        title={t('fleet.fuelCards.image.title')}
+        description={
+          card === null
+            ? ''
+            : t('fleet.fuelCards.image.subtitle', {
+                code,
+                company: t(`fleet.fuelCards.company.${card.company}`),
+                number: card.number,
+              })
+        }
+        footer={
+          <>
+            <Button variant="secondary" onClick={onClose}>
+              {t('common.close')}
+            </Button>
+            {mayEdit && card !== null && (
+              <FuelCardImageUpload
+                card={card}
+                label={t('fleet.fuelCards.image.replace')}
+                className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                {t('fleet.fuelCards.image.replace')}
+              </FuelCardImageUpload>
+            )}
+            {mayEdit && (
+              <Button variant="danger" onClick={() => setConfirming(true)}>
+                {t('fleet.fuelCards.image.delete')}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {loading && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('common.loading')}</p>
+        )}
+        {failed && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {t('fleet.vehicles.licenseImage.loadFailed')}
+          </p>
+        )}
+        {url !== null && <ZoomableImage src={url} alt={t('fleet.fuelCards.image.title')} />}
+      </Dialog>
+      <Dialog
+        open={confirming}
+        onClose={() => setConfirming(false)}
+        title={t('fleet.fuelCards.image.deleteTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setConfirming(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => void confirmDelete()}
+            >
+              {t('common.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {t('fleet.fuelCards.image.deleteBody')}
+        </p>
+      </Dialog>
+    </>
+  );
+};
+
+/**
+ * The card's photo on its line: the eye opens it; a card with none offers the upload to a reader
+ * who may edit, and «—» to anyone else.
+ */
+export const FuelCardImageControl = ({
+  card,
+  onOpen,
+}: {
+  card: FleetFuelCardDto;
+  onOpen: (card: FleetFuelCardDto) => void;
+}): JSX.Element => {
+  const t = useT();
+  const can = useCan();
+  if (card.image === null) {
+    if (!can('fleetFuelCard.edit')) return <span>—</span>;
+    return (
+      <FuelCardImageUpload card={card} label={t('fleet.fuelCards.image.upload')}>
+        <UploadIcon className="h-4 w-4" />
+      </FuelCardImageUpload>
+    );
+  }
+  return (
+    <button
+      type="button"
+      data-fuel-image={card.id}
+      aria-label={t('fleet.fuelCards.image.view')}
+      title={t('fleet.fuelCards.image.view')}
+      onClick={() => onOpen(card)}
+      className={iconButton}
+    >
+      <EyeIcon className="h-4 w-4" />
+    </button>
+  );
+};

@@ -1,6 +1,6 @@
 // The owner's two fuel-card sheets, on rows, with no database: what the asset holds, that every
 // code in it is a car of the registry, and where the plan puts each card — nothing left out.
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { resolveGoLiveDataDir } from './vehicles';
@@ -13,6 +13,11 @@ import {
   type FuelCardRow,
 } from './fuel-cards-import';
 import { FUEL_CARDS_GO_LIVE_MARK } from './fuel-cards';
+import {
+  FUEL_CARD_PHOTOS_DIR,
+  FUEL_CARD_PHOTOS_GO_LIVE_MARK,
+  planFuelCardPhotos,
+} from './fuel-card-photos';
 
 const dir = resolveGoLiveDataDir() as string;
 const asset = parseFuelCards(JSON.parse(readFileSync(join(dir, FUEL_CARDS_FILE), 'utf8')));
@@ -22,6 +27,7 @@ const row = (over: Partial<FuelCardRow>): FuelCardRow => ({
   number: '5485640000000001',
   name: 'EGYCASH-1',
   balance: 100,
+  expiresAt: '2027-01-31',
   password: '1234',
   sheetCode: '61',
   vehicleCode: '61',
@@ -83,6 +89,61 @@ describe('the sheets, as shipped', () => {
 
   it('has its own run key', () => {
     expect(FUEL_CARDS_GO_LIVE_MARK).toBe('go-live:fuel-cards:v1');
+    expect(FUEL_CARD_PHOTOS_GO_LIVE_MARK).toBe('go-live:fuel-card-photos:v1');
+  });
+
+  it('dates 413 cards, each on the last day of its «VALID THRU» month; 13 wait for a date', () => {
+    const dated = asset.rows.filter((card) => card.expiresAt !== null);
+    expect(dated).toHaveLength(413);
+    for (const card of dated) {
+      const day = new Date(`${card.expiresAt as string}T00:00:00.000Z`);
+      const next = new Date(day.getTime() + 86_400_000);
+      expect(next.getUTCDate(), `${card.number} ${card.expiresAt}`).toBe(1);
+    }
+    const undated = asset.rows
+      .filter((card) => card.expiresAt === null)
+      .map((card) => `${card.company}:${card.sheetCode}`)
+      .sort();
+    expect(undated).toEqual(
+      [
+        ...['suz 63', 'suz 65', 'suz 66', 'suz 68'].map((code) => `wataniya:${code}`),
+        ...['286', '287', '291', '294', '530', '532', '533', '534', '809'].map(
+          (code) => `chillout:${code}`,
+        ),
+      ].sort(),
+    );
+  });
+
+  it('a renewed card carries the date on its photo, not the older sheet row', () => {
+    const byNumber = new Map(asset.rows.map((card) => [card.number, card]));
+    // Card 207: the sheet says 11/25, the card in the photo says 11/28.
+    expect(byNumber.get('5485640006816967')?.expiresAt).toBe('2028-11-30');
+  });
+
+  it('ships 406 photos, each named for a card of the sheets', () => {
+    const files = readdirSync(join(dir, FUEL_CARD_PHOTOS_DIR));
+    expect(files).toHaveLength(406);
+    const numbers = new Set(asset.rows.map((card) => card.number));
+    expect(files.filter((file) => !numbers.has(file.replace(/\.jpg$/u, '')))).toEqual([]);
+  });
+});
+
+describe('planFuelCardPhotos', () => {
+  it('a photo goes on the card of its number; a stranger is listed, a non-image refused', () => {
+    const plan = planFuelCardPhotos(
+      ['1111.jpg', '2222.jpg', '3333.jpg', 'notes.txt', '1111.png'],
+      new Map([
+        ['1111', { cardId: 'c1', hasImage: false }],
+        ['2222', { cardId: 'c2', hasImage: true }],
+      ]),
+    );
+    expect(plan.matched).toEqual([
+      { file: '1111.jpg', number: '1111', cardId: 'c1', hasImage: false },
+      { file: '2222.jpg', number: '2222', cardId: 'c2', hasImage: true },
+    ]);
+    expect(plan.unmatched).toEqual(['3333.jpg']);
+    expect(plan.notImages).toEqual(['notes.txt']);
+    expect(plan.duplicates).toEqual(['1111']);
   });
 });
 
@@ -95,11 +156,12 @@ describe('parseFuelCards', () => {
         row({ vehicleCode: null, label: null }),
         row({ number: '5485640000000009' }),
         row({ number: '5485640000000009', vehicleCode: '62', sheetCode: '62' }),
+        row({ number: '5485640000000011', expiresAt: '01/27' }),
         { ...row({}), number: '5485640000000010', company: 'misr' },
       ],
     });
     expect(parsed.rows.map((card) => card.number)).toEqual(['5485640000000009']);
-    expect(parsed.rejected).toHaveLength(5);
+    expect(parsed.rejected).toHaveLength(6);
   });
 });
 

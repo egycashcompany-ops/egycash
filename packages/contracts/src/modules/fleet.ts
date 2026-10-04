@@ -3006,6 +3006,8 @@ export interface FleetDealershipTotalsDto {
 
 /** The two fuel companies the fleet buys from. Their logos ship with the web client. */
 export const FLEET_FUEL_CARD_COMPANIES = ['wataniya', 'chillout'] as const;
+/** The Files category the card photos are stored under. */
+export const FLEET_FUEL_CARD_FILE_CATEGORY = 'fleet-fuel-cards';
 export const FleetFuelCardCompanySchema = z.enum(FLEET_FUEL_CARD_COMPANIES);
 export type FleetFuelCardCompany = z.infer<typeof FleetFuelCardCompanySchema>;
 
@@ -3114,6 +3116,8 @@ export interface FleetFuelCardDto {
   requestedAt: string | null;
   /** When the balance was last added to — the green row for a day. */
   lastChargedAt: string | null;
+  /** The photo of the card («صوره كل فيزا»); the bytes are fetched on their own, under the grant. */
+  image: FleetLicenseImageDto | null;
   version: number;
   createdAt: string;
   updatedAt: string;

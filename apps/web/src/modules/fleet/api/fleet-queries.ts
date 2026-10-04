@@ -950,6 +950,12 @@ export const useUpdateFuelCard = () =>
     api.updateFuelCard(id, body),
   );
 export const useDeleteFuelCard = () => useFuelCardMutation((id: string) => api.deleteFuelCard(id));
+export const useUploadFuelCardImage = () =>
+  useFuelCardMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadFuelCardImage(id, file),
+  );
+export const useDeleteFuelCardImage = () =>
+  useFuelCardMutation((id: string) => api.deleteFuelCardImage(id));
 export const useRequestFuelCharge = () =>
   useFuelCardMutation(({ id, body }: { id: string; body: RequestFleetFuelCharge }) =>
     api.requestFuelCharge(id, body),

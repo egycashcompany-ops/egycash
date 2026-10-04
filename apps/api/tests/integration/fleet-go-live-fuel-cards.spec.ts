@@ -7,9 +7,12 @@
 //   3. The screen reads them: the label stands where the car code would, the password behind its
 //      grant.
 //   4. A later boot writes nothing at all.
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+//   5. The photos go on the cards of their numbers; a number no card has is listed, and a card
+//      that already has a photo keeps it.
+import { copyFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -29,6 +32,11 @@ import {
   FUEL_CARDS_GO_LIVE_MARK,
   runFuelCardsGoLive,
 } from '../../src/modules/fleet/go-live/fuel-cards';
+import {
+  FUEL_CARD_PHOTOS_DIR,
+  FUEL_CARD_PHOTOS_GO_LIVE_MARK,
+  runFuelCardPhotosGoLive,
+} from '../../src/modules/fleet/go-live/fuel-card-photos';
 import { VEHICLE_GO_LIVE_MARK } from '../../src/modules/fleet/go-live/vehicles';
 import { VEHICLE_CHANGES_GO_LIVE_MARK } from '../../src/modules/fleet/go-live/vehicle-changes';
 import { env } from '../../src/infrastructure/config/env';
@@ -39,6 +47,17 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
+const HERE = dirname(fileURLToPath(import.meta.url));
+/** A real card photo from the build, copied under the test's own numbers. */
+const REAL_PHOTO = join(
+  HERE,
+  '..',
+  '..',
+  'assets',
+  'fleet-go-live',
+  FUEL_CARD_PHOTOS_DIR,
+  '5485640006880021.jpg',
+);
 let replset: MongoMemoryReplSet | undefined;
 let app: Express;
 let adminToken = '';
@@ -56,6 +75,7 @@ const card = (over: Record<string, unknown>) => ({
   company: 'wataniya',
   name: 'EGYCASH-1',
   balance: 100,
+  expiresAt: null,
   password: '0061',
   sheetCode: '61',
   vehicleCode: '61',
@@ -66,7 +86,7 @@ const card = (over: Record<string, unknown>) => ({
 const SHEETS = {
   source: 'test',
   cards: [
-    card({ number: '5485640000000001', balance: 2031.97 }),
+    card({ number: '5485640000000001', balance: 2031.97, expiresAt: '2027-01-31' }),
     card({ number: '5485640000000002', company: 'chillout', password: null, balance: 0 }),
     card({ number: '5485640000000003', vehicleCode: null, label: 'سفر 1', sheetCode: 'سفر 1' }),
     card({ number: '5485640000000004', vehicleCode: null, label: 'سفر 2', sheetCode: 'سفر 2' }),
@@ -146,6 +166,11 @@ beforeAll(async () => {
 
   dataDir = await mkdtemp(join(tmpdir(), 'fuel-cards-'));
   await writeFile(join(dataDir, FUEL_CARDS_FILE), JSON.stringify(SHEETS));
+  const photos = join(dataDir, FUEL_CARD_PHOTOS_DIR);
+  await mkdir(photos);
+  for (const number of ['5485640000000001', '5485640000000003', '5485640000000999']) {
+    await copyFile(REAL_PHOTO, join(photos, `${number}.jpg`));
+  }
 }, 120_000);
 
 afterAll(async () => {
@@ -211,10 +236,12 @@ describe('the fuel-card sheets, as a boot step', () => {
       label: null,
       company: 'wataniya',
       balance: 2031.97,
-      expiresAt: null,
+      expiresAt: '2027-01-31T00:00:00.000Z',
       hasPassword: true,
+      image: null,
     });
     expect(by('5485640000000002')).toMatchObject({
+      expiresAt: null,
       vehicleCode: '61',
       company: 'chillout',
       hasPassword: false,
@@ -238,6 +265,60 @@ describe('the fuel-card sheets, as a boot step', () => {
     const before = await FleetFuelCardModel.countDocuments({});
     await runFuelCardsGoLive(dataDir);
     expect(await FleetFuelCardModel.countDocuments({})).toBe(before);
+  });
+});
+
+describe('the card photos, as a boot step', () => {
+  const imageOf = async (number: string) =>
+    await FleetFuelCardModel.findOne({ number, isDeleted: false })
+      .lean<{ _id: Types.ObjectId; image: { fileName: string } | null }>()
+      .exec();
+
+  it('puts each photo on the card of its number, lists a stranger, and serves the bytes', async () => {
+    await runFuelCardPhotosGoLive(dataDir);
+    const done = await FleetGoLiveRunModel.findOne({ key: FUEL_CARD_PHOTOS_GO_LIVE_MARK })
+      .lean<{ status: string; outcome: Record<string, unknown> | null }>()
+      .exec();
+    expect(done?.status).toBe('done');
+    expect(done?.outcome).toMatchObject({
+      attached: 2,
+      kept: 0,
+      unmatched: ['5485640000000999.jpg'],
+    });
+    const first = await imageOf('5485640000000001');
+    expect(first?.image?.fileName).toBe('5485640000000001.jpg');
+    expect((await imageOf('5485640000000002'))?.image ?? null).toBeNull();
+
+    const bytes = await request(app)
+      .get(`/api/v1/fleet/fuel-cards/${String(first?._id)}/image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers['content-type']).toContain('image/jpeg');
+
+    const listed = await request(app)
+      .get(`/api/v1/fleet/fuel-cards/${String(first?._id)}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect((listed.body as { data: { image: { fileName: string } } }).data.image.fileName).toBe(
+      '5485640000000001.jpg',
+    );
+  });
+
+  it('the clerk replaces and deletes it from the card', async () => {
+    const card = await imageOf('5485640000000003');
+    const id = String(card?._id);
+    const replaced = await request(app)
+      .post(`/api/v1/fleet/fuel-cards/${id}/image`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', REAL_PHOTO, { filename: 'new.jpg', contentType: 'image/jpeg' });
+    expect(replaced.status).toBe(200);
+    expect((replaced.body as { data: { image: { fileName: string } } }).data.image.fileName).toBe(
+      'new.jpg',
+    );
+    const removed = await request(app)
+      .delete(`/api/v1/fleet/fuel-cards/${id}/image`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(removed.status).toBe(200);
+    expect((removed.body as { data: { image: null } }).data.image).toBeNull();
   });
 });
 

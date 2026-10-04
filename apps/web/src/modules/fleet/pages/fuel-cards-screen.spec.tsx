@@ -69,6 +69,7 @@ const card = (over: Partial<FleetFuelCardDto> = {}): FleetFuelCardDto => ({
   requestedAmount: null,
   requestedAt: null,
   lastChargedAt: null,
+  image: null,
   version: 0,
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-01T00:00:00.000Z',
@@ -203,6 +204,30 @@ describe('one tile per car, Wataniya above Chill Out', () => {
     const html = render('cards', { cards: [card({ expiresAt: null })] });
     expect(html).not.toContain(ar('fleet.fuelCards.expiresSoon'));
     expect(html).not.toContain('Invalid');
+  });
+});
+
+describe('the card photo — «صوره كل فيزا»', () => {
+  const photo = {
+    fileId: 'f-1',
+    fileName: '5485640006880021.jpg',
+    mime: 'image/jpeg',
+    size: 1000,
+    uploadedAt: '2026-10-04T00:00:00.000Z',
+  };
+
+  it('a card with a photo shows its frame with the eye that opens it', () => {
+    const html = render('cards', { cards: [card({ image: photo })] });
+    expect(html).toContain(ar('fleet.fuelCards.image.title'));
+    expect(html).toContain('data-fuel-image="c-1"');
+    expect(html).not.toContain('data-fuel-image-upload=');
+  });
+
+  it('a card with none offers the upload — to a reader who may edit the card only', () => {
+    expect(render('cards')).toContain('data-fuel-image-upload="c-1"');
+    const viewer = render('cards', { permissions: ['fleetFuelCard.view'] });
+    expect(viewer).not.toContain('data-fuel-image-upload=');
+    expect(viewer).not.toContain('data-fuel-image=');
   });
 });
 

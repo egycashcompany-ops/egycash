@@ -12,6 +12,15 @@ import {
 } from '@ecms/contracts';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
+/** The photo of the card — Files owns the bytes, the card owns the link. */
+export interface FleetFuelCardImage {
+  fileId: Types.ObjectId;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: Date;
+}
+
 export interface FleetFuelCardDoc extends BaseDocFields {
   /** `null` — a card on no car («سفر 1», «اسبير»), named by `label`. */
   vehicleId: Types.ObjectId | null;
@@ -26,7 +35,19 @@ export interface FleetFuelCardDoc extends BaseDocFields {
   requestedAmount: number | null;
   requestedAt: Date | null;
   lastChargedAt: Date | null;
+  image?: FleetFuelCardImage | null;
 }
+
+const imageSchema = new Schema<FleetFuelCardImage>(
+  {
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, required: true },
+    mime: { type: String, required: true },
+    size: { type: Number, required: true },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
 
 const fuelCardSchema = new Schema<FleetFuelCardDoc>(
   {
@@ -41,6 +62,7 @@ const fuelCardSchema = new Schema<FleetFuelCardDoc>(
     requestedAmount: { type: Number, default: null, min: 0 },
     requestedAt: { type: Date, default: null },
     lastChargedAt: { type: Date, default: null },
+    image: { type: imageSchema, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

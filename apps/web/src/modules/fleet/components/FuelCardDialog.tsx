@@ -14,6 +14,7 @@ import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { FUEL_CARD_COMPANIES, FuelCompanyLogo } from './FuelCardTiles';
 import { revealFuelCardPassword } from '../api/fleet-api';
 import { EyeIcon } from '../../../shared/ui/icons';
+import { FuelCardImageControl } from './FuelCardImage';
 
 export const FuelCardDialog = ({
   open,
@@ -21,6 +22,8 @@ export const FuelCardDialog = ({
   card,
   initialVehicleId = '',
   initialCompany,
+  photoCard = null,
+  onOpenPhoto,
 }: {
   open: boolean;
   onClose: () => void;
@@ -28,6 +31,12 @@ export const FuelCardDialog = ({
   card: FleetFuelCardDto | null;
   initialVehicleId?: string;
   initialCompany?: FleetFuelCardCompany;
+  /**
+   * The card being edited as the list holds it NOW — its photo changes under the open form (an
+   * upload from here), while `card` stays the snapshot the boxes were filled from.
+   */
+  photoCard?: FleetFuelCardDto | null;
+  onOpenPhoto?: (card: FleetFuelCardDto) => void;
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -233,6 +242,13 @@ export const FuelCardDialog = ({
             </div>
           </Field>
         </div>
+        {photoCard !== null && (
+          <Field label={t('fleet.fuelCards.image.title')}>
+            <div className="flex min-h-[2.5rem] items-center">
+              <FuelCardImageControl card={photoCard} onOpen={(c) => onOpenPhoto?.(c)} />
+            </div>
+          </Field>
+        )}
       </div>
     </Dialog>
   );

@@ -298,7 +298,7 @@ describe('the request box is one frame, like every other fact on the line', () =
     expect(box).toContain('border-transparent');
     expect(box).toContain('focus-visible:ring-0');
     expect(box).not.toContain('bg-white');
-    expect(html).toContain('focus-within:border-brand-500');
+    expect(html).toContain('focus-within:border-emerald-500');
   });
 });
 
@@ -345,13 +345,14 @@ describe('cards on no car — «كروت زيادة ملهمش عربيات»', 
 });
 
 describe('charging', () => {
-  it('sums the balances by company between the filters and the tiles', () => {
+  it('sums the balances by company above the filters, as the fuel cards screen does', () => {
     const html = render('charging');
-    const filters = html.indexOf(ar('fleet.fuelCards.filters.anyState'));
-    const strip = html.indexOf('6,350.00');
-    const tile = html.indexOf('data-fuel-vehicle=');
-    expect(strip).toBeGreaterThan(filters);
-    expect(tile).toBeGreaterThan(strip);
+    const strip = html.indexOf('data-fuel-kpi="wataniya"');
+    const filters = html.indexOf(ar('fleet.fuelCards.board.charge.stateAny'));
+    const tile = html.indexOf('data-fuel-tile=');
+    expect(strip).toBeGreaterThan(-1);
+    expect(filters).toBeGreaterThan(strip);
+    expect(tile).toBeGreaterThan(filters);
     expect(html).toContain(ar('fleet.fuelCards.totals.wataniya'));
   });
 
@@ -370,16 +371,16 @@ describe('charging', () => {
     });
     const req = html.slice(
       html.indexOf('data-fuel-line="wataniya"'),
-      html.indexOf('data-fuel-vehicle="v-178"'),
+      html.indexOf('data-fuel-tile="v-178"'),
     );
-    expect(req).toContain('bg-amber-50');
+    expect(req).toContain('border-amber-500/50');
     expect(req).toContain('data-fuel-tick="req"');
     expect(req).toContain('data-fuel-cross="req"');
-    const chg = html.slice(html.indexOf('data-fuel-vehicle="v-178"'));
-    expect(chg).toContain('bg-emerald-50');
+    const chg = html.slice(html.indexOf('data-fuel-tile="v-178"'));
+    expect(chg).toContain('border-emerald-500/50');
   });
 
-  it('warns above the balance frame below the yellow line, and in red below the red line', () => {
+  it('marks the balance below the yellow line, and in red below the red line', () => {
     const html = render('charging', {
       cards: [
         card({ id: 'y', balance: 150 }),
@@ -387,9 +388,10 @@ describe('charging', () => {
       ],
     });
     expect(html).toContain(ar('fleet.fuelCards.balanceYellow'));
-    expect(html).toContain(ar('fleet.fuelCards.balanceRed'));
-    const badge = html.indexOf(ar('fleet.fuelCards.balanceYellow'));
-    expect(html.indexOf(ar('fleet.fuelCards.fields.balance'), badge)).toBeGreaterThan(badge);
+    expect(html).toContain(ar('fleet.fuelCards.board.charge.critical'));
+    // On the balance's own box, after its figure — the line never wraps.
+    const balance = html.indexOf('data-fuel-balance="y"');
+    expect(html.indexOf(ar('fleet.fuelCards.balanceYellow'), balance)).toBeGreaterThan(balance);
   });
 
   it('offers the transfer only to a reader who may move balances', () => {

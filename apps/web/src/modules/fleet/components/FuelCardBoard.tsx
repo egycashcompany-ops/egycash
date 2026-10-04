@@ -42,11 +42,11 @@ export const expiryState = (
 /** The design's type: Cairo for the words. */
 export const BOARD_FONT = "[font-family:'Cairo',sans-serif]";
 /** The design's `.num-mono`: the system monospace with tabular figures. */
-const NUM =
+export const NUM =
   '[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace] [font-feature-settings:"tnum"] tabular-nums';
 
 /** «2027/09/30» — the design writes a date year first, with slashes. */
-const ymd = (iso: string | null): string =>
+export const ymd = (iso: string | null): string =>
   iso === null ? '—' : iso.slice(0, 10).replace(/-/gu, '/');
 
 /** Chill Out's red mark, square, for the small badges. Wataniya keeps its logo. */
@@ -568,8 +568,12 @@ export const VehicleFuelGroup = ({
             <div
               data-fuel-code={code}
               className={cn(
-                'rounded-lg border px-3.5 py-0.5 text-2xl font-black tracking-wider shadow-inner md:text-3xl',
-                NUM,
+                'rounded-lg border px-3.5 py-0.5 font-black shadow-inner',
+                // A car's code is a number, drawn large; a label on no car («سفر 1», «اسبير») is
+                // words, and reads at a normal size.
+                /^\d+$/u.test(code)
+                  ? cn('text-2xl tracking-wider md:text-3xl', NUM)
+                  : 'py-1 text-base font-bold',
                 held === 0
                   ? 'border-slate-700 bg-slate-800 text-white'
                   : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-400',

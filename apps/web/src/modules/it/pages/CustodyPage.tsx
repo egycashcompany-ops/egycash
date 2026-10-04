@@ -8,6 +8,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { type ItAssetAssignmentDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useCan } from '../../../platform/rbac/Can';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
@@ -16,7 +17,10 @@ import { EmployeePicker } from '../components/EmployeePicker';
 import { Pagination } from '../../../shared/ui/Pagination';
 import { Select } from '../../../shared/ui/form';
 import { StatusBadge } from '../../../shared/ui/Badge';
-import { EyeIcon } from '../../../shared/ui/icons';
+import { Button } from '../../../shared/ui/Button';
+import { EyeIcon, UsersIcon } from '../../../shared/ui/icons';
+import { CustodyReceiptActions } from '../components/CustodyReceipt';
+import { AssignAssetDialog } from '../components/CustodyDialogs';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useItAssignments, useItBranchOptions } from '../api/it-queries';
@@ -35,7 +39,10 @@ const DEFAULT_PAGE_SIZE = 25;
 
 export const CustodyPage = (): JSX.Element => {
   const t = useT();
+  const can = useCan();
   const navigate = useNavigate();
+  // «تسليم عهدة» from the register itself — the receipt starts empty and takes several assets.
+  const [handingOver, setHandingOver] = useState(false);
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
@@ -195,6 +202,12 @@ export const CustodyPage = (): JSX.Element => {
         ),
     },
     {
+      // FR-18 — the paper the holder signed: print it again, file or view the signed copy.
+      key: 'receipt',
+      header: t('it.custody.receipt.column'),
+      render: (a) => <CustodyReceiptActions assignment={a} />,
+    },
+    {
       key: 'actions',
       header: t('it.assets.columns.actions'),
       align: 'end',
@@ -217,7 +230,19 @@ export const CustodyPage = (): JSX.Element => {
       <PageHeader
         title={t('it.nav.custody')}
         breadcrumbs={[{ label: t('it.module.title'), to: '/it' }, { label: t('it.nav.custody') }]}
+        actions={
+          can('itAsset.assign') ? (
+            <Button
+              size="sm"
+              leftIcon={<UsersIcon className="h-4 w-4" />}
+              onClick={() => setHandingOver(true)}
+            >
+              {t('it.custody.receipt.title')}
+            </Button>
+          ) : undefined
+        }
       />
+      <AssignAssetDialog open={handingOver} onClose={() => setHandingOver(false)} asset={null} />
 
       <div className="space-y-4">
         <FilterBar

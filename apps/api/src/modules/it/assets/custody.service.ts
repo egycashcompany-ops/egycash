@@ -17,6 +17,7 @@ import {
   ItEvents,
   type AssignItAsset,
   type DisposeItAsset,
+  type HandOverItAssets,
   type ItAssetEventType,
   type ListItAssetHistoryQuery,
   type Paginated,
@@ -26,7 +27,7 @@ import {
 import { BusinessRuleError, ConflictError, NotFoundError } from '../../../shared/errors';
 import { type AuthContext, type ScopeSelector } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
-import { getDirectoryEmployee, type DirectoryEmployee } from '../../../platform/directory';
+import { type DirectoryEmployee } from '../../../platform/directory';
 import { emit } from '../../../platform/kernel/event-bus';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { logger } from '../../../infrastructure/logging/logger';
@@ -37,6 +38,9 @@ import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
 import { type ItAssetEventDoc } from './asset-event.model';
 import { type ItAssetAssignmentDoc } from './assignment.model';
 import { type ItAssetDoc } from './asset.model';
+import { itCustodyReceiptRepository } from './receipt.repository';
+import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receipt.model';
+import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -59,13 +63,37 @@ const change = (field: string, from: unknown, to: unknown) => ({ field, old: fro
  * fact HR can state, not a new dependency on HR answering at all. On leave and suspended are still
  * employed, and still receive custody.
  */
-const refuseLeaver = (employee: DirectoryEmployee | null): void => {
+export const refuseLeaver = (employee: DirectoryEmployee | null): void => {
   if (employee?.status === 'exited') {
     throw new BusinessRuleError(
       `employee ${employee.code} has left the company; custody can only be handed to a current employee`,
     );
   }
 };
+
+/**
+ * Only an asset in stock is handed over — the one message for assign, hand-over and the receipt
+ * printed before either, so the paper is refused for exactly what the hand-over would refuse.
+ */
+export const refuseUnlessInStock = async (
+  asset: ItAssetDoc,
+  session?: Parameters<Parameters<typeof unitOfWork>[0]>[0],
+): Promise<void> => {
+  if (asset.status === 'inStock') return;
+  const open = await itAssetAssignmentRepository.findOpenForAsset(String(asset._id), session);
+  throw new ConflictError(
+    open === null
+      ? `asset ${asset.assetCode} is ${asset.status} and cannot be assigned`
+      : `asset ${asset.assetCode} is already assigned; return or transfer it first`,
+  );
+};
+
+/** The receipt's snapshot of who signed it — taken from the holder read before the transaction. */
+const signer = (holder: ReceiptHolder) => ({
+  employeeCode: holder.employeeCode,
+  employeeName: holder.employeeName,
+  jobTitle: holder.jobTitle,
+});
 
 interface HistoryInput {
   assetId: string;
@@ -145,90 +173,175 @@ class ItAssetCustodyService {
     );
   }
 
-  /** Assign: the asset must be in stock, i.e. free of an open interval (design §2.5). */
+  /**
+   * Assign ONE asset — the single-line hand-over. Kept as its own endpoint for the callers that
+   * already use it; it opens the same receipt every hand-over does (FR-18), so no interval is ever
+   * opened for a person without the paper they sign for it.
+   */
   async assign(
     assetId: string,
     input: AssignItAsset,
     ctx: AuthContext,
     scope: ScopeSelector,
   ): Promise<{ asset: ItAssetDoc; assignment: ItAssetAssignmentDoc }> {
+    const { assets, assignments } = await this.handOver(
+      {
+        employeeId: input.employeeId,
+        lines: [
+          {
+            assetId,
+            ...(input.conditionOnIssue === undefined
+              ? {}
+              : { conditionOnIssue: input.conditionOnIssue }),
+            ...(input.notes === undefined ? {} : { notes: input.notes }),
+          },
+        ],
+        ...(input.assignedAt === undefined ? {} : { assignedAt: input.assignedAt }),
+        ...(input.expectedReturnAt === undefined
+          ? {}
+          : { expectedReturnAt: input.expectedReturnAt }),
+      },
+      ctx,
+      scope,
+    );
+    const [asset] = assets;
+    const [assignment] = assignments;
+    if (asset === undefined || assignment === undefined) {
+      throw new NotFoundError('the hand-over recorded nothing');
+    }
+    return { asset, assignment };
+  }
+
+  /**
+   * Hand-over (FR-18): one employee, one or more assets, ONE receipt — «إيصال استلام».
+   *
+   * Every line is an assign in its own right (the asset must be in stock, design §2.5) and writes
+   * what an assign always wrote — the interval, the asset's denormalization, an `assigned` history
+   * event, an audit row and, after the commit, the platform event. They share one transaction with
+   * the receipt: the paper lists exactly the intervals the system opened, and a line refused
+   * half-way through leaves nothing behind — neither the lines before it nor the receipt.
+   */
+  async handOver(
+    input: HandOverItAssets,
+    ctx: AuthContext,
+    scope: ScopeSelector,
+  ): Promise<{
+    receipt: ItCustodyReceiptDoc;
+    assets: ItAssetDoc[];
+    assignments: ItAssetAssignmentDoc[];
+  }> {
     const at = input.assignedAt ?? new Date();
     // Asked BEFORE the transaction: HR's answer is not part of the custody write, and a read of
     // another module's data has no business holding it open.
-    refuseLeaver(await getDirectoryEmployee(input.employeeId));
+    const holder = await readReceiptHolder(input.employeeId);
+    refuseLeaver(holder.employee);
+    // Allocated up front so each interval can name its receipt as it is created.
+    const receiptId = new Types.ObjectId();
+
     const result = await unitOfWork(async (session) => {
-      const asset = await this.loadForTransition(assetId, scope, session);
-      if (asset.status !== 'inStock') {
-        const open = await itAssetAssignmentRepository.findOpenForAsset(assetId, session);
-        throw new ConflictError(
-          open === null
-            ? `asset ${asset.assetCode} is ${asset.status} and cannot be assigned`
-            : `asset ${asset.assetCode} is already assigned; return or transfer it first`,
+      const assets: ItAssetDoc[] = [];
+      const assignments: ItAssetAssignmentDoc[] = [];
+      const lines: ItCustodyReceiptLineSub[] = [];
+
+      for (const line of input.lines) {
+        const asset = await this.loadForTransition(line.assetId, scope, session);
+        await refuseUnlessInStock(asset, session);
+
+        const assignment = await itAssetAssignmentRepository.create(
+          {
+            assetId: new Types.ObjectId(line.assetId),
+            assignedToEmployeeId: new Types.ObjectId(input.employeeId),
+            assignedByUserId: new Types.ObjectId(ctx.userId),
+            assignedAt: at,
+            conditionOnIssue: line.conditionOnIssue ?? null,
+            expectedReturnAt: input.expectedReturnAt ?? null,
+            returnedAt: null,
+            returnedToUserId: null,
+            conditionOnReturn: null,
+            notes: line.notes ?? null,
+            branchId: asset.branchId,
+            receiptId,
+          },
+          { by: ctx.userId, session },
         );
+
+        const updated = await itAssetRepository.updateById(
+          line.assetId,
+          { status: 'assigned', currentAssignmentId: assignment._id },
+          { by: ctx.userId, version: asset.__v, session, scope },
+        );
+
+        await this.writeHistory(
+          {
+            assetId: line.assetId,
+            type: 'assigned',
+            at,
+            metadata: {
+              assignmentId: String(assignment._id),
+              employeeId: input.employeeId,
+              receiptId: String(receiptId),
+              ...(input.expectedReturnAt === undefined
+                ? {}
+                : { expectedReturnAt: input.expectedReturnAt.toISOString() }),
+              ...(line.conditionOnIssue === undefined
+                ? {}
+                : { conditionOnIssue: line.conditionOnIssue }),
+            },
+            notes: line.notes ?? null,
+          },
+          ctx,
+          session,
+        );
+
+        await auditService.record({
+          entityRef: entityRef(line.assetId),
+          action: 'assign',
+          changes: [
+            change('status', asset.status, 'assigned'),
+            change('holder', null, input.employeeId),
+          ],
+        });
+
+        assets.push(updated);
+        assignments.push(assignment);
+        lines.push({
+          assetId: asset._id,
+          assignmentId: assignment._id,
+          assetCode: asset.assetCode,
+          name: asset.name,
+          serialNumber: asset.serialNumber,
+          conditionOnIssue: line.conditionOnIssue ?? null,
+          notes: line.notes ?? null,
+        });
       }
 
-      const assignment = await itAssetAssignmentRepository.create(
+      const [first] = assets;
+      if (first === undefined) throw new BusinessRuleError('a receipt lists at least one asset');
+      const receipt = await itCustodyReceiptRepository.create(
         {
-          assetId: new Types.ObjectId(assetId),
-          assignedToEmployeeId: new Types.ObjectId(input.employeeId),
-          assignedByUserId: new Types.ObjectId(ctx.userId),
-          assignedAt: at,
-          conditionOnIssue: input.conditionOnIssue ?? null,
-          expectedReturnAt: input.expectedReturnAt ?? null,
-          returnedAt: null,
-          returnedToUserId: null,
-          conditionOnReturn: null,
-          notes: input.notes ?? null,
-          branchId: asset.branchId,
+          _id: receiptId,
+          employeeId: new Types.ObjectId(input.employeeId),
+          ...signer(holder),
+          issuedAt: at,
+          issuedByUserId: new Types.ObjectId(ctx.userId),
+          branchId: first.branchId,
+          lines,
+          signedCopy: null,
         },
         { by: ctx.userId, session },
       );
 
-      const updated = await itAssetRepository.updateById(
-        assetId,
-        { status: 'assigned', currentAssignmentId: assignment._id },
-        { by: ctx.userId, version: asset.__v, session, scope },
-      );
+      return { receipt, assets, assignments };
+    });
 
-      await this.writeHistory(
-        {
-          assetId,
-          type: 'assigned',
-          at,
-          metadata: {
-            assignmentId: String(assignment._id),
-            employeeId: input.employeeId,
-            ...(input.expectedReturnAt === undefined
-              ? {}
-              : { expectedReturnAt: input.expectedReturnAt.toISOString() }),
-            ...(input.conditionOnIssue === undefined
-              ? {}
-              : { conditionOnIssue: input.conditionOnIssue }),
-          },
-          notes: input.notes ?? null,
-        },
-        ctx,
-        session,
-      );
-
-      await auditService.record({
-        entityRef: entityRef(assetId),
-        action: 'assign',
-        changes: [
-          change('status', asset.status, 'assigned'),
-          change('holder', null, input.employeeId),
-        ],
+    for (const [index, asset] of result.assets.entries()) {
+      await emit(ItEvents.AssetAssigned, {
+        assetId: String(asset._id),
+        assetCode: asset.assetCode,
+        employeeId: input.employeeId,
+        assignmentId: String(result.assignments[index]?._id),
       });
-
-      return { asset: updated, assignment };
-    });
-
-    await emit(ItEvents.AssetAssigned, {
-      assetId,
-      assetCode: result.asset.assetCode,
-      employeeId: input.employeeId,
-      assignmentId: String(result.assignment._id),
-    });
+    }
     return result;
   }
 
@@ -322,9 +435,10 @@ class ItAssetCustodyService {
   ): Promise<{ asset: ItAssetDoc; assignment: ItAssetAssignmentDoc }> {
     const at = input.at ?? new Date();
     // Read outside the transaction, like assign's, and judged inside it: whether this names a NEW
-    // holder is only known once the open interval has been read.
+    // holder is only known once the open interval has been read. The same read names the new
+    // holder on the receipt a hand-over to them prints (FR-18).
     const named =
-      input.toEmployeeId === undefined ? null : await getDirectoryEmployee(input.toEmployeeId);
+      input.toEmployeeId === undefined ? null : await readReceiptHolder(input.toEmployeeId);
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
       await this.assertNoActiveMaintenance(asset, 'transfer', session);
@@ -350,7 +464,10 @@ class ItAssetCustodyService {
       // Only a transfer that HANDS the asset to somebody new is a hand-over. Moving it across
       // branches in the same hands gives nobody anything, even when those hands have since left:
       // the return is still owed, and refusing the move would not bring it any closer.
-      if (!sameHolder) refuseLeaver(named);
+      if (!sameHolder) refuseLeaver(named?.employee ?? null);
+      // A new holder signs a new receipt (FR-18); the same holder moving branch is still bound by
+      // the paper they already signed, so the next interval carries it over.
+      const receiptId = sameHolder ? (open.receiptId ?? null) : new Types.ObjectId();
 
       // Close the current interval. `returnedAt` is what makes it closed, so the partial unique
       // index releases immediately and the new interval can be inserted in the same transaction.
@@ -377,9 +494,36 @@ class ItAssetCustodyService {
           conditionOnReturn: null,
           notes: input.notes ?? null,
           branchId: new Types.ObjectId(toBranchId),
+          receiptId,
         },
         { by: ctx.userId, session },
       );
+
+      if (!sameHolder && receiptId !== null && named !== null) {
+        await itCustodyReceiptRepository.create(
+          {
+            _id: receiptId,
+            employeeId: new Types.ObjectId(toEmployeeId),
+            ...signer(named),
+            issuedAt: at,
+            issuedByUserId: new Types.ObjectId(ctx.userId),
+            branchId: new Types.ObjectId(toBranchId),
+            lines: [
+              {
+                assetId: asset._id,
+                assignmentId: next._id,
+                assetCode: asset.assetCode,
+                name: asset.name,
+                serialNumber: asset.serialNumber,
+                conditionOnIssue: input.conditionOnIssue ?? null,
+                notes: input.notes ?? null,
+              },
+            ],
+            signedCopy: null,
+          },
+          { by: ctx.userId, session },
+        );
+      }
 
       // `branchId` is the asset's data-scope anchor and the design says it changes ONLY here.
       const updated = await itAssetRepository.updateById(
@@ -403,6 +547,7 @@ class ItAssetCustodyService {
             fromBranchId: String(asset.branchId),
             toBranchId,
             assignmentId: String(next._id),
+            ...(receiptId === null ? {} : { receiptId: String(receiptId) }),
           },
           notes: input.notes ?? null,
         },

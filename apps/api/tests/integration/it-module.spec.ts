@@ -15,6 +15,9 @@ import {
   type ItAssetDto,
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
+  type ItCustodyReceiptDocumentDto,
+  type ItCustodyReceiptDto,
+  type ItHandOverResultDto,
   type ItVendorDto,
 } from '@ecms/contracts';
 import { bootPlatform } from '../../src/platform/kernel/bootstrap';
@@ -26,6 +29,7 @@ import { rbacService } from '../../src/platform/rbac';
 import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { ItAssetAssignmentModel } from '../../src/modules/it/assets/assignment.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -777,5 +781,163 @@ describe('asset custody', () => {
       );
     await waitFor(() => mine() !== undefined);
     expect((mine()?.payload as { employeeId?: string }).employeeId).toBe(EMPLOYEE_A);
+  });
+
+  // ── FR-18: the custody receipt — printed first, recorded with the hand-over, signed later ──
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+
+  const receipts = (path: string, token = adminToken) => ({
+    get: () => request(app).get(`/api/v1/it/custody-receipts${path}`).set('Authorization', `Bearer ${token}`),
+    post: (body: Record<string, unknown>) =>
+      request(app)
+        .post(`/api/v1/it/custody-receipts${path}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body),
+  });
+
+  it('prints the receipt first — writing nothing — then hands over every asset on ONE receipt', async () => {
+    const pc = await custodyAsset();
+    const screen = await custodyAsset();
+    const body = {
+      employeeId: EMPLOYEE_A,
+      lines: [
+        { assetId: pc.id, conditionOnIssue: 'N', notes: 'Mouse&KeyBord' },
+        { assetId: screen.id, conditionOnIssue: 'N' },
+      ],
+    };
+
+    const preview = await receipts('/preview').post(body);
+    expect(preview.status).toBe(200);
+    const paper = data<ItCustodyReceiptDocumentDto>(preview);
+    expect(paper.lines.map((line) => line.assetCode)).toEqual([pc.assetCode, screen.assetCode]);
+    expect(paper.lines.every((line) => line.assignmentId === null)).toBe(true);
+    // The paper is not the hand-over: both assets are still in stock.
+    const stillIn = await request(app)
+      .get(`/api/v1/it/assets/${pc.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<ItAssetDto>(stillIn).status).toBe('inStock');
+
+    const handed = await receipts('').post(body);
+    expect(handed.status).toBe(201);
+    const { receipt, assets } = data<ItHandOverResultDto>(handed);
+    expect(assets.map((a) => a.status)).toEqual(['assigned', 'assigned']);
+    expect(receipt.lines.map((line) => [line.assetCode, line.conditionOnIssue, line.notes])).toEqual(
+      [
+        [pc.assetCode, 'N', 'Mouse&KeyBord'],
+        [screen.assetCode, 'N', null],
+      ],
+    );
+    expect(receipt.signedCopy).toBeNull();
+
+    // Printed again, after: the same paper.
+    const again = await receipts(`/${receipt.id}`).get();
+    expect(again.status).toBe(200);
+    expect(data<ItCustodyReceiptDto>(again).lines).toEqual(receipt.lines);
+
+    // The register names the receipt on every interval it opened, still awaiting its signature.
+    const rows = data<ItAssetAssignmentDto[]>(
+      await request(app)
+        .get(`/api/v1/it/assignments?employeeId=${EMPLOYEE_A}&open=true&pageSize=100`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    ).filter((row) => row.assetId === pc.id || row.assetId === screen.id);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((row) => row.receiptId === receipt.id && row.receiptSigned === false)).toBe(
+      true,
+    );
+
+    // And the paper is refused for what is no longer in stock.
+    expect((await receipts('/preview').post(body)).status).toBe(409);
+  });
+
+  it('a hand-over that cannot complete records nothing — no interval, no receipt', async () => {
+    const free = await custodyAsset();
+    const taken = await custodyAsset();
+    await act(taken.id, 'assign', { employeeId: EMPLOYEE_B });
+
+    const refused = await receipts('').post({
+      employeeId: EMPLOYEE_A,
+      lines: [{ assetId: free.id }, { assetId: taken.id }],
+    });
+    expect(refused.status).toBe(409);
+    const after = await request(app)
+      .get(`/api/v1/it/assets/${free.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<ItAssetDto>(after).status).toBe('inStock');
+  });
+
+  it('files the signed copy, reads it back, and withdraws it', async () => {
+    const asset = await custodyAsset();
+    const assigned = await act(asset.id, 'assign', { employeeId: EMPLOYEE_A });
+    expect(assigned.status).toBe(200);
+    const [row] = data<ItAssetAssignmentDto[]>(
+      await request(app)
+        .get(`/api/v1/it/assets/${asset.id}/assignments`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const receiptId = row?.receiptId ?? '';
+    expect(receiptId).not.toBe('');
+
+    const uploaded = await request(app)
+      .post(`/api/v1/it/custody-receipts/${receiptId}/signed-copy`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('file', PNG, { filename: 'signed.png', contentType: 'image/png' });
+    expect(uploaded.status).toBe(200);
+    expect(data<ItCustodyReceiptDto>(uploaded).signedCopy?.mime).toBe('image/png');
+
+    const [signedRow] = data<ItAssetAssignmentDto[]>(
+      await request(app)
+        .get(`/api/v1/it/assets/${asset.id}/assignments`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    expect(signedRow?.receiptSigned).toBe(true);
+
+    const bytes = await request(app)
+      .get(`/api/v1/it/custody-receipts/${receiptId}/signed-copy`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(bytes.status).toBe(200);
+    expect(bytes.headers['content-type']).toContain('image/png');
+
+    // Filing needs the custody grant: a branch reader may print, not file.
+    const denied = await request(app)
+      .post(`/api/v1/it/custody-receipts/${receiptId}/signed-copy`)
+      .set('Authorization', `Bearer ${branchAToken}`)
+      .attach('file', PNG, { filename: 'signed.png', contentType: 'image/png' });
+    expect(denied.status).toBe(403);
+
+    const withdrawn = await request(app)
+      .delete(`/api/v1/it/custody-receipts/${receiptId}/signed-copy`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(withdrawn.status).toBe(200);
+    expect(data<ItCustodyReceiptDto>(withdrawn).signedCopy).toBeNull();
+  });
+
+  it('issues a receipt, once, for custody handed over before receipts existed', async () => {
+    const asset = await custodyAsset();
+    await act(asset.id, 'assign', { employeeId: EMPLOYEE_A });
+    const [row] = data<ItAssetAssignmentDto[]>(
+      await request(app)
+        .get(`/api/v1/it/assets/${asset.id}/assignments`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    // What an interval opened before FR-18 looks like: no receipt at all.
+    await ItAssetAssignmentModel.updateOne({ _id: row?.id }, { $set: { receiptId: null } }).exec();
+
+    const issued = await request(app)
+      .post(`/api/v1/it/assignments/${row?.id ?? ''}/receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(issued.status).toBe(201);
+    expect(data<ItCustodyReceiptDto>(issued).lines.map((line) => line.assetCode)).toEqual([
+      asset.assetCode,
+    ]);
+
+    const twice = await request(app)
+      .post(`/api/v1/it/assignments/${row?.id ?? ''}/receipt`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({});
+    expect(twice.status).toBe(409);
   });
 });

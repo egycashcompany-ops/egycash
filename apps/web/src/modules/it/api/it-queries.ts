@@ -39,6 +39,7 @@ import {
   type CreateItCatalogItem,
   type CreateItVendor,
   type DisposeItAsset,
+  type HandOverItAssets,
   type ItCatalogKind,
   type ReturnItAsset,
   type TransferItAsset,
@@ -300,6 +301,55 @@ export const useDisposeItAsset = () =>
   useCustodyMutation(({ id, body }: { id: string; body: DisposeItAsset }) =>
     api.disposeAsset(id, body),
   );
+
+// ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
+
+/** A stored receipt — what «طباعة الإيصال» prints again, and what the signed copy hangs off. */
+export const useItCustodyReceipt = (id: string | null) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'custody', `receipt:${id ?? ''}`),
+    queryFn: () => api.getCustodyReceipt(id ?? ''),
+    enabled: id !== null && id !== '',
+  });
+
+/**
+ * The hand-over: every asset on the receipt moves, so everything a custody action invalidates is
+ * invalidated — and each asset's own cached detail is replaced with its new state.
+ */
+export const useHandOverItAssets = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: HandOverItAssets) => api.handOverAssets(body),
+    onSuccess: (result) => {
+      for (const asset of result.assets) {
+        qc.setQueryData(detailKey(MODULE, 'assets', asset.id), asset);
+      }
+      void qc.invalidateQueries({ queryKey: itKeys.assets });
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+      void qc.invalidateQueries({ queryKey: itKeys.people });
+    },
+  });
+};
+
+/** Issuing, filing or withdrawing a receipt's paper changes the register rows that show it. */
+const useReceiptMutation = <TInput, TOutput>(mutationFn: (input: TInput) => Promise<TOutput>) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: itKeys.custody });
+    },
+  });
+};
+
+export const useIssueAssignmentReceipt = () =>
+  useReceiptMutation((assignmentId: string) => api.issueAssignmentReceipt(assignmentId));
+export const useUploadReceiptSignedCopy = () =>
+  useReceiptMutation(({ id, file }: { id: string; file: File }) =>
+    api.uploadReceiptSignedCopy(id, file),
+  );
+export const useDeleteReceiptSignedCopy = () =>
+  useReceiptMutation((id: string) => api.deleteReceiptSignedCopy(id));
 
 // ── People: the employees IT names ──────────────────────────────────────────
 

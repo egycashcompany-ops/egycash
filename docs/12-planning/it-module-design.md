@@ -385,6 +385,17 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   `it.technicianDepartmentIds`, resolved through the login's employee (422 otherwise). Until a
   department is chosen the rule is not applied and the technician box offers nobody, saying why
   (§17, 2026-09-27).
+- **FR-18** Every hand-over to a person is made on a custody receipt (إيصال استلام, the paper form
+  EGYCASH-IT-F-14-02): one employee, one or more in-stock assets, one receipt, written in the same
+  transaction as the intervals it opens (`it_custody_receipts`; every interval names it as
+  `receiptId`). The screen prints the receipt BEFORE it records the hand-over — the print is
+  composed by the server from exactly what will be recorded and writes nothing — and any change
+  after printing withholds the hand-over until it is printed again. A transfer to a new holder is
+  a hand-over and gets its own one-line receipt; a branch move in the same hands keeps the paper
+  already signed. The receipt keeps what it printed (a snapshot) and can be printed again at any
+  time; the employee's signed copy (photo or PDF) is filed against it through Files and can be
+  replaced or withdrawn. An interval opened before receipts can be given one while it is open
+  (§17, 2026-10-04).
 
 ## 6. States catalog
 
@@ -512,6 +523,7 @@ precedent; `itAsset.export`).
 | `/it/vendors` | — |
 | `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` — HR's people through the directory (§9.1) |
 | `/it/technicians` | read-only: `GET /` — the IT departments' people (FR-17) |
+| `/it/custody-receipts` | `POST /preview` (the paper, writes nothing) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` (print again) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts |
 | `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -677,3 +689,14 @@ starts only on an explicit owner GO.
   Only a positive answer refuses — an id the directory cannot read is accepted as before, so a
   deployment without HR, and one whose IT departments are not chosen yet, is unchanged. No new
   permission and no schema change; one setting and two list filters are added.
+- **Custody receipts** (2026-10-04) — owner request, with the paper form attached: «وأنا بسلم
+  الموظف جهاز او أصل يكون فى طباعة إيصال الأول وبعد الطباعة يسلم الجهاز على السيستم .. ويكون فى
+  إمكانية رفع صورة الإيصال مره أخري بعد توقيع الموظف (وإمكانية طباعة الإيصال بردو بعد التسليم)».
+  Delivered as FR-18: the hand-over dialog takes one or more in-stock assets with each one's
+  condition and notes (the form's «الحالة» and «ملاحظات»), prints the receipt first and only then
+  records the hand-over; the receipt is reprinted, and its signed copy uploaded, from the asset,
+  the custody register and the employee's history. New collection `it_custody_receipts`, new
+  `receiptId` on intervals; the single-asset `POST /it/assets/:id/assign` now writes a one-line
+  receipt too, so no interval reaches a person without one. No new permission: writing rides
+  `itAsset.assign`, reading `itAsset.view`. The receipt paper is composed in the browser (the
+  Fleet report idiom), so printing needs no PDF driver.

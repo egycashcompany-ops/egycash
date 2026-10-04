@@ -23,6 +23,11 @@ export interface ItAssetAssignmentDoc extends BaseDocFields {
   notes: string | null;
   /** Denormalized from the asset so the "assets out per branch" read needs no join. */
   branchId: Types.ObjectId;
+  /**
+   * The custody receipt (إيصال استلام) the interval was handed over on (FR-18). `null` for an
+   * interval opened before receipts existed — optional in the type for the same reason.
+   */
+  receiptId?: Types.ObjectId | null;
 }
 
 const assignmentSchema = new Schema<ItAssetAssignmentDoc>(
@@ -38,6 +43,7 @@ const assignmentSchema = new Schema<ItAssetAssignmentDoc>(
     conditionOnReturn: { type: String, default: null },
     notes: { type: String, default: null },
     branchId: { type: Schema.Types.ObjectId, required: true },
+    receiptId: { type: Schema.Types.ObjectId, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

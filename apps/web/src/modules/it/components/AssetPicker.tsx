@@ -10,6 +10,7 @@
 // the picker adds no filter of its own, because a filter here would be a second, weaker rule.
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { type ItAssetStatus } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
 import { SearchInput } from '../../../shared/ui/SearchInput';
@@ -25,11 +26,17 @@ export const AssetPicker = ({
   value,
   onChange,
   ariaLabel,
+  status,
+  exclude = [],
 }: {
   /** The picked asset id, '' when none. */
   value: string;
   onChange: (assetId: string) => void;
   ariaLabel?: string;
+  /** Offer only assets in this state — a hand-over offers what is in stock (FR-18). */
+  status?: ItAssetStatus;
+  /** Ids already chosen elsewhere in the form — a receipt lists an asset once. */
+  exclude?: readonly string[];
 }): JSX.Element => {
   const t = useT();
   const can = useCan();
@@ -37,13 +44,15 @@ export const AssetPicker = ({
   const allowed = can('itAsset.view');
 
   const results = useQuery({
-    queryKey: listKey('it', 'assets', { picker: search }),
-    queryFn: () => api.listAssets({ search, pageSize: PAGE_SIZE }),
+    queryKey: listKey('it', 'assets', { picker: search, status }),
+    queryFn: () =>
+      api.listAssets({ search, pageSize: PAGE_SIZE, ...(status === undefined ? {} : { status }) }),
     enabled: allowed && search.trim() !== '',
     staleTime: 30_000,
   });
 
   const picked = useItAsset(allowed ? value : '');
+  const offered = (results.data?.items ?? []).filter((asset) => !exclude.includes(asset.id));
 
   if (!allowed) {
     return (
@@ -85,13 +94,13 @@ export const AssetPicker = ({
             <div className="grid place-items-center p-4">
               <Spinner />
             </div>
-          ) : (results.data?.items.length ?? 0) === 0 ? (
+          ) : offered.length === 0 ? (
             <p className="p-4 text-sm text-slate-500 dark:text-slate-400">
               {t('it.assets.pickerNoResults')}
             </p>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-              {(results.data?.items ?? []).map((asset) => (
+              {offered.map((asset) => (
                 <li key={asset.id}>
                   <button
                     type="button"

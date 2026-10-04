@@ -324,6 +324,13 @@ export interface ItAssetAssignmentDto {
   notes: string | null;
   /** The asset's branch when the interval opened — denormalized so the register filters on it. */
   branchId: string;
+  /**
+   * The custody receipt (إيصال استلام) this interval was handed over on — null for an interval
+   * opened before receipts existed, which the screen offers to issue one for (FR-18).
+   */
+  receiptId: string | null;
+  /** Whether that receipt's signed copy has been uploaded; null when there is no receipt. */
+  receiptSigned: boolean | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -418,6 +425,168 @@ export const ListItAssignmentsQuerySchema = PaginationQuerySchema.extend({
   branchId: objectId().optional(),
 }).strict();
 export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema>;
+
+// ── Custody receipts — إيصال استلام (FR-18) ─────────────────────────────────
+//
+// «وأنا بسلم الموظف جهاز او أصل يكون فى طباعة إيصال الأول وبعد الطباعة يسلم الجهاز على السيستم ..
+// ويكون فى إمكانية رفع صورة الإيصال مره أخري بعد توقيع الموظف (وإمكانية طباعة الإيصال بردو بعد
+// التسليم)».
+//
+// The company's paper form EGYCASH-IT-F-14-02: the employee signs for one or more items in a
+// table — name, serial, condition, notes — under a declaration of responsibility. A hand-over is
+// therefore ONE receipt over one or more assets, and every interval it opens points back at it.
+// The receipt keeps what it printed (a snapshot): it is the document the employee signed, and a
+// later rename of the asset or the person must not reprint a different paper.
+
+/** The Files category the signed copies are filed under. */
+export const IT_CUSTODY_RECEIPT_FILE_CATEGORY = 'it-custody-receipts';
+
+/** The form's own identity, printed in its footer exactly as the paper carries it. */
+export const IT_CUSTODY_RECEIPT_FORM = {
+  code: 'EGYCASH-IT -F-14-02',
+  revision: '1/0',
+  issueDate: '1/5/2022',
+} as const;
+
+/** One line of the receipt's table — one asset, its condition on issue and its notes. */
+export const ItHandOverLineSchema = z
+  .object({
+    assetId: objectId(),
+    /** «الحالة» — what the paper's condition column says (N for new, …). */
+    conditionOnIssue: z.string().trim().max(500).optional(),
+    /** «ملاحظات» — what came with it (Mouse & Keyboard, a charger, …). */
+    notes: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type ItHandOverLine = z.infer<typeof ItHandOverLineSchema>;
+
+/** A receipt's table is a page, not a register — and an asset is handed over once per paper. */
+export const IT_HAND_OVER_MAX_LINES = 20;
+
+const handOverShape = {
+  employeeId: objectId(),
+  lines: z.array(ItHandOverLineSchema).min(1).max(IT_HAND_OVER_MAX_LINES),
+  assignedAt: z.coerce.date().optional(),
+  expectedReturnAt: z.coerce.date().optional(),
+};
+
+const refineHandOver = (
+  value: {
+    lines: { assetId: string }[];
+    assignedAt?: Date | undefined;
+    expectedReturnAt?: Date | undefined;
+  },
+  ctx: z.RefinementCtx,
+): void => {
+  const seen = new Set<string>();
+  value.lines.forEach((line, index) => {
+    if (seen.has(line.assetId)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines', index, 'assetId'],
+        message: 'an asset appears on the receipt twice',
+      });
+    }
+    seen.add(line.assetId);
+  });
+  if (
+    value.expectedReturnAt !== undefined &&
+    value.assignedAt !== undefined &&
+    value.expectedReturnAt.getTime() < value.assignedAt.getTime()
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['expectedReturnAt'],
+      message: 'the expected return cannot precede the assignment',
+    });
+  }
+};
+
+/**
+ * Hand-over: one employee, one or more in-stock assets, ONE receipt — in one transaction (FR-3),
+ * so a paper never lists an asset the system did not hand over, nor the reverse.
+ */
+export const HandOverItAssetsSchema = z.object(handOverShape).strict().superRefine(refineHandOver);
+export type HandOverItAssets = z.infer<typeof HandOverItAssetsSchema>;
+
+/**
+ * What to print BEFORE anything is recorded. `handOver` checks exactly what the hand-over will
+ * (current employee, assets in stock), so the paper is never printed for a hand-over the system
+ * would then refuse; `transfer` is the one-line paper of a transfer to a new holder, whose asset
+ * is out (with somebody else) rather than in stock.
+ */
+export const PreviewItCustodyReceiptSchema = z
+  .object({ ...handOverShape, kind: z.enum(['handOver', 'transfer']).default('handOver') })
+  .strict()
+  .superRefine((value, ctx) => {
+    refineHandOver(value, ctx);
+    if (value.kind === 'transfer' && value.lines.length !== 1) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['lines'],
+        message: 'a transfer hands over exactly one asset',
+      });
+    }
+  });
+export type PreviewItCustodyReceipt = z.infer<typeof PreviewItCustodyReceiptSchema>;
+
+export interface ItCustodyReceiptLineDto {
+  assetId: string;
+  /** The interval this line opened — null on a preview, which opens nothing. */
+  assignmentId: string | null;
+  assetCode: string;
+  /** «اسم الصنف». */
+  name: string;
+  /** «SN». */
+  serialNumber: string | null;
+  /** «الحالة». */
+  conditionOnIssue: string | null;
+  /** «ملاحظات». */
+  notes: string | null;
+}
+
+/**
+ * The paper itself — everything the printed form shows, and nothing it does not. A preview
+ * answers this; a stored receipt answers it as it was printed.
+ */
+export interface ItCustodyReceiptDocumentDto {
+  /** «التاريخ» — the hand-over's own date. */
+  issuedAt: string;
+  employeeId: string;
+  /** «الإسم». Null when the directory could not name the employee. */
+  employeeName: string | null;
+  employeeCode: string | null;
+  /** «الوظيفة». */
+  jobTitle: { ar: string; en: string } | null;
+  lines: ItCustodyReceiptLineDto[];
+}
+
+/** The scan or photo of the paper after the employee signed it. */
+export interface ItCustodyReceiptSignedCopyDto {
+  fileId: string;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: string;
+}
+
+export interface ItCustodyReceiptDto extends ItCustodyReceiptDocumentDto {
+  id: string;
+  issuedByUserId: string | null;
+  branchId: string;
+  signedCopy: ItCustodyReceiptSignedCopyDto | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A hand-over's answer: the receipt it recorded, which the screen can print again at once. */
+export interface ItHandOverResultDto {
+  receipt: ItCustodyReceiptDto;
+  assets: ItAssetDto[];
+}
+
+export const ItCustodyReceiptIdParamSchema = z.object({ id: objectId() }).strict();
 
 // ── People: the employees IT names ──────────────────────────────────────────
 //

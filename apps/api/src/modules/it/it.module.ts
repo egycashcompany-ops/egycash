@@ -10,7 +10,13 @@ import { declarePermissions, type PageDef, type PermissionDef } from '@ecms/cont
 import { type ModuleManifest } from '../../platform/kernel/module-registry';
 import { buildItCatalogRouter } from './catalog-items';
 import { buildItVendorsRouter } from './vendors';
-import { buildItAssetsRouter, buildItAssignmentsRouter, itAssetCustodyService } from './assets';
+import {
+  buildItAssetsRouter,
+  buildItAssignmentsRouter,
+  buildItCustodyReceiptsRouter,
+  custodyReceiptFileAuthorizer,
+  itAssetCustodyService,
+} from './assets';
 import {
   buildItMaintenanceOrdersRouter,
   buildItMaintenancePlansRouter,
@@ -301,6 +307,8 @@ export const itModule: ModuleManifest = {
   routes: [
     { prefix: '/it/assets', router: buildItAssetsRouter() },
     { prefix: '/it/assignments', router: buildItAssignmentsRouter() },
+    // FR-18 — the paper an employee signs for what they are handed (إيصال استلام).
+    { prefix: '/it/custody-receipts', router: buildItCustodyReceiptsRouter() },
     { prefix: '/it/catalog-items', router: buildItCatalogRouter() },
     { prefix: '/it/vendors', router: buildItVendorsRouter() },
     { prefix: '/it/tickets', router: buildItTicketsRouter() },
@@ -320,6 +328,7 @@ export const itModule: ModuleManifest = {
     'it_assets',
     'it_asset_assignments',
     'it_asset_events',
+    'it_custody_receipts',
     'it_catalog_items',
     'it_vendors',
     'it_sequences',
@@ -385,10 +394,11 @@ export const itModule: ModuleManifest = {
       },
     },
   ],
-  // ADR-023 — IT answers the Files service's "may this caller see the owning entity?" for its two
-  // file-carrying types. Declaring them is what makes ticket and comment attachments safe on EVERY
-  // path, including a direct file id and a download ticket.
-  fileEntityAuthorizers: itFileEntityAuthorizers,
+  // ADR-023 — IT answers the Files service's "may this caller see the owning entity?" for its
+  // file-carrying types. Declaring them is what makes ticket and comment attachments — and a
+  // receipt's signed copy (FR-18) — safe on EVERY path, including a direct file id and a download
+  // ticket.
+  fileEntityAuthorizers: [...itFileEntityAuthorizers, custodyReceiptFileAuthorizer],
   eventSubscriptions: [
     {
       // Design §9.1 / FR-13 — leaving the company does NOT return the assets. The leaver's open

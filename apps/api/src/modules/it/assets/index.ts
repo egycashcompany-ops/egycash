@@ -6,3 +6,6 @@ export { itAssetCustodyService } from './custody.service';
 export { itAssetAssignmentService } from './assignment.service';
 export { itAssetAssignmentRepository } from './assignment.repository';
 export { itAssetEventRepository } from './asset-event.repository';
+export { buildItCustodyReceiptsRouter } from './receipt.routes';
+export { itCustodyReceiptService } from './receipt.service';
+export { custodyReceiptFileAuthorizer } from './receipt-files';

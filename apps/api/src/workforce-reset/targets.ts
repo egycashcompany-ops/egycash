@@ -168,6 +168,7 @@ const CLASSIFICATION: Record<string, { action: Action; why: string }> = {
   operations_standing_crews: { action: 'purge', why: 'a standing crew made of specific people' },
   operations_shipment_assignments: { action: 'purge', why: 'a shipment captained by somebody' },
   it_asset_assignments: { action: 'purge', why: 'an asset held by somebody — the ASSET survives' },
+  it_custody_receipts: { action: 'purge', why: 'the paper somebody signed for what they hold' },
   fleet_duty_assignments: { action: 'purge', why: 'a day’s duty roster, made of specific people' },
   fleet_fixed_crews: { action: 'purge', why: 'a fixed crew IS the pairing of two drivers' },
 

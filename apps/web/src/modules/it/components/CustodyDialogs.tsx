@@ -11,6 +11,8 @@
 import { useEffect, useState } from 'react';
 import {
   IT_DISPOSAL_METHODS,
+  IT_HAND_OVER_MAX_LINES,
+  type HandOverItAssets,
   type ItAssetAssignmentDto,
   type ItAssetDto,
   type Locale,
@@ -22,10 +24,15 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Select, Textarea } from '../../../shared/ui/form';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { localized } from '../../../shared/lib/format';
+import { PrinterIcon, TrashIcon } from '../../../shared/ui/icons';
 import { EmployeePicker } from './EmployeePicker';
+import { AssetPicker } from './AssetPicker';
+import { useReceiptPrinter } from './CustodyReceipt';
+import * as api from '../api/it-api';
 import {
-  useAssignItAsset,
   useDisposeItAsset,
+  useHandOverItAssets,
+  useItAsset,
   useItBranchOptions,
   useReturnItAsset,
   useTransferItAsset,
@@ -49,6 +56,8 @@ const Shell = ({
   submitLabel,
   submitVariant,
   onSubmit,
+  extraAction,
+  size,
   children,
 }: {
   open: boolean;
@@ -61,6 +70,9 @@ const Shell = ({
   submitLabel: string;
   submitVariant?: 'primary' | 'danger';
   onSubmit: () => void;
+  /** A step before the submit — the receipt printed before a hand-over (FR-18). */
+  extraAction?: React.ReactNode;
+  size?: 'md' | 'lg' | 'xl';
   children: React.ReactNode;
 }): JSX.Element => {
   const t = useT();
@@ -70,11 +82,13 @@ const Shell = ({
       onClose={onClose}
       title={title}
       {...(description === undefined ? {} : { description })}
+      {...(size === undefined ? {} : { size })}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
             {t('common.cancel')}
           </Button>
+          {extraAction}
           <Button
             variant={submitVariant ?? 'primary'}
             loading={busy}
@@ -102,7 +116,43 @@ const Shell = ({
 const message = (err: unknown, fallback: string): string =>
   err instanceof Error ? err.message : fallback;
 
-// ── Assign ──────────────────────────────────────────────────────────────────
+// ── Assign: the hand-over, receipt first (FR-18) ────────────────────────────
+//
+// «وأنا بسلم الموظف جهاز او أصل يكون فى طباعة إيصال الأول وبعد الطباعة يسلم الجهاز على السيستم».
+// The dialog has two steps and offers them in that order: «طباعة الإيصال» prints the paper the
+// employee signs — composed by the server from exactly what will be recorded — and only then does
+// «تسليم» record it. Changing anything after printing takes the hand-over away again until the
+// receipt is printed afresh: the system must never record something other than what was signed.
+
+/** One line of the receipt being prepared: an asset, its «الحالة» and its «ملاحظات». */
+interface DraftLine {
+  assetId: string;
+  condition: string;
+  notes: string;
+}
+
+const emptyLine = (assetId: string): DraftLine => ({ assetId, condition: '', notes: '' });
+
+/** The line's asset, named the way the receipt will name it. */
+const LineAsset = ({ assetId }: { assetId: string }): JSX.Element => {
+  const t = useT();
+  const asset = useItAsset(assetId);
+  return (
+    <span className="text-sm font-medium text-slate-800 dark:text-slate-100">
+      {asset.data === undefined ? (
+        t('common.loading')
+      ) : (
+        <>
+          {asset.data.name}{' '}
+          <span className="font-mono text-xs text-slate-500" dir="ltr">
+            {asset.data.assetCode}
+            {asset.data.serialNumber === null ? '' : ` · SN ${asset.data.serialNumber}`}
+          </span>
+        </>
+      )}
+    </span>
+  );
+};
 
 export const AssignAssetDialog = ({
   open,
@@ -111,49 +161,77 @@ export const AssignAssetDialog = ({
 }: {
   open: boolean;
   onClose: () => void;
-  asset: ItAssetDto;
+  /** The asset the hand-over starts from — null to start from an empty receipt. */
+  asset: ItAssetDto | null;
 }): JSX.Element => {
   const t = useT();
-  const assign = useAssignItAsset();
+  const handOver = useHandOverItAssets();
+  const printer = useReceiptPrinter();
   const [employeeId, setEmployeeId] = useState('');
   const [employeeLabel, setEmployeeLabel] = useState('');
+  const [lines, setLines] = useState<DraftLine[]>([]);
   const [assignedAt, setAssignedAt] = useState('');
   const [expectedReturnAt, setExpectedReturnAt] = useState('');
-  const [condition, setCondition] = useState('');
-  const [notes, setNotes] = useState('');
+  const [printedFor, setPrintedFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The id, not the object: a refetch of the asset while the dialog is open must not wipe a
+  // receipt that has already been printed.
+  const startingAssetId = asset?.id ?? null;
 
   useEffect(() => {
     if (open) {
       setEmployeeId('');
       setEmployeeLabel('');
+      setLines(startingAssetId === null ? [] : [emptyLine(startingAssetId)]);
       setAssignedAt(nowLocal());
       setExpectedReturnAt('');
-      setCondition('');
-      setNotes('');
+      setPrintedFor(null);
       setError(null);
     }
-  }, [open]);
+  }, [open, startingAssetId]);
 
   const orderWrong =
     expectedReturnAt !== '' && assignedAt !== '' && expectedReturnAt < assignedAt;
 
+  const body: HandOverItAssets = {
+    employeeId,
+    lines: lines.map((line) => ({
+      assetId: line.assetId,
+      ...(line.condition.trim() === '' ? {} : { conditionOnIssue: line.condition.trim() }),
+      ...(line.notes.trim() === '' ? {} : { notes: line.notes.trim() }),
+    })),
+    ...(assignedAt === '' ? {} : { assignedAt: new Date(assignedAt) }),
+    ...(expectedReturnAt === '' ? {} : { expectedReturnAt: new Date(expectedReturnAt) }),
+  };
+  // What was printed, as the server will be asked to record it. Any edit after printing changes
+  // this and takes «تسليم» away until the paper matches again.
+  const payloadKey = JSON.stringify(body);
+  const ready = employeeId !== '' && lines.length > 0 && !orderWrong;
+  const printed = printedFor === payloadKey;
+  const changedSincePrint = printedFor !== null && !printed;
+
+  const setLine = (index: number, patch: Partial<DraftLine>): void =>
+    setLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)));
+
+  const print = async (): Promise<void> => {
+    setError(null);
+    const key = payloadKey;
+    const done = await printer.print(async () => {
+      try {
+        return await api.previewCustodyReceipt(body);
+      } catch (err) {
+        setError(message(err, t('common.error')));
+        throw err;
+      }
+    });
+    if (done) setPrintedFor(key);
+  };
+
   const submit = async (): Promise<void> => {
     setError(null);
     try {
-      await assign.mutateAsync({
-        id: asset.id,
-        body: {
-          employeeId,
-          ...(assignedAt === '' ? {} : { assignedAt: new Date(assignedAt) }),
-          ...(expectedReturnAt === ''
-            ? {}
-            : { expectedReturnAt: new Date(expectedReturnAt) }),
-          ...(condition.trim() === '' ? {} : { conditionOnIssue: condition.trim() }),
-          ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
-        },
-      });
-      toast.success(t('it.custody.assigned'));
+      await handOver.mutateAsync(body);
+      toast.success(t('it.custody.receipt.handedOver'));
       onClose();
     } catch (err) {
       setError(message(err, t('common.error')));
@@ -164,14 +242,40 @@ export const AssignAssetDialog = ({
     <Shell
       open={open}
       onClose={onClose}
-      title={t('it.custody.assign')}
-      description={`${asset.assetCode} — ${asset.name}`}
+      size="lg"
+      title={t('it.custody.receipt.title')}
+      {...(asset === null ? {} : { description: `${asset.assetCode} — ${asset.name}` })}
       error={error}
-      busy={assign.isPending}
-      canSubmit={employeeId !== '' && !orderWrong}
-      submitLabel={t('it.custody.assign')}
+      busy={handOver.isPending}
+      canSubmit={ready && printed}
+      submitLabel={t('it.custody.receipt.handOver')}
       onSubmit={() => void submit()}
+      extraAction={
+        <Button
+          variant={printed ? 'secondary' : 'primary'}
+          leftIcon={<PrinterIcon className="h-4 w-4" />}
+          loading={printer.isPrinting}
+          disabled={!ready}
+          onClick={() => void print()}
+        >
+          {t('it.custody.receipt.print')}
+        </Button>
+      }
     >
+      <p
+        role="note"
+        className={`rounded-lg px-3 py-2 text-sm ${
+          printed
+            ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+            : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+        }`}
+      >
+        {printed
+          ? t('it.custody.receipt.printedNowHandOver')
+          : changedSincePrint
+            ? t('it.custody.receipt.changedSincePrint')
+            : t('it.custody.receipt.printFirst')}
+      </p>
       <Field label={t('it.custody.holder')} required>
         <EmployeePicker
           value={employeeId}
@@ -182,6 +286,58 @@ export const AssignAssetDialog = ({
           }}
           ariaLabel={t('it.custody.holder')}
         />
+      </Field>
+      <Field label={t('it.custody.receipt.lines')} required hint={t('it.custody.receipt.linesHint')}>
+        <div className="space-y-3">
+          {lines.map((line, index) => (
+            <div
+              key={line.assetId}
+              data-receipt-line={line.assetId}
+              className="space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs text-slate-500">{index + 1}.</span>
+                <div className="flex-1">
+                  <LineAsset assetId={line.assetId} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLines((current) => current.filter((_, i) => i !== index))}
+                  aria-label={t('it.custody.receipt.removeLine')}
+                  title={t('it.custody.receipt.removeLine')}
+                  className="rounded p-1 text-slate-400 hover:text-red-600"
+                >
+                  <TrashIcon className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Input
+                  value={line.condition}
+                  onChange={(e) => setLine(index, { condition: e.target.value })}
+                  placeholder={t('it.custody.receipt.condition')}
+                  aria-label={t('it.custody.receipt.condition')}
+                />
+                <Input
+                  value={line.notes}
+                  onChange={(e) => setLine(index, { notes: e.target.value })}
+                  placeholder={t('it.custody.receipt.lineNotes')}
+                  aria-label={t('it.custody.receipt.lineNotes')}
+                />
+              </div>
+            </div>
+          ))}
+          {lines.length < IT_HAND_OVER_MAX_LINES && (
+            <AssetPicker
+              value=""
+              status="inStock"
+              exclude={lines.map((line) => line.assetId)}
+              onChange={(assetId) => {
+                if (assetId !== '') setLines((current) => [...current, emptyLine(assetId)]);
+              }}
+              ariaLabel={t('it.custody.receipt.addLine')}
+            />
+          )}
+        </div>
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t('it.custody.assignedAt')}>
@@ -203,12 +359,6 @@ export const AssignAssetDialog = ({
           />
         </Field>
       </div>
-      <Field label={t('it.custody.conditionOnIssue')} hint={t('it.custody.conditionHint')}>
-        <Input value={condition} onChange={(e) => setCondition(e.target.value)} />
-      </Field>
-      <Field label={t('it.assets.fields.notes')}>
-        <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </Field>
     </Shell>
   );
 };
@@ -316,8 +466,11 @@ export const TransferAssetDialog = ({
   const [employeeLabel, setEmployeeLabel] = useState('');
   const [branchId, setBranchId] = useState('');
   const [at, setAt] = useState('');
+  const [condition, setCondition] = useState('');
   const [notes, setNotes] = useState('');
+  const [printedFor, setPrintedFor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const printer = useReceiptPrinter();
 
   useEffect(() => {
     if (open) {
@@ -325,7 +478,9 @@ export const TransferAssetDialog = ({
       setEmployeeLabel('');
       setBranchId('');
       setAt(nowLocal());
+      setCondition('');
       setNotes('');
+      setPrintedFor(null);
       setError(null);
     }
   }, [open]);
@@ -334,20 +489,49 @@ export const TransferAssetDialog = ({
   // a round trip to be told they changed nothing.
   const movesHolder = employeeId !== '' && employeeId !== current?.assignedToEmployeeId;
   const movesBranch = branchId !== '' && branchId !== asset.branchId;
-  const canSubmit = movesHolder || movesBranch;
+
+  const body = {
+    ...(movesHolder ? { toEmployeeId: employeeId } : {}),
+    ...(movesBranch ? { toBranchId: branchId } : {}),
+    ...(at === '' ? {} : { at: new Date(at) }),
+    ...(movesHolder && condition.trim() !== '' ? { conditionOnIssue: condition.trim() } : {}),
+    ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
+  };
+  // A NEW holder signs a receipt (FR-18), printed before the transfer is recorded — the same two
+  // steps as a hand-over. A move between branches in the same hands needs no new paper.
+  const payloadKey = JSON.stringify(body);
+  const printed = printedFor === payloadKey;
+  const canSubmit = (movesHolder || movesBranch) && (!movesHolder || printed);
+
+  const print = async (): Promise<void> => {
+    setError(null);
+    const key = payloadKey;
+    const done = await printer.print(async () => {
+      try {
+        return await api.previewCustodyReceipt({
+          kind: 'transfer',
+          employeeId,
+          lines: [
+            {
+              assetId: asset.id,
+              ...(condition.trim() === '' ? {} : { conditionOnIssue: condition.trim() }),
+              ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
+            },
+          ],
+          ...(at === '' ? {} : { assignedAt: new Date(at) }),
+        });
+      } catch (err) {
+        setError(message(err, t('common.error')));
+        throw err;
+      }
+    });
+    if (done) setPrintedFor(key);
+  };
 
   const submit = async (): Promise<void> => {
     setError(null);
     try {
-      await transfer.mutateAsync({
-        id: asset.id,
-        body: {
-          ...(movesHolder ? { toEmployeeId: employeeId } : {}),
-          ...(movesBranch ? { toBranchId: branchId } : {}),
-          ...(at === '' ? {} : { at: new Date(at) }),
-          ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
-        },
-      });
+      await transfer.mutateAsync({ id: asset.id, body });
       toast.success(t('it.custody.transferred'));
       onClose();
     } catch (err) {
@@ -370,8 +554,36 @@ export const TransferAssetDialog = ({
       canSubmit={canSubmit}
       submitLabel={t('it.custody.transfer')}
       onSubmit={() => void submit()}
+      extraAction={
+        movesHolder ? (
+          <Button
+            variant={printed ? 'secondary' : 'primary'}
+            leftIcon={<PrinterIcon className="h-4 w-4" />}
+            loading={printer.isPrinting}
+            onClick={() => void print()}
+          >
+            {t('it.custody.receipt.print')}
+          </Button>
+        ) : undefined
+      }
     >
       <p className="text-xs text-slate-500 dark:text-slate-400">{t('it.custody.transferHint')}</p>
+      {movesHolder && (
+        <p
+          role="note"
+          className={`rounded-lg px-3 py-2 text-sm ${
+            printed
+              ? 'bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200'
+              : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200'
+          }`}
+        >
+          {printed
+            ? t('it.custody.receipt.printedNowTransfer')
+            : printedFor !== null
+              ? t('it.custody.receipt.changedSincePrint')
+              : t('it.custody.receipt.transferPrintFirst')}
+        </p>
+      )}
       <Field label={t('it.custody.newHolder')}>
         <EmployeePicker
           value={employeeId}
@@ -398,6 +610,11 @@ export const TransferAssetDialog = ({
       <Field label={t('it.custody.transferredAt')}>
         <Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
       </Field>
+      {movesHolder && (
+        <Field label={t('it.custody.conditionOnIssue')} hint={t('it.custody.conditionHint')}>
+          <Input value={condition} onChange={(e) => setCondition(e.target.value)} />
+        </Field>
+      )}
       <Field label={t('it.assets.fields.notes')}>
         <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>

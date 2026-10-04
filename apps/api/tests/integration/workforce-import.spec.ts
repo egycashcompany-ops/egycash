@@ -27,7 +27,7 @@ import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { employeeRepository } from '../../src/modules/hr/employee-management/employees';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { jobTitleService } from '../../src/platform/organization';
-import { ALL_IMPORT_ACTIONS, runImport } from '../../src/workforce-import/run';
+import { ALL_IMPORT_ACTIONS, runImport, type ImportAction } from '../../src/workforce-import/run';
 import { nextEmployeeNumber } from '../../src/modules/hr/employee-management/employees/employee-sequence';
 import { nextNationalId } from './helpers/national-id';
 
@@ -571,7 +571,7 @@ describe('recording that a leaver has left, and only what was agreed to', () => 
     name: string,
     master: Person[],
     resignation: Person[],
-    apply: readonly ('added' | 'updated' | 'exited')[],
+    apply: readonly ImportAction[],
   ) => {
     const file = join(dir, name);
     await writeWorkbook(file, master, resignation);
@@ -611,6 +611,61 @@ describe('recording that a leaver has left, and only what was agreed to', () => 
     const after = await employeeRepository.findByCodeSystem(person.code);
     expect(after).not.toBeNull();
     expect(after?.status).toBe('exited');
+  }, 240_000);
+
+  /**
+   * ADDING IS TWO DECISIONS. «73 + (…) بس أكتبهم فى رقمين مختلفين»: a newcomer on duty and a person
+   * who joined and left before anybody entered them are two numbers on the screen and two switches,
+   * and each switch must write only its own kind. The counts are the whole truth either way —
+   * `imported` is everybody new, `importedExited` the part of it from the Resignation sheet.
+   */
+  it('adds the newcomers on duty, and not the new leavers, when only that was agreed to', async () => {
+    const newcomer = freshPerson();
+    const gone = freshPerson();
+    const leaver: Person = {
+      ...gone,
+      exit: { reason: 'استقالة', date: new Date('2026-09-15T00:00:00.000Z') },
+    };
+
+    const report = await run('add-on-duty-only.xlsx', [newcomer], [leaver], ['added']);
+    expect(report.counts.imported).toBe(2);
+    expect(report.counts.importedExited).toBe(1);
+
+    const added = await employeeRepository.findByCodeSystem(newcomer.code);
+    expect(added).not.toBeNull();
+    expect(added?.status).not.toBe('exited');
+    expect(await employeeRepository.findByCodeSystem(gone.code)).toBeNull();
+  }, 240_000);
+
+  it('adds the new leavers, and not the newcomers on duty, when only that was agreed to', async () => {
+    const newcomer = freshPerson();
+    const gone = freshPerson();
+    const leaver: Person = {
+      ...gone,
+      exit: { reason: 'استقالة', date: new Date('2026-09-15T00:00:00.000Z') },
+    };
+
+    const report = await run('add-leavers-only.xlsx', [newcomer], [leaver], ['addedExited']);
+    expect(report.counts.importedExited).toBe(1);
+
+    expect(await employeeRepository.findByCodeSystem(newcomer.code)).toBeNull();
+    expect((await employeeRepository.findByCodeSystem(gone.code))?.status).toBe('exited');
+  }, 240_000);
+
+  /**
+   * «واللي تم إخلاء طرفهم مفروض 60». Every leaver in the file is counted, including the ones whose
+   * exit is already on file — this upload records nothing for them, and the screen says so rather
+   * than letting the Resignation sheet and the cards disagree without explanation.
+   */
+  it('counts a leaver whose exit is already on file, and records nothing new for them', async () => {
+    const { leaver } = await seedServing('already-gone');
+    await run('already-gone-a.xlsx', [], [leaver], ['exited']);
+
+    const again = await run('already-gone-b.xlsx', [], [leaver], []);
+    expect(again.counts.exited).toBe(1); // a leaver in the file
+    expect(again.counts.exits).toBe(0); // nothing left to record
+    expect(again.counts.alreadyExited).toBe(1);
+    expect(again.counts.importedExited).toBe(0);
   }, 240_000);
 
   it('counts a leaver the registry still has on the books, and says when they left', async () => {

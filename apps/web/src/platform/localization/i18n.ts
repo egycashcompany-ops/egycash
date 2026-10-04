@@ -2519,12 +2519,18 @@ const en: Record<string, string> = {
   'employees.roster.field.weaponLicense': 'Weapon licence',
   'employees.roster.field.professionPractice': 'Profession practice',
   'employees.roster.field.retirementDate': 'Retirement date',
-  'employees.roster.counts.exits': 'Cleared',
+  'employees.roster.counts.exits': 'Exit to be recorded',
+  'employees.roster.counts.exitsDone': 'Exit recorded',
+  'employees.roster.counts.addedExited': 'To be added as leavers',
+  'employees.roster.counts.addedExitedDone': 'Added as leavers',
+  'employees.roster.leaversLine':
+    'Leavers in the file: {{total}} — {{exits}} to have their exit recorded now, {{added}} to be added as leavers, and {{already}} already recorded as having left.',
   'employees.roster.exitsTitle': 'Leavers whose exit would be recorded',
   'employees.roster.pickHint':
-    'Press a number to include or exclude that group. Added and Cleared are on by default.',
-  'employees.roster.counts.added': 'Added',
-  'employees.roster.counts.updated': 'Updated',
+    'Press a number to include or exclude that group. Everything is on by default except “To be updated”.',
+  'employees.roster.counts.added': 'New, on the job',
+  'employees.roster.counts.updated': 'To be updated',
+  'employees.roster.counts.updatedDone': 'Updated',
   'employees.roster.counts.unchanged': 'Unchanged',
   'employees.roster.counts.failed': 'Not read',
   'employees.roster.field.educationLevel': 'Education level',
@@ -9857,15 +9863,19 @@ const ar: Record<string, string> = {
   'employees.roster.field.weaponLicense': 'رخصة السلاح',
   'employees.roster.field.professionPractice': 'مزاولة المهنة',
   'employees.roster.field.retirementDate': 'تاريخ الإحالة للمعاش',
-  'employees.roster.counts.exits': 'تم إخلاء طرفهم',
+  'employees.roster.counts.exits': 'سيُسجَّل انتهاء خدمتهم',
+  'employees.roster.counts.exitsDone': 'سُجِّل انتهاء خدمتهم',
+  'employees.roster.counts.addedExited': 'يُضافون منتهية خدمتهم',
+  'employees.roster.counts.addedExitedDone': 'أُضيفوا منتهية خدمتهم',
+  'employees.roster.leaversLine':
+    'منتهية خدمتهم في الملف: {{total}}. منهم {{exits}} سيُسجَّل انتهاء خدمتهم الآن، و{{added}} يُضافون منتهية خدمتهم، و{{already}} انتهاء خدمتهم مسجَّل من قبل.',
   'employees.roster.exitsTitle':
     'من سيُسجَّل انتهاء خدمتهم',
   'employees.roster.pickHint':
-    'اضغط على أي رقم لتحديده أو إلغاء تحديده. «المُضافون» و«من تم إخلاء طرفهم» محدَّدون تلقائيًا.',
-  'employees.roster.counts.added':
-    'أُضيفوا',
-  'employees.roster.counts.updated':
-    'عُدِّلوا',
+    'اضغط على أي رقم لتحديده أو إلغاء تحديده. كل الأرقام محدَّدة تلقائيًا عدا «ستُعدَّل بياناتهم».',
+  'employees.roster.counts.added': 'جُدد على رأس العمل',
+  'employees.roster.counts.updated': 'ستُعدَّل بياناتهم',
+  'employees.roster.counts.updatedDone': 'عُدِّلت بياناتهم',
   'employees.roster.counts.unchanged':
     'دون تغيير',
   'employees.roster.counts.failed':

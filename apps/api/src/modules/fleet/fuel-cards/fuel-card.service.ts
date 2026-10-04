@@ -37,12 +37,13 @@ export interface FuelCardWithCode {
 
 export const toFuelCardDto = ({ doc, vehicleCode }: FuelCardWithCode): FleetFuelCardDto => ({
   id: String(doc._id),
-  vehicleId: String(doc.vehicleId),
-  vehicleCode,
+  vehicleId: doc.vehicleId == null ? null : String(doc.vehicleId),
+  vehicleCode: doc.vehicleId == null ? null : vehicleCode,
+  label: doc.vehicleId == null ? (doc.label ?? null) : null,
   company: doc.company,
   name: doc.name,
   number: doc.number,
-  expiresAt: doc.expiresAt.toISOString(),
+  expiresAt: doc.expiresAt?.toISOString() ?? null,
   hasPassword: doc.password !== null && doc.password !== undefined && doc.password !== '',
   balance: doc.balance,
   requestedAmount: doc.requestedAmount ?? null,
@@ -70,18 +71,19 @@ export const toFuelMovementDto = (
 
 /** The password never enters the audit trail. */
 const snapshot = (doc: FleetFuelCardDoc) => ({
-  vehicleId: String(doc.vehicleId),
+  vehicleId: doc.vehicleId == null ? null : String(doc.vehicleId),
+  label: doc.label ?? null,
   company: doc.company,
   name: doc.name,
   number: doc.number,
-  expiresAt: doc.expiresAt.toISOString(),
+  expiresAt: doc.expiresAt?.toISOString() ?? null,
   hasPassword: doc.password !== null && doc.password !== '',
 });
 
 class FleetFuelCardService {
   private async codesFor(docs: readonly FleetFuelCardDoc[]): Promise<Map<string, string>> {
     return fleetVehicleRepository.codesByIds([
-      ...new Set(docs.map((doc) => String(doc.vehicleId))),
+      ...new Set(docs.flatMap((doc) => (doc.vehicleId == null ? [] : [String(doc.vehicleId)]))),
     ]);
   }
 
@@ -142,10 +144,12 @@ class FleetFuelCardService {
   }
 
   async create(input: CreateFleetFuelCard, by: string): Promise<FuelCardWithCode> {
-    await this.assertVehicle(input.vehicleId);
+    if (input.vehicleId !== null) await this.assertVehicle(input.vehicleId);
     const doc = await fleetFuelCardRepository.create(
       {
-        vehicleId: new Types.ObjectId(input.vehicleId),
+        vehicleId: input.vehicleId === null ? null : new Types.ObjectId(input.vehicleId),
+        // A card on a car is named by the car; the label is only for a card on none.
+        label: input.vehicleId === null ? (input.label ?? null) : null,
         company: input.company,
         name: input.name,
         number: input.number,
@@ -168,9 +172,23 @@ class FleetFuelCardService {
 
   async update(id: string, input: UpdateFleetFuelCard, by: string): Promise<FuelCardWithCode> {
     const before = await fleetFuelCardRepository.getById(id);
-    if (input.vehicleId !== undefined) await this.assertVehicle(input.vehicleId);
+    if (input.vehicleId !== undefined && input.vehicleId !== null) {
+      await this.assertVehicle(input.vehicleId);
+    }
     const set: Partial<FleetFuelCardDoc> = {};
-    if (input.vehicleId !== undefined) set.vehicleId = new Types.ObjectId(input.vehicleId);
+    if (input.vehicleId !== undefined) {
+      set.vehicleId = input.vehicleId === null ? null : new Types.ObjectId(input.vehicleId);
+    }
+    // A card on no car is known by its label; a card on a car is named by the car and keeps none.
+    const onNoCar =
+      input.vehicleId === undefined ? before.vehicleId == null : input.vehicleId === null;
+    if (onNoCar) {
+      const label = input.label === undefined ? (before.label ?? null) : (input.label ?? null);
+      if (label === null || label === '') throw new ConflictError('a card on no car needs a label');
+      set.label = label;
+    } else {
+      set.label = null;
+    }
     if (input.company !== undefined) set.company = input.company;
     if (input.name !== undefined) set.name = input.name;
     if (input.number !== undefined) set.number = input.number;

@@ -24,7 +24,7 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { FuelCardsPage } from './FuelCardsPage';
 import { FuelChargingPage } from './FuelChargingPage';
-import { groupByVehicle } from '../components/FuelCardTiles';
+import { fuelCardPlace, groupByVehicle, noCarPlaces } from '../components/FuelCardTiles';
 
 (globalThis as Record<string, unknown>).document ??= { body: {} };
 vi.mock('react-dom', async () => {
@@ -59,6 +59,7 @@ const card = (over: Partial<FleetFuelCardDto> = {}): FleetFuelCardDto => ({
   id: 'c-1',
   vehicleId: 'v-204',
   vehicleCode: '204',
+  label: null,
   company: 'wataniya',
   name: 'كارت وطنية 204',
   number: '7045 1120 0098 2231',
@@ -197,6 +198,52 @@ describe('one tile per car, Wataniya above Chill Out', () => {
     expect(frame, 'the badge comes before the frame it is about').toBeGreaterThan(badge);
     expect(render('cards')).not.toContain(ar('fleet.fuelCards.expiresSoon'));
   });
+
+  it('a card whose expiry is not known yet shows «—» and warns of nothing', () => {
+    const html = render('cards', { cards: [card({ expiresAt: null })] });
+    expect(html).not.toContain(ar('fleet.fuelCards.expiresSoon'));
+    expect(html).not.toContain('Invalid');
+  });
+});
+
+describe('cards on no car — «كروت زيادة ملهمش عربيات»', () => {
+  const travel = (id: string, label: string, over: Partial<FleetFuelCardDto> = {}) =>
+    card({ id, vehicleId: null, vehicleCode: null, label, ...over });
+
+  it('each label is a tile of its own, its two companies together like a car’s', () => {
+    const tiles = groupByVehicle([
+      travel('t1', 'سفر 1'),
+      travel('t2', 'تويوتا اللواء'),
+      travel('t3', 'تويوتا اللواء', { company: 'chillout' }),
+      card({ id: 'a' }),
+    ]);
+    expect(tiles.map((tile) => [tile.code, tile.noCar])).toEqual([
+      ['سفر 1', true],
+      ['تويوتا اللواء', true],
+      ['204', false],
+    ]);
+    expect(Object.keys(tiles[1]?.cards ?? {}).sort()).toEqual(['chillout', 'wataniya']);
+  });
+
+  it('the tile reads «بدون سيارة» under the label, and offers no card to add to no car', () => {
+    const html = render('cards', { cards: [travel('t1', 'سفر 1')] });
+    expect(html).toContain('سفر 1');
+    expect(html).toContain('data-fuel-no-car="true"');
+    expect(html).toContain(ar('fleet.fuelCards.noCar'));
+    expect(html).not.toContain('data-fuel-add=');
+    expect(render('charging', { cards: [travel('t1', 'سفر 1')] })).toContain('سفر 1');
+  });
+
+  it('is picked by its label where a car is picked — the transfer', () => {
+    const cards = [travel('t1', 'سفر 1'), travel('t2', 'سفر 1', { company: 'chillout' }), card()];
+    expect(noCarPlaces(cards)).toEqual([{ id: 'label:سفر 1', code: 'سفر 1' }]);
+    expect(cards.filter((c) => fuelCardPlace(c) === 'label:سفر 1').map((c) => c.id)).toEqual([
+      't1',
+      't2',
+    ]);
+    const TRANSFER = readFileSync(join(HERE, '../components/FuelTransferDialog.tsx'), 'utf8');
+    expect(TRANSFER.match(/extra=\{places\}/gu)).toHaveLength(2);
+  });
 });
 
 describe('charging', () => {
@@ -283,11 +330,14 @@ describe('the card form', () => {
     const list = rules.slice(0, rules.indexOf(');'));
     for (const rule of [
       "ok: vehicleId !== ''",
+      "ok: vehicleId !== '' || label.trim() !== ''",
       "ok: name.trim() !== ''",
       'ok: number.trim().length >= 4',
-      "ok: expiresAt !== ''",
     ]) {
       expect(list, `the save requires ${rule}`).toContain(rule);
     }
+    // The owner's sheets came without the expiry dates: a card saves without one.
+    expect(list).not.toContain('expiresAt');
+    expect(DIALOG).toContain("expiresAt: expiresAt === '' ? null : new Date(expiresAt)");
   });
 });

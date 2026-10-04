@@ -18,7 +18,7 @@ import { formatMoney } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useTransferFuelBalance } from '../api/fleet-queries';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
-import { FuelCompanyLogo } from './FuelCardTiles';
+import { FuelCompanyLogo, fuelCardPlace, noCarPlaces } from './FuelCardTiles';
 
 export const CardPick = ({
   cards,
@@ -106,8 +106,10 @@ export const FuelTransferDialog = ({
   useEffect(() => setFromCard(''), [fromVehicle]);
   useEffect(() => setToCard(''), [toVehicle]);
 
+  // A «car» here is a car's id, or the label of cards on no car — they are picked the same way.
   const byVehicle = (vehicleId: string): FleetFuelCardDto[] =>
-    vehicleId === '' ? [] : cards.filter((card) => card.vehicleId === vehicleId);
+    vehicleId === '' ? [] : cards.filter((card) => fuelCardPlace(card) === vehicleId);
+  const places = useMemo(() => noCarPlaces(cards), [cards]);
   const from = useMemo(() => cards.find((card) => card.id === fromCard) ?? null, [cards, fromCard]);
   const to = useMemo(() => cards.find((card) => card.id === toCard) ?? null, [cards, toCard]);
   const value = Number(amount);
@@ -195,6 +197,7 @@ export const FuelTransferDialog = ({
                 ariaLabel={t('fleet.fuelCards.transfer.from')}
                 placeholder={t('fleet.accidents.vehiclePlaceholder')}
                 testId="fuel-transfer-from"
+                extra={places}
               />
             </Field>
             <Field
@@ -227,6 +230,7 @@ export const FuelTransferDialog = ({
                 ariaLabel={t('fleet.fuelCards.transfer.to')}
                 placeholder={t('fleet.accidents.vehiclePlaceholder')}
                 testId="fuel-transfer-to"
+                extra={places}
               />
             </Field>
             <Field
@@ -267,7 +271,7 @@ export const FuelTransferDialog = ({
             <p>
               {t('fleet.fuelCards.transfer.fromLine', {
                 company: t(`fleet.fuelCards.company.${from.company}`),
-                code: from.vehicleCode ?? '—',
+                code: from.vehicleCode ?? from.label ?? '—',
                 before: money(from.balance),
                 after: money(from.balance - value),
               })}
@@ -275,7 +279,7 @@ export const FuelTransferDialog = ({
             <p>
               {t('fleet.fuelCards.transfer.toLine', {
                 company: t(`fleet.fuelCards.company.${to.company}`),
-                code: to.vehicleCode ?? '—',
+                code: to.vehicleCode ?? to.label ?? '—',
                 before: money(to.balance),
                 after: money(to.balance + value),
               })}

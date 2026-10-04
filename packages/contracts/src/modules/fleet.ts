@@ -3023,21 +3023,46 @@ export const FLEET_FUEL_PRICE_KEY: Record<FleetFuelType, string> = {
 };
 
 const fuelCardCore = {
-  vehicleId: objectId(),
+  /**
+   * The car the card is on — or `null` for a card that is on none («كروت زيادة ملهمش عربيات»: the
+   * travel cards, the spare). Such a card is named by its `label` instead.
+   */
+  vehicleId: objectId().nullable(),
+  /** What a card on no car is called on the fuel screens («سفر 1», «اسبير»). */
+  label: z.string().trim().min(1).max(60).nullish(),
   company: FleetFuelCardCompanySchema,
   name: z.string().trim().min(1).max(120),
   number: z.string().trim().min(4).max(40),
-  expiresAt: z.coerce.date(),
+  /** `null` until it is known — the owner's sheets came without the expiry dates. */
+  expiresAt: z.coerce.date().nullable(),
   /** Kept, shown only to a reader holding `fleetFuelCard.reveal`. `null` = none. */
   password: z.string().trim().max(120).nullish(),
 };
 
-export const CreateFleetFuelCardSchema = z.object(fuelCardCore).strict();
+/** A card on no car still needs a name to be found by. */
+const cardOnACarOrNamed = (
+  card: { vehicleId?: string | null | undefined; label?: string | null | undefined },
+  ctx: z.RefinementCtx,
+): void => {
+  if (card.vehicleId === null && (card.label ?? '') === '') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['label'],
+      message: 'a card on no car needs a label',
+    });
+  }
+};
+
+export const CreateFleetFuelCardSchema = z
+  .object(fuelCardCore)
+  .strict()
+  .superRefine(cardOnACarOrNamed);
 export type CreateFleetFuelCard = z.infer<typeof CreateFleetFuelCardSchema>;
 
 export const UpdateFleetFuelCardSchema = z
   .object({
     vehicleId: fuelCardCore.vehicleId.optional(),
+    label: fuelCardCore.label,
     company: fuelCardCore.company.optional(),
     name: fuelCardCore.name.optional(),
     number: fuelCardCore.number.optional(),
@@ -3045,7 +3070,8 @@ export const UpdateFleetFuelCardSchema = z
     password: fuelCardCore.password,
     version: z.number().int().min(0),
   })
-  .strict();
+  .strict()
+  .superRefine(cardOnACarOrNamed);
 export type UpdateFleetFuelCard = z.infer<typeof UpdateFleetFuelCardSchema>;
 
 const fuelCardFilters = {
@@ -3069,13 +3095,17 @@ export type FleetFuelCardSummaryQuery = z.infer<typeof FleetFuelCardSummaryQuery
 
 export interface FleetFuelCardDto {
   id: string;
-  vehicleId: string;
+  /** `null` — a card on no car, named by `label`. */
+  vehicleId: string | null;
   /** The registry's code, resolved server-side. */
   vehicleCode: string | null;
+  /** What a card on no car is called («سفر 1», «اسبير»); `null` on a card that is on a car. */
+  label: string | null;
   company: FleetFuelCardCompany;
   name: string;
   number: string;
-  expiresAt: string;
+  /** `null` until it is known. */
+  expiresAt: string | null;
   /** Whether a password is on file — the password itself is fetched separately, under its grant. */
   hasPassword: boolean;
   balance: number;

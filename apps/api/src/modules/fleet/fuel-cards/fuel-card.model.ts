@@ -13,11 +13,14 @@ import {
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 
 export interface FleetFuelCardDoc extends BaseDocFields {
-  vehicleId: Types.ObjectId;
+  /** `null` — a card on no car («سفر 1», «اسبير»), named by `label`. */
+  vehicleId: Types.ObjectId | null;
+  label?: string | null;
   company: FleetFuelCardCompany;
   name: string;
   number: string;
-  expiresAt: Date;
+  /** `null` until it is known. */
+  expiresAt: Date | null;
   password: string | null;
   balance: number;
   requestedAmount: number | null;
@@ -27,11 +30,12 @@ export interface FleetFuelCardDoc extends BaseDocFields {
 
 const fuelCardSchema = new Schema<FleetFuelCardDoc>(
   {
-    vehicleId: { type: Schema.Types.ObjectId, required: true },
+    vehicleId: { type: Schema.Types.ObjectId, default: null },
+    label: { type: String, default: null, trim: true },
     company: { type: String, enum: FLEET_FUEL_CARD_COMPANIES, required: true },
     name: { type: String, required: true, trim: true },
     number: { type: String, required: true, trim: true },
-    expiresAt: { type: Date, required: true },
+    expiresAt: { type: Date, default: null },
     password: { type: String, default: null },
     balance: { type: Number, required: true, default: 0 },
     requestedAmount: { type: Number, default: null, min: 0 },
@@ -53,7 +57,9 @@ fuelCardSchema.index(
   {
     unique: true,
     name: 'ux_fuel_card_vehicle_company',
-    partialFilterExpression: { isDeleted: false },
+    // One card per company per CAR — the cards on no car (six travel cards of one company) are
+    // outside it.
+    partialFilterExpression: { isDeleted: false, vehicleId: { $type: 'objectId' } },
   },
 );
 fuelCardSchema.index({ expiresAt: 1 }, { name: 'ix_fuel_card_expires' });

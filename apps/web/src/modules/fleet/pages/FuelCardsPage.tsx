@@ -118,8 +118,9 @@ export const FuelCardsPage = (): JSX.Element => {
   const warnDays = Number(
     settings.data?.find((s) => s.key === FleetSettingKeys.FuelCardExpiryWarnDays)?.value ?? 30,
   );
+  // A card whose expiry is not known yet warns of nothing.
   const expiresSoon = (card: FleetFuelCardDto): boolean =>
-    new Date(card.expiresAt).getTime() - Date.now() <= warnDays * DAY_MS;
+    card.expiresAt !== null && new Date(card.expiresAt).getTime() - Date.now() <= warnDays * DAY_MS;
 
   const [adding, setAdding] = useState<{
     vehicleId: string;
@@ -145,7 +146,7 @@ export const FuelCardsPage = (): JSX.Element => {
   ];
   const sheetRows = () =>
     cards.map((card) => [
-      card.vehicleCode ?? '',
+      card.vehicleCode ?? card.label ?? '',
       t(`fleet.fuelCards.company.${card.company}`),
       card.name,
       card.number,
@@ -280,7 +281,12 @@ export const FuelCardsPage = (): JSX.Element => {
         ) : (
           <div className="space-y-3">
             {tiles.map((tile) => (
-              <VehicleCardTile key={tile.vehicleId} code={tile.code} vehicleId={tile.vehicleId}>
+              <VehicleCardTile
+                key={tile.vehicleId}
+                code={tile.code}
+                vehicleId={tile.vehicleId}
+                noCar={tile.noCar}
+              >
                 {FUEL_CARD_COMPANIES.map((slot) => {
                   const card = tile.cards[slot];
                   if (card === undefined) {
@@ -288,7 +294,8 @@ export const FuelCardsPage = (): JSX.Element => {
                       <EmptyCardLine
                         key={slot}
                         company={slot}
-                        {...(can('fleetFuelCard.create')
+                        // A tile of a card on no car has no car to put another card on.
+                        {...(can('fleetFuelCard.create') && !tile.noCar
                           ? {
                               onAdd: () => setAdding({ vehicleId: tile.vehicleId, company: slot }),
                             }

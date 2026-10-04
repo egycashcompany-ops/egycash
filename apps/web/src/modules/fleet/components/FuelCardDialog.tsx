@@ -32,6 +32,7 @@ export const FuelCardDialog = ({
   const t = useT();
   const can = useCan();
   const [vehicleId, setVehicleId] = useState('');
+  const [label, setLabel] = useState('');
   const [company, setCompany] = useState<FleetFuelCardCompany>('wataniya');
   const [name, setName] = useState('');
   const [number, setNumber] = useState('');
@@ -41,11 +42,12 @@ export const FuelCardDialog = ({
 
   useEffect(() => {
     if (!open) return;
-    setVehicleId(card?.vehicleId ?? initialVehicleId);
+    setVehicleId(card === null ? initialVehicleId : (card.vehicleId ?? ''));
+    setLabel(card?.label ?? '');
     setCompany(card?.company ?? initialCompany ?? 'wataniya');
     setName(card?.name ?? '');
     setNumber(card?.number ?? '');
-    setExpiresAt(card?.expiresAt.slice(0, 10) ?? '');
+    setExpiresAt(card?.expiresAt?.slice(0, 10) ?? '');
     setPassword('');
     setPasswordShown(false);
   }, [open, card, initialVehicleId, initialCompany]);
@@ -53,14 +55,23 @@ export const FuelCardDialog = ({
   const create = useCreateFuelCard();
   const update = useUpdateFuelCard();
   const pending = create.isPending || update.isPending;
+  // A card on no car («سفر 1», «اسبير») is edited under its label; it may be moved onto a car, and
+  // then the car names it instead.
+  const noCar = card !== null && card.vehicleId === null;
   // Save stays pressable: pressing it with any of these empty — or a number under four digits —
-  // names them and turns their boxes red (`useRequiredFields`).
+  // names them and turns their boxes red (`useRequiredFields`). The expiry may wait: the owner's
+  // sheets came without it («تاريخ الانتهاء هبعته … فى فايل تانى»).
   const required = useRequiredFields(
     [
-      { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
+      noCar
+        ? {
+            key: 'label',
+            label: t('fleet.fuelCards.fields.label'),
+            ok: vehicleId !== '' || label.trim() !== '',
+          }
+        : { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
       { key: 'name', label: t('fleet.fuelCards.fields.name'), ok: name.trim() !== '' },
       { key: 'number', label: t('fleet.fuelCards.fields.number'), ok: number.trim().length >= 4 },
-      { key: 'expiresAt', label: t('fleet.fuelCards.fields.expiresAt'), ok: expiresAt !== '' },
     ],
     open,
   );
@@ -75,11 +86,12 @@ export const FuelCardDialog = ({
 
   const submit = async (): Promise<void> => {
     const body = {
-      vehicleId,
+      vehicleId: vehicleId === '' ? null : vehicleId,
+      label: vehicleId === '' ? label.trim() : null,
       company,
       name: name.trim(),
       number: number.trim(),
-      expiresAt: new Date(expiresAt),
+      expiresAt: expiresAt === '' ? null : new Date(expiresAt),
     };
     if (card === null) {
       await create.mutateAsync({ ...body, password: password === '' ? null : password });
@@ -124,7 +136,7 @@ export const FuelCardDialog = ({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label={t('fleet.odometer.columns.vehicle')}
-            required
+            required={!noCar}
             missing={required.isMissing('vehicle')}
             hint={t('fleet.accidents.vehicleHint')}
           >
@@ -159,6 +171,17 @@ export const FuelCardDialog = ({
             </div>
           </Field>
         </div>
+        {noCar && vehicleId === '' && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field
+              label={t('fleet.fuelCards.fields.label')}
+              required
+              missing={required.isMissing('label')}
+            >
+              <Input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={60} />
+            </Field>
+          </div>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label={t('fleet.fuelCards.fields.name')}
@@ -180,11 +203,7 @@ export const FuelCardDialog = ({
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field
-            label={t('fleet.fuelCards.fields.expiresAt')}
-            required
-            missing={required.isMissing('expiresAt')}
-          >
+          <Field label={t('fleet.fuelCards.fields.expiresAt')}>
             <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
           </Field>
           <Field

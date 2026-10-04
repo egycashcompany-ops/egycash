@@ -56,6 +56,7 @@ const card = (id: string, over: Partial<FleetFuelCardDto> = {}): FleetFuelCardDt
   id,
   vehicleId: 'v-204',
   vehicleCode: '204',
+  label: null,
   company: 'wataniya',
   name: 'كارت وطنية 204',
   number: `7045 1120 0098 ${id}`,

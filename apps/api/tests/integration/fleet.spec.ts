@@ -9261,6 +9261,7 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
     const otherCompany = data<Card>(await mkCard(b.id, 'wataniya'));
     await approve(data<Card>(await requestCharge(from, 1200)));
     await approve(data<Card>(await requestCharge(to, 300)));
+    await approve(data<Card>(await requestCharge(otherCompany, 50)));
 
     // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح» — never across the two companies.
     const crossed = await request(app)
@@ -9269,6 +9270,7 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
       .send({ fromCardId: from.id, toCardId: otherCompany.id, amount: 100 });
     expect(crossed.status).toBe(400);
     expect((await read(from.id)).balance, 'nothing left the first card').toBe(1200);
+    expect((await read(otherCompany.id)).balance, 'nothing reached the other company').toBe(50);
 
     const tooMuch = await request(app)
       .post('/api/v1/fleet/fuel-cards/transfer')
@@ -9299,7 +9301,7 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
       res,
     );
     // The transfer above moves money between two Chill Out cards (700 + 800 after it); the
-    // Wataniya side holds what the delete test charged.
+    // Wataniya side holds the 50 charged on its refused cross-company target.
     expect(totals.wataniyaBalance).toBeGreaterThanOrEqual(50);
     expect(totals.chilloutBalance).toBeGreaterThanOrEqual(1500);
     expect(totals.cardCount).toBeGreaterThanOrEqual(4);

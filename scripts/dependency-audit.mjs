@@ -16,8 +16,9 @@
 //     the run until it is renewed or the dependency is fixed, exactly as feature flags do
 //     (`check-flag-expiry.mjs`).
 //
-// Moderate and low advisories are reported, never fatal: they are what the weekly Dependabot
-// PRs are for.
+// Moderate and low advisories are reported, never fatal: a list to work through, not a reason
+// to stop a deploy. Nothing opens update PRs for them automatically any more — the owner switched
+// Dependabot off (2026-10-04) — so this report is where they are seen.
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -148,5 +149,5 @@ if (blocking.length > 0) {
 }
 
 process.stdout.write(
-  `dependency audit OK: no unwaived high or critical advisories (${String(tolerated.length)} waived, ${String(counts.moderate + counts.low)} lower-severity for Dependabot)\n`,
+  `dependency audit OK: no unwaived high or critical advisories (${String(tolerated.length)} waived, ${String(counts.moderate + counts.low)} lower-severity, reported only)\n`,
 );

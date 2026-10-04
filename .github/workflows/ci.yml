@@ -72,6 +72,6 @@ jobs:
       # High AND critical advisories in production dependencies fail the run; a registry outage
       # fails it too, unless a reviewer has recorded a dated outage waiver. Individual advisories
       # are waived by id, with a reason and an expiry that fails the run once it passes — see
-      # scripts/dependency-audit.waivers.json. Lower severities are reported for Dependabot.
+      # scripts/dependency-audit.waivers.json. Lower severities are reported, never fatal.
       - name: Dependency audit (high/critical block; outage is not a pass)
         run: node scripts/dependency-audit.mjs

@@ -9,6 +9,21 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Removed
+
+- **Dependabot is switched off, by the owner's decision.** `.github/dependabot.yml` is deleted, so
+  no weekly update PRs open on their own any more. They had piled up unreviewed — seven at once,
+  one of them green and wrong: a tiptap 3 table extension inside the tiptap 2 contract editor,
+  which no test renders. Updates are now made deliberately, in a change that is tested for them.
+
+  What still guards the dependencies is unchanged and does not depend on Dependabot:
+  `scripts/dependency-audit.mjs` fails CI on any high or critical advisory in production
+  dependencies, and on a registry outage. Moderate and low advisories stay reported, not fatal.
+  The security architecture's dependency-risk row says so.
+
+  GitHub's repository setting for *security* update PRs is separate from this file and is not
+  reachable from code; it is under Settings → Code security.
+
 ### Fixed
 
 - **Signing in opens the first screen the person is allowed, not an empty HR page.** Somebody

@@ -327,15 +327,19 @@ export const CustodyPage = (): JSX.Element => {
             value={sources}
             onChange={(next) => patch({ source: next.length === 0 ? null : next.join(',') })}
           />
-          <Input
-            aria-label={t('fleet.receipts.columns.driver')}
-            title={t('fleet.receipts.columns.driver')}
-            placeholder={t('fleet.receipts.filters.driver')}
-            value={driver}
-            onChange={(e) => patch({ driver: e.target.value || null })}
-            className="w-44 shrink-0"
-            rule="arabic"
-          />
+          {/* A width on the WRAPPER: `Input` carries its own `w-full`, and a width passed as a
+              class only joins it (`cn` does not merge) — the box took the whole row and pushed
+              itself, and the count after it, onto lines of their own. */}
+          <div className="w-44 shrink-0">
+            <Input
+              aria-label={t('fleet.receipts.columns.driver')}
+              title={t('fleet.receipts.columns.driver')}
+              placeholder={t('fleet.receipts.filters.driver')}
+              value={driver}
+              onChange={(e) => patch({ driver: e.target.value || null })}
+              rule="arabic"
+            />
+          </div>
         </FilterBar>
 
         <StatStrip columns={4} labelFirst items={totals} />

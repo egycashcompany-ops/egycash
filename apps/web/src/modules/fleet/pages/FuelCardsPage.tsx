@@ -231,15 +231,19 @@ export const FuelCardsPage = (): JSX.Element => {
               </option>
             ))}
           </Select>
-          <Input
-            aria-label={t('fleet.fuelCards.filters.number')}
-            placeholder={t('fleet.fuelCards.filters.number')}
-            value={number}
-            onChange={(e) => patch({ number: e.target.value || null })}
-            className="w-48"
-            rule="digits"
-          />
-          <span className="relative w-40">
+          {/* Widths on the WRAPPERS: `Input` carries its own `w-full`, and a width passed as a
+              class only joins it (`cn` does not merge) — the number box took the whole row, and
+              the date (in an inline span, which takes no width) fell to a third line. */}
+          <div className="w-48 shrink-0">
+            <Input
+              aria-label={t('fleet.fuelCards.filters.number')}
+              placeholder={t('fleet.fuelCards.filters.number')}
+              value={number}
+              onChange={(e) => patch({ number: e.target.value || null })}
+              rule="digits"
+            />
+          </div>
+          <div className="relative w-40 shrink-0">
             <Input
               type="date"
               dir="ltr"
@@ -262,7 +266,7 @@ export const FuelCardsPage = (): JSX.Element => {
                 {t('fleet.fuelCards.filters.expiresBefore')}
               </span>
             )}
-          </span>
+          </div>
         </FilterBar>
 
         {isError ? (

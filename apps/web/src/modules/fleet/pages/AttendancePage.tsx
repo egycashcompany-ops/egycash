@@ -181,13 +181,16 @@ export const AttendancePage = (): JSX.Element => {
 
       <div className="space-y-4">
         <FilterBar hasActiveFilters={coversDate !== ''} onClear={() => patch({ date: null })}>
-          <Field label={t('fleet.attendance.coversDate')} htmlFor="attendance-covers-date">
+          <Field
+            label={t('fleet.attendance.coversDate')}
+            htmlFor="attendance-covers-date"
+            className="w-44 shrink-0"
+          >
             <Input
               id="attendance-covers-date"
               type="date"
               value={coversDate}
               onChange={(e) => patch({ date: e.target.value || null })}
-              className="w-auto"
             />
           </Field>
         </FilterBar>

@@ -31,7 +31,7 @@ const AMOUNT_CHARACTERS = /^[\d٠-٩۰-۹.,٫٬\s]*$/u;
 export interface MoneyInputProps
   extends
     Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>,
-    Pick<InputProps, 'density' | 'textScale'> {
+    Pick<InputProps, 'density' | 'textScale' | 'tone'> {
   /** The canonical amount — `''`, `'1000'`, `'1000.5'`. Never grouped. */
   value: string;
   /** Receives the canonical amount, so the caller stores exactly what it stored before. */

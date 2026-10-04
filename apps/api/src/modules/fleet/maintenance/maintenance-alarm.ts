@@ -193,7 +193,12 @@ export const computeAlarms = async (): Promise<FleetMaintenanceAlarmDto[]> => {
       redKm,
       latestReading: reading?.reading ?? null,
       latestReadingDate: reading?.date ?? null,
-      baselineCounter: baseline?.odometerAtService ?? null,
+      // A service written with no counter (it is optional) is measured from the last odometer
+      // reading on or before its day — the counter the car stood at when it was serviced.
+      baselineCounter:
+        baseline === null
+          ? null
+          : (baseline.odometerAtService ?? lowerBounds.get(id)?.reading ?? null),
       baselineDate: baseline?.serviceDate ?? null,
       baselineLowerBound: baseline === null ? null : (lowerBounds.get(id)?.reading ?? null),
     });

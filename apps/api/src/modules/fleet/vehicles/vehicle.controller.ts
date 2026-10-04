@@ -55,6 +55,7 @@ export const updateVehicle = async (req: Request, res: Response): Promise<void> 
     body,
     ctx.userId,
     scopeSelector(ctx, 'fleetVehicle.edit'),
+    { asPerson: true },
   );
   await respondOne(res, doc);
 };

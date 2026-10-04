@@ -5,7 +5,7 @@
 //
 // Three of its selects read LIVE fleet catalogs (license class, operation, insurer): no option is
 // written here, and an admin adding a value in /fleet/catalogs sees it in this form immediately.
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { type FleetVehicleDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
@@ -20,11 +20,13 @@ import { useBranches } from '../../hr/recruitment/job-offers/api/job-offer-queri
 import {
   useCreateVehicle,
   useDefaultVehicleBranch,
+  useFleetCatalog,
   useUpdateVehicle,
   useUploadVehicleLicenseImage,
   useVehicleTypes,
 } from '../api/fleet-queries';
 import { CatalogSelect } from './CatalogSelect';
+import { counterpartClass, letterFlipped } from '../lib/license-class-flip';
 import { LICENSE_IMAGE_ACCEPT, LicenseImagePreviewDialog } from './VehicleLicenseImage';
 
 interface FormState {
@@ -107,6 +109,40 @@ export const VehicleFormDialog = ({
   const set = (key: keyof FormState) => (value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }));
 
+  // THE LICENCE LETTER AND ITS DATE MOVE TOGETHER (`license-class-flip.ts`) — on an existing car
+  // only: a new one has no «before» to compare with.
+  const licenseClasses = useFleetCatalog('licenseClass');
+  const classItems = useMemo(
+    () => (licenseClasses.data?.items ?? []).map((item) => ({ id: item.id, name: item.name.ar })),
+    [licenseClasses.data],
+  );
+  const [classTouched, setClassTouched] = useState(false);
+  useEffect(() => {
+    if (open) setClassTouched(false);
+  }, [open, vehicle]);
+  const initialClassId = vehicle?.licenseClassId ?? '';
+  const initialExpiry = vehicle === null ? '' : day(vehicle.licenseExpiresAt);
+  const dateMoved = form.licenseExpiresAt !== initialExpiry;
+  // «يجيب انذار انه لازم يعدل تاريخ انتهاء الترخيص» — and refuses the save until it is.
+  const classFlippedOnOldDate =
+    vehicle !== null &&
+    !dateMoved &&
+    letterFlipped(classItems, initialClassId, form.licenseClassId);
+  const pickClass = (id: string): void => {
+    setClassTouched(true);
+    set('licenseClassId')(id);
+  };
+  // «ولو عدل التاريخ تلقائى لو م تبقى ت ولو ت تبقى م» — while the class was not picked by hand.
+  const pickExpiry = (value: string): void => {
+    setForm((prev) => {
+      if (vehicle === null || classTouched) return { ...prev, licenseExpiresAt: value };
+      const flipped = counterpartClass(classItems, initialClassId);
+      const licenseClassId =
+        value !== initialExpiry && flipped !== null ? flipped.id : initialClassId;
+      return { ...prev, licenseExpiresAt: value, licenseClassId };
+    });
+  };
+
   // Branch joins the required set: the API refuses a branchless vehicle, so the form does too
   // rather than letting the user submit into a 422. Save stays pressable: pressing it with any of
   // these empty names them and turns their boxes red (`useRequiredFields`).
@@ -125,7 +161,7 @@ export const VehicleFormDialog = ({
       {
         key: 'licenseExpiresAt',
         label: t('fleet.vehicles.fields.licenseExpiresAt'),
-        ok: form.licenseExpiresAt !== '',
+        ok: form.licenseExpiresAt !== '' && !classFlippedOnOldDate,
       },
       { key: 'branch', label: t('fleet.vehicles.fields.branch'), ok: form.branchId !== '' },
     ],
@@ -290,11 +326,12 @@ export const VehicleFormDialog = ({
             label={t('fleet.vehicles.fields.licenseExpiresAt')}
             required
             missing={required.isMissing('licenseExpiresAt')}
+            {...(classFlippedOnOldDate ? { error: t('fleet.vehicles.licenseClassNeedsDate') } : {})}
           >
             <Input
               type="date"
               value={form.licenseExpiresAt}
-              onChange={(e) => set('licenseExpiresAt')(e.target.value)}
+              onChange={(e) => pickExpiry(e.target.value)}
             />
           </Field>
           <Field
@@ -304,7 +341,7 @@ export const VehicleFormDialog = ({
             <CatalogSelect
               kind="licenseClass"
               value={form.licenseClassId}
-              onChange={set('licenseClassId')}
+              onChange={pickClass}
               ariaLabel={t('fleet.vehicles.fields.licenseClass')}
             />
           </Field>

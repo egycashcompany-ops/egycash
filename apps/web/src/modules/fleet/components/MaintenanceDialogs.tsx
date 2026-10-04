@@ -260,6 +260,10 @@ export const CheckInDialog = ({
   // as it stood then, not as it stands now.
   const bracket = useOdometerBracket(vehicleId, inDate, open && vehicleId !== '' && inDate !== '');
   const odometerNumber = Number(odometer);
+  const lastReading = bracket.data?.lowerBound ?? null;
+  const belowLast =
+    odometer !== '' &&
+    (!Number.isInteger(odometerNumber) || (lastReading !== null && odometerNumber < lastReading));
   // Advice only — see `workshop-odometer-warning`. It is deliberately absent from `required`
   // below: a suspicious counter is still a counter somebody may have good reason to record.
   const counterWarningText = counterWarning(
@@ -274,11 +278,9 @@ export const CheckInDialog = ({
     [
       { key: 'vehicle', label: t('fleet.odometer.fields.vehicle'), ok: vehicleId !== '' },
       { key: 'inDate', label: t('fleet.maintenance.fields.inDate'), ok: inDate !== '' },
-      {
-        key: 'odometer',
-        label: t('fleet.maintenance.fields.odometerAtService'),
-        ok: odometer !== '' && Number.isInteger(odometerNumber),
-      },
+      // «مش اجبارى … انه يكتب عداد بس لو كتب ميدخلش اقل من القيمة اللى قبلها»: empty is fine; a
+      // counter typed below the last reading before the visit is refused.
+      { key: 'odometer', label: t('fleet.maintenance.fields.odometerAtService'), ok: !belowLast },
       { key: 'workshop', label: t('fleet.maintenance.fields.workshop'), ok: workshopId !== '' },
       { key: 'workType', label: t('fleet.maintenance.fields.workType'), ok: workTypeId !== '' },
     ],
@@ -295,7 +297,8 @@ export const CheckInDialog = ({
       workshopId,
       workTypeId,
       sparePartIds: partIds,
-      odometerAtService: odometerNumber,
+      // Optional: an empty box is a visit with no counter, never a counter of 0.
+      odometerAtService: odometer === '' ? null : odometerNumber,
       // `null`, not `''`: an empty box means nobody was named, and an empty string is not an id.
       driverInEmployeeId: driverIn === '' ? null : driverIn,
       notes: notes.trim() === '' ? null : notes.trim(),
@@ -356,16 +359,23 @@ export const CheckInDialog = ({
           </Field>
           <Field
             label={t('fleet.maintenance.fields.odometerAtService')}
-            required
             missing={required.isMissing('odometer')}
             hint={
               expected.data?.expectedReading == null
-                ? undefined
+                ? t('fleet.maintenance.odometerOptional')
                 : t('fleet.odometer.expectedHint', {
                     km: formatNumber(expected.data.expectedReading, locale),
                   })
             }
-            warning={counterWarningText}
+            {...(belowLast && lastReading !== null
+              ? {
+                  error: t('fleet.maintenance.odometerBelowLast', {
+                    km: formatNumber(lastReading, locale),
+                    date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                  }),
+                }
+              : {})}
+            warning={belowLast ? undefined : counterWarningText}
           >
             <Input
               rule="integer"
@@ -436,7 +446,9 @@ export const CheckOutDialog = ({
       //
       // It matters more here than a saved keystroke: this reading becomes the alarm's baseline, so
       // a digit mistyped while copying it does not stay in this row — it moves the next service.
-      setExitOdometer(visit === null ? '' : String(visit.odometerAtService));
+      setExitOdometer(
+        visit === null || visit.odometerAtService === null ? '' : String(visit.odometerAtService),
+      );
       setDriverOut('');
       // The parts the check-in recorded, as the starting point for the list this door writes.
       setPartIds(visit?.sparePartIds ?? []);
@@ -446,7 +458,11 @@ export const CheckOutDialog = ({
   const exitValid = exitOdometer !== '' && Number.isInteger(exitNumber) && exitNumber >= 0;
   // The workshop cannot hand the car back on a lower reading than it arrived on. The server
   // refuses it too; saying so here spares a round-trip. BLOCKING, and it mirrors a server rule.
-  const belowEntry = exitValid && visit !== null && exitNumber < visit.odometerAtService;
+  const belowEntry =
+    exitValid &&
+    visit !== null &&
+    visit.odometerAtService !== null &&
+    exitNumber < visit.odometerAtService;
   // Advice, and a different thing entirely: no server rule refuses this, and the save goes
   // through. It matters most here — the exit reading becomes the alarm's baseline, so a typo
   // does not stay in this row, it moves the next service.
@@ -461,6 +477,10 @@ export const CheckOutDialog = ({
     t,
     locale,
   );
+  // «مش اجبارى … بس لو كتب ميدخلش اقل من القيمة اللى قبلها»: the exit counter may be left empty;
+  // written, it may not be below the last reading before the check-out.
+  const exitLast = bracket.data?.lowerBound ?? null;
+  const exitBelowLast = exitValid && exitLast !== null && exitNumber < exitLast;
   // Save stays pressable (`useRequiredFields`). A reading below the entry one is named with the
   // empty values, and its Field still says why — `exitBelowEntry` outranks «حقل مطلوب».
   const required = useRequiredFields(
@@ -470,7 +490,7 @@ export const CheckOutDialog = ({
       {
         key: 'exitOdometer',
         label: t('fleet.maintenance.fields.exitOdometer'),
-        ok: exitValid && !belowEntry,
+        ok: exitOdometer === '' || (exitValid && !belowEntry && !exitBelowLast),
       },
     ],
     open,
@@ -484,7 +504,7 @@ export const CheckOutDialog = ({
       id: visit.id,
       body: {
         outDate: new Date(outDate),
-        exitOdometer: exitNumber,
+        exitOdometer: exitOdometer === '' ? null : exitNumber,
         driverOutEmployeeId: driverOut,
         sparePartIds: partIds,
         version: visit.version,
@@ -540,23 +560,31 @@ export const CheckOutDialog = ({
         </Field>
         <Field
           label={t('fleet.maintenance.fields.exitOdometer')}
-          required
           missing={required.isMissing('exitOdometer')}
           hint={
-            visit === null
-              ? undefined
+            visit === null || visit.odometerAtService === null
+              ? t('fleet.maintenance.odometerOptional')
               : t('fleet.maintenance.exitOdometerHint', {
                   km: formatNumber(visit.odometerAtService, locale),
                 })
           }
-          error={belowEntry ? t('fleet.maintenance.exitBelowEntry') : undefined}
-          warning={belowEntry ? undefined : counterWarningText}
+          error={
+            belowEntry
+              ? t('fleet.maintenance.exitBelowEntry')
+              : exitBelowLast && exitLast !== null
+                ? t('fleet.maintenance.odometerBelowLast', {
+                    km: formatNumber(exitLast, locale),
+                    date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                  })
+                : undefined
+          }
+          warning={belowEntry || exitBelowLast ? undefined : counterWarningText}
         >
           <Input
             rule="integer"
             value={exitOdometer}
             onChange={(e) => setExitOdometer(e.target.value)}
-            error={belowEntry}
+            error={belowEntry || exitBelowLast}
             dir="ltr"
           />
         </Field>
@@ -598,7 +626,7 @@ export const MaintenanceEditDialog = ({
       setInDate(visit.inDate.slice(0, 10));
       setWorkshopId(visit.workshopId);
       setWorkTypeId(visit.workTypeId);
-      setOdometer(String(visit.odometerAtService));
+      setOdometer(visit.odometerAtService === null ? '' : String(visit.odometerAtService));
       // A legacy visit has no driver on file; the field opens empty and stays optional there.
       setDriverIn(visit.driverInEmployeeId ?? '');
       setPartIds(visit.sparePartIds);
@@ -619,13 +647,23 @@ export const MaintenanceEditDialog = ({
     t,
     locale,
   );
+  // Optional, and refused below the last reading — only when this edit CHANGES it, so a visit
+  // the old book left below the chain can still have its other facts corrected.
+  const editLast = bracket.data?.lowerBound ?? null;
+  const counterChanged =
+    visit !== null &&
+    odometer !== (visit.odometerAtService === null ? '' : String(visit.odometerAtService));
+  const editBelowLast =
+    odometer !== '' &&
+    (!Number.isInteger(odometerNumber) ||
+      (counterChanged && editLast !== null && odometerNumber < editLast));
   const required = useRequiredFields(
     [
       { key: 'inDate', label: t('fleet.maintenance.fields.inDate'), ok: inDate !== '' },
       {
         key: 'odometer',
         label: t('fleet.maintenance.fields.odometerAtService'),
-        ok: odometer !== '' && Number.isInteger(odometerNumber),
+        ok: !editBelowLast,
       },
       { key: 'workshop', label: t('fleet.maintenance.fields.workshop'), ok: workshopId !== '' },
       { key: 'workType', label: t('fleet.maintenance.fields.workType'), ok: workTypeId !== '' },
@@ -642,7 +680,7 @@ export const MaintenanceEditDialog = ({
         workshopId,
         workTypeId,
         sparePartIds: partIds,
-        odometerAtService: odometerNumber,
+        odometerAtService: odometer === '' ? null : odometerNumber,
         // Only sent when it says something: the endpoint takes a correction, never a clear.
         ...(driverIn === '' ? {} : { driverInEmployeeId: driverIn }),
         notes: notes.trim() === '' ? null : notes.trim(),
@@ -689,9 +727,17 @@ export const MaintenanceEditDialog = ({
         </Field>
         <Field
           label={t('fleet.maintenance.fields.odometerAtService')}
-          required
           missing={required.isMissing('odometer')}
-          warning={counterWarningText}
+          hint={t('fleet.maintenance.odometerOptional')}
+          {...(editBelowLast && editLast !== null
+            ? {
+                error: t('fleet.maintenance.odometerBelowLast', {
+                  km: formatNumber(editLast, locale),
+                  date: formatDate(bracket.data?.lowerBoundAt ?? null, locale),
+                }),
+              }
+            : {})}
+          warning={editBelowLast ? undefined : counterWarningText}
         >
           <Input
             rule="integer"

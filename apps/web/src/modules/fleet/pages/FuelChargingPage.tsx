@@ -58,6 +58,13 @@ const STATE_LABEL: Record<ChargingState, string> = {
 const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
 /**
+ * The request box's own colours, given as the input's `tone` so the input drops its border and
+ * white ground: no frame of its own and no focus ring — the surrounding frame is the box.
+ */
+const REQUEST_BOX_TONE =
+  'border-transparent bg-transparent text-right text-[15px] font-bold tabular-nums text-slate-900 placeholder:font-normal placeholder:text-slate-300 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent dark:text-slate-100 dark:placeholder:text-slate-600';
+
+/**
  * «طلب رصيد»: type an amount and the row colours; ✓ sends it to the card, ✕ takes it back.
  * A request already on the row is shown in the box with its ✓ ✕ until somebody decides.
  */
@@ -96,9 +103,16 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   return (
     <div className="flex min-w-[13rem] flex-col gap-1">
       <span className="min-h-[1.125rem] text-[11px] leading-[1.125rem]" />
+      {/*
+        The frame IS the box, as every other fact on the line is a frame: the amount is typed
+        straight into it, in the frames' own bold figures. It used to hold a second, bordered input
+        — a thin line inside the frame that grew the global focus ring, offset, on a click. Now
+        the input is bare and the frame itself lights up while it is being typed in.
+      */}
       <div
         className={cn(
-          'rounded-lg border bg-white px-3 py-1.5 dark:bg-slate-950',
+          'rounded-lg border bg-white px-3 py-1.5 transition-colors dark:bg-slate-950',
+          'focus-within:border-brand-500 focus-within:ring-1 focus-within:ring-brand-500',
           waiting ? 'border-amber-400' : 'border-slate-200 dark:border-slate-700',
         )}
       >
@@ -112,7 +126,9 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
             disabled={waiting || !can('fleetFuelCharge.request')}
             aria-label={t('fleet.fuelCards.fields.request')}
             data-fuel-request={card.id}
-            className="h-8 w-28"
+            placeholder="0.00"
+            tone={REQUEST_BOX_TONE}
+            className="h-6 w-28 !px-0 !py-0"
           />
           {showButtons && canDecide && (
             <>
@@ -168,6 +184,8 @@ export const FuelChargingPage = (): JSX.Element => {
     setSp(next);
   };
   const hasActiveFilters = vehicleCodes.length > 0 || company !== '' || states.length > 0;
+  // A filter on the CARD leaves a car's other card out of the answer — filtered away, not empty.
+  const cardFiltered = company !== '' || states.length > 0;
 
   // The colour lines — «قبل ما الرصيد بتاع الفيزا يخلص اقدر ادى انذار احمر واصفر».
   const settings = useMySettings();
@@ -365,7 +383,9 @@ export const FuelChargingPage = (): JSX.Element => {
               >
                 {FUEL_CARD_COMPANIES.map((slot) => {
                   const card = tile.cards[slot];
-                  if (card === undefined) return <EmptyCardLine key={slot} company={slot} />;
+                  if (card === undefined) {
+                    return cardFiltered ? null : <EmptyCardLine key={slot} company={slot} />;
+                  }
                   const low = card.balance < red ? 'red' : card.balance < yellow ? 'yellow' : null;
                   return (
                     <CardLine

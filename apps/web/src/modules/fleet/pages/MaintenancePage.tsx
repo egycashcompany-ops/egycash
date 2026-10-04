@@ -338,7 +338,7 @@ export const MaintenancePage = (): JSX.Element => {
           // a part that was deleted from the list is still what this visit had fitted.
           visit.sparePartIds.map((id) => catalogName.get(id) ?? id).join('، '),
           visit.spareParts.join('، '),
-          visit.odometerAtService,
+          visit.odometerAtService ?? '',
           visit.notes ?? '',
         ];
       }),

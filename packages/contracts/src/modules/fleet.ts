@@ -299,6 +299,16 @@ export interface FleetVehicleDto {
   updatedAt: string;
 }
 
+/**
+ * A licence class is a traffic unit and a letter — «برقاش م», «العجوزة ت» — and the letter moves
+ * with the expiry date: «لو غير فئة الترخيص من ت ل م او م ل ت … لازم يعدل تاريخ انتهاء الترخيص».
+ * The class's letter is its last word, «م» or «ت»; `null` for a class without one.
+ */
+export const fleetLicenseLetter = (name: string): 'م' | 'ت' | null => {
+  const last = name.trim().split(/\s+/u).at(-1);
+  return last === 'م' || last === 'ت' ? last : null;
+};
+
 const vehicleCore = {
   code: z.string().trim().min(1).max(20),
   typeId: objectId(),
@@ -1094,8 +1104,8 @@ export interface FleetMaintenanceVisitDto {
   spareParts: string[];
   /** Parts chosen from the `sparePart` catalog. The field new visits write. */
   sparePartIds: string[];
-  /** The counter when the vehicle went IN. */
-  odometerAtService: number;
+  /** The counter when the vehicle went IN — `null` when none was written. */
+  odometerAtService: number | null;
   /**
    * The counter when it came OUT, recorded at check-out. `null` while the visit is open, and on
    * visits closed before this was collected.
@@ -1127,7 +1137,12 @@ export const CheckInFleetMaintenanceSchema = z
      * The web form does not send it.
      */
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
-    odometerAtService: z.number().int().min(0),
+    /**
+     * The counter on arrival. OPTIONAL — «مش اجبارى … انه يكتب عداد بس لو كتب ميدخلش اقل من القيمة
+     * اللى قبلها»: absent or null is a visit with no counter; a counter below the last reading
+     * before the visit is refused by the server.
+     */
+    odometerAtService: z.number().int().min(0).nullish(),
     /**
      * Who drove the vehicle in. OPTIONAL — «سائق الدخول ميكونش اجبارى يكون اختيارى».
      *
@@ -1156,11 +1171,11 @@ export const CheckOutFleetMaintenanceSchema = z
   .object({
     outDate: z.coerce.date(),
     /**
-     * The counter the vehicle leaves on. REQUIRED, because it becomes the baseline every later
-     * maintenance calculation measures from — a check-out without it would leave the next service
-     * being counted from the arrival reading and falling due early.
+     * The counter the vehicle leaves on. OPTIONAL, as on check-in; when given it becomes the
+     * baseline later maintenance calculations measure from, and it may not be below the arrival
+     * counter or the last reading before the check-out.
      */
-    exitOdometer: z.number().int().min(0),
+    exitOdometer: z.number().int().min(0).nullish(),
     /** Who drove the vehicle away. REQUIRED — this write also sets the alarm's baseline. */
     driverOutEmployeeId: objectId(),
     /**
@@ -1192,7 +1207,7 @@ export const UpdateFleetMaintenanceSchema = z
     sparePartIds: z.array(objectId()).max(50).optional(),
     /** DEPRECATED, as on check-in — accepted, stored verbatim, never interpreted. */
     spareParts: z.array(z.string().trim().min(1).max(120)).max(50).optional(),
-    odometerAtService: z.number().int().min(0).optional(),
+    odometerAtService: z.number().int().min(0).nullish(),
     exitOdometer: z.number().int().min(0).nullish().optional(),
     /**
      * Correctable, like the rest of the check-in facts this endpoint edits. A required field with
@@ -2386,7 +2401,7 @@ export const FleetMaintenancePayloadV1 = z.object({
   code: z.string(),
   workshopId: objectId(),
   workTypeId: objectId(),
-  odometerAtService: z.number().int(),
+  odometerAtService: z.number().int().nullable(),
 });
 
 export const FleetMaintenanceAlarmPayloadV1 = z.object({
@@ -3035,10 +3050,20 @@ const fuelCardCore = {
   company: FleetFuelCardCompanySchema,
   name: z.string().trim().min(1).max(120),
   number: z.string().trim().min(4).max(40),
-  /** `null` until it is known — the owner's sheets came without the expiry dates. */
-  expiresAt: z.coerce.date().nullable(),
-  /** Kept, shown only to a reader holding `fleetFuelCard.reveal`. `null` = none. */
-  password: z.string().trim().max(120).nullish(),
+  /**
+   * REQUIRED — «تاريخ انتهاء الكارت اجبارى». The DTO still reads `null` for the few imported cards
+   * neither the photos nor the sheets dated; any save of such a card must give it one.
+   */
+  // `null` and '' are refused, not coerced: `z.coerce.date()` alone reads null as 1 January 1970.
+  expiresAt: z.preprocess(
+    (value) => (value === null || value === '' ? undefined : value),
+    z.coerce.date(),
+  ),
+  /**
+   * REQUIRED on a new card — «الباسورد اجبارى». Kept, shown only to a reader holding
+   * `fleetFuelCard.reveal`.
+   */
+  password: z.string().trim().min(1).max(120),
 };
 
 /** A card on no car still needs a name to be found by. */
@@ -3069,7 +3094,8 @@ export const UpdateFleetFuelCardSchema = z
     name: fuelCardCore.name.optional(),
     number: fuelCardCore.number.optional(),
     expiresAt: fuelCardCore.expiresAt.optional(),
-    password: fuelCardCore.password,
+    /** Absent leaves it as it is; it can be changed, never removed. */
+    password: fuelCardCore.password.optional(),
     version: z.number().int().min(0),
   })
   .strict()

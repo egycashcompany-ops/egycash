@@ -371,8 +371,8 @@ describe('a warning is not a refusal', () => {
 
   it('and it never rewrites what was typed — the value is submitted as entered', () => {
     const source = read('components/MaintenanceDialogs.tsx');
-    expect(source).toMatch(/odometerAtService: odometerNumber/);
-    expect(source).toMatch(/exitOdometer: exitNumber/);
+    expect(source).toMatch(/odometerAtService: odometer === '' \? null : odometerNumber/);
+    expect(source).toMatch(/exitOdometer: exitOdometer === '' \? null : exitNumber/);
     expect(source, 'no clamping to a bound').not.toMatch(/Math\.(?:max|min)\([^)]*[Bb]ound/);
   });
 
@@ -381,20 +381,20 @@ describe('a warning is not a refusal', () => {
     expect(form).toContain('warning?: string | undefined');
     const source = read('components/MaintenanceDialogs.tsx');
     expect(source, 'the blocking error suppresses the advice').toContain(
-      'belowEntry ? undefined : counterWarningText',
+      'belowEntry || exitBelowLast ? undefined : counterWarningText',
     );
   });
 
-  it('the server never refuses a visit over the bracket — no 409, no validation error', () => {
+  it('the server refuses a counter only BELOW the last reading — above the chain stays advice', () => {
     const service = readFileSync(
       join(HERE, '../../../../api/src/modules/fleet/maintenance/maintenance.service.ts'),
       'utf8',
     );
-    // The workshop's counter stays authoritative. The ONLY counter rule the server enforces is
-    // exit >= entry, which predates this and is a different claim entirely.
-    expect(service, 'the visit is never refused over the chain').not.toContain('chainBounds');
-    expect(service, 'nor over a bracket').not.toContain('odometerBracket');
-    expect(service).not.toContain('lowerBound');
+    // «لو كتب ميدخلش اقل من القيمة اللى قبلها»: the one counter rule against the chain is the
+    // lower side. A counter far ABOVE the next reading is still recorded, with the warning.
+    expect(service).toContain('assertNotBelowLast');
+    expect(service, 'only the reading before the visit is compared').toContain('{ lower }');
+    expect(service, 'never the one after it').not.toContain('upper.reading');
   });
 });
 

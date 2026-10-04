@@ -309,6 +309,17 @@ class FleetFuelCardService {
         fleetFuelCardRepository.findLive(input.toCardId, session),
       ]);
       if (from === null || to === null) throw new NotFoundError('card not found');
+      // «لازم تكون نفس الشركه … وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح»: a balance is
+      // the company's money on its own card network, and does not cross to the other one.
+      if (from.company !== to.company) {
+        throw new ValidationError([
+          {
+            field: 'body.toCardId',
+            code: 'INVALID',
+            message: 'a balance moves only between two cards of the same company',
+          },
+        ]);
+      }
       if (piastres(from.balance) < piastres(input.amount)) {
         throw new ValidationError([
           {

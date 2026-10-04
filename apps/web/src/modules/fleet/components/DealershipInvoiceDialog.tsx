@@ -44,6 +44,7 @@ export const DealershipInvoiceDialog = ({
   const [insurer, setInsurer] = useState('');
   const [addToCatalog, setAddToCatalog] = useState(true);
   const [writeOnVehicle, setWriteOnVehicle] = useState(true);
+  const noInsurer = t('fleet.dealership.noInsurer');
 
   const insurers = useFleetCatalog('insuranceCompany');
   const byName = useMemo(() => {
@@ -64,7 +65,9 @@ export const DealershipInvoiceDialog = ({
     setInvoiceNumber(row.invoiceNumber ?? '');
     setInvoiceAmount(row.invoiceAmount === null ? '' : String(row.invoiceAmount));
     setPrivateCar(row.privateCar);
-    setInsurer(row.insuranceCompanyName ?? '');
+    // «تبقى شركة التامين لا يوجد»: a workshop bill starts with no insurer — the clerk types one,
+    // or picks it from the insurers the cars carry.
+    setInsurer(row.insuranceCompanyName ?? noInsurer);
     setAddToCatalog(true);
     setWriteOnVehicle(true);
   }, [open, row]);
@@ -74,7 +77,9 @@ export const DealershipInvoiceDialog = ({
   const updateVehicle = useUpdateVehicle();
   const pending = update.isPending || createInsurer.isPending || updateVehicle.isPending;
 
-  const typedInsurer = insurer.trim();
+  const typedRaw = insurer.trim();
+  // «لا يوجد» is the absence of an insurer, not a company of that name.
+  const typedInsurer = typedRaw === noInsurer ? '' : typedRaw;
   const knownInsurerId = typedInsurer === '' ? null : (byName.get(typedInsurer) ?? null);
   const isNewInsurer = typedInsurer !== '' && knownInsurerId === null;
   const mayAddInsurer = can('fleetCatalog.manage');
@@ -171,9 +176,24 @@ export const DealershipInvoiceDialog = ({
             <Field label={t('fleet.dealership.columns.outDate')}>
               <Input value={formatDate(row.outDate, locale)} readOnly disabled />
             </Field>
-            <Field label={t('fleet.odometer.columns.vehicle')}>
+            {/* «علامه ملاكى … فوق كود السياره»: the tick sits on the car code's own label line, so
+                it takes no column of its own. */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {t('fleet.odometer.columns.vehicle')}
+                </span>
+                <Checkbox
+                  data-dealership-private="true"
+                  label={t('fleet.dealership.privateCar')}
+                  title={t('fleet.dealership.privateCarHint')}
+                  checked={privateCar}
+                  onChange={(e) => setPrivateCar(e.target.checked)}
+                  className="text-xs"
+                />
+              </div>
               <Input value={row.vehicleCode ?? '—'} readOnly disabled />
-            </Field>
+            </div>
             <Field label={t('fleet.dealership.columns.workType')}>
               <Input value={row.workTypeLabel} readOnly disabled />
             </Field>
@@ -191,11 +211,7 @@ export const DealershipInvoiceDialog = ({
                       : t('fleet.dealership.insurerCannotAdd'),
                   }
                 : {})}
-              hint={
-                row.insuranceCompanyName === null
-                  ? t('fleet.dealership.insurerNone')
-                  : t('fleet.dealership.insurerFromCar')
-              }
+              hint={t('fleet.dealership.insurerPick')}
             >
               <Input
                 list="dealership-insurers"
@@ -205,23 +221,11 @@ export const DealershipInvoiceDialog = ({
                 data-dealership-insurer="true"
               />
               <datalist id="dealership-insurers">
+                <option value={noInsurer} />
                 {names.map((name) => (
                   <option key={name} value={name} />
                 ))}
               </datalist>
-            </Field>
-            <Field
-              label={t('fleet.dealership.privateCar')}
-              hint={t('fleet.dealership.privateCarHint')}
-            >
-              <div className="flex h-10 items-center">
-                <Checkbox
-                  data-dealership-private="true"
-                  label={t('fleet.dealership.privateCar')}
-                  checked={privateCar}
-                  onChange={(e) => setPrivateCar(e.target.checked)}
-                />
-              </div>
             </Field>
             <Field
               label={t('fleet.dealership.columns.invoiceAmount')}
@@ -230,8 +234,6 @@ export const DealershipInvoiceDialog = ({
             >
               <MoneyInput value={invoiceAmount} onChange={setInvoiceAmount} />
             </Field>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
             <Field
               label={t('fleet.dealership.columns.invoiceNumber')}
               required={!privateCar}

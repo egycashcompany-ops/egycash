@@ -24,6 +24,8 @@ import { FleetDriverProfileModel } from './driver-profiles/driver-profile.model'
 import { FleetOdometerLogModel } from './odometer/odometer.model';
 import { FleetMaintenanceVisitModel } from './maintenance/maintenance.model';
 import { FleetFuelCardModel } from './fuel-cards/fuel-card.model';
+import { FleetDealershipInvoiceModel } from './dealership/dealership.model';
+import { FleetSweepMarkModel, markOnce } from './sweeps/sweep-mark.model';
 import {
   FIXED_CREW_VEHICLE_INDEX_KEY,
   FIXED_CREW_VEHICLE_INDEX_OPTIONS,
@@ -278,6 +280,32 @@ export const translateCatalogEnglishNames = async (): Promise<{
   return { catalog, types, swapped: swapped.length };
 };
 
+/** The one-time mark of `clearPendingDealershipInsurers`. */
+export const DEALERSHIP_INSURER_CLEAR_MARK = 'migration:dealership-insurer-none:v1';
+
+/**
+ * «فى حالة تسجيل الفاتوره لو صيانة او اصلاح تبقى شركة التامين لا يوجد»: a workshop bill no longer
+ * copies the car's insurer. The rows still WAITING for their invoice were opened with it, so they
+ * are set back to «لا يوجد» once; a row whose invoice was recorded keeps what the clerk saved.
+ */
+export const clearPendingDealershipInsurers = async (): Promise<{ cleared: number }> => {
+  if ((await FleetSweepMarkModel.exists({ key: DEALERSHIP_INSURER_CLEAR_MARK })) !== null) {
+    return { cleared: 0 };
+  }
+  const result = await FleetDealershipInvoiceModel.updateMany(
+    { isDeleted: false, invoiceAmount: null, insuranceCompanyId: { $ne: null } },
+    { $set: { insuranceCompanyId: null } },
+  );
+  await markOnce(DEALERSHIP_INSURER_CLEAR_MARK);
+  if (result.modifiedCount > 0) {
+    logger.info(
+      { cleared: result.modifiedCount },
+      'fleet: insurer cleared on the dealership rows still waiting for their invoice',
+    );
+  }
+  return { cleared: result.modifiedCount };
+};
+
 /**
  * Build `ux_fixed_vehicle`, the index that makes "one vehicle, one fixed crew" a database fact.
  *
@@ -396,6 +424,7 @@ export const retireOpenRowIndexes = async (): Promise<{ dropped: string[] }> => 
 };
 
 export const runFleetMigrations = async (): Promise<void> => {
+  await clearPendingDealershipInsurers();
   await migrateVehicleLicenseClasses();
   await migrateViolationTypeSides();
   // After the seed above has created «نقل اموال» and «ATM» — it reads the catalog, never writes it.

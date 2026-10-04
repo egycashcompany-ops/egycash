@@ -902,13 +902,14 @@ describe('the check-out dialog', () => {
     );
     expect(checkOut, 'which names the driver').toContain("ok: driverOut !== ''");
     expect(checkOut, 'and the gate still names the reading too').toContain(
-      'ok: exitValid && !belowEntry',
+      "ok: exitOdometer === '' || (exitValid && !belowEntry && !exitBelowLast)",
     );
   });
 
   it('sends the exit reading and the exit DRIVER, and gates the save on both', () => {
     const source = readFileSync(join(HERE, 'components/MaintenanceDialogs.tsx'), 'utf8');
-    expect(source).toContain('exitOdometer: exitNumber');
+    // Optional — «مش اجبارى»: an empty box sends no counter, never a 0.
+    expect(source).toContain("exitOdometer: exitOdometer === '' ? null : exitNumber");
     expect(source).toContain('driverOutEmployeeId: driverOut');
     // The below-entry refusal is stated on the client too, so a typo does not cost a round-trip,
     // and neither a missing reading nor a missing driver can reach the server from here.
@@ -919,15 +920,15 @@ describe('the check-out dialog', () => {
     for (const rule of [
       "ok: driverOut !== ''",
       "ok: outDate !== ''",
-      'ok: exitValid && !belowEntry',
+      "ok: exitOdometer === '' || (exitValid && !belowEntry && !exitBelowLast)",
     ]) {
       expect(list, `the save requires ${rule}`).toContain(rule);
     }
     expect(checkOut).toContain('onClick={required.guard(submit)}');
     // The below-entry refusal keeps its own words under the field; «حقل مطلوب» does not replace it.
-    expect(checkOut).toContain(
-      "error={belowEntry ? t('fleet.maintenance.exitBelowEntry') : undefined}",
-    );
+    expect(checkOut).toContain("? t('fleet.maintenance.exitBelowEntry')");
+    // …and a reading below the last one before the check-out says so in its own words.
+    expect(checkOut).toContain("t('fleet.maintenance.odometerBelowLast'");
   });
 
   it('asks for the exit driver, and refuses to save without one', () => {

@@ -341,15 +341,21 @@ describe('a card on no car, through the API', () => {
     request(app)
       .post('/api/v1/fleet/fuel-cards')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ company: 'wataniya', name: 'EGYCASH', expiresAt: null, ...body });
+      .send({
+        company: 'wataniya',
+        name: 'EGYCASH',
+        expiresAt: '2027-01-31',
+        password: '1234',
+        ...body,
+      });
 
-  it('needs a label; several of one company may sit on no car; the expiry may wait', async () => {
+  it('needs a label; several of one company may sit on no car', async () => {
     expect((await post({ vehicleId: null, number: '5485641111111111' })).status).toBe(400);
     const one = await post({ vehicleId: null, label: 'سفر 9', number: '5485641111111112' });
     expect(one.status).toBe(201);
-    expect((one.body as { data: { label: string; expiresAt: null } }).data).toMatchObject({
+    expect((one.body as { data: { label: string; expiresAt: string } }).data).toMatchObject({
       label: 'سفر 9',
-      expiresAt: null,
+      expiresAt: '2027-01-31T00:00:00.000Z',
     });
     const two = await post({ vehicleId: null, label: 'سفر 10', number: '5485641111111113' });
     expect(two.status).toBe(201);
@@ -376,5 +382,15 @@ describe('a card on no car, through the API', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ vehicleId: null, version: moved.version });
     expect(offWithout.status).toBe(400);
+  });
+
+  it('a new card needs its password and its expiry date — «الباسورد اجبارى», «تاريخ الانتهاء اجبارى»', async () => {
+    const base = { vehicleId: null, label: 'سفر 11' };
+    expect((await post({ ...base, number: '5485641111111115', password: undefined })).status).toBe(
+      400,
+    );
+    expect((await post({ ...base, number: '5485641111111116', password: '' })).status).toBe(400);
+    expect((await post({ ...base, number: '5485641111111117', expiresAt: null })).status).toBe(400);
+    expect((await post({ ...base, number: '5485641111111118' })).status).toBe(201);
   });
 });

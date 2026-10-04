@@ -18,7 +18,8 @@ export interface AlarmBaseline {
    * already picked the winning row, and a second query could pick a different one.
    */
   visitId: string;
-  odometerAtService: number;
+  /** `null` — the service was recorded with no counter (it is optional). */
+  odometerAtService: number | null;
   serviceDate: Date;
 }
 
@@ -146,7 +147,7 @@ class FleetMaintenanceRepository extends BaseRepository<FleetMaintenanceVisitDoc
     const rows = await this.model.aggregate<{
       _id: Types.ObjectId;
       visitId: Types.ObjectId;
-      odometerAtService: number;
+      odometerAtService: number | null;
       outDate: Date;
     }>([
       {

@@ -13,7 +13,7 @@ import { useCreateFuelCard, useUpdateFuelCard } from '../api/fleet-queries';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { FUEL_CARD_COMPANIES, FuelCompanyLogo } from './FuelCardTiles';
 import { revealFuelCardPassword } from '../api/fleet-api';
-import { EyeIcon } from '../../../shared/ui/icons';
+import { EyeIcon, EyeOffIcon } from '../../../shared/ui/icons';
 import { FuelCardImageControl } from './FuelCardImage';
 
 export const FuelCardDialog = ({
@@ -48,6 +48,8 @@ export const FuelCardDialog = ({
   const [expiresAt, setExpiresAt] = useState('');
   const [password, setPassword] = useState('');
   const [passwordShown, setPasswordShown] = useState(false);
+  // Whether the box shows its text — the eye opens it, its twin closes it again.
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +61,7 @@ export const FuelCardDialog = ({
     setExpiresAt(card?.expiresAt?.slice(0, 10) ?? '');
     setPassword('');
     setPasswordShown(false);
+    setPasswordVisible(false);
   }, [open, card, initialVehicleId, initialCompany]);
 
   const create = useCreateFuelCard();
@@ -91,6 +94,7 @@ export const FuelCardDialog = ({
     const { password: stored } = await revealFuelCardPassword(card.id);
     setPassword(stored ?? '');
     setPasswordShown(true);
+    setPasswordVisible(true);
   };
 
   const submit = async (): Promise<void> => {
@@ -221,22 +225,43 @@ export const FuelCardDialog = ({
           >
             <div className="flex items-center gap-2">
               <Input
-                type={passwordShown ? 'text' : 'password'}
+                type={passwordVisible ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={card?.hasPassword === true && !passwordShown ? '••••' : ''}
                 dir="ltr"
               />
-              {card?.hasPassword === true && !passwordShown && can('fleetFuelCard.reveal') && (
+              {card?.hasPassword === true &&
+                !passwordShown &&
+                password === '' &&
+                can('fleetFuelCard.reveal') && (
+                  <button
+                    type="button"
+                    data-fuel-reveal={card.id}
+                    aria-label={t('fleet.fuelCards.reveal')}
+                    title={t('fleet.fuelCards.reveal')}
+                    onClick={() => void showPassword()}
+                    className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                  >
+                    <EyeIcon className="h-4 w-4" />
+                  </button>
+                )}
+              {password !== '' && (
                 <button
                   type="button"
-                  data-fuel-reveal={card.id}
-                  aria-label={t('fleet.fuelCards.reveal')}
-                  title={t('fleet.fuelCards.reveal')}
-                  onClick={() => void showPassword()}
+                  data-fuel-password-toggle={passwordVisible ? 'hide' : 'show'}
+                  aria-label={
+                    passwordVisible ? t('fleet.fuelCards.hide') : t('fleet.fuelCards.reveal')
+                  }
+                  title={passwordVisible ? t('fleet.fuelCards.hide') : t('fleet.fuelCards.reveal')}
+                  onClick={() => setPasswordVisible((v) => !v)}
                   className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
                 >
-                  <EyeIcon className="h-4 w-4" />
+                  {passwordVisible ? (
+                    <EyeOffIcon className="h-4 w-4" />
+                  ) : (
+                    <EyeIcon className="h-4 w-4" />
+                  )}
                 </button>
               )}
             </div>

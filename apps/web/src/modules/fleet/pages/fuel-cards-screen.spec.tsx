@@ -103,7 +103,14 @@ const render = (
     permissions = ALL,
     cards = [card()],
     filters,
-  }: { permissions?: string[]; cards?: FleetFuelCardDto[]; filters?: Record<string, unknown> } = {},
+    search = '',
+  }: {
+    permissions?: string[];
+    cards?: FleetFuelCardDto[];
+    filters?: Record<string, unknown>;
+    /** The URL's query — what the screen reads its filters from. */
+    search?: string;
+  } = {},
 ): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer, auth: authSlice.reducer, ui: uiSlice.reducer },
@@ -143,7 +150,7 @@ const render = (
   return renderToStaticMarkup(
     <Provider store={store}>
       <QueryClientProvider client={qc}>
-        <MemoryRouter initialEntries={[path]}>
+        <MemoryRouter initialEntries={[`${path}${search}`]}>
           <Routes>
             <Route path="/fleet/fuel-cards" element={<FuelCardsPage />} />
             <Route path="/fleet/fuel-cards/charging" element={<FuelChargingPage />} />
@@ -228,6 +235,64 @@ describe('the card photo — «صوره كل فيزا»', () => {
     const viewer = render('cards', { permissions: ['fleetFuelCard.view'] });
     expect(viewer).not.toContain('data-fuel-image-upload=');
     expect(viewer).not.toContain('data-fuel-image=');
+  });
+});
+
+describe('a filter on the card leaves the other slot out, not «empty»', () => {
+  it('a number search shows the card it found and no «لا يوجد كارت» beside it', () => {
+    const html = render('cards', {
+      search: '?number=5485640006436766',
+      filters: {
+        vehicleCodes: undefined,
+        company: undefined,
+        number: '5485640006436766',
+        expiresBefore: undefined,
+      },
+    });
+    expect(html).toContain('data-fuel-line="wataniya"');
+    expect(html, 'the Chill Out slot is filtered away').not.toContain('data-fuel-line="chillout"');
+    expect(html).not.toContain(ar('fleet.fuelCards.noCard'));
+    expect(html).not.toContain('data-fuel-add=');
+  });
+
+  it('with no filter on the card, a car without one still says so and offers to add it', () => {
+    const html = render('cards');
+    expect(html).toContain('data-fuel-add="chillout"');
+  });
+
+  it('the charging screen filtered to one company draws only that company', () => {
+    const html = render('charging', {
+      search: '?company=wataniya',
+      filters: {
+        vehicleCodes: undefined,
+        company: 'wataniya',
+        requested: undefined,
+        balanceBelow: undefined,
+      },
+    });
+    expect(html).toContain('data-fuel-line="wataniya"');
+    expect(html).not.toContain('data-fuel-line="chillout"');
+  });
+});
+
+describe('the password on the line', () => {
+  it('once shown, it has an eye that hides it again', () => {
+    const PAGE = readFileSync(join(HERE, 'FuelCardsPage.tsx'), 'utf8');
+    expect(PAGE).toContain('data-fuel-hide={card.id}');
+    expect(PAGE).toContain('onClick={() => setShown(null)}');
+    const DIALOG = readFileSync(join(HERE, '../components/FuelCardDialog.tsx'), 'utf8');
+    expect(DIALOG).toContain('data-fuel-password-toggle');
+  });
+});
+
+describe('the request box is one frame, like every other fact on the line', () => {
+  it('its input carries no border or ring of its own; the frame lights up instead', () => {
+    const html = render('charging');
+    const box = html.match(/<input[^>]*data-fuel-request="c-1"[^>]*>/u)?.[0] ?? '';
+    expect(box).toContain('border-transparent');
+    expect(box).toContain('focus-visible:ring-0');
+    expect(box).not.toContain('bg-white');
+    expect(html).toContain('focus-within:border-brand-500');
   });
 });
 
@@ -339,7 +404,14 @@ describe('charging', () => {
     expect(DIALOG).toContain(
       'ok: Number.isFinite(value) && value > 0 && (from === null || enough),',
     );
-    expect(DIALOG).toContain('ok: to !== null && to.id !== from?.id,');
+    expect(DIALOG).toContain(
+      'ok: to !== null && to.id !== from?.id && (from === null || to.company === from.company),',
+    );
+    // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت»: the second card is offered from the first's
+    // company only, and says so when the car has none of it.
+    expect(DIALOG).toContain('fromCompany === null || card.company === fromCompany');
+    expect(DIALOG).toContain('cards={toChoices}');
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.otherCompany'");
     // The «not enough» line stays under the amount, and the amount box turns red with it.
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.notEnough'");
     expect(DIALOG).toContain("missing={required.isMissing('amount')}");

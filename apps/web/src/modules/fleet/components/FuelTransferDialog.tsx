@@ -25,11 +25,14 @@ export const CardPick = ({
   value,
   onChange,
   side,
+  emptyText,
 }: {
   cards: readonly FleetFuelCardDto[];
   value: string;
   onChange: (id: string) => void;
   side: 'from' | 'to';
+  /** What an empty list says — «pick a car» unless the caller knows better. */
+  emptyText?: string;
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
@@ -39,7 +42,7 @@ export const CardPick = ({
   if (cards.length === 0) {
     return (
       <p className={cn('text-sm', missing ? 'text-red-600 dark:text-red-400' : 'text-slate-400')}>
-        {t('fleet.fuelCards.transfer.pickCar')}
+        {emptyText ?? t('fleet.fuelCards.transfer.pickCar')}
       </p>
     );
   }
@@ -110,11 +113,28 @@ export const FuelTransferDialog = ({
   const byVehicle = (vehicleId: string): FleetFuelCardDto[] =>
     vehicleId === '' ? [] : cards.filter((card) => fuelCardPlace(card) === vehicleId);
   const places = useMemo(() => noCarPlaces(cards), [cards]);
+  // «لازم تكون نفس الشركه … وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح»: once the first
+  // card is chosen, the second is offered from its company only.
+  const fromCompany = cards.find((card) => card.id === fromCard)?.company ?? null;
+  const toChoices = byVehicle(toVehicle).filter(
+    (card) => fromCompany === null || card.company === fromCompany,
+  );
+  // A first card of the other company makes a chosen second card unreachable — it is dropped.
+  useEffect(() => {
+    if (fromCompany === null) return;
+    const chosen = cards.find((card) => card.id === toCard);
+    if (chosen !== undefined && chosen.company !== fromCompany) setToCard('');
+  }, [fromCompany, toCard, cards]);
   const from = useMemo(() => cards.find((card) => card.id === fromCard) ?? null, [cards, fromCard]);
   const to = useMemo(() => cards.find((card) => card.id === toCard) ?? null, [cards, toCard]);
   const value = Number(amount);
   const valid =
-    from !== null && to !== null && from.id !== to.id && Number.isFinite(value) && value > 0;
+    from !== null &&
+    to !== null &&
+    from.id !== to.id &&
+    from.company === to.company &&
+    Number.isFinite(value) &&
+    value > 0;
   const enough = from !== null && value <= from.balance;
   const money = (n: number): string => formatMoney(n, 'EGP', locale);
   // The button stays pressable: pressing it short of a valid transfer names what is missing and
@@ -140,7 +160,7 @@ export const FuelTransferDialog = ({
       {
         key: 'toCard',
         label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.fuelCards.fields.card')}`,
-        ok: to !== null && to.id !== from?.id,
+        ok: to !== null && to.id !== from?.id && (from === null || to.company === from.company),
       },
       {
         key: 'amount',
@@ -243,10 +263,17 @@ export const FuelTransferDialog = ({
                 : {})}
             >
               <CardPick
-                cards={byVehicle(toVehicle)}
+                cards={toChoices}
                 value={toCard}
                 onChange={setToCard}
                 side="to"
+                {...(toVehicle !== '' && fromCompany !== null && toChoices.length === 0
+                  ? {
+                      emptyText: t('fleet.fuelCards.transfer.otherCompany', {
+                        company: t(`fleet.fuelCards.company.${fromCompany}`),
+                      }),
+                    }
+                  : {})}
               />
             </Field>
           </div>

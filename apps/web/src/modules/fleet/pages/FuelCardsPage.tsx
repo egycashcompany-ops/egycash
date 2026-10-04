@@ -18,7 +18,7 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Input, Select } from '../../../shared/ui/form';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, EyeIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, EyeOffIcon, PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { formatDate } from '../../../shared/lib/format';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useAllFuelCards, useDeleteFuelCard } from '../api/fleet-queries';
@@ -73,6 +73,19 @@ const PasswordField = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
             <EyeIcon className="h-4 w-4" />
           </button>
         )}
+        {/* Shown, it hides again — the eye that opened it has a twin that closes it. */}
+        {shown !== null && (
+          <button
+            type="button"
+            data-fuel-hide={card.id}
+            aria-label={t('fleet.fuelCards.hide')}
+            title={t('fleet.fuelCards.hide')}
+            onClick={() => setShown(null)}
+            className="rounded p-0.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+          >
+            <EyeOffIcon className="h-4 w-4" />
+          </button>
+        )}
       </span>
     </FramedField>
   );
@@ -99,6 +112,9 @@ export const FuelCardsPage = (): JSX.Element => {
     }
     setSp(next);
   };
+  // A filter on the CARD (its company, its number, its expiry) leaves a car's other card out of the
+  // answer — that slot is filtered away, not empty, and must not read «لا يوجد كارت».
+  const cardFiltered = company !== '' || number !== '' || expiresBefore !== '';
   const hasActiveFilters =
     vehicleCodes.length > 0 || company !== '' || number !== '' || expiresBefore !== '';
   const filters = useMemo(
@@ -295,6 +311,7 @@ export const FuelCardsPage = (): JSX.Element => {
                 {FUEL_CARD_COMPANIES.map((slot) => {
                   const card = tile.cards[slot];
                   if (card === undefined) {
+                    if (cardFiltered) return null;
                     return (
                       <EmptyCardLine
                         key={slot}

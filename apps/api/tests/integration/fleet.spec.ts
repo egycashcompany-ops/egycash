@@ -9218,9 +9218,18 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
     const a = data<FleetVehicleDto>(await createVehicle(adminToken));
     const b = data<FleetVehicleDto>(await createVehicle(adminToken));
     const from = data<Card>(await mkCard(a.id, 'chillout'));
-    const to = data<Card>(await mkCard(b.id, 'wataniya'));
+    const to = data<Card>(await mkCard(b.id, 'chillout'));
+    const otherCompany = data<Card>(await mkCard(b.id, 'wataniya'));
     await approve(data<Card>(await requestCharge(from, 1200)));
     await approve(data<Card>(await requestCharge(to, 300)));
+
+    // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح» — never across the two companies.
+    const crossed = await request(app)
+      .post('/api/v1/fleet/fuel-cards/transfer')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ fromCardId: from.id, toCardId: otherCompany.id, amount: 100 });
+    expect(crossed.status).toBe(400);
+    expect((await read(from.id)).balance, 'nothing left the first card').toBe(1200);
 
     const tooMuch = await request(app)
       .post('/api/v1/fleet/fuel-cards/transfer')

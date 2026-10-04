@@ -700,3 +700,14 @@ starts only on an explicit owner GO.
   receipt too, so no interval reaches a person without one. No new permission: writing rides
   `itAsset.assign`, reading `itAsset.view`. The receipt paper is composed in the browser (the
   Fleet report idiom), so printing needs no PDF driver.
+- **The asset register restarted** (2026-10-04) — owner request, confirmed explicitly: «شيل كل
+  الأصول معادا AST-00005 وخليه AST-00001». A one-time boot step (`go-live/asset-restart.ts`, key
+  `go-live:it-asset-restart:v1`, recorded in the new `it_go_live_runs`) deletes every other asset
+  SOFTLY — off every screen, still in the database — together with what only existed for them
+  (custody intervals, maintenance plans and orders, software installations); tickets and history
+  are left alone. AST-00005 becomes AST-00001 (an `updated` history entry says so) and the counter
+  is set so the next asset is AST-00002. This is the one sanctioned exception to FR-1's «never
+  reused»: the deleted rows' codes are freed as `retired:<code>:<id>`, which keeps each original
+  code readable and can never be allocated or scanned. All of it is one transaction with its run
+  row, and it is decided once: when AST-00005 is not on the register at the first boot, nothing is
+  deleted and the refusal is recorded, so a later AST-00005 can never trigger it.

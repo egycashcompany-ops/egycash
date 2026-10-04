@@ -32,6 +32,17 @@ its entry here in the same PR.
   `receiptSigned`; the single-asset assign writes a one-line receipt too. New collection
   `it_custody_receipts`; no new permission (writes ride `itAsset.assign`, reads `itAsset.view`).
 
+### Changed
+
+- **The IT asset register starts again from the one asset the owner keeps.** «شيل كل الأصول معادا
+  AST-00005 وخليه AST-00001»: on the first boot after this deploy, every IT asset except AST-00005
+  is deleted — softly, so it leaves every screen and stays in the database — with its custody, its
+  maintenance plans and orders and its software installations; tickets and history are not
+  touched. AST-00005 becomes AST-00001 and the next asset registered is AST-00002. It happens once,
+  in one transaction; when AST-00005 is not on the register nothing is deleted and the step does
+  not run again. The QR label stuck on that device still reads AST-00005 and has to be printed
+  again from its page.
+
 ### Fixed
 
 - **Signing in opens the first screen the person is allowed, not an empty HR page.** Somebody

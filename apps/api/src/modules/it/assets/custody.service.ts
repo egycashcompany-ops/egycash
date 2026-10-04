@@ -235,6 +235,7 @@ class ItAssetCustodyService {
     // another module's data has no business holding it open.
     const holder = await readReceiptHolder(input.employeeId);
     refuseLeaver(holder.employee);
+    await itCustodyReceiptRepository.ensureCollection();
     // Allocated up front so each interval can name its receipt as it is created.
     const receiptId = new Types.ObjectId();
 
@@ -439,6 +440,7 @@ class ItAssetCustodyService {
     // holder on the receipt a hand-over to them prints (FR-18).
     const named =
       input.toEmployeeId === undefined ? null : await readReceiptHolder(input.toEmployeeId);
+    if (named !== null) await itCustodyReceiptRepository.ensureCollection();
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
       await this.assertNoActiveMaintenance(asset, 'transfer', session);

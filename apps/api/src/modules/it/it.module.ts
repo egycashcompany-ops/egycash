@@ -345,6 +345,8 @@ export const itModule: ModuleManifest = {
     // Operational bookkeeping, not business data (ADR-025) — declared because the manifest is the
     // module's honest inventory of what it writes, whatever the rows mean.
     'it_sweep_marks',
+    // The owner's one-off changes to the live data, each done once (go-live/go-live-run.model.ts).
+    'it_go_live_runs',
   ],
   scheduledTasks: [
     {

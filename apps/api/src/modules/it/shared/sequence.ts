@@ -8,7 +8,7 @@
 // this model would register the same collection twice and drift the moment one changed; the design
 // makes `it_sequences` one collection for `asset:global`, `ticket:global` and
 // `maintenanceOrder:global` (§2.1), so the allocator is one function keyed by string.
-import mongoose, { Schema, type Model } from 'mongoose';
+import mongoose, { Schema, type ClientSession, type Model } from 'mongoose';
 
 interface SequenceDoc {
   _id: string; // the sequence key, e.g. "asset:global"
@@ -39,4 +39,22 @@ export const nextSequenceValue = async (key: string): Promise<number> => {
     .lean<SequenceDoc>()
     .exec();
   return doc.value;
+};
+
+/**
+ * Set a counter to an exact value — the ONE exception to «only ever goes up», and it is not a
+ * service call: it exists for the owner's go-live restart of the asset register
+ * (`go-live/asset-restart.ts`), which frees every code above the one asset it keeps before it
+ * rewinds, so nothing the counter hands out next can collide with a code still held.
+ */
+export const setSequenceValue = async (
+  key: string,
+  value: number,
+  session: ClientSession,
+): Promise<void> => {
+  await ItSequenceModel.updateOne(
+    { _id: key },
+    { $set: { value } },
+    { upsert: true, session },
+  ).exec();
 };

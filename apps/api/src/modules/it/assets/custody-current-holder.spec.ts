@@ -37,7 +37,10 @@ vi.mock('./receipt-holder', () => ({
   },
 }));
 vi.mock('./receipt.repository', () => ({
-  itCustodyReceiptRepository: { create: mocks.createReceipt },
+  itCustodyReceiptRepository: {
+    create: mocks.createReceipt,
+    ensureCollection: vi.fn(async () => undefined),
+  },
 }));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/kernel/event-bus', () => ({ emit: vi.fn(async () => undefined) }));

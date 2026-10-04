@@ -116,6 +116,7 @@ class ItCustodyReceiptService {
     const [asset] = await itAssetRepository.findByIdsSystem([String(assignment.assetId)]);
     if (asset === undefined) throw new NotFoundError('asset not found');
     const holder = await readReceiptHolder(String(assignment.assignedToEmployeeId));
+    await itCustodyReceiptRepository.ensureCollection();
 
     const receiptId = new Types.ObjectId();
     return unitOfWork(async (session) => {

@@ -36,7 +36,7 @@ const MAX_MB = 20;
  * file is not obviously right — it depends on whether this export is more current than the registry
  * — so it is offered rather than assumed, and the operator turns it on when they mean it.
  */
-const DEFAULT_ACTIONS: readonly RosterImportAction[] = ['added', 'exited'];
+const DEFAULT_ACTIONS: readonly RosterImportAction[] = ['added', 'addedExited', 'exited'];
 
 /**
  * One number and what it counts.
@@ -182,15 +182,24 @@ export const RosterImportDialog = ({
 
   const applied = report?.mode === 'applied';
   const counts = report?.counts;
+  /** New and on duty — `imported` counts the new leavers too, and they have their own card. */
+  const onDuty = counts === undefined ? 0 : counts.imported - counts.importedExited;
   /** How many people each selectable group would actually write. */
-  const sizeOf = (action: RosterImportAction): number =>
-    counts === undefined
-      ? 0
-      : action === 'added'
-        ? counts.imported
-        : action === 'updated'
-          ? counts.updated
-          : counts.exits;
+  const sizeOf = (action: RosterImportAction): number => {
+    if (counts === undefined) return 0;
+    switch (action) {
+      case 'added':
+        return onDuty;
+      case 'addedExited':
+        return counts.importedExited;
+      case 'updated':
+        return counts.updated;
+      case 'exited':
+        return counts.exits;
+    }
+  };
+  /** A preview says what WILL happen; only an applied report may say it happened. */
+  const tense = (key: string): string => t(applied ? `${key}Done` : key);
   // Nothing to agree to — either the file matches the registry, or every group that differs has
   // been turned off. Both mean the button would write nothing, so it is not offered.
   const selectedTotal = selected.reduce((sum, a) => sum + sizeOf(a), 0);
@@ -271,23 +280,37 @@ export const RosterImportDialog = ({
               {t(applied ? 'employees.roster.appliedNotice' : 'employees.roster.previewNotice')}
             </p>
 
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {/*
+              THE FIRST ROW READS AGAINST THE FILE. «المفروض فى النهاية يكون عدد اللى هيتضافوا جداد
+              يكون 76 بس شيل منهم اللى تم إخلاء طرفهم يعني هيبقوا 73 + (…) بس أكتبهم فى رقمين
+              مختلفين». One «أُضيفوا 81» against a Master sheet of 76 mixed new colleagues with
+              people who had already gone, and «تم إخلاء طرفهم» named a clearance this import does
+              not perform — the file keeps that in its own column, «حالة إخلاء الطرف».
+            */}
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               <Count
                 label={t('employees.roster.counts.added')}
-                value={counts.imported}
+                value={onDuty}
                 tone="text-emerald-600 dark:text-emerald-400"
                 selected={selected.includes('added')}
                 {...(applied ? {} : { onToggle: () => toggle('added') })}
               />
               <Count
-                label={t('employees.roster.counts.exits')}
+                label={tense('employees.roster.counts.addedExited')}
+                value={counts.importedExited}
+                tone="text-teal-600 dark:text-teal-400"
+                selected={selected.includes('addedExited')}
+                {...(applied ? {} : { onToggle: () => toggle('addedExited') })}
+              />
+              <Count
+                label={tense('employees.roster.counts.exits')}
                 value={counts.exits}
                 tone="text-amber-600 dark:text-amber-400"
                 selected={selected.includes('exited')}
                 {...(applied ? {} : { onToggle: () => toggle('exited') })}
               />
               <Count
-                label={t('employees.roster.counts.updated')}
+                label={tense('employees.roster.counts.updated')}
                 value={counts.updated}
                 tone="text-sky-600 dark:text-sky-400"
                 selected={selected.includes('updated')}
@@ -305,6 +328,24 @@ export const RosterImportDialog = ({
                 tone="text-rose-600 dark:text-rose-400"
               />
             </div>
+
+            {/*
+              «واللي تم إخلاء طرفهم مفروض 60». The leavers are split across three cards by how the
+              registry stands on them, so no card shows the number on the Resignation sheet. This
+              line does, and says where each of them went — including those whose exit is already
+              on file, which this upload does not record a second time. Preview only: after an
+              apply, which of these happened depends on what was agreed to, and the cards say it.
+            */}
+            {!applied && counts.leavers > 0 && (
+              <p className="text-xs text-slate-600 dark:text-slate-300">
+                {t('employees.roster.leaversLine', {
+                  total: counts.leavers,
+                  exits: counts.exits,
+                  added: counts.importedExited,
+                  already: counts.alreadyExited,
+                })}
+              </p>
+            )}
 
             {!applied && (
               <p className="text-xs text-slate-500 dark:text-slate-400">

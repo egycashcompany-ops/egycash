@@ -3054,7 +3054,11 @@ const fuelCardCore = {
    * REQUIRED — «تاريخ انتهاء الكارت اجبارى». The DTO still reads `null` for the few imported cards
    * neither the photos nor the sheets dated; any save of such a card must give it one.
    */
-  expiresAt: z.coerce.date(),
+  // `null` and '' are refused, not coerced: `z.coerce.date()` alone reads null as 1 January 1970.
+  expiresAt: z.preprocess(
+    (value) => (value === null || value === '' ? undefined : value),
+    z.coerce.date(),
+  ),
   /**
    * REQUIRED on a new card — «الباسورد اجبارى». Kept, shown only to a reader holding
    * `fleetFuelCard.reveal`.

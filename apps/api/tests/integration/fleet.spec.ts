@@ -2918,23 +2918,23 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
         .send({ vehicleId: v.id, reading, date });
     expect((await record(59_800, '2026-08-20')).status).toBe(201);
 
+    // A counter below the chain is refused at the door now («ميدخلش اقل من القيمة اللى قبلها»),
+    // so the shape is the OLD BOOK's: the visit is opened and closed without one, and the
+    // imported counter written straight onto it, as the go-live import wrote such rows.
     const opened = await checkIn({
       vehicleId: v.id,
       inDate: '2026-08-30',
       workshopId: await mkCatalog('workshop', 'ورشة القوس'),
       workTypeId: await countingWorkTypeId(),
-      odometerAtService: 50_000,
     });
     expect(opened.status).toBe(201);
     const open = data<FleetMaintenanceVisitDto>(opened);
-    const out = await checkOut(open.id, {
-      outDate: '2026-08-31',
-      exitOdometer: 50_000,
-      version: open.version,
-    });
-    // NON-BLOCKING: the visit is recorded exactly as entered. The counter is authoritative.
-    expect(out.status, 'the bracket never refuses a visit').toBe(200);
-    expect(data<FleetMaintenanceVisitDto>(out).exitOdometer).toBe(50_000);
+    const out = await checkOut(open.id, { outDate: '2026-08-31', version: open.version });
+    expect(out.status).toBe(200);
+    await FleetMaintenanceVisitModel.collection.updateOne(
+      { _id: new Types.ObjectId(open.id) },
+      { $set: { odometerAtService: 50_000, exitOdometer: 50_000 } },
+    );
 
     // A reading after the service — every earlier guard passes, so the arithmetic is reached.
     expect((await record(59_850, '2026-09-05')).status).toBe(201);
@@ -9298,8 +9298,10 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
     const totals = data<{ wataniyaBalance: number; chilloutBalance: number; cardCount: number }>(
       res,
     );
-    expect(totals.wataniyaBalance).toBeGreaterThanOrEqual(800);
-    expect(totals.chilloutBalance).toBeGreaterThanOrEqual(700);
+    // The transfer above moves money between two Chill Out cards (700 + 800 after it); the
+    // Wataniya side holds what the delete test charged.
+    expect(totals.wataniyaBalance).toBeGreaterThanOrEqual(50);
+    expect(totals.chilloutBalance).toBeGreaterThanOrEqual(1500);
     expect(totals.cardCount).toBeGreaterThanOrEqual(4);
   });
 

@@ -257,6 +257,12 @@ class FleetVehicleService {
     input: UpdateFleetVehicle,
     by: string,
     scope: ScopeSelector,
+    /**
+     * A person's edit (the vehicles screen, through the route) is held to the licence-letter rule.
+     * An import is not: it copies the owner's book, which records the class and the date as they
+     * stand, and refusing half of a line it did not write would leave the car out of step.
+     */
+    { asPerson = false }: { asPerson?: boolean } = {},
   ): Promise<FleetVehicleDoc> {
     const before = await fleetVehicleRepository.getById(id, scope);
     if (!isVehicleWritable(before.status)) {
@@ -265,7 +271,7 @@ class FleetVehicleService {
     if (input.typeId !== undefined) await this.assertTypeActive(input.typeId);
     if (input.branchId !== undefined) await this.assertBranch(input.branchId);
     await this.assertCatalogRefs(input);
-    await this.assertLicenseLetterMovesWithDate(before, input);
+    if (asPerson) await this.assertLicenseLetterMovesWithDate(before, input);
 
     const set: Partial<FleetVehicleDoc> = {};
     if (input.code !== undefined) set.code = input.code;

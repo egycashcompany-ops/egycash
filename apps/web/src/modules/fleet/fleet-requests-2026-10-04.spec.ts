@@ -67,7 +67,14 @@ describe('the vehicle form — the licence letter moves with its date', () => {
       join(HERE, '../../../../api/src/modules/fleet/vehicles/vehicle.service.ts'),
       'utf8',
     );
-    expect(service).toContain('await this.assertLicenseLetterMovesWithDate(before, input);');
+    expect(service).toContain(
+      'if (asPerson) await this.assertLicenseLetterMovesWithDate(before, input);',
+    );
+    const controller = readFileSync(
+      join(HERE, '../../../../api/src/modules/fleet/vehicles/vehicle.controller.ts'),
+      'utf8',
+    );
+    expect(controller, 'the screen’s edit is a person’s').toContain('{ asPerson: true }');
     expect(service).toContain('fleetLicenseLetter(');
   });
 });

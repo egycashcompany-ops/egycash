@@ -47,10 +47,22 @@ import { type EmployeeExitType, type LocalizedString, type MaritalStatus } from 
  * nearly always right. Rewriting the personal data of two thousand people already on file is not
  * obviously right at all — it depends on whether this export is more current than the registry —
  * so it is offered rather than assumed.
+ *
+ * Adding is TWO decisions, not one. `added` is somebody new on the Master sheet — a colleague on
+ * duty. `addedExited` is somebody new on the Resignation sheet — a person who joined and left
+ * before anybody entered them, created here already exited. «73 + (اللى تم إخلاء طرفهم ومش موجود
+ * ليهم بيانات عشان يتسجلوا وبعدين يتم إخلاء طرفهم) بس أكتبهم فى رقمين مختلفين»: one number for
+ * both read as 81 new employees against a Master sheet of 76, and one switch for both meant the
+ * leavers could not be left out without leaving out the new colleagues too.
  */
-export type ImportAction = 'added' | 'updated' | 'exited';
+export type ImportAction = 'added' | 'addedExited' | 'updated' | 'exited';
 
-export const ALL_IMPORT_ACTIONS: readonly ImportAction[] = ['added', 'updated', 'exited'];
+export const ALL_IMPORT_ACTIONS: readonly ImportAction[] = [
+  'added',
+  'addedExited',
+  'updated',
+  'exited',
+];
 
 /** One person the file would change, and how — what the preview shows and the result confirms. */
 export interface PersonUpdate {
@@ -84,7 +96,12 @@ export interface ImportReport {
     people: number;
     serving: number;
     exited: number;
+    /** Everybody new to the registry — on duty and already exited alike. */
     imported: number;
+    /** The part of `imported` that comes from the Resignation sheet: created already exited. */
+    importedExited: number;
+    /** Leavers the registry already holds as exited — nothing to record for them. */
+    alreadyExited: number;
     /** Already in the registry AND identical to the file — read, compared, left alone. */
     unchanged: number;
     /** Already in the registry and differing — updated, or listed by a dry run. */
@@ -161,7 +178,8 @@ export const runImport = async (opts: {
   const { codes, ambiguous } = deriveBranchCodes(read.rows);
   // The org structure is only created for real when somebody is actually being added — a preview,
   // or a run that only records exits, has no business minting a department.
-  const resolver = new OrgResolver(codes, opts.actorId, !opts.apply.has('added'));
+  const adding = opts.apply.has('added') || opts.apply.has('addedExited');
+  const resolver = new OrgResolver(codes, opts.actorId, !adding);
 
   const rejected: ImportReport['rejected'] = [...plan.rejected];
   const updates: PersonUpdate[] = [];
@@ -169,6 +187,8 @@ export const runImport = async (opts: {
   const exits: PersonExit[] = [];
   const refusedChanges: ImportReport['refused'] = [];
   let imported = 0;
+  let importedExited = 0;
+  let alreadyExited = 0;
   let unchanged = 0;
   let updated = 0;
   let exitCount = 0;
@@ -188,13 +208,16 @@ export const runImport = async (opts: {
       switch (outcome.kind) {
         case 'added':
           imported += 1;
+          if (!person.serving) importedExited += 1;
           if (additions.length < UPDATE_SAMPLE) additions.push(namedWithState(person));
           break;
         case 'unchanged':
           unchanged += 1;
+          if (!person.serving) alreadyExited += 1;
           break;
         case 'updated':
           updated += 1;
+          if (!person.serving) alreadyExited += 1;
           if (updates.length < UPDATE_SAMPLE) {
             updates.push({
               ...named(person),
@@ -245,8 +268,8 @@ export const runImport = async (opts: {
   }
 
   // Only after somebody was actually added: the counter guards against a future hire colliding with
-  // an imported code, and nothing was imported unless `added` was agreed to.
-  if (opts.apply.has('added')) await advanceSequencePast(plan.people);
+  // an imported code, and nothing was imported unless one of the two kinds of adding was agreed to.
+  if (adding) await advanceSequencePast(plan.people);
 
   return {
     applied: [...opts.apply],
@@ -259,6 +282,8 @@ export const runImport = async (opts: {
       serving: plan.people.filter((p) => p.serving).length,
       exited: plan.people.filter((p) => !p.serving).length,
       imported,
+      importedExited,
+      alreadyExited,
       unchanged,
       updated,
       exits: exitCount,
@@ -367,8 +392,8 @@ const importPerson = async (
     return updatePerson(existing as unknown as ExistingEmployee & { _id: unknown }, person, org, opts);
   }
 
-  // Counted either way; written only when adding was agreed to.
-  if (!opts.apply.has('added')) return { kind: 'added' };
+  // Counted either way; written only when adding THIS kind of person was agreed to.
+  if (!opts.apply.has(person.serving ? 'added' : 'addedExited')) return { kind: 'added' };
 
   const row = person.current;
   const { doc } = await employeeService.registerDirect(

@@ -1005,8 +1005,14 @@ export type RosterOrgSubject = (typeof ROSTER_ORG_SUBJECTS)[number];
  * report success from one. The counts are always the whole truth; `updates` and `additions` are a
  * bounded sample of the detail, because 2,600 rows of it is not a preview anybody reads.
  */
-/** The kinds of write an upload can make, each agreed to separately on the screen. */
-export const ROSTER_IMPORT_ACTIONS = ['added', 'updated', 'exited'] as const;
+/**
+ * The kinds of write an upload can make, each agreed to separately on the screen.
+ *
+ * `added` is somebody new and on duty (Master sheet); `addedExited` is somebody new who has already
+ * left (Resignation sheet) and is created exited. Two numbers and two switches, because one of each
+ * read as 81 new employees against a Master sheet of 76.
+ */
+export const ROSTER_IMPORT_ACTIONS = ['added', 'addedExited', 'updated', 'exited'] as const;
 export type RosterImportAction = (typeof ROSTER_IMPORT_ACTIONS)[number];
 
 /** Somebody the file says has left, who the registry still has on the books. */
@@ -1025,8 +1031,17 @@ export interface RosterImportReportDto {
   counts: {
     rowsRead: number;
     people: number;
-    /** People newly added to the registry. */
+    /** People newly added to the registry — on duty and already exited alike. */
     imported: number;
+    /** The part of `imported` from the Resignation sheet: new to the registry, created exited. */
+    importedExited: number;
+    /** Leavers the registry already holds as exited — nothing new to record for them. */
+    alreadyExited: number;
+    /**
+     * Everybody the file says has left, however the registry stands on them. «اللي تم إخلاء طرفهم
+     * مفروض 60»: the number to check against the Resignation sheet, which no write count is.
+     */
+    leavers: number;
     /** Already present and identical to the file — read, compared, left alone. */
     unchanged: number;
     /** Already present and differing — the file's values were written. */

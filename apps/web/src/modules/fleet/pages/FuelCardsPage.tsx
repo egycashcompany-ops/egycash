@@ -368,8 +368,9 @@ export const FuelCardsPage = (): JSX.Element => {
 
         {/* The filters, the exports and «إضافة كارت جديد» on one bar. */}
         <section className="flex flex-col items-stretch justify-between gap-4 rounded-xl border border-slate-800 bg-[#111827] p-4 md:flex-row md:items-center">
-          <div className="flex w-full items-center justify-between gap-2.5 overflow-x-auto">
-            <div className="flex flex-1 shrink-0 items-center gap-2">
+          {/* One row on a wide screen; on a tablet or a phone the filters, the exports and the button wrap rather than hide off the edge. */}
+          <div className="flex w-full flex-wrap items-center justify-between gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
+            <div className="flex flex-1 flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
               <div className="relative w-40 shrink-0">
                 <VehicleCodeFilter
                   className={cn(

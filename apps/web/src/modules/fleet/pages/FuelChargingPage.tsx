@@ -171,8 +171,9 @@ const ChargeRow = ({
       data-fuel-line={card.company}
       data-fuel-card={card.id}
       className={cn(
-        // «الصف بتاع الفيزا يكون بكل بياناته على صف واحد» — never wraps; a narrow screen scrolls it.
-        'flex flex-nowrap items-center justify-between gap-3 overflow-x-auto rounded-xl border px-3 py-2.5 transition hover:shadow-md',
+        // «الصف بتاع الفيزا يكون بكل بياناته على صف واحد» — one line on a computer's screen; a
+        // tablet or a phone, too narrow for it, lets the line wrap rather than hide half of it.
+        'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5 transition hover:shadow-md lg:flex-nowrap lg:overflow-x-auto',
         // The whole line carries its state: amber while a request waits, green when charged today,
         // red when the balance is about to run out.
         waiting
@@ -204,7 +205,7 @@ const ChargeRow = ({
           </span>
         </div>
       </div>
-      <div className="my-auto flex shrink-0 flex-nowrap items-center gap-2.5">
+      <div className="my-auto flex flex-wrap items-center gap-2.5 lg:shrink-0 lg:flex-nowrap">
         <div className="flex items-center rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1">
           <span dir="ltr" className={cn('text-xs font-bold tracking-wider text-slate-200', NUM)}>
             {groupCardNumber(card.number)}
@@ -454,8 +455,9 @@ export const FuelChargingPage = (): JSX.Element => {
         </section>
 
         <section className="flex flex-col items-stretch justify-between gap-4 rounded-xl border border-slate-800 bg-[#111827] p-4 md:flex-row md:items-center">
-          <div className="flex w-full items-center justify-between gap-2.5 overflow-x-auto">
-            <div className="flex flex-1 shrink-0 items-center gap-2">
+          {/* One row on a wide screen; on a tablet or a phone the filters, the exports and the button wrap rather than hide off the edge. */}
+          <div className="flex w-full flex-wrap items-center justify-between gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
+            <div className="flex flex-1 flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
               <div className="relative w-40 shrink-0">
                 <VehicleCodeFilter
                   className={cn('w-full', darkTrigger, '[&_button[aria-haspopup]]:!ps-9')}

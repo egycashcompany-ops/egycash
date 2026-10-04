@@ -25,7 +25,8 @@ export interface FleetMaintenanceVisitDoc extends BaseDocFields {
    */
   spareParts: string[];
   sparePartIds: Types.ObjectId[];
-  odometerAtService: number;
+  /** `null` — no counter was written on arrival. */
+  odometerAtService: number | null;
   /** The counter on the way OUT; null while open, and on visits closed before it was collected. */
   exitOdometer: number | null;
   /** Who drove it IN — stored, not read from the roster. Null only on visits predating the field. */
@@ -50,7 +51,7 @@ const maintenanceSchema = new Schema<FleetMaintenanceVisitDoc>(
     workTypeId: { type: Schema.Types.ObjectId, required: true },
     spareParts: { type: [String], default: [] },
     sparePartIds: { type: [Schema.Types.ObjectId], default: [] },
-    odometerAtService: { type: Number, required: true, min: 0 },
+    odometerAtService: { type: Number, default: null, min: 0 },
     exitOdometer: { type: Number, default: null, min: 0 },
     driverInEmployeeId: { type: Schema.Types.ObjectId, default: null },
     driverOutEmployeeId: { type: Schema.Types.ObjectId, default: null },

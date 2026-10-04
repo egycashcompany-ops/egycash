@@ -175,7 +175,13 @@ export const FuelTransferDialog = ({
   const submit = async (): Promise<void> => {
     if (from === null || to === null) return;
     await transfer.mutateAsync({ fromCardId: from.id, toCardId: to.id, amount: value });
-    toast.success(t('fleet.fuelCards.transfer.done'));
+    toast.success(
+      t('fleet.fuelCards.transfer.doneDetail', {
+        amount: money(value),
+        from: from.vehicleCode ?? from.label ?? '—',
+        to: to.vehicleCode ?? to.label ?? '—',
+      }),
+    );
     onClose();
   };
 
@@ -293,24 +299,68 @@ export const FuelTransferDialog = ({
         {valid && enough && from !== null && to !== null && (
           <div
             data-fuel-transfer-summary="true"
-            className="space-y-1 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
+            className="space-y-3 rounded-md bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100"
           >
-            <p>
-              {t('fleet.fuelCards.transfer.fromLine', {
-                company: t(`fleet.fuelCards.company.${from.company}`),
-                code: from.vehicleCode ?? from.label ?? '—',
-                before: money(from.balance),
-                after: money(from.balance - value),
-              })}
-            </p>
-            <p>
-              {t('fleet.fuelCards.transfer.toLine', {
-                company: t(`fleet.fuelCards.company.${to.company}`),
-                code: to.vehicleCode ?? to.label ?? '—',
-                before: money(to.balance),
-                after: money(to.balance + value),
-              })}
-            </p>
+            {/* «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام» —
+                each card on its own line: what it held, what moves, what it will hold. */}
+            {(
+              [
+                { side: 'from', card: from, sign: -1 },
+                { side: 'to', card: to, sign: 1 },
+              ] as const
+            ).map(({ side, card, sign }) => (
+              <div key={side} data-fuel-transfer-line={side} className="space-y-1">
+                <p className="font-semibold">
+                  {t(
+                    side === 'from'
+                      ? 'fleet.fuelCards.transfer.fromCard'
+                      : 'fleet.fuelCards.transfer.toCard',
+                    {
+                      company: t(`fleet.fuelCards.company.${card.company}`),
+                      code: card.vehicleCode ?? card.label ?? '—',
+                    },
+                  )}
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <span className="rounded bg-white/60 px-2 py-1 dark:bg-slate-900/60">
+                    <span className="block text-[11px] opacity-70">
+                      {t('fleet.fuelCards.transfer.was')}
+                    </span>
+                    <b className="tabular-nums" dir="ltr">
+                      {money(card.balance)}
+                    </b>
+                  </span>
+                  <span className="rounded bg-white/60 px-2 py-1 dark:bg-slate-900/60">
+                    <span className="block text-[11px] opacity-70">
+                      {t(
+                        side === 'from'
+                          ? 'fleet.fuelCards.transfer.taken'
+                          : 'fleet.fuelCards.transfer.given',
+                      )}
+                    </span>
+                    <b
+                      className={cn(
+                        'tabular-nums',
+                        sign < 0
+                          ? 'text-red-600 dark:text-red-400'
+                          : 'text-emerald-600 dark:text-emerald-400',
+                      )}
+                      dir="ltr"
+                    >
+                      {money(value)}
+                    </b>
+                  </span>
+                  <span className="rounded bg-white/60 px-2 py-1 dark:bg-slate-900/60">
+                    <span className="block text-[11px] opacity-70">
+                      {t('fleet.fuelCards.transfer.becomes')}
+                    </span>
+                    <b className="tabular-nums" dir="ltr">
+                      {money(card.balance + sign * value)}
+                    </b>
+                  </span>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

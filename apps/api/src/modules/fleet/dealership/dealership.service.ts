@@ -106,10 +106,11 @@ class FleetDealershipService {
     const rows = splitWorkType(workType?.name.ar ?? '');
     const vehicleId = vehicleIdOf(visit);
     let privateCar = false;
-    let insuranceCompanyId: Types.ObjectId | null = null;
+    // «تبقى شركة التامين لا يوجد»: a workshop bill starts with no insurer — the clerk types one
+    // or picks it when recording the invoice. The car's own insurer is not copied onto it.
+    const insuranceCompanyId: Types.ObjectId | null = null;
     if (vehicleId !== null) {
       const vehicle = await fleetVehicleRepository.findById(vehicleId);
-      insuranceCompanyId = vehicle?.insuranceCompanyId ?? null;
       const operationId = vehicle?.operationId ?? null;
       if (operationId !== null) {
         const operation = await fleetCatalogItemRepository.findById(String(operationId));

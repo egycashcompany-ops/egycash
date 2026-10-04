@@ -18,6 +18,7 @@ import { diffChanges } from '../../../shared/utils/diff';
 import { fleetCatalogItemRepository } from '../catalogs/catalog-item.repository';
 import { fleetDealershipService } from '../dealership/dealership.service';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { fleetOdometerRepository } from '../odometer/odometer.repository';
 import { alarmSortsFor } from './alarm-sort';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import {
@@ -124,6 +125,30 @@ class FleetMaintenanceService {
    * not who was eligible to. Read through the platform directory seam, the same one the driver
    * registry and the availability overlay use; Fleet never reaches into HR's collection.
    */
+  /**
+   * «لو كتب ميدخلش اقل من القيمة اللى قبلها»: a counter written on a visit may not be below the
+   * last odometer reading dated on or before that day. No counter, or no reading before it, is
+   * nothing to compare — the counter is optional.
+   */
+  private async assertNotBelowLast(
+    vehicleId: string,
+    on: Date,
+    counter: number | null,
+    field: string,
+  ): Promise<void> {
+    if (counter === null) return;
+    const { lower } = await fleetOdometerRepository.chainBounds(vehicleId, on);
+    if (lower != null && counter < lower.reading) {
+      throw new ValidationError([
+        {
+          field,
+          code: 'INVALID',
+          message: `the counter cannot be below the last reading before it (${lower.reading})`,
+        },
+      ]);
+    }
+  }
+
   private async assertDriver(employeeId: string, field: string): Promise<void> {
     if ((await getDirectoryEmployee(employeeId)) === null) {
       throw new ValidationError([{ field, code: 'UNKNOWN', message: 'employee not found' }]);
@@ -197,6 +222,13 @@ class FleetMaintenanceService {
       throw new ConflictError(`vehicle ${vehicle.code} is already in a workshop (FR-4)`);
     }
 
+    await this.assertNotBelowLast(
+      input.vehicleId,
+      input.inDate,
+      input.odometerAtService ?? null,
+      'body.odometerAtService',
+    );
+
     const doc = await fleetMaintenanceRepository.create(
       {
         vehicleId: new Types.ObjectId(input.vehicleId),
@@ -207,7 +239,7 @@ class FleetMaintenanceService {
         sparePartIds: input.sparePartIds.map((id) => new Types.ObjectId(id)),
         // Verbatim, and only when a caller actually sent it — never derived from the catalog ids.
         spareParts: input.spareParts ?? [],
-        odometerAtService: input.odometerAtService,
+        odometerAtService: input.odometerAtService ?? null,
         // Who actually drove it in, when the person opening the visit knows. `null` says nobody
         // was named — never that the roster's planned driver should be assumed.
         driverInEmployeeId:
@@ -247,7 +279,12 @@ class FleetMaintenanceService {
     if (input.sparePartIds !== undefined) await this.assertSpareParts(input.sparePartIds);
     // The car cannot leave on a lower reading than it arrived on — that is a typo, and it would
     // make the next service fall due early once this becomes the baseline.
-    if (input.exitOdometer < before.odometerAtService) {
+    const exitOdometer = input.exitOdometer ?? null;
+    if (
+      exitOdometer !== null &&
+      before.odometerAtService !== null &&
+      exitOdometer < before.odometerAtService
+    ) {
       throw new ValidationError([
         {
           field: 'body.exitOdometer',
@@ -256,11 +293,17 @@ class FleetMaintenanceService {
         },
       ]);
     }
+    await this.assertNotBelowLast(
+      String(before.vehicleId),
+      input.outDate,
+      exitOdometer,
+      'body.exitOdometer',
+    );
     const updated = await fleetMaintenanceRepository.updateById(
       id,
       {
         outDate: input.outDate,
-        exitOdometer: input.exitOdometer,
+        exitOdometer,
         driverOutEmployeeId: new Types.ObjectId(input.driverOutEmployeeId),
         takenOutByEmployeeId: await this.custodian(by, input.takenOutByEmployeeId),
         // ABSENT MEANS «LEAVE THE CHECK-IN LIST ALONE», and an empty array means «there were
@@ -357,9 +400,10 @@ class FleetMaintenanceService {
     // The same rule check-out enforces, against whichever of the two readings this edit leaves
     // in place: an edit that lowers the exit reading below the entry one is the same typo, and it
     // would corrupt the baseline just as quietly.
-    const entry = input.odometerAtService ?? before.odometerAtService;
+    const entry =
+      input.odometerAtService === undefined ? before.odometerAtService : input.odometerAtService;
     const exit = input.exitOdometer === undefined ? before.exitOdometer : input.exitOdometer;
-    if (exit != null && exit < entry) {
+    if (exit != null && entry != null && exit < entry) {
       throw new ValidationError([
         {
           field: 'body.exitOdometer',
@@ -367,6 +411,29 @@ class FleetMaintenanceService {
           message: 'the exit reading cannot be below the reading the vehicle came in on',
         },
       ]);
+    }
+    // A counter this edit writes is held to the same «not below the last reading» rule.
+    // Only a counter this edit CHANGES — a visit the old book left below the chain can still have
+    // its other facts corrected.
+    if (input.odometerAtService != null && input.odometerAtService !== before.odometerAtService) {
+      await this.assertNotBelowLast(
+        String(before.vehicleId),
+        inDate,
+        input.odometerAtService,
+        'body.odometerAtService',
+      );
+    }
+    if (
+      input.exitOdometer != null &&
+      input.exitOdometer !== before.exitOdometer &&
+      before.outDate !== null
+    ) {
+      await this.assertNotBelowLast(
+        String(before.vehicleId),
+        before.outDate,
+        input.exitOdometer,
+        'body.exitOdometer',
+      );
     }
     const set: Partial<FleetMaintenanceVisitDoc> = {};
     if (input.inDate !== undefined) set.inDate = input.inDate;
@@ -377,7 +444,9 @@ class FleetMaintenanceService {
     }
     if (input.spareParts !== undefined) set.spareParts = input.spareParts;
     if (input.exitOdometer !== undefined) set.exitOdometer = input.exitOdometer ?? null;
-    if (input.odometerAtService !== undefined) set.odometerAtService = input.odometerAtService;
+    if (input.odometerAtService !== undefined) {
+      set.odometerAtService = input.odometerAtService ?? null;
+    }
     if (input.driverInEmployeeId !== undefined) {
       set.driverInEmployeeId = new Types.ObjectId(input.driverInEmployeeId);
     }

@@ -2483,27 +2483,55 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     return { vehicle, visit: data<FleetMaintenanceVisitDto>(out) };
   };
 
-  it('a workshop counter that contradicts the odometer chain is RECORDED, not refused', async () => {
-    // The warning for this lives in the UI, and it is advice. The server must keep accepting the
-    // visit: a 409 here would turn a mistyped counter into a LOST workshop visit, which is the
-    // worse outcome — and a back-dated visit legitimately carries a counter below the chain.
+  it('a workshop counter is optional — and refused below the last reading before the visit', async () => {
+    // «مش اجبارى … انه يكتب عداد بس لو كتب ميدخلش اقل من القيمة اللى قبلها».
     const v = data<FleetVehicleDto>(await createVehicle(adminToken));
     const readingRes = await request(app)
       .post('/api/v1/fleet/odometer')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ vehicleId: v.id, reading: 280_500, date: '2026-08-30' });
     expect(readingRes.status).toBe(201);
+    const workshopId = await mkCatalog('workshop', 'ورشة التحذير');
+    const workTypeId = await countingWorkTypeId();
 
-    const opened = await checkIn({
+    // A dropped digit — below the reading of the day before — is refused, and nothing is opened.
+    const low = await checkIn({
       vehicleId: v.id,
       inDate: '2026-08-31',
-      workshopId: await mkCatalog('workshop', 'ورشة التحذير'),
-      workTypeId: await countingWorkTypeId(),
-      odometerAtService: 28_000, // a dropped digit — far below the chain
+      workshopId,
+      workTypeId,
+      odometerAtService: 28_000,
     });
+    expect(low.status).toBe(400);
+
+    // A BACK-dated visit is compared with the chain as it stood THEN: no reading before it.
+    // And no counter at all is a visit too.
+    const opened = await checkIn({ vehicleId: v.id, inDate: '2026-08-31', workshopId, workTypeId });
     expect(opened.status).toBe(201);
-    // …and stored EXACTLY as sent: nothing clamped it to the floor or corrected it.
-    expect(data<FleetMaintenanceVisitDto>(opened).odometerAtService).toBe(28_000);
+    const visit = data<FleetMaintenanceVisitDto>(opened);
+    expect(visit.odometerAtService).toBeNull();
+
+    // The check-out counter follows the same rule, and may be left out as well.
+    const lowExit = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        outDate: '2026-09-01',
+        exitOdometer: 28_000,
+        driverOutEmployeeId: await someDriver(),
+        version: visit.version,
+      });
+    expect(lowExit.status).toBe(400);
+    const closed = await request(app)
+      .post(`/api/v1/fleet/maintenance/${visit.id}/check-out`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        outDate: '2026-09-01',
+        driverOutEmployeeId: await someDriver(),
+        version: visit.version,
+      });
+    expect(closed.status).toBe(200);
+    expect(data<FleetMaintenanceVisitDto>(closed).exitOdometer).toBeNull();
 
     // The chain is untouched by it — a workshop visit writes no odometer reading of its own.
     const logs = data<{ outReading: number }[]>(
@@ -2513,16 +2541,6 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
         .set('Authorization', `Bearer ${adminToken}`),
     );
     expect(logs.map((l) => l.outReading)).toEqual([280_500]);
-
-    // And the floor still comes from the READING, never from the workshop counter.
-    expect(
-      data<{ expectedReading: number | null; asOf: string | null }>(
-        await request(app)
-          .get('/api/v1/fleet/odometer/expected')
-          .query({ vehicleId: v.id })
-          .set('Authorization', `Bearer ${adminToken}`),
-      ),
-    ).toMatchObject({ expectedReading: 280_500, asOf: expect.stringContaining('2026-08-30') });
   });
 
   it('stores the exit reading and refuses one below the reading it came in on', async () => {
@@ -2546,12 +2564,7 @@ describe('workshop entry/exit — exit odometer, custody, catalog parts, filters
     });
     expect(tooLow.status).toBe(400);
 
-    // Required, not optional: a check-out without it cannot silently leave the baseline behind.
-    const missing = await checkOut(opened.id, {
-      outDate: '2026-09-03',
-      version: opened.version,
-    });
-    expect(missing.status).toBe(400);
+    // Optional since «مش اجبارى» — a check-out without it is proved in the counter test above.
 
     const out = await checkOut(opened.id, {
       outDate: '2026-09-03',
@@ -7379,6 +7392,31 @@ describe('the vehicle registry references the catalogs and always has a branch',
       value: 'المهندسين',
     });
   });
+
+  it('a licence class moved between م and ت needs a new expiry date — and saves with one', async () => {
+    // «لو غير فئة الترخيص من ت ل م او م ل ت يجيب انذار انه لازم يعدل تاريخ انتهاء الترخيص» —
+    // «يمنع الحفظ».
+    const m = await mkCatalogItem('licenseClass', 'وحدة الاختبار م', 'Test unit M');
+    const t = await mkCatalogItem('licenseClass', 'وحدة الاختبار ت', 'Test unit T');
+    const v = data<FleetVehicleDto>(await createVehicle(adminToken, { licenseClassId: m }));
+    const patchVehicle = (body: Record<string, unknown>) =>
+      request(app)
+        .patch(`/api/v1/fleet/vehicles/${v.id}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ version: v.version, ...body });
+
+    const oldDate = await patchVehicle({ licenseClassId: t, licenseExpiresAt: v.licenseExpiresAt });
+    expect(oldDate.status).toBe(400);
+    const noDate = await patchVehicle({ licenseClassId: t });
+    expect(noDate.status).toBe(400);
+
+    const renewed = await patchVehicle({
+      licenseClassId: t,
+      licenseExpiresAt: '2028-01-01T00:00:00.000Z',
+    });
+    expect(renewed.status).toBe(200);
+    expect(data<FleetVehicleDto>(renewed).licenseClassId).toBe(t);
+  });
 });
 
 describe('the vehicle license image', () => {
@@ -9020,7 +9058,7 @@ describe('dealership invoices (التوكيل) — «العربيه اللى ب�
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ version: row.version, ...body });
 
-  it('a check-out opens one PENDING row, carrying the exit date, the insurer and «ملاكي» off the car', async () => {
+  it('a check-out opens one PENDING row, carrying the exit date and «ملاكي» off the car — the insurer is «لا يوجد»', async () => {
     const insurerId = await catalogId('insuranceCompany', 'مصر للتأمين');
     const privateOp = await catalogId('operation', 'ملاكى');
     const { visitId, vehicleId } = await exit('صيانة', {
@@ -9034,8 +9072,9 @@ describe('dealership invoices (التوكيل) — «العربيه اللى ب�
       workKind: 'maintenance',
       workTypeLabel: 'صيانة',
       privateCar: true,
-      insuranceCompanyId: insurerId,
-      insuranceCompanyName: 'مصر للتأمين',
+      // «تبقى شركة التامين لا يوجد» — the car carries one, the bill does not copy it.
+      insuranceCompanyId: null,
+      insuranceCompanyName: null,
       invoiceNumber: null,
       invoiceAmount: null,
       side: null,
@@ -9315,6 +9354,7 @@ describe('receipts (خصم الإيصالات) and the custody ledger (العه�
         name: 'كارت وطنية',
         number: `7045 1120 ${receiptCardCounter++}`,
         expiresAt: '2027-03-31',
+        password: '1234',
       });
     expect(made.status).toBe(201);
     const card = data<Card>(made);

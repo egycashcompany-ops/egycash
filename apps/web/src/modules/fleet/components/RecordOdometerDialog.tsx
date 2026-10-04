@@ -17,6 +17,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
+import { SwapIcon } from '../../../shared/ui/icons';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatNumber } from '../../../shared/lib/format';
@@ -294,6 +295,22 @@ export const RecordOdometerDialog = ({
         <Field label={t('fleet.odometer.columns.driver1')}>
           <OptionalDriverField value={driver1} onChange={setDriver1} />
         </Field>
+        {/* «زرار ابدل بين اتنين سواقيين»: the morning driver becomes the evening one and back. */}
+        <div className="flex justify-center">
+          <button
+            type="button"
+            data-odometer-swap-drivers="true"
+            disabled={driver1 === '' && driver2 === ''}
+            onClick={() => {
+              setDriver1(driver2);
+              setDriver2(driver1);
+            }}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+          >
+            <SwapIcon className="h-3.5 w-3.5 rotate-90" />
+            {t('fleet.odometer.swapDrivers')}
+          </button>
+        </div>
         <Field label={t('fleet.odometer.columns.driver2')}>
           <OptionalDriverField value={driver2} onChange={setDriver2} />
         </Field>

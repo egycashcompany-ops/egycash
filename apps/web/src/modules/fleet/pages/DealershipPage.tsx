@@ -183,7 +183,7 @@ export const DealershipPage = (): JSX.Element => {
     {
       key: 'insurer',
       header: t('fleet.vehicles.fields.insuranceCompany'),
-      render: (row) => row.insuranceCompanyName ?? dash,
+      render: (row) => row.insuranceCompanyName ?? t('fleet.dealership.noInsurer'),
     },
     {
       key: 'side',

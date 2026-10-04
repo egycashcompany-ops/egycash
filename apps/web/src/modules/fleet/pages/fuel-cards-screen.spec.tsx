@@ -393,10 +393,17 @@ describe('charging', () => {
 
   it('the transfer says what each card was and becomes, and never gives more than the first holds', () => {
     const DIALOG = readFileSync(join(HERE, '../components/FuelTransferDialog.tsx'), 'utf8');
-    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.fromLine'");
-    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.toLine'");
+    // «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام»: each card's
+    // line names what it held, what moves, and what it will hold.
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.was')");
+    expect(DIALOG).toContain("'fleet.fuelCards.transfer.taken'");
+    expect(DIALOG).toContain("'fleet.fuelCards.transfer.given'");
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.becomes')");
+    expect(DIALOG).toContain('money(card.balance + sign * value)');
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.doneDetail'");
     expect(DIALOG).toContain('const enough = from !== null && value <= from.balance;');
-    expect(ar('fleet.fuelCards.transfer.fromLine')).toContain('كان {{before}} ويصبح {{after}}');
+    expect(ar('fleet.fuelCards.transfer.was')).toBe('كان');
+    expect(ar('fleet.fuelCards.transfer.becomes')).toBe('يصبح');
     // The button stays pressable; the press goes through the guard, which refuses — and names —
     // more than the first card holds, and the same card on both sides.
     expect(DIALOG).toContain('onClick={required.guard(submit)}');
@@ -426,15 +433,17 @@ describe('the card form', () => {
     const rules = DIALOG.slice(DIALOG.indexOf('useRequiredFields('));
     const list = rules.slice(0, rules.indexOf(');'));
     for (const rule of [
-      "ok: vehicleId !== ''",
+      // «كود السياره مش اجبارى» — a card on no car is named by its label instead.
       "ok: vehicleId !== '' || label.trim() !== ''",
       "ok: name.trim() !== ''",
       'ok: number.trim().length >= 4',
+      // «الباسورد اجبارى» and «تاريخ انتهاء الكارت اجبارى».
+      'ok: passwordOk',
+      "ok: expiresAt !== ''",
     ]) {
       expect(list, `the save requires ${rule}`).toContain(rule);
     }
-    // The owner's sheets came without the expiry dates: a card saves without one.
-    expect(list).not.toContain('expiresAt');
-    expect(DIALOG).toContain("expiresAt: expiresAt === '' ? null : new Date(expiresAt)");
+    // The browser's saved logins stay out of the card's boxes.
+    expect(DIALOG).toContain('autoComplete="new-password"');
   });
 });

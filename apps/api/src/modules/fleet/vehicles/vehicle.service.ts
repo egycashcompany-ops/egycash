@@ -3,6 +3,7 @@
 import {
   FleetEvents,
   FleetSettingKeys,
+  fleetLicenseLetter,
   parseFleetSort,
   type ChangeFleetVehicleStatus,
   type CreateFleetVehicle,
@@ -220,6 +221,37 @@ class FleetVehicleService {
     return fleetVehicleRepository.getById(id, scope);
   }
 
+  /**
+   * «يمنع الحفظ»: a licence class moved between «م» and «ت» with the expiry date left as it was is
+   * refused — a renewal is a new date AND the other letter, and half of one is a mistake.
+   */
+  private async assertLicenseLetterMovesWithDate(
+    before: FleetVehicleDoc,
+    input: UpdateFleetVehicle,
+  ): Promise<void> {
+    if (input.licenseClassId == null || before.licenseClassId == null) return;
+    if (String(before.licenseClassId) === input.licenseClassId) return;
+    const [was, now] = await Promise.all([
+      fleetCatalogItemRepository.findById(String(before.licenseClassId)),
+      fleetCatalogItemRepository.findById(input.licenseClassId),
+    ]);
+    const a = was === null ? null : fleetLicenseLetter(was.name.ar);
+    const b = now === null ? null : fleetLicenseLetter(now.name.ar);
+    if (a === null || b === null || a === b) return;
+    const dateMoved =
+      input.licenseExpiresAt !== undefined &&
+      input.licenseExpiresAt.getTime() !== before.licenseExpiresAt.getTime();
+    if (dateMoved) return;
+    throw new ValidationError([
+      {
+        field: 'body.licenseExpiresAt',
+        code: 'INVALID',
+        message:
+          'the licence class moved between م and ت — the licence expiry date must change too',
+      },
+    ]);
+  }
+
   async update(
     id: string,
     input: UpdateFleetVehicle,
@@ -233,6 +265,7 @@ class FleetVehicleService {
     if (input.typeId !== undefined) await this.assertTypeActive(input.typeId);
     if (input.branchId !== undefined) await this.assertBranch(input.branchId);
     await this.assertCatalogRefs(input);
+    await this.assertLicenseLetterMovesWithDate(before, input);
 
     const set: Partial<FleetVehicleDoc> = {};
     if (input.code !== undefined) set.code = input.code;

@@ -67,23 +67,26 @@ export const FuelCardDialog = ({
   const create = useCreateFuelCard();
   const update = useUpdateFuelCard();
   const pending = create.isPending || update.isPending;
-  // A card on no car («سفر 1», «اسبير») is edited under its label; it may be moved onto a car, and
-  // then the car names it instead.
-  const noCar = card !== null && card.vehicleId === null;
+  // «كود السياره مش اجبارى»: a card may be added complete and on no car — then it is known on the
+  // fuel screens by its label («سفر 7»), which is asked for exactly while no car is chosen.
+  const noCar = vehicleId === '';
+  // «الباسورد اجبارى»: a new card is not saved without one; an edited card that has one keeps it.
+  // A stored one that was shown and then emptied is a removal, which a card may not have.
+  const passwordOk = password !== '' || (card?.hasPassword === true && !passwordShown);
   // Save stays pressable: pressing it with any of these empty — or a number under four digits —
-  // names them and turns their boxes red (`useRequiredFields`). The expiry may wait: the owner's
-  // sheets came without it («تاريخ الانتهاء هبعته … فى فايل تانى»).
+  // names them and turns their boxes red (`useRequiredFields`).
   const required = useRequiredFields(
     [
-      noCar
-        ? {
-            key: 'label',
-            label: t('fleet.fuelCards.fields.label'),
-            ok: vehicleId !== '' || label.trim() !== '',
-          }
-        : { key: 'vehicle', label: t('fleet.odometer.columns.vehicle'), ok: vehicleId !== '' },
+      {
+        key: 'label',
+        label: t('fleet.fuelCards.fields.label'),
+        ok: vehicleId !== '' || label.trim() !== '',
+      },
       { key: 'name', label: t('fleet.fuelCards.fields.name'), ok: name.trim() !== '' },
       { key: 'number', label: t('fleet.fuelCards.fields.number'), ok: number.trim().length >= 4 },
+      { key: 'password', label: t('fleet.fuelCards.fields.password'), ok: passwordOk },
+      // «تاريخ انتهاء الكارت اجبارى».
+      { key: 'expiresAt', label: t('fleet.fuelCards.fields.expiresAt'), ok: expiresAt !== '' },
     ],
     open,
   );
@@ -104,20 +107,19 @@ export const FuelCardDialog = ({
       company,
       name: name.trim(),
       number: number.trim(),
-      expiresAt: expiresAt === '' ? null : new Date(expiresAt),
+      // Required — the guard does not let an empty one through.
+      expiresAt: new Date(expiresAt),
     };
     if (card === null) {
-      await create.mutateAsync({ ...body, password: password === '' ? null : password });
+      await create.mutateAsync({ ...body, password });
       toast.success(t('fleet.fuelCards.created'));
     } else {
       await update.mutateAsync({
         id: card.id,
         body: {
           ...body,
-          // Untouched unless the clerk opened it or typed a new one.
-          ...(passwordShown || password !== ''
-            ? { password: password === '' ? null : password }
-            : {}),
+          // Untouched unless a new one was typed — it can be changed, never removed.
+          ...(password === '' ? {} : { password }),
           version: card.version,
         },
       });
@@ -149,9 +151,7 @@ export const FuelCardDialog = ({
         <div className="grid gap-4 sm:grid-cols-2">
           <Field
             label={t('fleet.odometer.columns.vehicle')}
-            required={!noCar}
-            missing={required.isMissing('vehicle')}
-            hint={t('fleet.accidents.vehicleHint')}
+            hint={t('fleet.fuelCards.vehicleOptional')}
           >
             <VehicleCodeCombobox
               value={vehicleId}
@@ -184,7 +184,7 @@ export const FuelCardDialog = ({
             </div>
           </Field>
         </div>
-        {noCar && vehicleId === '' && (
+        {noCar && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field
               label={t('fleet.fuelCards.fields.label')}
@@ -201,7 +201,7 @@ export const FuelCardDialog = ({
             required
             missing={required.isMissing('name')}
           >
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Input value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" />
           </Field>
           <Field
             label={t('fleet.fuelCards.fields.number')}
@@ -212,20 +212,34 @@ export const FuelCardDialog = ({
               ? { error: t('fleet.fuelCards.errors.numberShort') }
               : {})}
           >
-            <Input value={number} onChange={(e) => setNumber(e.target.value)} rule="digits" />
+            {/* `autoComplete="off"`: the browser filled a saved e-mail in here and turned it red. */}
+            <Input
+              value={number}
+              onChange={(e) => setNumber(e.target.value)}
+              rule="digits"
+              autoComplete="off"
+            />
           </Field>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t('fleet.fuelCards.fields.expiresAt')}>
+          <Field
+            label={t('fleet.fuelCards.fields.expiresAt')}
+            required
+            missing={required.isMissing('expiresAt')}
+          >
             <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
           </Field>
           <Field
             label={t('fleet.fuelCards.fields.password')}
+            required
+            missing={required.isMissing('password')}
             hint={t('fleet.fuelCards.passwordHint')}
           >
             <div className="flex items-center gap-2">
               <Input
                 type={passwordVisible ? 'text' : 'password'}
+                // A saved site password is not this card's PIN — the browser must not fill it in.
+                autoComplete="new-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={card?.hasPassword === true && !passwordShown ? '••••' : ''}

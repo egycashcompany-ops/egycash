@@ -838,7 +838,9 @@ export const untouchedCounters = (
 ): number[] => {
   const unsaved =
     (visit.__v ?? 0) === 0 && visit.createdBy != null && String(visit.createdBy) === importedBy;
-  return unsaved ? [...standIns, visit.odometerAtService] : [...standIns];
+  return unsaved && visit.odometerAtService !== null
+    ? [...standIns, visit.odometerAtService]
+    : [...standIns];
 };
 
 /** How a book value is read out on the run — the book's own words. */

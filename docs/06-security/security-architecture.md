@@ -104,7 +104,7 @@ All 403s are audited (permission probing is a signal).
 | Brute force / abuse | Redis rate limiting per route class; lockouts; alerting |
 | Mass assignment | DTOs are explicit Zod schemas — unknown keys stripped (`strict()`) |
 | IDOR | Scope filtering in BaseRepository + record-level ownership checks in services |
-| Dependency risk | Lockfile; `scripts/dependency-audit.mjs` fails CI on any **high or critical** advisory in production dependencies (waivable by id, with a reason and an expiry that itself fails CI once past) and **fails on a registry outage** unless a dated outage waiver is recorded; Dependabot (`.github/dependabot.yml`) opens weekly grouped updates and security PRs; minimal dependency policy |
+| Dependency risk | Lockfile; `scripts/dependency-audit.mjs` fails CI on any **high or critical** advisory in production dependencies (waivable by id, with a reason and an expiry that itself fails CI once past) and **fails on a registry outage** unless a dated outage waiver is recorded; automated update PRs (Dependabot) are **off by the owner's decision** (2026-10-04) — dependency updates are made deliberately, in a change that is tested for them, and the audit gate above is the control that cannot be skipped; minimal dependency policy |
 | Secrets leakage | `.env` never committed; env schema validation; `scripts/check-secrets.mjs` scans every tracked file before `npm ci` and fails CI on a credential shape (private key, cloud/API keys, a connection string with a password, a JWT, a tracked `.env` or key file) — false positives are allowlisted by fingerprint with a reason |
 
 ## 5. Auditability & monitoring

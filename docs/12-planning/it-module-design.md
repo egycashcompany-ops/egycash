@@ -152,6 +152,22 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
   return+assign on the surface — the history must show intent, not mechanics.
 - **Dispose**: asset must not have an open assignment; sets `disposal`, terminal status; the code
   is never reused; row is never deleted.
+- **Receipt** (FR-18): every interval opened for a person carries `receiptId` — the custody
+  receipt it was handed over on (§2.5.1). An interval from before receipts has none.
+
+#### 2.5.1 `it_custody_receipts` — Custody receipt (إيصال استلام, FR-18)
+
+The paper the employee signs (form EGYCASH-IT-F-14-02), one per hand-over:
+
+`{ employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, issuedAt, issuedByUserId, branchId,
+lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes? }],
+signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
+
+- Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
+  holder); the lines and the signer are a snapshot of what was printed.
+- `branchId` is the first line's branch — the read-scope anchor, like an interval's.
+- `signedCopy` links the Files document (category `it-custody-receipts`, authorizer
+  `it/custodyReceipt`); replacing it adds a file version, withdrawing it soft-deletes the file.
 
 ### 2.6 Help Desk
 

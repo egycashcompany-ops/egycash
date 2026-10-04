@@ -15,7 +15,7 @@ import { itAssetAssignmentRepository } from './assignment.repository';
 import { itCustodyReceiptRepository } from './receipt.repository';
 import { resolveCustodyReceiptCategoryId } from './receipt-files';
 import { readReceiptHolder } from './receipt-holder';
-import { refuseLeaver, refuseUnlessInStock } from './custody.service';
+import { auditReceiptIssued, refuseLeaver, refuseUnlessInStock } from './custody.service';
 import { type ItCustodyReceiptDoc } from './receipt.model';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'custodyReceipt', entityId: id });
@@ -127,7 +127,7 @@ class ItCustodyReceiptService {
         { receiptId },
         { by: ctx.userId, version: assignment.__v, session, scope },
       );
-      return itCustodyReceiptRepository.create(
+      const receipt = await itCustodyReceiptRepository.create(
         {
           _id: receiptId,
           employeeId: assignment.assignedToEmployeeId,
@@ -152,6 +152,10 @@ class ItCustodyReceiptService {
         },
         { by: ctx.userId, session },
       );
+      await auditReceiptIssued(receiptId, String(assignment.assignedToEmployeeId), [
+        asset.assetCode,
+      ]);
+      return receipt;
     });
   }
 

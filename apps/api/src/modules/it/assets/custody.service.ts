@@ -88,6 +88,22 @@ export const refuseUnlessInStock = async (
   );
 };
 
+/**
+ * The audit row for a receipt (FR-18): who signed for which assets. Written inside the transaction
+ * that writes the receipt, like every custody audit — a receipt that rolled back leaves no trace.
+ */
+export const auditReceiptIssued = async (
+  receiptId: Types.ObjectId,
+  employeeId: string,
+  assetCodes: readonly string[],
+): Promise<void> => {
+  await auditService.record({
+    entityRef: { moduleId: 'it', entityType: 'custodyReceipt', entityId: String(receiptId) },
+    action: 'create',
+    changes: [change('employeeId', null, employeeId), change('assets', null, [...assetCodes])],
+  });
+};
+
 /** The receipt's snapshot of who signed it — taken from the holder read before the transaction. */
 const signer = (holder: ReceiptHolder) => ({
   employeeCode: holder.employeeCode,
@@ -331,6 +347,11 @@ class ItAssetCustodyService {
         },
         { by: ctx.userId, session },
       );
+      await auditReceiptIssued(
+        receiptId,
+        input.employeeId,
+        lines.map((line) => line.assetCode),
+      );
 
       return { receipt, assets, assignments };
     });
@@ -525,6 +546,7 @@ class ItAssetCustodyService {
           },
           { by: ctx.userId, session },
         );
+        await auditReceiptIssued(receiptId, toEmployeeId, [asset.assetCode]);
       }
 
       // `branchId` is the asset's data-scope anchor and the design says it changes ONLY here.

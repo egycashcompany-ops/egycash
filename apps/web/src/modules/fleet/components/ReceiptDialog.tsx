@@ -44,6 +44,7 @@ import { FuelCompanyLogo } from './FuelCardTiles';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { receiptCardsState, settleReceiptCardId } from '../lib/receipt-cards';
+import { groupCardNumber } from '../lib/fuel-card-number';
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 const round = (value: number): number => Math.round(value * 100) / 100;
@@ -123,7 +124,7 @@ export const CardPick = ({
         >
           <FuelCompanyLogo company={card.company} size="sm" />
           <span className="tabular-nums" dir="ltr">
-            {card.number}
+            {groupCardNumber(card.number)}
           </span>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {t('fleet.fuelCards.fields.balance')}{' '}

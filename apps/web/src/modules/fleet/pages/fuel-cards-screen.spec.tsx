@@ -173,19 +173,23 @@ describe('one tile per car, Wataniya above Chill Out', () => {
     expect(tiles[1]?.cards.wataniya).toBeUndefined();
   });
 
-  it('draws the code on the tile, the logos top and bottom, and every fact in a frame', () => {
+  it('draws the car’s block — its code, Wataniya’s line above Chill Out’s free slot — as designed', () => {
     const html = render('cards');
-    expect(html).toContain('data-fuel-vehicle="v-204"');
+    expect(html).toContain('data-fuel-tile="v-204"');
+    expect(html).toContain('data-fuel-held="1"');
     const wataniya = html.indexOf('data-fuel-line="wataniya"');
     const chillout = html.indexOf('data-fuel-line="chillout"');
     expect(wataniya).toBeGreaterThan(-1);
     expect(chillout, 'the second slot is drawn even with no card in it').toBeGreaterThan(wataniya);
+    // The marks the owner chose: Wataniya's logo, Chill Out's red.
     expect(html).toContain('/fleet-fuel-cards/wataniya.png');
-    expect(html).toContain('/fleet-fuel-cards/chillout.png');
-    for (const label of ['fields.name', 'fields.number', 'fields.expiresAt', 'fields.password']) {
-      expect(html).toContain(ar(`fleet.fuelCards.${label}`));
-    }
-    expect(html, 'the empty slot offers to add').toContain('data-fuel-add="chillout"');
+    expect(html).not.toContain('/fleet-fuel-cards/chillout.png');
+    // The number in fours, its copy button, the PIN behind its eye, the photo.
+    expect(html).toContain('data-fuel-copy="c-1"');
+    expect(html).toContain(ar('fleet.fuelCards.board.pin'));
+    expect(html).toContain(ar('fleet.fuelCards.board.photo'));
+    expect(html, 'the empty slot offers to fill it').toContain('data-fuel-add="chillout"');
+    expect(html).toContain(ar('fleet.fuelCards.board.half'));
   });
 
   it('hides the password behind the eye, and the eye behind its grant', () => {
@@ -196,20 +200,22 @@ describe('one tile per car, Wataniya above Chill Out', () => {
     expect(render('cards')).not.toContain('1234');
   });
 
-  it('warns ABOVE the expiry frame when the card expires within the setting’s days', () => {
+  it('marks the expiry «ينتهي قريباً» when the card expires within the setting’s days', () => {
     const soon = render('cards', {
       cards: [card({ expiresAt: new Date(Date.now() + 5 * 86_400_000).toISOString() })],
     });
-    const badge = soon.indexOf(ar('fleet.fuelCards.expiresSoon'));
-    const frame = soon.indexOf(ar('fleet.fuelCards.fields.expiresAt'), badge);
-    expect(badge).toBeGreaterThan(-1);
-    expect(frame, 'the badge comes before the frame it is about').toBeGreaterThan(badge);
-    expect(render('cards')).not.toContain(ar('fleet.fuelCards.expiresSoon'));
+    expect(soon).toContain('data-fuel-expiry="soon"');
+    expect(soon).toContain(ar('fleet.fuelCards.expiry.soon'));
+    const late = render('cards', {
+      cards: [card({ expiresAt: new Date(Date.now() + 400 * 86_400_000).toISOString() })],
+    });
+    expect(late).toContain('data-fuel-expiry="valid"');
+    expect(late).not.toContain('data-fuel-expiry="soon"');
   });
 
-  it('a card whose expiry is not known yet shows «—» and warns of nothing', () => {
+  it('a card whose expiry is not known yet shows «—» and marks nothing', () => {
     const html = render('cards', { cards: [card({ expiresAt: null })] });
-    expect(html).not.toContain(ar('fleet.fuelCards.expiresSoon'));
+    expect(html).not.toContain('data-fuel-expiry=');
     expect(html).not.toContain('Invalid');
   });
 });
@@ -230,11 +236,11 @@ describe('the card photo — «صوره كل فيزا»', () => {
     expect(html).not.toContain('data-fuel-image-upload=');
   });
 
-  it('a card with none offers the upload — to a reader who may edit the card only', () => {
-    expect(render('cards')).toContain('data-fuel-image-upload="c-1"');
+  it('a card with none still has «صورة الكارت» — its dialog offers the upload to an editor', () => {
+    expect(render('cards')).toContain('data-fuel-image="c-1"');
     const viewer = render('cards', { permissions: ['fleetFuelCard.view'] });
-    expect(viewer).not.toContain('data-fuel-image-upload=');
-    expect(viewer).not.toContain('data-fuel-image=');
+    expect(viewer).not.toContain('data-fuel-edit=');
+    expect(viewer).not.toContain('data-fuel-delete=');
   });
 });
 
@@ -277,7 +283,7 @@ describe('a filter on the card leaves the other slot out, not «empty»', () => 
 
 describe('the password on the line', () => {
   it('once shown, it has an eye that hides it again', () => {
-    const PAGE = readFileSync(join(HERE, 'FuelCardsPage.tsx'), 'utf8');
+    const PAGE = readFileSync(join(HERE, '../components/FuelCardBoard.tsx'), 'utf8');
     expect(PAGE).toContain('data-fuel-hide={card.id}');
     expect(PAGE).toContain('onClick={() => setShown(null)}');
     const DIALOG = readFileSync(join(HERE, '../components/FuelCardDialog.tsx'), 'utf8');
@@ -315,11 +321,13 @@ describe('cards on no car — «كروت زيادة ملهمش عربيات»', 
     expect(Object.keys(tiles[1]?.cards ?? {}).sort()).toEqual(['chillout', 'wataniya']);
   });
 
-  it('the tile reads «بدون سيارة» under the label, and offers no card to add to no car', () => {
+  it('sits in the stock («العهدة / المخزن») under its label, offered to a car, never added to', () => {
     const html = render('cards', { cards: [travel('t1', 'سفر 1')] });
     expect(html).toContain('سفر 1');
     expect(html).toContain('data-fuel-no-car="true"');
-    expect(html).toContain(ar('fleet.fuelCards.noCar'));
+    expect(html).toContain('data-fuel-stock="true"');
+    expect(html).toContain(ar('fleet.fuelCards.board.unlinked'));
+    expect(html).toContain('data-fuel-assign="t1"');
     expect(html).not.toContain('data-fuel-add=');
     expect(render('charging', { cards: [travel('t1', 'سفر 1')] })).toContain('سفر 1');
   });
@@ -433,8 +441,6 @@ describe('the card form', () => {
     const rules = DIALOG.slice(DIALOG.indexOf('useRequiredFields('));
     const list = rules.slice(0, rules.indexOf(');'));
     for (const rule of [
-      // «كود السياره مش اجبارى» — a card on no car is named by its label instead.
-      "ok: vehicleId !== '' || label.trim() !== ''",
       "ok: name.trim() !== ''",
       'ok: number.trim().length >= 4',
       // «الباسورد اجبارى» and «تاريخ انتهاء الكارت اجبارى».
@@ -443,6 +449,10 @@ describe('the card form', () => {
     ]) {
       expect(list, `the save requires ${rule}`).toContain(rule);
     }
+    // «كود السياره مش اجبارى»: no rule asks for a car; a card on no car keeps its label or takes
+    // its name.
+    expect(list).not.toContain('vehicleId');
+    expect(DIALOG).toContain("label: vehicleId === '' ? (card?.label ?? name.trim()) : null");
     // The browser's saved logins stay out of the card's boxes.
     expect(DIALOG).toContain('autoComplete="new-password"');
   });

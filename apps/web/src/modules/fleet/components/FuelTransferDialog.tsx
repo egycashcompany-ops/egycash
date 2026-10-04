@@ -19,6 +19,7 @@ import { cn } from '../../../shared/lib/cn';
 import { useTransferFuelBalance } from '../api/fleet-queries';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { FuelCompanyLogo, fuelCardPlace, noCarPlaces } from './FuelCardTiles';
+import { groupCardNumber } from '../lib/fuel-card-number';
 
 export const CardPick = ({
   cards,
@@ -67,7 +68,7 @@ export const CardPick = ({
         >
           <FuelCompanyLogo company={card.company} size="sm" />
           <span className="tabular-nums" dir="ltr">
-            {card.number}
+            {groupCardNumber(card.number)}
           </span>
           <span className="text-xs text-slate-500 dark:text-slate-400">
             {t('fleet.fuelCards.fields.balance')}{' '}

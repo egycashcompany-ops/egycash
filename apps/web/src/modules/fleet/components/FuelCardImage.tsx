@@ -8,7 +8,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EyeIcon, ImageIcon, UploadIcon } from '../../../shared/ui/icons';
 import { ZoomableImage } from './ZoomableImage';
 import { LICENSE_IMAGE_ACCEPT } from './VehicleLicenseImage';
 import { fetchFuelCardImage } from '../api/fleet-api';
@@ -222,5 +222,94 @@ export const FuelCardImageControl = ({
     >
       <EyeIcon className="h-4 w-4" />
     </button>
+  );
+};
+
+/**
+ * The photo inside the card form, as the owner's design draws it — a thumbnail, the file and
+ * «تم التحميل مسبقاً» with its size, then «معاينة» and «تغيير الصورة». A card with none offers the
+ * upload alone.
+ */
+export const FuelCardPhotoPanel = ({
+  card,
+  onOpen,
+}: {
+  card: FleetFuelCardDto;
+  onOpen: (card: FleetFuelCardDto) => void;
+}): JSX.Element => {
+  const t = useT();
+  const can = useCan();
+  const { url } = useFuelCardImageUrl(card.id, card.image?.fileId ?? null);
+  const image = card.image;
+  return (
+    <div
+      data-fuel-photo-panel={card.id}
+      className="flex flex-col items-center justify-between gap-4 rounded-xl border border-[#2b3b6b] bg-[#0a1233] p-3.5 sm:flex-row"
+    >
+      <div className="flex w-full items-center gap-3 sm:w-auto">
+        <div className="relative flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-gradient-to-br from-indigo-900 via-slate-800 to-slate-900 shadow-inner">
+          {url !== null ? (
+            <img
+              src={url}
+              alt={t('fleet.fuelCards.image.title')}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <ImageIcon className="h-4 w-4 text-slate-500" />
+          )}
+        </div>
+        <div className="min-w-0">
+          {image === null ? (
+            <div className="text-sm font-medium text-slate-400">
+              {t('fleet.fuelCards.image.none')}
+            </div>
+          ) : (
+            <>
+              <div className="truncate text-right text-sm font-semibold text-white" dir="ltr">
+                {image.fileName}
+              </div>
+              <div className="mt-0.5 flex items-center gap-1 text-[13px] font-medium text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                {t('fleet.fuelCards.image.stored', {
+                  // Latin digits, as the design writes «1.2 MB».
+                  size: String(Math.round((image.size / 1024 / 1024) * 10) / 10),
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+        {image !== null && (
+          <button
+            type="button"
+            data-fuel-image={card.id}
+            onClick={() => onOpen(card)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#2b3b6b] bg-[#1a2550] px-3 py-1.5 text-[13px] font-bold text-white transition hover:bg-[#223066]"
+          >
+            <EyeIcon className="h-4 w-4 text-slate-300" />
+            {t('fleet.fuelCards.image.preview')}
+          </button>
+        )}
+        {can('fleetFuelCard.edit') && (
+          <FuelCardImageUpload
+            card={card}
+            label={
+              image === null
+                ? t('fleet.fuelCards.image.upload')
+                : t('fleet.fuelCards.image.replace')
+            }
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#6c63ff]/60 bg-[#4f3dff]/30 px-3 py-1.5 text-[13px] font-bold text-[#c9c5ff] transition hover:bg-[#4f3dff]/45 hover:text-white"
+          >
+            <>
+              <UploadIcon className="h-4 w-4" />
+              {image === null
+                ? t('fleet.fuelCards.image.upload')
+                : t('fleet.fuelCards.image.replace')}
+            </>
+          </FuelCardImageUpload>
+        )}
+      </div>
+    </div>
   );
 };

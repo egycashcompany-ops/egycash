@@ -48,6 +48,7 @@ import {
 } from '../lib/charging-state';
 import { printFleetReport, reportMoney } from '../lib/fleet-report-print';
 import { useReportSignatories } from '../lib/use-report-signatories';
+import { groupCardNumber } from '../lib/fuel-card-number';
 
 const REMEMBERED_FILTERS = ['vehicleCodes', 'company', 'state'] as const;
 const STATE_LABEL: Record<ChargingState, string> = {
@@ -400,7 +401,7 @@ export const FuelChargingPage = (): JSX.Element => {
                       }
                     >
                       <FramedField label={t('fleet.fuelCards.fields.number')} ltr>
-                        {card.number}
+                        {groupCardNumber(card.number)}
                       </FramedField>
                       <FramedField
                         label={t('fleet.fuelCards.fields.balance')}

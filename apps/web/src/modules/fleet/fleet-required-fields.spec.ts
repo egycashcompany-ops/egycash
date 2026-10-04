@@ -89,10 +89,20 @@ const ruleLists = (source: string): { list: string; owner: string }[] => {
   });
 };
 
-/** Every `<Button …>` opening tag in a file, braces balanced so a `>` inside `{…}` does not end it. */
+/**
+ * Every `<Button …>` opening tag in a file — and every raw `<button …>`, which a form drawn to the
+ * owner's own design (the fuel card form) uses for its Save — braces balanced so a `>` inside
+ * `{…}` does not end it.
+ */
 const buttonTags = (source: string): string[] => {
   const tags: string[] = [];
-  let at = source.indexOf('<Button');
+  const next = (from: number): number => {
+    const found = ['<Button', '<button']
+      .map((tag) => source.indexOf(tag, from))
+      .filter((index) => index !== -1);
+    return found.length === 0 ? -1 : Math.min(...found);
+  };
+  let at = next(0);
   while (at !== -1) {
     let depth = 0;
     let end = at;
@@ -102,7 +112,7 @@ const buttonTags = (source: string): string[] => {
       if (source[end] === '>' && depth === 0) break;
     }
     tags.push(source.slice(at, end + 1));
-    at = source.indexOf('<Button', end);
+    at = next(end);
   }
   return tags;
 };

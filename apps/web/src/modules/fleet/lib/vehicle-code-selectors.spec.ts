@@ -118,6 +118,10 @@ const NOT_A_CODE_SELECTOR = [
     why: 'turns a code carried in from the filter into an id, against the same whole registry its `VehicleCodeCombobox` loads',
   },
   {
+    file: 'modules/fleet/pages/FuelCardsPage.tsx',
+    why: 'an id→code-and-type map so each car’s section of cards is headed by its code, type and plate; the screen’s filter is VehicleCodeFilter and the card form’s car is VehicleCodeCombobox',
+  },
+  {
     file: 'modules/fleet/pages/AccidentsPage.tsx',
     why: 'an unfiltered id→code map so a retired car’s file still prints its code; the screen’s actual filter is VehicleCodeFilter',
   },

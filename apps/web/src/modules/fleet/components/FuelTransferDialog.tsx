@@ -150,6 +150,11 @@ export const FuelTransferDialog = ({
   }, [open]);
   useEffect(() => setFromCard(''), [fromVehicle]);
   useEffect(() => setToCard(''), [toVehicle]);
+  // The car the money comes from is never offered as the one it goes to; picking it on the «from»
+  // side after it was chosen as «to» empties «to».
+  useEffect(() => {
+    if (fromVehicle !== '' && toVehicle === fromVehicle) setToVehicle('');
+  }, [fromVehicle, toVehicle]);
 
   // A «car» here is a car's id, or the label of cards on no car — they are picked the same way.
   const byVehicle = (vehicleId: string): FleetFuelCardDto[] =>
@@ -158,9 +163,12 @@ export const FuelTransferDialog = ({
   // «لازم تكون نفس الشركه … وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح»: once the first
   // card is chosen, the second is offered from its company only.
   const fromCompany = cards.find((card) => card.id === fromCard)?.company ?? null;
-  const toChoices = byVehicle(toVehicle).filter(
-    (card) => fromCompany === null || card.company === fromCompany,
-  );
+  // «مينفعش نفس العربيه من تكون الى هى هى نفس العربيه»: the money goes to another car — the «to»
+  // box does not offer the «from» car at all; this guard only holds the line in between.
+  const sameCar = fromVehicle !== '' && toVehicle === fromVehicle;
+  const toChoices = sameCar
+    ? []
+    : byVehicle(toVehicle).filter((card) => fromCompany === null || card.company === fromCompany);
   // A first card of the other company makes a chosen second card unreachable — it is dropped.
   useEffect(() => {
     if (fromCompany === null) return;
@@ -170,13 +178,6 @@ export const FuelTransferDialog = ({
   const from = useMemo(() => cards.find((card) => card.id === fromCard) ?? null, [cards, fromCard]);
   const to = useMemo(() => cards.find((card) => card.id === toCard) ?? null, [cards, toCard]);
   const value = Number(amount);
-  const valid =
-    from !== null &&
-    to !== null &&
-    from.id !== to.id &&
-    from.company === to.company &&
-    Number.isFinite(value) &&
-    value > 0;
   const enough = from !== null && value <= from.balance;
   const money = (n: number): string => formatMoney(n, 'EGP', locale);
   // The button stays pressable: pressing it short of a valid transfer names what is missing and
@@ -197,12 +198,16 @@ export const FuelTransferDialog = ({
       {
         key: 'toVehicle',
         label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.odometer.columns.vehicle')}`,
-        ok: toVehicle !== '',
+        ok: toVehicle !== '' && !sameCar,
       },
       {
         key: 'toCard',
         label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.fuelCards.fields.card')}`,
-        ok: to !== null && to.id !== from?.id && (from === null || to.company === from.company),
+        ok:
+          !sameCar &&
+          to !== null &&
+          to.id !== from?.id &&
+          (from === null || to.company === from.company),
       },
       {
         key: 'amount',
@@ -335,6 +340,7 @@ export const FuelTransferDialog = ({
                     placeholder={t('fleet.accidents.vehiclePlaceholder')}
                     testId="fuel-transfer-to"
                     extra={places}
+                    exclude={fromVehicle === '' ? [] : [fromVehicle]}
                   />
                 </div>
               </DesignField>
@@ -356,7 +362,10 @@ export const FuelTransferDialog = ({
                     value={toCard}
                     onChange={setToCard}
                     side="to"
-                    {...(toVehicle !== '' && fromCompany !== null && toChoices.length === 0
+                    {...(!sameCar &&
+                    toVehicle !== '' &&
+                    fromCompany !== null &&
+                    toChoices.length === 0
                       ? {
                           emptyText: t('fleet.fuelCards.transfer.otherCompany', {
                             company: t(`fleet.fuelCards.company.${fromCompany}`),
@@ -387,7 +396,9 @@ export const FuelTransferDialog = ({
               />
             </DesignField>
           </div>
-          {valid && enough && from !== null && to !== null && (
+          {/* «لما اكتب المبلغ يجيب الكارت من قبل الخصم كام وبعد الخصم كام والكارت الى كام وبعد
+              الاضافه كام» — as soon as there is an amount, each card already chosen shows its line. */}
+          {Number.isFinite(value) && value > 0 && (from !== null || (to !== null && !sameCar)) && (
             <div
               data-fuel-transfer-summary="true"
               className="space-y-4 rounded-xl border border-[#2b3b6b] bg-[#0a1233] p-4"
@@ -396,8 +407,8 @@ export const FuelTransferDialog = ({
                   each card on its own line: what it held, what moves, what it will hold. */}
               {(
                 [
-                  { side: 'from', card: from, sign: -1 },
-                  { side: 'to', card: to, sign: 1 },
+                  ...(from === null ? [] : [{ side: 'from', card: from, sign: -1 }]),
+                  ...(to === null || sameCar ? [] : [{ side: 'to', card: to, sign: 1 }]),
                 ] as const
               ).map(({ side, card, sign }) => (
                 <div key={side} data-fuel-transfer-line={side} className="space-y-2">
@@ -437,7 +448,8 @@ export const FuelTransferDialog = ({
                       {
                         label: t('fleet.fuelCards.transfer.becomes'),
                         amount: card.balance + sign * value,
-                        tone: 'text-white',
+                        // More than the first card holds: what it would become reads red.
+                        tone: card.balance + sign * value < 0 ? 'text-rose-400' : 'text-white',
                       },
                     ].map((cell) => (
                       <span

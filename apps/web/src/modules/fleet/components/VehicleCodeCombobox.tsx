@@ -42,6 +42,7 @@ export const VehicleCodeCombobox = ({
   pendingCode = '',
   emptyText,
   extra,
+  exclude,
 }: {
   /** The chosen vehicle's id ('' = none). The box shows its CODE. */
   value: string;
@@ -74,6 +75,11 @@ export const VehicleCodeCombobox = ({
    * «تويوتا اللواء»), offered after the registry under their label, with the caller's own id.
    */
   extra?: readonly { id: string; code: string }[];
+  /**
+   * Places NOT offered here, by id — the transfer's «to» leaves out the car the money comes from:
+   * «متجبش اوبشن انه يختار نفس العربيه اصلا».
+   */
+  exclude?: readonly string[];
 }): JSX.Element => {
   const t = useT();
   const [query, setQuery] = useState('');
@@ -89,11 +95,13 @@ export const VehicleCodeCombobox = ({
 
   const byCode = useMemo(() => {
     const entries = vehicleCodeEntries(items ?? [], { excludeInWorkshop, chosenId: value });
-    if (extra === undefined || extra.length === 0) return entries;
     const merged = new Map(entries);
-    for (const place of extra) if (!merged.has(place.code)) merged.set(place.code, place.id);
+    for (const place of extra ?? []) if (!merged.has(place.code)) merged.set(place.code, place.id);
+    if (exclude !== undefined && exclude.length > 0) {
+      for (const [code, id] of [...merged]) if (exclude.includes(id)) merged.delete(code);
+    }
     return merged;
-  }, [items, excludeInWorkshop, value, extra]);
+  }, [items, excludeInWorkshop, value, extra, exclude]);
   const options = useMemo(() => rankVehicleCodes([...byCode.keys()], query), [byCode, query]);
 
   // A value handed in from outside — a row being edited, a car carried from another screen — is an

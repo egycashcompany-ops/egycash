@@ -421,9 +421,10 @@ describe('charging', () => {
     expect(DIALOG).toContain(
       'ok: Number.isFinite(value) && value > 0 && (from === null || enough),',
     );
-    expect(DIALOG).toContain(
-      'ok: to !== null && to.id !== from?.id && (from === null || to.company === from.company),',
-    );
+    expect(DIALOG).toContain('to.id !== from?.id &&');
+    expect(DIALOG).toContain('(from === null || to.company === from.company)');
+    // «متجبش اوبشن انه يختار نفس العربيه اصلا»: the «to» box leaves the «from» car out.
+    expect(DIALOG).toContain("exclude={fromVehicle === '' ? [] : [fromVehicle]}");
     // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت»: the second card is offered from the first's
     // company only, and says so when the car has none of it.
     expect(DIALOG).toContain('fromCompany === null || card.company === fromCompany');

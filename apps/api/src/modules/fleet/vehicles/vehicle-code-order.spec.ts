@@ -45,6 +45,17 @@ describe('the order expression is built from the contract, not from a second 150
   });
 });
 
+describe('a row whose join found no car', () => {
+  it('pads an EMPTY code rather than a missing one — `$strLenCP(null)` fails the whole list', () => {
+    // A fuel card on no car («سفر 1») joins to nothing; `$let` evaluates every var even when the
+    // `$cond` discards it, so the padding must never see a null. The 500 this caught is proved
+    // against a real mongo in `tests/integration/fleet-go-live-fuel-cards`.
+    expect(JSON.stringify(vehicleCodeOrder('$vehicleCode'))).toContain(
+      JSON.stringify({ $ifNull: ['$vehicleCode', ''] }),
+    );
+  });
+});
+
 describe('every register that orders by a car’s code uses it', () => {
   it('the JOINED key carries an order of its own', () => {
     // The four registers that reference a car — odometer, workshop, accidents, violations — all

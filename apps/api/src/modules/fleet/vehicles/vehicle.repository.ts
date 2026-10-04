@@ -32,7 +32,10 @@ export const vehicleCodeOrder = (ref: string): unknown => ({
       // characters of «00000000000000000000150» are «150» with nineteen zeros in front of it.
       padded: {
         $let: {
-          vars: { s: { $concat: ['00000000000000000000', ref] } },
+          // `$ifNull` because `$let` evaluates every var even when the `$cond` below discards it:
+          // a row whose join found no car (a fuel card on no car) has no code, `$concat` of a
+          // missing value is null, and `$strLenCP(null)` fails the whole query.
+          vars: { s: { $concat: ['00000000000000000000', { $ifNull: [ref, ''] }] } },
           in: {
             $substrCP: ['$$s', { $subtract: [{ $strLenCP: '$$s' }, 20] }, 20],
           },

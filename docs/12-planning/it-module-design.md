@@ -169,8 +169,9 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
   holder); the lines and the signer are a snapshot of what was printed.
-- Each line describes its device as its page prints it: `deviceType` is the asset category's
-  Arabic name («جهاز لاب توب»), with the asset's `manufacturer`, `model`, `specs` and
+- Each line describes its device as its page prints it: the asset's `manufacturer` and `model`
+  (what the statement names the device by — «جهاز Lenovo / ThinkCentre …»), `deviceType` (the
+  asset category's Arabic name, named instead when neither is on file), `specs` and
   `accessories` — the hand-over line's own accessories when it gives them. One composer
   (`receipt-device.ts`) serves the preview, the hand-over, a transfer and a receipt issued for older
   custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
@@ -435,7 +436,8 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
   The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
   «إقرار استلام», one page per device: the statement filled with the employee's name and job and
-  the device's kind and serial, the device's specifications table and accessories (recorded on the
+  the device's make and model (its kind when neither is on file) and serial, the device's
+  specifications table and accessories (recorded on the
   asset; a hand-over may say what came with it this time), the undertaking, and the signature
   block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
   of several pages, the page count (§17, 2026-10-05). The identity line is filled from the system —
@@ -804,3 +806,21 @@ starts only on an explicit owner GO.
   PARTS on one line, by the contracts' name rule — which now also binds the compounds that end in
   their second word («نور الدين», «فتح الله»), so a three-part name never halves one; the
   quadruple-name advice in HR counts them the same way.
+- **The statement's wording** (2026-10-05) — owner request, on a printed paper: «شيل كلمة من
+  لتكنولوجيا "بشركة إيجي كاش لتكنولوجيا الحلول النقدية" وخليها للحلول النقدية على طول», and «بدل ما
+  يظهر بأنني قد استلمت جهاز كمبيوتر All لأ خليه يظهر الـ Manufacturer / Model بداله». The company
+  reads «بشركة إيجي كاش للحلول النقدية»; the device is named by its make and model, as the
+  table's «Manufacturer / Model» row prints them, and by its category only when neither is on file
+  (a receipt line already carried both, so stored receipts print the same way). A make and model is
+  one name and is kept on one line, so the statement is set from the right edge rather than
+  justified — justifying a line that carries a long unbreakable name stretches its gaps.
+- **A new asset starts from the last one of its category** (2026-10-05) — owner request: «ماذا لو
+  عندي 20 جهاز بنفس المواصفات .. هفضل أكتب نفس المواصفات !؟ أكيد لأ .. لما أختار الفئة يحمل
+  البيانات كلها من السابق ماعدا السيريال والـ Tag والحاجات المتغيره فقط». In the create form,
+  picking a category reads the most recently registered asset of that category (the register's
+  own list, scoped as always) and fills every box still empty: name, description, make, model,
+  branch, purchase, warranty, specifications and accessories. What makes one unit itself — the
+  serial number, the printed tag, the location and the notes — is never copied, nothing the user
+  already typed is replaced, and picking another category swaps the first template's values for
+  the second's. A note names the asset the form was filled from. No API change; the rule lives in
+  `apps/web/src/modules/it/lib/asset-form.ts`.

@@ -9,6 +9,15 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Registering a batch of identical IT devices no longer means retyping them.** «ماذا لو عندي 20
+  جهاز بنفس المواصفات .. هفضل أكتب نفس المواصفات !؟ أكيد لأ». When a new asset's category is picked,
+  the form fills from the last asset registered in that category — name, make, model, branch,
+  purchase, warranty, specifications and accessories — leaving only what is different for each
+  unit: the serial number, the printed tag, the location and the notes. Nothing already typed is
+  replaced, and a note names the asset the data came from.
+
 ### Fixed
 
 - **Fleet and gold printouts open the print dialog by themselves again — or, in truth, for the
@@ -32,6 +41,13 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The acknowledgment names the device by its make and model, and the company as «إيجي كاش
+  للحلول النقدية».** «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول» and «خليه يظهر الـ
+  Manufacturer / Model بداله»: the statement now reads «بشركة إيجي كاش للحلول النقدية» and
+  «بأنني قد استلمت جهاز Lenovo / ThinkCentre neo 50a 24 gen 5 برقم مسلسل …», falling back to the
+  asset's category only when neither make nor model is on file. The make and model stays in one
+  piece, and the statement is set from the right edge instead of justified, so no line of it is
+  stretched around a long name.
 - **The custody acknowledgment fills its identity line from the system.** «بطاقة رقم قومي …
   صادرة من قسم … – … بتاريخ … مفروض تملأها تلقائي من النظام». The line now carries the employee's
   national ID, section and department from HR and the paper's date, and the receipt keeps them like

@@ -514,6 +514,12 @@ export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
   licenseClassId: listQuery(objectId()),
   operationId: listQuery(objectId()),
   insuranceCompanyId: listQuery(objectId()),
+  /**
+   * The licence-expiry window — «تاريخ انتهاء الترخيص … أقدر أختار شهر فى سنه معينه». The screen
+   * sends one month as its first instant (`From`) and its last (`Before`); either bound alone is
+   * an ordinary question too.
+   */
+  licenseExpiresFrom: z.coerce.date().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
 }).strict();
 export type ListFleetVehiclesQuery = z.infer<typeof ListFleetVehiclesQuerySchema>;

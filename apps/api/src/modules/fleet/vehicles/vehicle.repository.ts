@@ -390,6 +390,7 @@ export const vehicleListFilter = (
     | 'plateNumber'
     | 'chassisNumber'
     | 'motorNumber'
+    | 'licenseExpiresFrom'
     | 'licenseExpiresBefore'
     | 'search'
   >,
@@ -420,8 +421,14 @@ export const vehicleListFilter = (
   ] as const) {
     if (value !== undefined) clauses.push(vehicleIdentifierFilter(field, value));
   }
-  if (query.licenseExpiresBefore !== undefined) {
-    clauses.push({ licenseExpiresAt: { $lte: query.licenseExpiresBefore } });
+  // The licence-expiry window: a month the screen asks for is both bounds, each one alone works.
+  if (query.licenseExpiresFrom !== undefined || query.licenseExpiresBefore !== undefined) {
+    clauses.push({
+      licenseExpiresAt: {
+        ...(query.licenseExpiresFrom === undefined ? {} : { $gte: query.licenseExpiresFrom }),
+        ...(query.licenseExpiresBefore === undefined ? {} : { $lte: query.licenseExpiresBefore }),
+      },
+    });
   }
   if (query.search !== undefined) clauses.push(vehicleSearchFilter(query.search));
   return clauses.length === 0 ? {} : { $and: clauses };

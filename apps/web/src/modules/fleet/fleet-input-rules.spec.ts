@@ -60,6 +60,7 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/components/DriverViolationsPanel.tsx': { integer: 1, money: 1, decimal: 1 },
   // The card number, read in its groups of digits.
   'modules/fleet/components/FuelCardDialog.tsx': { digits: 1 },
+  'modules/fleet/components/FuelCardHistoryDialog.tsx': { money: 1 },
   'modules/fleet/components/FuelTransferDialog.tsx': { money: 1 },
   // The odometer on check-in, on check-out and on edit.
   'modules/fleet/components/MaintenanceDialogs.tsx': { integer: 3 },

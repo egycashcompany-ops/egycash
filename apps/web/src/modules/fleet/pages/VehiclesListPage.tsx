@@ -56,6 +56,7 @@ import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import {
   LicenseImagePreviewDialog,
   VehicleLicenseImageCell,
@@ -578,8 +579,8 @@ export const VehiclesListPage = (): JSX.Element => {
       header: t('fleet.vehicles.columns.code'),
       sortable: true,
       render: (v) => (
-        <span className="flex flex-wrap items-center gap-1.5">
-          <span className="font-mono text-xs" dir="ltr">
+        <span className="flex items-center gap-1.5 whitespace-nowrap">
+          <span className="font-mono text-sm font-bold" dir="ltr">
             {v.code}
           </span>
           <VehicleStatusBadge status={v.status} />
@@ -923,7 +924,7 @@ export const VehiclesListPage = (): JSX.Element => {
             {/* «عايز الفلتر فى صف واحد … طبقاً لطول البيانات اللى ممكن تتكتب فيه»: every control is
               as wide as what it holds — a plate is ten characters, a code four — and the
               dropdowns run tight, so the whole bar is one row on a desktop screen. */}
-            <div className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-400" className="w-24 shrink-0">
               <VehicleCodeFilter
                 fullWidth
                 density="tight"
@@ -933,8 +934,8 @@ export const VehiclesListPage = (): JSX.Element => {
                   patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
                 }
               />
-            </div>
-            <div className="w-24 shrink-0">
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.plate} tone="text-sky-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.plate')}
                 placeholder={t('fleet.vehicles.columns.plate')}
@@ -943,8 +944,8 @@ export const VehiclesListPage = (): JSX.Element => {
                 rule="plate"
                 density="tight"
               />
-            </div>
-            <div className="w-24 shrink-0">
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.chassis} tone="text-slate-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.chassis')}
                 placeholder={t('fleet.vehicles.columns.chassis')}
@@ -953,8 +954,8 @@ export const VehiclesListPage = (): JSX.Element => {
                 rule="english"
                 density="tight"
               />
-            </div>
-            <div className="w-24 shrink-0">
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.motor} tone="text-slate-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.motor')}
                 placeholder={t('fleet.vehicles.columns.motor')}
@@ -963,93 +964,105 @@ export const VehiclesListPage = (): JSX.Element => {
                 rule="english"
                 density="tight"
               />
-            </div>
+            </FilterWithIcon>
             {/* The dropdowns: make, then the three catalog references, then branch and status —
               EVERY ONE of them multi-valued. «الفئة أ أو ب» and «المتاحة والمتوقفة» are single
               questions about the fleet, and a one-answer control made the reader ask each of them
               twice and add the two counts up by hand. Branch has taken several since it was
               written; the other five now read the same way. */}
-            <MultiSelect
-              clearable
-              className="w-24 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              chips
-              label={t('fleet.vehicles.filters.short.make')}
-              options={(types.data?.items ?? []).map((type) => ({
-                value: type.id,
-                label: localized(type.name, locale),
-              }))}
-              value={typeIds}
-              onChange={(ids) => patch({ type: writeList(ids) })}
-            />
-            <CatalogMultiSelect
-              kind="licenseClass"
-              className="w-24 shrink-0"
-              fullWidth
-              density="tight"
-              value={licenseClassIds}
-              onChange={(ids) => patch({ licenseClass: writeList(ids) })}
-              label={t('fleet.vehicles.filters.short.licenseClass')}
-            />
+            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-300" className="w-24 shrink-0">
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                chips
+                label={t('fleet.vehicles.filters.short.make')}
+                options={(types.data?.items ?? []).map((type) => ({
+                  value: type.id,
+                  label: localized(type.name, locale),
+                }))}
+                value={typeIds}
+                onChange={(ids) => patch({ type: writeList(ids) })}
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-300" className="w-24 shrink-0">
+              <CatalogMultiSelect
+                kind="licenseClass"
+                className="w-full"
+                fullWidth
+                density="tight"
+                value={licenseClassIds}
+                onChange={(ids) => patch({ licenseClass: writeList(ids) })}
+                label={t('fleet.vehicles.filters.short.licenseClass')}
+              />
+            </FilterWithIcon>
             {/* The months the licences run out in — several at once, each with its count of cars. */}
-            <MultiSelect
-              clearable
-              className="w-32 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              searchThreshold={0}
-              panelWidth="w-60"
-              label={t('fleet.vehicles.filters.short.licenseMonth')}
-              options={monthOptions}
-              value={licenseMonths}
-              onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
-            />
+            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-400" className="w-32 shrink-0">
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                panelWidth="w-60"
+                label={t('fleet.vehicles.filters.short.licenseMonth')}
+                options={monthOptions}
+                value={licenseMonths}
+                onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
+              />
+            </FilterWithIcon>
             {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
-            <div className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!px-2">
+            <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-300" className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!pe-2">
               <BranchFilterSelect
                 clearable
                 value={branchIds}
                 onChange={(ids) => patch({ branch: writeList(ids) })}
               />
-            </div>
-            <CatalogMultiSelect
-              kind="operation"
-              className="w-24 shrink-0"
-              fullWidth
-              density="tight"
-              value={operationIds}
-              onChange={(ids) => patch({ operation: writeList(ids) })}
-              label={t('fleet.vehicles.filters.short.operation')}
-            />
-            <CatalogMultiSelect
-              kind="insuranceCompany"
-              className="w-24 shrink-0"
-              fullWidth
-              density="tight"
-              value={insuranceCompanyIds}
-              onChange={(ids) => patch({ insurance: writeList(ids) })}
-              label={t('fleet.vehicles.filters.short.insurance')}
-            />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.operation} tone="text-slate-300" className="w-24 shrink-0">
+              <CatalogMultiSelect
+                kind="operation"
+                className="w-full"
+                fullWidth
+                density="tight"
+                value={operationIds}
+                onChange={(ids) => patch({ operation: writeList(ids) })}
+                label={t('fleet.vehicles.filters.short.operation')}
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.insurance} tone="text-emerald-300" className="w-24 shrink-0">
+              <CatalogMultiSelect
+                kind="insuranceCompany"
+                className="w-full"
+                fullWidth
+                density="tight"
+                value={insuranceCompanyIds}
+                onChange={(ids) => patch({ insurance: writeList(ids) })}
+                label={t('fleet.vehicles.filters.short.insurance')}
+              />
+            </FilterWithIcon>
             {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}
-            <MultiSelect
-              clearable
-              className="w-20 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              label={t('fleet.vehicles.columns.status')}
-              options={(['active', 'outOfService', 'disposed'] as const).map((value) => ({
-                value,
-                label: t(`fleet.vehicles.status.${value}`),
-              }))}
-              value={statuses}
-              onChange={(next) => patch({ status: writeList(next) })}
-            />
+            <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-300" className="w-20 shrink-0">
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                label={t('fleet.vehicles.columns.status')}
+                options={(['active', 'outOfService', 'disposed'] as const).map((value) => ({
+                  value,
+                  label: t(`fleet.vehicles.status.${value}`),
+                }))}
+                value={statuses}
+                onChange={(next) => patch({ status: writeList(next) })}
+              />
+            </FilterWithIcon>
             {/* HOW MANY CARS THE FILTER MATCHES — «حط جمب الفلاتر عدد العربيات».
               
               It reads the SERVER's `totalItems`, never `rows.length`. The rows in hand are one
@@ -1185,7 +1198,7 @@ const DARK_TABLE = cn(
   '[&>div]:!rounded-2xl [&>div]:!border-slate-800 [&>div]:!bg-[#111827]',
   '[&_thead_tr]:!bg-[#0c121e] [&_thead_th]:!text-slate-400 [&_thead_button]:hover:!text-slate-100',
   '[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-200',
-  '[&_th]:!px-2 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_td]:!px-2 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-[13px]',
+  '[&_th]:!px-1.5 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!px-1.5 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
 );
 
@@ -1239,7 +1252,7 @@ const VehicleCard = ({
           >
             {vehicle.code}
           </span>
-          <span className="truncate text-sm font-bold text-white">{typeName}</span>
+          <span className="truncate text-base font-bold text-white">{typeName}</span>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
           <VehicleStatusBadge status={vehicle.status} />
@@ -1258,8 +1271,8 @@ const VehicleCard = ({
             key={label}
             className="min-w-0 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1.5"
           >
-            <span className="block text-[10px] text-slate-500">{label}</span>
-            <span className="block truncate text-xs font-semibold text-slate-200">{value}</span>
+            <span className="block text-[11px] font-medium text-slate-400">{label}</span>
+            <span className="block truncate text-sm font-bold text-slate-100">{value}</span>
           </div>
         ))}
       </div>

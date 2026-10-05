@@ -348,7 +348,7 @@ describe('charging', () => {
   it('sums the balances by company above the filters, as the fuel cards screen does', () => {
     const html = render('charging');
     const strip = html.indexOf('data-fuel-kpi="wataniya"');
-    const filters = html.indexOf(ar('fleet.fuelCards.board.charge.stateAny'));
+    const filters = html.indexOf(ar('fleet.fuelCards.filters.state'));
     const tile = html.indexOf('data-fuel-tile=');
     expect(strip).toBeGreaterThan(-1);
     expect(filters).toBeGreaterThan(strip);

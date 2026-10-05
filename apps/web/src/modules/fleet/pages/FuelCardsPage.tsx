@@ -30,6 +30,7 @@ import {
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FuelCardDialog } from '../components/FuelCardDialog';
@@ -412,7 +413,11 @@ export const FuelCardsPage = (): JSX.Element => {
               patch({ vehicleCodes: null, company: null, number: null, expiresBefore: null });
             }}
           >
-            <div className="w-32 shrink-0">
+            <FilterWithIcon
+              icon={FILTER_ICON.car}
+              tone="text-emerald-400"
+              className="w-32 shrink-0"
+            >
               <VehicleCodeFilter
                 fullWidth
                 density="tight"
@@ -422,8 +427,8 @@ export const FuelCardsPage = (): JSX.Element => {
                   patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
                 }
               />
-            </div>
-            <div className="w-40 shrink-0">
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.card} tone="text-amber-400" className="w-40 shrink-0">
               <Input
                 data-fuel-number-filter="true"
                 aria-label={t('fleet.fuelCards.filters.number')}
@@ -433,49 +438,65 @@ export const FuelCardsPage = (): JSX.Element => {
                 density="tight"
                 onChange={(e) => patch({ number: e.target.value.replace(/\s+/gu, '') || null })}
               />
-            </div>
-            <MultiSelect
-              clearable
+            </FilterWithIcon>
+            <FilterWithIcon
+              icon={FILTER_ICON.company}
+              tone="text-slate-300"
               className="w-36 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              searchThreshold={0}
-              label={t('fleet.fuelCards.fields.company')}
-              options={FUEL_CARD_COMPANIES.map((option) => ({
-                value: option,
-                label: t(`fleet.fuelCards.company.${option}`),
-              }))}
-              value={company === '' ? [] : [company]}
-              onChange={(next) =>
-                patch({ company: pickOne(company === '' ? [] : [company], next) })
-              }
-            />
-            <MultiSelect
-              clearable
+            >
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                label={t('fleet.fuelCards.fields.company')}
+                options={FUEL_CARD_COMPANIES.map((option) => ({
+                  value: option,
+                  label: t(`fleet.fuelCards.company.${option}`),
+                }))}
+                value={company === '' ? [] : [company]}
+                onChange={(next) =>
+                  patch({ company: pickOne(company === '' ? [] : [company], next) })
+                }
+              />
+            </FilterWithIcon>
+            <FilterWithIcon
+              icon={FILTER_ICON.calendar}
+              tone="text-cyan-400"
               className="w-40 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              searchThreshold={0}
-              label={t('fleet.fuelCards.filters.expiresBefore')}
-              options={(['30', '60', 'custom'] as const).map((value) => ({
-                value,
-                label: t(
-                  value === '30'
-                    ? 'fleet.fuelCards.board.date30'
-                    : value === '60'
-                      ? 'fleet.fuelCards.board.date60'
-                      : 'fleet.fuelCards.board.dateCustom',
-                ),
-              }))}
-              value={datePreset === '' ? [] : [datePreset]}
-              onChange={(next) =>
-                pickDatePreset(pickOne(datePreset === '' ? [] : [datePreset], next) ?? '')
-              }
-            />
+            >
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                label={t('fleet.fuelCards.filters.expiresBefore')}
+                options={(['30', '60', 'custom'] as const).map((value) => ({
+                  value,
+                  label: t(
+                    value === '30'
+                      ? 'fleet.fuelCards.board.date30'
+                      : value === '60'
+                        ? 'fleet.fuelCards.board.date60'
+                        : 'fleet.fuelCards.board.dateCustom',
+                  ),
+                }))}
+                value={datePreset === '' ? [] : [datePreset]}
+                onChange={(next) =>
+                  pickDatePreset(pickOne(datePreset === '' ? [] : [datePreset], next) ?? '')
+                }
+              />
+            </FilterWithIcon>
             {datePreset === 'custom' && (
-              <div className="w-36 shrink-0">
+              <FilterWithIcon
+                icon={FILTER_ICON.calendar}
+                tone="text-cyan-400"
+                className="w-36 shrink-0"
+              >
                 <Input
                   type="date"
                   aria-label={t('fleet.fuelCards.filters.expiresBefore')}
@@ -484,7 +505,7 @@ export const FuelCardsPage = (): JSX.Element => {
                   onChange={(e) => patch({ expiresBefore: e.target.value || null })}
                   className="[color-scheme:dark]"
                 />
-              </div>
+              </FilterWithIcon>
             )}
           </FilterBar>
         </div>

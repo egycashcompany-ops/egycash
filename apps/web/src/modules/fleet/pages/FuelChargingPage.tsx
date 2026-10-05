@@ -25,6 +25,7 @@ import {
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FuelTransferDialog } from '../components/FuelTransferDialog';
 import { FuelCardHistoryDialog } from '../components/FuelCardHistoryDialog';
@@ -507,7 +508,11 @@ export const FuelChargingPage = (): JSX.Element => {
             hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
             onClear={() => patch({ vehicleCodes: null, company: null, state: null })}
           >
-            <div className="w-32 shrink-0">
+            <FilterWithIcon
+              icon={FILTER_ICON.car}
+              tone="text-emerald-400"
+              className="w-32 shrink-0"
+            >
               <VehicleCodeFilter
                 fullWidth
                 density="tight"
@@ -517,40 +522,52 @@ export const FuelChargingPage = (): JSX.Element => {
                   patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
                 }
               />
-            </div>
+            </FilterWithIcon>
             {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three states, several at once. */}
-            <MultiSelect
-              clearable
+            <FilterWithIcon
+              icon={FILTER_ICON.charge}
+              tone="text-amber-400"
               className="w-40 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              searchThreshold={0}
-              label={t('fleet.fuelCards.filters.state')}
-              options={CHARGING_STATES.map((value) => ({
-                value,
-                label: t(STATE_LABEL[value]),
-              }))}
-              value={states}
-              onChange={(next) => patch({ state: next.length === 0 ? null : next.join(',') })}
-            />
-            <MultiSelect
-              clearable
+            >
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                label={t('fleet.fuelCards.filters.state')}
+                options={CHARGING_STATES.map((value) => ({
+                  value,
+                  label: t(STATE_LABEL[value]),
+                }))}
+                value={states}
+                onChange={(next) => patch({ state: next.length === 0 ? null : next.join(',') })}
+              />
+            </FilterWithIcon>
+            <FilterWithIcon
+              icon={FILTER_ICON.company}
+              tone="text-slate-300"
               className="w-36 shrink-0"
-              fullWidth
-              density="tight"
-              showSelectedValues
-              searchThreshold={0}
-              label={t('fleet.fuelCards.fields.company')}
-              options={FUEL_CARD_COMPANIES.map((option) => ({
-                value: option,
-                label: t(`fleet.fuelCards.company.${option}`),
-              }))}
-              value={company === '' ? [] : [company]}
-              onChange={(next) =>
-                patch({ company: pickOne(company === '' ? [] : [company], next) })
-              }
-            />
+            >
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                label={t('fleet.fuelCards.fields.company')}
+                options={FUEL_CARD_COMPANIES.map((option) => ({
+                  value: option,
+                  label: t(`fleet.fuelCards.company.${option}`),
+                }))}
+                value={company === '' ? [] : [company]}
+                onChange={(next) =>
+                  patch({ company: pickOne(company === '' ? [] : [company], next) })
+                }
+              />
+            </FilterWithIcon>
           </FilterBar>
         </div>
 

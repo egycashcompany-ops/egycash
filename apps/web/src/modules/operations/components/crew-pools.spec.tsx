@@ -48,10 +48,18 @@ const member = (
   assignedVehicleId: null,
 });
 
-const CAPTAIN_FREE = member('c1', 'قائد متاح', { isCaptain: true });
-const CAPTAIN_ON_BOARD = member('c2', 'قائد على سيارة', { isCaptain: true });
-const SPECIALIST = member('s1', 'أخصائي متاح', { hasWeapon: true });
-const NOTHING_RECORDED = member('n1', 'بلا بيانات', null);
+// Plain personal names on purpose. The first version used «قائد متاح» and «أخصائي متاح», which are
+// substrings of the empty-state copy («لا يوجد قائد متاح للتعيين») — so "the captains column
+// contains this name" passed even when the column listed nobody and showed its empty message.
+// Membership is asserted on `data-employee-id` below; the names only have to be unmistakable.
+const CAPTAIN_FREE = member('c1', 'حازم الشربيني', { isCaptain: true });
+const CAPTAIN_ON_BOARD = member('c2', 'سامح عبد الهادي', { isCaptain: true });
+const SPECIALIST = member('s1', 'نادر فوزي', { hasWeapon: true });
+const NOTHING_RECORDED = member('n1', 'وجدي سليمان', null);
+
+/** The ids listed in a slice of markup, in order — what a column actually SHOWS. */
+const ids = (markup: string): string[] =>
+  [...markup.matchAll(/data-employee-id="([^"]+)"/g)].map((m) => m[1] as string);
 
 const emptyCells = SLOT_POSITIONS.map(() => null);
 const BOARD: BoardRow[] = [
@@ -70,7 +78,12 @@ const BOARD: BoardRow[] = [
 
 const render = (
   members: OperationsCrewMemberDto[],
-  { locale = 'ar' as Locale, rows = BOARD }: { locale?: Locale; rows?: BoardRow[] } = {},
+  {
+    locale = 'ar' as Locale,
+    rows = BOARD,
+    loading = false,
+    error = null as unknown,
+  }: { locale?: Locale; rows?: BoardRow[]; loading?: boolean; error?: unknown } = {},
 ): string => {
   const store = configureStore({
     reducer: { locale: localeSlice.reducer },
@@ -86,8 +99,8 @@ const render = (
           rows={rows}
           queries={EMPTY_POOL_QUERIES}
           onQueryChange={() => undefined}
-          loading={false}
-          error={null}
+          loading={loading}
+          error={error}
           onRetry={() => undefined}
           rosterIsDerived
           canPlan
@@ -129,18 +142,29 @@ describe('CrewPools — two pools, captains and specialists', () => {
 
   it('lists each available member in exactly one pool', () => {
     const html = render(ALL);
-    const captains = column(html, 'captains');
-    const specialists = column(html, 'specialists');
-    expect(captains).toContain(CAPTAIN_FREE.fullNameAr);
-    expect(specialists).not.toContain(CAPTAIN_FREE.fullNameAr);
-    expect(specialists).toContain(SPECIALIST.fullNameAr);
-    expect(captains).not.toContain(SPECIALIST.fullNameAr);
+    expect(ids(column(html, 'captains'))).toEqual(['c1']);
     // Nothing recorded means no captain flag — the specialists, as legacy had it.
-    expect(specialists).toContain(NOTHING_RECORDED.fullNameAr);
+    expect(ids(column(html, 'specialists'))).toEqual(['s1', 'n1']);
+    // And the names are actually drawn, not just the ids.
+    expect(column(html, 'captains')).toContain(CAPTAIN_FREE.fullNameAr);
+    expect(column(html, 'specialists')).toContain(NOTHING_RECORDED.fullNameAr);
+  });
+
+  // A column that lists people is not also announcing that nobody is left.
+  it('shows no empty message beside a list that has people in it', () => {
+    const html = render(ALL);
+    expect(column(html, 'captains')).not.toContain(
+      translate('ar', 'operations.crew.pools.empty.captains'),
+    );
+    expect(column(html, 'specialists')).not.toContain(
+      translate('ar', 'operations.crew.pools.empty.specialists'),
+    );
   });
 
   it('leaves out whoever is already on a card', () => {
-    expect(render(ALL)).not.toContain(CAPTAIN_ON_BOARD.fullNameAr);
+    const html = render(ALL);
+    expect(ids(html)).not.toContain('c2');
+    expect(html).not.toContain(CAPTAIN_ON_BOARD.fullNameAr);
   });
 
   it('counts what each pool lists', () => {
@@ -178,9 +202,52 @@ describe('CrewPools — two pools, captains and specialists', () => {
     expect(column(render(ALL), 'captains')).not.toContain(badge);
   });
 
+  // Two of every filter on the page — each must say which pool it narrows, starting with the word
+  // that is on screen.
+  it('names every filter button with its pool', () => {
+    const html = render(ALL);
+    for (const kind of ['captains', 'specialists'] as const) {
+      const title = translate('ar', `operations.crew.pools.${kind}`);
+      for (const flag of POOL_FILTERS) {
+        expect(column(html, kind)).toContain(
+          `aria-label="${translate('ar', `operations.crew.flag.${flag}`)} — ${title}"`,
+        );
+      }
+    }
+  });
+
   it('says plainly when a pool has nobody left', () => {
     const html = render([CAPTAIN_ON_BOARD, SPECIALIST]);
+    expect(ids(column(html, 'captains'))).toEqual([]);
     expect(column(html, 'captains')).toContain(translate('ar', 'operations.crew.pools.empty.captains'));
+  });
+});
+
+// An empty list is not the same as an empty pool. While the roster loads — on every date change
+// of the daily board — and after it fails, "nobody is left to assign" with a count of 0 would tell
+// the planner the whole crew is already placed.
+describe('CrewPools — before the roster has answered', () => {
+  const empties = [
+    translate('ar', 'operations.crew.pools.empty.captains'),
+    translate('ar', 'operations.crew.pools.empty.specialists'),
+  ];
+
+  it('says nobody is left only once the roster has loaded', () => {
+    const html = render([], { loading: true });
+    for (const text of empties) expect(html).not.toContain(text);
+    expect(html).not.toContain('(0)');
+  });
+
+  it('says nothing of the kind under an error either', () => {
+    const html = render([], { error: new Error('boom') });
+    for (const text of empties) expect(html).not.toContain(text);
+    expect(html).not.toContain('(0)');
+  });
+
+  it('still says it for a roster that loaded and really is all placed', () => {
+    const html = render([CAPTAIN_ON_BOARD]);
+    expect(html).toContain(empties[0]);
+    expect(column(html, 'captains')).toContain('(0)');
   });
 });
 

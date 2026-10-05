@@ -65,12 +65,12 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /**
  * Each pool's search and icon filters, in the URL and remembered across visits — one pair of
- * params per pool, because the two pools narrow independently.
+ * params per pool, because the two pools narrow independently: `cq`/`cflags` for the captains,
+ * `sq`/`sflags` for the specialists. Written out LITERALLY below rather than looked up from a
+ * table: `remembered-filters-coverage.spec.ts` finds a page's params by matching their literal
+ * names where they are read and patched, and a lookup hid all four from it — a param dropped from
+ * this list would then have stopped being remembered with every test still green.
  */
-const POOL_PARAMS: Record<PoolKind, { search: string; flags: string }> = {
-  captains: { search: 'cq', flags: 'cflags' },
-  specialists: { search: 'sq', flags: 'sflags' },
-};
 const REMEMBERED_FILTERS = ['cq', 'cflags', 'sq', 'sflags'] as const;
 
 export const StandingCrewPage = (): JSX.Element => {
@@ -89,13 +89,9 @@ export const StandingCrewPage = (): JSX.Element => {
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
-  const queryOf = (kind: PoolKind): PoolQuery => ({
-    search: sp.get(POOL_PARAMS[kind].search) ?? '',
-    flags: readList(sp, POOL_PARAMS[kind].flags) as RequirementFilter[],
-  });
   const queries: Record<PoolKind, PoolQuery> = {
-    captains: queryOf('captains'),
-    specialists: queryOf('specialists'),
+    captains: { search: sp.get('cq') ?? '', flags: readList(sp, 'cflags') as RequirementFilter[] },
+    specialists: { search: sp.get('sq') ?? '', flags: readList(sp, 'sflags') as RequirementFilter[] },
   };
   // Replaces rather than pushes: narrowing the pool is a view of this board, not a place to go
   // Back to. The pool is filtered in the browser, so this only moves where the state lives.
@@ -108,10 +104,9 @@ export const StandingCrewPage = (): JSX.Element => {
     setSp(next, { replace: true });
   };
   const setQuery = (kind: PoolKind, next: PoolQuery): void =>
-    patch({
-      [POOL_PARAMS[kind].search]: next.search,
-      [POOL_PARAMS[kind].flags]: writeList(next.flags),
-    });
+    kind === 'captains'
+      ? patch({ cq: next.search, cflags: writeList(next.flags) })
+      : patch({ sq: next.search, sflags: writeList(next.flags) });
   const [adding, setAdding] = useState('');
 
   // The server's list is the truth about WHICH vehicles are in the fleet; the draft is the truth
@@ -236,7 +231,7 @@ export const StandingCrewPage = (): JSX.Element => {
 
       {/* Vehicles at the start, the two pools at the end — the same layout as the daily board,
           for the same reasons (see CrewBoardPage). */}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_32rem]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_32rem]">
         <CrewPools
           className="lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:h-[calc(100dvh-7rem)] lg:self-start"
           members={members}
@@ -277,10 +272,17 @@ export const StandingCrewPage = (): JSX.Element => {
                       a wrapper, not by a class on the Input: the Input carries `w-full`, `cn` does
                       not resolve Tailwind conflicts, and `.w-full` is emitted after `.w-36` — so a
                       width given to the Input itself silently lost, every box took the whole row,
-                      and the two wrapped one under the other. On a phone the group drops below the
-                      vehicle code as ONE line, with the direction taking whatever width is left. */}
-                  <div className="flex w-full items-center gap-2 sm:w-auto">
-                    <div className="min-w-0 flex-1 sm:w-56 sm:flex-none">
+                      and the two wrapped one under the other.
+                      THE DIRECTION BOX GIVES WAY, the time box does not: a fixed-width row spilled
+                      out of the card on a 1024–1190px screen and slid under the pinned pools, where
+                      the time could not be clicked. From `sm` up the row never wraps and the direction
+                      shrinks — which takes `min-w-0` on the ROW as well as on the box: a flex row's
+                      minimum width is otherwise its contents' (224 + 144px), so the box's own
+                      permission to shrink never came into play. On a phone the direction keeps 7rem
+                      and anything that no longer fits — the standing crew's إزالة — moves to the next
+                      line instead of crushing it. */}
+                  <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+                    <div className="min-w-[7rem] flex-1 sm:w-56 sm:min-w-0 sm:flex-initial">
                       <Input
                         aria-label={t('operations.crew.direction')}
                         placeholder={t('operations.crew.direction')}
@@ -310,6 +312,7 @@ export const StandingCrewPage = (): JSX.Element => {
                       <Button
                         size="sm"
                         variant="secondary"
+                        className="shrink-0"
                         // Named per vehicle: eight identical "Remove" buttons are unusable from a
                         // screen reader's elements list, where there is no surrounding card to say
                         // which vehicle each one belongs to.

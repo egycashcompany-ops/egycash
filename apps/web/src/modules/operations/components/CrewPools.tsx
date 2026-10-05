@@ -13,6 +13,11 @@
 // Each pool scrolls on its own and, on a wide screen, stays put while the vehicles scroll beside
 // it — with 50 captains and 100 specialists, a pool that scrolled away with the page would mean
 // dragging a name past the top of the screen to reach the twentieth vehicle.
+//
+// SIDE BY SIDE ONLY WHERE IT FITS. From `xl` the two pools stand next to each other, as legacy
+// drew them. Between `lg` and `xl` — a 1024–1279px window with the sidebar open — two columns
+// beside the board left the vehicle seats about 20px for a name and pushed each vehicle's time box
+// under the pools, so there the two pools stack in one column, each taking half the height.
 import { Link } from 'react-router-dom';
 import { type OperationsCrewMemberDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
@@ -65,6 +70,7 @@ const ACCENT: Record<PoolKind, string> = {
 const PoolColumn = ({
   kind,
   listed,
+  ready,
   query,
   onQueryChange,
   canPlan,
@@ -73,6 +79,13 @@ const PoolColumn = ({
 }: {
   kind: PoolKind;
   listed: OperationsCrewMemberDto[];
+  /**
+   * False while the roster loads or after it failed. An empty list then means "not known yet", and
+   * saying "nobody is left to assign" — with a count of 0 — would tell the planner the whole crew
+   * is already placed. Every date change on the daily board reloads the roster, so this was not a
+   * one-off flash.
+   */
+  ready: boolean;
   query: PoolQuery;
   onQueryChange: (next: PoolQuery) => void;
   canPlan: boolean;
@@ -96,7 +109,9 @@ const PoolColumn = ({
       <section aria-label={title} className="flex min-h-0 flex-1 flex-col gap-2 p-3" data-pool={kind}>
         <h2 className="flex items-baseline justify-between gap-2 text-sm font-semibold">
           <span>{title}</span>
-          <span className="tabular-nums text-slate-500 dark:text-slate-400">({listed.length})</span>
+          {ready && (
+            <span className="tabular-nums text-slate-500 dark:text-slate-400">({listed.length})</span>
+          )}
         </h2>
         <Input
           aria-label={`${title} — ${t('operations.crew.searchPool')}`}
@@ -109,6 +124,10 @@ const PoolColumn = ({
             <button
               key={flag}
               type="button"
+              // Named WITH the pool: the page has two of every filter, and a screen reader's
+              // controls list showed "سلاح" twice with nothing to say which pool each one narrows.
+              // The visible word comes first, so the name still starts with what is on screen.
+              aria-label={`${t(`operations.crew.flag.${flag}`)} — ${title}`}
               aria-pressed={query.flags.includes(flag)}
               onClick={() => toggle(flag)}
               className={
@@ -135,7 +154,7 @@ const PoolColumn = ({
             onReturn(employeeId);
           }}
         >
-          {listed.length === 0 && hint === null && (
+          {ready && listed.length === 0 && hint === null && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {narrowed ? t('operations.crew.poolEmpty') : t(`operations.crew.pools.empty.${kind}`)}
             </p>
@@ -195,12 +214,13 @@ export const CrewPools = ({
       <CrewRosterNotice rosterIsDerived={rosterIsDerived} />
       {loading && <Spinner />}
       {error !== null && error !== undefined && <ErrorState error={error} onRetry={onRetry} />}
-      <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2">
+      <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-2 xl:grid-cols-2 xl:grid-rows-1">
         {POOL_KINDS.map((kind) => (
           <PoolColumn
             key={kind}
             kind={kind}
             listed={filterPool(pools[kind], queries[kind].flags, queries[kind].search)}
+            ready={!loading && (error === null || error === undefined)}
             query={queries[kind]}
             onQueryChange={(next) => onQueryChange(kind, next)}
             canPlan={canPlan}

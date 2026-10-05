@@ -23,14 +23,16 @@
 // NO SCRIPT INSIDE THE PAGE. The tab is opened from the app, so it inherits the app's
 // Content-Security-Policy (`script-src 'self'`, `script-src-attr 'none'`): an inline `<script>` or
 // an `onclick` written into it never runs — which is why the print dialog the first version asked
-// for never opened. Everything the page does — print on open, the toolbar's buttons — is attached
-// from HERE, by the app's own script, which the policy allows (`wireReceiptWindow`).
+// for never opened. Everything the page does — print on open, the toolbar's `data-print` and
+// `data-close` buttons — is attached by the app's own script, which the policy allows
+// (`shared/lib/print-window.ts`, every printed document's one door).
 import {
   IT_CUSTODY_RECEIPT_FORM,
   formatCustodyReceiptNumber,
   type ItCustodyReceiptDocumentDto,
 } from '@ecms/contracts';
 import { EGYCASH_LOGO } from '../../gold/lib/egycash-logo';
+import { openPrintWindow, writePrintWindow } from '../../../shared/lib/print-window';
 
 /** The words the tab around the paper shows, in the reader's language — the paper is Arabic. */
 export interface ReceiptWindowLabels {
@@ -153,8 +155,8 @@ export const buildCustodyReceiptHtml = (
 <div class="bar">
   <span class="number">${esc(number)}</span>
   <span class="actions">
-    <button type="button" class="primary" id="receipt-print">${esc(labels.print)}</button>
-    <button type="button" id="receipt-close">${esc(labels.close)}</button>
+    <button type="button" class="primary" data-print>${esc(labels.print)}</button>
+    <button type="button" data-close>${esc(labels.close)}</button>
   </span>
 </div>
 <div class="sheet">
@@ -192,63 +194,13 @@ export const buildCustodyReceiptHtml = (
 </body></html>`;
 };
 
-/**
- * Open the print tab NOW, while the click still counts as the user's — the receipt is fetched
- * after, and a tab opened once that round trip returns is one a popup blocker refuses. Null when
- * the browser blocked it anyway; the caller says so rather than doing nothing.
- */
-export const openReceiptWindow = (waitingText: string): Window | null => {
-  const win = window.open('', '_blank');
-  if (win === null) return null;
-  win.document.open();
-  win.document.write(
-    `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>${esc(waitingText)}</title></head><body style="margin: 0; padding: 48px 16px; background: #d9dbe3; text-align: center; font-family: Tahoma, sans-serif; color: #2e2e74;">${esc(waitingText)}</body></html>`,
-  );
-  win.document.close();
-  return win;
-};
-
-/**
- * What the page cannot do for itself (see the header): the toolbar's two buttons, and the print
- * dialog opening by itself — once, after the letterhead has decoded, because a company document on
- * paper without its logo is not the document; the timer catches a logo that never reports.
- */
-export const wireReceiptWindow = (win: Window, autoPrint = true): void => {
-  const doc = win.document;
-  const print = (): void => {
-    win.focus();
-    win.print();
-  };
-  doc.getElementById('receipt-print')?.addEventListener('click', print);
-  doc.getElementById('receipt-close')?.addEventListener('click', () => win.close());
-  if (!autoPrint) return;
-  let printed = false;
-  const once = (): void => {
-    if (printed) return;
-    printed = true;
-    print();
-  };
-  const logo = doc.images[0];
-  if (logo !== undefined && !logo.complete) {
-    logo.addEventListener('load', once);
-    logo.addEventListener('error', once);
-  } else {
-    win.setTimeout(once, 80);
-  }
-  win.setTimeout(once, 1500);
-};
-
-/** Write the composed receipt into the tab `openReceiptWindow` opened, and make it work. */
+/** Write the composed receipt into a tab `openPrintWindow` opened; it prints itself. */
 export const writeCustodyReceipt = (
   win: Window,
   paper: ItCustodyReceiptDocumentDto,
   labels: ReceiptWindowLabels,
 ): void => {
-  win.document.open();
-  win.document.write(buildCustodyReceiptHtml(paper, labels));
-  win.document.close();
-  wireReceiptWindow(win);
-  win.focus();
+  writePrintWindow(win, buildCustodyReceiptHtml(paper, labels));
 };
 
 /**
@@ -260,7 +212,8 @@ export const printCustodyReceipt = async (
   load: () => Promise<ItCustodyReceiptDocumentDto>,
   labels: ReceiptWindowLabels,
 ): Promise<ItCustodyReceiptDocumentDto | null> => {
-  const win = openReceiptWindow(labels.waiting);
+  // The tab first, while the click still counts as the user's; the receipt is fetched after.
+  const win = openPrintWindow(labels.waiting);
   if (win === null) return null;
   try {
     const paper = await load();

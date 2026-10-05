@@ -3,7 +3,7 @@
 // own number and the day it is printed in the footer, the signature block on the left, and the tab
 // showing an A4 sheet. And since the tab inherits the app's Content-Security-Policy, nothing in it
 // may depend on a script of its own.
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { type ItCustodyReceiptDocumentDto } from '@ecms/contracts';
 import {
   buildCustodyReceiptHtml,
@@ -11,7 +11,6 @@ import {
   RECEIPT_DECLARATION,
   receiptDate,
   receiptNumberLabel,
-  wireReceiptWindow,
 } from './custody-receipt-print';
 
 const LABELS = { print: 'طباعة الإيصال', close: 'إغلاق' };
@@ -111,8 +110,9 @@ describe('the custody receipt (إيصال استلام)', () => {
     expect(screen).toContain('width: 210mm; min-height: 297mm');
     expect(html).toContain('@page { size: A4 portrait;');
     expect(html).toContain('.bar { display: none; }');
-    expect(html).toContain('id="receipt-print">طباعة الإيصال</button>');
-    expect(html).toContain('id="receipt-close">إغلاق</button>');
+    // Wired from the app (`shared/lib/print-window.ts`), never by a handler of their own.
+    expect(html).toContain('data-print>طباعة الإيصال</button>');
+    expect(html).toContain('data-close>إغلاق</button>');
   });
 
   it('carries no script of its own — the tab inherits the app’s CSP and would never run it', () => {
@@ -141,60 +141,5 @@ describe('the custody receipt (إيصال استلام)', () => {
     const hostile = buildCustodyReceiptHtml(paper({ employeeName: '<script>x</script>' }), LABELS);
     expect(hostile).not.toContain('<script>x</script>');
     expect(hostile).toContain('&lt;script&gt;');
-  });
-});
-
-/** A tab as small as the wiring needs: two buttons, one image, a clock that runs at once. */
-const fakeTab = (logoComplete: boolean) => {
-  const listeners = new Map<string, () => void>();
-  const element = (id: string) => ({
-    addEventListener: (type: string, fn: () => void) => listeners.set(`${id}:${type}`, fn),
-  });
-  const timers: (() => void)[] = [];
-  const win = {
-    focus: vi.fn(),
-    print: vi.fn(),
-    close: vi.fn(),
-    setTimeout: (fn: () => void) => {
-      timers.push(fn);
-      return timers.length;
-    },
-    document: {
-      getElementById: (id: string) => element(id),
-      images: [{ complete: logoComplete, ...element('logo') }],
-    },
-  };
-  return { win, listeners, timers };
-};
-
-describe('the receipt tab is worked from the app’s own script', () => {
-  it('opens the print dialog by itself — once, however many signals arrive', () => {
-    const { win, listeners, timers } = fakeTab(false);
-    wireReceiptWindow(win as unknown as Window);
-
-    listeners.get('logo:load')?.();
-    for (const timer of timers) timer();
-    listeners.get('logo:error')?.();
-
-    expect(win.print).toHaveBeenCalledTimes(1);
-  });
-
-  it('a logo already decoded prints on the short timer', () => {
-    const { win, timers } = fakeTab(true);
-    wireReceiptWindow(win as unknown as Window);
-    timers[0]?.();
-    expect(win.print).toHaveBeenCalledTimes(1);
-  });
-
-  it('the toolbar prints again and closes the tab', () => {
-    const { win, listeners } = fakeTab(true);
-    wireReceiptWindow(win as unknown as Window, false);
-
-    expect(win.print).not.toHaveBeenCalled();
-    listeners.get('receipt-print:click')?.();
-    listeners.get('receipt-print:click')?.();
-    expect(win.print).toHaveBeenCalledTimes(2);
-    listeners.get('receipt-close:click')?.();
-    expect(win.close).toHaveBeenCalledTimes(1);
   });
 });

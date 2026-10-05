@@ -13,6 +13,7 @@
 // Standalone HTML on purpose, the idiom `gold/lib/gold-print.ts` and `violations-print.ts` already
 // use: what prints is what this file says and nothing the app's stylesheet contributes.
 import { EGYCASH_LOGO } from '../../gold/lib/egycash-logo';
+import { openPrintDocument } from '../../../shared/lib/print-window';
 
 /** The company's own indigo, from `gold-print.ts` — a printed record's letterhead is not a theme. */
 const BRAND = {
@@ -78,43 +79,13 @@ const esc = (value: string): string =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
 
-/**
- * The tiny script the document carries so it opens the print dialog by itself.
- *
- * NOT `window.onload` — «مش بعرف اطبع الpdf بيفتح شاشه وخلاص». This document is written into an
- * already-open window with `document.write`, and that window's load event is not a thing this
- * script can count on: it may have fired before the handler was assigned, and where it has not,
- * it still waits on the web font, which comes over the network and may never arrive. Either way
- * the reader gets a page and no dialog, which is exactly what they reported.
- *
- * So nothing here waits on `load`. It waits on the LOGO, which is a data URI and needs no network
- * at all, and a timer catches every other case — a blocked font, a logo that errors, a browser
- * that fires nothing. Whichever happens first, the dialog opens; `printed` makes sure it opens
- * once. A page that prints with a fallback font beats a page that does not print.
- *
- * The closing tag is assembled from two pieces on purpose — writing the literal `</script>` in
- * this module would end the tag early if the bundle were ever inlined into an HTML page. Same
- * reasoning, and the same spelling, as `gold-print.ts`.
+/*
+ * NO SCRIPT IN THE DOCUMENT. The tab it is written into inherits the app's Content-Security-Policy,
+ * which never runs an inline script: the one this document used to carry to open the print dialog
+ * — on the logo, with a timer behind it — is why «مش بعرف اطبع الpdf بيفتح شاشه وخلاص» stayed true
+ * after it was rewritten. The dialog is opened from the app's own script instead, on the same
+ * terms (the letterhead decoded, a timer behind it): `shared/lib/print-window.ts`.
  */
-const PRINT_ON_LOAD = `<script>
-(function () {
-  var printed = false;
-  var go = function () {
-    if (printed) return;
-    printed = true;
-    window.focus();
-    window.print();
-  };
-  var logo = document.images[0];
-  if (logo && !logo.complete) {
-    logo.addEventListener('load', go);
-    logo.addEventListener('error', go);
-  } else {
-    window.setTimeout(go, 80);
-  }
-  window.setTimeout(go, 1500);
-})();
-</${'script'}>`;
 
 const FONTS =
   "@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap');";
@@ -212,7 +183,6 @@ export const buildFleetReportsHtml = (docs: readonly FleetReport[]): string => {
 </style></head>
 <body>
   ${docs.map(pageHtml).join('\n')}
-  ${PRINT_ON_LOAD}
 </body></html>`;
 };
 
@@ -220,19 +190,16 @@ export const buildFleetReportsHtml = (docs: readonly FleetReport[]): string => {
 export const buildFleetReportHtml = (doc: FleetReport): string => buildFleetReportsHtml([doc]);
 
 /**
- * Open the composed document and print it.
+ * Open the composed document and print it — the dialog opened from here, once the letterhead has
+ * decoded (`openPrintDocument`).
  *
  * Throws on a blocked popup so the caller can say so — a silent no-op reads as a broken button.
- * The wait is longer than the plain table's was because this page carries the logo, and printing
- * before it decodes would put a company document on paper without its letterhead.
  */
 export const printFleetReport = (doc: FleetReport | readonly FleetReport[]): void => {
-  const win = window.open('', '_blank');
+  const win = openPrintDocument(
+    buildFleetReportsHtml(Array.isArray(doc) ? doc : [doc as FleetReport]),
+  );
   if (win === null) throw new Error('popup blocked');
-  win.document.open();
-  win.document.write(buildFleetReportsHtml(Array.isArray(doc) ? doc : [doc as FleetReport]));
-  win.document.close();
-  win.focus();
 };
 
 /**

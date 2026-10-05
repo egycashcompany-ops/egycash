@@ -14,6 +14,7 @@ import {
   type NoticeSlot,
   type NoticeTemplate,
 } from './notice-templates';
+import { openPrintDocument } from '../../../shared/lib/print-window';
 
 export interface NoticeAnswers {
   values: Record<string, string>;
@@ -227,10 +228,10 @@ export const printNoticePages = (
     copy.removeAttribute('style');
     return copy.outerHTML;
   });
-  const win = window.open('', '_blank');
-  if (win === null) throw new Error('popup blocked');
-  win.document.open();
-  win.document.write(`<!doctype html>
+  // No script in the page: the tab inherits the app's Content-Security-Policy, which never runs
+  // one. The dialog opens from the app's own script once every scan has decoded, with the same
+  // timer behind it (`shared/lib/print-window.ts`).
+  const html = `<!doctype html>
 <html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>${esc(title)}</title>
 <style>
 ${NOTICE_CSS}
@@ -240,23 +241,6 @@ html, body { margin: 0; padding: 0; background: #fff; font-family: system-ui, -a
 .nt-page + .nt-page { break-before: page; page-break-before: always; }
 </style></head>
 <body>${copies.join('')}
-<script>
-(function () {
-  var printed = false;
-  var go = function () { if (printed) return; printed = true; window.focus(); window.print(); };
-  var images = Array.prototype.slice.call(document.images);
-  var waiting = images.filter(function (img) { return !img.complete; }).length;
-  if (waiting === 0) window.setTimeout(go, 80);
-  images.forEach(function (img) {
-    if (img.complete) return;
-    var done = function () { waiting -= 1; if (waiting <= 0) go(); };
-    img.addEventListener('load', done);
-    img.addEventListener('error', done);
-  });
-  window.setTimeout(go, 2500);
-})();
-</${'script'}>
-</body></html>`);
-  win.document.close();
-  win.focus();
+</body></html>`;
+  if (openPrintDocument(html, { readyTimeoutMs: 2500 }) === null) throw new Error('popup blocked');
 };

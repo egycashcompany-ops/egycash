@@ -1541,22 +1541,19 @@ describe('the printed report is a company document, not a screenshot', () => {
     }
   });
 
-  it('opens the print dialog by ITSELF, without waiting on anything that may never come', () => {
-    // «مش بعرف اطبع الpdf بيفتح شاشه وخلاص». The document is written into an already-open window
-    // with `document.write`, so its load event is not something this script can count on: it may
-    // have fired before a handler could be assigned, and where it has not, it waits on the web
-    // font — which comes over the network and may never arrive. Either way the reader gets a page
-    // and no dialog, which is exactly what was reported.
+  it('opens the print dialog by ITSELF — from the app, because the page cannot', () => {
+    // «مش بعرف اطبع الpdf بيفتح شاشه وخلاص». The document is written into a tab the app opens, and
+    // that tab inherits the app's Content-Security-Policy, which never runs an inline script: the
+    // one this document used to carry — waiting on the logo, a timer behind it — never ran, so the
+    // reader got a page and no dialog. The page now carries no script at all, and the dialog is
+    // opened from the app's own script on the same terms (`shared/lib/print-window.ts`, proved in
+    // its own spec).
     const html = report();
+    expect(html, 'no script the policy would refuse').not.toMatch(/<script/iu);
     expect(html, 'nothing hangs off the load event').not.toContain('window.onload');
-    expect(html, 'it calls print').toContain('window.print()');
-    // It waits on the LOGO, which is a data URI and needs no network…
-    expect(html).toContain('document.images[0]');
-    expect(html).toContain("addEventListener('error'");
-    // …and a timer catches every other case: a blocked font, a logo that errors, a browser that
-    // fires nothing. `printed` is why the dialog still opens exactly once.
-    expect(html).toContain('window.setTimeout(go, 1500)');
-    expect(html).toContain('if (printed) return;');
+    const source = readFileSync(join(HERE, 'lib/fleet-report-print.ts'), 'utf8');
+    expect(source).toContain('openPrintDocument(');
+    expect(source).toContain("from '../../../shared/lib/print-window'");
   });
 
   it('escapes the document rather than letting a name close a tag', () => {

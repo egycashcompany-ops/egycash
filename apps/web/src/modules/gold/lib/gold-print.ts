@@ -8,6 +8,7 @@
 //
 // They are self-contained HTML on purpose — independent of the app's stylesheet, so what prints is
 // what the page says and nothing the shell contributes.
+import { openPrintDocument } from '../../../shared/lib/print-window';
 import { EGYCASH_LOGO } from './egycash-logo';
 
 const BRAND = {
@@ -36,14 +37,14 @@ const stamp = (): { weekday: string; date: string } => {
   };
 };
 
-/**
- * The tiny script each generated document carries, so it prints once the fonts and the logo have
- * loaded rather than mid-render.
- *
- * The closing tag is assembled from two pieces on purpose: writing the literal `</script>` inside
- * this module would end the tag early if the bundle were ever inlined into an HTML page.
+/*
+ * NO SCRIPT IN THE DOCUMENTS. Each used to carry `<script>window.onload = () => window.print()`,
+ * and a button with `onclick="window.print()"` — and neither ever ran: the tab a document is
+ * written into inherits the app's Content-Security-Policy (`script-src 'self'`,
+ * `script-src-attr 'none'`), which refuses both. The dialog is now opened from the app's own
+ * script once the logo and the fonts have loaded, and the minutes' button is a `data-print`
+ * button the app wires (`shared/lib/print-window.ts`).
  */
-const PRINT_ON_LOAD = `<script>window.onload = () => { window.print(); };</${'script'}>`;
 
 const FONTS =
   "@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Tajawal:wght@400;500;700&display=swap');";
@@ -67,15 +68,12 @@ const letterhead = (branch: string, subtitle: string | string[], withDate: boole
     </div>`;
 };
 
-/** Open the rendered document in its own window. Returns false when the popup was blocked. */
-const openDocument = (html: string, features?: string): boolean => {
-  const w = window.open('', '_blank', features);
-  if (w === null) return false;
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  return true;
-};
+/**
+ * Open the rendered document in its own window, printing it by itself unless `autoPrint` is false.
+ * Returns false when the popup was blocked.
+ */
+const openDocument = (html: string, features?: string, autoPrint = true): boolean =>
+  openPrintDocument(html, { autoPrint, ...(features === undefined ? {} : { features }) }) !== null;
 
 export interface PrintTable {
   head: string[];
@@ -154,7 +152,6 @@ export const printReceiptHtml = ({
     ${tableHtml}
     <div class="sign"><div>أمين الخزينة</div><div>المندوب</div><div>المشرف</div></div>
     ${footer === '' ? '' : `<div class="foot">${esc(footer)}</div>`}
-    ${PRINT_ON_LOAD}
   </body></html>`,
     'width=900,height=1000',
   );
@@ -225,7 +222,6 @@ export const printReportHtml = ({
     ${note === '' ? '' : `<div class="note">${esc(note)}</div>`}
     ${table === undefined ? '' : `<table class="data"><thead>${headHtml}</thead><tbody>${bodyHtml}</tbody><tfoot>${totalHtml}</tfoot></table>`}
     ${signature === '' ? '' : `<div class="sign">${signature}</div>`}
-    ${PRINT_ON_LOAD}
   </body></html>`,
     'width=900,height=1000',
   );
@@ -305,7 +301,7 @@ export const printDrawerAuditHtml = ({
     @media print { .printbtn { display:none; } body { padding:8px 14px; } }
   </style></head>
   <body>
-    <button class="printbtn" onclick="window.print()">طباعة المحضر 🖨️</button>
+    <button class="printbtn" type="button" data-print>طباعة المحضر 🖨️</button>
     ${letterhead(branch, ['إدارة الخزينة', 'خزينة المعادن الثمينة'], false)}
     <div class="rtitle"><h1>محضر جرد درج</h1></div>
     <div class="body">
@@ -326,6 +322,9 @@ export const printDrawerAuditHtml = ({
       <div class="sigrow"><span>مشرف الخزينة أ /${dots(22)}</span><span>التوقيع / ${dots(22)}</span></div>
     </div>
   </body></html>`,
+    undefined,
+    // Read on the screen first, printed from its own button — as it always was meant to be.
+    false,
   );
 };
 
@@ -411,7 +410,6 @@ export const printFundClosingHtml = ({
   </style></head>
   <body>
     ${pages}
-    ${PRINT_ON_LOAD}
   </body></html>`,
     'width=1000,height=1000',
   );

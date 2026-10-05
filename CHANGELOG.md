@@ -9,6 +9,27 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Fleet and gold printouts open the print dialog by themselves again — or, in truth, for the
+  first time.** «مش بعرف اطبع الpdf بيفتح شاشه وخلاص». Every printed document is written into a
+  tab the app opens, and that tab inherits the app's Content-Security-Policy (`script-src 'self'`,
+  `script-src-attr 'none'`): the inline script each page carried to open the print dialog, and the
+  `onclick="window.print()"` on the drawer-inventory minutes' button, were refused by the browser
+  every time. So the page opened, and nothing else happened — on Fleet's company and drivers'
+  violation reports, receipts, custody, charging and dealership sheets, the insurance notices, and
+  every gold receipt, statement, monthly closing and the drawer minutes (staff and portal alike).
+
+  All of them now print through one door, `shared/lib/print-window.ts`: the page carries no script
+  of its own, and the app's own script — which the policy allows — opens the dialog once the
+  letterhead, the scans and the fonts have loaded, with a timer behind it so it always opens; page
+  buttons are wired from the app. The drawer minutes still open on the screen first and print from
+  their button. A licence record's tab is now opened inside the click, before its scan is fetched,
+  so a popup blocker no longer refuses it. IT's QR label sheet printed nothing at all: its tab was
+  opened with `noopener`, for which the browser hands back no window by definition, so every
+  attempt read as a blocked popup — it now opens and prints. A spec holds the whole web app to «no
+  printed page carries a script of its own».
+
 ### Changed
 
 - **The IT custody receipt carries its own number and the day it is printed.** The footer's fixed

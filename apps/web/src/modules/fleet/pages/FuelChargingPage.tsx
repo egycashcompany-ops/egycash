@@ -64,7 +64,7 @@ const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) 
  * white ground: no frame of its own and no focus ring — the surrounding frame is the box.
  */
 const REQUEST_BOX_TONE =
-  'border-transparent bg-transparent text-right text-base font-bold tabular-nums text-slate-100 placeholder:font-normal placeholder:text-slate-600 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent';
+  'border-transparent bg-transparent text-right text-base font-bold tabular-nums text-slate-900 dark:text-slate-100 placeholder:font-normal placeholder:text-slate-400 dark:placeholder:text-slate-600 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent';
 
 /**
  * «طلب رصيد»: type an amount and the row colours; ✓ sends it to the card, ✕ takes it back.
@@ -105,9 +105,9 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-md border bg-[#0b0f19] px-2 py-1 transition-colors',
+        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors',
         'focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
-        'border-slate-800',
+        'border-slate-200 dark:border-slate-800',
       )}
     >
       <span className="whitespace-nowrap text-sm text-slate-500">
@@ -132,7 +132,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
             title={waiting ? t('fleet.fuelCards.approve') : t('fleet.fuelCards.request')}
             disabled={busy}
             onClick={() => void tick()}
-            className="rounded border border-emerald-500/30 bg-emerald-600/20 px-1.5 text-sm font-bold text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
+            className="rounded border border-emerald-500/30 bg-emerald-600/20 px-1.5 text-sm font-bold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
           >
             ✓
           </button>
@@ -143,7 +143,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
             title={t('fleet.fuelCards.cancelRequest')}
             disabled={busy}
             onClick={() => void cross()}
-            className="rounded border border-red-500/30 bg-red-600/20 px-1.5 text-sm font-bold text-red-400 hover:bg-red-600/30 disabled:opacity-50"
+            className="rounded border border-red-500/30 bg-red-600/20 px-1.5 text-sm font-bold text-red-600 dark:text-red-400 hover:bg-red-600/30 disabled:opacity-50"
           >
             ✕
           </button>
@@ -192,19 +192,21 @@ const ChargeRow = ({
             ? 'border-emerald-500/60 bg-emerald-500/15'
             : low === 'red'
               ? 'border-red-500/60 bg-red-500/15'
-              : 'border-slate-800 bg-[#111827] hover:border-slate-700/80',
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] hover:border-slate-300 dark:hover:border-slate-700/80',
       )}
     >
       <div className="flex min-w-[190px] shrink-0 items-center gap-3 lg:min-w-max">
         <CompanyBadge company={card.company} />
         <div className="flex flex-col">
-          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-white">
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white">
             {card.name}
           </span>
           <span
             className={cn(
               'mt-0.5 flex items-center gap-1 text-sm font-medium',
-              card.company === 'wataniya' ? 'text-emerald-400' : 'text-amber-400',
+              card.company === 'wataniya'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-amber-600 dark:text-amber-400',
             )}
           >
             <span
@@ -218,14 +220,20 @@ const ChargeRow = ({
         </div>
       </div>
       <div className="my-auto flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:justify-center">
-        <div className="flex items-center rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1">
-          <span dir="ltr" className={cn('text-base font-bold tracking-wider text-slate-200', NUM)}>
+        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1">
+          <span
+            dir="ltr"
+            className={cn(
+              'text-base font-bold tracking-wider text-slate-800 dark:text-slate-200',
+              NUM,
+            )}
+          >
             {groupCardNumber(card.number)}
           </span>
         </div>
         <div
           data-fuel-balance={card.id}
-          className="flex items-center gap-1.5 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1"
+          className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1"
         >
           <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
           <span
@@ -233,10 +241,10 @@ const ChargeRow = ({
               'text-base font-black',
               NUM,
               low === 'red'
-                ? 'text-red-400'
+                ? 'text-red-600 dark:text-red-400'
                 : low === 'yellow'
-                  ? 'text-amber-400'
-                  : 'text-emerald-400',
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-emerald-600 dark:text-emerald-400',
             )}
           >
             {card.balance.toLocaleString('en-US', {
@@ -249,8 +257,8 @@ const ChargeRow = ({
               className={cn(
                 'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
                 low === 'red'
-                  ? 'border-red-700/50 bg-red-950 text-red-400'
-                  : 'border-amber-700/50 bg-amber-950 text-amber-400',
+                  ? 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
+                  : 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
               )}
             >
               {t(
@@ -270,7 +278,7 @@ const ChargeRow = ({
           aria-label={t('fleet.fuelCards.history.open')}
           title={t('fleet.fuelCards.history.open')}
           onClick={() => onHistory(card)}
-          className="rounded-md border border-slate-700 bg-slate-800/80 p-1.5 text-slate-300 transition hover:border-brand-500/60 hover:bg-brand-500/15 hover:text-brand-200"
+          className="rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 p-1.5 text-slate-600 dark:text-slate-300 transition hover:border-brand-500/60 hover:bg-brand-500/15 hover:text-brand-700 dark:hover:text-brand-200"
         >
           <HistoryIcon className="h-4 w-4" />
         </button>
@@ -393,7 +401,7 @@ export const FuelChargingPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <div className={cn(BOARD_FONT, 'space-y-6 text-slate-100 antialiased')}>
+      <div className={cn(BOARD_FONT, 'space-y-6 text-slate-900 dark:text-slate-100 antialiased')}>
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <BoardKpi
             testId="wataniya"
@@ -401,10 +409,10 @@ export const FuelChargingPage = (): JSX.Element => {
             icon={PATH.card}
             label={t('fleet.fuelCards.totals.wataniya')}
             value={summary.data === undefined ? '—' : latin(summary.data.wataniyaBalance)}
-            valueClass="text-emerald-400"
+            valueClass="text-emerald-600 dark:text-emerald-400"
             unit={t('fleet.fuelCards.board.kpi.currency')}
             note={
-              <span className="text-slate-400">
+              <span className="text-slate-500 dark:text-slate-400">
                 {t('fleet.fuelCards.board.charge.cardsNote', {
                   count: String(cards.filter((c) => c.company === 'wataniya').length),
                 })}
@@ -417,10 +425,10 @@ export const FuelChargingPage = (): JSX.Element => {
             icon={PATH.card}
             label={t('fleet.fuelCards.totals.chillout')}
             value={summary.data === undefined ? '—' : latin(summary.data.chilloutBalance)}
-            valueClass="text-amber-400"
+            valueClass="text-amber-600 dark:text-amber-400"
             unit={t('fleet.fuelCards.board.kpi.currency')}
             note={
-              <span className="text-slate-400">
+              <span className="text-slate-500 dark:text-slate-400">
                 {t('fleet.fuelCards.board.charge.cardsNote', {
                   count: String(cards.filter((c) => c.company === 'chillout').length),
                 })}
@@ -437,14 +445,14 @@ export const FuelChargingPage = (): JSX.Element => {
             unit={t('fleet.fuelCards.board.charge.requestedUnit')}
             note={
               summary.data !== undefined && summary.data.requestedCount > 0 ? (
-                <span className="text-amber-400">
+                <span className="text-amber-600 dark:text-amber-400">
                   ⚠️{' '}
                   {t('fleet.fuelCards.board.charge.requestedNote', {
                     amount: latin(summary.data.requestedAmount),
                   })}
                 </span>
               ) : (
-                <span className="text-emerald-400">
+                <span className="text-emerald-600 dark:text-emerald-400">
                   ✓ {t('fleet.fuelCards.board.charge.requestedNone')}
                 </span>
               )
@@ -457,9 +465,9 @@ export const FuelChargingPage = (): JSX.Element => {
             label={t('fleet.fuelCards.totals.chargedToday')}
             value={summary.data === undefined ? '—' : latin(summary.data.chargedTodayAmount)}
             unit={t('fleet.fuelCards.board.kpi.currency')}
-            unitClass="font-bold text-cyan-400"
+            unitClass="font-bold text-cyan-600 dark:text-cyan-400"
             note={
-              <span className="text-slate-400">
+              <span className="text-slate-500 dark:text-slate-400">
                 {t('fleet.fuelCards.board.charge.chargedNote')}
               </span>
             }
@@ -469,24 +477,27 @@ export const FuelChargingPage = (): JSX.Element => {
         {/* The exports and «تحويل رصيد» above the filters, as on the vehicles screen. */}
         <div className="flex flex-wrap items-center justify-end gap-2" data-fuel-toolbar="true">
           {!isError && (
-            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
+            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 p-0.5">
               <button
                 type="button"
                 data-export="fuel-charging"
                 onClick={() => void exportSheet()}
-                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300"
               >
-                <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
+                <BoardIcon
+                  d={PATH.excel}
+                  className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                />
                 <span>{t('fleet.fuelCards.board.excel')}</span>
               </button>
-              <span className="h-4 w-px bg-slate-700" />
+              <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
               <button
                 type="button"
                 data-print="fuel-charging"
                 onClick={onPrint}
-                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400"
               >
-                <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
+                <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                 <span>{t('fleet.fuelCards.board.pdf')}</span>
               </button>
             </div>
@@ -510,7 +521,7 @@ export const FuelChargingPage = (): JSX.Element => {
           >
             <FilterWithIcon
               icon={FILTER_ICON.car}
-              tone="text-emerald-400"
+              tone="text-emerald-600 dark:text-emerald-400"
               className="w-32 shrink-0"
             >
               <VehicleCodeFilter
@@ -526,7 +537,7 @@ export const FuelChargingPage = (): JSX.Element => {
             {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three states, several at once. */}
             <FilterWithIcon
               icon={FILTER_ICON.charge}
-              tone="text-amber-400"
+              tone="text-amber-600 dark:text-amber-400"
               className="w-40 shrink-0"
             >
               <MultiSelect
@@ -547,7 +558,7 @@ export const FuelChargingPage = (): JSX.Element => {
             </FilterWithIcon>
             <FilterWithIcon
               icon={FILTER_ICON.company}
-              tone="text-slate-300"
+              tone="text-slate-600 dark:text-slate-300"
               className="w-36 shrink-0"
             >
               <MultiSelect

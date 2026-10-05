@@ -106,7 +106,7 @@ describe('the fuel-transfer card picker', () => {
       <TransferCardPick cards={[]} value="" onChange={() => undefined} side="to" />,
     );
     expect(missing).toMatch(/<p class="text-sm text-red-600\b/u);
-    expect(plain).toMatch(/<p class="text-sm text-slate-400"/u);
+    expect(plain).toMatch(/<p class="text-sm text-slate-500 dark:text-slate-400"/u);
     expect(plain).not.toMatch(/<p class="text-sm text-red-600\b/u);
   });
 });

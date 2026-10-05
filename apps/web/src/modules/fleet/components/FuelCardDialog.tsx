@@ -50,44 +50,46 @@ const PHOTO_MAX_BYTES = 5 * 1024 * 1024;
 export const LOOK = {
   add: {
     panel:
-      'max-w-2xl bg-[#121c3f]/95 border-[#2b3b6b] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] backdrop-blur-xl',
-    header: 'py-4 border-[#2b3b6b]/80 bg-[#0f1838]/40',
-    icon: 'h-9 w-9 bg-[#6c63ff]/20 border-[#6c63ff]/40 text-[#a5a0ff]',
+      'max-w-2xl bg-white dark:bg-[#121c3f]/95 border-slate-200 dark:border-[#2b3b6b] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.85)] backdrop-blur-xl',
+    header: 'py-4 border-slate-200 dark:border-[#2b3b6b]/80 bg-slate-50 dark:bg-[#0f1838]/40',
+    icon: 'h-9 w-9 bg-[#6c63ff]/20 border-[#6c63ff]/40 text-indigo-600 dark:text-[#a5a0ff]',
     subtitle: 'font-medium',
-    close: 'p-2 rounded-xl border border-transparent hover:border-slate-700 hover:bg-slate-800/80',
+    close:
+      'p-2 rounded-xl border border-transparent hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800/80',
     body: 'p-6 sm:p-7',
-    box: 'bg-[#0a1233] border-[#2b3b6b] py-3 shadow-inner',
-    placeholder: 'placeholder:text-slate-400',
+    box: 'bg-slate-50 dark:bg-[#0a1233] border-slate-200 dark:border-[#2b3b6b] py-3 shadow-inner',
+    placeholder: 'placeholder:text-slate-500 dark:placeholder:text-slate-400',
     pad: 'p-2.5',
-    tile: 'border-[#2b3b6b] bg-[#0a1233]/80 hover:bg-slate-800/60',
+    tile: 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/80 hover:bg-slate-100 dark:hover:bg-slate-800/60',
     tileOn:
-      'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.28),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-4px_rgba(108,99,255,0.6)]',
-    footer: 'pt-4 border-[#2b3b6b]/60',
+      'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.28),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-4px_rgba(108,99,255,0.6)]',
+    footer: 'pt-4 border-slate-200 dark:border-[#2b3b6b]/60',
     save: 'px-8 bg-gradient-to-r from-[#4f3dff] to-[#6a5cff] hover:from-[#5a4aff] hover:to-[#7a6dff] shadow-[0_6px_24px_rgba(91,76,255,0.55)]',
-    cancel: 'px-7 border-[#2b3b6b]',
+    cancel: 'px-7 border-slate-200 dark:border-[#2b3b6b]',
   },
   edit: {
-    panel: 'max-w-3xl bg-[#111b40] border-[#2b3b6b] shadow-2xl shadow-black/70',
-    header: 'py-5 border-slate-800/80 bg-[#15204a]/50',
-    icon: 'h-10 w-10 bg-[#6c63ff]/20 border-[#6c63ff]/40 text-[#a5a0ff]',
+    panel:
+      'max-w-3xl bg-white dark:bg-[#111b40] border-slate-200 dark:border-[#2b3b6b] shadow-2xl shadow-black/70',
+    header: 'py-5 border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-[#15204a]/50',
+    icon: 'h-10 w-10 bg-[#6c63ff]/20 border-[#6c63ff]/40 text-indigo-600 dark:text-[#a5a0ff]',
     subtitle: 'mt-0.5',
-    close: 'h-9 w-9 justify-center rounded-lg hover:bg-slate-800',
+    close: 'h-9 w-9 justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800',
     body: 'p-6',
-    box: 'bg-[#0a1233] border-[#2b3b6b] py-2.5 shadow-inner',
-    placeholder: 'placeholder:text-slate-400',
+    box: 'bg-slate-50 dark:bg-[#0a1233] border-slate-200 dark:border-[#2b3b6b] py-2.5 shadow-inner',
+    placeholder: 'placeholder:text-slate-500 dark:placeholder:text-slate-400',
     pad: 'px-3.5 py-2.5',
-    tile: 'border border-[#2b3b6b] bg-[#0a1233]/80 hover:border-slate-600',
+    tile: 'border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/80 hover:border-slate-300 dark:hover:border-slate-600',
     tileOn: 'border-2 border-[#6c63ff] bg-[#1d1f5e]/60 shadow-[0_0_22px_-4px_rgba(108,99,255,0.6)]',
-    footer: 'pt-5 border-slate-800/80',
+    footer: 'pt-5 border-slate-200 dark:border-slate-800/80',
     save: 'px-6 tracking-wide bg-[#4f3dff] hover:bg-[#5a4aff] shadow-[0_6px_24px_rgba(91,76,255,0.55)]',
-    cancel: 'px-5 border-slate-700',
+    cancel: 'px-5 border-slate-300 dark:border-slate-700',
   },
 } as const;
 
 /** A box of the design: the field colours, focus ring and the red glow of a refused value. */
 export const boxTone = (look: (typeof LOOK)['add' | 'edit']): string =>
   cn(
-    '!rounded-xl !px-4 !text-[15px] border font-medium text-white',
+    '!rounded-xl !px-4 !text-[15px] border font-medium text-slate-900 dark:text-white',
     look.box,
     look.placeholder,
     'transition-all focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500',
@@ -102,16 +104,16 @@ export const boxTone = (look: (typeof LOOK)['add' | 'edit']): string =>
 export const carBoxClass = (editing: boolean): string =>
   cn(
     '[&_input]:!rounded-xl [&_input]:!ps-4 [&_input]:!pe-20 [&_input]:shadow-inner',
-    '[&_input]:!text-white [&_input]:!font-medium [&_input]:placeholder:!text-slate-400',
+    '[&_input]:!text-slate-900 dark:[&_input]:!text-white [&_input]:!font-medium [&_input]:placeholder:!text-slate-500 dark:[&_input]:placeholder:!text-slate-400',
     '[&_input:focus]:!border-indigo-500 [&_input:focus]:ring-1 [&_input:focus]:ring-indigo-500 [&_input]:focus-visible:!ring-offset-0',
     editing
-      ? "[&_input]:!border-[#2b3b6b] [&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-base [&_input]:font-semibold [&_input]:[font-family:'JetBrains_Mono','Cairo',monospace] [&_input]:placeholder:[font-family:'Cairo',sans-serif] [&_input]:placeholder:!text-sm [&_input]:placeholder:font-normal"
-      : '[&_input]:!border-[#2b3b6b] [&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-[15px]',
+      ? "[&_input]:!border-slate-200 dark:[&_input]:!border-[#2b3b6b] [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-base [&_input]:font-semibold [&_input]:[font-family:'JetBrains_Mono','Cairo',monospace] [&_input]:placeholder:[font-family:'Cairo',sans-serif] [&_input]:placeholder:!text-sm [&_input]:placeholder:font-normal"
+      : '[&_input]:!border-slate-200 dark:[&_input]:!border-[#2b3b6b] [&_input]:!bg-slate-50 dark:[&_input]:!bg-[#0a1233] [&_input]:!py-3 [&_input]:!text-[15px]',
     // The clear × and the chevron, with the design's rule between them.
     '[&_.end-2]:!end-3 [&_.end-2]:!gap-1.5 [&_.end-2_svg]:!h-4 [&_.end-2_svg]:!w-4',
     '[&_.end-2_button]:!p-1 [&_.end-2_button:hover]:!text-rose-400',
-    '[&_.end-2_button]:relative [&_.end-2_button]:after:absolute [&_.end-2_button]:after:-end-1 [&_.end-2_button]:after:top-1/2 [&_.end-2_button]:after:h-4 [&_.end-2_button]:after:w-px [&_.end-2_button]:after:-translate-y-1/2 [&_.end-2_button]:after:bg-slate-700 [&_.end-2_button]:me-1',
-    '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-[#131d35]',
+    '[&_.end-2_button]:relative [&_.end-2_button]:after:absolute [&_.end-2_button]:after:-end-1 [&_.end-2_button]:after:top-1/2 [&_.end-2_button]:after:h-4 [&_.end-2_button]:after:w-px [&_.end-2_button]:after:-translate-y-1/2 [&_.end-2_button]:after:bg-slate-200 dark:[&_.end-2_button]:after:bg-slate-700 [&_.end-2_button]:me-1',
+    '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-slate-200 dark:[&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-[#131d35]',
   );
 
 /** The design's calendar button, lightened for the dark box — each design its own filter. */
@@ -222,7 +224,7 @@ export const DesignField = ({
     refused ?? error ?? (missing ? t('common.validation.required') : undefined) ?? null;
   return (
     <div className="space-y-2" {...(missing ? { 'data-field-missing': 'true' } : {})}>
-      <label className="block text-[15px] font-bold text-white">
+      <label className="block text-[15px] font-bold text-slate-900 dark:text-white">
         {label} {required && <span className="font-bold text-rose-500">*</span>}
       </label>
       <FieldMissingProvider missing={missing}>
@@ -258,7 +260,9 @@ export const DesignField = ({
           <span>{message}</span>
         </p>
       ) : (
-        hint !== undefined && <p className="text-[13px] font-medium text-slate-300">{hint}</p>
+        hint !== undefined && (
+          <p className="text-[13px] font-medium text-slate-600 dark:text-slate-300">{hint}</p>
+        )
       )}
     </div>
   );
@@ -288,15 +292,15 @@ const NewCardPhoto = ({
   };
   return (
     <div className="space-y-2" data-fuel-new-photo="true">
-      <label className="flex items-center gap-1.5 text-[15px] font-bold text-white">
-        <Stroke d={IMAGE_PATH} className="h-4 w-4 text-indigo-400" />
+      <label className="flex items-center gap-1.5 text-[15px] font-bold text-slate-900 dark:text-white">
+        <Stroke d={IMAGE_PATH} className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
         <span>{t('fleet.fuelCards.image.title')}</span>
-        <span className="me-1 text-[13px] font-medium text-slate-300">
+        <span className="me-1 text-[13px] font-medium text-slate-600 dark:text-slate-300">
           {t('fleet.fuelCards.image.optional')}
         </span>
       </label>
       <div
-        className="group relative cursor-pointer rounded-xl border-2 border-dashed border-[#2b3b6b] bg-[#0a1233]/60 p-4 text-center transition-all hover:border-indigo-500/50 hover:bg-[#0a1233]"
+        className="group relative cursor-pointer rounded-xl border-2 border-dashed border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60 p-4 text-center transition-all hover:border-indigo-500/50 hover:bg-slate-50 dark:hover:bg-[#0a1233]"
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
@@ -314,7 +318,7 @@ const NewCardPhoto = ({
         />
         <div className="pointer-events-none flex flex-col items-center justify-between gap-3 sm:flex-row">
           <div className="flex items-center gap-3.5">
-            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-400 transition-transform group-hover:scale-105">
+            <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 transition-transform group-hover:scale-105">
               <svg
                 className="h-6 w-6"
                 fill="none"
@@ -327,15 +331,15 @@ const NewCardPhoto = ({
               </svg>
             </div>
             <div className="text-right">
-              <p className="text-sm font-bold text-white transition-colors group-hover:text-[#a5a0ff]">
+              <p className="text-sm font-bold text-slate-900 dark:text-white transition-colors group-hover:text-indigo-600 dark:group-hover:text-[#a5a0ff]">
                 {file === null ? t('fleet.fuelCards.image.dropTitle') : file.name}
               </p>
-              <p className="mt-0.5 text-[13px] font-medium text-slate-300">
+              <p className="mt-0.5 text-[13px] font-medium text-slate-600 dark:text-slate-300">
                 {t('fleet.fuelCards.image.dropHint')}
               </p>
             </div>
           </div>
-          <span className="flex items-center gap-1.5 rounded-lg border border-[#2b3b6b] bg-slate-800/80 px-3.5 py-1.5 text-xs font-semibold text-slate-300 shadow-sm transition-all group-hover:border-indigo-500/40 group-hover:bg-indigo-600/20 group-hover:text-indigo-300">
+          <span className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-[#2b3b6b] bg-slate-100 dark:bg-slate-800/80 px-3.5 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 shadow-sm transition-all group-hover:border-indigo-500/40 group-hover:bg-indigo-600/20 group-hover:text-indigo-300">
             <Stroke d={PLUS_PATH} className="h-3.5 w-3.5" />
             {t('fleet.fuelCards.image.pick')}
           </span>
@@ -480,7 +484,7 @@ export const FuelCardDialog = ({
   const box = boxTone(look);
 
   const eyeButton =
-    'text-slate-300 transition-colors hover:text-[#a5a0ff] focus:outline-none focus-visible:ring-0';
+    'text-slate-600 dark:text-slate-300 transition-colors hover:text-indigo-600 dark:hover:text-[#a5a0ff] focus:outline-none focus-visible:ring-0';
   const passwordEye =
     card?.hasPassword === true && !passwordShown && password === '' ? (
       can('fleetFuelCard.reveal') ? (
@@ -515,7 +519,7 @@ export const FuelCardDialog = ({
       <div
         className={cn(
           'fixed inset-0 animate-fade-in backdrop-blur-md',
-          editing ? 'bg-black/80' : 'bg-[#03060c]/80',
+          editing ? 'bg-black/80' : 'bg-slate-900/40 dark:bg-[#03060c]/80',
         )}
         aria-hidden="true"
       />
@@ -526,7 +530,7 @@ export const FuelCardDialog = ({
         data-fuel-card-form={editing ? 'edit' : 'add'}
         className={cn(
           SANS,
-          'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-100 antialiased',
+          'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-900 dark:text-slate-100 antialiased',
           look.panel,
         )}
       >
@@ -536,8 +540,15 @@ export const FuelCardDialog = ({
               <Stroke d={CARD_PATH} className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-wide text-white">{title}</h2>
-              <p className={cn('text-[13px] font-medium text-slate-300', look.subtitle)}>
+              <h2 className="text-xl font-bold tracking-wide text-slate-900 dark:text-white">
+                {title}
+              </h2>
+              <p
+                className={cn(
+                  'text-[13px] font-medium text-slate-600 dark:text-slate-300',
+                  look.subtitle,
+                )}
+              >
                 {editing ? t('fleet.fuelCards.editSubtitle') : t('fleet.fuelCards.addSubtitle')}
               </p>
             </div>
@@ -547,7 +558,7 @@ export const FuelCardDialog = ({
             onClick={onClose}
             aria-label={t('common.close')}
             className={cn(
-              'flex items-center text-slate-400 transition-all hover:text-white focus:outline-none',
+              'flex items-center text-slate-500 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-white focus:outline-none',
               look.close,
             )}
           >
@@ -595,10 +606,10 @@ export const FuelCardDialog = ({
                           'whitespace-nowrap text-[15px]',
                           editing ? '' : 'px-1',
                           chosen
-                            ? 'font-bold text-white'
+                            ? 'font-bold text-slate-900 dark:text-white'
                             : editing
-                              ? 'font-bold text-slate-200'
-                              : 'font-bold text-slate-200',
+                              ? 'font-bold text-slate-800 dark:text-slate-200'
+                              : 'font-bold text-slate-800 dark:text-slate-200',
                         )}
                       >
                         {t(`fleet.fuelCards.company.${option}`)}
@@ -698,7 +709,7 @@ export const FuelCardDialog = ({
                   box,
                   MONO,
                   '!pe-11 tracking-widest',
-                  keepsPassword && 'placeholder:!text-slate-100',
+                  keepsPassword && 'placeholder:!text-slate-900 dark:placeholder:!text-slate-100',
                 )}
               />
             </DesignField>
@@ -706,7 +717,7 @@ export const FuelCardDialog = ({
 
           {photoCard !== null ? (
             <div className="pt-1" data-purpose="field-card-image">
-              <label className="mb-2 block text-[15px] font-bold text-white">
+              <label className="mb-2 block text-[15px] font-bold text-slate-900 dark:text-white">
                 {t('fleet.fuelCards.image.title')}
               </label>
               <FuelCardPhotoPanel card={photoCard} onOpen={(c) => onOpenPhoto?.(c)} />
@@ -737,7 +748,7 @@ export const FuelCardDialog = ({
               type="button"
               onClick={onClose}
               className={cn(
-                'rounded-xl border bg-[#1a2550] py-2.5 text-[15px] font-bold text-slate-100 transition-all hover:bg-slate-700/80 hover:text-white active:scale-[0.98]',
+                'rounded-xl border bg-white dark:bg-[#1a2550] py-2.5 text-[15px] font-bold text-slate-900 dark:text-slate-100 transition-all hover:bg-slate-200 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white active:scale-[0.98]',
                 look.cancel,
               )}
             >

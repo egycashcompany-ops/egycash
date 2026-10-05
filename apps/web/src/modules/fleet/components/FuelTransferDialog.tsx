@@ -52,7 +52,12 @@ export const CardPick = ({
   const missing = useFieldMissing();
   if (cards.length === 0) {
     return (
-      <p className={cn('text-sm', missing ? 'text-red-600 dark:text-red-400' : 'text-slate-400')}>
+      <p
+        className={cn(
+          'text-sm',
+          missing ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400',
+        )}
+      >
         {emptyText ?? t('fleet.fuelCards.transfer.pickCar')}
       </p>
     );
@@ -73,10 +78,10 @@ export const CardPick = ({
             className={cn(
               'relative flex w-full items-center justify-between gap-4 rounded-xl border px-4 py-3 text-start transition-all',
               missing
-                ? 'border-red-400 bg-[#0a1233]/80'
+                ? 'border-red-400 bg-slate-50 dark:bg-[#0a1233]/80'
                 : chosen
-                  ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.28),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-4px_rgba(108,99,255,0.6)]'
-                  : 'border-[#2b3b6b] bg-[#0a1233]/80 hover:bg-slate-800/60',
+                  ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.28),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-4px_rgba(108,99,255,0.6)]'
+                  : 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/80 hover:bg-slate-100 dark:hover:bg-slate-800/60',
             )}
           >
             {chosen && !missing && (
@@ -97,22 +102,22 @@ export const CardPick = ({
             )}
             <span className="flex min-w-[9rem] items-center gap-3">
               <DesignLogo company={card.company} editing={false} />
-              <span className="whitespace-nowrap text-[15px] font-bold text-white">
+              <span className="whitespace-nowrap text-[15px] font-bold text-slate-900 dark:text-white">
                 {t(`fleet.fuelCards.company.${card.company}`)}
               </span>
             </span>
             <span
               className={cn(
-                'whitespace-nowrap text-sm font-medium tracking-wider text-slate-200',
+                'whitespace-nowrap text-sm font-medium tracking-wider text-slate-800 dark:text-slate-200',
                 MONO,
               )}
               dir="ltr"
             >
               {groupCardNumber(card.number)}
             </span>
-            <span className="whitespace-nowrap text-[13px] font-medium text-slate-300">
+            <span className="whitespace-nowrap text-[13px] font-medium text-slate-600 dark:text-slate-300">
               {t('fleet.fuelCards.fields.balance')}{' '}
-              <b className={cn('text-[15px] text-emerald-400', MONO)}>
+              <b className={cn('text-[15px] text-emerald-600 dark:text-emerald-400', MONO)}>
                 {formatMoney(card.balance, 'EGP', locale)}
               </b>
             </span>
@@ -264,13 +269,15 @@ export const FuelTransferDialog = ({
   const look = LOOK.add;
   const box = boxTone(look);
   const heading = (text: string): JSX.Element => (
-    <h3 className="border-b border-[#2b3b6b]/60 pb-2 text-[15px] font-bold text-white">{text}</h3>
+    <h3 className="border-b border-slate-200 dark:border-[#2b3b6b]/60 pb-2 text-[15px] font-bold text-slate-900 dark:text-white">
+      {text}
+    </h3>
   );
 
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4">
       <div
-        className="fixed inset-0 animate-fade-in bg-[#03060c]/80 backdrop-blur-md"
+        className="fixed inset-0 animate-fade-in bg-slate-900/40 dark:bg-[#03060c]/80 backdrop-blur-md"
         aria-hidden="true"
       />
       <div
@@ -280,7 +287,7 @@ export const FuelTransferDialog = ({
         data-fuel-transfer-form="true"
         className={cn(
           SANS,
-          'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-100 antialiased',
+          'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-900 dark:text-slate-100 antialiased',
           look.panel,
         )}
       >
@@ -293,10 +300,15 @@ export const FuelTransferDialog = ({
               />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-wide text-white">
+              <h2 className="text-xl font-bold tracking-wide text-slate-900 dark:text-white">
                 {t('fleet.fuelCards.transfer.title')}
               </h2>
-              <p className={cn('text-[13px] font-medium text-slate-300', look.subtitle)}>
+              <p
+                className={cn(
+                  'text-[13px] font-medium text-slate-600 dark:text-slate-300',
+                  look.subtitle,
+                )}
+              >
                 {t('fleet.fuelCards.transfer.hint')}
               </p>
             </div>
@@ -306,7 +318,7 @@ export const FuelTransferDialog = ({
             onClick={onClose}
             aria-label={t('common.close')}
             className={cn(
-              'flex items-center text-slate-400 transition-all hover:text-white focus:outline-none',
+              'flex items-center text-slate-500 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-white focus:outline-none',
               look.close,
             )}
           >
@@ -429,7 +441,7 @@ export const FuelTransferDialog = ({
           {Number.isFinite(value) && value > 0 && (from !== null || (to !== null && !sameCar)) && (
             <div
               data-fuel-transfer-summary="true"
-              className="space-y-4 rounded-xl border border-[#2b3b6b] bg-[#0a1233] p-4"
+              className="space-y-4 rounded-xl border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233] p-4"
             >
               {/* «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام» —
                   each card on its own line: what it held, what moves, what it will hold. */}
@@ -440,7 +452,7 @@ export const FuelTransferDialog = ({
                 ] as const
               ).map(({ side, card, sign }) => (
                 <div key={side} data-fuel-transfer-line={side} className="space-y-2">
-                  <p className="flex items-center gap-2 text-[15px] font-bold text-white">
+                  <p className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
                     <span
                       className={cn(
                         'h-2 w-2 rounded-full',
@@ -462,7 +474,7 @@ export const FuelTransferDialog = ({
                       {
                         label: t('fleet.fuelCards.transfer.was'),
                         amount: card.balance,
-                        tone: 'text-white',
+                        tone: 'text-slate-900 dark:text-white',
                       },
                       {
                         label: t(
@@ -471,20 +483,23 @@ export const FuelTransferDialog = ({
                             : 'fleet.fuelCards.transfer.given',
                         ),
                         amount: value,
-                        tone: sign < 0 ? 'text-rose-400' : 'text-emerald-400',
+                        tone: sign < 0 ? 'text-rose-400' : 'text-emerald-600 dark:text-emerald-400',
                       },
                       {
                         label: t('fleet.fuelCards.transfer.becomes'),
                         amount: card.balance + sign * value,
                         // More than the first card holds: what it would become reads red.
-                        tone: card.balance + sign * value < 0 ? 'text-rose-400' : 'text-white',
+                        tone:
+                          card.balance + sign * value < 0
+                            ? 'text-rose-400'
+                            : 'text-slate-900 dark:text-white',
                       },
                     ].map((cell) => (
                       <span
                         key={cell.label}
-                        className="rounded-lg border border-[#2b3b6b]/70 bg-[#121c3f] px-2 py-2"
+                        className="rounded-lg border border-slate-200 dark:border-[#2b3b6b]/70 bg-[#121c3f] px-2 py-2"
                       >
-                        <span className="block text-[12px] font-medium text-slate-300">
+                        <span className="block text-[12px] font-medium text-slate-600 dark:text-slate-300">
                           {cell.label}
                         </span>
                         <b className={cn('text-[15px]', MONO, cell.tone)} dir="ltr">
@@ -516,7 +531,7 @@ export const FuelTransferDialog = ({
               type="button"
               onClick={onClose}
               className={cn(
-                'rounded-xl border bg-[#1a2550] py-2.5 text-[15px] font-bold text-slate-100 transition-all hover:bg-slate-700/80 hover:text-white active:scale-[0.98]',
+                'rounded-xl border bg-white dark:bg-[#1a2550] py-2.5 text-[15px] font-bold text-slate-900 dark:text-slate-100 transition-all hover:bg-slate-200 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white active:scale-[0.98]',
                 look.cancel,
               )}
             >

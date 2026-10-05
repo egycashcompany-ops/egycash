@@ -51,7 +51,7 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
-import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState } from '../components/FuelCardBoard';
+import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState, ymd } from '../components/FuelCardBoard';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
@@ -610,7 +610,11 @@ export const VehiclesListPage = (): JSX.Element => {
     {
       key: 'joinedAt',
       header: t('fleet.vehicles.columns.joinedAt'),
-      render: (v) => <span className="tabular-nums">{formatDate(v.joinedAt, locale)}</span>,
+      render: (v) => (
+        <span className="tabular-nums" dir="ltr">
+          {ymd(v.joinedAt)}
+        </span>
+      ),
     },
     {
       key: 'licenseExpiresAt',
@@ -632,7 +636,7 @@ export const VehiclesListPage = (): JSX.Element => {
                     : 'text-slate-900 dark:text-slate-100',
               )}
             >
-              {formatDate(v.licenseExpiresAt, locale)}
+              {ymd(v.licenseExpiresAt)}
             </span>
             <LicenceTag state={state} />
           </span>
@@ -755,7 +759,7 @@ export const VehiclesListPage = (): JSX.Element => {
         <div className="flex items-center justify-between gap-1.5 sm:gap-2" data-vehicle-toolbar="true">
           <span
             data-vehicle-count
-            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300 sm:text-sm"
+            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300 sm:text-sm min-[1750px]:text-base"
           >
             {data === undefined
               ? ''
@@ -889,7 +893,12 @@ export const VehiclesListPage = (): JSX.Element => {
             </div>
           </section>
         )}
-        <div className={DARK_BAR}>
+        <div
+          className={cn(
+            DARK_BAR,
+            'min-[1750px]:[&_input]:!text-[15px] min-[1750px]:[&_button[aria-haspopup]]:!text-[15px]',
+          )}
+        >
           <FilterBar
             hasActiveFilters={hasActiveFilters}
             onClear={() =>
@@ -1101,7 +1110,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 [t('fleet.vehicles.columns.plate'), v.plateNumber],
                 [t('fleet.vehicles.columns.chassis'), v.chassisNumber],
                 [t('fleet.vehicles.columns.motor'), v.motorNumber],
-                [t('fleet.vehicles.columns.joinedAt'), formatDate(v.joinedAt, locale)],
+                [t('fleet.vehicles.columns.joinedAt'), ymd(v.joinedAt)],
                 [
                   t('fleet.vehicles.columns.licenseClass'),
                   v.licenseClassId === null ? '—' : (licenseClassName.get(v.licenseClassId) ?? '—'),
@@ -1124,7 +1133,7 @@ export const VehiclesListPage = (): JSX.Element => {
               licence={
                 <span className="flex items-center gap-1.5">
                   <span dir="ltr" className={cn('font-semibold text-slate-900 dark:text-slate-100', NUM)}>
-                    {formatDate(v.licenseExpiresAt, locale)}
+                    {ymd(v.licenseExpiresAt)}
                   </span>
                   <LicenceTag state={expiryState(v.licenseExpiresAt, 30)} />
                 </span>
@@ -1200,6 +1209,12 @@ const DARK_TABLE = cn(
   '[&_tbody_tr]:!border-slate-200 dark:[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-slate-100 dark:[&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-800 dark:[&_tbody_td]:!text-slate-200',
   '[&_th]:!px-1.5 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!px-1.5 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
+  // «لما عملت المتصفح على 110 ف الميه الداتا ظاهره احسن»: a wide screen takes the type a size up,
+  // from where the whole table still fits beside the menu.
+  // «خط شاشه السيارات زى خط رقم الفيزا»: the card number's type — the system monospace, heavy —
+  // for every figure in the table; Arabic words fall through to Cairo.
+  "[&_td]:[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace] [&_td]:!font-bold",
+  'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
 );
 
 /** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */
@@ -1209,7 +1224,7 @@ const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.E
   return (
     <span
       className={cn(
-        'rounded border px-1 py-[0.05rem] text-[10px] font-medium',
+        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
         state === 'valid' && 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
         state === 'soon' && 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
         state === 'expired' && 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400',
@@ -1221,6 +1236,10 @@ const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.E
 };
 
 /** One car on a tablet or a phone: the code and its state on top, the facts, then the actions. */
+/** «خط شاشه السيارات زى خط رقم الفيزا»: the card's figures in the card number's type. */
+const CARD_FONT =
+  "[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace]";
+
 const VehicleCard = ({
   vehicle,
   typeName,
@@ -1272,7 +1291,15 @@ const VehicleCard = ({
             className="min-w-0 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1.5"
           >
             <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
-            <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">{value}</span>
+            <span
+              dir="auto"
+              className={cn(
+                'block truncate text-sm font-bold text-slate-900 dark:text-slate-100',
+                CARD_FONT,
+              )}
+            >
+              {value}
+            </span>
           </div>
         ))}
       </div>

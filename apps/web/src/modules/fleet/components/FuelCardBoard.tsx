@@ -234,7 +234,7 @@ const ExpiryTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
     <span
       data-fuel-expiry={state}
       className={cn(
-        'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
+        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
         state === 'valid' &&
           'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
         state === 'soon' &&
@@ -274,7 +274,7 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   };
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
-    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1">
+    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 fuel-grid:justify-self-stretch">
       <span className="font-mono text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
       <span
         className={cn(
@@ -322,11 +322,14 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
     toast.success(t('fleet.fuelCards.numberCopied'));
   };
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1">
+    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch">
       <span
         data-fuel-number={card.id}
         dir="ltr"
-        className={cn('text-base font-bold tracking-wider text-slate-800 dark:text-slate-200', NUM)}
+        className={cn(
+          'whitespace-nowrap text-base font-bold tracking-wider text-slate-800 dark:text-slate-200',
+          NUM,
+        )}
       >
         {groupCardNumber(card.number)}
       </span>
@@ -343,6 +346,21 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
     </div>
   );
 };
+
+/**
+ * «بيانات الفيزتين اكنهم جدول»: every card line is a row of the same columns, so a card's number,
+ * its expiry and its PIN sit under the line above's, each box as wide as its column. Where the
+ * line has the room it is one line, the figures in the middle («ف النص»); where it has not
+ * («لو الشاشه صغرت»), the card's name sits whole on top and the same columns follow under it —
+ * nothing cut, nothing on two lines. A phone keeps the stacked card.
+ */
+export const CARD_COLUMNS =
+  'fuel-grid:grid fuel-grid:grid-cols-[15rem_12.5rem_8rem_1fr] fuel-grid:items-center fuel-grid:gap-x-3 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_15rem_12.5rem_8rem_1fr]';
+export const CHARGE_COLUMNS =
+  'fuel-grid:grid fuel-grid:grid-cols-[14rem_12.5rem_15.5rem_1fr] fuel-grid:items-center fuel-grid:gap-x-3 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_14rem_12.5rem_15.5rem_1fr]';
+
+/** The card's name and company: a whole line above the boxes, or the line's first column. */
+export const NAME_CELL = 'fuel-grid:col-span-full fuel-grid:min-w-0 fuel-line:col-span-1';
 
 export const FuelCardRow = ({
   card,
@@ -364,12 +382,18 @@ export const FuelCardRow = ({
     <div
       data-fuel-line={card.company}
       data-fuel-card={card.id}
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2.5 transition hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-md"
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2.5 transition hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-md',
+        CARD_COLUMNS,
+      )}
     >
-      <div className="flex min-w-[210px] items-center gap-3">
+      <div className={cn('flex min-w-[210px] items-center gap-3', NAME_CELL)}>
         <CompanyBadge company={card.company} />
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white">
+        <div className="flex min-w-0 flex-col">
+          <span
+            title={card.name}
+            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white"
+          >
             {card.name}
           </span>
           <span className={cn('mt-0.5 flex items-center gap-1 text-sm font-medium', tone.text)}>
@@ -379,7 +403,7 @@ export const FuelCardRow = ({
         </div>
       </div>
 
-      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4">
+      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4 fuel-grid:contents">
         <NumberBox card={card} />
         <div
           className={cn(
@@ -396,7 +420,7 @@ export const FuelCardRow = ({
         <PinBox card={card} />
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 fuel-grid:justify-self-end">
         <button
           type="button"
           data-fuel-image={card.id}
@@ -405,7 +429,9 @@ export const FuelCardRow = ({
           className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
         >
           <Svg d={PATH.image} className={cn('h-3.5 w-3.5', tone.text)} />
-          <span>{t('fleet.fuelCards.board.photo')}</span>
+          <span className="fuel-grid:sr-only fuel-wide:not-sr-only">
+            {t('fleet.fuelCards.board.photo')}
+          </span>
         </button>
         {can('fleetFuelCard.edit') && (
           <button
@@ -653,7 +679,7 @@ export const VehicleFuelGroup = ({
         {held === 0 ? (
           children
         ) : (
-          <div className="flex flex-1 flex-col justify-center space-y-2 bg-slate-50 dark:bg-[#0c121e]/50 p-2.5">
+          <div className="flex flex-1 flex-col justify-center space-y-2 bg-slate-50 p-2.5 [container:fuel-rows/inline-size] dark:bg-[#0c121e]/50">
             {children}
           </div>
         )}

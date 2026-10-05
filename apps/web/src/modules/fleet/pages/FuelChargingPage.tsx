@@ -33,6 +33,8 @@ import { FUEL_CARD_COMPANIES, groupByVehicle } from '../components/FuelCardTiles
 import {
   BOARD_FONT,
   BoardIcon,
+  CHARGE_COLUMNS,
+  NAME_CELL,
   BoardKpi,
   CompanyBadge,
   EmptySlotRow,
@@ -105,7 +107,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors',
+        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors fuel-grid:justify-self-stretch',
         'focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
         'border-slate-200 dark:border-slate-800',
       )}
@@ -181,9 +183,9 @@ const ChargeRow = ({
         // «الصف بتاع الفيزا يكون بكل بياناته على صف واحد» — one line on a computer's screen; a
         // tablet or a phone, too narrow for it, lets the line wrap rather than hide half of it.
         'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2 transition hover:shadow-md',
-        // A computer's screen: three columns — the card, its figures in the MIDDLE («رقم الكارت
-        // والرصيد وطلب الرصيد يكونوا فى النص»), then its log at the end.
-        'lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-4',
+        // A computer's screen: the board's columns («اكنهم جدول») — the card, its number, its
+        // balance, its request, its log — each under the line above's.
+        CHARGE_COLUMNS,
         // The whole line carries its state: amber while a request waits, green when charged today,
         // red when the balance is about to run out.
         waiting
@@ -195,10 +197,13 @@ const ChargeRow = ({
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] hover:border-slate-300 dark:hover:border-slate-700/80',
       )}
     >
-      <div className="flex min-w-[190px] shrink-0 items-center gap-3 lg:min-w-max">
+      <div className={cn('flex min-w-[190px] shrink-0 items-center gap-3', NAME_CELL)}>
         <CompanyBadge company={card.company} />
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white">
+        <div className="flex min-w-0 flex-col">
+          <span
+            title={card.name}
+            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white"
+          >
             {card.name}
           </span>
           <span
@@ -219,8 +224,8 @@ const ChargeRow = ({
           </span>
         </div>
       </div>
-      <div className="my-auto flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:justify-center">
-        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1">
+      <div className="my-auto flex flex-wrap items-center gap-2.5 fuel-grid:contents">
+        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch">
           <span
             dir="ltr"
             className={cn(
@@ -233,7 +238,7 @@ const ChargeRow = ({
         </div>
         <div
           data-fuel-balance={card.id}
-          className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch"
         >
           <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
           <span
@@ -255,7 +260,7 @@ const ChargeRow = ({
           {low !== null && (
             <span
               className={cn(
-                'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
+                'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
                 low === 'red'
                   ? 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
                   : 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
@@ -271,7 +276,7 @@ const ChargeRow = ({
         </div>
         <ChargeRequest card={card} />
       </div>
-      <div className="flex items-center gap-2 lg:justify-end">
+      <div className="flex items-center gap-2 fuel-grid:justify-self-end">
         <button
           type="button"
           data-fuel-history={card.id}

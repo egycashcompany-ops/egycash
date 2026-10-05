@@ -10,9 +10,11 @@ import { type FleetVehicleDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
-import { Dialog } from '../../../shared/ui/Dialog';
-import { Button } from '../../../shared/ui/Button';
-import { Field, Input, Select } from '../../../shared/ui/form';
+import { createPortal } from 'react-dom';
+import { Input, Select } from '../../../shared/ui/form';
+import { Spinner } from '../../../shared/ui/Spinner';
+import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
+import { cn } from '../../../shared/lib/cn';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { localized } from '../../../shared/lib/format';
@@ -28,6 +30,17 @@ import {
 import { CatalogSelect } from './CatalogSelect';
 import { counterpartClass, letterFlipped } from '../lib/license-class-flip';
 import { LICENSE_IMAGE_ACCEPT, LicenseImagePreviewDialog } from './VehicleLicenseImage';
+import {
+  CLOSE_PATH,
+  DATE_ICON,
+  DesignField,
+  LOOK,
+  MONO,
+  SANS,
+  Stroke,
+  boxTone,
+} from './FuelCardDialog';
+import { PATH } from './FuelCardBoard';
 
 interface FormState {
   code: string;
@@ -224,221 +237,383 @@ export const VehicleFormDialog = ({
     : t('fleet.vehicles.fields.branchNoPermission');
 
   const hasImage = vehicle?.licenseImage != null;
-  const typeName =
-    (types.data?.items ?? []).find((type) => type.id === form.typeId)?.name ?? null;
+  const typeName = (types.data?.items ?? []).find((type) => type.id === form.typeId)?.name ?? null;
+
+  // «فورم إضافة سياره اعملها بقى زى شاشة الشحن»: the add/edit card dialog's design — its panel,
+  // header, sections and boxes — around the same fields, rules and required marks as before.
+  useEffect(() => {
+    if (!open) return undefined;
+    const escape = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', escape);
+    return () => window.removeEventListener('keydown', escape);
+  }, [open, onClose]);
+
+  const look = LOOK.add;
+  const box = boxTone(look);
+  // A `<select>` takes no tone of its own — the same box, forced over the control's base; red
+  // with the design's glow while a required one is empty.
+  const selectBox = (missing = false): string =>
+    cn(
+      '!h-auto !rounded-xl !py-3 !ps-4 !text-[15px] !font-medium !text-slate-900 dark:!text-white focus:!border-indigo-500 focus:!ring-1 focus:!ring-indigo-500',
+      missing
+        ? '!border-rose-500/70 !bg-slate-50 shadow-[0_0_0_1px_#ef4444,0_0_14px_-2px_rgba(239,68,68,0.3)] dark:!bg-[#0a1233]'
+        : '!border-slate-200 !bg-slate-50 dark:!border-[#2b3b6b] dark:!bg-[#0a1233]',
+    );
+  // A date's text starts at the box's left, where a refused box draws its «!».
+  const dateBox = cn(box, MONO, DATE_ICON.add, 'cursor-pointer !pl-10');
+  const heading = (text: string, icon: readonly string[]): JSX.Element => (
+    <h3 className="flex items-center gap-2 border-b border-slate-200 pb-2 text-[15px] font-bold text-slate-900 dark:border-[#2b3b6b]/60 dark:text-white">
+      <Stroke d={[...icon]} className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+      {text}
+    </h3>
+  );
+  const title = vehicle === null ? t('fleet.vehicles.create') : t('fleet.vehicles.edit');
 
   return (
     <>
-      <Dialog
-        // A FORM, and the longest one in the module — «عند اضافه سياره الموديل اللى يظهر لازم
-        // ادوس على الاكس عشان يتقفل مش فى اى حته». A stray click on the backdrop while reaching
-        // for a field threw away everything typed so far. Escape still closes it, and so do the
-        // two buttons in the footer.
-        dismissOnOutsideClick={false}
-        open={open}
-        onClose={onClose}
-        title={vehicle === null ? t('fleet.vehicles.create') : t('fleet.vehicles.edit')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={onClose}>
-              {t('common.cancel')}
-            </Button>
-            <Button loading={busy} onClick={required.guard(submit)}>
-              {t('common.save')}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4 sm:grid-cols-2">
-          <MissingFieldsBanner
-            missing={required.missing}
-            attempt={required.attempt}
-            className="sm:col-span-2"
-          />
-          <Field
-            label={t('fleet.vehicles.fields.code')}
-            required
-            missing={required.isMissing('code')}
-          >
-            <Input value={form.code} onChange={(e) => set('code')(e.target.value)} dir="ltr" />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.type')}
-            required
-            missing={required.isMissing('type')}
-          >
-            <Select value={form.typeId} onChange={(e) => set('typeId')(e.target.value)}>
-              <option value="">{t('common.select')}</option>
-              {(types.data?.items ?? [])
-                .filter((type) => type.isActive || type.id === vehicle?.typeId)
-                .map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {localized(type.name, locale)}
-                  </option>
-                ))}
-            </Select>
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.plate')}
-            required
-            missing={required.isMissing('plate')}
-          >
-            <Input
-              value={form.plateNumber}
-              onChange={(e) => set('plateNumber')(e.target.value)}
-              rule="plate"
+      {open &&
+        createPortal(
+          <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4">
+            <div
+              className="fixed inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-md dark:bg-[#03060c]/80"
+              aria-hidden="true"
             />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.chassis')}
-            required
-            missing={required.isMissing('chassis')}
-          >
-            <Input
-              value={form.chassisNumber}
-              onChange={(e) => set('chassisNumber')(e.target.value)}
-              rule="english"
-            />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.motor')}
-            required
-            missing={required.isMissing('motor')}
-          >
-            <Input
-              value={form.motorNumber}
-              onChange={(e) => set('motorNumber')(e.target.value)}
-              rule="english"
-            />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.joinedAt')}
-            required
-            missing={required.isMissing('joinedAt')}
-          >
-            <Input
-              type="date"
-              value={form.joinedAt}
-              onChange={(e) => set('joinedAt')(e.target.value)}
-            />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.licenseExpiresAt')}
-            required
-            missing={required.isMissing('licenseExpiresAt')}
-            {...(classFlippedOnOldDate ? { error: t('fleet.vehicles.licenseClassNeedsDate') } : {})}
-          >
-            <Input
-              type="date"
-              value={form.licenseExpiresAt}
-              onChange={(e) => pickExpiry(e.target.value)}
-            />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.licenseClass')}
-            hint={t('fleet.vehicles.fields.catalogHint')}
-          >
-            <CatalogSelect
-              kind="licenseClass"
-              value={form.licenseClassId}
-              onChange={pickClass}
-              ariaLabel={t('fleet.vehicles.fields.licenseClass')}
-            />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.operation')}
-            hint={t('fleet.vehicles.fields.catalogHint')}
-          >
-            <CatalogSelect
-              kind="operation"
-              value={form.operationId}
-              onChange={set('operationId')}
-              ariaLabel={t('fleet.vehicles.fields.operation')}
-            />
-          </Field>
-          <Field
-            label={t('fleet.vehicles.fields.insuranceCompany')}
-            hint={t('fleet.vehicles.fields.catalogHint')}
-          >
-            <CatalogSelect
-              kind="insuranceCompany"
-              value={form.insuranceCompanyId}
-              onChange={set('insuranceCompanyId')}
-              ariaLabel={t('fleet.vehicles.fields.insuranceCompany')}
-            />
-          </Field>
-          {/*
-            The branch select renders for EVERY user, unlike the optional org fields elsewhere:
-            the field is required, so hiding it behind `branch.view` would leave a user unable to
-            complete the form at all. Without that permission the branch list is empty and the
-            hint says who to ask — which is honest about why, instead of silently failing.
-          */}
-          <Field
-            label={t('fleet.vehicles.fields.branch')}
-            required
-            missing={required.isMissing('branch')}
-            hint={branchHint}
-            // Missing, the line under the box says WHY it is empty — no permission to list the
-            // branches, or no default to preselect — rather than only «حقل مطلوب».
-            {...(required.isMissing('branch') && branchHint !== undefined
-              ? { error: branchHint }
-              : {})}
-          >
-            <Select value={form.branchId} onChange={(e) => set('branchId')(e.target.value)}>
-              <option value="">{t('common.select')}</option>
-              {branches.map((branch) => (
-                <option key={branch.id} value={branch.id}>
-                  {localized(branch.name, locale)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={t('fleet.vehicles.fields.issi')}>
-            <Input value={form.issi} onChange={(e) => set('issi')(e.target.value)} rule="integer" />
-          </Field>
-          <Field label={t('fleet.vehicles.fields.motorolaSn')}>
-            <Input
-              value={form.motorolaSn}
-              onChange={(e) => set('motorolaSn')(e.target.value)}
-              rule="english"
-            />
-          </Field>
-
-          <div className="sm:col-span-2">
-            <Field
-              label={t('fleet.vehicles.licenseImage.label')}
-              hint={t('fleet.vehicles.licenseImage.hint')}
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={title}
+              data-vehicle-form="true"
+              className={cn(
+                SANS,
+                'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-900 antialiased dark:text-slate-100',
+                look.panel,
+                '!max-w-3xl',
+              )}
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-                  {hasImage
-                    ? t('fleet.vehicles.licenseImage.replace')
-                    : t('fleet.vehicles.licenseImage.upload')}
-                  <input
-                    type="file"
-                    accept={LICENSE_IMAGE_ACCEPT}
-                    className="hidden"
-                    disabled={busy}
-                    onChange={(e) => void replaceImage(e.target.files?.[0])}
-                  />
-                </label>
-                {hasImage && (
-                  <Button variant="secondary" size="sm" onClick={() => setPreviewOpen(true)}>
-                    {t('fleet.vehicles.licenseImage.view')}
-                  </Button>
-                )}
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  {pendingImage !== null
-                    ? t('fleet.vehicles.licenseImage.pending', { name: pendingImage.name })
-                    : hasImage
-                      ? (vehicle?.licenseImage?.fileName ?? '')
-                      : t('fleet.vehicles.licenseImage.none')}
-                </span>
+              <header
+                className={cn('flex items-center justify-between border-b px-6', look.header)}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={cn('flex items-center justify-center rounded-xl border', look.icon)}
+                  >
+                    <Stroke d={[...PATH.truck]} className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold tracking-wide text-slate-900 dark:text-white">
+                      {title}
+                    </h2>
+                    <p className="text-[13px] font-medium text-slate-600 dark:text-slate-300">
+                      {vehicle === null
+                        ? t('fleet.vehicles.form.subtitleCreate')
+                        : t('fleet.vehicles.form.subtitleEdit', { code: vehicle.code })}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label={t('common.close')}
+                  className={cn(
+                    'flex items-center text-slate-400 transition-all hover:text-slate-900 focus:outline-none dark:hover:text-white',
+                    look.close,
+                  )}
+                >
+                  <Stroke d={CLOSE_PATH} className="h-5 w-5" />
+                </button>
+              </header>
+
+              <div className={cn('max-h-[calc(100vh-9rem)] space-y-7 overflow-y-auto', look.body)}>
+                <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
+
+                <section className="space-y-4">
+                  {heading(t('fleet.vehicles.form.sections.car'), PATH.truck)}
+                  <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+                    <DesignField
+                      label={t('fleet.vehicles.fields.code')}
+                      required
+                      missing={required.isMissing('code')}
+                    >
+                      <Input
+                        value={form.code}
+                        onChange={(e) => set('code')(e.target.value)}
+                        dir="ltr"
+                        tone={cn(box, MONO, 'text-right')}
+                      />
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.type')}
+                      required
+                      missing={required.isMissing('type')}
+                    >
+                      <Select
+                        value={form.typeId}
+                        onChange={(e) => set('typeId')(e.target.value)}
+                        className={selectBox(required.isMissing('type'))}
+                      >
+                        <option value="">{t('common.select')}</option>
+                        {(types.data?.items ?? [])
+                          .filter((type) => type.isActive || type.id === vehicle?.typeId)
+                          .map((type) => (
+                            <option key={type.id} value={type.id}>
+                              {localized(type.name, locale)}
+                            </option>
+                          ))}
+                      </Select>
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.plate')}
+                      required
+                      missing={required.isMissing('plate')}
+                    >
+                      <Input
+                        value={form.plateNumber}
+                        onChange={(e) => set('plateNumber')(e.target.value)}
+                        rule="plate"
+                        tone={box}
+                      />
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.chassis')}
+                      required
+                      missing={required.isMissing('chassis')}
+                    >
+                      <Input
+                        value={form.chassisNumber}
+                        onChange={(e) => set('chassisNumber')(e.target.value)}
+                        rule="english"
+                        tone={cn(box, MONO)}
+                      />
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.motor')}
+                      required
+                      missing={required.isMissing('motor')}
+                    >
+                      <Input
+                        value={form.motorNumber}
+                        onChange={(e) => set('motorNumber')(e.target.value)}
+                        rule="english"
+                        tone={cn(box, MONO)}
+                      />
+                    </DesignField>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  {heading(t('fleet.vehicles.form.sections.licence'), PATH.calendar)}
+                  <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+                    <DesignField
+                      label={t('fleet.vehicles.fields.joinedAt')}
+                      required
+                      missing={required.isMissing('joinedAt')}
+                    >
+                      <Input
+                        type="date"
+                        value={form.joinedAt}
+                        onChange={(e) => set('joinedAt')(e.target.value)}
+                        tone={dateBox}
+                      />
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.licenseExpiresAt')}
+                      required
+                      missing={required.isMissing('licenseExpiresAt')}
+                      error={
+                        classFlippedOnOldDate
+                          ? t('fleet.vehicles.licenseClassNeedsDate')
+                          : undefined
+                      }
+                    >
+                      <Input
+                        type="date"
+                        value={form.licenseExpiresAt}
+                        onChange={(e) => pickExpiry(e.target.value)}
+                        tone={dateBox}
+                      />
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.licenseClass')}
+                      hint={t('fleet.vehicles.fields.catalogHint')}
+                    >
+                      <CatalogSelect
+                        kind="licenseClass"
+                        value={form.licenseClassId}
+                        onChange={pickClass}
+                        ariaLabel={t('fleet.vehicles.fields.licenseClass')}
+                        className={selectBox()}
+                      />
+                    </DesignField>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  {heading(t('fleet.vehicles.form.sections.assignment'), PATH.box)}
+                  <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+                    <DesignField
+                      label={t('fleet.vehicles.fields.operation')}
+                      hint={t('fleet.vehicles.fields.catalogHint')}
+                    >
+                      <CatalogSelect
+                        kind="operation"
+                        value={form.operationId}
+                        onChange={set('operationId')}
+                        ariaLabel={t('fleet.vehicles.fields.operation')}
+                        className={selectBox()}
+                      />
+                    </DesignField>
+                    <DesignField
+                      label={t('fleet.vehicles.fields.insuranceCompany')}
+                      hint={t('fleet.vehicles.fields.catalogHint')}
+                    >
+                      <CatalogSelect
+                        kind="insuranceCompany"
+                        value={form.insuranceCompanyId}
+                        onChange={set('insuranceCompanyId')}
+                        ariaLabel={t('fleet.vehicles.fields.insuranceCompany')}
+                        className={selectBox()}
+                      />
+                    </DesignField>
+                    {/*
+                      The branch select renders for EVERY user, unlike the optional org fields
+                      elsewhere: the field is required, so hiding it behind `branch.view` would
+                      leave a user unable to complete the form at all. Without that permission the
+                      branch list is empty and the hint says who to ask.
+                    */}
+                    <DesignField
+                      label={t('fleet.vehicles.fields.branch')}
+                      required
+                      missing={required.isMissing('branch')}
+                      hint={branchHint}
+                      // Missing, the line under the box says WHY it is empty — no permission to
+                      // list the branches, or no default to preselect — rather than «حقل مطلوب».
+                      error={
+                        required.isMissing('branch') && branchHint !== undefined
+                          ? branchHint
+                          : undefined
+                      }
+                    >
+                      <Select
+                        value={form.branchId}
+                        onChange={(e) => set('branchId')(e.target.value)}
+                        className={selectBox(required.isMissing('branch'))}
+                      >
+                        <option value="">{t('common.select')}</option>
+                        {branches.map((branch) => (
+                          <option key={branch.id} value={branch.id}>
+                            {localized(branch.name, locale)}
+                          </option>
+                        ))}
+                      </Select>
+                    </DesignField>
+                  </div>
+                </section>
+
+                <section className="space-y-4">
+                  {heading(t('fleet.vehicles.form.sections.radio'), PATH.link)}
+                  <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+                    <DesignField label={t('fleet.vehicles.fields.issi')}>
+                      <Input
+                        value={form.issi}
+                        onChange={(e) => set('issi')(e.target.value)}
+                        rule="integer"
+                        tone={cn(box, MONO)}
+                      />
+                    </DesignField>
+                    <DesignField label={t('fleet.vehicles.fields.motorolaSn')}>
+                      <Input
+                        value={form.motorolaSn}
+                        onChange={(e) => set('motorolaSn')(e.target.value)}
+                        rule="english"
+                        tone={cn(box, MONO)}
+                      />
+                    </DesignField>
+                  </div>
+                </section>
+
+                <section className="space-y-3">
+                  {heading(t('fleet.vehicles.licenseImage.label'), PATH.image)}
+                  <div className="flex flex-col items-start justify-between gap-3 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 p-4 dark:border-[#2b3b6b] dark:bg-[#0a1233]/60 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-3.5">
+                      <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-indigo-500/20 bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
+                        <Stroke d={[...PATH.image]} className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-900 dark:text-white">
+                          {pendingImage !== null
+                            ? t('fleet.vehicles.licenseImage.pending', { name: pendingImage.name })
+                            : hasImage
+                              ? (vehicle?.licenseImage?.fileName ?? '')
+                              : t('fleet.vehicles.licenseImage.none')}
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {t('fleet.vehicles.licenseImage.hint')}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PhotoPickButton
+                        accept={LICENSE_IMAGE_ACCEPT}
+                        disabled={busy}
+                        label={
+                          hasImage
+                            ? t('fleet.vehicles.licenseImage.replace')
+                            : t('fleet.vehicles.licenseImage.upload')
+                        }
+                        onFile={(file) => void replaceImage(file)}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-500/20 dark:text-indigo-300"
+                      >
+                        {hasImage
+                          ? t('fleet.vehicles.licenseImage.replace')
+                          : t('fleet.vehicles.licenseImage.upload')}
+                      </PhotoPickButton>
+                      {hasImage && (
+                        <button
+                          type="button"
+                          onClick={() => setPreviewOpen(true)}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-100 dark:border-[#2b3b6b] dark:text-slate-200 dark:hover:bg-slate-800/60"
+                        >
+                          {t('fleet.vehicles.licenseImage.view')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
+                <div
+                  className={cn('mt-2 flex items-center justify-start gap-3 border-t', look.footer)}
+                >
+                  <button
+                    type="button"
+                    data-vehicle-save="true"
+                    aria-busy={busy}
+                    onClick={required.guard(submit)}
+                    className={cn(
+                      'flex items-center gap-2 rounded-xl py-2.5 text-[15px] font-bold text-white transition-all active:scale-[0.98]',
+                      look.save,
+                    )}
+                  >
+                    {busy && <Spinner className="h-4 w-4" />}
+                    <span>{t('common.save')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className={cn(
+                      'rounded-xl border bg-white py-2.5 text-[15px] font-bold text-slate-900 transition-all hover:bg-slate-100 active:scale-[0.98] dark:bg-[#1a2550] dark:text-slate-100 dark:hover:bg-slate-700/80',
+                      look.cancel,
+                    )}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                </div>
               </div>
-            </Field>
-          </div>
-        </div>
-      </Dialog>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <LicenseImagePreviewDialog
         open={previewOpen}

@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss';
+import plugin from 'tailwindcss/plugin';
 
 // Theme tokens for the whole web app. Dark mode uses the `class` strategy (ThemeProvider stamps
 // `dark` on <html>). `brand` is the primary accent scale; the rest of the palette uses Tailwind's
@@ -77,5 +78,15 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // The fuel boards' card lines size by the room their own column has, not by the screen's
+    // width — the side menu, open or folded, changes that room at the same screen size. A line
+    // that fits stays one table-like line; one that does not keeps the card's name whole on top
+    // and its boxes, still in columns, under it.
+    plugin(({ addVariant }) => {
+      addVariant('fuel-grid', '@container fuel-rows (min-width: 48rem)');
+      addVariant('fuel-line', '@container fuel-rows (min-width: 68rem)');
+      addVariant('fuel-wide', '@container fuel-rows (min-width: 80rem)');
+    }),
+  ],
 } satisfies Config;

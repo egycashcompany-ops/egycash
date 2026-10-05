@@ -51,7 +51,7 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
-import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState } from '../components/FuelCardBoard';
+import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState, ymd } from '../components/FuelCardBoard';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
@@ -610,7 +610,11 @@ export const VehiclesListPage = (): JSX.Element => {
     {
       key: 'joinedAt',
       header: t('fleet.vehicles.columns.joinedAt'),
-      render: (v) => <span className="tabular-nums">{formatDate(v.joinedAt, locale)}</span>,
+      render: (v) => (
+        <span className="tabular-nums" dir="ltr">
+          {ymd(v.joinedAt)}
+        </span>
+      ),
     },
     {
       key: 'licenseExpiresAt',
@@ -632,7 +636,7 @@ export const VehiclesListPage = (): JSX.Element => {
                     : 'text-slate-900 dark:text-slate-100',
               )}
             >
-              {formatDate(v.licenseExpiresAt, locale)}
+              {ymd(v.licenseExpiresAt)}
             </span>
             <LicenceTag state={state} />
           </span>
@@ -1106,7 +1110,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 [t('fleet.vehicles.columns.plate'), v.plateNumber],
                 [t('fleet.vehicles.columns.chassis'), v.chassisNumber],
                 [t('fleet.vehicles.columns.motor'), v.motorNumber],
-                [t('fleet.vehicles.columns.joinedAt'), formatDate(v.joinedAt, locale)],
+                [t('fleet.vehicles.columns.joinedAt'), ymd(v.joinedAt)],
                 [
                   t('fleet.vehicles.columns.licenseClass'),
                   v.licenseClassId === null ? '—' : (licenseClassName.get(v.licenseClassId) ?? '—'),
@@ -1129,7 +1133,7 @@ export const VehiclesListPage = (): JSX.Element => {
               licence={
                 <span className="flex items-center gap-1.5">
                   <span dir="ltr" className={cn('font-semibold text-slate-900 dark:text-slate-100', NUM)}>
-                    {formatDate(v.licenseExpiresAt, locale)}
+                    {ymd(v.licenseExpiresAt)}
                   </span>
                   <LicenceTag state={expiryState(v.licenseExpiresAt, 30)} />
                 </span>
@@ -1207,6 +1211,9 @@ const DARK_TABLE = cn(
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
   // «لما عملت المتصفح على 110 ف الميه الداتا ظاهره احسن»: a wide screen takes the type a size up,
   // from where the whole table still fits beside the menu.
+  // «خط شاشه السيارات زى خط رقم الفيزا»: the card number's type — the system monospace, heavy —
+  // for every figure in the table; Arabic words fall through to Cairo.
+  "[&_td]:[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace] [&_td]:!font-bold",
   'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
 );
 
@@ -1229,6 +1236,10 @@ const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.E
 };
 
 /** One car on a tablet or a phone: the code and its state on top, the facts, then the actions. */
+/** «خط شاشه السيارات زى خط رقم الفيزا»: the card's figures in the card number's type. */
+const CARD_FONT =
+  "[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace]";
+
 const VehicleCard = ({
   vehicle,
   typeName,
@@ -1280,7 +1291,15 @@ const VehicleCard = ({
             className="min-w-0 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1.5"
           >
             <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
-            <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">{value}</span>
+            <span
+              dir="auto"
+              className={cn(
+                'block truncate text-sm font-bold text-slate-900 dark:text-slate-100',
+                CARD_FONT,
+              )}
+            >
+              {value}
+            </span>
           </div>
         ))}
       </div>

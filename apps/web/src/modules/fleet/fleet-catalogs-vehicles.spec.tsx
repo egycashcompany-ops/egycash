@@ -628,22 +628,18 @@ describe('the registry table renders the frozen column order', () => {
    * look like the same answer and be a different one the moment a filter matches more than a
    * page.
    */
-  it('says how many cars the filter matched, beside the filters', () => {
+  it('says how many cars the filter matched, on the line above the filters', () => {
     const html = withRows([vehicle({ id: 'v1' }), vehicle({ id: 'v2', code: '151' })]);
     expect(html, 'the count is rendered').toContain('data-vehicle-count');
-    // IN the bar, and specifically in `FilterBar`'s own trailing group — the same group that
-    // already holds the reset and the active-filter badge. "Somewhere above the table" would be
-    // satisfied by a loose span dropped between the bar and the grid, which is not what was
-    // asked for and would not line up with anything.
+    // The count rides with «الإحصائيات», the export and «إضافة سيارة» on the toolbar line ABOVE
+    // the bar, so the eleven filters keep the whole width and stay on one row on a computer.
     const source = readFileSync(join(HERE, 'pages/VehiclesListPage.tsx'), 'utf8');
     const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
-    const open = code.indexOf('<FilterBar');
-    const trailing = code.indexOf('trailing:', open);
-    expect(trailing, 'passed as the bar’s trailing content').toBeGreaterThan(open);
-    expect(trailing, 'and inside the opening tag, not loose after it').toBeLessThan(
-      code.indexOf('<DataTable'),
-    );
-    expect(code.slice(trailing, code.indexOf('</span>', trailing))).toContain('data-vehicle-count');
+    const toolbar = code.indexOf('data-vehicle-toolbar');
+    const count = code.indexOf('data-vehicle-count');
+    expect(toolbar, 'the toolbar line exists').toBeGreaterThan(-1);
+    expect(count, 'the count sits on it').toBeGreaterThan(toolbar);
+    expect(count, 'above the filter bar').toBeLessThan(code.indexOf('<FilterBar'));
     // Nothing dropped between the bar and the table.
     const between = code.slice(code.indexOf('</FilterBar>'), code.indexOf('<DataTable'));
     expect(between, 'nothing between the bar and the grid').not.toContain('data-vehicle-count');

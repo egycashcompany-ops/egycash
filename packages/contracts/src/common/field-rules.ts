@@ -33,23 +33,53 @@ export const isEnglishName = (value: string): boolean => ENGLISH_NAME_RE.test(va
 const NAME_BINDERS = new Set(['عبد', 'أبو', 'ابو', 'أبا', 'ابا', 'ابن', 'بن', 'آل']);
 
 /**
- * How many name PARTS a full name carries.
- *
- * A HEURISTIC, and used only to advise (never to reject): the binder list cannot be complete, and
- * a name it counts short is still a name somebody is entitled to. Callers warn on the result; none
- * of them refuse a save because of it.
+ * Tokens that bind to the word BEFORE them — the other half of the same rule: «نور الدين», «فتح
+ * الله», «زين العابدين», «سيف الإسلام» are each ONE part. («عبد الله» is already one by the binder
+ * above.)
  */
-export const countNameParts = (value: string): number => {
+const NAME_SUFFIX_BINDERS = new Set(['الدين', 'الله', 'الإسلام', 'الاسلام', 'العابدين']);
+
+/**
+ * A full name split into its PARTS — person, father, grandfather, family — with a compound part
+ * kept whole. The one tokenizer every name rule below reads, so they cannot disagree on what a
+ * part is.
+ */
+export const nameParts = (value: string): string[] => {
   const tokens = value.trim().split(/\s+/).filter((t) => t.length > 0);
-  let parts = 0;
+  const parts: string[] = [];
   for (let i = 0; i < tokens.length; i += 1) {
-    parts += 1;
+    let part = tokens[i] as string;
     // A binder swallows the word that follows it — but never the last word, or a trailing «عبد»
     // would count as a part that has no name attached to it.
-    if (NAME_BINDERS.has(tokens[i] as string) && i + 1 < tokens.length) i += 1;
+    if (NAME_BINDERS.has(part) && i + 1 < tokens.length) {
+      i += 1;
+      part = `${part} ${tokens[i] as string}`;
+    }
+    while (i + 1 < tokens.length && NAME_SUFFIX_BINDERS.has(tokens[i + 1] as string)) {
+      i += 1;
+      part = `${part} ${tokens[i] as string}`;
+    }
+    parts.push(part);
   }
   return parts;
 };
+
+/**
+ * How many name PARTS a full name carries.
+ *
+ * A HEURISTIC, and used only to advise (never to reject): the binder lists cannot be complete, and
+ * a name it counts short is still a name somebody is entitled to. Callers warn on the result; none
+ * of them refuse a save because of it.
+ */
+export const countNameParts = (value: string): number => nameParts(value).length;
+
+/**
+ * The first `count` PARTS of a name — «الاسم الثلاثي» for three — compound parts kept whole:
+ * «محمد عبد الله علي حسن» gives «محمد عبد الله علي», never «محمد عبد الله». A shorter name is
+ * returned whole.
+ */
+export const leadingNameParts = (value: string, count: number): string =>
+  nameParts(value).slice(0, count).join(' ');
 
 /** The Egyptian convention every official form is filled in with: person, father, grandfather, family. */
 export const QUADRUPLE_NAME_PARTS = 4;

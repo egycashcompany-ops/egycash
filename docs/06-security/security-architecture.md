@@ -85,6 +85,10 @@ All 403s are audited (permission probing is a signal).
 - **PII handling:** national IDs, phones, addresses classified as PII → redacted from system logs
   (Pino redaction paths), never in URLs, masked by default in list views
   (`298*******4567`) with `*.viewSensitive`-style permissions for full display where required.
+  The first such surface is IT's custody acknowledgment, which prints the holder's national ID:
+  `itAsset.viewNationalId` decides who receives it in full (the receipt is otherwise read on
+  `itAsset.view`), and HR hands it over through a directory lookup of its own rather than as a
+  field of the shared `DirectoryEmployee` shape.
 - **Files:** no static serving; authorized endpoint + short-lived signed URLs; per-category mime
   and size validation; checksum integrity; **virus scanning by ClamAV** on every upload when
   `CLAMAV_HOST` is set (`platform/files/virus-scan.processor.ts` behind the `virusScan` extension

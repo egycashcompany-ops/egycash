@@ -5124,6 +5124,8 @@ const en: Record<string, string> = {
   'it.custody.receipt.condition': 'Condition (e.g. N for new)',
   'it.custody.receipt.lineNotes': 'Notes',
   'it.custody.receipt.accessories': 'Accessories handed over — one per line',
+  'it.custody.receipt.nationalIdWithheld':
+    'The national ID was left blank on the paper: showing it on custody receipts needs its own permission.',
   'it.custody.receipt.handedOver':
     'Handed over. Upload the receipt once the employee signs it.',
   'it.custody.receipt.preparing': 'Preparing the receipt…',
@@ -12570,6 +12572,8 @@ const ar: Record<string, string> = {
   'it.custody.receipt.condition': 'الحالة (مثال: N للجديد)',
   'it.custody.receipt.lineNotes': 'ملاحظات',
   'it.custody.receipt.accessories': 'المشتملات المسلَّمة — بند في كل سطر',
+  'it.custody.receipt.nationalIdWithheld':
+    'تُرك الرقم القومي فارغًا في الإقرار؛ فعرضه في إقرار الاستلام يحتاج إلى صلاحية خاصة.',
   'it.custody.receipt.handedOver': 'تم التسليم. ارفع صورة الإيصال بعد توقيع الموظف عليه.',
   'it.custody.receipt.preparing': 'جارٍ تجهيز الإيصال…',
   'it.custody.receipt.popupBlocked':

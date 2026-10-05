@@ -107,10 +107,13 @@ export const auditReceiptIssued = async (
 };
 
 /** The receipt's snapshot of who signed it — taken from the holder read before the transaction. */
-const signer = (holder: ReceiptHolder) => ({
+export const signer = (holder: ReceiptHolder) => ({
   employeeCode: holder.employeeCode,
   employeeName: holder.employeeName,
   jobTitle: holder.jobTitle,
+  nationalId: holder.nationalId,
+  section: holder.section,
+  department: holder.department,
 });
 
 interface HistoryInput {

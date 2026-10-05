@@ -6,8 +6,8 @@ import { ErrorCodes, type HandOverItAssets, type PreviewItCustodyReceipt } from 
 import { created, ok, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { AppError, ValidationError } from '../../../shared/errors';
-import { scopeSelector } from '../../../shared/types';
-import { toItAssetDto, toItCustodyReceiptDto } from '../it.mappers';
+import { hasPermission, scopeSelector } from '../../../shared/types';
+import { receiptNationalId, toItAssetDto, toItCustodyReceiptDto } from '../it.mappers';
 import { itAssetCustodyService } from './custody.service';
 import { itCustodyReceiptService } from './receipt.service';
 
@@ -48,9 +48,17 @@ export const signedCopyUpload = (): RequestHandler => {
 /** Custody writes are gated on `itAsset.assign`; the SCOPE still comes from the read grant. */
 const custodyScope = (req: Request) => scopeSelector(authContext(req), 'itAsset.view');
 
+/**
+ * Whether this caller sees the holder's national ID in full (Security Architecture §3) — its own
+ * grant, apart from printing: a receipt is read and reprinted on `itAsset.view`.
+ */
+const revealsNationalId = (req: Request): boolean =>
+  hasPermission(authContext(req), 'itAsset.viewNationalId');
+
 export const previewItCustodyReceipt = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<PreviewItCustodyReceipt>(req);
-  ok(res, await itCustodyReceiptService.preview(body, custodyScope(req)));
+  const paper = await itCustodyReceiptService.preview(body, custodyScope(req));
+  ok(res, { ...paper, ...receiptNationalId(paper.nationalId, revealsNationalId(req)) });
 };
 
 export const handOverItAssets = async (req: Request, res: Response): Promise<void> => {
@@ -60,12 +68,16 @@ export const handOverItAssets = async (req: Request, res: Response): Promise<voi
     authContext(req),
     custodyScope(req),
   );
-  created(res, { receipt: toItCustodyReceiptDto(receipt), assets: assets.map(toItAssetDto) });
+  created(res, {
+    receipt: toItCustodyReceiptDto(receipt, revealsNationalId(req)),
+    assets: assets.map(toItAssetDto),
+  });
 };
 
 export const getItCustodyReceipt = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, toItCustodyReceiptDto(await itCustodyReceiptService.get(params.id, custodyScope(req))));
+  const receipt = await itCustodyReceiptService.get(params.id, custodyScope(req));
+  ok(res, toItCustodyReceiptDto(receipt, revealsNationalId(req)));
 };
 
 /** «طباعة الإيصال» again — the receipt as it prints, its number assured. */
@@ -76,7 +88,7 @@ export const printItCustodyReceipt = async (req: Request, res: Response): Promis
     authContext(req),
     custodyScope(req),
   );
-  ok(res, toItCustodyReceiptDto(receipt));
+  ok(res, toItCustodyReceiptDto(receipt, revealsNationalId(req)));
 };
 
 export const issueItAssignmentReceipt = async (req: Request, res: Response): Promise<void> => {
@@ -86,7 +98,7 @@ export const issueItAssignmentReceipt = async (req: Request, res: Response): Pro
     authContext(req),
     custodyScope(req),
   );
-  created(res, toItCustodyReceiptDto(receipt));
+  created(res, toItCustodyReceiptDto(receipt, revealsNationalId(req)));
 };
 
 export const uploadItCustodyReceiptSignedCopy = async (
@@ -111,7 +123,7 @@ export const uploadItCustodyReceiptSignedCopy = async (
     },
     custodyScope(req),
   );
-  ok(res, toItCustodyReceiptDto(receipt));
+  ok(res, toItCustodyReceiptDto(receipt, revealsNationalId(req)));
 };
 
 export const getItCustodyReceiptSignedCopy = async (req: Request, res: Response): Promise<void> => {
@@ -137,5 +149,5 @@ export const deleteItCustodyReceiptSignedCopy = async (
     params.id,
     custodyScope(req),
   );
-  ok(res, toItCustodyReceiptDto(receipt));
+  ok(res, toItCustodyReceiptDto(receipt, revealsNationalId(req)));
 };

@@ -11,13 +11,13 @@
 // signed by hand and filed, so its wording is the form's, not ours.
 //
 // The form's red marks what is filled in for each paper, and it stays red here — filled with what
-// the system knows: the employee's name and job; «بطاقة رقم قومي … صادرة من قسم … – … بتاريخ …»
-// with their national ID, their section and department, and the paper's date («مفروض تملأها
-// تلقائي من النظام»); the device by its make and model («خليه يظهر الـ Manufacturer / Model»)
-// and its serial. What the system does not hold stays a dotted line for the pen — and so does the
-// national ID for a reader not allowed to see it (`itAsset.viewNationalId`). A row of the table
-// nothing was typed against is left off, and so is the whole table, or the accessories, when there
-// is nothing to list.
+// the system knows: the employee's name and job; «بطاقة رقم قومي …» with their national ID («مفروض
+// تملأها تلقائي من النظام»); the device by its make and model («خليه يظهر الـ Manufacturer /
+// Model») and its serial. The form's «صادرة من قسم … – … بتاريخ …» is left out altogether («شيل
+// الجزء دا من الإيصال»): the paper's date is in the signature block. What the system does not hold
+// stays a dotted line for the pen — and so does the national ID for a reader not allowed to see it
+// (`itAsset.viewNationalId`). A row of the table nothing was typed against is left off, and so is
+// the whole table, or the accessories, when there is nothing to list.
 //
 // Under the signature the name is the first three PARTS («مش لازم رباعي ممكن ثلاثي فقط تحت عند
 // الإمضاء»), on one line; the statement above it keeps the full name.
@@ -96,12 +96,6 @@ export const receiptDate = (iso: string): string => {
  */
 export const formDigits = (value: string): string =>
   value.replace(/[0-9]/gu, (digit) => arabicDigits.format(Number(digit)));
-
-/**
- * The date inside the statement — «بتاريخ ٥ / ١٠ / ٢٠٢٦» — spaced with THIN spaces: they read the
- * same right to left, and a justified line cannot stretch them into a gap.
- */
-export const statementDate = (iso: string): string => receiptDate(iso).replaceAll(' ', '\u2009');
 
 /** The name under the signature: the first three parts, compound parts kept whole. */
 export const signatureName = (fullName: string | null): string =>
@@ -238,7 +232,7 @@ const page = (
   </header>
   <hr class="rule" />
   <h1>إقرار استلام</h1>
-  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} – صادرة من قسم ${fill(paper.section?.ar, 8)} – ${fill(paper.department?.ar, 10)} بتاريخ ${fill(statementDate(paper.issuedAt), 24, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
+  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
   ${accessories.length > 0 ? `<p class="lead">ومشتملاته كالتالي:</p><div class="items">${accessoryList(accessories)}</div>` : ''}
   <p class="undertaking">${RECEIPT_UNDERTAKING}</p>

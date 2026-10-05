@@ -41,6 +41,9 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The acknowledgment no longer prints «صادرة من قسم … – … بتاريخ …».** «شيل الجزء دا من الإيصال»:
+  the statement runs «… بطاقة رقم قومي … بأنني قد استلمت جهاز …», and the paper's date stays in the
+  signature block. The section and department are still kept on the receipt, unprinted.
 - **The acknowledgment names the device by its make and model, and the company as «إيجي كاش
   للحلول النقدية».** «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول» and «خليه يظهر الـ
   Manufacturer / Model بداله»: the statement now reads «بشركة إيجي كاش للحلول النقدية» and

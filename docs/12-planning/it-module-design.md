@@ -177,11 +177,12 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
   custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
   none of these and print the asset's name as the device.
 - `branchId` is the first line's branch — the read-scope anchor, like an interval's.
-- The identity line («بطاقة رقم قومي … صادرة من قسم … – …») is read from HR through the directory
-  (`getDirectoryIdentityFacts`: the national ID and the section, a lookup of its own so the raw ID
-  never joins `DirectoryEmployee`) and the organization (the section's and department's names).
-  `nationalId` is stored RAW for the paper, and leaves the API only for a caller holding
-  `itAsset.viewNationalId` (`nationalIdVisible` tells «withheld» from «HR has none»).
+- The holder's identity is read from HR through the directory (`getDirectoryIdentityFacts`: the
+  national ID and the section, a lookup of its own so the raw ID never joins `DirectoryEmployee`)
+  and the organization (the section's and department's names). `nationalId` is stored RAW for the
+  paper («بطاقة رقم قومي …»), and leaves the API only for a caller holding `itAsset.viewNationalId`
+  (`nationalIdVisible` tells «withheld» from «HR has none»). `section` and `department` are kept
+  on the receipt as the record of where the holder worked, but the paper no longer prints them.
 - `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
   `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
   before a hand-over takes the next one; the hand-over records the number of the paper that was
@@ -440,10 +441,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   specifications table and accessories (recorded on the
   asset; a hand-over may say what came with it this time), the undertaking, and the signature
   block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
-  of several pages, the page count (§17, 2026-10-05). The identity line is filled from the system —
-  the employee's national ID, section and department, and the paper's date — the national ID only
-  for a reader holding `itAsset.viewNationalId`; the name under the signature is the first three
-  parts (§17, 2026-10-05).
+  of several pages, the page count (§17, 2026-10-05). The national ID is filled from the system,
+  only for a reader holding `itAsset.viewNationalId`; the form's «صادرة من قسم … – … بتاريخ …» is
+  not printed; the name under the signature is the first three parts (§17, 2026-10-05).
 
 ## 6. States catalog
 
@@ -824,3 +824,8 @@ starts only on an explicit owner GO.
   already typed is replaced, and picking another category swaps the first template's values for
   the second's. A note names the asset the form was filled from. No API change; the rule lives in
   `apps/web/src/modules/it/lib/asset-form.ts`.
+- **«صادرة من قسم … – … بتاريخ …» taken off the acknowledgment** (2026-10-05) — owner request: «شيل
+  الجزء دا من الإيصال – صادرة من قسم التسويات والمراجعة – الصراف الالى بتاريخ ٥ / ١٠ / ٢٠٢٦». The
+  statement now runs «… بطاقة رقم قومي … بأنني قد استلمت جهاز …»; the paper's date stays in the
+  signature block. The section and department are still read and kept on the receipt — the record
+  of where the holder worked when they signed — but no longer printed.

@@ -64,10 +64,16 @@ const FORMAL = new Set([
   'هيئة', 'هيكل', 'هيكلة', 'مارش', 'مقاييس',
 ]);
 
-/** Dialect vocabulary: no morphology to catch it by, and no formal reading either. */
+/**
+ * Dialect vocabulary: no morphology to catch it by, and no formal reading either.
+ *
+ * «ماله» is NOT here, though it once was: it is also «مال» + «ـه», his property — formal Arabic,
+ * and the custody acknowledgment's undertaking («حفاظ الشخص الحريص على ماله الخاص») says exactly
+ * that. The dialect's «ليس له» is «مالوش» / «ملوش», which have no formal reading and stay.
+ */
 const WORDS = [
   ['مش', 'ليس / غير / لا'], ['مفيش', 'لا يوجد'], ['محدش', 'لا أحد'], ['ملوش', 'ليس له'],
-  ['مالوش', 'ليس له'], ['ماله', 'ليس له'], ['دلوقتي', 'الآن'], ['دلوقتى', 'الآن'],
+  ['مالوش', 'ليس له'], ['دلوقتي', 'الآن'], ['دلوقتى', 'الآن'],
   ['عشان', 'لأن / حتى'], ['علشان', 'لأن / حتى'], ['بتاع', 'الخاص بـ'], ['بتاعته', 'الخاص به'],
   ['بتوع', 'الخاصون بـ'], ['لسه', 'ما زال / بعد'], ['اللي', 'الذي / التي'],
   ['اللى', 'الذي / التي'], ['عايز', 'يريد'], ['عاوز', 'يريد'], ['كده', 'ذلك / هكذا'],

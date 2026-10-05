@@ -44,6 +44,7 @@ import {
   TransferAssetDialog,
 } from '../components/CustodyDialogs';
 import { useAssetLabels } from '../components/useAssetLabels';
+import { SPEC_FIELDS, hasSpecsOrAccessories } from '../lib/asset-specs';
 
 const QR_SIZE = 132;
 
@@ -64,6 +65,22 @@ const Fact = ({
       {...(mono ? { dir: 'ltr' as const } : {})}
     >
       {value === null || value === '' ? '—' : value}
+    </dd>
+  </div>
+);
+
+/** A label over a list, one entry per line — the network adapters, the accessories. */
+const ListFact = ({ label, values }: { label: string; values: readonly string[] }): JSX.Element => (
+  <div className="py-2">
+    <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+    <dd className="mt-0.5 text-sm text-slate-800 dark:text-slate-100">
+      <ul className="list-inside list-disc">
+        {values.map((value, index) => (
+          <li key={index} dir="auto">
+            {value}
+          </li>
+        ))}
+      </ul>
     </dd>
   </div>
 );
@@ -310,6 +327,32 @@ export const AssetDetailPage = (): JSX.Element => {
                 value={asset.warranty?.terms ?? null}
               />
             </dl>
+          </CardBody>
+        </Card>
+
+        {/* What the custody acknowledgment prints for this device (FR-18). */}
+        <Card>
+          <CardHeader title={t('it.assets.sections.specs')} />
+          <CardBody>
+            {hasSpecsOrAccessories(asset.specs, asset.accessories) ? (
+              <dl>
+                {SPEC_FIELDS.map(({ key, label }) => {
+                  const value = asset.specs?.[key] ?? null;
+                  return value === null ? null : <Fact key={key} label={t(label)} value={value} />;
+                })}
+                {(asset.specs?.networkAdapters.length ?? 0) > 0 && (
+                  <ListFact
+                    label={t('it.assets.specs.networkAdapters')}
+                    values={asset.specs?.networkAdapters ?? []}
+                  />
+                )}
+                {asset.accessories.length > 0 && (
+                  <ListFact label={t('it.assets.fields.accessories')} values={asset.accessories} />
+                )}
+              </dl>
+            ) : (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{t('it.assets.noSpecs')}</p>
+            )}
           </CardBody>
         </Card>
 

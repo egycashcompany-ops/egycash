@@ -263,7 +263,7 @@ export const FuelCardsPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <div className={cn(BOARD_FONT, 'space-y-6 text-slate-100 antialiased')}>
+      <div className={cn(BOARD_FONT, 'space-y-6 text-slate-900 dark:text-slate-100 antialiased')}>
         {/* «شيل العنوان»: the screen opens on its figures. */}
         <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <BoardKpi
@@ -275,11 +275,11 @@ export const FuelCardsPage = (): JSX.Element => {
             unit={t('fleet.fuelCards.board.kpi.carsUnit')}
             note={
               carsWithout === 0 ? (
-                <span className="text-emerald-400">
+                <span className="text-emerald-600 dark:text-emerald-400">
                   ✓ {t('fleet.fuelCards.board.kpi.carsAllLinked')}
                 </span>
               ) : (
-                <span className="text-amber-400">
+                <span className="text-amber-600 dark:text-amber-400">
                   ⚠️ {t('fleet.fuelCards.board.kpi.carsMissing', { count: String(carsWithout) })}
                 </span>
               )
@@ -291,11 +291,11 @@ export const FuelCardsPage = (): JSX.Element => {
             icon={PATH.card}
             label={t('fleet.fuelCards.board.kpi.active')}
             value={String(activeCount)}
-            valueClass="text-emerald-400"
+            valueClass="text-emerald-600 dark:text-emerald-400"
             unit={t('fleet.fuelCards.board.kpi.activeUnit')}
             note={
-              <span className="text-slate-400">
-                <span className="text-slate-300">
+              <span className="text-slate-500 dark:text-slate-400">
+                <span className="text-slate-600 dark:text-slate-300">
                   {t('fleet.fuelCards.board.kpi.activeRateLead', { rate: cardRate })}
                 </span>{' '}
                 {t('fleet.fuelCards.board.kpi.activeRateTail')}
@@ -309,19 +309,19 @@ export const FuelCardsPage = (): JSX.Element => {
             hoverBorder="hover:border-amber-500/40"
             label={t('fleet.fuelCards.board.kpi.soon', { days: String(warnDays) })}
             value={String(soonCount)}
-            valueClass="text-amber-400"
+            valueClass="text-amber-600 dark:text-amber-400"
             unit={t('fleet.fuelCards.board.kpi.soonUnit')}
             note={
               expiredCount > 0 ? (
-                <span className="text-red-400">
+                <span className="text-red-600 dark:text-red-400">
                   ⚠️ {t('fleet.fuelCards.board.kpi.expiredAdvice', { count: String(expiredCount) })}
                 </span>
               ) : soonCount > 0 ? (
-                <span className="text-amber-400">
+                <span className="text-amber-600 dark:text-amber-400">
                   ⚠️ {t('fleet.fuelCards.board.kpi.soonAdvice')}
                 </span>
               ) : (
-                <span className="text-emerald-400">
+                <span className="text-emerald-600 dark:text-emerald-400">
                   ✓ {t('fleet.fuelCards.board.kpi.soonNone')}
                 </span>
               )
@@ -335,9 +335,9 @@ export const FuelCardsPage = (): JSX.Element => {
               label={t('fleet.fuelCards.board.kpi.consumption')}
               value={latinMoney(consumption.fuelTotal)}
               unit={t('fleet.fuelCards.board.kpi.currency')}
-              unitClass="font-bold text-cyan-400"
+              unitClass="font-bold text-cyan-600 dark:text-cyan-400"
               note={
-                <span className="text-slate-400">
+                <span className="text-slate-500 dark:text-slate-400">
                   {t('fleet.fuelCards.board.kpi.consumptionNote', {
                     count: String(consumption.count),
                   })}
@@ -352,9 +352,9 @@ export const FuelCardsPage = (): JSX.Element => {
               label={t('fleet.fuelCards.board.kpi.balance')}
               value={latinMoney(balanceOf(cards))}
               unit={t('fleet.fuelCards.board.kpi.currency')}
-              unitClass="font-bold text-cyan-400"
+              unitClass="font-bold text-cyan-600 dark:text-cyan-400"
               note={
-                <span className="text-slate-400">
+                <span className="text-slate-500 dark:text-slate-400">
                   {t('fleet.fuelCards.board.kpi.balanceNote', {
                     wataniya: latinMoney(balanceOf(cards, 'wataniya')),
                     chillout: latinMoney(balanceOf(cards, 'chillout')),
@@ -368,26 +368,29 @@ export const FuelCardsPage = (): JSX.Element => {
         {/* The exports and «إضافة كارت جديد» above the filters, as on the vehicles screen. */}
         <div className="flex flex-wrap items-center justify-end gap-2" data-fuel-toolbar="true">
           {!isError && (
-            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
+            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 p-0.5">
               <button
                 type="button"
                 data-export="fuel-cards"
                 title={t('fleet.fuelCards.board.excel')}
                 onClick={() => void exportSheet()}
-                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300"
               >
-                <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
+                <BoardIcon
+                  d={PATH.excel}
+                  className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                />
                 <span>{t('fleet.fuelCards.board.excel')}</span>
               </button>
-              <span className="h-4 w-px bg-slate-700" />
+              <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
               <button
                 type="button"
                 data-print="fuel-cards"
                 title={t('fleet.fuelCards.board.pdf')}
                 onClick={onPrint}
-                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400"
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400"
               >
-                <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
+                <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                 <span>{t('fleet.fuelCards.board.pdf')}</span>
               </button>
             </div>
@@ -415,7 +418,7 @@ export const FuelCardsPage = (): JSX.Element => {
           >
             <FilterWithIcon
               icon={FILTER_ICON.car}
-              tone="text-emerald-400"
+              tone="text-emerald-600 dark:text-emerald-400"
               className="w-32 shrink-0"
             >
               <VehicleCodeFilter
@@ -428,7 +431,11 @@ export const FuelCardsPage = (): JSX.Element => {
                 }
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.card} tone="text-amber-400" className="w-40 shrink-0">
+            <FilterWithIcon
+              icon={FILTER_ICON.card}
+              tone="text-amber-600 dark:text-amber-400"
+              className="w-40 shrink-0"
+            >
               <Input
                 data-fuel-number-filter="true"
                 aria-label={t('fleet.fuelCards.filters.number')}
@@ -441,7 +448,7 @@ export const FuelCardsPage = (): JSX.Element => {
             </FilterWithIcon>
             <FilterWithIcon
               icon={FILTER_ICON.company}
-              tone="text-slate-300"
+              tone="text-slate-600 dark:text-slate-300"
               className="w-36 shrink-0"
             >
               <MultiSelect
@@ -464,7 +471,7 @@ export const FuelCardsPage = (): JSX.Element => {
             </FilterWithIcon>
             <FilterWithIcon
               icon={FILTER_ICON.calendar}
-              tone="text-cyan-400"
+              tone="text-cyan-600 dark:text-cyan-400"
               className="w-40 shrink-0"
             >
               <MultiSelect
@@ -494,7 +501,7 @@ export const FuelCardsPage = (): JSX.Element => {
             {datePreset === 'custom' && (
               <FilterWithIcon
                 icon={FILTER_ICON.calendar}
-                tone="text-cyan-400"
+                tone="text-cyan-600 dark:text-cyan-400"
                 className="w-36 shrink-0"
               >
                 <Input

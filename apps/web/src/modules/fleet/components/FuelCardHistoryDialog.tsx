@@ -27,10 +27,12 @@ const stamp = (iso: string): string => {
 };
 
 const KIND_TONE: Record<FleetFuelCardMovementDto['kind'], string> = {
-  charge: 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300',
-  transferIn: 'border-sky-500/40 bg-sky-500/15 text-sky-300',
-  transferOut: 'border-amber-500/40 bg-amber-500/15 text-amber-300',
-  receipt: 'border-slate-600 bg-slate-800 text-slate-300',
+  charge:
+    'border-emerald-300 dark:border-emerald-500/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300',
+  transferIn: 'border-sky-500/40 bg-sky-500/15 text-sky-700 dark:text-sky-300',
+  transferOut: 'border-amber-500/40 bg-amber-500/15 text-amber-700 dark:text-amber-300',
+  receipt:
+    'border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300',
 };
 
 /** A line's amount: signed, green in and red out, struck through while it is being changed. */
@@ -40,7 +42,7 @@ const Amount = ({ value, struck }: { value: number; struck: boolean }): JSX.Elem
     <span
       className={cn(
         'flex items-baseline gap-1 text-base font-black',
-        value >= 0 ? 'text-emerald-400' : 'text-red-400',
+        value >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400',
         struck && 'opacity-60 line-through',
       )}
     >
@@ -139,7 +141,7 @@ export const FuelCardHistoryDialog = ({
   return createPortal(
     <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-3 sm:p-4">
       <div
-        className="fixed inset-0 animate-fade-in bg-[#03060c]/80 backdrop-blur-md"
+        className="fixed inset-0 animate-fade-in bg-slate-900/40 dark:bg-[#03060c]/80 backdrop-blur-md"
         aria-hidden="true"
         onClick={onClose}
       />
@@ -150,7 +152,7 @@ export const FuelCardHistoryDialog = ({
         data-fuel-history-dialog={card.id}
         className={cn(
           SANS,
-          'relative my-auto w-full max-w-3xl animate-pop-in overflow-hidden rounded-2xl border text-slate-100 antialiased',
+          'relative my-auto w-full max-w-3xl animate-pop-in overflow-hidden rounded-2xl border text-slate-900 dark:text-slate-100 antialiased',
           look.panel,
           '!max-w-3xl',
         )}
@@ -161,10 +163,10 @@ export const FuelCardHistoryDialog = ({
               <HistoryIcon className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="text-xl font-bold tracking-wide text-white">
+              <h2 className="text-xl font-bold tracking-wide text-slate-900 dark:text-white">
                 {t('fleet.fuelCards.history.title')}
               </h2>
-              <p className="text-[13px] font-medium text-slate-300">
+              <p className="text-[13px] font-medium text-slate-600 dark:text-slate-300">
                 {card.vehicleCode ?? card.label ?? '—'} ·{' '}
                 {t(`fleet.fuelCards.company.${card.company}`)}
               </p>
@@ -175,7 +177,7 @@ export const FuelCardHistoryDialog = ({
             onClick={onClose}
             aria-label={t('common.close')}
             className={cn(
-              'flex items-center text-slate-400 transition-all hover:text-white focus:outline-none',
+              'flex items-center text-slate-500 dark:text-slate-400 transition-all hover:text-slate-900 dark:hover:text-white focus:outline-none',
               look.close,
             )}
           >
@@ -184,19 +186,22 @@ export const FuelCardHistoryDialog = ({
         </header>
 
         <div className="max-h-[calc(100vh-9rem)] space-y-4 overflow-y-auto p-5 sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#2b3b6b] bg-[#0a1233]/80 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/80 px-4 py-3">
             <span className="flex items-center gap-3">
               <DesignLogo company={card.company} editing={false} />
               <span
                 dir="ltr"
-                className={cn('text-sm font-medium tracking-wider text-slate-200', MONO)}
+                className={cn(
+                  'text-sm font-medium tracking-wider text-slate-800 dark:text-slate-200',
+                  MONO,
+                )}
               >
                 {groupCardNumber(card.number)}
               </span>
             </span>
-            <span className="text-sm text-slate-300">
+            <span className="text-sm text-slate-600 dark:text-slate-300">
               {t('fleet.fuelCards.fields.balance')}{' '}
-              <b className={cn('text-base text-emerald-400', MONO)} dir="ltr">
+              <b className={cn('text-base text-emerald-600 dark:text-emerald-400', MONO)} dir="ltr">
                 {figure(card.balance)}
               </b>{' '}
               {t('fleet.fuelCards.board.kpi.currency')}
@@ -204,11 +209,11 @@ export const FuelCardHistoryDialog = ({
           </div>
 
           {log.isError ? (
-            <p role="alert" className="py-6 text-center text-sm text-red-300">
+            <p role="alert" className="py-6 text-center text-sm text-red-700 dark:text-red-300">
               {t('fleet.fuelCards.history.loadFailed')}
             </p>
           ) : lines.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">
+            <p className="py-6 text-center text-sm text-slate-500 dark:text-slate-400">
               {log.isPending ? t('common.loading') : t('fleet.fuelCards.history.empty')}
             </p>
           ) : (
@@ -232,12 +237,15 @@ export const FuelCardHistoryDialog = ({
                       isRemoving
                         ? 'border-red-500/60 bg-red-500/10 shadow-[0_0_22px_-8px_rgba(239,68,68,0.6)]'
                         : isEditing
-                          ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.18),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-6px_rgba(108,99,255,0.55)]'
-                          : 'border-[#2b3b6b] bg-[#0a1233]/60',
+                          ? 'border-[#6c63ff] [background:linear-gradient(145deg,rgba(108,99,255,0.14),rgba(255,255,255,0.95))] dark:[background:linear-gradient(145deg,rgba(108,99,255,0.18),rgba(15,23,60,0.7))] shadow-[0_0_0_1px_#6c63ff,0_0_22px_-6px_rgba(108,99,255,0.55)]'
+                          : 'border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60',
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                      <span dir="ltr" className={cn('text-xs text-slate-400', MONO)}>
+                      <span
+                        dir="ltr"
+                        className={cn('text-xs text-slate-500 dark:text-slate-400', MONO)}
+                      >
                         {stamp(line.at)}
                       </span>
                       <span
@@ -251,9 +259,9 @@ export const FuelCardHistoryDialog = ({
                       <span className="ms-auto flex items-center gap-4">
                         <Amount value={line.amount} struck={active} />
                         {!active && (
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-slate-500 dark:text-slate-400">
                             {t('fleet.fuelCards.history.after')}{' '}
-                            <b className={cn('text-slate-200', MONO)} dir="ltr">
+                            <b className={cn('text-slate-800 dark:text-slate-200', MONO)} dir="ltr">
                               {figure(line.balanceAfter)}
                             </b>
                           </span>
@@ -269,7 +277,7 @@ export const FuelCardHistoryDialog = ({
                                 setRemoving(null);
                                 setEditing({ id: line.id, amount: String(Math.abs(line.amount)) });
                               }}
-                              className="rounded-md p-1.5 text-slate-300 hover:bg-brand-500/15 hover:text-brand-200"
+                              className="rounded-md p-1.5 text-slate-600 dark:text-slate-300 hover:bg-brand-500/15 hover:text-brand-700 dark:hover:text-brand-200"
                             >
                               <EditIcon className="h-4 w-4" />
                             </button>
@@ -282,7 +290,7 @@ export const FuelCardHistoryDialog = ({
                                 setEditing(null);
                                 setRemoving(line.id);
                               }}
-                              className="rounded-md p-1.5 text-slate-300 hover:bg-red-500/15 hover:text-red-300"
+                              className="rounded-md p-1.5 text-slate-600 dark:text-slate-300 hover:bg-red-500/15 hover:text-red-700 dark:hover:text-red-300"
                             >
                               <TrashIcon className="h-4 w-4" />
                             </button>
@@ -301,19 +309,21 @@ export const FuelCardHistoryDialog = ({
                         data-fuel-history-panel={isEditing ? 'edit' : 'remove'}
                         className={cn(
                           'mt-3 space-y-3 border-t pt-3',
-                          isRemoving ? 'border-red-500/30' : 'border-[#2b3b6b]/70',
+                          isRemoving
+                            ? 'border-red-500/30'
+                            : 'border-slate-200 dark:border-[#2b3b6b]/70',
                         )}
                       >
                         {isEditing ? (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                             <div className="space-y-1">
-                              <span className="block text-xs font-bold text-slate-300">
+                              <span className="block text-xs font-bold text-slate-600 dark:text-slate-300">
                                 {t('fleet.fuelCards.history.currentAmount')}
                               </span>
                               <div
                                 dir="ltr"
                                 className={cn(
-                                  'rounded-lg border border-[#2b3b6b] bg-[#0a1233]/60 px-3 py-2 text-right text-base font-bold text-slate-300',
+                                  'rounded-lg border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233]/60 px-3 py-2 text-right text-base font-bold text-slate-600 dark:text-slate-300',
                                   MONO,
                                 )}
                               >
@@ -321,7 +331,7 @@ export const FuelCardHistoryDialog = ({
                               </div>
                             </div>
                             <div className="space-y-1">
-                              <span className="block text-xs font-bold text-white">
+                              <span className="block text-xs font-bold text-slate-900 dark:text-white">
                                 {t('fleet.fuelCards.history.newAmount')}
                               </span>
                               <MoneyInput
@@ -330,7 +340,7 @@ export const FuelCardHistoryDialog = ({
                                 aria-label={t('fleet.fuelCards.history.newAmount')}
                                 data-fuel-history-amount={line.id}
                                 tone={cn(
-                                  'border-[#6c63ff] bg-[#0a1233] py-2 text-right text-base font-bold text-white focus:border-[#8a83ff] focus:ring-[#6c63ff]/40',
+                                  'border-[#6c63ff] bg-slate-50 dark:bg-[#0a1233] py-2 text-right text-base font-bold text-slate-900 dark:text-white focus:border-[#8a83ff] focus:ring-[#6c63ff]/40',
                                   MONO,
                                 )}
                               />
@@ -338,14 +348,14 @@ export const FuelCardHistoryDialog = ({
                           </div>
                         ) : (
                           <div className="flex items-start gap-2.5">
-                            <span className="mt-0.5 rounded-lg bg-red-500/15 p-1.5 text-red-300">
+                            <span className="mt-0.5 rounded-lg bg-red-500/15 p-1.5 text-red-700 dark:text-red-300">
                               <TrashIcon className="h-4 w-4" />
                             </span>
                             <div>
-                              <p className="text-sm font-bold text-red-200">
+                              <p className="text-sm font-bold text-red-700 dark:text-red-200">
                                 {t('fleet.fuelCards.history.removeTitle')}
                               </p>
-                              <p className="text-xs text-slate-300">
+                              <p className="text-xs text-slate-600 dark:text-slate-300">
                                 {t('fleet.fuelCards.history.removeHint')}
                               </p>
                             </div>
@@ -353,8 +363,8 @@ export const FuelCardHistoryDialog = ({
                         )}
 
                         {moves.length > 0 && (
-                          <div className="rounded-lg border border-[#2b3b6b]/70 bg-[#0a1233]/50 p-3">
-                            <span className="mb-2 block text-xs font-bold text-slate-300">
+                          <div className="rounded-lg border border-slate-200 dark:border-[#2b3b6b]/70 bg-slate-50 dark:bg-[#0a1233]/50 p-3">
+                            <span className="mb-2 block text-xs font-bold text-slate-600 dark:text-slate-300">
                               {t('fleet.fuelCards.history.effects')}
                             </span>
                             <ul className="space-y-1.5">
@@ -363,19 +373,23 @@ export const FuelCardHistoryDialog = ({
                                   key={move.label}
                                   className="flex flex-wrap items-center justify-between gap-2 text-sm"
                                 >
-                                  <span className="text-slate-200">{move.label}</span>
+                                  <span className="text-slate-800 dark:text-slate-200">
+                                    {move.label}
+                                  </span>
                                   <span dir="ltr" className={cn('flex items-center gap-2', MONO)}>
-                                    <span className="text-slate-400">{figure(move.from)}</span>
+                                    <span className="text-slate-500 dark:text-slate-400">
+                                      {figure(move.from)}
+                                    </span>
                                     <span className="text-slate-500">→</span>
                                     <b
                                       className={cn(
                                         move.to < 0
-                                          ? 'text-red-400'
+                                          ? 'text-red-600 dark:text-red-400'
                                           : move.to > move.from
-                                            ? 'text-emerald-400'
+                                            ? 'text-emerald-600 dark:text-emerald-400'
                                             : move.to < move.from
-                                              ? 'text-amber-300'
-                                              : 'text-slate-200',
+                                              ? 'text-amber-700 dark:text-amber-300'
+                                              : 'text-slate-800 dark:text-slate-200',
                                       )}
                                     >
                                       {figure(move.to)}
@@ -387,7 +401,10 @@ export const FuelCardHistoryDialog = ({
                           </div>
                         )}
                         {negative && (
-                          <p role="alert" className="text-xs font-bold text-red-300">
+                          <p
+                            role="alert"
+                            className="text-xs font-bold text-red-700 dark:text-red-300"
+                          >
                             {t('fleet.fuelCards.history.negative')}
                           </p>
                         )}
@@ -399,7 +416,7 @@ export const FuelCardHistoryDialog = ({
                               setEditing(null);
                               setRemoving(null);
                             }}
-                            className="rounded-lg border border-[#2b3b6b] px-5 py-2 text-sm font-bold text-slate-200 transition hover:bg-slate-800/80"
+                            className="rounded-lg border border-slate-200 dark:border-[#2b3b6b] px-5 py-2 text-sm font-bold text-slate-800 dark:text-slate-200 transition hover:bg-slate-100 dark:hover:bg-slate-800/80"
                           >
                             {isEditing ? t('common.cancel') : t('fleet.fuelCards.history.back')}
                           </button>
@@ -433,7 +450,9 @@ export const FuelCardHistoryDialog = ({
             </ul>
           )}
           {lines.some((line) => line.kind === 'transferIn' || line.kind === 'transferOut') && (
-            <p className="text-xs text-slate-400">{t('fleet.fuelCards.history.transferNote')}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              {t('fleet.fuelCards.history.transferNote')}
+            </p>
           )}
         </div>
       </div>

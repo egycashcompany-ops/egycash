@@ -626,10 +626,10 @@ export const VehiclesListPage = (): JSX.Element => {
                 'font-semibold',
                 NUM,
                 state === 'expired'
-                  ? 'text-red-400'
+                  ? 'text-red-600 dark:text-red-400'
                   : state === 'soon'
-                    ? 'text-amber-400'
-                    : 'text-slate-100',
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-slate-900 dark:text-slate-100',
               )}
             >
               {formatDate(v.licenseExpiresAt, locale)}
@@ -749,13 +749,13 @@ export const VehiclesListPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <div className={cn(BOARD_FONT, 'space-y-5 text-slate-100 antialiased')}>
+      <div className={cn(BOARD_FONT, 'space-y-5 text-slate-900 dark:text-slate-100 antialiased')}>
         {/* The count and the two buttons ride ABOVE the filters, so the filters have the
             whole width and stay on one line on any screen larger than a tablet. */}
         <div className="flex items-center justify-between gap-1.5 sm:gap-2" data-vehicle-toolbar="true">
           <span
             data-vehicle-count
-            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-300 sm:text-sm"
+            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300 sm:text-sm"
           >
             {data === undefined
               ? ''
@@ -767,7 +767,7 @@ export const VehiclesListPage = (): JSX.Element => {
               data-vehicle-breakdown-toggle="true"
               aria-expanded={breakdownOpen}
               onClick={() => setBreakdownOpen((open) => !open)}
-              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-1.5 py-1.5 text-[11px] font-bold text-brand-200 transition hover:bg-brand-500/25 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs"
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-1.5 py-1.5 text-[11px] font-bold text-brand-700 dark:text-brand-200 transition hover:bg-brand-500/25 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs"
             >
               {breakdownOpen
                 ? t('fleet.vehicles.board.breakdownHide')
@@ -784,27 +784,27 @@ export const VehiclesListPage = (): JSX.Element => {
               </svg>
             </button>
             {data !== undefined && !isError && (
-              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
+              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/80 p-0.5">
                 <button
                   type="button"
                   data-export="vehicles"
                   disabled={exporting !== null}
                   onClick={() => void exportSheet()}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
                 >
-                  <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
+                  <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span className="sm:hidden">Excel</span>
                   <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
                 </button>
-                <span className="h-4 w-px bg-slate-700" />
+                <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
                 <button
                   type="button"
                   data-print="vehicles"
                   disabled={exporting !== null}
                   onClick={() => void printSheet()}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
                 >
-                  <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
+                  <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
                   <span className="sm:hidden">PDF</span>
                   <span className="hidden sm:inline">{t('fleet.fuelCards.board.pdf')}</span>
                 </button>
@@ -833,7 +833,7 @@ export const VehiclesListPage = (): JSX.Element => {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <FigureChip
                 icon={PATH.truck}
-                iconClass="bg-blue-500/10 text-blue-400"
+                iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
                 label={t('fleet.vehicles.board.total')}
                 value={registryFigures.total}
                 unit={t('fleet.vehicles.board.totalUnit')}
@@ -844,27 +844,27 @@ export const VehiclesListPage = (): JSX.Element => {
               />
               <FigureChip
                 icon={PATH.calendar}
-                iconClass="bg-amber-500/10 text-amber-400"
+                iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-400"
                 label={t('fleet.vehicles.board.thisMonth')}
                 value={registryFigures.thisMonth}
-                valueClass="text-amber-400"
+                valueClass="text-amber-600 dark:text-amber-400"
                 unit={t('fleet.vehicles.board.licences')}
               />
               <FigureChip
                 icon={PATH.warn}
                 iconClass={
                   registryFigures.expired > 0
-                    ? 'bg-red-500/10 text-red-400'
-                    : 'bg-emerald-500/10 text-emerald-400'
+                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                 }
                 label={t('fleet.vehicles.board.expired')}
                 value={registryFigures.expired}
-                valueClass={registryFigures.expired > 0 ? 'text-red-400' : 'text-emerald-400'}
+                valueClass={registryFigures.expired > 0 ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}
                 unit={t('fleet.vehicles.board.licences')}
               />
               <FigureChip
                 icon={PATH.edit}
-                iconClass="bg-cyan-500/10 text-cyan-400"
+                iconClass="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
                 label={t('fleet.vehicles.board.workshop')}
                 value={registryFigures.workshop}
                 unit={t('fleet.vehicles.board.totalUnit')}
@@ -924,7 +924,7 @@ export const VehiclesListPage = (): JSX.Element => {
             {/* «عايز الفلتر فى صف واحد … طبقاً لطول البيانات اللى ممكن تتكتب فيه»: every control is
               as wide as what it holds — a plate is ten characters, a code four — and the
               dropdowns run tight, so the whole bar is one row on a desktop screen. */}
-            <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-400" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400" className="w-24 shrink-0">
               <VehicleCodeFilter
                 fullWidth
                 density="tight"
@@ -935,7 +935,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 }
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.plate} tone="text-sky-400" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.plate} tone="text-sky-600 dark:text-sky-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.plate')}
                 placeholder={t('fleet.vehicles.columns.plate')}
@@ -945,7 +945,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 density="tight"
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.chassis} tone="text-slate-400" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.chassis} tone="text-slate-500 dark:text-slate-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.chassis')}
                 placeholder={t('fleet.vehicles.columns.chassis')}
@@ -955,7 +955,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 density="tight"
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.motor} tone="text-slate-400" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.motor} tone="text-slate-500 dark:text-slate-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.motor')}
                 placeholder={t('fleet.vehicles.columns.motor')}
@@ -970,7 +970,7 @@ export const VehiclesListPage = (): JSX.Element => {
               questions about the fleet, and a one-answer control made the reader ask each of them
               twice and add the two counts up by hand. Branch has taken several since it was
               written; the other five now read the same way. */}
-            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-300" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300" className="w-24 shrink-0">
               <MultiSelect
                 clearable
                 className="w-full"
@@ -987,7 +987,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 onChange={(ids) => patch({ type: writeList(ids) })}
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-300" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-700 dark:text-amber-300" className="w-24 shrink-0">
               <CatalogMultiSelect
                 kind="licenseClass"
                 className="w-full"
@@ -999,7 +999,7 @@ export const VehiclesListPage = (): JSX.Element => {
               />
             </FilterWithIcon>
             {/* The months the licences run out in — several at once, each with its count of cars. */}
-            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-400" className="w-32 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400" className="w-32 shrink-0">
               <MultiSelect
                 clearable
                 className="w-full"
@@ -1015,14 +1015,14 @@ export const VehiclesListPage = (): JSX.Element => {
               />
             </FilterWithIcon>
             {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
-            <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-300" className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!pe-2">
+            <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-600 dark:text-violet-300" className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!pe-2">
               <BranchFilterSelect
                 clearable
                 value={branchIds}
                 onChange={(ids) => patch({ branch: writeList(ids) })}
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.operation} tone="text-slate-300" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.operation} tone="text-slate-600 dark:text-slate-300" className="w-24 shrink-0">
               <CatalogMultiSelect
                 kind="operation"
                 className="w-full"
@@ -1033,7 +1033,7 @@ export const VehiclesListPage = (): JSX.Element => {
                 label={t('fleet.vehicles.filters.short.operation')}
               />
             </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.insurance} tone="text-emerald-300" className="w-24 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.insurance} tone="text-emerald-700 dark:text-emerald-300" className="w-24 shrink-0">
               <CatalogMultiSelect
                 kind="insuranceCompany"
                 className="w-full"
@@ -1047,7 +1047,7 @@ export const VehiclesListPage = (): JSX.Element => {
             {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}
-            <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-300" className="w-20 shrink-0">
+            <FilterWithIcon icon={FILTER_ICON.status} tone="text-slate-600 dark:text-slate-300" className="w-20 shrink-0">
               <MultiSelect
                 clearable
                 className="w-full"
@@ -1123,7 +1123,7 @@ export const VehiclesListPage = (): JSX.Element => {
               ]}
               licence={
                 <span className="flex items-center gap-1.5">
-                  <span dir="ltr" className={cn('font-semibold text-slate-100', NUM)}>
+                  <span dir="ltr" className={cn('font-semibold text-slate-900 dark:text-slate-100', NUM)}>
                     {formatDate(v.licenseExpiresAt, locale)}
                   </span>
                   <LicenceTag state={expiryState(v.licenseExpiresAt, 30)} />
@@ -1195,9 +1195,9 @@ const DARK_BAR = DARK_FILTER_BAR;
 
 /** The fuel screens' dark table, laid over `DataTable`. */
 const DARK_TABLE = cn(
-  '[&>div]:!rounded-2xl [&>div]:!border-slate-800 [&>div]:!bg-[#111827]',
-  '[&_thead_tr]:!bg-[#0c121e] [&_thead_th]:!text-slate-400 [&_thead_button]:hover:!text-slate-100',
-  '[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-200',
+  '[&>div]:!rounded-2xl [&>div]:!border-slate-200 dark:[&>div]:!border-slate-800 [&>div]:!bg-white dark:[&>div]:!bg-[#111827]',
+  '[&_thead_tr]:!bg-slate-100 dark:[&_thead_tr]:!bg-[#0c121e] [&_thead_th]:!text-slate-500 dark:[&_thead_th]:!text-slate-400 [&_thead_button]:hover:!text-slate-900 dark:[&_thead_button]:hover:!text-slate-100',
+  '[&_tbody_tr]:!border-slate-200 dark:[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-slate-100 dark:[&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-800 dark:[&_tbody_td]:!text-slate-200',
   '[&_th]:!px-1.5 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!px-1.5 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
 );
@@ -1210,9 +1210,9 @@ const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.E
     <span
       className={cn(
         'rounded border px-1 py-[0.05rem] text-[10px] font-medium',
-        state === 'valid' && 'border-emerald-800/50 bg-emerald-950 text-emerald-400',
-        state === 'soon' && 'border-amber-700/50 bg-amber-950 text-amber-400',
-        state === 'expired' && 'border-red-700/50 bg-red-950 text-red-400',
+        state === 'valid' && 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
+        state === 'soon' && 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
+        state === 'expired' && 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400',
       )}
     >
       {t(`fleet.fuelCards.expiry.${state}`)}
@@ -1240,19 +1240,19 @@ const VehicleCard = ({
   return (
     <article
       data-vehicle-card={vehicle.id}
-      className="overflow-hidden rounded-2xl border border-slate-800 bg-[#111827] shadow-sm"
+      className="overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] shadow-sm"
     >
-      <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-gradient-to-l from-slate-900 via-[#11192b] to-[#0c121e] px-3 py-2.5">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 bg-gradient-to-l from-slate-50 dark:from-slate-900 via-slate-50 dark:via-[#11192b] to-white dark:to-[#0c121e] px-3 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
           <span
             className={cn(
-              'shrink-0 rounded-lg border border-slate-600 bg-slate-800 px-2.5 py-0.5 text-xl font-black tracking-wider text-white',
+              'shrink-0 rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-xl font-black tracking-wider text-slate-900 dark:text-white',
               NUM,
             )}
           >
             {vehicle.code}
           </span>
-          <span className="truncate text-base font-bold text-white">{typeName}</span>
+          <span className="truncate text-base font-bold text-slate-900 dark:text-white">{typeName}</span>
         </div>
         <span className="flex shrink-0 items-center gap-1.5">
           <VehicleStatusBadge status={vehicle.status} />
@@ -1260,7 +1260,7 @@ const VehicleCard = ({
         </span>
       </div>
       <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 md:grid-cols-2">
-        <div className="col-span-2 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1.5 sm:col-span-3 md:col-span-2">
+        <div className="col-span-2 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1.5 sm:col-span-3 md:col-span-2">
           <span className="block text-[10px] text-slate-500">
             {t('fleet.vehicles.columns.license')}
           </span>
@@ -1269,14 +1269,14 @@ const VehicleCard = ({
         {facts.map(([label, value]) => (
           <div
             key={label}
-            className="min-w-0 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1.5"
+            className="min-w-0 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1.5"
           >
-            <span className="block text-[11px] font-medium text-slate-400">{label}</span>
-            <span className="block truncate text-sm font-bold text-slate-100">{value}</span>
+            <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">{label}</span>
+            <span className="block truncate text-sm font-bold text-slate-900 dark:text-slate-100">{value}</span>
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between gap-2 border-t border-slate-800 px-3 py-2 [&_button]:!text-slate-300 [&_label]:!text-slate-300">
+      <div className="flex items-center justify-between gap-2 border-t border-slate-200 dark:border-slate-800 px-3 py-2 [&_button]:!text-slate-600 dark:[&_button]:!text-slate-300 [&_label]:!text-slate-600 dark:[&_label]:!text-slate-300">
         <span className="flex items-center gap-1 text-[11px] text-slate-500">
           {t('fleet.vehicles.columns.licenseImage')} {image}
         </span>
@@ -1304,15 +1304,15 @@ const FigureChip = ({
   unit: string;
   note?: string;
 }): JSX.Element => (
-  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-800 bg-[#111827] px-2.5 py-3 sm:gap-3 sm:px-4">
+  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2.5 py-3 sm:gap-3 sm:px-4">
     <span className={cn('shrink-0 rounded-lg p-2 sm:p-2.5', iconClass)}>
       <BoardIcon d={icon} className="h-5 w-5" />
     </span>
     <span className="leading-tight">
-      <span className="block text-xs font-medium text-slate-400">{label}</span>
+      <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
       <span className="flex items-baseline gap-1">
-        <span className={cn('text-2xl font-black text-white', NUM, valueClass)}>{value}</span>
-        <span className="text-xs text-slate-400">{unit}</span>
+        <span className={cn('text-2xl font-black text-slate-900 dark:text-white', NUM, valueClass)}>{value}</span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">{unit}</span>
       </span>
       {note !== undefined && <span className="block text-[11px] text-slate-500">{note}</span>}
     </span>
@@ -1329,10 +1329,10 @@ const BreakdownCard = ({
   rows: readonly { id: string; name: string; count: number }[];
   total: number;
 }): JSX.Element => (
-  <div className="rounded-xl border border-slate-800 bg-[#111827] p-3">
+  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3">
     <div className="mb-2 flex items-center justify-between">
-      <span className="text-xs font-bold text-slate-200">{title}</span>
-      <span className={cn('rounded-md bg-slate-800 px-1.5 text-[11px] text-slate-400', NUM)}>
+      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{title}</span>
+      <span className={cn('rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 text-[11px] text-slate-500 dark:text-slate-400', NUM)}>
         {rows.filter((row) => row.id !== '').length}
       </span>
     </div>
@@ -1340,12 +1340,12 @@ const BreakdownCard = ({
       {rows.map((row) => (
         <li key={row.id} className="text-xs">
           <div className="flex items-center justify-between gap-2">
-            <span className={cn('truncate', row.id === '' ? 'text-slate-500' : 'text-slate-300')}>
+            <span className={cn('truncate', row.id === '' ? 'text-slate-500' : 'text-slate-600 dark:text-slate-300')}>
               {row.name}
             </span>
-            <span className={cn('shrink-0 font-bold text-white', NUM)}>{row.count}</span>
+            <span className={cn('shrink-0 font-bold text-slate-900 dark:text-white', NUM)}>{row.count}</span>
           </div>
-          <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-slate-800">
+          <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             <div
               className="h-full rounded-full bg-blue-400/70"
               style={{ width: `${total === 0 ? 0 : Math.round((row.count / total) * 100)}%` }}

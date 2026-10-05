@@ -241,10 +241,10 @@ export const FuelCardPhotoPanel = ({
   return (
     <div
       data-fuel-photo-panel={card.id}
-      className="flex flex-col items-center justify-between gap-4 rounded-xl border border-[#2b3b6b] bg-[#0a1233] p-3.5 sm:flex-row"
+      className="flex flex-col items-center justify-between gap-4 rounded-xl border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233] p-3.5 sm:flex-row"
     >
       <div className="flex w-full items-center gap-3 sm:w-auto">
-        <div className="relative flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-700 bg-gradient-to-br from-indigo-900 via-slate-800 to-slate-900 shadow-inner">
+        <div className="relative flex h-10 w-14 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-300 dark:border-slate-700 bg-gradient-to-br from-indigo-900 via-slate-800 to-slate-900 shadow-inner">
           {url !== null ? (
             <img
               src={url}
@@ -257,15 +257,18 @@ export const FuelCardPhotoPanel = ({
         </div>
         <div className="min-w-0">
           {image === null ? (
-            <div className="text-sm font-medium text-slate-400">
+            <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
               {t('fleet.fuelCards.image.none')}
             </div>
           ) : (
             <>
-              <div className="truncate text-right text-sm font-semibold text-white" dir="ltr">
+              <div
+                className="truncate text-right text-sm font-semibold text-slate-900 dark:text-white"
+                dir="ltr"
+              >
                 {image.fileName}
               </div>
-              <div className="mt-0.5 flex items-center gap-1 text-[13px] font-medium text-emerald-300">
+              <div className="mt-0.5 flex items-center gap-1 text-[13px] font-medium text-emerald-700 dark:text-emerald-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                 {t('fleet.fuelCards.image.stored', {
                   // Latin digits, as the design writes «1.2 MB».
@@ -282,9 +285,9 @@ export const FuelCardPhotoPanel = ({
             type="button"
             data-fuel-image={card.id}
             onClick={() => onOpen(card)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#2b3b6b] bg-[#1a2550] px-3 py-1.5 text-[13px] font-bold text-white transition hover:bg-[#223066]"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-[#2b3b6b] bg-white dark:bg-[#1a2550] px-3 py-1.5 text-[13px] font-bold text-slate-900 dark:text-white transition hover:bg-[#223066]"
           >
-            <EyeIcon className="h-4 w-4 text-slate-300" />
+            <EyeIcon className="h-4 w-4 text-slate-600 dark:text-slate-300" />
             {t('fleet.fuelCards.image.preview')}
           </button>
         )}
@@ -296,7 +299,7 @@ export const FuelCardPhotoPanel = ({
                 ? t('fleet.fuelCards.image.upload')
                 : t('fleet.fuelCards.image.replace')
             }
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#6c63ff]/60 bg-[#4f3dff]/30 px-3 py-1.5 text-[13px] font-bold text-[#c9c5ff] transition hover:bg-[#4f3dff]/45 hover:text-white"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-[#6c63ff]/60 bg-[#4f3dff]/30 px-3 py-1.5 text-[13px] font-bold text-[#c9c5ff] transition hover:bg-[#4f3dff]/45 hover:text-slate-900 dark:hover:text-white"
           >
             <>
               <UploadIcon className="h-4 w-4" />

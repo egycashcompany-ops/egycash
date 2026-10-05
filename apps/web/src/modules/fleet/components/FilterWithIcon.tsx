@@ -40,7 +40,7 @@ export const FILTER_ICON = {
  */
 export const FilterWithIcon = ({
   icon,
-  tone = 'text-slate-400',
+  tone = 'text-slate-500 dark:text-slate-400',
   className,
   children,
 }: {

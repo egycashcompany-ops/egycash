@@ -22,7 +22,9 @@ import { PageContainer } from '../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { printFleetReport } from '../lib/fleet-report-print';
+import { useReportSignatories } from '../lib/use-report-signatories';
+import { errorMessage } from '../../../shared/lib/errors';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import * as fleetApi from '../api/fleet-api';
 import {
@@ -190,6 +192,7 @@ export const VehiclesListPage = (): JSX.Element => {
   );
   // The whole registry, for the months its licences run out in (cached with the code picker's).
   const wholeRegistry = useAllVehicles({ anyStatus: true });
+  const signatories = useReportSignatories();
   // The figures across the top — the whole registry, whatever the filters narrow the table to.
   const registryFigures = useMemo(() => {
     const items = wholeRegistry.data?.items ?? [];
@@ -471,47 +474,88 @@ export const VehiclesListPage = (): JSX.Element => {
    * The sort goes with the filters, untouched: the file opens in the order the reader is looking
    * at, which is the order they will look for a row in.
    */
-  const exportSheet = async (): Promise<void> => {
+  const vehicleSheet = async (): Promise<{ header: string[]; rows: string[][] }> => {
     const filters = filtersOnly(params);
     const all = await fetchFilteredRows((pageNo, size) =>
       fleetApi.listVehicles({ ...filters, page: pageNo, pageSize: size }),
     );
-    saveSheet(
-      {
+    return {
+      header: [
+        t('fleet.vehicles.columns.type'),
+        t('fleet.vehicles.columns.code'),
+        t('fleet.vehicles.columns.status'),
+        t('fleet.vehicles.inWorkshop'),
+        t('fleet.vehicles.columns.plate'),
+        t('fleet.vehicles.columns.chassis'),
+        t('fleet.vehicles.columns.motor'),
+        t('fleet.vehicles.columns.joinedAt'),
+        t('fleet.vehicles.columns.license'),
+        t('fleet.vehicles.columns.licenseClass'),
+        t('fleet.vehicles.columns.branch'),
+        t('fleet.vehicles.columns.operation'),
+        t('fleet.vehicles.columns.insurance'),
+      ],
+      rows: all.map((v) => [
+        typeName.get(v.typeId) ?? '',
+        v.code,
+        t(`fleet.vehicles.status.${v.status}`),
+        v.inWorkshop ? t('common.yes') : t('common.no'),
+        v.plateNumber,
+        v.chassisNumber,
+        v.motorNumber,
+        formatDate(v.joinedAt, locale),
+        formatDate(v.licenseExpiresAt, locale),
+        (v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)) ?? '',
+        (v.branchId === null ? undefined : branchName.get(v.branchId)) ?? '',
+        (v.operationId === null ? undefined : operationName.get(v.operationId)) ?? '',
+        (v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)) ?? '',
+      ]),
+    };
+  };
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
+  const exportSheet = async (): Promise<void> => {
+    if (exporting !== null) return;
+    setExporting('excel');
+    try {
+      const sheet = await vehicleSheet();
+      saveSheet({
         name: t('fleet.nav.vehicles'),
         serialHeader: t('fleet.violations.report.serial'),
-        header: [
-          t('fleet.vehicles.columns.type'),
-          t('fleet.vehicles.columns.code'),
-          t('fleet.vehicles.columns.status'),
-          t('fleet.vehicles.inWorkshop'),
-          t('fleet.vehicles.columns.plate'),
-          t('fleet.vehicles.columns.chassis'),
-          t('fleet.vehicles.columns.motor'),
-          t('fleet.vehicles.columns.joinedAt'),
-          t('fleet.vehicles.columns.license'),
-          t('fleet.vehicles.columns.licenseClass'),
-          t('fleet.vehicles.columns.branch'),
-          t('fleet.vehicles.columns.operation'),
-          t('fleet.vehicles.columns.insurance'),
-        ],
-        rows: all.map((v) => [
-          typeName.get(v.typeId) ?? '',
-          v.code,
-          t(`fleet.vehicles.status.${v.status}`),
-          v.inWorkshop ? t('common.yes') : t('common.no'),
-          v.plateNumber,
-          v.chassisNumber,
-          v.motorNumber,
-          formatDate(v.joinedAt, locale),
-          formatDate(v.licenseExpiresAt, locale),
-          (v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)) ?? '',
-          (v.branchId === null ? undefined : branchName.get(v.branchId)) ?? '',
-          (v.operationId === null ? undefined : operationName.get(v.operationId)) ?? '',
-          (v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)) ?? '',
-        ]),
-      },
-    );
+        header: sheet.header,
+        rows: sheet.rows,
+      });
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
+    } finally {
+      setExporting(null);
+    }
+  };
+  // The same rows as the Excel file, on the Fleet report page the charging screen prints.
+  const printSheet = async (): Promise<void> => {
+    if (exporting !== null) return;
+    setExporting('pdf');
+    try {
+      const sheet = await vehicleSheet();
+      printFleetReport({
+        title: t('fleet.nav.vehicles'),
+        department: t('fleet.violations.report.department'),
+        subtitle: '',
+        header: sheet.header,
+        rows: sheet.rows,
+        totals: [],
+        signatories,
+        serialHeader: t('fleet.violations.report.serial'),
+        emptyLabel: t('fleet.violations.report.empty'),
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message === 'popup blocked'
+          ? t('fleet.violations.popupBlocked')
+          : errorMessage(error, locale),
+      );
+    } finally {
+      setExporting(null);
+    }
   };
 
   // The frozen §7 order. The lifecycle status and the DERIVED in-workshop pill ride with the code
@@ -706,13 +750,13 @@ export const VehiclesListPage = (): JSX.Element => {
       <div className={cn(BOARD_FONT, 'space-y-5 text-slate-100 antialiased')}>
         {/* The count and the two buttons ride ABOVE the filters, so the filters have the
             whole width and stay on one line on any screen larger than a tablet. */}
-        <div className="flex items-center justify-between gap-3" data-vehicle-toolbar="true">
+        <div className="flex flex-wrap items-center justify-between gap-2" data-vehicle-toolbar="true">
           <span data-vehicle-count className="whitespace-nowrap text-sm font-bold text-slate-300">
             {data === undefined
               ? ''
               : t('fleet.vehicles.count', { count: formatNumber(data.meta.totalItems, locale) })}
           </span>
-          <span className="inline-flex items-center gap-2">
+          <span className="flex flex-wrap items-center justify-end gap-2">
             <button
               type="button"
               data-vehicle-breakdown-toggle="true"
@@ -735,9 +779,29 @@ export const VehiclesListPage = (): JSX.Element => {
               </svg>
             </button>
             {data !== undefined && !isError && (
-              <span className="[&_[data-export]]:!text-brand-400 [&_[data-export]:hover]:!bg-brand-500/15">
-                <ExportSheetButton name="vehicles" onExport={exportSheet} />
-              </span>
+              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
+                <button
+                  type="button"
+                  data-export="vehicles"
+                  disabled={exporting !== null}
+                  onClick={() => void exportSheet()}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300 disabled:opacity-50"
+                >
+                  <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
+                  <span>{t('fleet.fuelCards.board.excel')}</span>
+                </button>
+                <span className="h-4 w-px bg-slate-700" />
+                <button
+                  type="button"
+                  data-print="vehicles"
+                  disabled={exporting !== null}
+                  onClick={() => void printSheet()}
+                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
+                >
+                  <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
+                  <span>{t('fleet.fuelCards.board.pdf')}</span>
+                </button>
+              </div>
             )}
             <Can permission="fleetVehicle.create">
               <button

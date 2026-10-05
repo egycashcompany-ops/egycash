@@ -25,7 +25,9 @@
  * with nothing to configure: the worker at /ecms/sw.js scopes, caches and matches under /ecms/.
  */
 
-const VERSION = 'ecms-v1';
+// v2: v1 could file the HTML shell under a missing chunk's name (see `cacheFirstAsset`); a new
+// version name is what makes `activate` delete every cache v1 left behind, poisoned entries too.
+const VERSION = 'ecms-v2';
 const SHELL_CACHE = `${VERSION}-shell`;
 const ASSET_CACHE = `${VERSION}-assets`;
 
@@ -80,12 +82,23 @@ const networkFirstShell = async (request) => {
   }
 };
 
+/**
+ * What may be filed under an asset's name: a successful answer that is not a web page.
+ *
+ * A server that does not have a chunk any more — a tab from before a deploy asking for one of the
+ * old build's names — used to answer with the SPA shell: HTML, status 200. Cache-first and forever,
+ * that HTML would have stood in for the script under that name for good. The server answers 404
+ * now, and this refuses the HTML either way, so one misrouted response can never become permanent.
+ */
+const isCacheableAsset = (response) =>
+  response.ok && !(response.headers.get('content-type') ?? '').includes('text/html');
+
 const cacheFirstAsset = async (request) => {
   const cache = await caches.open(ASSET_CACHE);
   const hit = await cache.match(request);
   if (hit !== undefined) return hit;
   const response = await fetch(request);
-  if (response.ok) await cache.put(request, response.clone());
+  if (isCacheableAsset(response)) await cache.put(request, response.clone());
   return response;
 };
 

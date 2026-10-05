@@ -253,6 +253,33 @@ export const availablePool = (
 };
 
 /**
+ * The two pools the legacy board drew side by side — قادة الأطقم and الأخصائيين — each with its
+ * own search and its own icon filters.
+ *
+ * THE SPLIT IS THE `isCaptain` FLAG, exactly as legacy split on `leader`. It is not the HR job
+ * title: Operations does not read job titles anywhere, and the flag is what the planner already
+ * maintains on the requirements screen. Somebody with no requirements row at all has no flag, so
+ * they land with the specialists — the same answer legacy gave an employee nobody had ticked.
+ *
+ * Which pool a member sits in decides only where the planner LOOKS for them. A captain may still
+ * be dropped into a specialist slot and the reverse; nothing here gates an assignment.
+ */
+export const POOL_KINDS = ['captains', 'specialists'] as const;
+export type PoolKind = (typeof POOL_KINDS)[number];
+
+export const poolKindOf = (member: OperationsCrewMemberDto): PoolKind =>
+  member.requirements?.isCaptain === true ? 'captains' : 'specialists';
+
+/** Both pools at once, each keeping the order the server sent (captains-first, then by code). */
+export const splitPool = (
+  members: readonly OperationsCrewMemberDto[],
+): Record<PoolKind, OperationsCrewMemberDto[]> => {
+  const pools: Record<PoolKind, OperationsCrewMemberDto[]> = { captains: [], specialists: [] };
+  for (const member of members) pools[poolKindOf(member)].push(member);
+  return pools;
+};
+
+/**
  * The legacy pool's requirement filters (tashghela.ejs:1114-1142 — the icons doubled as filter
  * buttons). They narrow WHAT IS SHOWN and nothing else: an unfiltered member is still assignable,
  * because requirements gate nothing (approved decision).

@@ -57,10 +57,8 @@ import {
   SLOT_POSITIONS,
   assignCaptainWithCrew,
   assignToSlot,
-  availablePool,
   changedRows,
   clearSlot,
-  filterPool,
   removeFromBoard,
   setRowField,
   slotValue,
@@ -68,23 +66,14 @@ import {
   toPlanRows,
   type BoardRow,
   type CrewSlot,
-  type RequirementFilter,
+  type PoolKind,
 } from '../lib/crew-board';
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
-import { CrewRosterNotice } from '../components/CrewRosterNotice';
+import { CrewPools, EMPTY_POOL_QUERIES, type PoolQuery } from '../components/CrewPools';
 
 /** `?date=` empty means TOMORROW, resolved by the server — the legacy planning default. */
 export const resolveCrewDate = (raw: string | null): string | null =>
   raw !== null && /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
-
-/** The legacy icon-buttons, in the order the legacy pool listed them (tashghela.ejs:1114-1142). */
-export const POOL_FILTERS: RequirementFilter[] = [
-  'isCaptain',
-  'hasWeapon',
-  'hasSignature',
-  'hasLicense',
-  'hasTemporaryLicense',
-];
 
 export const CrewBoardPage = (): JSX.Element => {
   const t = useT();
@@ -109,17 +98,14 @@ export const CrewBoardPage = (): JSX.Element => {
 
   const serverRows = useMemo(() => toBoardRows(board.data?.rows ?? []), [board.data]);
   const [rows, setRows] = useState<BoardRow[]>([]);
-  const [search, setSearch] = useState('');
-  const [active, setActive] = useState<RequirementFilter[]>([]);
+  // Each pool narrows on its own — a search typed into the captains column says nothing about
+  // which specialist the planner is looking for.
+  const [queries, setQueries] = useState<Record<PoolKind, PoolQuery>>(EMPTY_POOL_QUERIES);
 
   // The server's board is the truth; local edits start from it and are discarded on a reload.
   useEffect(() => setRows(serverRows), [serverRows]);
 
   const members = directory.data?.members ?? [];
-  const pool = useMemo(
-    () => filterPool(availablePool(members, rows), active, search),
-    [members, rows, active, search],
-  );
   const memberOf = (employeeId: string | null): OperationsCrewMemberDto | undefined =>
     employeeId === null ? undefined : members.find((m) => m.employeeId === employeeId);
 
@@ -159,9 +145,6 @@ export const CrewBoardPage = (): JSX.Element => {
       toast.error(t('operations.crew.saveFailed'));
     }
   };
-
-  const toggleFilter = (flag: RequirementFilter): void =>
-    setActive((prev) => (prev.includes(flag) ? prev.filter((f) => f !== flag) : [...prev, flag]));
 
   const boardDay = (board.data?.date ?? '').slice(0, 10);
 
@@ -259,62 +242,32 @@ export const CrewBoardPage = (): JSX.Element => {
         </CardBody>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-        {/* ── The pool ────────────────────────────────────────────────────── */}
-        <Card>
-          <CardBody className="space-y-3">
-            <h2 className="text-sm font-semibold">{t('operations.crew.pool')}</h2>
-            <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
-            <Input
-              placeholder={t('operations.crew.searchPool')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="flex flex-wrap gap-1">
-              {POOL_FILTERS.map((flag) => (
-                <button
-                  key={flag}
-                  type="button"
-                  aria-pressed={active.includes(flag)}
-                  onClick={() => toggleFilter(flag)}
-                  className={
-                    active.includes(flag)
-                      ? 'rounded-full border border-brand-500 bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-                      : 'rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400'
-                  }
-                >
-                  {t(`operations.crew.flag.${flag}`)}
-                </button>
-              ))}
-            </div>
+      {/* The vehicles at the START and the pools at the END — in Arabic, the board on the right
+          and the names on the left, as the legacy screen had them. Logical, not physical: in
+          English the same layout mirrors, which is what a reader of that language expects.
 
-            {directory.isLoading && <Spinner />}
-            {directory.isError && (
-              <ErrorState error={directory.error} onRetry={() => void directory.refetch()} />
-            )}
-            {!directory.isLoading && pool.length === 0 && (
-              <p className="text-sm text-slate-500">{t('operations.crew.poolEmpty')}</p>
-            )}
-            <div
-              className="space-y-2"
-              // Dropping back onto the pool clears the member from wherever they were.
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const employeeId = e.dataTransfer.getData(CREW_DRAG_TYPE);
-                if (employeeId === '' || !canPlan) return;
-                setRows((prev) => removeFromBoard(prev, employeeId));
-              }}
-            >
-              {pool.map((member) => (
-                <CrewMemberCard key={member.employeeId} member={member} draggable={canPlan} />
-              ))}
-            </div>
-          </CardBody>
-        </Card>
+          The pools come FIRST in the markup so that below `lg`, where everything stacks, a
+          planner meets the names before twenty vehicles rather than after them; the grid
+          placement is what moves them to the end on a wide screen. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_32rem]">
+        <CrewPools
+          className="lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:h-[calc(100dvh-7rem)] lg:self-start"
+          members={members}
+          rows={rows}
+          queries={queries}
+          onQueryChange={(kind, next) => setQueries((prev) => ({ ...prev, [kind]: next }))}
+          // `isPending`, not `isLoading`: offline, a first fetch is PAUSED — pending but not
+          // loading — and an `isLoading` gate then read the empty roster as "nobody left to assign".
+          loading={directory.isPending}
+          error={directory.isError ? directory.error : null}
+          onRetry={() => void directory.refetch()}
+          rosterIsDerived={directory.data?.rosterIsDerived}
+          canPlan={canPlan}
+          onReturn={(employeeId) => setRows((prev) => removeFromBoard(prev, employeeId))}
+        />
 
         {/* ── The vehicles ────────────────────────────────────────────────── */}
-        <div className="space-y-3">
+        <div className="space-y-3 lg:col-start-1 lg:row-start-1">
           {board.isLoading && <Spinner />}
           {board.isError && (
             <ErrorState error={board.error} onRetry={() => void board.refetch()} />
@@ -346,28 +299,45 @@ export const CrewBoardPage = (): JSX.Element => {
                       </Badge>
                     )}
                   </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Input
-                      className="w-36"
-                      placeholder={t('operations.crew.direction')}
-                      value={row.direction ?? ''}
-                      disabled={!canPlan}
-                      onChange={(e) =>
-                        setRows((prev) => setRowField(prev, row.vehicleId, 'direction', e.target.value))
-                      }
-                    />
-                    <Input
-                      className="w-28"
-                      type="time"
-                      aria-label={t('operations.crew.plannedTime')}
-                      value={row.plannedTime ?? ''}
-                      disabled={!canPlan}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          setRowField(prev, row.vehicleId, 'plannedTime', e.target.value),
-                        )
-                      }
-                    />
+                  {/* الاتجاه and التوقيت on ONE line, as the legacy row had them. The boxes are sized by
+                      a wrapper, not by a class on the Input: the Input carries `w-full`, `cn` does
+                      not resolve Tailwind conflicts, and `.w-full` is emitted after `.w-36` — so a
+                      width given to the Input itself silently lost, every box took the whole row,
+                      and the two wrapped one under the other.
+                      THE DIRECTION BOX GIVES WAY, the time box does not: a fixed-width row spilled
+                      out of the card on a 1024–1190px screen and slid under the pinned pools, where
+                      the time could not be clicked. From `sm` up the row never wraps and the direction
+                      shrinks — which takes `min-w-0` on the ROW as well as on the box: a flex row's
+                      minimum width is otherwise its contents' (224 + 144px), so the box's own
+                      permission to shrink never came into play. On a phone the direction keeps 5rem —
+                      small enough that direction and time still share a line on a 320px screen — and
+                      anything that no longer fits, the standing crew's إزالة, moves to the next line
+                      instead of crushing it. */}
+                  <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+                    <div className="min-w-20 flex-1 sm:w-56 sm:min-w-0 sm:flex-initial">
+                      <Input
+                        aria-label={t('operations.crew.direction')}
+                        placeholder={t('operations.crew.direction')}
+                        value={row.direction ?? ''}
+                        disabled={!canPlan}
+                        onChange={(e) =>
+                          setRows((prev) => setRowField(prev, row.vehicleId, 'direction', e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="w-36 shrink-0">
+                      <Input
+                        type="time"
+                        aria-label={t('operations.crew.plannedTime')}
+                        value={row.plannedTime ?? ''}
+                        disabled={!canPlan}
+                        onChange={(e) =>
+                          setRows((prev) =>
+                            setRowField(prev, row.vehicleId, 'plannedTime', e.target.value),
+                          )
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
 

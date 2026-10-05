@@ -6515,6 +6515,13 @@ const en: Record<string, string> = {
   'operations.crew.pool': 'Available crew',
   'operations.crew.poolEmpty': 'Nobody available matches this filter',
   'operations.crew.searchPool': 'Search by name or code',
+  'operations.crew.pools.captains': 'Crew captains',
+  'operations.crew.pools.specialists': 'Specialists',
+  'operations.crew.pools.empty.captains': 'No captain left to assign',
+  'operations.crew.pools.empty.specialists': 'No specialist left to assign',
+  'operations.crew.pools.noCaptainsFlagged':
+    'Nobody on the roster is marked as a captain yet, so everyone is listed under Specialists.',
+  'operations.crew.pools.flagCaptains': 'Mark the captains',
   'operations.crew.dropHere': 'Drop a crew member here',
   'operations.crew.noVehicles': 'No vehicles on the roster for this day',
   'operations.crew.noVehiclesHint':
@@ -13950,6 +13957,13 @@ const ar: Record<string, string> = {
   'operations.crew.pool': 'الطاقم المتاح',
   'operations.crew.poolEmpty': 'لا يوجد متاح يطابق هذا الفلتر',
   'operations.crew.searchPool': 'ابحث بالاسم أو الكود',
+  'operations.crew.pools.captains': 'قادة الأطقم',
+  'operations.crew.pools.specialists': 'الأخصائيين',
+  'operations.crew.pools.empty.captains': 'لا يوجد قائد متاح للتعيين',
+  'operations.crew.pools.empty.specialists': 'لا يوجد أخصائي متاح للتعيين',
+  'operations.crew.pools.noCaptainsFlagged':
+    'لا أحد في الكشف معلَّم كقائد طاقم بعد، لذا الجميع معروضون تحت الأخصائيين.',
+  'operations.crew.pools.flagCaptains': 'علِّم القادة',
   'operations.crew.dropHere': 'أفلت أحد الأفراد هنا',
   'operations.crew.noVehicles': 'لا توجد مركبات في تشغيلة هذا اليوم',
   'operations.crew.noVehiclesHint':

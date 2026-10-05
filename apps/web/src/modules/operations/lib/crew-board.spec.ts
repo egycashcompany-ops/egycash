@@ -23,12 +23,14 @@ import {
   changedRows,
   clearSlot,
   filterPool,
+  poolKindOf,
   removeFromBoard,
   rowCrew,
   setRowField,
   slotOccupants,
   slotValue,
   slotsHolding,
+  splitPool,
   toBoardRows,
   toPlanRows,
   type BoardRow,
@@ -316,6 +318,44 @@ describe('filterPool — the legacy icon filters', () => {
   it('searches name and code together', () => {
     expect(filterPool(members, [], 'E-e2').map((m) => m.employeeId)).toEqual(['e2']);
     expect(filterPool(members, [], 'موظف e3').map((m) => m.employeeId)).toEqual(['e3']);
+  });
+});
+
+describe('splitPool — the two legacy pools, captains and specialists', () => {
+  const members = [
+    member('c1', { requirements: flags({ isCaptain: true }) }),
+    member('s1', { requirements: flags({ hasWeapon: true }) }),
+    member('c2', { requirements: flags({ isCaptain: true, hasWeapon: true }) }),
+    member('n1', { requirements: null }),
+  ];
+
+  it('puts the captain-flagged in one pool and everyone else in the other', () => {
+    const pools = splitPool(members);
+    expect(pools.captains.map((m) => m.employeeId)).toEqual(['c1', 'c2']);
+    expect(pools.specialists.map((m) => m.employeeId)).toEqual(['s1', 'n1']);
+  });
+
+  // Nobody is lost and nobody is listed twice: the two pools together are the pool.
+  it('partitions — every member in exactly one pool', () => {
+    const pools = splitPool(members);
+    expect([...pools.captains, ...pools.specialists]).toHaveLength(members.length);
+    expect(new Set([...pools.captains, ...pools.specialists].map((m) => m.employeeId)).size).toBe(
+      members.length,
+    );
+  });
+
+  // A member with no requirements row has no flag, so legacy would not have called them a leader.
+  it('sends a member with nothing recorded to the specialists', () => {
+    expect(poolKindOf(member('n1', { requirements: null }))).toBe('specialists');
+  });
+
+  it('keeps the order it was given inside each pool', () => {
+    const pools = splitPool([members[2] as OperationsCrewMemberDto, members[0] as OperationsCrewMemberDto]);
+    expect(pools.captains.map((m) => m.employeeId)).toEqual(['c2', 'c1']);
+  });
+
+  it('gives two empty pools for nobody', () => {
+    expect(splitPool([])).toEqual({ captains: [], specialists: [] });
   });
 });
 

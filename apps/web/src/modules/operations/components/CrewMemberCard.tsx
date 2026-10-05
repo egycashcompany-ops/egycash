@@ -20,10 +20,16 @@ export const CrewMemberCard = ({
   member,
   draggable = true,
   onRemove,
+  showCaptainBadge = true,
 }: {
   member: OperationsCrewMemberDto;
   draggable?: boolean;
   onRemove?: (() => void) | undefined;
+  /**
+   * Off inside the captains pool, where every card would carry it and so it would say nothing —
+   * and where the column is narrow enough that the width is better spent on the name.
+   */
+  showCaptainBadge?: boolean;
 }): JSX.Element => {
   const t = useT();
   const req = member.requirements;
@@ -41,13 +47,16 @@ export const CrewMemberCard = ({
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium">{member.fullNameAr}</span>
-          {req?.isCaptain === true && (
+          {showCaptainBadge && req?.isCaptain === true && (
             <Badge tone="brand" size="sm">
               {t('operations.crew.role.captain')}
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+        {/* WRAPS. A pool column is narrow, and a member carrying all four chips plus the new-joiner
+            badge is wider than it: without wrapping that card overflowed and the pool list grew a
+            horizontal scrollbar. Wrapping costs a line only for the members who need one. */}
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-slate-500 dark:text-slate-400">
           <span className="tabular-nums">{member.code}</span>
           {/* Who carries what — weapon, signature, licence, temporary licence. Indicators only. */}
           <CrewFlagIcons requirements={req} />

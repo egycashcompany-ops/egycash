@@ -42,15 +42,14 @@ import {
   SLOT_POSITIONS,
   assignCaptainWithCrew,
   assignToSlot,
-  availablePool,
   changedRows,
   clearSlot,
-  filterPool,
   removeFromBoard,
   setRowField,
   slotValue,
   type BoardRow,
   type CrewSlot,
+  type PoolKind,
   type RequirementFilter,
 } from '../lib/crew-board';
 import {
@@ -60,13 +59,19 @@ import {
   toStandingRows,
 } from '../lib/standing-crew';
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
-import { CrewRosterNotice } from '../components/CrewRosterNotice';
-import { POOL_FILTERS } from './CrewBoardPage';
+import { CrewPools, type PoolQuery } from '../components/CrewPools';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
-/** Remembered across visits: this screen's pool filters. */
-const REMEMBERED_FILTERS = ['q', 'flags'] as const;
+/**
+ * Each pool's search and icon filters, in the URL and remembered across visits — one pair of
+ * params per pool, because the two pools narrow independently: `cq`/`cflags` for the captains,
+ * `sq`/`sflags` for the specialists. Written out LITERALLY below rather than looked up from a
+ * table: `remembered-filters-coverage.spec.ts` finds a page's params by matching their literal
+ * names where they are read and patched, and a lookup hid all four from it — a param dropped from
+ * this list would then have stopped being remembered with every test still green.
+ */
+const REMEMBERED_FILTERS = ['cq', 'cflags', 'sq', 'sflags'] as const;
 
 export const StandingCrewPage = (): JSX.Element => {
   const t = useT();
@@ -84,8 +89,10 @@ export const StandingCrewPage = (): JSX.Element => {
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
-  const search = sp.get('q') ?? '';
-  const active = readList(sp, 'flags') as RequirementFilter[];
+  const queries: Record<PoolKind, PoolQuery> = {
+    captains: { search: sp.get('cq') ?? '', flags: readList(sp, 'cflags') as RequirementFilter[] },
+    specialists: { search: sp.get('sq') ?? '', flags: readList(sp, 'sflags') as RequirementFilter[] },
+  };
   // Replaces rather than pushes: narrowing the pool is a view of this board, not a place to go
   // Back to. The pool is filtered in the browser, so this only moves where the state lives.
   const patch = (updates: Record<string, string | null>): void => {
@@ -96,7 +103,10 @@ export const StandingCrewPage = (): JSX.Element => {
     }
     setSp(next, { replace: true });
   };
-  const setSearch = (value: string): void => patch({ q: value });
+  const setQuery = (kind: PoolKind, next: PoolQuery): void =>
+    kind === 'captains'
+      ? patch({ cq: next.search, cflags: writeList(next.flags) })
+      : patch({ sq: next.search, sflags: writeList(next.flags) });
   const [adding, setAdding] = useState('');
 
   // The server's list is the truth about WHICH vehicles are in the fleet; the draft is the truth
@@ -109,10 +119,6 @@ export const StandingCrewPage = (): JSX.Element => {
   }, [serverRows]);
 
   const members = directory.data?.members ?? [];
-  const pool = useMemo(
-    () => filterPool(availablePool(members, rows), active, search),
-    [members, rows, active, search],
-  );
   const memberOf = (employeeId: string | null): OperationsCrewMemberDto | undefined =>
     employeeId === null ? undefined : members.find((m) => m.employeeId === employeeId);
 
@@ -176,11 +182,6 @@ export const StandingCrewPage = (): JSX.Element => {
     }
   };
 
-  const toggleFilter = (flag: RequirementFilter): void =>
-    patch({
-      flags: writeList(active.includes(flag) ? active.filter((f) => f !== flag) : [...active, flag]),
-    });
-
   return (
     <PageContainer>
       <PageHeader
@@ -228,62 +229,27 @@ export const StandingCrewPage = (): JSX.Element => {
         </CardBody>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-        {/* ── The pool ────────────────────────────────────────────────────── */}
-        <Card>
-          <CardBody className="space-y-3">
-            <h2 className="text-sm font-semibold">{t('operations.crew.pool')}</h2>
-            <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
-            <Input
-              placeholder={t('operations.crew.searchPool')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="flex flex-wrap gap-1">
-              {POOL_FILTERS.map((flag) => (
-                <button
-                  key={flag}
-                  type="button"
-                  aria-pressed={active.includes(flag)}
-                  onClick={() => toggleFilter(flag)}
-                  className={
-                    active.includes(flag)
-                      ? 'rounded-full border border-brand-500 bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-                      : 'rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400'
-                  }
-                >
-                  {t(`operations.crew.flag.${flag}`)}
-                </button>
-              ))}
-            </div>
-
-            {directory.isLoading && <Spinner />}
-            {directory.isError && (
-              <ErrorState error={directory.error} onRetry={() => void directory.refetch()} />
-            )}
-            {!directory.isLoading && pool.length === 0 && (
-              <p className="text-sm text-slate-500">{t('operations.crew.poolEmpty')}</p>
-            )}
-            <div
-              className="space-y-2"
-              // Dropping back onto the pool clears the member from wherever they were.
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const employeeId = e.dataTransfer.getData(CREW_DRAG_TYPE);
-                if (employeeId === '' || !canPlan) return;
-                setRows((prev) => removeFromBoard(prev, employeeId));
-              }}
-            >
-              {pool.map((member) => (
-                <CrewMemberCard key={member.employeeId} member={member} draggable={canPlan} />
-              ))}
-            </div>
-          </CardBody>
-        </Card>
+      {/* Vehicles at the start, the two pools at the end — the same layout as the daily board,
+          for the same reasons (see CrewBoardPage). */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem] xl:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_32rem]">
+        <CrewPools
+          className="lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:h-[calc(100dvh-7rem)] lg:self-start"
+          members={members}
+          rows={rows}
+          queries={queries}
+          onQueryChange={setQuery}
+          // `isPending`, not `isLoading`: offline, a first fetch is PAUSED — pending but not
+          // loading — and an `isLoading` gate then read the empty roster as "nobody left to assign".
+          loading={directory.isPending}
+          error={directory.isError ? directory.error : null}
+          onRetry={() => void directory.refetch()}
+          rosterIsDerived={directory.data?.rosterIsDerived}
+          canPlan={canPlan}
+          onReturn={(employeeId) => setRows((prev) => removeFromBoard(prev, employeeId))}
+        />
 
         {/* ── The cash-transfer vehicles ──────────────────────────────────── */}
-        <div className="space-y-3">
+        <div className="space-y-3 lg:col-start-1 lg:row-start-1">
           {standing.isLoading && <Spinner />}
           {standing.isError && (
             <ErrorState error={standing.error} onRetry={() => void standing.refetch()} />
@@ -304,34 +270,52 @@ export const StandingCrewPage = (): JSX.Element => {
               <CardBody className="space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="font-semibold">{row.vehicleCode}</h3>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Input
-                      className="w-36"
-                      placeholder={t('operations.crew.direction')}
-                      value={row.direction ?? ''}
-                      disabled={!canPlan}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          setRowField(prev, row.vehicleId, 'direction', e.target.value),
-                        )
-                      }
-                    />
-                    <Input
-                      className="w-28"
-                      type="time"
-                      aria-label={t('operations.crew.plannedTime')}
-                      value={row.plannedTime ?? ''}
-                      disabled={!canPlan}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          setRowField(prev, row.vehicleId, 'plannedTime', e.target.value),
-                        )
-                      }
-                    />
+                  {/* الاتجاه and التوقيت on ONE line, as the legacy row had them. The boxes are sized by
+                      a wrapper, not by a class on the Input: the Input carries `w-full`, `cn` does
+                      not resolve Tailwind conflicts, and `.w-full` is emitted after `.w-36` — so a
+                      width given to the Input itself silently lost, every box took the whole row,
+                      and the two wrapped one under the other.
+                      THE DIRECTION BOX GIVES WAY, the time box does not: a fixed-width row spilled
+                      out of the card on a 1024–1190px screen and slid under the pinned pools, where
+                      the time could not be clicked. From `sm` up the row never wraps and the direction
+                      shrinks — which takes `min-w-0` on the ROW as well as on the box: a flex row's
+                      minimum width is otherwise its contents' (224 + 144px), so the box's own
+                      permission to shrink never came into play. On a phone the direction keeps 5rem —
+                      small enough that direction and time still share a line on a 320px screen — and
+                      anything that no longer fits, the standing crew's إزالة, moves to the next line
+                      instead of crushing it. */}
+                  <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+                    <div className="min-w-20 flex-1 sm:w-56 sm:min-w-0 sm:flex-initial">
+                      <Input
+                        aria-label={t('operations.crew.direction')}
+                        placeholder={t('operations.crew.direction')}
+                        value={row.direction ?? ''}
+                        disabled={!canPlan}
+                        onChange={(e) =>
+                          setRows((prev) =>
+                            setRowField(prev, row.vehicleId, 'direction', e.target.value),
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="w-36 shrink-0">
+                      <Input
+                        type="time"
+                        aria-label={t('operations.crew.plannedTime')}
+                        value={row.plannedTime ?? ''}
+                        disabled={!canPlan}
+                        onChange={(e) =>
+                          setRows((prev) =>
+                            setRowField(prev, row.vehicleId, 'plannedTime', e.target.value),
+                          )
+                        }
+                      />
+                    </div>
                     {canPlan && (
                       <Button
                         size="sm"
                         variant="secondary"
+                        className="shrink-0"
                         // Named per vehicle: eight identical "Remove" buttons are unusable from a
                         // screen reader's elements list, where there is no surrounding card to say
                         // which vehicle each one belongs to.

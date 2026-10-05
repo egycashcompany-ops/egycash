@@ -9,6 +9,34 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A tab left open across a deploy reloads itself into the new version instead of breaking.**
+  «لما بسيب الموقع مدة طويلة وأرجع بلاقى… Failed to fetch dynamically imported module». Every
+  deploy renames the build's chunks (Vite hashes their contents into the names) and the new
+  container has only the new names. A tab opened before the deploy is still running the old
+  `index-*.js`, so the first screen it had not yet opened asked for a file that no longer exists,
+  and the screen died with the browser's raw message. Coming back after a long absence is the usual
+  way to meet it, because an absence is when deploys happen.
+
+  Three things were wrong, and each is fixed where it lives:
+
+  - **The page now recovers.** Vite raises `vite:preloadError` for every failed dynamic import,
+    and the app answers it by reloading — which brings the new shell and the new names
+    (`platform/app/stale-build.ts`). The error boundary shows «جارٍ التحديث إلى أحدث إصدار…» for
+    that moment instead of an error. It reloads **once**: a second failure inside a minute means
+    the CURRENT build is the broken one, so the ordinary error screen and its button come back
+    rather than a page that reloads forever. Without session storage there is no record of a
+    reload, so none is attempted.
+  - **The server tells the truth about a missing chunk.** The SPA fallback answered any unknown
+    GET with the HTML shell and a 200, so an old chunk name got a web page back as its script.
+    Files under `assets/` are now a 404 (`answersWithShell`); client routes, including the IT
+    module's `/it/assets`, still render the app.
+  - **The service worker can no longer file HTML under a script's name.** It caches build output
+    first and forever, and it cached any `ok` answer, so the shell served for a missing chunk could
+    be kept under that chunk's name. It now refuses an HTML answer, and its cache version moves to
+    `ecms-v2`, which deletes everything v1 stored, including any entry poisoned that way.
+
 ### Added
 
 - **IT custody receipts (إيصال استلام) — printed before the hand-over, signed copy filed after.**

@@ -412,6 +412,9 @@ const en: Record<string, string> = {
   'common.errorBoundary.title': 'Something went wrong',
   'common.errorBoundary.body': 'An unexpected error occurred while rendering this screen.',
   'common.errorBoundary.reload': 'Reload',
+  'common.staleBuild.title': 'Updating to the latest version…',
+  'common.staleBuild.body':
+    'A new version of the system was published while this page was open. The page is reloading to load it — nothing you saved is affected.',
   'common.forbidden.title': 'Access denied',
   'common.forbidden.body': 'You do not have permission to view this page.',
   'sidebar.empty': 'No applications assigned yet',
@@ -7878,6 +7881,9 @@ const ar: Record<string, string> = {
   'common.errorBoundary.title': 'حدث خطأ ما',
   'common.errorBoundary.body': 'حدث خطأ غير متوقع أثناء عرض هذه الشاشة.',
   'common.errorBoundary.reload': 'إعادة التحميل',
+  'common.staleBuild.title': 'جارٍ التحديث إلى أحدث إصدار…',
+  'common.staleBuild.body':
+    'نُشر إصدار جديد من النظام أثناء فتح هذه الصفحة، ويُعاد تحميلها الآن لتحميله. ولا يتأثر أي شيء حفظته.',
   'common.forbidden.title': 'تم رفض الوصول',
   'common.forbidden.body': 'ليس لديك صلاحية لعرض هذه الصفحة.',
   'sidebar.empty': 'لا توجد تطبيقات مُسنَدة بعد',

@@ -65,6 +65,29 @@ import { getRegisteredModules } from './platform/kernel/module-registry';
 export const isHashedAsset = (filePath: string): boolean =>
   filePath.includes(`${path.sep}assets${path.sep}`);
 
+/**
+ * Whether a GET that matched no file is answered with the SPA's HTML shell.
+ *
+ * Every client route is, so a deep link or a refresh on `/employees/42` renders the app. A missing
+ * file under `assets/` is NOT: that is a chunk an older build named and a newer deploy removed,
+ * asked for by a tab opened before the deploy. Answering it with the shell — HTML, with a 200 —
+ * told the browser "here is your script" and handed it a web page; the import failed with no
+ * honest reason, and the service worker, which caches build output first and forever, could
+ * file that HTML under the chunk's name. A 404 is the truth, fails the import at once, and is
+ * never cached; the page's stale-build recovery takes it from there.
+ *
+ * Exported so the rule can be asserted directly; the middleware gives a test nothing to hold.
+ */
+export const answersWithShell = (pathname: string, basePath: string): boolean => {
+  const underBase = basePath === '' || pathname === basePath || pathname.startsWith(`${basePath}/`);
+  const reserved =
+    pathname.startsWith(`${basePath}/api/`) ||
+    pathname.startsWith(`${basePath}/health/`) ||
+    pathname.startsWith('/health/') ||
+    pathname.startsWith(`${basePath}/assets/`);
+  return underBase && !reserved;
+};
+
 export const buildApp = (): Express => {
   const app = express();
   app.disable('x-powered-by');
@@ -233,15 +256,7 @@ export const buildApp = (): Express => {
       app.get('/', (_req, res) => res.redirect(`${env.BASE_PATH}/`));
     }
     app.use((req, res, next) => {
-      const underBase =
-        env.BASE_PATH === '' ||
-        req.path === env.BASE_PATH ||
-        req.path.startsWith(`${env.BASE_PATH}/`);
-      const reserved =
-        req.path.startsWith(`${env.BASE_PATH}/api/`) ||
-        req.path.startsWith(`${env.BASE_PATH}/health/`) ||
-        req.path.startsWith('/health/');
-      if (req.method !== 'GET' || !underBase || reserved) return next();
+      if (req.method !== 'GET' || !answersWithShell(req.path, env.BASE_PATH)) return next();
       res.setHeader('Cache-Control', 'no-cache');
       res.sendFile(path.join(webRoot, 'index.html'));
     });

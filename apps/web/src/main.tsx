@@ -12,6 +12,7 @@ import { ErrorBoundary } from './platform/app/ErrorBoundary';
 import { Toaster } from './shared/ui/toast/Toaster';
 import { App } from './platform/app/App';
 import { readStoredBranch } from './platform/layout/BranchSwitcher';
+import { reloadIntoNewBuild } from './platform/app/stale-build';
 import './styles.css';
 
 // Organized sign-out on definitive auth loss (failed silent refresh): one state flip —
@@ -26,6 +27,14 @@ setOnAuthLost(() => {
 // bootstrap and the first screen would both answer unnarrowed and then quietly change under the
 // user once the switcher mounted.
 setActiveBranch(readStoredBranch());
+
+// A tab opened before a deploy asks for chunks that deploy removed (`platform/app/stale-build.ts`).
+// Vite announces EVERY failed dynamic import with this event — the screens React lazy-loads and the
+// libraries loaded on demand alike — so this is the one place that sees them all. The error is
+// left to travel on: the boundary it reaches shows the updating notice until the reload lands.
+window.addEventListener('vite:preloadError', () => {
+  reloadIntoNewBuild();
+});
 
 // The installed-app service worker (see `public/sw.js` for what it does and refuses to do).
 //

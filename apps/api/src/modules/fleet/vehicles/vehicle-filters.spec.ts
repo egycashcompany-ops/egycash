@@ -104,6 +104,30 @@ const on = (filter: Record<string, unknown>, field: string): Clause | undefined 
 const inOf = (filter: Record<string, unknown>, field: string): unknown[] =>
   (on(filter, field)?.[field]?.$in ?? []) as unknown[];
 
+describe('vehicleListFilter — the licence-expiry month', () => {
+  it('asks for one month as both bounds of one clause', () => {
+    const from = new Date('2026-11-01T00:00:00.000Z');
+    const before = new Date('2026-11-30T23:59:59.999Z');
+    const filter = vehicleListFilter({
+      licenseExpiresFrom: from,
+      licenseExpiresBefore: before,
+    } as never);
+    expect(on(filter, 'licenseExpiresAt')?.['licenseExpiresAt']).toEqual({
+      $gte: from,
+      $lte: before,
+    });
+  });
+
+  it('takes either bound alone', () => {
+    const from = new Date('2026-11-01T00:00:00.000Z');
+    expect(
+      on(vehicleListFilter({ licenseExpiresFrom: from } as never), 'licenseExpiresAt')?.[
+        'licenseExpiresAt'
+      ],
+    ).toEqual({ $gte: from });
+  });
+});
+
 describe('vehicleListFilter — several answers per filter, ANDed with each other', () => {
   it('asks for EVERY make ticked, in one `$in`', () => {
     const filter = vehicleListFilter({ typeId: [String(ID1), String(ID2)] } as never);

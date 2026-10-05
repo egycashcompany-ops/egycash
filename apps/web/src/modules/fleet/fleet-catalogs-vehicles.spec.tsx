@@ -540,9 +540,9 @@ describe('the registry table renders the frozen column order', () => {
     // identifiers are still boxes, and still need the wrapper.
     const html = withRows([vehicle()]);
     for (const [label, width] of [
-      [t('fleet.vehicles.columns.plate'), 'w-36'],
-      [t('fleet.vehicles.columns.chassis'), 'w-40'],
-      [t('fleet.vehicles.columns.motor'), 'w-40'],
+      [t('fleet.vehicles.columns.plate'), 'w-24'],
+      [t('fleet.vehicles.columns.chassis'), 'w-24'],
+      [t('fleet.vehicles.columns.motor'), 'w-24'],
     ] as const) {
       const at = html.indexOf(`aria-label="${label}"`);
       expect(at, `${label} filter missing`).toBeGreaterThan(-1);
@@ -571,7 +571,7 @@ describe('the registry table renders the frozen column order', () => {
     // Every dropdown follows the last identifier, so reading order matches the intended layout.
     const lastIdentifier = Math.max(...order);
     for (const key of ['make', 'licenseClass', 'operation', 'insurance']) {
-      const at = html.indexOf(`aria-label="${t(`fleet.vehicles.filters.${key}`)}"`);
+      const at = html.indexOf(`aria-label="${t(`fleet.vehicles.filters.short.${key}`)}"`);
       expect(at, `${key} dropdown missing`).toBeGreaterThan(lastIdentifier);
     }
   });
@@ -596,7 +596,7 @@ describe('the registry table renders the frozen column order', () => {
   it('offers all four catalog filters with their real options', () => {
     const html = withRows([vehicle()]);
     for (const key of ['make', 'licenseClass', 'operation', 'insurance']) {
-      expect(html, key).toContain(t(`fleet.vehicles.filters.${key}`));
+      expect(html, key).toContain(t(`fleet.vehicles.filters.short.${key}`));
     }
   });
 

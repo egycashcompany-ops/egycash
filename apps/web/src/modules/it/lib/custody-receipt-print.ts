@@ -3,7 +3,7 @@
 // «ومعلش هنغير التصميم بتاع الطباعة فى الـ IT فقط لدا»: the owner replaced the item-table receipt
 // with the department's own form, and this is that form, ONE PAGE PER DEVICE. The letterhead (the
 // logo, and «قطاع تكنولوجيا المعلومات» on its banner) over a rule; «إقرار استلام»; the statement —
-// «أقر أنا / … بوظيفة … بشركة إيجي كاش لتكنولوجيا الحلول النقدية، بطاقة رقم قومي … بأنني قد استلمت
+// «أقر أنا / … بوظيفة … بشركة إيجي كاش للحلول النقدية، بطاقة رقم قومي … بأنني قد استلمت
 // جهاز … برقم مسلسل … ومواصفاته كالتالي:»; the specifications table (Component / Details, grouped
 // System · Storage · Graphics · Network); «ومشتملاته كالتالي:» and its numbered list; the
 // undertaking; «وهذا إقرار مني بذلك»; «المقر بما فيه» with the name, signature and date on the
@@ -13,10 +13,11 @@
 // The form's red marks what is filled in for each paper, and it stays red here — filled with what
 // the system knows: the employee's name and job; «بطاقة رقم قومي … صادرة من قسم … – … بتاريخ …»
 // with their national ID, their section and department, and the paper's date («مفروض تملأها
-// تلقائي من النظام»); the device's kind and its serial. What the system does not hold stays a
-// dotted line for the pen — and so does the national ID for a reader not allowed to see it
-// (`itAsset.viewNationalId`). A row of the table nothing was typed against is left off, and so is
-// the whole table, or the accessories, when there is nothing to list.
+// تلقائي من النظام»); the device by its make and model («خليه يظهر الـ Manufacturer / Model»)
+// and its serial. What the system does not hold stays a dotted line for the pen — and so does the
+// national ID for a reader not allowed to see it (`itAsset.viewNationalId`). A row of the table
+// nothing was typed against is left off, and so is the whole table, or the accessories, when there
+// is nothing to list.
 //
 // Under the signature the name is the first three PARTS («مش لازم رباعي ممكن ثلاثي فقط تحت عند
 // الإمضاء»), on one line; the statement above it keeps the full name.
@@ -125,10 +126,31 @@ const fill = (value: string | null | undefined, blank = 24, whole = false): stri
   return `<span class="fill${whole ? ' whole' : ''}">${text === '' ? '.'.repeat(blank) : `<bdi>${esc(text)}</bdi>`}</span>`;
 };
 
-/** «جهاز لاب توب» — the device's kind; the asset's own name for a receipt from before kinds. */
+/** «Lenovo / ThinkCentre neo 50a 24 gen 5» — the make and model; empty when neither is known. */
+export const makeAndModel = (
+  line: Pick<ItCustodyReceiptLineDto, 'manufacturer' | 'model'>,
+): string =>
+  [line.manufacturer, line.model]
+    .map((part) => part?.trim() ?? '')
+    .filter((part) => part !== '')
+    .join(' / ');
+
+/**
+ * A device's make and model is kept in one piece up to this length — «Lenovo / ThinkCentre neo 50a
+ * 24 gen 5» is one name, and split across two lines it reads as two. Only a name too long for a
+ * line wraps.
+ */
+const WHOLE_DEVICE_NAME = 60;
+
+/**
+ * «جهاز Lenovo / ThinkCentre neo 50a 24 gen 5» — the device by its make and model («خليه يظهر الـ
+ * Manufacturer / Model بداله»); by its kind (the category) when neither is on file, and by the
+ * asset's own name for a receipt from before either.
+ */
 const device = (line: ItCustodyReceiptLineDto): string => {
-  const kind = line.deviceType?.trim() || line.name;
-  return kind.startsWith('جهاز') ? fill(kind, 24, true) : `جهاز ${fill(kind, 24, true)}`;
+  const named = makeAndModel(line) || line.deviceType?.trim() || line.name;
+  const whole = named.length <= WHOLE_DEVICE_NAME;
+  return named.startsWith('جهاز') ? fill(named, 24, whole) : `جهاز ${fill(named, 24, whole)}`;
 };
 
 /** One row of the specifications table. */
@@ -149,10 +171,7 @@ export const specGroups = (
     group,
     rows: rows.flatMap(({ key, label }): SpecRow[] => {
       if (key === 'manufacturerModel') {
-        const value = [line.manufacturer, line.model]
-          .map((part) => part?.trim() ?? '')
-          .filter((part) => part !== '')
-          .join(' / ');
+        const value = makeAndModel(line);
         return value === '' ? [] : [{ label, value }];
       }
       if (key === 'networkAdapters') {
@@ -219,7 +238,7 @@ const page = (
   </header>
   <hr class="rule" />
   <h1>إقرار استلام</h1>
-  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش لتكنولوجيا الحلول النقدية، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} – صادرة من قسم ${fill(paper.section?.ar, 8)} – ${fill(paper.department?.ar, 10)} بتاريخ ${fill(statementDate(paper.issuedAt), 24, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
+  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} – صادرة من قسم ${fill(paper.section?.ar, 8)} – ${fill(paper.department?.ar, 10)} بتاريخ ${fill(statementDate(paper.issuedAt), 24, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
   ${accessories.length > 0 ? `<p class="lead">ومشتملاته كالتالي:</p><div class="items">${accessoryList(accessories)}</div>` : ''}
   <p class="undertaking">${RECEIPT_UNDERTAKING}</p>
@@ -265,9 +284,14 @@ export const buildCustodyReceiptHtml = (
   .rule { border: 0; border-top: 1.5pt solid #000; margin: 5mm 3.7mm 0; }
   h1 { text-align: center; font-size: 16pt; font-weight: 700; text-decoration: underline; text-underline-offset: 2pt; margin: 3mm 0 4.5mm; }
   .statement, .lead, .items, .undertaking, .signs { margin-left: 12mm; margin-right: 12mm; }
-  .statement { margin-top: 0; margin-bottom: 3mm; text-align: justify; }
+  /*
+   * Set from the right edge, not justified: the statement mixes Arabic with long English names
+   * and numbers that are kept whole, and justifying such a line stretches its gaps — between the
+   * words of a model name, or across the line before it.
+   */
+  .statement { margin-top: 0; margin-bottom: 3mm; text-align: start; }
   .fill { color: ${COLORS.fill}; }
-  /* A serial, a national ID, a date, a device's kind: read whole, never split across two lines. */
+  /* A serial, a national ID, a date, a short device name: read whole, never split across two lines. */
   .fill.whole { white-space: nowrap; }
   .specs { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.15; }
   .specs col.g { width: 13.9%; }

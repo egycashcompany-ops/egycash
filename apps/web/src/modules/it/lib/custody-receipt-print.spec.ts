@@ -93,10 +93,13 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
       'أقر أنا / <span class="fill"><bdi>مصطفى عثمان محمود عثمان</bdi></span>',
     );
     expect(html).toContain('بوظيفة <span class="fill"><bdi>محاسب</bdi></span>');
-    expect(html).toContain('بشركة إيجي كاش لتكنولوجيا الحلول النقدية');
-    // «جهاز لاب توب» — the device's kind, then its serial, then the table it introduces.
+    // «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول».
+    expect(html).toContain('بشركة إيجي كاش للحلول النقدية،');
+    expect(html).not.toContain('لتكنولوجيا');
+    // The device by its make and model («خليه يظهر الـ Manufacturer / Model بداله»), then its
+    // serial, then the table it introduces.
     expect(html).toContain(
-      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>لاب توب</bdi></span>',
+      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>Dell / N4050</bdi></span>',
     );
     expect(html).toContain(
       'برقم مسلسل <span class="fill whole"><bdi>B600DN3</bdi></span> ومواصفاته كالتالي:',
@@ -106,6 +109,37 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     // the sentence around it, so a long one never stretches a gap across the line before it.
     expect(html).toContain('.fill.whole { white-space: nowrap; }');
     expect(html).toContain('بوظيفة <span class="fill"><bdi>محاسب</bdi>');
+  });
+
+  it('names the device by its make and model, in one piece', () => {
+    // The owner's own example.
+    const lenovo = { ...LAPTOP, manufacturer: 'Lenovo', model: 'ThinkCentre neo 50a 24 gen 5' };
+    const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [lenovo] }), LABELS));
+    expect(page).toContain(
+      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>Lenovo / ThinkCentre neo 50a 24 gen 5</bdi></span>',
+    );
+    // The category is not what the sentence names any more.
+    expect(page).not.toContain('<bdi>لاب توب</bdi>');
+    // The table still has its «Manufacturer / Model» row.
+    expect(page).toContain(
+      '<td>Manufacturer / Model</td><td>Lenovo / ThinkCentre neo 50a 24 gen 5</td>',
+    );
+  });
+
+  it('sets the statement from the right edge — justifying would stretch a whole name’s line', () => {
+    expect(html).toMatch(/\.statement \{[^}]*text-align: start;/u);
+  });
+
+  it('names the device by its kind when neither make nor model is on file', () => {
+    const [page] = pages(
+      buildCustodyReceiptHtml(
+        paper({ lines: [{ ...LAPTOP, manufacturer: null, model: null }] }),
+        LABELS,
+      ),
+    );
+    expect(page).toContain(
+      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>لاب توب</bdi></span>',
+    );
   });
 
   it('fills the identity line from the system — national ID, section, department and date', () => {

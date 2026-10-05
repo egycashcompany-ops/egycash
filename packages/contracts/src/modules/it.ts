@@ -666,7 +666,10 @@ export interface ItCustodyReceiptLineDto {
   conditionOnIssue: string | null;
   /** Recorded with the hand-over; the acknowledgment does not print it. */
   notes: string | null;
-  /** «جهاز لاب توب» — the device's kind: its asset category, as the paper names it. */
+  /**
+   * The device's kind — its asset category's Arabic name. The statement names the device by its
+   * make and model («جهاز Lenovo / ThinkCentre …») and falls back to this when neither is known.
+   */
   deviceType: string | null;
   manufacturer: string | null;
   model: string | null;

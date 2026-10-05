@@ -23,7 +23,7 @@ export interface ItCustodyReceiptLineSub {
   notes: string | null;
   // The acknowledgment's own fields («إقرار استلام»). Optional in the type: receipts issued before
   // the acknowledgment replaced the item table have none, and print without them.
-  /** «جهاز لاب توب» — the asset's category, as the paper names the device. */
+  /** The asset's category — what the paper names the device by when its make and model are unknown. */
   deviceType?: string | null;
   manufacturer?: string | null;
   model?: string | null;

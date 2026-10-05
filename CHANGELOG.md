@@ -32,6 +32,13 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The acknowledgment names the device by its make and model, and the company as «إيجي كاش
+  للحلول النقدية».** «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول» and «خليه يظهر الـ
+  Manufacturer / Model بداله»: the statement now reads «بشركة إيجي كاش للحلول النقدية» and
+  «بأنني قد استلمت جهاز Lenovo / ThinkCentre neo 50a 24 gen 5 برقم مسلسل …», falling back to the
+  asset's category only when neither make nor model is on file. The make and model stays in one
+  piece, and the statement is set from the right edge instead of justified, so no line of it is
+  stretched around a long name.
 - **The custody acknowledgment fills its identity line from the system.** «بطاقة رقم قومي …
   صادرة من قسم … – … بتاريخ … مفروض تملأها تلقائي من النظام». The line now carries the employee's
   national ID, section and department from HR and the paper's date, and the receipt keeps them like

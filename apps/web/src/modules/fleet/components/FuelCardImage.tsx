@@ -2,6 +2,7 @@
 // for a card with none), and the dialog that shows it large, replaces it and deletes it. The bytes
 // are guarded, so they are fetched with the session and shown as an object URL.
 import { useEffect, useState } from 'react';
+import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { type FleetFuelCardDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
@@ -65,26 +66,22 @@ export const FuelCardImageUpload = ({
 }): JSX.Element => {
   const t = useT();
   const upload = useUploadFuelCardImage();
-  const [inputKey, setInputKey] = useState(0);
   const pick = async (file: File | undefined): Promise<void> => {
     if (file === undefined) return;
     await upload.mutateAsync({ id: card.id, file });
     toast.success(t('fleet.fuelCards.image.uploaded'));
-    setInputKey((k) => k + 1);
   };
   return (
-    <label data-fuel-image-upload={card.id} className={className ?? iconButton} title={label}>
+    <PhotoPickButton
+      data-fuel-image-upload={card.id}
+      accept={LICENSE_IMAGE_ACCEPT}
+      className={className ?? iconButton}
+      disabled={upload.isPending}
+      label={label}
+      onFile={(file) => void pick(file)}
+    >
       {children}
-      <input
-        key={inputKey}
-        type="file"
-        accept={LICENSE_IMAGE_ACCEPT}
-        className="hidden"
-        disabled={upload.isPending}
-        aria-label={label}
-        onChange={(e) => void pick(e.target.files?.[0])}
-      />
-    </label>
+    </PhotoPickButton>
   );
 };
 

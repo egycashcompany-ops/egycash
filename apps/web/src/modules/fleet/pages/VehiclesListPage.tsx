@@ -55,6 +55,7 @@ import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState } from '../components/Fue
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
+import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
 import {
   LicenseImagePreviewDialog,
   VehicleLicenseImageCell,
@@ -1177,23 +1178,7 @@ export const VehiclesListPage = (): JSX.Element => {
 };
 
 /** The fuel screens' dark bar, laid over `FilterBar` and the controls inside it. */
-const DARK_BAR = cn(
-  '[&>div]:!rounded-xl [&>div]:!border-slate-800 [&>div]:!bg-[#111827] [&>div]:!p-4',
-  '[&_input]:!border-slate-700/80 [&_input]:!bg-[#080C14] [&_input]:!text-slate-100 [&_input]:placeholder:!text-slate-400',
-  '[&_button[aria-haspopup]]:!border-slate-700/80 [&_button[aria-haspopup]]:!bg-[#080C14] [&_button[aria-haspopup]]:!text-slate-200',
-  // The open lists on the board's surface. What the reader presses or picks is the site's purple;
-  // green, amber and red are kept for what a car's state IS (ساري · قرّب يخلص · منتهي).
-  '[&_[role=listbox]]:!border-slate-700 [&_[role=listbox]]:!bg-[#111827] [&_[role=listbox]]:!shadow-2xl [&_[role=listbox]]:!shadow-black/60',
-  '[&_[role=option]:hover]:!bg-brand-500/15 [&_[role=option][aria-selected=true]]:!font-bold [&_[role=option][aria-selected=true]]:!text-brand-200',
-  // «مسح الفلاتر» and the Excel button are buttons, so they are purple here too.
-  '[&_.ms-auto>button]:!border-brand-500/50 [&_.ms-auto>button]:!bg-brand-500/15 [&_.ms-auto>button]:!text-brand-300 [&_.ms-auto>button:hover]:!bg-brand-500/25',
-  // Larger than a tablet: ONE row. Every filter shares the width evenly instead of holding its
-  // own, so eleven of them fit beside each other; the reset button keeps its size.
-  'lg:[&>div]:!flex-nowrap lg:[&>div]:!gap-1.5 lg:[&>div>*]:!min-w-0 lg:[&>div>*]:!flex-1 lg:[&>div>.ms-auto]:!flex-none',
-  // A small computer screen (1024–1279) takes the words a size down so «رقم الشاسيه» and
-  // «التشغيل» still read whole instead of ending in «…».
-  'lg:max-xl:[&_input]:!px-1.5 lg:max-xl:[&_input]:!text-xs lg:max-xl:[&_button[aria-haspopup]]:!px-1.5 lg:max-xl:[&_button[aria-haspopup]]:!text-xs lg:max-xl:[&_button[aria-haspopup]_svg]:!h-3 lg:max-xl:[&_button[aria-haspopup]_svg]:!w-3',
-);
+const DARK_BAR = DARK_FILTER_BAR;
 
 /** The fuel screens' dark table, laid over `DataTable`. */
 const DARK_TABLE = cn(

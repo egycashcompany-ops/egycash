@@ -7,6 +7,7 @@
 // Cairo type and the footer inside the body are this form's alone. It behaves like every form
 // dialog: Escape and the × close it, a click outside does not.
 import { useEffect, useState, type ReactNode } from 'react';
+import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import { createPortal } from 'react-dom';
 import '@fontsource/cairo/400.css';
 import '@fontsource/cairo/500.css';
@@ -340,6 +341,7 @@ const NewCardPhoto = ({
           </span>
         </div>
       </div>
+      <PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={take} />
     </div>
   );
 };

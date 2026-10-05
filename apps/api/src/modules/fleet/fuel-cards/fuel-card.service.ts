@@ -17,16 +17,25 @@ import {
   type UpdateFleetFuelCard,
   parseFleetSort,
 } from '@ecms/contracts';
-import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from '../../../shared/errors';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
-import { type AuthContext } from '../../../shared/types';
+import { type AuthContext, hasPermission } from '../../../shared/types';
 import { auditService } from '../../../platform/audit';
 import { unitOfWork } from '../../../platform/kernel/unit-of-work';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { isVehicleWritable } from '../vehicles/vehicle-status';
 import { fleetFuelCardMovementRepository, fleetFuelCardRepository } from './fuel-card.repository';
-import { type FleetFuelCardDoc, type FleetFuelCardMovementDoc } from './fuel-card.model';
+import {
+  FleetFuelCardMovementModel,
+  type FleetFuelCardDoc,
+  type FleetFuelCardMovementDoc,
+} from './fuel-card.model';
 import { resolveFuelCardDocsCategoryId } from './fuel-card-files';
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'fuelCard', entityId: id });
@@ -447,6 +456,146 @@ class FleetFuelCardService {
       { by, version: card.__v, session },
     );
     await this.movement(card, 'receipt', amount, after, null, receiptId, at, by, session);
+  }
+
+  /**
+   * «لو اديت ل كارت او اخدت من كارت او زود كارت ك رصيد اقدر اعدل او امسح»: a charge or a transfer
+   * on a card's log takes a new amount (`newAmount`), or is removed (`null`). Everything moves in
+   * ONE transaction — the card's balance, the line, the balance printed after every later line,
+   * and for a transfer the other card and its half of the transfer too. A removed line is kept on
+   * file, out of every list. A receipt line is the receipts screen's, never changed here; and no
+   * change may leave a card below zero.
+   */
+  async changeMovement(
+    ctx: AuthContext,
+    id: string,
+    newAmount: number | null,
+  ): Promise<FleetFuelCardMovementDoc | null> {
+    const by = ctx.userId;
+    const result = await unitOfWork(async (session) => {
+      const line = await FleetFuelCardMovementModel.findOne({
+        _id: new Types.ObjectId(id),
+        isDeleted: false,
+      })
+        .session(session)
+        .lean<FleetFuelCardMovementDoc>()
+        .exec();
+      if (line === null) throw new NotFoundError();
+      if (line.kind === 'receipt') {
+        throw new ValidationError([
+          {
+            field: 'params.id',
+            code: 'INVALID',
+            message: 'a receipt line is changed from the receipts screen',
+          },
+        ]);
+      }
+      // The grant that made the line is the grant that changes it.
+      const grant = line.kind === 'charge' ? 'fleetFuelCharge.approve' : 'fleetFuelCharge.transfer';
+      if (!hasPermission(ctx, grant)) throw new ForbiddenError();
+
+      // A transfer is two lines written at the same instant — this card's and the other's.
+      const pair =
+        line.kind === 'charge' || line.counterpartCardId == null
+          ? null
+          : await FleetFuelCardMovementModel.findOne({
+              cardId: line.counterpartCardId,
+              counterpartCardId: line.cardId,
+              kind: line.kind === 'transferOut' ? 'transferIn' : 'transferOut',
+              at: line.at,
+              amount: -line.amount,
+              isDeleted: false,
+            })
+              .session(session)
+              .lean<FleetFuelCardMovementDoc>()
+              .exec();
+
+      const nextSigned = newAmount === null ? 0 : Math.sign(line.amount) * newAmount;
+      const delta = piastres(nextSigned) - piastres(line.amount);
+      if (newAmount !== null && delta === 0) return { line, changes: [] };
+
+      const halves: { doc: FleetFuelCardMovementDoc; delta: number }[] = [{ doc: line, delta }];
+      if (pair !== null) halves.push({ doc: pair, delta: -delta });
+
+      const changes: { cardId: string; old: number; new: number }[] = [];
+      let changed: FleetFuelCardMovementDoc | null = null;
+      for (const half of halves) {
+        const card = await fleetFuelCardRepository.findLive(half.doc.cardId, session);
+        if (card === null) throw new NotFoundError('card not found');
+        const after = piastres(card.balance) + half.delta;
+        if (after < 0) {
+          throw new ValidationError([
+            {
+              field: 'body.amount',
+              code: 'INVALID',
+              message: `card ${card.number} holds only ${card.balance} — this change would leave it below zero`,
+            },
+          ]);
+        }
+        const set: Partial<FleetFuelCardDoc> = { balance: after / 100 };
+        if (half.doc.kind === 'charge' && newAmount === null) {
+          // The green «charged today» follows the charges that are left.
+          const latest = await FleetFuelCardMovementModel.findOne({
+            cardId: card._id,
+            kind: 'charge',
+            isDeleted: false,
+            _id: { $ne: half.doc._id },
+          })
+            .sort({ at: -1 })
+            .session(session)
+            .lean<FleetFuelCardMovementDoc>()
+            .exec();
+          set.lastChargedAt = latest?.at ?? null;
+        }
+        await fleetFuelCardRepository.updateById(String(card._id), set, {
+          by,
+          version: card.__v,
+          session,
+        });
+        changes.push({ cardId: String(card._id), old: card.balance, new: after / 100 });
+
+        if (newAmount === null) {
+          await fleetFuelCardMovementRepository.softDeleteById(String(half.doc._id), {
+            by,
+            session,
+          });
+        } else {
+          const updated = await fleetFuelCardMovementRepository.updateById(
+            String(half.doc._id),
+            {
+              amount: (piastres(half.doc.amount) + half.delta) / 100,
+              balanceAfter: (piastres(half.doc.balanceAfter) + half.delta) / 100,
+            },
+            { by, version: half.doc.__v, session },
+          );
+          if (half.doc === line) changed = updated;
+        }
+        // Every later line of the card printed a balance that included the old amount.
+        await FleetFuelCardMovementModel.updateMany(
+          { cardId: card._id, isDeleted: false, at: { $gt: half.doc.at } },
+          [
+            {
+              $set: {
+                balanceAfter: { $round: [{ $add: ['$balanceAfter', half.delta / 100] }, 2] },
+              },
+            },
+          ],
+          { session },
+        ).exec();
+      }
+      return { line: changed, changes };
+    });
+    for (const change of result.changes) {
+      await auditService.record({
+        entityRef: entityRef(change.cardId),
+        action: 'update',
+        changes: [
+          { field: 'balance', old: String(change.old), new: String(change.new) },
+          { field: 'movement', old: id, new: newAmount === null ? 'removed' : String(newAmount) },
+        ],
+      });
+    }
+    return result.line;
   }
 
   async movements(

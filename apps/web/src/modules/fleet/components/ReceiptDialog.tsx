@@ -6,6 +6,7 @@
 // and typed over («لو عاوز امسحه واكتب حد غيره عادى»). The litres are the amount priced by the
 // fleet settings, shown as the clerk types.
 import { useEffect, useMemo, useState } from 'react';
+import { PhotoSourceButtons } from '../../../shared/ui/PhotoPick';
 import {
   FLEET_FUEL_PRICE_KEY,
   FLEET_FUEL_TYPES,
@@ -470,6 +471,10 @@ export const ReceiptDialog = ({
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             data-receipt-image="true"
           />
+          <PhotoSourceButtons accept={LICENSE_IMAGE_ACCEPT} onFile={setFile} className="mt-2" />
+          {file !== null && (
+            <p className="mt-1 truncate text-xs text-slate-500 dark:text-slate-400">{file.name}</p>
+          )}
         </Field>
         <p
           data-receipt-source={byCard ? 'card' : 'custody'}

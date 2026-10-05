@@ -8,6 +8,7 @@ import {
   type ListFleetFuelCardsQuery,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type UpdateFleetFuelCardMovement,
   type UpdateFleetFuelCard,
 } from '@ecms/contracts';
 import { created, noContent, ok, okPage, validated } from '../../../platform/web';
@@ -90,6 +91,22 @@ export const listFuelCardMovements = async (req: Request, res: Response): Promis
       doc.counterpartCardId == null ? null : (numbers.get(String(doc.counterpartCardId)) ?? null),
     ),
   );
+};
+
+export const updateFuelCardMovement = async (req: Request, res: Response): Promise<void> => {
+  const { body, params } = validated<UpdateFleetFuelCardMovement, never, IdParam>(req);
+  const line = await fleetFuelCardService.changeMovement(authContext(req), params.id, body.amount);
+  if (line === null) {
+    noContent(res);
+    return;
+  }
+  ok(res, toFuelMovementDto(line, null));
+};
+
+export const deleteFuelCardMovement = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  await fleetFuelCardService.changeMovement(authContext(req), params.id, null);
+  noContent(res);
 };
 
 export const uploadFuelCardImage = async (req: Request, res: Response): Promise<void> => {

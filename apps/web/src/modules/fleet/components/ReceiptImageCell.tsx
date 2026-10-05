@@ -2,6 +2,7 @@
 // table: no photo → an upload control; a photo → view, print, delete. The bytes are guarded, so
 // they are fetched with the session and shown as an object URL.
 import { useEffect, useState } from 'react';
+import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { type FleetReceiptDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -203,7 +204,6 @@ export const ReceiptImageCell = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const upload = useUploadReceiptImage();
-  const [inputKey, setInputKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const mayEdit = can('fleetReceipt.edit');
 
@@ -211,26 +211,20 @@ export const ReceiptImageCell = ({
     if (file === undefined) return;
     await upload.mutateAsync({ id: row.id, file });
     toast.success(t('fleet.receipts.image.uploaded'));
-    setInputKey((k) => k + 1);
   };
 
   if (row.image === null) {
     if (!mayEdit) return <span className="text-slate-400">—</span>;
     return (
-      <label className={`${actionButton} inline-flex cursor-pointer`}>
+      <PhotoPickButton
+        accept={LICENSE_IMAGE_ACCEPT}
+        className={`${actionButton} inline-flex`}
+        disabled={upload.isPending}
+        label={t('fleet.receipts.image.upload')}
+        onFile={(file) => void pick(file)}
+      >
         <UploadIcon className="h-4 w-4" />
-        <span className="sr-only">{t('fleet.receipts.image.upload')}</span>
-        <input
-          key={inputKey}
-          type="file"
-          accept={LICENSE_IMAGE_ACCEPT}
-          className="hidden"
-          disabled={upload.isPending}
-          aria-label={t('fleet.receipts.image.upload')}
-          title={t('fleet.receipts.image.upload')}
-          onChange={(e) => void pick(e.target.files?.[0])}
-        />
-      </label>
+      </PhotoPickButton>
     );
   }
 

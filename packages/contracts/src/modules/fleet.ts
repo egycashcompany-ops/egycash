@@ -3247,6 +3247,18 @@ export const ListFleetFuelCardMovementsQuerySchema = PaginationQuerySchema.exten
 }).strict();
 export type ListFleetFuelCardMovementsQuery = z.infer<typeof ListFleetFuelCardMovementsQuerySchema>;
 
+/**
+ * «لو اديت ل كارت او اخدت من كارت او زود كارت ك رصيد اقدر اعدل او امسح»: a charge or a transfer
+ * on a card's log takes a new amount. A transfer is ONE operation on two cards, so its new amount
+ * moves both. Receipt lines are the receipts screen's to change, not the log's.
+ */
+export const UpdateFleetFuelCardMovementSchema = z
+  .object({
+    amount: egp().positive(),
+  })
+  .strict();
+export type UpdateFleetFuelCardMovement = z.infer<typeof UpdateFleetFuelCardMovementSchema>;
+
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ───────────────────
 //
 // «وفى شاشه خصم الايصالات بيكون فوق اختار وقود او كاوتش او غسيل». A receipt is one paper the

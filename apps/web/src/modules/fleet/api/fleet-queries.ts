@@ -15,6 +15,7 @@ import {
   type CreateFleetNotice,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type UpdateFleetFuelCardMovement,
   type UpdateFleetDealershipInvoice,
   type CreateFleetReceipt,
   type UpdateFleetReceipt,
@@ -966,6 +967,12 @@ export const useApproveFuelCharge = () =>
   );
 export const useTransferFuelBalance = () =>
   useFuelCardMutation((body: TransferFleetFuelBalance) => api.transferFuelBalance(body));
+export const useUpdateFuelCardMovement = () =>
+  useFuelCardMutation(({ id, body }: { id: string; body: UpdateFleetFuelCardMovement }) =>
+    api.updateFuelCardMovement(id, body),
+  );
+export const useDeleteFuelCardMovement = () =>
+  useFuelCardMutation((id: string) => api.deleteFuelCardMovement(id));
 
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ─────────────────
 export const useReceipts = (params: FleetListParams, enabled = true) =>

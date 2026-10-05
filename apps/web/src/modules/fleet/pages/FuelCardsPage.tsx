@@ -29,6 +29,9 @@ import {
   useUpdateFuelCard,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
+import { FilterBar } from '../../../shared/ui/FilterBar';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { FuelCardDialog } from '../components/FuelCardDialog';
 import { FuelCardImageDialog } from '../components/FuelCardImage';
 import { FUEL_CARD_COMPANIES } from '../components/FuelCardTiles';
@@ -257,11 +260,6 @@ export const FuelCardsPage = (): JSX.Element => {
   const linkChoices =
     linking === null ? [] : noCarCards.filter((card) => linking.companies.includes(card.company));
 
-  const searchBox =
-    'h-[34px] w-full rounded-lg border border-slate-700/80 bg-[#080C14] py-2 pe-3 ps-9 text-xs text-slate-100 placeholder:text-slate-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 focus-visible:ring-offset-0 transition';
-  const selectBox =
-    'h-[34px] cursor-pointer rounded-lg border border-slate-700/80 bg-[#080C14] py-0 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0';
-
   return (
     <PageContainer>
       <div className={cn(BOARD_FONT, 'space-y-6 text-slate-100 antialiased')}>
@@ -366,120 +364,130 @@ export const FuelCardsPage = (): JSX.Element => {
           )}
         </section>
 
-        {/* The filters, the exports and «إضافة كارت جديد» on one bar. */}
-        <section className="flex flex-col items-stretch justify-between gap-4 rounded-xl border border-slate-800 bg-[#111827] p-4 md:flex-row md:items-center">
-          {/* One row on a wide screen; on a tablet or a phone the filters, the exports and the button wrap rather than hide off the edge. */}
-          <div className="flex w-full flex-wrap items-center justify-between gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
-            <div className="flex flex-1 flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
-              <div className="relative w-40 shrink-0">
-                <VehicleCodeFilter
-                  className={cn(
-                    'w-full',
-                    '[&_button[aria-haspopup]]:!w-full [&_button[aria-haspopup]]:!rounded-lg [&_button[aria-haspopup]]:!border-slate-700/80 [&_button[aria-haspopup]]:!bg-[#080C14] [&_button[aria-haspopup]]:!h-[34px] [&_button[aria-haspopup]]:!py-0 [&_button[aria-haspopup]]:!ps-9 [&_button[aria-haspopup]]:!text-xs [&_button[aria-haspopup]]:!text-slate-100',
-                    '[&_button[aria-haspopup]_span]:!text-slate-400',
-                  )}
-                  fullWidth
-                  placeholder={t('fleet.fuelCards.board.searchCar')}
-                  value={vehicleCodes}
-                  onChange={(next) =>
-                    patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-                  }
-                />
-                <span className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3">
-                  <BoardIcon d={PATH.truck} className="h-4 w-4 text-emerald-400" />
-                </span>
-              </div>
-              <div className="relative w-40 shrink-0">
-                <span className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3">
-                  <BoardIcon d={PATH.card} className="h-4 w-4 text-amber-400" />
-                </span>
-                <Input
-                  data-fuel-number-filter="true"
-                  aria-label={t('fleet.fuelCards.filters.number')}
-                  placeholder={t('fleet.fuelCards.board.searchNumber')}
-                  value={number}
-                  rule="digits"
-                  onChange={(e) => patch({ number: e.target.value.replace(/\s+/gu, '') || null })}
-                  tone={cn(searchBox, 'font-mono !text-xs !pl-3 !pr-9 text-right')}
-                />
-              </div>
-              <select
-                aria-label={t('fleet.fuelCards.fields.company')}
-                value={company}
-                onChange={(e) => patch({ company: e.target.value || null })}
-                className={cn(selectBox, 'shrink-0 px-2.5')}
+        {/* The exports and «إضافة كارت جديد» above the filters, as on the vehicles screen. */}
+        <div className="flex flex-wrap items-center justify-end gap-2" data-fuel-toolbar="true">
+          {!isError && (
+            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
+              <button
+                type="button"
+                data-export="fuel-cards"
+                title={t('fleet.fuelCards.board.excel')}
+                onClick={() => void exportSheet()}
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300"
               >
-                <option value="">{t('fleet.fuelCards.board.anyCompany')}</option>
-                {FUEL_CARD_COMPANIES.map((option) => (
-                  <option key={option} value={option}>
-                    {t(`fleet.fuelCards.company.${option}`)}
-                  </option>
-                ))}
-              </select>
-              <div className="relative flex shrink-0 items-center">
-                <span className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-2.5">
-                  <BoardIcon d={PATH.calendar} className="h-3.5 w-3.5 text-cyan-400" />
-                </span>
-                <select
-                  aria-label={t('fleet.fuelCards.filters.expiresBefore')}
-                  value={datePreset}
-                  onChange={(e) => pickDatePreset(e.target.value)}
-                  className={cn(selectBox, 'pe-2.5 ps-7')}
-                >
-                  <option value="">{t('fleet.fuelCards.board.dateAll')}</option>
-                  <option value="30">{t('fleet.fuelCards.board.date30')}</option>
-                  <option value="60">{t('fleet.fuelCards.board.date60')}</option>
-                  <option value="custom">{t('fleet.fuelCards.board.dateCustom')}</option>
-                </select>
-              </div>
-              {datePreset === 'custom' && (
-                <input
+                <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
+                <span>{t('fleet.fuelCards.board.excel')}</span>
+              </button>
+              <span className="h-4 w-px bg-slate-700" />
+              <button
+                type="button"
+                data-print="fuel-cards"
+                title={t('fleet.fuelCards.board.pdf')}
+                onClick={onPrint}
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400"
+              >
+                <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
+                <span>{t('fleet.fuelCards.board.pdf')}</span>
+              </button>
+            </div>
+          )}
+          {can('fleetFuelCard.create') && (
+            <button
+              type="button"
+              data-fuel-add-new="true"
+              onClick={() => setAdding({ vehicleId: '' })}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400"
+            >
+              <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
+              <span>{t('fleet.fuelCards.board.add')}</span>
+            </button>
+          )}
+        </div>
+        {/* «الفلاتر … تكون زى شاشه السيارات»: the same dark bar, one row on a computer. */}
+        <div className={DARK_FILTER_BAR}>
+          <FilterBar
+            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
+            onClear={() => {
+              setCustomDate(false);
+              patch({ vehicleCodes: null, company: null, number: null, expiresBefore: null });
+            }}
+          >
+            <div className="w-32 shrink-0">
+              <VehicleCodeFilter
+                fullWidth
+                density="tight"
+                placeholder={t('fleet.fuelCards.board.searchCar')}
+                value={vehicleCodes}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
+              />
+            </div>
+            <div className="w-40 shrink-0">
+              <Input
+                data-fuel-number-filter="true"
+                aria-label={t('fleet.fuelCards.filters.number')}
+                placeholder={t('fleet.fuelCards.filters.number')}
+                value={number}
+                rule="digits"
+                density="tight"
+                onChange={(e) => patch({ number: e.target.value.replace(/\s+/gu, '') || null })}
+              />
+            </div>
+            <MultiSelect
+              clearable
+              className="w-36 shrink-0"
+              fullWidth
+              density="tight"
+              showSelectedValues
+              searchThreshold={0}
+              label={t('fleet.fuelCards.fields.company')}
+              options={FUEL_CARD_COMPANIES.map((option) => ({
+                value: option,
+                label: t(`fleet.fuelCards.company.${option}`),
+              }))}
+              value={company === '' ? [] : [company]}
+              onChange={(next) =>
+                patch({ company: pickOne(company === '' ? [] : [company], next) })
+              }
+            />
+            <MultiSelect
+              clearable
+              className="w-40 shrink-0"
+              fullWidth
+              density="tight"
+              showSelectedValues
+              searchThreshold={0}
+              label={t('fleet.fuelCards.filters.expiresBefore')}
+              options={(['30', '60', 'custom'] as const).map((value) => ({
+                value,
+                label: t(
+                  value === '30'
+                    ? 'fleet.fuelCards.board.date30'
+                    : value === '60'
+                      ? 'fleet.fuelCards.board.date60'
+                      : 'fleet.fuelCards.board.dateCustom',
+                ),
+              }))}
+              value={datePreset === '' ? [] : [datePreset]}
+              onChange={(next) =>
+                pickDatePreset(pickOne(datePreset === '' ? [] : [datePreset], next) ?? '')
+              }
+            />
+            {datePreset === 'custom' && (
+              <div className="w-36 shrink-0">
+                <Input
                   type="date"
                   aria-label={t('fleet.fuelCards.filters.expiresBefore')}
                   value={expiresBefore}
+                  density="tight"
                   onChange={(e) => patch({ expiresBefore: e.target.value || null })}
-                  className={cn(selectBox, 'shrink-0 px-2.5 [color-scheme:dark]')}
+                  className="[color-scheme:dark]"
                 />
-              )}
-            </div>
-            {!isError && (
-              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
-                <button
-                  type="button"
-                  data-export="fuel-cards"
-                  title={t('fleet.fuelCards.board.excel')}
-                  onClick={() => void exportSheet()}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300"
-                >
-                  <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>{t('fleet.fuelCards.board.excel')}</span>
-                </button>
-                <span className="h-4 w-px bg-slate-700" />
-                <button
-                  type="button"
-                  data-print="fuel-cards"
-                  title={t('fleet.fuelCards.board.pdf')}
-                  onClick={onPrint}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400"
-                >
-                  <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
-                  <span>{t('fleet.fuelCards.board.pdf')}</span>
-                </button>
               </div>
             )}
-            {can('fleetFuelCard.create') && (
-              <button
-                type="button"
-                data-fuel-add-new="true"
-                onClick={() => setAdding({ vehicleId: '' })}
-                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-emerald-700/25 transition hover:from-emerald-500 hover:to-teal-500"
-              >
-                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
-                <span>{t('fleet.fuelCards.board.add')}</span>
-              </button>
-            )}
-          </div>
-        </section>
+          </FilterBar>
+        </div>
 
         {isError ? (
           <EmptyState

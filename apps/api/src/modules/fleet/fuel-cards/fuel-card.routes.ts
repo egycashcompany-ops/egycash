@@ -8,11 +8,12 @@ import {
   ListFleetFuelCardsQuerySchema,
   RequestFleetFuelChargeSchema,
   TransferFleetFuelBalanceSchema,
+  UpdateFleetFuelCardMovementSchema,
   UpdateFleetFuelCardSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import { multipartSingle } from '../license-image-upload';
 import {
@@ -28,6 +29,8 @@ import {
   requestFuelCharge,
   revealFuelCardPassword,
   transferFuelBalance,
+  updateFuelCardMovement,
+  deleteFuelCardMovement,
   updateFuelCard,
   uploadFuelCardImage,
 } from './fuel-card.controller';
@@ -59,6 +62,22 @@ export const buildFleetFuelCardsRouter = (): Router => {
     asyncHandler(listFuelCardMovements),
   );
   // Balances move under the CHARGING screen's grants — reading a card is not moving its money.
+  // A line of the log takes a new amount or is removed — under the grant of the kind of line it
+  // is (a charge: approve; a transfer: transfer), which the service resolves from the line.
+  router.patch(
+    '/movements/:id',
+    authenticate,
+    authorizeAny('fleetFuelCharge.approve', 'fleetFuelCharge.transfer'),
+    validate({ body: UpdateFleetFuelCardMovementSchema, params: IdParamSchema }),
+    asyncHandler(updateFuelCardMovement),
+  );
+  router.delete(
+    '/movements/:id',
+    authenticate,
+    authorizeAny('fleetFuelCharge.approve', 'fleetFuelCharge.transfer'),
+    validate({ params: IdParamSchema }),
+    asyncHandler(deleteFuelCardMovement),
+  );
   router.post(
     '/transfer',
     authenticate,

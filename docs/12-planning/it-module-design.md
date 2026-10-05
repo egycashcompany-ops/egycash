@@ -157,15 +157,19 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
 
 #### 2.5.1 `it_custody_receipts` — Custody receipt (إيصال استلام, FR-18)
 
-The paper the employee signs (form EGYCASH-IT-F-14-02), one per hand-over:
+The paper the employee signs (form EGYCASH-IT-F-14), one per hand-over:
 
-`{ employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, issuedAt, issuedByUserId, branchId,
+`{ formNumber, employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, issuedAt, issuedByUserId, branchId,
 lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes? }],
 signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
   holder); the lines and the signer are a snapshot of what was printed.
 - `branchId` is the first line's branch — the read-scope anchor, like an interval's.
+- `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
+  `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
+  before a hand-over takes the next one; the hand-over records the number of the paper that was
+  signed; printing a stored receipt again keeps its number.
 - `signedCopy` links the Files document (category `it-custody-receipts`, authorizer
   `it/custodyReceipt`); replacing it adds a file version, withdrawing it soft-deletes the file.
 
@@ -411,7 +415,11 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   already signed. The receipt keeps what it printed (a snapshot) and can be printed again at any
   time; the employee's signed copy (photo or PDF) is filed against it through Files and can be
   replaced or withdrawn. An interval opened before receipts can be given one while it is open
-  (§17, 2026-10-04).
+  (§17, 2026-10-04). Every printed paper carries its own number, `EGYCASH-IT-F-14-0001`, one more
+  on every print; the hand-over records the number of the paper the employee signed (a number the
+  counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
+  The footer's date is the day of printing, and the print tab shows the paper as an A4 sheet
+  (§17, 2026-10-05).
 
 ## 6. States catalog
 
@@ -539,7 +547,7 @@ precedent; `itAsset.export`).
 | `/it/vendors` | — |
 | `/it/people` | read-only: `GET /` (search, `status` all/employed/exited, branch) · `GET /:employeeId` — HR's people through the directory (§9.1) |
 | `/it/technicians` | read-only: `GET /` — the IT departments' people (FR-17) |
-| `/it/custody-receipts` | `POST /preview` (the paper, writes nothing) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` (print again) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts |
+| `/it/custody-receipts` | `POST /preview` (the paper and its new number; nothing else written) · `POST /` (the hand-over: intervals + receipt) · `GET /:id` · `POST /:id/print` (print again, under its number) · `GET+POST+DELETE /:id/signed-copy` — FR-18; plus `POST /it/assignments/:id/receipt` for an interval from before receipts |
 | `/it/dashboard` | `GET /assets` · `/tickets` · `/maintenance` · `GET /reports/warranty` |
 
 Every list obeys API Standards §4 (pagination, `search` where a picker will need it — assets,
@@ -727,3 +735,13 @@ starts only on an explicit owner GO.
   code readable and can never be allocated or scanned. All of it is one transaction with its run
   row, and it is decided once: when AST-00005 is not on the register at the first boot, nothing is
   deleted and the refusal is recorded, so a later AST-00005 can never trigger it.
+- **The receipt paper, revised** (2026-10-05) — owner requests: the footer's «EGYCASH-IT -F-14-02 ·
+  Issue date: 1/5/2022» becomes the paper's own number — «EGYCASH-IT-F-14-0001», «ابدأ بـ 0001 وكل
+  طباعة زود رقم» — and «تاريخ اليوم»; the signature block («المستلم», «التوقيع», «الاسم»,
+  «الوظيفة») moves to the left («شمال مش فى النص»); and the print tab shows an A4 sheet instead of
+  stretching across the window («تبقى A4 مش الصفحة كلها»), with a toolbar to print again or close.
+  Found on the way: the tab inherits the app's Content-Security-Policy (`script-src 'self'`,
+  `script-src-attr 'none'`), so the inline script that was to open the print dialog never ran; the
+  page now carries no script of its own and is driven from the app's script (`wireReceiptWindow`).
+  The same inline-script idiom is used by other modules' printed pages and has the same defect;
+  they are not changed here.

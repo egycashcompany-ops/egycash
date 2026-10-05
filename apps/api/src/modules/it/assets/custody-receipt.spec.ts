@@ -7,7 +7,7 @@
 // is tested is the decision; the transaction itself is the platform's.
 import { Types } from 'mongoose';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConflictError } from '../../../shared/errors';
+import { BusinessRuleError, ConflictError } from '../../../shared/errors';
 
 const mocks = vi.hoisted(() => ({
   readReceiptHolder: vi.fn(),
@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   updateAssignment: vi.fn(),
   createReceipt: vi.fn(),
   emit: vi.fn(),
+  receiptNumberFor: vi.fn(),
 }));
 
 vi.mock('./receipt-holder', () => ({ readReceiptHolder: mocks.readReceiptHolder }));
@@ -28,6 +29,7 @@ vi.mock('./receipt.repository', () => ({
     ensureCollection: vi.fn(async () => undefined),
   },
 }));
+vi.mock('./receipt-number', () => ({ receiptNumberFor: mocks.receiptNumberFor }));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/kernel/event-bus', () => ({ emit: mocks.emit }));
 vi.mock('../../../platform/audit', () => ({
@@ -90,6 +92,8 @@ beforeEach(() => {
     _id: new Types.ObjectId(),
   }));
   mocks.createReceipt.mockImplementation(async (data: Record<string, unknown>) => data);
+  // The counter, as the hand-over sees it: the printed number it names, or the next one (41).
+  mocks.receiptNumberFor.mockImplementation(async (printed?: number) => printed ?? 41);
   mocks.updateAsset.mockImplementation(async (id: string) => ({
     ...asset(id, 'assigned', 'x', 'y'),
   }));
@@ -180,6 +184,44 @@ describe('a hand-over is ONE receipt over every asset it hands over', () => {
   });
 });
 
+describe('the receipt number — EGYCASH-IT-F-14-0001, one more on every print', () => {
+  beforeEach(() => {
+    mocks.getByIdForUpdate.mockResolvedValue(asset(PC, 'inStock', 'Dell Optiplex 7090', 'B600DN3'));
+  });
+
+  it('records the number printed on the paper the employee signed', async () => {
+    const { receipt } = await itAssetCustodyService.handOver(
+      { employeeId: EMPLOYEE, lines: [{ assetId: PC }], formNumber: 7 },
+      ctx,
+      scope,
+    );
+    expect(mocks.receiptNumberFor).toHaveBeenCalledWith(7);
+    expect(receipt.formNumber).toBe(7);
+  });
+
+  it('takes the next number for a hand-over that printed nothing', async () => {
+    const { receipt } = await itAssetCustodyService.handOver(
+      { employeeId: EMPLOYEE, lines: [{ assetId: PC }] },
+      ctx,
+      scope,
+    );
+    expect(mocks.receiptNumberFor).toHaveBeenCalledWith(undefined);
+    expect(receipt.formNumber).toBe(41);
+  });
+
+  it('a number that was never printed refuses the hand-over before anything is written', async () => {
+    mocks.receiptNumberFor.mockRejectedValue(new BusinessRuleError('never printed'));
+    const attempt = itAssetCustodyService.handOver(
+      { employeeId: EMPLOYEE, lines: [{ assetId: PC }], formNumber: 9999 },
+      ctx,
+      scope,
+    );
+    await expect(attempt).rejects.toBeInstanceOf(BusinessRuleError);
+    expect(mocks.unitOfWork).not.toHaveBeenCalled();
+    expect(mocks.createAssignment).not.toHaveBeenCalled();
+  });
+});
+
 describe('a transfer to somebody new is a hand-over: it gets its own paper', () => {
   const OLD_RECEIPT = new Types.ObjectId();
 
@@ -210,6 +252,7 @@ describe('a transfer to somebody new is a hand-over: it gets its own paper', () 
     ];
     expect(String(receipt.employeeId)).toBe(EMPLOYEE);
     expect(receipt.lines[0]?.conditionOnIssue).toBe('U');
+    expect((receipt as unknown as { formNumber: number }).formNumber).toBe(41);
     const [interval] = mocks.createAssignment.mock.calls[0] as [{ receiptId: Types.ObjectId }];
     expect(String(interval.receiptId)).toBe(String(receipt._id));
     expect(String(interval.receiptId)).not.toBe(String(OLD_RECEIPT));

@@ -393,6 +393,11 @@ export const TransferItAssetSchema = z
     conditionOnIssue: z.string().trim().max(500).optional(),
     expectedReturnAt: z.coerce.date().optional(),
     notes: z.string().trim().max(2000).optional(),
+    /**
+     * A transfer to a NEW holder is a hand-over on its own receipt (FR-18): the number printed on
+     * that paper. Ignored when the holder does not change.
+     */
+    formNumber: z.number().int().positive().optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -441,12 +446,24 @@ export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema
 /** The Files category the signed copies are filed under. */
 export const IT_CUSTODY_RECEIPT_FILE_CATEGORY = 'it-custody-receipts';
 
-/** The form's own identity, printed in its footer exactly as the paper carries it. */
+/**
+ * The form's identity, printed in its footer. Every printed receipt carries its OWN number —
+ * «EGYCASH-IT-F-14-0001», one more on every print («ابدأ بـ 0001 وكل طباعة زود رقم») — beside the
+ * form's revision; the footer's date is the day it is printed.
+ */
 export const IT_CUSTODY_RECEIPT_FORM = {
-  code: 'EGYCASH-IT -F-14-02',
+  prefix: 'EGYCASH-IT-F-14',
+  /** The number pads to four digits and grows past them — it never truncates. */
+  digits: 4,
   revision: '1/0',
-  issueDate: '1/5/2022',
 } as const;
+
+/** `7` → `EGYCASH-IT-F-14-0007`. */
+export const formatCustodyReceiptNumber = (formNumber: number): string =>
+  `${IT_CUSTODY_RECEIPT_FORM.prefix}-${String(formNumber).padStart(IT_CUSTODY_RECEIPT_FORM.digits, '0')}`;
+
+/** The number a printed paper carries: allocated by the server, positive, never reused. */
+export const ItCustodyReceiptNumberSchema = z.number().int().positive();
 
 /** One line of the receipt's table — one asset, its condition on issue and its notes. */
 export const ItHandOverLineSchema = z
@@ -506,7 +523,18 @@ const refineHandOver = (
  * Hand-over: one employee, one or more in-stock assets, ONE receipt — in one transaction (FR-3),
  * so a paper never lists an asset the system did not hand over, nor the reverse.
  */
-export const HandOverItAssetsSchema = z.object(handOverShape).strict().superRefine(refineHandOver);
+export const HandOverItAssetsSchema = z
+  .object({
+    ...handOverShape,
+    /**
+     * The number printed on the paper the employee signed — the one the last print before this
+     * hand-over was given. Omitted (an API caller that printed nothing), the hand-over takes the
+     * next one itself.
+     */
+    formNumber: ItCustodyReceiptNumberSchema.optional(),
+  })
+  .strict()
+  .superRefine(refineHandOver);
 export type HandOverItAssets = z.infer<typeof HandOverItAssetsSchema>;
 
 /**
@@ -550,6 +578,12 @@ export interface ItCustodyReceiptLineDto {
  * answers this; a stored receipt answers it as it was printed.
  */
 export interface ItCustodyReceiptDocumentDto {
+  /**
+   * The paper's own number (`formatCustodyReceiptNumber`). A print before the hand-over is given
+   * a new one every time; a stored receipt keeps the one it was handed over on. Null only for a
+   * receipt from before numbering, until it is printed again.
+   */
+  formNumber: number | null;
   /** «التاريخ» — the hand-over's own date. */
   issuedAt: string;
   employeeId: string;

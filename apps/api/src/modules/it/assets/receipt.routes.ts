@@ -17,6 +17,7 @@ import {
   getItCustodyReceiptSignedCopy,
   handOverItAssets,
   previewItCustodyReceipt,
+  printItCustodyReceipt,
   signedCopyUpload,
   uploadItCustodyReceiptSignedCopy,
 } from './receipt.controller';
@@ -44,6 +45,16 @@ export const buildItCustodyReceiptsRouter = (): Router => {
     authorize('itAsset.view'),
     validate({ params: ItCustodyReceiptIdParamSchema }),
     asyncHandler(getItCustodyReceipt),
+  );
+  // Printing again rides the READ grant like the receipt itself: the paper shows nothing the
+  // register does not. A POST because the first print of a receipt from before numbering gives it
+  // its number.
+  router.post(
+    '/:id/print',
+    authenticate,
+    authorize('itAsset.view'),
+    validate({ params: ItCustodyReceiptIdParamSchema }),
+    asyncHandler(printItCustodyReceipt),
   );
   router.get(
     '/:id/signed-copy',

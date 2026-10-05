@@ -1,4 +1,4 @@
-// إيصال استلام — the company's custody receipt, form EGYCASH-IT-F-14-02, printed from the system.
+// إيصال استلام — the company's custody receipt (form EGYCASH-IT-F-14), printed from the system.
 //
 // «وأنا بسلم الموظف جهاز او أصل يكون فى طباعة إيصال الأول (بعتلك صورته)». The owner sent the paper
 // the IT department has always used, and this is that paper: the letterhead (the company, the
@@ -14,8 +14,33 @@
 // Standalone HTML on purpose — the `fleet-report-print.ts` / `gold-print.ts` idiom: what prints is
 // what this file says and nothing the app's stylesheet contributes. No web font either: the page
 // must print the moment it opens, in an office whose machines already have the Arabic faces.
-import { IT_CUSTODY_RECEIPT_FORM, type ItCustodyReceiptDocumentDto } from '@ecms/contracts';
+//
+// THE OWNER'S CHANGES (5 October): the footer carries the paper's OWN number —
+// «EGYCASH-IT-F-14-0001», one more on every print — and the day it is printed («خلى دا تاريخ
+// اليوم»); the signature block sits on the LEFT («شمال مش فى النص»); and the tab shows the paper as
+// an A4 sheet, not stretched across the whole window («تبقى A4 مش الصفحة كلها»).
+//
+// NO SCRIPT INSIDE THE PAGE. The tab is opened from the app, so it inherits the app's
+// Content-Security-Policy (`script-src 'self'`, `script-src-attr 'none'`): an inline `<script>` or
+// an `onclick` written into it never runs — which is why the print dialog the first version asked
+// for never opened. Everything the page does — print on open, the toolbar's buttons — is attached
+// from HERE, by the app's own script, which the policy allows (`wireReceiptWindow`).
+import {
+  IT_CUSTODY_RECEIPT_FORM,
+  formatCustodyReceiptNumber,
+  type ItCustodyReceiptDocumentDto,
+} from '@ecms/contracts';
 import { EGYCASH_LOGO } from '../../gold/lib/egycash-logo';
+
+/** The words the tab around the paper shows, in the reader's language — the paper is Arabic. */
+export interface ReceiptWindowLabels {
+  /** Shown while the receipt is fetched. */
+  waiting: string;
+  /** The toolbar's print button. */
+  print: string;
+  /** The toolbar's close button. */
+  close: string;
+}
 
 /** The paper's own colour — black on white, as the form is photocopied and filed. */
 const INK = '#111';
@@ -41,6 +66,17 @@ export const receiptDate = (iso: string): string => {
     .join(' / ');
 };
 
+/**
+ * «Issue date: 5/10/2026» — the footer's date is the day the paper is PRINTED, written the way the
+ * form's footer writes it (day/month/year, Latin digits, no padding).
+ */
+export const footerDate = (at: Date): string =>
+  `${String(at.getDate())}/${String(at.getMonth() + 1)}/${String(at.getFullYear())}`;
+
+/** The footer's number: the paper's own, or the form's bare prefix for a receipt never numbered. */
+export const receiptNumberLabel = (formNumber: number | null): string =>
+  formNumber === null ? IT_CUSTODY_RECEIPT_FORM.prefix : formatCustodyReceiptNumber(formNumber);
+
 /** The declaration, as the form words it. The employee signs THIS, so it is never paraphrased. */
 export const RECEIPT_DECLARATION =
   'استلمت الأصناف الموضحة بعاليه بحالة جديدة وسليمة تمامًا ومستعد لردها عند الطلب مني أو في حالة إخلاء طرفي من الشركة، كما أنني ملتزم بالحفاظ عليها بنفس الحالة وقت استلامي لها ومستعد لعرضها في أي وقت على مسئولي الشركة عند الطلب، وفي حالة تبديد هذه العهدة أو تعرضها للفقد أكون مسئولًا مسئولية مدنية وجنائية تجاه الشركة طبقًا لأحكام نصوص القانون المدني وقانون العقوبات.';
@@ -48,35 +84,15 @@ export const RECEIPT_DECLARATION =
 /** A blank the pen fills in, where the system could not name somebody. */
 const BLANK = '..............................';
 
-/**
- * Opens the print dialog once the logo has decoded — the `fleet-report-print.ts` script, for its
- * reasons: written into an open window, `load` cannot be relied on, and a company document on
- * paper without its letterhead is not the document. The timer catches every other case.
- */
-const PRINT_ON_LOAD = `<script>
-(function () {
-  var printed = false;
-  var go = function () {
-    if (printed) return;
-    printed = true;
-    window.focus();
-    window.print();
-  };
-  var logo = document.images[0];
-  if (logo && !logo.complete) {
-    logo.addEventListener('load', go);
-    logo.addEventListener('error', go);
-  } else {
-    window.setTimeout(go, 80);
-  }
-  window.setTimeout(go, 1500);
-})();
-</${'script'}>`;
-
 /** The printable receipt. Exported for its own test — composing it is where the rules live. */
-export const buildCustodyReceiptHtml = (paper: ItCustodyReceiptDocumentDto): string => {
+export const buildCustodyReceiptHtml = (
+  paper: ItCustodyReceiptDocumentDto,
+  labels: Pick<ReceiptWindowLabels, 'print' | 'close'>,
+  printedAt: Date = new Date(),
+): string => {
   const name = paper.employeeName ?? BLANK;
   const jobTitle = paper.jobTitle?.ar ?? BLANK;
+  const number = receiptNumberLabel(paper.formNumber);
   // THE SERIAL IS GENERATED: «م» numbers the printed lines 1, 2, 3 so a reader can point at one.
   const rows = paper.lines
     .map(
@@ -90,7 +106,7 @@ export const buildCustodyReceiptHtml = (paper: ItCustodyReceiptDocumentDto): str
     )
     .join('');
   return `<!doctype html>
-<html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>إيصال استلام — ${esc(name)}</title>
+<html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>إيصال استلام ${esc(number)} — ${esc(name)}</title>
 <style>
   * { box-sizing: border-box; }
   @page { size: A4 portrait; margin: 16mm 18mm 14mm; }
@@ -113,11 +129,35 @@ export const buildCustodyReceiptHtml = (paper: ItCustodyReceiptDocumentDto): str
   td.ltr { direction: ltr; font-family: Arial, sans-serif; }
   .declaration { text-align: justify; line-height: 1.9; margin: 26px 0 8px; }
   .oath { text-align: center; margin: 6px 0 0; }
-  .signs { margin-top: 64px; margin-inline-start: 34mm; line-height: 2.1; }
+  /* On the LEFT of the page: in a right-to-left page the free margin goes on the start side. */
+  .signs { width: max-content; margin-top: 64px; margin-inline-start: auto; margin-inline-end: 4mm; line-height: 2.1; }
   .signs .gap { display: inline-block; width: 52mm; }
   .foot { margin-top: auto; display: flex; justify-content: space-between; direction: ltr; font-family: Arial, sans-serif; font-size: 11px; padding-top: 10px; }
+  .bar { display: none; }
+  /* The tab: the paper as an A4 sheet on a grey desk, a toolbar above it. Never printed. */
+  @media screen {
+    html { background: #d9dbe3; }
+    body { padding: 68px 16px 32px; }
+    .sheet { width: 210mm; min-height: 297mm; margin: 0 auto; padding: 16mm 18mm 14mm; background: #fff; box-shadow: 0 4px 22px rgba(20, 24, 60, 0.22); }
+    .bar { position: fixed; top: 0; left: 0; right: 0; height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px; background: #2e2e74; color: #fff; font-family: Tahoma, Arial, sans-serif; font-size: 14px; z-index: 1; }
+    .bar .number { direction: ltr; font-family: Arial, sans-serif; font-weight: 700; letter-spacing: 0.3px; }
+    .bar .actions { display: flex; gap: 8px; }
+    .bar button { font: inherit; padding: 7px 16px; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.55); background: transparent; color: #fff; cursor: pointer; }
+    .bar button.primary { background: #fff; color: #2e2e74; border-color: #fff; font-weight: 700; }
+  }
+  @media screen and (max-width: 860px) {
+    .sheet { width: 100%; min-height: 0; padding: 16px; }
+  }
 </style></head>
-<body><div class="sheet">
+<body>
+<div class="bar">
+  <span class="number">${esc(number)}</span>
+  <span class="actions">
+    <button type="button" class="primary" id="receipt-print">${esc(labels.print)}</button>
+    <button type="button" id="receipt-close">${esc(labels.close)}</button>
+  </span>
+</div>
+<div class="sheet">
   <div class="head">
     <div class="org">
       <div>شركة إيجي كاش للحلول النقدية</div>
@@ -144,52 +184,88 @@ export const buildCustodyReceiptHtml = (paper: ItCustodyReceiptDocumentDto): str
     <div>الوظيفة : ${esc(jobTitle)}</div>
   </div>
   <div class="foot">
-    <span>${esc(IT_CUSTODY_RECEIPT_FORM.code)}</span>
+    <span>${esc(number)}</span>
     <span>Issue / Rev. no.: ${esc(IT_CUSTODY_RECEIPT_FORM.revision)}</span>
-    <span>Issue date: ${esc(IT_CUSTODY_RECEIPT_FORM.issueDate)}</span>
+    <span>Issue date: ${footerDate(printedAt)}</span>
   </div>
 </div>
-${PRINT_ON_LOAD}
 </body></html>`;
 };
 
 /**
- * Open the print window NOW, while the click still counts as the user's — the receipt is fetched
- * after, and a window opened once that round trip returns is one a popup blocker refuses. Null
- * when the browser blocked it anyway; the caller says so rather than doing nothing.
+ * Open the print tab NOW, while the click still counts as the user's — the receipt is fetched
+ * after, and a tab opened once that round trip returns is one a popup blocker refuses. Null when
+ * the browser blocked it anyway; the caller says so rather than doing nothing.
  */
 export const openReceiptWindow = (waitingText: string): Window | null => {
   const win = window.open('', '_blank');
   if (win === null) return null;
   win.document.open();
   win.document.write(
-    `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /></head><body style="font-family: Tahoma, sans-serif; padding: 24px;">${esc(waitingText)}</body></html>`,
+    `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8" /><title>${esc(waitingText)}</title></head><body style="margin: 0; padding: 48px 16px; background: #d9dbe3; text-align: center; font-family: Tahoma, sans-serif; color: #2e2e74;">${esc(waitingText)}</body></html>`,
   );
   win.document.close();
   return win;
 };
 
-/** Write the composed receipt into the window `openReceiptWindow` opened; it prints itself. */
-export const writeCustodyReceipt = (win: Window, paper: ItCustodyReceiptDocumentDto): void => {
+/**
+ * What the page cannot do for itself (see the header): the toolbar's two buttons, and the print
+ * dialog opening by itself — once, after the letterhead has decoded, because a company document on
+ * paper without its logo is not the document; the timer catches a logo that never reports.
+ */
+export const wireReceiptWindow = (win: Window, autoPrint = true): void => {
+  const doc = win.document;
+  const print = (): void => {
+    win.focus();
+    win.print();
+  };
+  doc.getElementById('receipt-print')?.addEventListener('click', print);
+  doc.getElementById('receipt-close')?.addEventListener('click', () => win.close());
+  if (!autoPrint) return;
+  let printed = false;
+  const once = (): void => {
+    if (printed) return;
+    printed = true;
+    print();
+  };
+  const logo = doc.images[0];
+  if (logo !== undefined && !logo.complete) {
+    logo.addEventListener('load', once);
+    logo.addEventListener('error', once);
+  } else {
+    win.setTimeout(once, 80);
+  }
+  win.setTimeout(once, 1500);
+};
+
+/** Write the composed receipt into the tab `openReceiptWindow` opened, and make it work. */
+export const writeCustodyReceipt = (
+  win: Window,
+  paper: ItCustodyReceiptDocumentDto,
+  labels: ReceiptWindowLabels,
+): void => {
   win.document.open();
-  win.document.write(buildCustodyReceiptHtml(paper));
+  win.document.write(buildCustodyReceiptHtml(paper, labels));
   win.document.close();
+  wireReceiptWindow(win);
   win.focus();
 };
 
 /**
- * The whole print, start to finish: open, fetch, write — or close the window and rethrow when the
- * fetch fails, so a refused receipt never leaves an empty tab behind.
+ * The whole print, start to finish: open, fetch, write. Answers the paper that was printed — the
+ * caller needs its number — or null when the browser refused the tab; a fetch that fails closes
+ * the tab and rethrows, so a refused receipt never leaves an empty tab behind.
  */
 export const printCustodyReceipt = async (
   load: () => Promise<ItCustodyReceiptDocumentDto>,
-  waitingText: string,
-): Promise<'printed' | 'blocked'> => {
-  const win = openReceiptWindow(waitingText);
-  if (win === null) return 'blocked';
+  labels: ReceiptWindowLabels,
+): Promise<ItCustodyReceiptDocumentDto | null> => {
+  const win = openReceiptWindow(labels.waiting);
+  if (win === null) return null;
   try {
-    writeCustodyReceipt(win, await load());
-    return 'printed';
+    const paper = await load();
+    writeCustodyReceipt(win, paper, labels);
+    return paper;
   } catch (error) {
     win.close();
     throw error;

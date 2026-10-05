@@ -58,3 +58,9 @@ export const setSequenceValue = async (
     { upsert: true, session },
   ).exec();
 };
+
+/** The last value handed out for a key — 0 when none has been. Reads, never allocates. */
+export const currentSequenceValue = async (key: string): Promise<number> => {
+  const doc = await ItSequenceModel.findById(key).lean<SequenceDoc>().exec();
+  return doc?.value ?? 0;
+};

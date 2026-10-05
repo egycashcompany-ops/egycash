@@ -4,6 +4,7 @@ import {
   FLEET_FIRST_WORKING_CODE,
   type ListFleetVehiclesQuery,
   type Paginated,
+  fleetMonthWindow,
 } from '@ecms/contracts';
 import { FleetVehicleModel, type FleetVehicleDoc } from './vehicle.model';
 import { FleetVehicleTypeModel } from '../vehicle-types/vehicle-type.model';
@@ -392,6 +393,7 @@ export const vehicleListFilter = (
     | 'motorNumber'
     | 'licenseExpiresFrom'
     | 'licenseExpiresBefore'
+    | 'licenseExpiryMonths'
     | 'search'
   >,
 ): FilterQuery<FleetVehicleDoc> => {
@@ -428,6 +430,17 @@ export const vehicleListFilter = (
         ...(query.licenseExpiresFrom === undefined ? {} : { $gte: query.licenseExpiresFrom }),
         ...(query.licenseExpiresBefore === undefined ? {} : { $lte: query.licenseExpiresBefore }),
       },
+    });
+  }
+  // Several months — «أختار أكتر من شهر»: the licence runs out in ANY of them.
+  if (query.licenseExpiryMonths !== undefined) {
+    const windows = query.licenseExpiryMonths
+      .map(fleetMonthWindow)
+      .filter((window) => window !== null);
+    clauses.push({
+      $or: windows.map((window) => ({
+        licenseExpiresAt: { $gte: window.from, $lte: window.before },
+      })),
     });
   }
   if (query.search !== undefined) clauses.push(vehicleSearchFilter(query.search));

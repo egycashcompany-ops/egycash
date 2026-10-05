@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   ChangeFleetVehicleStatusSchema,
+  fleetMonthWindow,
   FleetCustodySummaryQuerySchema,
   ListFleetReceiptsQuerySchema,
   CreateFleetCatalogItemSchema,
@@ -593,5 +594,27 @@ describe('receipt kinds and custody sources take several — «اختيار مت
     ]);
     expect(FleetCustodySummaryQuerySchema.parse({ source: 'wash' }).source).toEqual(['wash']);
     expect(FleetCustodySummaryQuerySchema.safeParse({ source: 'card' }).success).toBe(false);
+  });
+});
+
+describe('fleetMonthWindow — a licence-expiry month as its first and last instant', () => {
+  it('runs the whole month in UTC, February of a leap year included', () => {
+    expect(fleetMonthWindow('2026-11')).toEqual({
+      from: new Date('2026-11-01T00:00:00.000Z'),
+      before: new Date('2026-11-30T23:59:59.999Z'),
+    });
+    expect(fleetMonthWindow('2028-02')?.before.toISOString()).toBe('2028-02-29T23:59:59.999Z');
+  });
+
+  it('is nothing for a malformed month', () => {
+    expect(fleetMonthWindow('2026-13')).toBeNull();
+    expect(fleetMonthWindow('11/2026')).toBeNull();
+    expect(fleetMonthWindow('')).toBeNull();
+  });
+
+  it('the vehicles query takes several months', () => {
+    const parsed = ListFleetVehiclesQuerySchema.parse({ licenseExpiryMonths: '2026-11,2027-01' });
+    expect(parsed.licenseExpiryMonths).toEqual(['2026-11', '2027-01']);
+    expect(() => ListFleetVehiclesQuerySchema.parse({ licenseExpiryMonths: '2026-13' })).toThrow();
   });
 });

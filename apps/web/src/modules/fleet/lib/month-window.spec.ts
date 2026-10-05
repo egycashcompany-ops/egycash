@@ -1,19 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { monthWindow } from '../pages/VehiclesListPage';
+import { licenceMonthOptions } from '../pages/VehiclesListPage';
 
-describe('a licence-expiry month as a window', () => {
-  it('runs from the month’s first instant to its last, in UTC', () => {
-    expect(monthWindow('2026-11')).toEqual({
-      from: '2026-11-01T00:00:00.000Z',
-      before: '2026-11-30T23:59:59.999Z',
-    });
-    expect(monthWindow('2028-02')?.before).toBe('2028-02-29T23:59:59.999Z');
-    expect(monthWindow('2026-12')?.before).toBe('2026-12-31T23:59:59.999Z');
+describe('the licence-expiry months offered on the vehicles screen', () => {
+  it('lists each month a licence runs out in, oldest first, with its count of cars', () => {
+    const options = licenceMonthOptions(
+      [
+        { licenseExpiresAt: '2027-01-31T00:00:00.000Z' },
+        { licenseExpiresAt: '2026-11-03T00:00:00.000Z' },
+        { licenseExpiresAt: '2026-11-30T00:00:00.000Z' },
+        { licenseExpiresAt: null },
+      ],
+      'en',
+    );
+    expect(options.map((option) => option.value)).toEqual(['2026-11', '2027-01']);
+    expect(options[0]?.label).toBe('November 2026 (2)');
+    expect(options[1]?.label).toBe('January 2027 (1)');
   });
 
-  it('is nothing for an empty or malformed month', () => {
-    expect(monthWindow('')).toBeNull();
-    expect(monthWindow('2026-13')).toBeNull();
-    expect(monthWindow('11/2026')).toBeNull();
+  it('names the months in Arabic on an Arabic screen', () => {
+    const [option] = licenceMonthOptions([{ licenseExpiresAt: '2026-11-03T00:00:00.000Z' }], 'ar');
+    expect(option?.label).toContain('نوفمبر');
   });
 });

@@ -84,8 +84,8 @@ export default {
     // that fits stays one table-like line; one that does not keeps the card's name whole on top
     // and its boxes, still in columns, under it.
     plugin(({ addVariant }) => {
-      addVariant('fuel-grid', '@container fuel-rows (min-width: 48rem)');
-      addVariant('fuel-line', '@container fuel-rows (min-width: 68rem)');
+      addVariant('fuel-grid', '@container fuel-rows (min-width: 50rem)');
+      addVariant('fuel-line', '@container fuel-rows (min-width: 71rem)');
       addVariant('fuel-wide', '@container fuel-rows (min-width: 80rem)');
     }),
   ],

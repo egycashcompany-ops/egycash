@@ -355,9 +355,9 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
  * nothing cut, nothing on two lines. A phone keeps the stacked card.
  */
 export const CARD_COLUMNS =
-  'fuel-grid:grid fuel-grid:grid-cols-[15rem_12.5rem_8rem_1fr] fuel-grid:items-center fuel-grid:gap-x-3 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_15rem_12.5rem_8rem_1fr]';
+  'fuel-grid:grid fuel-grid:grid-cols-[15rem_12.5rem_8rem_1fr] fuel-grid:items-center fuel-grid:gap-x-6 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_15rem_12.5rem_8rem_1fr]';
 export const CHARGE_COLUMNS =
-  'fuel-grid:grid fuel-grid:grid-cols-[14rem_12.5rem_15.5rem_1fr] fuel-grid:items-center fuel-grid:gap-x-3 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_14rem_12.5rem_15.5rem_1fr]';
+  'fuel-grid:grid fuel-grid:grid-cols-[14rem_12.5rem_15.5rem_1fr] fuel-grid:items-center fuel-grid:gap-x-6 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_14rem_12.5rem_15.5rem_1fr]';
 
 /** The card's name and company: a whole line above the boxes, or the line's first column. */
 export const NAME_CELL = 'fuel-grid:col-span-full fuel-grid:min-w-0 fuel-line:col-span-1';

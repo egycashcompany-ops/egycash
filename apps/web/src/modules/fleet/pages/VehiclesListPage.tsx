@@ -1215,6 +1215,9 @@ const DARK_TABLE = cn(
   // for every figure in the table; Arabic words fall through to Cairo.
   "[&_td]:[font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace] [&_td]:!font-bold",
   'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
+  // «على اللاب … المسافات قربت»: below that, the heavy figures take a size down and the columns
+  // more room between them, so nothing sits against its neighbour.
+  'max-[1749px]:[&_td]:!px-2.5 max-[1749px]:[&_th]:!px-2.5 max-[1749px]:[&_td]:!text-[13px] max-[1749px]:[&_td_.font-mono]:!text-[13px]',
 );
 
 /** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */

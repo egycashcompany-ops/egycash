@@ -14,6 +14,7 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate } from '../../../shared/lib/format';
+import { HistoryIcon } from '../../../shared/ui/icons';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { cn } from '../../../shared/lib/cn';
 import {
@@ -23,7 +24,11 @@ import {
   useRequestFuelCharge,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { FilterBar } from '../../../shared/ui/FilterBar';
 import { FuelTransferDialog } from '../components/FuelTransferDialog';
+import { FuelCardHistoryDialog } from '../components/FuelCardHistoryDialog';
 import { FUEL_CARD_COMPANIES, groupByVehicle } from '../components/FuelCardTiles';
 import {
   BOARD_FONT,
@@ -34,7 +39,6 @@ import {
   NUM,
   PATH,
   VehicleFuelGroup,
-  ymd,
 } from '../components/FuelCardBoard';
 import { saveSheet } from '../lib/fleet-sheet';
 import {
@@ -60,7 +64,7 @@ const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) 
  * white ground: no frame of its own and no focus ring — the surrounding frame is the box.
  */
 const REQUEST_BOX_TONE =
-  'border-transparent bg-transparent text-right text-xs font-bold tabular-nums text-slate-100 placeholder:font-normal placeholder:text-slate-600 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent';
+  'border-transparent bg-transparent text-right text-base font-bold tabular-nums text-slate-100 placeholder:font-normal placeholder:text-slate-600 focus-visible:ring-0 focus-visible:ring-offset-0 disabled:bg-transparent';
 
 /**
  * «طلب رصيد»: type an amount and the row colours; ✓ sends it to the card, ✕ takes it back.
@@ -106,7 +110,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
         'border-slate-800',
       )}
     >
-      <span className="whitespace-nowrap text-[10px] text-slate-500">
+      <span className="whitespace-nowrap text-sm text-slate-500">
         {t('fleet.fuelCards.fields.request')}
       </span>
       <MoneyInput
@@ -117,7 +121,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
         data-fuel-request={card.id}
         placeholder="0.00"
         tone={REQUEST_BOX_TONE}
-        className="!h-5 !w-20 !px-0 !py-0"
+        className="!h-6 !w-24 !px-0 !py-0"
       />
       {showButtons && canDecide && (
         <>
@@ -128,7 +132,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
             title={waiting ? t('fleet.fuelCards.approve') : t('fleet.fuelCards.request')}
             disabled={busy}
             onClick={() => void tick()}
-            className="rounded border border-emerald-500/30 bg-emerald-600/20 px-1.5 text-xs font-bold text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
+            className="rounded border border-emerald-500/30 bg-emerald-600/20 px-1.5 text-sm font-bold text-emerald-400 hover:bg-emerald-600/30 disabled:opacity-50"
           >
             ✓
           </button>
@@ -139,7 +143,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
             title={t('fleet.fuelCards.cancelRequest')}
             disabled={busy}
             onClick={() => void cross()}
-            className="rounded border border-red-500/30 bg-red-600/20 px-1.5 text-xs font-bold text-red-400 hover:bg-red-600/30 disabled:opacity-50"
+            className="rounded border border-red-500/30 bg-red-600/20 px-1.5 text-sm font-bold text-red-400 hover:bg-red-600/30 disabled:opacity-50"
           >
             ✕
           </button>
@@ -154,10 +158,13 @@ const ChargeRow = ({
   card,
   red,
   yellow,
+  onHistory,
 }: {
   card: FleetFuelCardDto;
   red: number;
   yellow: number;
+  /** Opens the card's log — «السجل», as on the accidents screen. */
+  onHistory: (card: FleetFuelCardDto) => void;
 }): JSX.Element => {
   const t = useT();
   const low = card.balance < red ? 'red' : card.balance < yellow ? 'yellow' : null;
@@ -173,7 +180,10 @@ const ChargeRow = ({
       className={cn(
         // «الصف بتاع الفيزا يكون بكل بياناته على صف واحد» — one line on a computer's screen; a
         // tablet or a phone, too narrow for it, lets the line wrap rather than hide half of it.
-        'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5 transition hover:shadow-md lg:flex-nowrap lg:overflow-x-auto',
+        'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2 transition hover:shadow-md',
+        // A computer's screen: three columns — the card, its figures in the MIDDLE («رقم الكارت
+        // والرصيد وطلب الرصيد يكونوا فى النص»), then its log at the end.
+        'lg:grid lg:grid-cols-[1fr_auto_1fr] lg:gap-4',
         // The whole line carries its state: amber while a request waits, green when charged today,
         // red when the balance is about to run out.
         waiting
@@ -185,13 +195,15 @@ const ChargeRow = ({
               : 'border-slate-800 bg-[#111827] hover:border-slate-700/80',
       )}
     >
-      <div className="flex min-w-[190px] shrink-0 items-center gap-3">
+      <div className="flex min-w-[190px] shrink-0 items-center gap-3 lg:min-w-max">
         <CompanyBadge company={card.company} />
         <div className="flex flex-col">
-          <span className="font-mono text-xs font-bold tracking-wide text-white">{card.name}</span>
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-white">
+            {card.name}
+          </span>
           <span
             className={cn(
-              'mt-0.5 flex items-center gap-1 text-[10px] font-medium',
+              'mt-0.5 flex items-center gap-1 text-sm font-medium',
               card.company === 'wataniya' ? 'text-emerald-400' : 'text-amber-400',
             )}
           >
@@ -205,9 +217,9 @@ const ChargeRow = ({
           </span>
         </div>
       </div>
-      <div className="my-auto flex flex-wrap items-center gap-2.5 lg:shrink-0 lg:flex-nowrap">
+      <div className="my-auto flex flex-wrap items-center gap-2.5 lg:flex-nowrap lg:justify-center">
         <div className="flex items-center rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1">
-          <span dir="ltr" className={cn('text-xs font-bold tracking-wider text-slate-200', NUM)}>
+          <span dir="ltr" className={cn('text-base font-bold tracking-wider text-slate-200', NUM)}>
             {groupCardNumber(card.number)}
           </span>
         </div>
@@ -215,10 +227,10 @@ const ChargeRow = ({
           data-fuel-balance={card.id}
           className="flex items-center gap-1.5 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1"
         >
-          <span className="text-[10px] text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
+          <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
           <span
             className={cn(
-              'text-xs font-black',
+              'text-base font-black',
               NUM,
               low === 'red'
                 ? 'text-red-400'
@@ -235,7 +247,7 @@ const ChargeRow = ({
           {low !== null && (
             <span
               className={cn(
-                'rounded border px-1 py-[0.05rem] text-[9px] font-medium',
+                'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
                 low === 'red'
                   ? 'border-red-700/50 bg-red-950 text-red-400'
                   : 'border-amber-700/50 bg-amber-950 text-amber-400',
@@ -250,15 +262,18 @@ const ChargeRow = ({
           )}
         </div>
         <ChargeRequest card={card} />
-        <div className={cn('flex shrink-0 items-center gap-1.5 text-xs text-slate-300', NUM)}>
-          <BoardIcon d={PATH.calendar} className="h-3.5 w-3.5 text-slate-500" />
-          <span className="text-[10px] text-slate-500">
-            {t('fleet.fuelCards.fields.lastCharged')}
-          </span>
-          <span className="font-semibold text-slate-200" dir="ltr">
-            {ymd(card.lastChargedAt)}
-          </span>
-        </div>
+      </div>
+      <div className="flex items-center gap-2 lg:justify-end">
+        <button
+          type="button"
+          data-fuel-history={card.id}
+          aria-label={t('fleet.fuelCards.history.open')}
+          title={t('fleet.fuelCards.history.open')}
+          onClick={() => onHistory(card)}
+          className="rounded-md border border-slate-700 bg-slate-800/80 p-1.5 text-slate-300 transition hover:border-brand-500/60 hover:bg-brand-500/15 hover:text-brand-200"
+        >
+          <HistoryIcon className="h-4 w-4" />
+        </button>
       </div>
     </div>
   );
@@ -313,6 +328,7 @@ export const FuelChargingPage = (): JSX.Element => {
   );
   const tiles = useMemo(() => groupByVehicle(cards), [cards]);
   const [transferring, setTransferring] = useState(false);
+  const [historyOf, setHistoryOf] = useState<FleetFuelCardDto | null>(null);
 
   const header = [
     t('fleet.odometer.columns.vehicle'),
@@ -372,10 +388,6 @@ export const FuelChargingPage = (): JSX.Element => {
     }
   };
 
-  const selectBox =
-    'h-[34px] cursor-pointer rounded-lg border border-slate-700/80 bg-[#080C14] py-0 text-xs text-slate-200 focus:border-emerald-500 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0';
-  const darkTrigger =
-    '[&_button[aria-haspopup]]:!h-[34px] [&_button[aria-haspopup]]:!py-0 [&_button[aria-haspopup]]:!rounded-lg [&_button[aria-haspopup]]:!border-slate-700/80 [&_button[aria-haspopup]]:!bg-[#080C14] [&_button[aria-haspopup]]:!text-xs [&_button[aria-haspopup]]:!text-slate-100';
   const latin = (value: number): string =>
     Math.round(value).toLocaleString('en-US', { maximumFractionDigits: 0 });
 
@@ -454,31 +466,77 @@ export const FuelChargingPage = (): JSX.Element => {
           />
         </section>
 
-        <section className="flex flex-col items-stretch justify-between gap-4 rounded-xl border border-slate-800 bg-[#111827] p-4 md:flex-row md:items-center">
-          {/* One row on a wide screen; on a tablet or a phone the filters, the exports and the button wrap rather than hide off the edge. */}
-          <div className="flex w-full flex-wrap items-center justify-between gap-2.5 lg:flex-nowrap lg:overflow-x-auto">
-            <div className="flex flex-1 flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
-              <div className="relative w-40 shrink-0">
-                <VehicleCodeFilter
-                  className={cn('w-full', darkTrigger, '[&_button[aria-haspopup]]:!ps-9')}
-                  fullWidth
-                  placeholder={t('fleet.fuelCards.board.searchCar')}
-                  value={vehicleCodes}
-                  onChange={(next) =>
-                    patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-                  }
-                />
-                <span className="pointer-events-none absolute inset-y-0 start-0 flex items-center ps-3">
-                  <BoardIcon d={PATH.truck} className="h-4 w-4 text-emerald-400" />
-                </span>
-              </div>
-              {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three states, several at once. */}
+        {/* The exports and «تحويل رصيد» above the filters, as on the vehicles screen. */}
+        <div className="flex flex-wrap items-center justify-end gap-2" data-fuel-toolbar="true">
+          {!isError && (
+            <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
+              <button
+                type="button"
+                data-export="fuel-charging"
+                onClick={() => void exportSheet()}
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300"
+              >
+                <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
+                <span>{t('fleet.fuelCards.board.excel')}</span>
+              </button>
+              <span className="h-4 w-px bg-slate-700" />
+              <button
+                type="button"
+                data-print="fuel-charging"
+                onClick={onPrint}
+                className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400"
+              >
+                <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
+                <span>{t('fleet.fuelCards.board.pdf')}</span>
+              </button>
+            </div>
+          )}
+          <Can permission="fleetFuelCharge.transfer">
+            <button
+              type="button"
+              data-fuel-transfer-open="true"
+              onClick={() => setTransferring(true)}
+              className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400"
+            >
+              ↔ {t('fleet.fuelCards.board.charge.transfer')}
+            </button>
+          </Can>
+        </div>
+        {/* «الفلاتر … تكون زى شاشه السيارات»: the same dark bar, one row on a computer. */}
+        <div className={DARK_FILTER_BAR}>
+          <FilterBar
+            hasActiveFilters={vehicleCodes.length > 0 || cardFiltered}
+            onClear={() => patch({ vehicleCodes: null, company: null, state: null })}
+          >
+            <FilterWithIcon
+              icon={FILTER_ICON.car}
+              tone="text-emerald-400"
+              className="w-32 shrink-0"
+            >
+              <VehicleCodeFilter
+                fullWidth
+                density="tight"
+                placeholder={t('fleet.fuelCards.board.searchCar')}
+                value={vehicleCodes}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
+              />
+            </FilterWithIcon>
+            {/* «اى حاله فيها اكتر من 3 اخيار اقدر اعمل مالتى سلكت» — three states, several at once. */}
+            <FilterWithIcon
+              icon={FILTER_ICON.charge}
+              tone="text-amber-400"
+              className="w-40 shrink-0"
+            >
               <MultiSelect
                 clearable
-                className={cn('shrink-0', darkTrigger)}
+                className="w-full"
+                fullWidth
+                density="tight"
                 showSelectedValues
+                searchThreshold={0}
                 label={t('fleet.fuelCards.filters.state')}
-                placeholder={t('fleet.fuelCards.board.charge.stateAny')}
                 options={CHARGING_STATES.map((value) => ({
                   value,
                   label: t(STATE_LABEL[value]),
@@ -486,55 +544,32 @@ export const FuelChargingPage = (): JSX.Element => {
                 value={states}
                 onChange={(next) => patch({ state: next.length === 0 ? null : next.join(',') })}
               />
-              <select
-                aria-label={t('fleet.fuelCards.fields.company')}
-                value={company}
-                onChange={(e) => patch({ company: e.target.value || null })}
-                className={cn(selectBox, 'shrink-0 px-2.5')}
-              >
-                <option value="">{t('fleet.fuelCards.board.anyCompany')}</option>
-                {FUEL_CARD_COMPANIES.map((option) => (
-                  <option key={option} value={option}>
-                    {t(`fleet.fuelCards.company.${option}`)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            {!isError && (
-              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-700 bg-slate-800/80 p-0.5">
-                <button
-                  type="button"
-                  data-export="fuel-charging"
-                  onClick={() => void exportSheet()}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300"
-                >
-                  <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>{t('fleet.fuelCards.board.excel')}</span>
-                </button>
-                <span className="h-4 w-px bg-slate-700" />
-                <button
-                  type="button"
-                  data-print="fuel-charging"
-                  onClick={onPrint}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400"
-                >
-                  <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
-                  <span>{t('fleet.fuelCards.board.pdf')}</span>
-                </button>
-              </div>
-            )}
-            <Can permission="fleetFuelCharge.transfer">
-              <button
-                type="button"
-                data-fuel-transfer-open="true"
-                onClick={() => setTransferring(true)}
-                className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-emerald-700/25 transition hover:from-emerald-500 hover:to-teal-500"
-              >
-                ↔ {t('fleet.fuelCards.board.charge.transfer')}
-              </button>
-            </Can>
-          </div>
-        </section>
+            </FilterWithIcon>
+            <FilterWithIcon
+              icon={FILTER_ICON.company}
+              tone="text-slate-300"
+              className="w-36 shrink-0"
+            >
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                label={t('fleet.fuelCards.fields.company')}
+                options={FUEL_CARD_COMPANIES.map((option) => ({
+                  value: option,
+                  label: t(`fleet.fuelCards.company.${option}`),
+                }))}
+                value={company === '' ? [] : [company]}
+                onChange={(next) =>
+                  patch({ company: pickOne(company === '' ? [] : [company], next) })
+                }
+              />
+            </FilterWithIcon>
+          </FilterBar>
+        </div>
 
         {isError ? (
           <EmptyState
@@ -558,13 +593,30 @@ export const FuelChargingPage = (): JSX.Element => {
                   if (card === undefined) {
                     return cardFiltered ? null : <EmptySlotRow key={slot} company={slot} />;
                   }
-                  return <ChargeRow key={slot} card={card} red={red} yellow={yellow} />;
+                  return (
+                    <ChargeRow
+                      key={slot}
+                      card={card}
+                      red={red}
+                      yellow={yellow}
+                      onHistory={setHistoryOf}
+                    />
+                  );
                 })}
               </VehicleFuelGroup>
             ))}
           </div>
         )}
       </div>
+      <FuelCardHistoryDialog
+        card={
+          historyOf === null
+            ? null
+            : ((data?.items ?? []).find((c) => c.id === historyOf.id) ?? historyOf)
+        }
+        cards={data?.items ?? []}
+        onClose={() => setHistoryOf(null)}
+      />
       <FuelTransferDialog
         open={transferring}
         onClose={() => setTransferring(false)}

@@ -3,6 +3,7 @@
 // view, print, delete. The bytes are guarded, so they are fetched with the session and shown as
 // an object URL, exactly as the licence image is.
 import { useEffect, useState } from 'react';
+import { PhotoPickButton } from '../../../shared/ui/PhotoPick';
 import { type FleetDealershipInvoiceDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -205,7 +206,6 @@ export const DealershipImageCell = ({
   const can = useCan();
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const upload = useUploadDealershipImage();
-  const [inputKey, setInputKey] = useState(0);
   const [confirming, setConfirming] = useState(false);
   const mayEdit = can('fleetDealership.edit');
 
@@ -213,26 +213,20 @@ export const DealershipImageCell = ({
     if (file === undefined) return;
     await upload.mutateAsync({ id: row.id, file });
     toast.success(t('fleet.dealership.image.uploaded'));
-    setInputKey((k) => k + 1);
   };
 
   if (row.image === null) {
     if (!mayEdit) return <span className="text-slate-400">—</span>;
     return (
-      <label className={`${actionButton} inline-flex cursor-pointer`}>
+      <PhotoPickButton
+        accept={LICENSE_IMAGE_ACCEPT}
+        className={`${actionButton} inline-flex`}
+        disabled={upload.isPending}
+        label={t('fleet.dealership.image.upload')}
+        onFile={(file) => void pick(file)}
+      >
         <UploadIcon className="h-4 w-4" />
-        <span className="sr-only">{t('fleet.dealership.image.upload')}</span>
-        <input
-          key={inputKey}
-          type="file"
-          accept={LICENSE_IMAGE_ACCEPT}
-          className="hidden"
-          disabled={upload.isPending}
-          aria-label={t('fleet.dealership.image.upload')}
-          title={t('fleet.dealership.image.upload')}
-          onChange={(e) => void pick(e.target.files?.[0])}
-        />
-      </label>
+      </PhotoPickButton>
     );
   }
 

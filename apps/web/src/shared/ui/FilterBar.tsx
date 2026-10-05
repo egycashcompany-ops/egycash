@@ -5,7 +5,7 @@
 // as one more filter rather than the way out of them — and "clear" next to a list of filters is
 // ambiguous about which one it clears. An amber circular-arrow is unmistakably "undo all of this",
 // and it stays labelled for screen readers and on hover.
-import { type ReactNode } from 'react';
+import { createContext, type ReactNode, useContext } from 'react';
 import { cn } from '../lib/cn';
 import { useT } from '../../platform/localization/useT';
 import { ResetIcon } from './icons';
@@ -20,6 +20,27 @@ const singleRowBreakpoint: Record<1280 | 1400 | 1440 | 1536, string> = {
   1440: 'min-[1440px]:flex-nowrap',
   1536: 'min-[1536px]:flex-nowrap',
 };
+
+/**
+ * How a module wants its reset. The default is the app's: amber, and shown only once a filter is
+ * set. Fleet asks for «زرار ريست … يكون لونه احمر ويكون قبل رقم الفلاتر» — red, and (being the
+ * first thing in the trailing group) before the count. `always` keeps it on screen, off while
+ * nothing is filtered, for a module that wants it there regardless.
+ */
+export interface FilterResetStyle {
+  tone: 'amber' | 'red';
+  always: boolean;
+}
+export const FilterResetStyleContext = createContext<FilterResetStyle>({
+  tone: 'amber',
+  always: false,
+});
+
+/** The reset's own colours — shared with the boards that draw their reset themselves. */
+export const filterResetTone = (tone: FilterResetStyle['tone']): string =>
+  tone === 'red'
+    ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100 hover:text-red-900 focus:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900'
+    : 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 hover:text-amber-900 focus:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900';
 
 export const FilterBar = ({
   children,
@@ -73,6 +94,8 @@ export const FilterBar = ({
   singleRowFrom?: 1280 | 1400 | 1440 | 1536;
 }): JSX.Element => {
   const t = useT();
+  const reset = useContext(FilterResetStyleContext);
+  const showReset = onClear !== undefined && (hasActiveFilters || reset.always);
   return (
     <div
       className={cn(
@@ -81,7 +104,7 @@ export const FilterBar = ({
       )}
     >
       {children}
-      {((onClear !== undefined && hasActiveFilters) || trailing !== undefined) && (
+      {(showReset || trailing !== undefined) && (
         // ON THE CONTROLS' LINE, CENTRED IN IT — «العدد بتاع الفلاتر يكون ف النص بحيث يكون زى
         // الفلاتر على صف واحد». Every `FilterField` writes its question ABOVE its control, so a
         // filter child is a label plus a box while this group is a 36px button and a short badge.
@@ -93,13 +116,17 @@ export const FilterBar = ({
         // rather than the labels'. The badge then sits in the middle of a filter box, which is
         // where the eye already is.
         <div className="ms-auto flex h-9 shrink-0 items-center gap-2 self-end">
-          {onClear !== undefined && hasActiveFilters && (
+          {showReset && (
             <button
               type="button"
               onClick={onClear}
+              disabled={!hasActiveFilters}
               aria-label={t('common.filters.clear')}
               title={t('common.filters.clear')}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+              className={cn(
+                'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors focus:outline-none focus:ring-2 disabled:cursor-default disabled:opacity-50',
+                filterResetTone(reset.tone),
+              )}
             >
               <ResetIcon className="h-4 w-4" />
             </button>

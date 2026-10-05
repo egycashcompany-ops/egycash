@@ -19,6 +19,7 @@ import {
   type FleetFuelTransferResultDto,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type UpdateFleetFuelCardMovement,
   type UpdateFleetFuelCard,
   type FleetDealershipTotalsDto,
   type FleetNoticeDto,
@@ -504,6 +505,13 @@ export const listFuelCardMovements = (
   params: FleetListParams,
 ): Promise<Paginated<FleetFuelCardMovementDto>> =>
   getPage<FleetFuelCardMovementDto>(`/fleet/fuel-cards/movements${buildQuery(params)}`);
+export const updateFuelCardMovement = (
+  id: string,
+  body: UpdateFleetFuelCardMovement,
+): Promise<FleetFuelCardMovementDto> =>
+  patch<FleetFuelCardMovementDto>(`/fleet/fuel-cards/movements/${id}`, body);
+export const deleteFuelCardMovement = (id: string): Promise<void> =>
+  del<void>(`/fleet/fuel-cards/movements/${id}`);
 
 // ── Receipts (خصم الإيصالات) and the custody ledger (العهدة) ─────────────────
 export const listReceipts = (params: FleetListParams): Promise<Paginated<FleetReceiptDto>> =>

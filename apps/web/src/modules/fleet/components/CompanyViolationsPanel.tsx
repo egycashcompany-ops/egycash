@@ -721,7 +721,7 @@ export const CompanyViolationsPanel = ({
                 promised. It called `refetch()` before — a button that re-asked a question whose
                 answer had not changed, so pressing it did nothing a reader could see, on a control
                 that looks exactly like «مسح الفلاتر» everywhere else in the app. Shown only when
-                there is something to clear, as `FilterBar` does; rendered here rather than through
+                there is something to clear, red as every Fleet bar's reset; rendered here rather than through
                 `FilterBar`'s own `onClear` so it keeps the hook the tests press it by. */}
             {hasActiveFilters && (
               <button
@@ -730,7 +730,7 @@ export const CompanyViolationsPanel = ({
                 aria-label={t('common.filters.clear')}
                 title={t('common.filters.clear')}
                 onClick={onClear}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition-colors hover:bg-red-100 hover:text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
               >
                 <ResetIcon className="h-4 w-4" />
               </button>

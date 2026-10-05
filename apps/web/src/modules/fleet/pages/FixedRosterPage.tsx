@@ -1156,7 +1156,7 @@ export const FixedRosterPage = (): JSX.Element => {
             onClick={resetFilters}
             aria-label={t('common.filters.clear')}
             title={t('common.filters.clear')}
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200 dark:hover:bg-amber-900"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
           >
             <ResetIcon className="h-3.5 w-3.5" />
             {t('common.filters.clear')}

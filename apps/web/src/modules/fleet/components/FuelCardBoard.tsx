@@ -228,7 +228,7 @@ const ExpiryTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
     <span
       data-fuel-expiry={state}
       className={cn(
-        'rounded border px-1 py-[0.05rem] text-[9px] font-medium',
+        'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
         state === 'valid' && 'border-emerald-800/50 bg-emerald-950 text-emerald-400',
         state === 'soon' && 'border-amber-700/50 bg-amber-950 text-amber-400',
         state === 'expired' && 'border-red-700/50 bg-red-950 text-red-400',
@@ -258,8 +258,8 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
     <div className="flex items-center gap-1 rounded-md border border-slate-800 bg-[#0b0f19] px-2 py-1">
-      <span className="font-mono text-[10px] text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
-      <span className={cn('text-xs font-bold tracking-widest text-slate-200', NUM)} dir="ltr">
+      <span className="font-mono text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
+      <span className={cn('text-base font-bold tracking-widest text-slate-200', NUM)} dir="ltr">
         {shown === null ? (card.hasPassword ? '••••' : '—') : shown === '' ? '—' : shown}
       </span>
       {shown !== null ? (
@@ -303,7 +303,7 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
       <span
         data-fuel-number={card.id}
         dir="ltr"
-        className={cn('text-xs font-bold tracking-wider text-slate-200', NUM)}
+        className={cn('text-base font-bold tracking-wider text-slate-200', NUM)}
       >
         {groupCardNumber(card.number)}
       </span>
@@ -346,8 +346,10 @@ export const FuelCardRow = ({
       <div className="flex min-w-[210px] items-center gap-3">
         <CompanyBadge company={card.company} />
         <div className="flex flex-col">
-          <span className="font-mono text-xs font-bold tracking-wide text-white">{card.name}</span>
-          <span className={cn('mt-0.5 flex items-center gap-1 text-[10px] font-medium', tone.text)}>
+          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-white">
+            {card.name}
+          </span>
+          <span className={cn('mt-0.5 flex items-center gap-1 text-sm font-medium', tone.text)}>
             <span className={cn('h-1.5 w-1.5 rounded-full', tone.dot)} />
             {t(`fleet.fuelCards.company.${card.company}`)}
           </span>
@@ -356,8 +358,8 @@ export const FuelCardRow = ({
 
       <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4">
         <NumberBox card={card} />
-        <div className={cn('flex items-center gap-1.5 text-xs text-slate-300', NUM)}>
-          <Svg d={PATH.calendar} className="h-3.5 w-3.5 text-slate-500" />
+        <div className={cn('flex items-center gap-1.5 text-base text-slate-300', NUM)}>
+          <Svg d={PATH.calendar} className="h-4 w-4 text-slate-500" />
           <span className="font-semibold text-slate-200" dir="ltr">
             {ymd(card.expiresAt)}
           </span>
@@ -372,7 +374,7 @@ export const FuelCardRow = ({
           data-fuel-image={card.id}
           title={t('fleet.fuelCards.board.photo')}
           onClick={() => onPhoto(card)}
-          className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-[10px] font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
+          className="inline-flex items-center gap-1 rounded-md border border-slate-700 bg-slate-800 px-2.5 py-1.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700 hover:text-white"
         >
           <Svg d={PATH.image} className={cn('h-3.5 w-3.5', tone.text)} />
           <span>{t('fleet.fuelCards.board.photo')}</span>
@@ -430,12 +432,12 @@ export const EmptySlotRow = ({
           <Svg d={PATH.plus} className="h-4 w-4" />
         </span>
         <div>
-          <span className="text-xs font-semibold text-slate-300 transition group-hover:text-emerald-300">
+          <span className="text-sm font-semibold text-slate-300 transition group-hover:text-emerald-300">
             {t('fleet.fuelCards.board.slotTitle', {
               company: t(`fleet.fuelCards.company.${company}`),
             })}
           </span>
-          <p className="text-[10px] text-slate-500 group-hover:text-slate-400">
+          <p className="text-sm text-slate-500 group-hover:text-slate-400">
             {t('fleet.fuelCards.board.slotHint')}
           </p>
         </div>
@@ -444,7 +446,7 @@ export const EmptySlotRow = ({
         <button
           type="button"
           data-fuel-add={company}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-1.5 text-xs font-bold text-emerald-400 transition group-hover:bg-emerald-600/30"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-1.5 text-sm font-bold text-emerald-400 transition group-hover:bg-emerald-600/30"
         >
           <Svg d={PATH.link} className="h-3.5 w-3.5" />
           <span>{t('fleet.fuelCards.board.slotLink')}</span>
@@ -470,7 +472,7 @@ export const NoCardsBody = ({
           <Svg d={PATH.warn} className="h-5 w-5 text-amber-400" />
         </div>
         <div>
-          <h4 className="text-xs font-bold tracking-wide text-white">
+          <h4 className="text-sm font-bold tracking-wide text-white">
             {t('fleet.fuelCards.board.noneTitle')}
           </h4>
           <p className="mt-0.5 text-[11px] text-slate-300">{t('fleet.fuelCards.board.noneHint')}</p>
@@ -482,7 +484,7 @@ export const NoCardsBody = ({
             type="button"
             data-fuel-link-stock="true"
             onClick={onLink}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600/20 px-3.5 py-2 text-xs font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-600/30 hover:text-emerald-200"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-600/20 px-3.5 py-2 text-sm font-bold text-emerald-300 shadow-sm transition hover:bg-emerald-600/30 hover:text-emerald-200"
           >
             <Svg d={PATH.link} className="h-3.5 w-3.5 text-emerald-400" />
             <span>{t('fleet.fuelCards.board.linkFromStock')}</span>
@@ -493,7 +495,7 @@ export const NoCardsBody = ({
             type="button"
             data-fuel-add="any"
             onClick={onAdd}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2 text-xs font-bold text-slate-100 shadow-sm transition hover:bg-slate-700"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3.5 py-2 text-sm font-bold text-slate-100 shadow-sm transition hover:bg-slate-700"
           >
             <Svg d={PATH.plus} className="h-3.5 w-3.5 text-emerald-400" />
             <span>{t('fleet.fuelCards.board.addNew')}</span>
@@ -653,11 +655,11 @@ export const StockSection = ({
               <h3 className="text-sm font-bold text-white">
                 {t('fleet.fuelCards.board.stockTitle')}
               </h3>
-              <span className="rounded border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+              <span className="rounded border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-sm font-bold text-amber-400">
                 {t('fleet.fuelCards.board.stockCount', { count: String(cards.length) })}
               </span>
             </div>
-            <p className="mt-0.5 text-xs text-slate-400">{t('fleet.fuelCards.board.stockHint')}</p>
+            <p className="mt-0.5 text-sm text-slate-400">{t('fleet.fuelCards.board.stockHint')}</p>
           </div>
         </div>
         {onAdd !== undefined && (
@@ -665,7 +667,7 @@ export const StockSection = ({
             type="button"
             data-fuel-stock-add="true"
             onClick={onAdd}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-slate-700"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
           >
             <Svg d={PATH.plus} className="h-3.5 w-3.5 text-emerald-400" />
             <span>{t('fleet.fuelCards.board.stockAdd')}</span>
@@ -684,14 +686,14 @@ export const StockSection = ({
               <CompanyBadge company={card.company} size="lg" />
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs font-bold text-white">{card.name}</span>
+                  <span className="font-mono text-sm font-bold text-white">{card.name}</span>
                   {/* The label it is known by on the fuel screens — «سفر 1», «اسبير». */}
                   {card.label !== null && card.label !== card.name && (
-                    <span className="rounded border border-slate-700 bg-slate-800 px-1.5 py-[0.05rem] text-[9px] font-semibold text-slate-200">
+                    <span className="rounded border border-slate-700 bg-slate-800 px-1.5 py-[0.05rem] text-[11px] font-semibold text-slate-200">
                       {card.label}
                     </span>
                   )}
-                  <span className="rounded border border-amber-700/50 bg-amber-950/80 px-1.5 py-[0.05rem] text-[9px] font-medium text-amber-400">
+                  <span className="rounded border border-amber-700/50 bg-amber-950/80 px-1.5 py-[0.05rem] text-[11px] font-medium text-amber-400">
                     {t('fleet.fuelCards.board.unlinked')}
                   </span>
                 </div>
@@ -707,7 +709,7 @@ export const StockSection = ({
                   type="button"
                   data-fuel-assign={card.id}
                   onClick={() => onAssign(card)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-1.5 text-xs font-bold text-emerald-400 transition hover:bg-emerald-600/30 hover:text-emerald-300"
+                  className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-600/20 px-3 py-1.5 text-sm font-bold text-emerald-400 transition hover:bg-emerald-600/30 hover:text-emerald-300"
                 >
                   <Svg d={PATH.link} className="h-3.5 w-3.5" />
                   <span>{t('fleet.fuelCards.board.assign')}</span>

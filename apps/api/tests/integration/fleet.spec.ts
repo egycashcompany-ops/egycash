@@ -48,6 +48,7 @@ import {
 } from '../../src/modules/fleet/sweeps/fleet-sweeps';
 import { FleetMaintenanceVisitModel } from '../../src/modules/fleet/maintenance/maintenance.model';
 import { FleetOdometerLogModel } from '../../src/modules/fleet/odometer/odometer.model';
+import { FleetFuelCardMovementModel } from '../../src/modules/fleet/fuel-cards/fuel-card.model';
 import { EmployeeModel } from '../../src/modules/hr/employee-management/employees/employee.model';
 import { hrPermissions } from '../../src/modules/hr/hr.module';
 import { driverAvailabilityOn } from '../../src/modules/fleet/availability/driver-availability';
@@ -9319,6 +9320,133 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
       .get('/api/v1/fleet/fuel-cards')
       .set('Authorization', `Bearer ${branchAToken}`);
     expect(denied.status).toBe(403);
+  });
+
+  // «لو اديت ل كارت او اخدت من كارت او زود كارت ك رصيد اقدر اعدل او امسح»
+  describe('the card log: a charge or a transfer takes a new amount, or is removed', () => {
+    type Line = { id: string; kind: string; amount: number; balanceAfter: number };
+    const log = async (cardId: string): Promise<Line[]> =>
+      data<Line[]>(
+        await request(app)
+          .get('/api/v1/fleet/fuel-cards/movements')
+          .query({ cardId })
+          .set('Authorization', `Bearer ${adminToken}`),
+      );
+    const change = (id: string, amount: number, token = adminToken) =>
+      request(app)
+        .patch(`/api/v1/fleet/fuel-cards/movements/${id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount });
+    const remove = (id: string, token = adminToken) =>
+      request(app)
+        .delete(`/api/v1/fleet/fuel-cards/movements/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+    const charged = async (vehicleId: string, company: string, amounts: number[]) => {
+      const card = data<Card>(await mkCard(vehicleId, company));
+      for (const amount of amounts) {
+        await approve(data<Card>(await requestCharge(await read(card.id), amount)));
+      }
+      return read(card.id);
+    };
+
+    it('a charge takes a new amount — the balance and every later line move with it', async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const card = await charged(v.id, 'wataniya', [500, 200]);
+      expect(card.balance).toBe(700);
+      const [second, first] = await log(card.id);
+      expect(first).toMatchObject({ kind: 'charge', amount: 500, balanceAfter: 500 });
+      expect(second).toMatchObject({ kind: 'charge', amount: 200, balanceAfter: 700 });
+
+      const res = await change(first!.id, 300);
+      expect(res.status).toBe(200);
+      expect(data<Line>(res)).toMatchObject({ amount: 300, balanceAfter: 300 });
+      expect((await read(card.id)).balance).toBe(500);
+      const after = await log(card.id);
+      expect(after.map((line) => [line.amount, line.balanceAfter])).toEqual([
+        [200, 500],
+        [300, 300],
+      ]);
+    });
+
+    it('a removed charge leaves the log and the balance, and stays on file', async () => {
+      const v = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const card = await charged(v.id, 'chillout', [400, 150]);
+      const [latest] = await log(card.id);
+      const gone = await remove(latest!.id);
+      expect(gone.status).toBe(204);
+      expect((await read(card.id)).balance).toBe(400);
+      expect((await log(card.id)).map((line) => line.amount)).toEqual([400]);
+      const kept = await FleetFuelCardMovementModel.findById(latest!.id).lean().exec();
+      expect(kept?.isDeleted, 'soft-deleted, not erased').toBe(true);
+      // A second removal of the same line finds nothing.
+      expect((await remove(latest!.id)).status).toBe(404);
+    });
+
+    it('a transfer moves both cards, from either side of it', async () => {
+      const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const from = await charged(a.id, 'wataniya', [1000]);
+      const to = data<Card>(await mkCard(b.id, 'wataniya'));
+      const moved = await request(app)
+        .post('/api/v1/fleet/fuel-cards/transfer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ fromCardId: from.id, toCardId: to.id, amount: 400 });
+      expect(moved.status).toBe(200);
+
+      const [out] = await log(from.id);
+      expect(out).toMatchObject({ kind: 'transferOut', amount: -400 });
+      expect((await change(out!.id, 600)).status).toBe(200);
+      expect((await read(from.id)).balance).toBe(400);
+      expect((await read(to.id)).balance).toBe(600);
+      expect((await log(to.id))[0]).toMatchObject({ kind: 'transferIn', amount: 600 });
+
+      // Removed from the receiving side: the money goes back where it came from.
+      const [inLine] = await log(to.id);
+      expect((await remove(inLine!.id)).status).toBe(204);
+      expect((await read(from.id)).balance).toBe(1000);
+      expect((await read(to.id)).balance).toBe(0);
+      expect(await log(to.id)).toEqual([]);
+      expect((await log(from.id)).map((line) => line.kind)).toEqual(['charge']);
+    });
+
+    it('never leaves a card below zero, never touches a receipt line, and keeps its grants', async () => {
+      const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const from = await charged(a.id, 'chillout', [100]);
+      const to = data<Card>(await mkCard(b.id, 'chillout'));
+      await request(app)
+        .post('/api/v1/fleet/fuel-cards/transfer')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ fromCardId: from.id, toCardId: to.id, amount: 100 });
+      const charge = (await log(from.id)).find((line) => line.kind === 'charge');
+      // The 100 already left for the other card: removing the charge would leave −100.
+      expect((await remove(charge!.id)).status).toBe(400);
+      expect((await change(charge!.id, 50)).status).toBe(400);
+      expect((await read(from.id)).balance).toBe(0);
+
+      const receiptCar = data<FleetVehicleDto>(await createVehicle(adminToken));
+      const paying = await charged(receiptCar.id, 'wataniya', [500]);
+      const receipt = await request(app)
+        .post('/api/v1/fleet/receipts')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          date: '2026-10-01',
+          vehicleId: receiptCar.id,
+          kind: 'fuel',
+          cardId: paying.id,
+          fuelType: 'petrol92',
+          amount: 100,
+          driverName: 'أيمن حسن',
+        });
+      expect(receipt.status).toBe(201);
+      const receiptLine = (await log(paying.id)).find((line) => line.kind === 'receipt');
+      expect((await change(receiptLine!.id, 50)).status).toBe(400);
+      expect((await remove(receiptLine!.id)).status).toBe(400);
+      expect((await read(paying.id)).balance).toBe(400);
+
+      const [chargeLine] = (await log(paying.id)).filter((line) => line.kind === 'charge');
+      expect((await remove(chargeLine!.id, branchAToken)).status).toBe(403);
+    });
   });
 });
 

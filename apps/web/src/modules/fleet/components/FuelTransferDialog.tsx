@@ -148,17 +148,45 @@ export const FuelTransferDialog = ({
     setToCard('');
     setAmount('');
   }, [open]);
-  useEffect(() => setFromCard(''), [fromVehicle]);
-  useEffect(() => setToCard(''), [toVehicle]);
   // The car the money comes from is never offered as the one it goes to; picking it on the «from»
   // side after it was chosen as «to» empties «to».
   useEffect(() => {
-    if (fromVehicle !== '' && toVehicle === fromVehicle) setToVehicle('');
+    if (fromVehicle !== '' && toVehicle === fromVehicle) {
+      setToVehicle('');
+      setToCard('');
+    }
   }, [fromVehicle, toVehicle]);
 
   // A «car» here is a car's id, or the label of cards on no car — they are picked the same way.
   const byVehicle = (vehicleId: string): FleetFuelCardDto[] =>
     vehicleId === '' ? [] : cards.filter((card) => fuelCardPlace(card) === vehicleId);
+  // «لما ادوس على كارت شركه من تلقائي يحدد نفس الشركه الى والعكس»: a card picked on one side
+  // picks the other car's card of the same company, whichever side is picked first — and a car
+  // chosen after the other side's card arrives with its card of that company already ticked.
+  const companyOf = (cardId: string): FleetFuelCardDto['company'] | null =>
+    cards.find((card) => card.id === cardId)?.company ?? null;
+  const cardOfCompany = (vehicleId: string, company: FleetFuelCardDto['company'] | null): string =>
+    company === null
+      ? ''
+      : (byVehicle(vehicleId).find((card) => card.company === company)?.id ?? '');
+  const pickFromVehicle = (vehicleId: string): void => {
+    setFromVehicle(vehicleId);
+    setFromCard(cardOfCompany(vehicleId, companyOf(toCard)));
+  };
+  const pickToVehicle = (vehicleId: string): void => {
+    setToVehicle(vehicleId);
+    setToCard(cardOfCompany(vehicleId, companyOf(fromCard)));
+  };
+  const pickFromCard = (cardId: string): void => {
+    setFromCard(cardId);
+    const match = cardOfCompany(toVehicle, companyOf(cardId));
+    if (toVehicle !== '') setToCard(match);
+  };
+  const pickToCard = (cardId: string): void => {
+    setToCard(cardId);
+    const match = cardOfCompany(fromVehicle, companyOf(cardId));
+    if (fromVehicle !== '' && match !== '') setFromCard(match);
+  };
   const places = useMemo(() => noCarPlaces(cards), [cards]);
   // «لازم تكون نفس الشركه … وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح»: once the first
   // card is chosen, the second is offered from its company only.
@@ -299,7 +327,7 @@ export const FuelTransferDialog = ({
                 <div className={carBoxClass(false)}>
                   <VehicleCodeCombobox
                     value={fromVehicle}
-                    onChange={setFromVehicle}
+                    onChange={pickFromVehicle}
                     ariaLabel={t('fleet.fuelCards.transfer.from')}
                     placeholder={t('fleet.accidents.vehiclePlaceholder')}
                     testId="fuel-transfer-from"
@@ -317,7 +345,7 @@ export const FuelTransferDialog = ({
                   <CardPick
                     cards={byVehicle(fromVehicle)}
                     value={fromCard}
-                    onChange={setFromCard}
+                    onChange={pickFromCard}
                     side="from"
                   />
                 </DesignField>
@@ -335,7 +363,7 @@ export const FuelTransferDialog = ({
                 <div className={carBoxClass(false)}>
                   <VehicleCodeCombobox
                     value={toVehicle}
-                    onChange={setToVehicle}
+                    onChange={pickToVehicle}
                     ariaLabel={t('fleet.fuelCards.transfer.to')}
                     placeholder={t('fleet.accidents.vehiclePlaceholder')}
                     testId="fuel-transfer-to"
@@ -360,7 +388,7 @@ export const FuelTransferDialog = ({
                   <CardPick
                     cards={toChoices}
                     value={toCard}
-                    onChange={setToCard}
+                    onChange={pickToCard}
                     side="to"
                     {...(!sameCar &&
                     toVehicle !== '' &&

@@ -25,6 +25,7 @@
 //   /fleet/catalogs           fleetCatalog.manage          FW-10
 //   /fleet/settings           fleetMaintenanceRule.manage  FW-10
 import { Route, Routes } from 'react-router-dom';
+import { FilterResetStyleContext } from '../../shared/ui/FilterBar';
 import { RequirePermission } from '../../platform/router/RequirePermission';
 import { NotFoundPage } from '../../platform/app/pages/NotFoundPage';
 import { AppShell } from '../../platform/layout/AppShell';
@@ -52,189 +53,195 @@ import { CustodyPage } from './pages/CustodyPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
+// «زرار ريست … يكون لونه احمر ويكون قبل رقم الفلاتر … يظهر لو عامل فلتر» — every Fleet filter bar's
+// reset is red, and shows once a filter is set.
+const FLEET_RESET = { tone: 'red', always: false } as const;
+
 export default function FleetRoutes(): JSX.Element {
   return (
-    <Routes>
-      <Route element={<AppShell />}>
-        <Route index element={<FleetDashboardPage />} />
-        <Route
-          path="vehicles"
-          element={
-            <RequirePermission permission="fleetVehicle.view">
-              <VehiclesListPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="vehicles/:id"
-          element={
-            <RequirePermission permission="fleetVehicle.view">
-              <VehicleDetailPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="drivers"
-          element={
-            <RequirePermission permission="fleetDriver.view">
-              <DriversListPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="drivers/:id"
-          element={
-            <RequirePermission permission="fleetDriver.view">
-              <DriverProfilePage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="attendance"
-          element={
-            <RequirePermission permission="fleetAvailability.view">
-              <AttendancePage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="odometer"
-          element={
-            <RequirePermission permission="fleetOdometer.view">
-              <OdometerPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="maintenance"
-          element={
-            <RequirePermission permission="fleetMaintenance.view">
-              <MaintenancePage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="maintenance-alarms"
-          element={
-            <RequirePermission permission="fleetOdometer.view">
-              <MaintenanceAlarmsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="roster"
-          element={
-            <RequirePermission permission="fleetRoster.view">
-              <RosterPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="fixed-roster"
-          element={
-            <RequirePermission permission="fleetRoster.view">
-              <FixedRosterPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="accidents"
-          element={
-            <RequirePermission permission="fleetAccident.view">
-              <AccidentsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="violations"
-          element={
-            <RequirePermission permission="fleetViolation.view">
-              <ViolationsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="licensing"
-          element={
-            <RequirePermission permission="fleetLicensing.view">
-              <LicensingPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="notices"
-          element={
-            <RequirePermission permission="fleetNotice.view">
-              <NoticesPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="dealership"
-          element={
-            <RequirePermission permission="fleetDealership.view">
-              <DealershipPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="fuel-cards"
-          element={
-            <RequirePermission permission="fleetFuelCard.view">
-              <FuelCardsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="fuel-cards/charging"
-          element={
-            <RequirePermission permission="fleetFuelCharge.view">
-              <FuelChargingPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="receipts"
-          element={
-            <RequirePermission permission="fleetReceipt.view">
-              <ReceiptsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="custody"
-          element={
-            <RequirePermission permission="fleetCustody.view">
-              <CustodyPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="notices/:template"
-          element={
-            <RequirePermission permission="fleetNotice.view">
-              <NoticeEditorPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="catalogs"
-          element={
-            <RequirePermission permission="fleetCatalog.manage">
-              <CatalogsPage />
-            </RequirePermission>
-          }
-        />
-        <Route
-          path="settings"
-          element={
-            <RequirePermission permission="fleetMaintenanceRule.manage">
-              <FleetSettingsPage />
-            </RequirePermission>
-          }
-        />
-        <Route path="*" element={<NotFoundPage />} />
-      </Route>
-    </Routes>
+    <FilterResetStyleContext.Provider value={FLEET_RESET}>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route index element={<FleetDashboardPage />} />
+          <Route
+            path="vehicles"
+            element={
+              <RequirePermission permission="fleetVehicle.view">
+                <VehiclesListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="vehicles/:id"
+            element={
+              <RequirePermission permission="fleetVehicle.view">
+                <VehicleDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="drivers"
+            element={
+              <RequirePermission permission="fleetDriver.view">
+                <DriversListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="drivers/:id"
+            element={
+              <RequirePermission permission="fleetDriver.view">
+                <DriverProfilePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="attendance"
+            element={
+              <RequirePermission permission="fleetAvailability.view">
+                <AttendancePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="odometer"
+            element={
+              <RequirePermission permission="fleetOdometer.view">
+                <OdometerPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="maintenance"
+            element={
+              <RequirePermission permission="fleetMaintenance.view">
+                <MaintenancePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="maintenance-alarms"
+            element={
+              <RequirePermission permission="fleetOdometer.view">
+                <MaintenanceAlarmsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="roster"
+            element={
+              <RequirePermission permission="fleetRoster.view">
+                <RosterPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="fixed-roster"
+            element={
+              <RequirePermission permission="fleetRoster.view">
+                <FixedRosterPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="accidents"
+            element={
+              <RequirePermission permission="fleetAccident.view">
+                <AccidentsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="violations"
+            element={
+              <RequirePermission permission="fleetViolation.view">
+                <ViolationsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="licensing"
+            element={
+              <RequirePermission permission="fleetLicensing.view">
+                <LicensingPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="notices"
+            element={
+              <RequirePermission permission="fleetNotice.view">
+                <NoticesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="dealership"
+            element={
+              <RequirePermission permission="fleetDealership.view">
+                <DealershipPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="fuel-cards"
+            element={
+              <RequirePermission permission="fleetFuelCard.view">
+                <FuelCardsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="fuel-cards/charging"
+            element={
+              <RequirePermission permission="fleetFuelCharge.view">
+                <FuelChargingPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="receipts"
+            element={
+              <RequirePermission permission="fleetReceipt.view">
+                <ReceiptsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="custody"
+            element={
+              <RequirePermission permission="fleetCustody.view">
+                <CustodyPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="notices/:template"
+            element={
+              <RequirePermission permission="fleetNotice.view">
+                <NoticeEditorPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="catalogs"
+            element={
+              <RequirePermission permission="fleetCatalog.manage">
+                <CatalogsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="settings"
+            element={
+              <RequirePermission permission="fleetMaintenanceRule.manage">
+                <FleetSettingsPage />
+              </RequirePermission>
+            }
+          />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </FilterResetStyleContext.Provider>
   );
 }

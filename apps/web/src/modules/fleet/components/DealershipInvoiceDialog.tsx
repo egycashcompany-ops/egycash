@@ -42,6 +42,8 @@ export const DealershipInvoiceDialog = ({
   const [privateCar, setPrivateCar] = useState(false);
   // The insurer as TYPED — a name, matched against the catalog on save.
   const [insurer, setInsurer] = useState('');
+  // Typed or picked by the clerk — the car's insurer no longer fills the box after that.
+  const [insurerTouched, setInsurerTouched] = useState(false);
   const [addToCatalog, setAddToCatalog] = useState(true);
   const [writeOnVehicle, setWriteOnVehicle] = useState(true);
   const noInsurer = t('fleet.dealership.noInsurer');
@@ -68,6 +70,7 @@ export const DealershipInvoiceDialog = ({
     // «تبقى شركة التامين لا يوجد»: a workshop bill starts with no insurer — the clerk types one,
     // or picks it from the insurers the cars carry.
     setInsurer(row.insuranceCompanyName ?? noInsurer);
+    setInsurerTouched(false);
     setAddToCatalog(true);
     setWriteOnVehicle(true);
   }, [open, row]);
@@ -88,6 +91,19 @@ export const DealershipInvoiceDialog = ({
   const vehicle = useVehicle(open && row?.vehicleId != null ? row.vehicleId : '');
   const mayWriteVehicle =
     can('fleetVehicle.edit') && row?.vehicleId != null && vehicle.data !== undefined;
+  // «لو ليها فى شاشه السيارات تامين يجى زى شاشه السيارات بس اقدر اغيرها ل لايوجد»: a bill with
+  // no insurer of its own opens on the car's insurer from the registry — still a box the clerk
+  // can change, «لا يوجد» included. A car with none keeps «لا يوجد».
+  const carInsurerId = vehicle.data?.insuranceCompanyId ?? null;
+  const carInsurerName = useMemo(() => {
+    const item = (insurers.data?.items ?? []).find((entry) => entry.id === carInsurerId);
+    return item === undefined ? null : localized(item.name, locale);
+  }, [insurers.data, carInsurerId, locale]);
+  useEffect(() => {
+    if (!open || row === null || insurerTouched) return;
+    if (row.insuranceCompanyName !== null || carInsurerName === null) return;
+    setInsurer(carInsurerName);
+  }, [open, row, insurerTouched, carInsurerName]);
 
   const amount = Number(invoiceAmount);
   const amountOk = invoiceAmount !== '' && Number.isFinite(amount) && amount >= 0;
@@ -125,6 +141,8 @@ export const DealershipInvoiceDialog = ({
     if (
       insuranceCompanyId !== null &&
       insuranceCompanyId !== row.insuranceCompanyId &&
+      // The car already carries it — the box was filled from the car.
+      insuranceCompanyId !== carInsurerId &&
       mayWriteVehicle &&
       writeOnVehicle &&
       row.vehicleId !== null &&
@@ -216,7 +234,10 @@ export const DealershipInvoiceDialog = ({
               <Input
                 list="dealership-insurers"
                 value={insurer}
-                onChange={(e) => setInsurer(e.target.value)}
+                onChange={(e) => {
+                  setInsurerTouched(true);
+                  setInsurer(e.target.value);
+                }}
                 placeholder={t('fleet.dealership.insurerPlaceholder')}
                 data-dealership-insurer="true"
               />
@@ -280,6 +301,7 @@ export const DealershipInvoiceDialog = ({
           {!isNewInsurer &&
             knownInsurerId !== null &&
             knownInsurerId !== row.insuranceCompanyId &&
+            knownInsurerId !== carInsurerId &&
             mayWriteVehicle && (
               <Checkbox
                 data-dealership-write-insurer="true"

@@ -42,6 +42,7 @@ import { itCustodyReceiptRepository } from './receipt.repository';
 import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receipt.model';
 import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
 import { receiptNumberFor } from './receipt-number';
+import { readDeviceTypesOf, receiptDeviceFields } from './receipt-device';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -252,6 +253,9 @@ class ItAssetCustodyService {
     // another module's data has no business holding it open.
     const holder = await readReceiptHolder(input.employeeId);
     refuseLeaver(holder.employee);
+    // What the paper calls each device — reference data, read before the transaction like the
+    // holder.
+    const deviceTypes = await readDeviceTypesOf(input.lines.map((line) => line.assetId));
     await itCustodyReceiptRepository.ensureCollection();
     // The number on the paper that was printed for this hand-over — or the next one, for a caller
     // that printed nothing. Outside the transaction, so a retry of it never takes a second number.
@@ -333,6 +337,7 @@ class ItAssetCustodyService {
           serialNumber: asset.serialNumber,
           conditionOnIssue: line.conditionOnIssue ?? null,
           notes: line.notes ?? null,
+          ...receiptDeviceFields(asset, deviceTypes, line.accessories),
         });
       }
 
@@ -466,6 +471,8 @@ class ItAssetCustodyService {
     // holder on the receipt a hand-over to them prints (FR-18).
     const named =
       input.toEmployeeId === undefined ? null : await readReceiptHolder(input.toEmployeeId);
+    const deviceTypes =
+      named === null ? new Map<string, string>() : await readDeviceTypesOf([assetId]);
     if (named !== null) await itCustodyReceiptRepository.ensureCollection();
     // Taken only once the transfer is known to hand the asset to somebody new, and kept across a
     // retry of the transaction so a retry never takes a second number.
@@ -550,6 +557,7 @@ class ItAssetCustodyService {
                 serialNumber: asset.serialNumber,
                 conditionOnIssue: input.conditionOnIssue ?? null,
                 notes: input.notes ?? null,
+                ...receiptDeviceFields(asset, deviceTypes),
               },
             ],
             signedCopy: null,

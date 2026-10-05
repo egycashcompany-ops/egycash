@@ -8,6 +8,10 @@
 //
 // `branchId` is create-only: the design makes it the data-scope anchor that "changes only via
 // transfer" (§2.2), and transfer is IT-2 — so the edit form does not offer it.
+//
+// «المواصفات والمشتملات» are what the custody acknowledgment prints for the device (FR-18): a box
+// per row of its specifications table, and the accessories one per line. Left empty, a row is
+// left off the paper.
 import { useEffect, useState } from 'react';
 import { type ItAssetDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
@@ -21,6 +25,14 @@ import { localized } from '../../../shared/lib/format';
 import { ItCatalogSelect } from './ItCatalogSelect';
 import { VendorPicker } from './VendorPicker';
 import { useCreateItAsset, useItBranchOptions, useUpdateItAsset } from '../api/it-queries';
+import {
+  SPEC_FIELDS,
+  fromLines,
+  specsDraft,
+  specsInput,
+  toLines,
+  type SpecsDraft,
+} from '../lib/asset-specs';
 
 interface FormState {
   name: string;
@@ -41,7 +53,13 @@ interface FormState {
   warrantyVendorId: string;
   warrantyTerms: string;
   notes: string;
+  specs: SpecsDraft;
+  /** One per line. */
+  accessories: string;
 }
+
+/** The fields edited as one text box each. */
+type TextKey = { [K in keyof FormState]: FormState[K] extends string ? K : never }[keyof FormState];
 
 const day = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
 
@@ -66,6 +84,8 @@ const fromAsset = (asset: ItAssetDto | null): FormState => ({
   warrantyVendorId: asset?.warranty?.vendorId ?? '',
   warrantyTerms: asset?.warranty?.terms ?? '',
   notes: asset?.notes ?? '',
+  specs: specsDraft(asset?.specs ?? null),
+  accessories: toLines(asset?.accessories ?? []),
 });
 
 export const AssetFormDialog = ({
@@ -94,8 +114,9 @@ export const AssetFormDialog = ({
   const update = useUpdateItAsset();
   const busy = create.isPending || update.isPending;
 
-  const set = (key: keyof FormState) => (value: string) =>
-    setForm((prev) => ({ ...prev, [key]: value }));
+  const set = (key: TextKey) => (value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+  const setSpec = (key: keyof SpecsDraft) => (value: string) =>
+    setForm((prev) => ({ ...prev, specs: { ...prev.specs, [key]: value } }));
 
   const complete =
     form.name.trim() !== '' && form.categoryId !== '' && (asset !== null || form.branchId !== '');
@@ -139,6 +160,8 @@ export const AssetFormDialog = ({
               : { terms: form.warrantyTerms.trim() }),
           }
         : undefined;
+    const specs = specsInput(form.specs);
+    const accessories = fromLines(form.accessories);
 
     try {
       if (asset === null) {
@@ -159,6 +182,8 @@ export const AssetFormDialog = ({
           ...(purchase === undefined ? {} : { purchase }),
           ...(warranty === undefined ? {} : { warranty }),
           ...(text(form.notes) === undefined ? {} : { notes: form.notes.trim() }),
+          ...(specs === undefined ? {} : { specs }),
+          ...(accessories.length === 0 ? {} : { accessories }),
         });
         toast.success(t('it.assets.created'));
       } else {
@@ -180,6 +205,9 @@ export const AssetFormDialog = ({
             purchase: purchase ?? null,
             warranty: warranty ?? null,
             notes: nullable(form.notes),
+            // The whole table and the whole list, as the form shows them: emptied is erased.
+            specs: specs ?? null,
+            accessories,
             version: asset.version,
           },
         });
@@ -368,6 +396,45 @@ export const AssetFormDialog = ({
               onChange={(e) => set('warrantyTerms')(e.target.value)}
             />
           </Field>
+        </div>
+      </fieldset>
+
+      <fieldset className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-800">
+        <legend className="sr-only">{t('it.assets.sections.specs')}</legend>
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+          {t('it.assets.sections.specs')}
+        </h3>
+        <p className="mb-3 mt-1 text-xs text-slate-500 dark:text-slate-400">
+          {t('it.assets.specsHint')}
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {SPEC_FIELDS.map(({ key, label }) => (
+            <Field key={key} label={t(label)}>
+              <Input
+                value={form.specs[key]}
+                onChange={(e) => setSpec(key)(e.target.value)}
+                maxLength={200}
+                dir="auto"
+              />
+            </Field>
+          ))}
+          <Field label={t('it.assets.specs.networkAdapters')} hint={t('it.assets.onePerLine')}>
+            <Textarea
+              rows={2}
+              value={form.specs.networkAdapters}
+              onChange={(e) => setSpec('networkAdapters')(e.target.value)}
+              dir="auto"
+            />
+          </Field>
+          <div className="sm:col-span-2">
+            <Field label={t('it.assets.fields.accessories')} hint={t('it.assets.accessoriesHint')}>
+              <Textarea
+                rows={3}
+                value={form.accessories}
+                onChange={(e) => set('accessories')(e.target.value)}
+              />
+            </Field>
+          </div>
         </div>
       </fieldset>
 

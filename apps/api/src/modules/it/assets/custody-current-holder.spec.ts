@@ -46,6 +46,11 @@ vi.mock('./receipt.repository', () => ({
 vi.mock('./receipt-number', () => ({
   receiptNumberFor: async (printed?: number) => printed ?? 1,
 }));
+// What the paper says about the device is not what is decided here.
+vi.mock('./receipt-device', () => ({
+  readDeviceTypesOf: async () => new Map(),
+  receiptDeviceFields: () => ({}),
+}));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/kernel/event-bus', () => ({ emit: vi.fn(async () => undefined) }));
 vi.mock('../../../platform/audit', () => ({

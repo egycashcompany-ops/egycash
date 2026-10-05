@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   createReceipt: vi.fn(),
   emit: vi.fn(),
   receiptNumberFor: vi.fn(),
+  findAssetsSystem: vi.fn(),
+  findCategoriesSystem: vi.fn(),
 }));
 
 vi.mock('./receipt-holder', () => ({ readReceiptHolder: mocks.readReceiptHolder }));
@@ -36,7 +38,14 @@ vi.mock('../../../platform/audit', () => ({
   auditService: { record: vi.fn(async () => undefined) },
 }));
 vi.mock('./asset.repository', () => ({
-  itAssetRepository: { getByIdForUpdate: mocks.getByIdForUpdate, updateById: mocks.updateAsset },
+  itAssetRepository: {
+    getByIdForUpdate: mocks.getByIdForUpdate,
+    updateById: mocks.updateAsset,
+    findByIdsSystem: mocks.findAssetsSystem,
+  },
+}));
+vi.mock('../catalog-items/catalog-item.repository', () => ({
+  itCatalogItemRepository: { findByIdsSystem: mocks.findCategoriesSystem },
 }));
 vi.mock('./assignment.repository', () => ({
   itAssetAssignmentRepository: {
@@ -60,6 +69,8 @@ const EMPLOYEE = String(new Types.ObjectId());
 const HOLDER = new Types.ObjectId();
 const PC = String(new Types.ObjectId());
 const SCREEN = String(new Types.ObjectId());
+const LAPTOPS = new Types.ObjectId();
+const SCREENS = new Types.ObjectId();
 
 const ctx = {
   userId: String(new Types.ObjectId()),
@@ -68,15 +79,35 @@ const ctx = {
 } as never;
 const scope = {} as never;
 
-const asset = (id: string, status: 'inStock' | 'assigned', name: string, serial: string) => ({
-  _id: new Types.ObjectId(id),
-  assetCode: name === 'Dell Optiplex 7090' ? 'AST-00001' : 'AST-00002',
-  name,
-  serialNumber: serial,
-  status,
-  branchId: BRANCH,
-  __v: 0,
-});
+/** The PC is a laptop with its specifications and charger on file; the screen has neither. */
+const asset = (id: string, status: 'inStock' | 'assigned', name: string, serial: string) => {
+  const isPc = name === 'Dell Optiplex 7090';
+  return {
+    _id: new Types.ObjectId(id),
+    assetCode: isPc ? 'AST-00001' : 'AST-00002',
+    name,
+    serialNumber: serial,
+    status,
+    branchId: BRANCH,
+    categoryId: isPc ? LAPTOPS : SCREENS,
+    manufacturer: 'Dell',
+    model: isPc ? 'N4050' : null,
+    specs: isPc
+      ? {
+          processor: 'Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache',
+          memory: '4.00 GB RAM',
+          systemType: null,
+          storage: '500 GB',
+          mediaDrive: null,
+          displayAdapter: null,
+          graphicsMemory: null,
+          networkAdapters: ['Dell Wireless 1701 802.11 b/g/n'],
+        }
+      : null,
+    accessories: isPc ? ['شاحن لاب توب'] : [],
+    __v: 0,
+  };
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -99,6 +130,17 @@ beforeEach(() => {
   }));
   mocks.updateAssignment.mockResolvedValue({});
   mocks.findOpenForAsset.mockResolvedValue(null);
+  mocks.findAssetsSystem.mockImplementation(async (ids: string[]) =>
+    ids.map((id) =>
+      id === PC
+        ? asset(PC, 'inStock', 'Dell Optiplex 7090', 'B600DN3')
+        : asset(id, 'inStock', 'Dell Screen', '49WNRS3'),
+    ),
+  );
+  mocks.findCategoriesSystem.mockResolvedValue([
+    { _id: LAPTOPS, name: { ar: 'لاب توب', en: 'Laptop' } },
+    { _id: SCREENS, name: { ar: 'شاشة', en: 'Screen' } },
+  ]);
 });
 
 describe('a hand-over is ONE receipt over every asset it hands over', () => {
@@ -146,6 +188,47 @@ describe('a hand-over is ONE receipt over every asset it hands over', () => {
     }
     // One platform event per asset, after the commit — exactly what an assign always emitted.
     expect(mocks.emit).toHaveBeenCalledTimes(2);
+  });
+
+  it('each page names the device, its specifications and what came with it — as printed', async () => {
+    const { receipt } = await itAssetCustodyService.handOver(
+      {
+        employeeId: EMPLOYEE,
+        lines: [{ assetId: PC }, { assetId: SCREEN, accessories: ['كابل HDMI'] }],
+      },
+      ctx,
+      scope,
+    );
+
+    const [pc, screen] = receipt.lines;
+    // «بأنني قد استلمت جهاز لاب توب» — the device's kind is its category's Arabic name.
+    expect(pc?.deviceType).toBe('لاب توب');
+    expect([pc?.manufacturer, pc?.model]).toEqual(['Dell', 'N4050']);
+    expect(pc?.specs).toMatchObject({
+      processor: 'Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache',
+      storage: '500 GB',
+      networkAdapters: ['Dell Wireless 1701 802.11 b/g/n'],
+    });
+    // «ومشتملاته كالتالي» — the asset's own list, unless the hand-over said what came this time.
+    expect(pc?.accessories).toEqual(['شاحن لاب توب']);
+    expect(screen?.deviceType).toBe('شاشة');
+    expect(screen?.specs).toBeNull();
+    expect(screen?.accessories).toEqual(['كابل HDMI']);
+  });
+
+  it('the paper keeps its own copy — editing the asset afterwards does not change it', async () => {
+    const pc = asset(PC, 'inStock', 'Dell Optiplex 7090', 'B600DN3');
+    mocks.getByIdForUpdate.mockResolvedValue(pc);
+    const { receipt } = await itAssetCustodyService.handOver(
+      { employeeId: EMPLOYEE, lines: [{ assetId: PC }] },
+      ctx,
+      scope,
+    );
+
+    pc.accessories.push('حقيبة');
+    pc.specs?.networkAdapters.push('Realtec PCIe FE Family Controller');
+    expect(receipt.lines[0]?.accessories).toEqual(['شاحن لاب توب']);
+    expect(receipt.lines[0]?.specs?.networkAdapters).toEqual(['Dell Wireless 1701 802.11 b/g/n']);
   });
 
   it('refuses the whole paper when one asset is not in stock — no receipt is written', async () => {
@@ -248,10 +331,16 @@ describe('a transfer to somebody new is a hand-over: it gets its own paper', () 
 
     expect(mocks.createReceipt).toHaveBeenCalledTimes(1);
     const [receipt] = mocks.createReceipt.mock.calls[0] as [
-      { _id: Types.ObjectId; employeeId: Types.ObjectId; lines: { conditionOnIssue: string }[] },
+      { _id: Types.ObjectId; employeeId: Types.ObjectId; lines: Record<string, unknown>[] },
     ];
     expect(String(receipt.employeeId)).toBe(EMPLOYEE);
     expect(receipt.lines[0]?.conditionOnIssue).toBe('U');
+    // The new holder's page describes the device like any hand-over's.
+    expect(receipt.lines[0]).toMatchObject({
+      deviceType: 'لاب توب',
+      manufacturer: 'Dell',
+      accessories: ['شاحن لاب توب'],
+    });
     expect((receipt as unknown as { formNumber: number }).formNumber).toBe(41);
     const [interval] = mocks.createAssignment.mock.calls[0] as [{ receiptId: Types.ObjectId }];
     expect(String(interval.receiptId)).toBe(String(receipt._id));

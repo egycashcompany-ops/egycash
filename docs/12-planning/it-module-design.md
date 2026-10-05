@@ -103,6 +103,8 @@ The register row. One asset = one physical (or licensed-hardware) item.
 | `currentAssignmentId?` | denormalized head of the open assignment, `null` when in stock |
 | `disposal?` | `{ at, method: sold\|scrapped\|donated\|lost\|returnedToVendor, reason, notes? }` set once |
 | `notes?` | |
+| `specs?` | `{ processor?, memory?, systemType?, storage?, mediaDrive?, displayAdapter?, graphicsMemory?, networkAdapters[] }` — the rows of the custody acknowledgment's specifications table (FR-18); a row left empty is left off the paper |
+| `accessories[]` | «مشتملاته» — what is handed over with the device (a charger, a bag…), one entry each |
 
 **QR (D2):** the QR payload is the plain `assetCode` — not a URL (URLs bind labels to a
 deployment host; codes survive redeployment and re-domaining). The web scan surface
@@ -155,16 +157,24 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
 - **Receipt** (FR-18): every interval opened for a person carries `receiptId` — the custody
   receipt it was handed over on (§2.5.1). An interval from before receipts has none.
 
-#### 2.5.1 `it_custody_receipts` — Custody receipt (إيصال استلام, FR-18)
+#### 2.5.1 `it_custody_receipts` — Custody receipt (إقرار استلام, FR-18)
 
-The paper the employee signs (form EGYCASH-IT-F-14), one per hand-over:
+The paper the employee signs — the IT department's «إقرار استلام», one page per device — one per
+hand-over:
 
 `{ formNumber, employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, issuedAt, issuedByUserId, branchId,
-lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes? }],
+lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes?,
+deviceType?, manufacturer?, model?, specs?, accessories[] }],
 signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
 
 - Written in the SAME transaction as the intervals it lists (hand-over, or a transfer to a new
   holder); the lines and the signer are a snapshot of what was printed.
+- Each line describes its device as its page prints it: `deviceType` is the asset category's
+  Arabic name («جهاز لاب توب»), with the asset's `manufacturer`, `model`, `specs` and
+  `accessories` — the hand-over line's own accessories when it gives them. One composer
+  (`receipt-device.ts`) serves the preview, the hand-over, a transfer and a receipt issued for older
+  custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
+  none of these and print the asset's name as the device.
 - `branchId` is the first line's branch — the read-scope anchor, like an interval's.
 - `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
   `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
@@ -418,7 +428,12 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   (§17, 2026-10-04). Every printed paper carries its own number, `EGYCASH-IT-F-14-0001`, one more
   on every print; the hand-over records the number of the paper the employee signed (a number the
   counter never handed out, or one already on another receipt, is refused); a reprint keeps it.
-  The footer's date is the day of printing, and the print tab shows the paper as an A4 sheet
+  The print tab shows the paper as A4 sheets (§17, 2026-10-05). The paper is the IT department's
+  «إقرار استلام», one page per device: the statement filled with the employee's name and job and
+  the device's kind and serial, the device's specifications table and accessories (recorded on the
+  asset; a hand-over may say what came with it this time), the undertaking, and the signature
+  block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
+  of several pages, the page count. The national ID and its issue details are left for the pen
   (§17, 2026-10-05).
 
 ## 6. States catalog
@@ -749,3 +764,22 @@ starts only on an explicit owner GO.
   `apps/web/src/shared/lib/print-window.ts`, whose spec holds the whole web app to «no printed page
   carries a script of its own». The label sheet had a second defect: its tab was opened with
   `noopener`, for which `window.open` returns null by definition, so the HTML sheet never printed.
+- **The custody acknowledgment** (2026-10-05) — owner request, with the department's form attached:
+  «ومعلش هنغير التصميم بتاع الطباعة فى الـ IT فقط لدا». The item-table receipt is replaced by the
+  IT department's «إقرار استلام», reproduced from the PDF the owner sent (its letterhead strip,
+  banner colours, table shading, fonts and footer block taken from the file itself): ONE PAGE PER
+  DEVICE under the receipt's one number — «أقر أنا / … بوظيفة … بأنني قد استلمت جهاز … برقم مسلسل …
+  ومواصفاته كالتالي:», the specifications table (Component / Details in the form's groups System ·
+  Storage · Graphics · Network), «ومشتملاته كالتالي:», the undertaking, «وهذا إقرار مني بذلك» and
+  «المقر بما فيه» with the name, signature and date on the left. The form's red marks what is filled
+  in, and stays red. What the paper needed and the system did not have is now recorded: an asset's
+  `specs` (one field per row of the form's table, several network adapters allowed) and
+  `accessories`, edited on the asset form and shown on the asset page; the hand-over dialog shows
+  each device's accessories and lets them be changed for this paper. The device's kind is its
+  category's Arabic name, so categories read best in the singular («لاب توب», «شاشة»). The national
+  ID, its issuing office and date stay dotted lines: HR's directory seam does not carry the
+  national ID, by design. Each receipt line snapshots all of it, so a reprint is the paper that was
+  signed. Spelling slips in the form were corrected (قومي، إنهاء، إقرار، مني); its wording was not
+  changed. The formal-Arabic guard listed «ماله» as dialect; it is also «his property», the
+  undertaking's own word, so it left the list («مالوش» and «ملوش» stay). Other modules' printing
+  is unchanged.

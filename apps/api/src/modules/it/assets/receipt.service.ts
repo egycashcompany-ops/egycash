@@ -16,6 +16,7 @@ import { itCustodyReceiptRepository } from './receipt.repository';
 import { resolveCustodyReceiptCategoryId } from './receipt-files';
 import { readReceiptHolder } from './receipt-holder';
 import { nextReceiptNumber } from './receipt-number';
+import { readDeviceTypes, receiptDeviceFields } from './receipt-device';
 import { auditReceiptIssued, refuseLeaver, refuseUnlessInStock } from './custody.service';
 import { type ItCustodyReceiptDoc } from './receipt.model';
 
@@ -45,6 +46,7 @@ class ItCustodyReceiptService {
         asset,
       ]),
     );
+    const deviceTypes = await readDeviceTypes([...found.values()]);
     const lines = [];
     for (const line of input.lines) {
       const asset = found.get(line.assetId);
@@ -76,6 +78,7 @@ class ItCustodyReceiptService {
         serialNumber: asset.serialNumber,
         conditionOnIssue: line.conditionOnIssue ?? null,
         notes: line.notes ?? null,
+        ...receiptDeviceFields(asset, deviceTypes, line.accessories),
       });
     }
 
@@ -137,6 +140,7 @@ class ItCustodyReceiptService {
     const [asset] = await itAssetRepository.findByIdsSystem([String(assignment.assetId)]);
     if (asset === undefined) throw new NotFoundError('asset not found');
     const holder = await readReceiptHolder(String(assignment.assignedToEmployeeId));
+    const deviceTypes = await readDeviceTypes([asset]);
     await itCustodyReceiptRepository.ensureCollection();
     // Issued to be printed at once: it takes the next number, outside the transaction so a retry
     // of it never takes a second one.
@@ -171,6 +175,7 @@ class ItCustodyReceiptService {
               serialNumber: asset.serialNumber,
               conditionOnIssue: assignment.conditionOnIssue,
               notes: assignment.notes,
+              ...receiptDeviceFields(asset, deviceTypes),
             },
           ],
           signedCopy: null,

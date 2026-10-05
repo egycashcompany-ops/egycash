@@ -29,6 +29,7 @@ import { EmployeePicker } from './EmployeePicker';
 import { AssetPicker } from './AssetPicker';
 import { useReceiptPrinter } from './CustodyReceipt';
 import * as api from '../api/it-api';
+import { fromLines, toLines } from '../lib/asset-specs';
 import {
   useDisposeItAsset,
   useHandOverItAssets,
@@ -123,15 +124,27 @@ const message = (err: unknown, fallback: string): string =>
 // employee signs — composed by the server from exactly what will be recorded — and only then does
 // «تسليم» record it. Changing anything after printing takes the hand-over away again until the
 // receipt is printed afresh: the system must never record something other than what was signed.
+// Each device is a page of the acknowledgment, and its accessories («ومشتملاته») start as the
+// asset's own list — edited here, they are what that page lists.
 
-/** One line of the receipt being prepared: an asset, its «الحالة» and its «ملاحظات». */
+/** One device on the receipt being prepared — one page of the acknowledgment. */
 interface DraftLine {
   assetId: string;
   condition: string;
   notes: string;
+  /**
+   * «مشتملاته», one per line. Null until edited: the paper then lists the asset's own accessories,
+   * which is what the box shows.
+   */
+  accessories: string | null;
 }
 
-const emptyLine = (assetId: string): DraftLine => ({ assetId, condition: '', notes: '' });
+const emptyLine = (assetId: string): DraftLine => ({
+  assetId,
+  condition: '',
+  notes: '',
+  accessories: null,
+});
 
 /** The line's asset, named the way the receipt will name it. */
 const LineAsset = ({ assetId }: { assetId: string }): JSX.Element => {
@@ -151,6 +164,29 @@ const LineAsset = ({ assetId }: { assetId: string }): JSX.Element => {
         </>
       )}
     </span>
+  );
+};
+
+/** What came with the device — the asset's own list until somebody edits it for this paper. */
+const LineAccessories = ({
+  assetId,
+  value,
+  onChange,
+}: {
+  assetId: string;
+  value: string | null;
+  onChange: (value: string) => void;
+}): JSX.Element => {
+  const t = useT();
+  const asset = useItAsset(assetId);
+  return (
+    <Textarea
+      rows={2}
+      value={value ?? toLines(asset.data?.accessories ?? [])}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={t('it.custody.receipt.accessories')}
+      aria-label={t('it.custody.receipt.accessories')}
+    />
   );
 };
 
@@ -202,6 +238,7 @@ export const AssignAssetDialog = ({
       assetId: line.assetId,
       ...(line.condition.trim() === '' ? {} : { conditionOnIssue: line.condition.trim() }),
       ...(line.notes.trim() === '' ? {} : { notes: line.notes.trim() }),
+      ...(line.accessories === null ? {} : { accessories: fromLines(line.accessories) }),
     })),
     ...(assignedAt === '' ? {} : { assignedAt: new Date(assignedAt) }),
     ...(expectedReturnAt === '' ? {} : { expectedReturnAt: new Date(expectedReturnAt) }),
@@ -333,6 +370,11 @@ export const AssignAssetDialog = ({
                   aria-label={t('it.custody.receipt.lineNotes')}
                 />
               </div>
+              <LineAccessories
+                assetId={line.assetId}
+                value={line.accessories}
+                onChange={(accessories) => setLine(index, { accessories })}
+              />
             </div>
           ))}
           {lines.length < IT_HAND_OVER_MAX_LINES && (

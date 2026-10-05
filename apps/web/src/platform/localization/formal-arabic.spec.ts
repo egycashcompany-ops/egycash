@@ -42,6 +42,8 @@ describe('the Arabic the product speaks is formal Arabic', () => {
     expect(offendersIn('صفوف ما اتقريتش')).toHaveLength(1);
     // 3. Spelling, which reaches the same reader on the same screen.
     expect(offendersIn('إجمالى المصروفات')).toContain('«إجمالى» → «إجمالي»');
+    // The dialect's «ليس له» is still caught, after «ماله» (his property) left the list.
+    expect(offendersIn('الملف مالوش صاحب')).toContain('«مالوش» → ليس له');
   });
 
   it('leaves formal Arabic alone, including the words that merely contain a tell', () => {
@@ -57,6 +59,7 @@ describe('the Arabic the product speaks is formal Arabic', () => {
       'حروف عربية فقط — بدون أرقام',
       'بيانات الاتصال بينما تتم المراجعة',
       'هذه الإدارة مسجَّلة بالفعل',
+      'حفاظ الشخص الحريص على ماله الخاص',
     ]) {
       expect(offendersIn(formal), formal).toEqual([]);
     }

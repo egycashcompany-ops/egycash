@@ -25,7 +25,12 @@ import { itAssetEventRepository } from './asset-event.repository';
 import { itMaintenanceOrderRepository } from '../maintenance/order.repository';
 import { nextAssetCode } from './asset-sequence';
 import { buildAssetLabelSheetHtml, renderLabelQrs } from './asset-labels';
-import { type ItAssetDoc, type ItAssetPurchaseSub, type ItAssetWarrantySub } from './asset.model';
+import {
+  type ItAssetDoc,
+  type ItAssetPurchaseSub,
+  type ItAssetSpecsSub,
+  type ItAssetWarrantySub,
+} from './asset.model';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -44,6 +49,8 @@ const snapshot = (doc: ItAssetDoc) => ({
   purchase: doc.purchase,
   warranty: doc.warranty,
   notes: doc.notes,
+  specs: doc.specs ?? null,
+  accessories: doc.accessories ?? [],
 });
 
 const eventPayload = (doc: ItAssetDoc) => ({
@@ -57,6 +64,17 @@ const toPurchaseSub = (input: NonNullable<CreateItAsset['purchase']>): ItAssetPu
   cost: input.cost ?? null,
   vendorId: input.vendorId === undefined ? null : new Types.ObjectId(input.vendorId),
   invoiceRef: input.invoiceRef ?? null,
+});
+
+const toSpecsSub = (input: NonNullable<CreateItAsset['specs']>): ItAssetSpecsSub => ({
+  processor: input.processor ?? null,
+  memory: input.memory ?? null,
+  systemType: input.systemType ?? null,
+  storage: input.storage ?? null,
+  mediaDrive: input.mediaDrive ?? null,
+  displayAdapter: input.displayAdapter ?? null,
+  graphicsMemory: input.graphicsMemory ?? null,
+  networkAdapters: input.networkAdapters ?? [],
 });
 
 const toWarrantySub = (input: NonNullable<CreateItAsset['warranty']>): ItAssetWarrantySub => ({
@@ -119,6 +137,8 @@ class ItAssetService {
         purchase: input.purchase === undefined ? null : toPurchaseSub(input.purchase),
         warranty: input.warranty === undefined ? null : toWarrantySub(input.warranty),
         notes: input.notes ?? null,
+        specs: input.specs === undefined ? null : toSpecsSub(input.specs),
+        accessories: input.accessories ?? [],
       },
       { by },
     );
@@ -207,6 +227,9 @@ class ItAssetService {
       set.warranty = input.warranty === null ? null : toWarrantySub(input.warranty);
     }
     if (input.notes !== undefined) set.notes = input.notes;
+    if (input.specs !== undefined)
+      set.specs = input.specs === null ? null : toSpecsSub(input.specs);
+    if (input.accessories !== undefined) set.accessories = input.accessories;
     const updated = await itAssetRepository.updateById(id, set, { by, version: input.version });
     await auditService.record({
       entityRef: entityRef(id),

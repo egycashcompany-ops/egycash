@@ -32,6 +32,20 @@ its entry here in the same PR.
 
 ### Changed
 
+- **IT prints the department's «إقرار استلام» instead of the item-table receipt.** «ومعلش هنغير
+  التصميم بتاع الطباعة فى الـ IT فقط لدا». The paper is reproduced from the form the owner sent —
+  its letterhead and banner, «إقرار استلام», the statement «أقر أنا / … بوظيفة … بأنني قد استلمت
+  جهاز … برقم مسلسل … ومواصفاته كالتالي:», the specifications table (Component / Details: System,
+  Storage, Graphics, Network), «ومشتملاته كالتالي:», the undertaking and «المقر بما فيه» with the
+  name, signature and date — one page per device, all under the receipt's one number, which the
+  footer prints as «EGYCASH | IT Dept. | EGYCASH-IT-F-14-0001». The form's red fields are filled
+  in red: the employee's name and job, the device's kind (its category's Arabic name) and serial.
+  The national ID and its issue details stay dotted lines for the pen. To fill the table, an asset
+  now records its specifications (processor, memory, system type, storage, media drive, display
+  adapter, graphics memory, network adapters) and its accessories, on the asset form and the asset
+  page; the hand-over shows each device's accessories and lets them be changed for that paper.
+  Every receipt keeps what it printed, so a reprint is the signed paper. Only IT's printing
+  changed.
 - **The IT custody receipt carries its own number and the day it is printed.** The footer's fixed
   «EGYCASH-IT -F-14-02 · Issue date: 1/5/2022» becomes the paper's number — EGYCASH-IT-F-14-0001,
   one more on every print — beside the form's revision and today's date. The hand-over records the

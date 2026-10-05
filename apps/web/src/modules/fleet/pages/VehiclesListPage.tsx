@@ -750,19 +750,22 @@ export const VehiclesListPage = (): JSX.Element => {
       <div className={cn(BOARD_FONT, 'space-y-5 text-slate-100 antialiased')}>
         {/* The count and the two buttons ride ABOVE the filters, so the filters have the
             whole width and stay on one line on any screen larger than a tablet. */}
-        <div className="flex flex-wrap items-center justify-between gap-2" data-vehicle-toolbar="true">
-          <span data-vehicle-count className="whitespace-nowrap text-sm font-bold text-slate-300">
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2" data-vehicle-toolbar="true">
+          <span
+            data-vehicle-count
+            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-300 sm:text-sm"
+          >
             {data === undefined
               ? ''
               : t('fleet.vehicles.count', { count: formatNumber(data.meta.totalItems, locale) })}
           </span>
-          <span className="flex flex-wrap items-center justify-end gap-2">
+          <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
               data-vehicle-breakdown-toggle="true"
               aria-expanded={breakdownOpen}
               onClick={() => setBreakdownOpen((open) => !open)}
-              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-3 py-2 text-xs font-bold text-brand-200 transition hover:bg-brand-500/25"
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-1.5 py-1.5 text-[11px] font-bold text-brand-200 transition hover:bg-brand-500/25 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs"
             >
               {breakdownOpen
                 ? t('fleet.vehicles.board.breakdownHide')
@@ -770,7 +773,7 @@ export const VehiclesListPage = (): JSX.Element => {
               <svg
                 viewBox="0 0 24 24"
                 aria-hidden
-                className={cn('h-3.5 w-3.5 transition-transform', breakdownOpen && 'rotate-180')}
+                className={cn('h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5', breakdownOpen && 'rotate-180')}
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={2.5}
@@ -785,10 +788,11 @@ export const VehiclesListPage = (): JSX.Element => {
                   data-export="vehicles"
                   disabled={exporting !== null}
                   onClick={() => void exportSheet()}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-emerald-950/60 hover:text-emerald-300 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
                 >
                   <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>{t('fleet.fuelCards.board.excel')}</span>
+                  <span className="sm:hidden">Excel</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
                 </button>
                 <span className="h-4 w-px bg-slate-700" />
                 <button
@@ -796,10 +800,11 @@ export const VehiclesListPage = (): JSX.Element => {
                   data-print="vehicles"
                   disabled={exporting !== null}
                   onClick={() => void printSheet()}
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-200 transition hover:bg-red-950/40 hover:text-red-400 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
                 >
                   <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-400" />
-                  <span>{t('fleet.fuelCards.board.pdf')}</span>
+                  <span className="sm:hidden">PDF</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.pdf')}</span>
                 </button>
               </div>
             )}
@@ -811,10 +816,11 @@ export const VehiclesListPage = (): JSX.Element => {
                   setEditing(null);
                   setFormOpen(true);
                 }}
-                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs"
               >
                 <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
-                <span>{t('fleet.vehicles.create')}</span>
+                <span className="sm:hidden">{t('fleet.vehicles.board.addShort')}</span>
+                <span className="hidden sm:inline">{t('fleet.vehicles.create')}</span>
               </button>
             </Can>
           </span>

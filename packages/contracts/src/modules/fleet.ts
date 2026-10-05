@@ -304,6 +304,20 @@ export interface FleetVehicleDto {
  * with the expiry date: «لو غير فئة الترخيص من ت ل م او م ل ت … لازم يعدل تاريخ انتهاء الترخيص».
  * The class's letter is its last word, «م» or «ت»; `null` for a class without one.
  */
+/** A `YYYY-MM` month, as the vehicles screen's licence-expiry filter sends it. */
+export const FLEET_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/u;
+
+/** A `YYYY-MM` month as its first and last instant (UTC, as the licence dates are stored). */
+export const fleetMonthWindow = (month: string): { from: Date; before: Date } | null => {
+  if (!FLEET_MONTH_PATTERN.test(month)) return null;
+  const year = Number(month.slice(0, 4));
+  const index = Number(month.slice(5, 7)) - 1;
+  return {
+    from: new Date(Date.UTC(year, index, 1)),
+    before: new Date(Date.UTC(year, index + 1, 1) - 1),
+  };
+};
+
 export const fleetLicenseLetter = (name: string): 'م' | 'ت' | null => {
   const last = name.trim().split(/\s+/u).at(-1);
   return last === 'م' || last === 'ت' ? last : null;
@@ -521,6 +535,11 @@ export const ListFleetVehiclesQuerySchema = PaginationQuerySchema.extend({
    */
   licenseExpiresFrom: z.coerce.date().optional(),
   licenseExpiresBefore: z.coerce.date().optional(),
+  /**
+   * Several months at once — «أختار أكتر من شهر»: `?licenseExpiryMonths=2026-11,2027-01`. A car
+   * matches when its licence runs out in ANY of them.
+   */
+  licenseExpiryMonths: listQuery(z.string().regex(FLEET_MONTH_PATTERN)),
 }).strict();
 export type ListFleetVehiclesQuery = z.infer<typeof ListFleetVehiclesQuerySchema>;
 

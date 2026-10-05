@@ -63,7 +63,8 @@ const COVERED: readonly (readonly [string, readonly string[]])[] = [
   ['modules/fleet/pages/MaintenancePage.tsx', []],
   ['modules/fleet/pages/OdometerPage.tsx', []],
   ['modules/fleet/pages/RosterPage.tsx', ['date']],
-  ['modules/fleet/pages/VehiclesListPage.tsx', ['code']],
+  // `licenseMonth`: the one-month link from before `licenseMonths`, read once and never kept.
+  ['modules/fleet/pages/VehiclesListPage.tsx', ['code', 'licenseMonth']],
   ['modules/fleet/pages/ViolationsPage.tsx', []],
   ['modules/gold/pages/GoldBarsPage.tsx', []],
   ['modules/gold/pages/GoldCompaniesPage.tsx', []],

@@ -74,7 +74,7 @@ const REMEMBERED_FILTERS = [
   'chassis',
   'insurance',
   'licenseClass',
-  'licenseMonth',
+  'licenseMonths',
   'motor',
   'operation',
   'plate',
@@ -87,17 +87,34 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
-/** A `YYYY-MM` month as its first and last instant (UTC, as the licence dates are stored). */
-export const monthWindow = (month: string): { from: string; before: string } | null => {
-  const match = /^(\d{4})-(\d{2})$/u.exec(month);
-  if (match === null) return null;
-  const year = Number(match[1]);
-  const index = Number(match[2]) - 1;
-  if (index < 0 || index > 11) return null;
-  return {
-    from: new Date(Date.UTC(year, index, 1)).toISOString(),
-    before: new Date(Date.UTC(year, index + 1, 1) - 1).toISOString(),
-  };
+/**
+ * The months the registry's licences run out in — the options of «شهر انتهاء الترخيص», each with
+ * how many cars it holds, oldest first. Only months a car has, so the list is never a calendar of
+ * empty choices.
+ */
+export const licenceMonthOptions = (
+  vehicles: readonly { licenseExpiresAt: string | null }[],
+  locale: string,
+): { value: string; label: string }[] => {
+  const counts = new Map<string, number>();
+  for (const vehicle of vehicles) {
+    if (vehicle.licenseExpiresAt === null) continue;
+    const month = vehicle.licenseExpiresAt.slice(0, 7);
+    counts.set(month, (counts.get(month) ?? 0) + 1);
+  }
+  const tag = locale === 'ar' ? 'ar-EG' : 'en-GB';
+  const digits = new Intl.NumberFormat(tag);
+  const name = new Intl.DateTimeFormat(tag, {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  return [...counts.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, count]) => ({
+      value: month,
+      label: `${name.format(new Date(`${month}-01T00:00:00.000Z`))} (${digits.format(count)})`,
+    }));
 };
 
 /** Build an id → localized-name map from a catalog list, for the table's reference columns. */
@@ -136,8 +153,11 @@ export const VehiclesListPage = (): JSX.Element => {
   const licenseClassIds = readList(sp, 'licenseClass');
   // «تاريخ انتهاء الترخيص … أقدر أختار شهر فى سنه معينه» — `YYYY-MM`, what `<input type="month">`
   // reads and writes; asked of the server as that month's first and last instant.
-  const licenseMonth = sp.get('licenseMonth') ?? '';
-  const licenseWindow = monthWindow(licenseMonth);
+  // Several months — «أختار أكتر من شهر». A link from before carries one as `licenseMonth`.
+  const licenseMonths =
+    readList(sp, 'licenseMonths').length > 0
+      ? readList(sp, 'licenseMonths')
+      : readList(sp, 'licenseMonth');
   const operationIds = readList(sp, 'operation');
   const insuranceCompanyIds = readList(sp, 'insurance');
   const branchIds = readList(sp, 'branch');
@@ -174,6 +194,12 @@ export const VehiclesListPage = (): JSX.Element => {
     { anyStatus: true },
     legacyCode !== null && legacyCode.trim() !== '',
   );
+  // The whole registry, for the months its licences run out in (cached with the code picker's).
+  const wholeRegistry = useAllVehicles({ anyStatus: true });
+  const monthOptions = useMemo(
+    () => licenceMonthOptions(wholeRegistry.data?.items ?? [], locale),
+    [wholeRegistry.data, locale],
+  );
   const legacyNamesAVehicle = legacyCodeNamesAVehicle(legacyLookup.data?.items ?? [], legacyCode);
   useEffect(() => {
     // Nothing is rewritten until the lookup has answered: migrating early would send every link to
@@ -198,7 +224,7 @@ export const VehiclesListPage = (): JSX.Element => {
     chassis !== '' ||
     motor !== '' ||
     licenseClassIds.length > 0 ||
-    licenseMonth !== '' ||
+    licenseMonths.length > 0 ||
     operationIds.length > 0 ||
     insuranceCompanyIds.length > 0 ||
     branchIds.length > 0;
@@ -215,8 +241,7 @@ export const VehiclesListPage = (): JSX.Element => {
       chassisNumber: chassis || undefined,
       motorNumber: motor || undefined,
       licenseClassId: licenseClassIds.length === 0 ? undefined : licenseClassIds,
-      licenseExpiresFrom: licenseWindow?.from,
-      licenseExpiresBefore: licenseWindow?.before,
+      licenseExpiryMonths: licenseMonths.length === 0 ? undefined : licenseMonths,
       operationId: operationIds.length === 0 ? undefined : operationIds,
       insuranceCompanyId: insuranceCompanyIds.length === 0 ? undefined : insuranceCompanyIds,
       branchId: branchIds.length === 0 ? undefined : branchIds,
@@ -679,6 +704,7 @@ export const VehiclesListPage = (): JSX.Element => {
               chassis: null,
               motor: null,
               licenseClass: null,
+              licenseMonths: null,
               licenseMonth: null,
               operation: null,
               insurance: null,
@@ -771,34 +797,22 @@ export const VehiclesListPage = (): JSX.Element => {
             onChange={(ids) => patch({ licenseClass: writeList(ids) })}
             label={t('fleet.vehicles.filters.short.licenseClass')}
           />
-          {/* One MONTH of one year — the licences that run out in it. Empty, the box reads its own
-              name in place of the browser's «----- ----». */}
-          <div className="relative w-40 shrink-0">
-            <Input
-              type="month"
-              density="tight"
-              data-licence-month="true"
-              aria-label={t('fleet.vehicles.filters.licenseMonth')}
-              title={t('fleet.vehicles.filters.licenseMonth')}
-              value={licenseMonth}
-              onChange={(e) => patch({ licenseMonth: e.target.value || null })}
-              className={
-                licenseMonth === ''
-                  ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0'
-                  : undefined
-              }
-            />
-            {licenseMonth === '' && (
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-2 right-8 flex items-center justify-center truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
-              >
-                {t('fleet.vehicles.filters.short.licenseMonth')}
-              </span>
-            )}
-          </div>
+          {/* The months the licences run out in — several at once, each with its count of cars. */}
+          <MultiSelect
+            clearable
+            className="w-32 shrink-0"
+            fullWidth
+            density="tight"
+            showSelectedValues
+            searchThreshold={0}
+            panelWidth="w-60"
+            label={t('fleet.vehicles.filters.short.licenseMonth')}
+            options={monthOptions}
+            value={licenseMonths}
+            onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
+          />
           {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
-          <div className="w-20 shrink-0 [&>div>div]:flex [&>div>div]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!px-2">
+          <div className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!px-2">
             <BranchFilterSelect
               clearable
               value={branchIds}

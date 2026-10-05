@@ -118,6 +118,16 @@ describe('vehicleListFilter — the licence-expiry month', () => {
     });
   });
 
+  it('asks for several months as ANY of their windows', () => {
+    const filter = vehicleListFilter({ licenseExpiryMonths: ['2026-11', '2027-01'] } as never);
+    const or = clauses(filter).find((clause) => '$or' in clause)?.['$or'] as unknown as {
+      licenseExpiresAt: { $gte: Date; $lte: Date };
+    }[];
+    expect(or).toHaveLength(2);
+    expect(or[0]?.licenseExpiresAt.$gte.toISOString()).toBe('2026-11-01T00:00:00.000Z');
+    expect(or[1]?.licenseExpiresAt.$lte.toISOString()).toBe('2027-01-31T23:59:59.999Z');
+  });
+
   it('takes either bound alone', () => {
     const from = new Date('2026-11-01T00:00:00.000Z');
     expect(

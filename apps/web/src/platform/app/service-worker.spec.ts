@@ -30,6 +30,15 @@ interface Harness {
   fetched: string[];
   /** URLs it looked for in a cache. */
   matched: string[];
+  /** URLs it stored into a cache. */
+  stored: string[];
+}
+
+/** How the stand-in network answers one URL. Unlisted URLs get a 200 JavaScript response. */
+interface Answer {
+  ok: boolean;
+  status: number;
+  contentType: string;
 }
 
 /**
@@ -38,17 +47,21 @@ interface Harness {
  * The caches are stubbed as always-empty, so a request answered from cache is distinguishable
  * from one answered from the network by which stub it reached — which is exactly the question.
  */
-const load = (scope: string): Harness => {
+const load = (scope: string, answers: ReadonlyMap<string, Answer> = new Map()): Harness => {
   const listeners = new Map<string, Listener>();
   const fetched: string[] = [];
   const matched: string[] = [];
+  const stored: string[] = [];
 
   const emptyCache = {
     match: (request: { url: string } | string) => {
       matched.push(typeof request === 'string' ? request : request.url);
       return Promise.resolve(undefined);
     },
-    put: () => Promise.resolve(undefined),
+    put: (request: { url: string } | string) => {
+      stored.push(typeof request === 'string' ? request : request.url);
+      return Promise.resolve(undefined);
+    },
     add: () => Promise.resolve(undefined),
   };
 
@@ -78,7 +91,17 @@ const load = (scope: string): Harness => {
     },
     fetch: (request: { url: string }) => {
       fetched.push(request.url);
-      return Promise.resolve({ ok: true, clone: () => ({}) });
+      const answer = answers.get(request.url) ?? {
+        ok: true,
+        status: 200,
+        contentType: 'text/javascript; charset=utf-8',
+      };
+      return Promise.resolve({
+        ok: answer.ok,
+        status: answer.status,
+        headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? answer.contentType : null) },
+        clone: () => ({}),
+      });
     },
   };
 
@@ -87,6 +110,7 @@ const load = (scope: string): Harness => {
   return {
     fetched,
     matched,
+    stored,
     get: async (url, mode = 'no-cors') => {
       const listener = listeners.get('fetch');
       if (listener === undefined) throw new Error('the worker registered no fetch listener');
@@ -145,6 +169,39 @@ describe('the shell and the build output', () => {
   it('declines anything else same-origin rather than guessing', async () => {
     // No rule covers it, so it is not the worker's to answer.
     expect(await sw.get(`${ORIGIN}/robots.txt`)).toBeNull();
+  });
+});
+
+// «لما بسيب الموقع مدة طويلة وأرجع… Failed to fetch dynamically imported module». A tab opened
+// before a deploy asks for a chunk the OLD build named. The server used to answer that with the HTML
+// shell and a 200, and a cache-first worker files whatever answers an asset's name — forever.
+describe('a chunk the server no longer has is never cached as one', () => {
+  const OLD_CHUNK = `${ORIGIN}/assets/routes-Mp_nHbTf.js`;
+
+  it('does not file the HTML shell under a script’s name', async () => {
+    const sw = load(
+      '/',
+      new Map([[OLD_CHUNK, { ok: true, status: 200, contentType: 'text/html; charset=UTF-8' }]]),
+    );
+    expect(await sw.get(OLD_CHUNK)).toBe('cache');
+    expect(sw.fetched).toContain(OLD_CHUNK);
+    expect(sw.stored).not.toContain(OLD_CHUNK);
+  });
+
+  it('does not cache the 404 the server answers now either', async () => {
+    const sw = load(
+      '/',
+      new Map([[OLD_CHUNK, { ok: false, status: 404, contentType: 'application/json' }]]),
+    );
+    await sw.get(OLD_CHUNK);
+    expect(sw.stored).not.toContain(OLD_CHUNK);
+  });
+
+  it('still caches a real script, which is the point of caching the build output', async () => {
+    const sw = load('/');
+    const current = `${ORIGIN}/assets/routes-CsOY0Zb2.js`;
+    await sw.get(current);
+    expect(sw.stored).toContain(current);
   });
 });
 

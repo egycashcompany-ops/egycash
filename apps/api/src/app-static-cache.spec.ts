@@ -13,7 +13,7 @@
 // server afterwards.
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { isHashedAsset } from './app';
+import { answersWithShell, isHashedAsset } from './app';
 
 /** How express.static addresses a file: an absolute path under the bundle root. */
 const inBundle = (...segments: string[]): string => path.join(path.sep, 'srv', 'web', ...segments);
@@ -49,5 +49,44 @@ describe('everything with a stable name must revalidate', () => {
     // "assets" screen, is not build output and must not inherit its caching.
     expect(isHashedAsset(inBundle('assets.js'))).toBe(false);
     expect(isHashedAsset(inBundle('my-assets', 'thing.js'))).toBe(false);
+  });
+});
+
+// «لما بسيب الموقع مدة طويلة وأرجع… Failed to fetch dynamically imported module». A tab opened
+// before a deploy asks for a chunk the OLD build named, which the new container does not have.
+// The SPA fallback used to answer that with the HTML shell and a 200 — a web page handed over as a
+// script, which the browser rejects without an honest reason and a cache-first service worker can
+// file under the chunk's name for good.
+describe('which unmatched GETs get the HTML shell', () => {
+  it('every client route does — a deep link or a refresh renders the app', () => {
+    for (const route of ['/', '/employees', '/employees/42', '/fleet/vehicles', '/login']) {
+      expect(answersWithShell(route, ''), route).toBe(true);
+    }
+  });
+
+  it('a missing build file does not: it is a 404, so the import fails at once and is never cached', () => {
+    expect(answersWithShell('/assets/routes-Mp_nHbTf.js', '')).toBe(false);
+    expect(answersWithShell('/assets/index-D4n1ElSg.css', '')).toBe(false);
+  });
+
+  it('nor does the API or a health probe, as before', () => {
+    expect(answersWithShell('/api/v1/hr/employees', '')).toBe(false);
+    expect(answersWithShell('/health/ready', '')).toBe(false);
+  });
+
+  it('under a subpath deployment, the same rules at the prefix', () => {
+    expect(answersWithShell('/ecms/employees', '/ecms')).toBe(true);
+    expect(answersWithShell('/ecms', '/ecms')).toBe(true);
+    expect(answersWithShell('/ecms/assets/routes-Mp_nHbTf.js', '/ecms')).toBe(false);
+    expect(answersWithShell('/ecms/api/v1/x', '/ecms')).toBe(false);
+    // And nothing outside the prefix is this app's to answer.
+    expect(answersWithShell('/employees', '/ecms')).toBe(false);
+  });
+
+  it('does not mistake a route merely NAMED like the assets directory', () => {
+    // `assets` has to be the build directory under the base — the IT module's asset register
+    // (`/it/assets`) is a client route, and it must keep rendering.
+    expect(answersWithShell('/it/assets', '')).toBe(true);
+    expect(answersWithShell('/it/assets/123', '')).toBe(true);
   });
 });

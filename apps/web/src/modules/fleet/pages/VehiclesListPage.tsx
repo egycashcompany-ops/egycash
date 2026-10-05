@@ -6,7 +6,7 @@
 // The catalogs slice extended it to the frozen column order (§7) and the two filter groups (§10).
 // Every filter is SERVER-side, which is what keeps it correct across pagination: a client-side
 // filter would only ever narrow the page you are looking at.
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   type FleetCatalogKind,
@@ -18,7 +18,7 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
@@ -36,14 +36,7 @@ import { Button } from '../../../shared/ui/Button';
 import { Input } from '../../../shared/ui/form';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import {
-  EditIcon,
-  EyeIcon,
-  PlusIcon,
-  PrinterIcon,
-  TrashIcon,
-  WrenchIcon,
-} from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, PrinterIcon, TrashIcon, WrenchIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { BranchFilterSelect } from '../../hr/recruitment/shared/BranchFilterSelect';
@@ -56,6 +49,7 @@ import {
   useVehicles,
 } from '../api/fleet-queries';
 import { InWorkshopBadge, VehicleStatusBadge } from '../components/VehicleStatusBadge';
+import { BOARD_FONT, BoardIcon, NUM, PATH, expiryState } from '../components/FuelCardBoard';
 import { VehicleFormDialog } from '../components/VehicleFormDialog';
 import { VehicleStatusDialog } from '../components/VehicleStatusDialog';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
@@ -196,6 +190,24 @@ export const VehiclesListPage = (): JSX.Element => {
   );
   // The whole registry, for the months its licences run out in (cached with the code picker's).
   const wholeRegistry = useAllVehicles({ anyStatus: true });
+  // The figures across the top — the whole registry, whatever the filters narrow the table to.
+  const registryFigures = useMemo(() => {
+    const items = wholeRegistry.data?.items ?? [];
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const now = Date.now();
+    return {
+      total: items.length,
+      active: items.filter((v) => v.status === 'active').length,
+      thisMonth: items.filter((v) => v.licenseExpiresAt?.slice(0, 7) === thisMonth).length,
+      expired: items.filter(
+        (v) =>
+          v.status === 'active' &&
+          v.licenseExpiresAt !== null &&
+          new Date(v.licenseExpiresAt).getTime() < now,
+      ).length,
+      workshop: items.filter((v) => v.inWorkshop).length,
+    };
+  }, [wholeRegistry.data]);
   const monthOptions = useMemo(
     () => licenceMonthOptions(wholeRegistry.data?.items ?? [], locale),
     [wholeRegistry.data, locale],
@@ -267,6 +279,36 @@ export const VehiclesListPage = (): JSX.Element => {
     [operations.data, locale],
   );
   const insurerName = useMemo(() => nameMap(insurers.data?.items, locale), [insurers.data, locale]);
+  // How many cars sit in each licence class, operation and insurer — every entry of each list, in
+  // the list's own order, then the cars that have none.
+  const [breakdownOpen, setBreakdownOpen] = useState(false);
+  const breakdown = useMemo(() => {
+    const items = wholeRegistry.data?.items ?? [];
+    const tally = (
+      list: readonly { id: string; name: LocalizedString }[] | undefined,
+      pick: (v: (typeof items)[number]) => string | null,
+    ): { id: string; name: string; count: number }[] => {
+      const counts = new Map<string, number>();
+      for (const v of items) {
+        const id = pick(v) ?? '';
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      const rows = (list ?? []).map((item) => ({
+        id: item.id,
+        name: localized(item.name, locale),
+        count: counts.get(item.id) ?? 0,
+      }));
+      const none = counts.get('') ?? 0;
+      return none > 0
+        ? [...rows, { id: '', name: t('fleet.vehicles.board.unassigned'), count: none }]
+        : rows;
+    };
+    return {
+      licenseClass: tally(licenseClasses.data?.items, (v) => v.licenseClassId),
+      operation: tally(operations.data?.items, (v) => v.operationId),
+      insurance: tally(insurers.data?.items, (v) => v.insuranceCompanyId),
+    };
+  }, [wholeRegistry.data, licenseClasses.data, operations.data, insurers.data, locale, t]);
   // Branch names come from the same hook the filter uses; without `branch.view` it stays empty and
   // the column degrades to a dash rather than leaking an id.
   const { data: branches = [] } = useBranches(can('branch.view'));
@@ -529,12 +571,24 @@ export const VehiclesListPage = (): JSX.Element => {
       header: t('fleet.vehicles.columns.license'),
       sortable: true,
       render: (v) => {
-        const expired = new Date(v.licenseExpiresAt).getTime() < Date.now();
+        const state = expiryState(v.licenseExpiresAt, 30);
         return (
-          <span
-            className={cn('tabular-nums', expired && 'font-medium text-red-600 dark:text-red-400')}
-          >
-            {formatDate(v.licenseExpiresAt, locale)}
+          <span className="flex items-center gap-1.5">
+            <span
+              dir="ltr"
+              className={cn(
+                'font-semibold',
+                NUM,
+                state === 'expired'
+                  ? 'text-red-400'
+                  : state === 'soon'
+                    ? 'text-amber-400'
+                    : 'text-slate-100',
+              )}
+            >
+              {formatDate(v.licenseExpiresAt, locale)}
+            </span>
+            <LicenceTag state={state} />
           </span>
         );
       },
@@ -649,70 +703,141 @@ export const VehiclesListPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('fleet.nav.vehicles')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.vehicles') },
-        ]}
-        actions={
-          <>
-            {/* NOT OFFERED WHEN THE LIST FAILED. A green button on a screen that has just
-                told the reader it has no data reads as a way out of the failure, and the
-                file behind it would be empty or short. Disabling is not enough — it still
-                draws. */}
-            {!isError && <ExportSheetButton name="vehicles" onExport={exportSheet} />}
-          <Can permission="fleetVehicle.create">
-            <Button
-              size="sm"
-              leftIcon={<PlusIcon className="h-4 w-4" />}
-              onClick={() => {
-                setEditing(null);
-                setFormOpen(true);
-              }}
+      <div className={cn(BOARD_FONT, 'space-y-5 text-slate-100 antialiased')}>
+        {/* The count and the two buttons ride ABOVE the filters, so the filters have the
+            whole width and stay on one line on any screen larger than a tablet. */}
+        <div className="flex items-center justify-between gap-3" data-vehicle-toolbar="true">
+          <span data-vehicle-count className="whitespace-nowrap text-sm font-bold text-slate-300">
+            {data === undefined
+              ? ''
+              : t('fleet.vehicles.count', { count: formatNumber(data.meta.totalItems, locale) })}
+          </span>
+          <span className="inline-flex items-center gap-2">
+            <button
+              type="button"
+              data-vehicle-breakdown-toggle="true"
+              aria-expanded={breakdownOpen}
+              onClick={() => setBreakdownOpen((open) => !open)}
+              className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-3 py-2 text-xs font-bold text-brand-200 transition hover:bg-brand-500/25"
             >
-              {t('fleet.vehicles.create')}
-            </Button>
-          </Can>
-          </>
-        }
-      />
-
-      <div className="space-y-4">
-        <FilterBar
-          hasActiveFilters={hasActiveFilters}
-          {...(data === undefined
-            ? {}
-            : {
-                trailing: (
-                  <span
-                    data-vehicle-count
-                    className="whitespace-nowrap text-xs font-medium text-slate-500 dark:text-slate-400"
-                  >
-                    {t('fleet.vehicles.count', {
-                      count: formatNumber(data.meta.totalItems, locale),
-                    })}
-                  </span>
-                ),
-              })}
-          onClear={() =>
-            patch({
-              status: null,
-              type: null,
-              vehicleCodes: null,
-              plate: null,
-              chassis: null,
-              motor: null,
-              licenseClass: null,
-              licenseMonths: null,
-              licenseMonth: null,
-              operation: null,
-              insurance: null,
-              branch: null,
-            })
-          }
-        >
-          {/*
+              {breakdownOpen
+                ? t('fleet.vehicles.board.breakdownHide')
+                : t('fleet.vehicles.board.breakdown')}
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden
+                className={cn('h-3.5 w-3.5 transition-transform', breakdownOpen && 'rotate-180')}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {data !== undefined && !isError && (
+              <span className="[&_[data-export]]:!text-brand-400 [&_[data-export]:hover]:!bg-brand-500/15">
+                <ExportSheetButton name="vehicles" onExport={exportSheet} />
+              </span>
+            )}
+            <Can permission="fleetVehicle.create">
+              <button
+                type="button"
+                data-vehicle-add="true"
+                onClick={() => {
+                  setEditing(null);
+                  setFormOpen(true);
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400"
+              >
+                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
+                <span>{t('fleet.vehicles.create')}</span>
+              </button>
+            </Can>
+          </span>
+        </div>
+        {/* Every figure lives behind «الإحصائيات»: the screen opens on the cars themselves. */}
+        {breakdownOpen && (
+          <section data-vehicle-figures="true" className="space-y-2">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <FigureChip
+                icon={PATH.truck}
+                iconClass="bg-blue-500/10 text-blue-400"
+                label={t('fleet.vehicles.board.total')}
+                value={registryFigures.total}
+                unit={t('fleet.vehicles.board.totalUnit')}
+                note={t('fleet.vehicles.board.totalNote', {
+                  active: String(registryFigures.active),
+                  stopped: String(registryFigures.total - registryFigures.active),
+                })}
+              />
+              <FigureChip
+                icon={PATH.calendar}
+                iconClass="bg-amber-500/10 text-amber-400"
+                label={t('fleet.vehicles.board.thisMonth')}
+                value={registryFigures.thisMonth}
+                valueClass="text-amber-400"
+                unit={t('fleet.vehicles.board.licences')}
+              />
+              <FigureChip
+                icon={PATH.warn}
+                iconClass={
+                  registryFigures.expired > 0
+                    ? 'bg-red-500/10 text-red-400'
+                    : 'bg-emerald-500/10 text-emerald-400'
+                }
+                label={t('fleet.vehicles.board.expired')}
+                value={registryFigures.expired}
+                valueClass={registryFigures.expired > 0 ? 'text-red-400' : 'text-emerald-400'}
+                unit={t('fleet.vehicles.board.licences')}
+              />
+              <FigureChip
+                icon={PATH.edit}
+                iconClass="bg-cyan-500/10 text-cyan-400"
+                label={t('fleet.vehicles.board.workshop')}
+                value={registryFigures.workshop}
+                unit={t('fleet.vehicles.board.totalUnit')}
+              />
+            </div>
+            <div data-vehicle-breakdown="true" className="grid gap-2 md:grid-cols-3">
+              <BreakdownCard
+                title={t('fleet.vehicles.board.licenseClasses')}
+                rows={breakdown.licenseClass}
+                total={registryFigures.total}
+              />
+              <BreakdownCard
+                title={t('fleet.vehicles.board.operations')}
+                rows={breakdown.operation}
+                total={registryFigures.total}
+              />
+              <BreakdownCard
+                title={t('fleet.vehicles.board.insurers')}
+                rows={breakdown.insurance}
+                total={registryFigures.total}
+              />
+            </div>
+          </section>
+        )}
+        <div className={DARK_BAR}>
+          <FilterBar
+            hasActiveFilters={hasActiveFilters}
+            onClear={() =>
+              patch({
+                status: null,
+                type: null,
+                vehicleCodes: null,
+                plate: null,
+                chassis: null,
+                motor: null,
+                licenseClass: null,
+                licenseMonths: null,
+                licenseMonth: null,
+                operation: null,
+                insurance: null,
+                branch: null,
+              })
+            }
+          >
+            {/*
             ONE wrapping row. FilterBar is already `flex flex-wrap items-center gap-2`, so every
             control below is a direct child of it and they sit side by side on desktop, reflowing
             onto further lines only when the viewport runs out — never one filter per line.
@@ -724,137 +849,137 @@ export const VehiclesListPage = (): JSX.Element => {
             Direction is untouched: the bar inherits RTL from the page, so in Arabic the row reads
             الكود → اللوحة → الشاسيه → الموتور from the right.
           */}
-          {/* «عايز الفلتر فى صف واحد … طبقاً لطول البيانات اللى ممكن تتكتب فيه»: every control is
+            {/* «عايز الفلتر فى صف واحد … طبقاً لطول البيانات اللى ممكن تتكتب فيه»: every control is
               as wide as what it holds — a plate is ten characters, a code four — and the
               dropdowns run tight, so the whole bar is one row on a desktop screen. */}
-          <div className="w-24 shrink-0">
-            <VehicleCodeFilter
-              fullWidth
-              density="tight"
-              placeholder={t('fleet.vehicles.filters.short.code')}
-              value={vehicleCodes}
-              onChange={(next) =>
-                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
-              }
-            />
-          </div>
-          <div className="w-24 shrink-0">
-            <Input
-              aria-label={t('fleet.vehicles.columns.plate')}
-              placeholder={t('fleet.vehicles.columns.plate')}
-              value={plate}
-              onChange={(e) => patch({ plate: e.target.value || null })}
-              rule="plate"
-              density="tight"
-            />
-          </div>
-          <div className="w-24 shrink-0">
-            <Input
-              aria-label={t('fleet.vehicles.columns.chassis')}
-              placeholder={t('fleet.vehicles.columns.chassis')}
-              value={chassis}
-              onChange={(e) => patch({ chassis: e.target.value || null })}
-              rule="english"
-              density="tight"
-            />
-          </div>
-          <div className="w-24 shrink-0">
-            <Input
-              aria-label={t('fleet.vehicles.columns.motor')}
-              placeholder={t('fleet.vehicles.columns.motor')}
-              value={motor}
-              onChange={(e) => patch({ motor: e.target.value || null })}
-              rule="english"
-              density="tight"
-            />
-          </div>
-          {/* The dropdowns: make, then the three catalog references, then branch and status —
+            <div className="w-24 shrink-0">
+              <VehicleCodeFilter
+                fullWidth
+                density="tight"
+                placeholder={t('fleet.vehicles.filters.short.code')}
+                value={vehicleCodes}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
+              />
+            </div>
+            <div className="w-24 shrink-0">
+              <Input
+                aria-label={t('fleet.vehicles.columns.plate')}
+                placeholder={t('fleet.vehicles.columns.plate')}
+                value={plate}
+                onChange={(e) => patch({ plate: e.target.value || null })}
+                rule="plate"
+                density="tight"
+              />
+            </div>
+            <div className="w-24 shrink-0">
+              <Input
+                aria-label={t('fleet.vehicles.columns.chassis')}
+                placeholder={t('fleet.vehicles.columns.chassis')}
+                value={chassis}
+                onChange={(e) => patch({ chassis: e.target.value || null })}
+                rule="english"
+                density="tight"
+              />
+            </div>
+            <div className="w-24 shrink-0">
+              <Input
+                aria-label={t('fleet.vehicles.columns.motor')}
+                placeholder={t('fleet.vehicles.columns.motor')}
+                value={motor}
+                onChange={(e) => patch({ motor: e.target.value || null })}
+                rule="english"
+                density="tight"
+              />
+            </div>
+            {/* The dropdowns: make, then the three catalog references, then branch and status —
               EVERY ONE of them multi-valued. «الفئة أ أو ب» and «المتاحة والمتوقفة» are single
               questions about the fleet, and a one-answer control made the reader ask each of them
               twice and add the two counts up by hand. Branch has taken several since it was
               written; the other five now read the same way. */}
-          <MultiSelect
-            clearable
-            className="w-24 shrink-0"
-            fullWidth
-            density="tight"
-            showSelectedValues
-            chips
-            label={t('fleet.vehicles.filters.short.make')}
-            options={(types.data?.items ?? []).map((type) => ({
-              value: type.id,
-              label: localized(type.name, locale),
-            }))}
-            value={typeIds}
-            onChange={(ids) => patch({ type: writeList(ids) })}
-          />
-          <CatalogMultiSelect
-            kind="licenseClass"
-            className="w-24 shrink-0"
-            fullWidth
-            density="tight"
-            value={licenseClassIds}
-            onChange={(ids) => patch({ licenseClass: writeList(ids) })}
-            label={t('fleet.vehicles.filters.short.licenseClass')}
-          />
-          {/* The months the licences run out in — several at once, each with its count of cars. */}
-          <MultiSelect
-            clearable
-            className="w-32 shrink-0"
-            fullWidth
-            density="tight"
-            showSelectedValues
-            searchThreshold={0}
-            panelWidth="w-60"
-            label={t('fleet.vehicles.filters.short.licenseMonth')}
-            options={monthOptions}
-            value={licenseMonths}
-            onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
-          />
-          {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
-          <div className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!px-2">
-            <BranchFilterSelect
+            <MultiSelect
               clearable
-              value={branchIds}
-              onChange={(ids) => patch({ branch: writeList(ids) })}
+              className="w-24 shrink-0"
+              fullWidth
+              density="tight"
+              showSelectedValues
+              chips
+              label={t('fleet.vehicles.filters.short.make')}
+              options={(types.data?.items ?? []).map((type) => ({
+                value: type.id,
+                label: localized(type.name, locale),
+              }))}
+              value={typeIds}
+              onChange={(ids) => patch({ type: writeList(ids) })}
             />
-          </div>
-          <CatalogMultiSelect
-            kind="operation"
-            className="w-24 shrink-0"
-            fullWidth
-            density="tight"
-            value={operationIds}
-            onChange={(ids) => patch({ operation: writeList(ids) })}
-            label={t('fleet.vehicles.filters.short.operation')}
-          />
-          <CatalogMultiSelect
-            kind="insuranceCompany"
-            className="w-24 shrink-0"
-            fullWidth
-            density="tight"
-            value={insuranceCompanyIds}
-            onChange={(ids) => patch({ insurance: writeList(ids) })}
-            label={t('fleet.vehicles.filters.short.insurance')}
-          />
-          {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
+            <CatalogMultiSelect
+              kind="licenseClass"
+              className="w-24 shrink-0"
+              fullWidth
+              density="tight"
+              value={licenseClassIds}
+              onChange={(ids) => patch({ licenseClass: writeList(ids) })}
+              label={t('fleet.vehicles.filters.short.licenseClass')}
+            />
+            {/* The months the licences run out in — several at once, each with its count of cars. */}
+            <MultiSelect
+              clearable
+              className="w-32 shrink-0"
+              fullWidth
+              density="tight"
+              showSelectedValues
+              searchThreshold={0}
+              panelWidth="w-60"
+              label={t('fleet.vehicles.filters.short.licenseMonth')}
+              options={monthOptions}
+              value={licenseMonths}
+              onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
+            />
+            {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
+            <div className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!px-2">
+              <BranchFilterSelect
+                clearable
+                value={branchIds}
+                onChange={(ids) => patch({ branch: writeList(ids) })}
+              />
+            </div>
+            <CatalogMultiSelect
+              kind="operation"
+              className="w-24 shrink-0"
+              fullWidth
+              density="tight"
+              value={operationIds}
+              onChange={(ids) => patch({ operation: writeList(ids) })}
+              label={t('fleet.vehicles.filters.short.operation')}
+            />
+            <CatalogMultiSelect
+              kind="insuranceCompany"
+              className="w-24 shrink-0"
+              fullWidth
+              density="tight"
+              value={insuranceCompanyIds}
+              onChange={(ids) => patch({ insurance: writeList(ids) })}
+              label={t('fleet.vehicles.filters.short.insurance')}
+            />
+            {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}
-          <MultiSelect
-            clearable
-            className="w-20 shrink-0"
-            fullWidth
-            density="tight"
-            showSelectedValues
-            label={t('fleet.vehicles.columns.status')}
-            options={(['active', 'outOfService', 'disposed'] as const).map((value) => ({
-              value,
-              label: t(`fleet.vehicles.status.${value}`),
-            }))}
-            value={statuses}
-            onChange={(next) => patch({ status: writeList(next) })}
-          />
-          {/* HOW MANY CARS THE FILTER MATCHES — «حط جمب الفلاتر عدد العربيات».
+            <MultiSelect
+              clearable
+              className="w-20 shrink-0"
+              fullWidth
+              density="tight"
+              showSelectedValues
+              label={t('fleet.vehicles.columns.status')}
+              options={(['active', 'outOfService', 'disposed'] as const).map((value) => ({
+                value,
+                label: t(`fleet.vehicles.status.${value}`),
+              }))}
+              value={statuses}
+              onChange={(next) => patch({ status: writeList(next) })}
+            />
+            {/* HOW MANY CARS THE FILTER MATCHES — «حط جمب الفلاتر عدد العربيات».
               
               It reads the SERVER's `totalItems`, never `rows.length`. The rows in hand are one
               page of at most 25, so counting them would answer «how many are on this screen»
@@ -864,19 +989,67 @@ export const VehiclesListPage = (): JSX.Element => {
               `trailing`, so it lands in the same group as the reset and the active-filter count
               that `FilterBar` already draws there, rather than as a twelfth control in a row of
               eleven filters. */}
-        </FilterBar>
+          </FilterBar>
+        </div>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(v) => v.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-          empty={undefined}
-        />
+        {/* A computer's screen reads the table; a tablet or a phone reads one card per car. */}
+        <div className={cn('hidden lg:block', DARK_TABLE)}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(v) => v.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            empty={undefined}
+            minColumnWidth={6}
+          />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 lg:hidden" data-vehicle-cards="true">
+          {rows.map((v) => (
+            <VehicleCard
+              key={v.id}
+              vehicle={v}
+              typeName={dash(typeName.get(v.typeId))}
+              facts={[
+                [t('fleet.vehicles.columns.plate'), v.plateNumber],
+                [t('fleet.vehicles.columns.chassis'), v.chassisNumber],
+                [t('fleet.vehicles.columns.motor'), v.motorNumber],
+                [t('fleet.vehicles.columns.joinedAt'), formatDate(v.joinedAt, locale)],
+                [
+                  t('fleet.vehicles.columns.licenseClass'),
+                  v.licenseClassId === null ? '—' : (licenseClassName.get(v.licenseClassId) ?? '—'),
+                ],
+                [
+                  t('fleet.vehicles.columns.branch'),
+                  v.branchId === null ? '—' : (branchName.get(v.branchId) ?? '—'),
+                ],
+                [
+                  t('fleet.vehicles.columns.operation'),
+                  v.operationId === null ? '—' : (operationName.get(v.operationId) ?? '—'),
+                ],
+                [
+                  t('fleet.vehicles.columns.insurance'),
+                  v.insuranceCompanyId === null
+                    ? '—'
+                    : (insurerName.get(v.insuranceCompanyId) ?? '—'),
+                ],
+              ]}
+              licence={
+                <span className="flex items-center gap-1.5">
+                  <span dir="ltr" className={cn('font-semibold text-slate-100', NUM)}>
+                    {formatDate(v.licenseExpiresAt, locale)}
+                  </span>
+                  <LicenceTag state={expiryState(v.licenseExpiresAt, 30)} />
+                </span>
+              }
+              image={columns.find((c) => c.key === 'licenseImage')?.render(v, 0)}
+              actions={columns.find((c) => c.key === 'actions')?.render(v, 0)}
+            />
+          ))}
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <Pagination
             meta={data.meta}
@@ -932,3 +1105,186 @@ export const VehiclesListPage = (): JSX.Element => {
     </PageContainer>
   );
 };
+
+/** The fuel screens' dark bar, laid over `FilterBar` and the controls inside it. */
+const DARK_BAR = cn(
+  '[&>div]:!rounded-xl [&>div]:!border-slate-800 [&>div]:!bg-[#111827] [&>div]:!p-4',
+  '[&_input]:!border-slate-700/80 [&_input]:!bg-[#080C14] [&_input]:!text-slate-100 [&_input]:placeholder:!text-slate-400',
+  '[&_button[aria-haspopup]]:!border-slate-700/80 [&_button[aria-haspopup]]:!bg-[#080C14] [&_button[aria-haspopup]]:!text-slate-200',
+  // The open lists on the board's surface. What the reader presses or picks is the site's purple;
+  // green, amber and red are kept for what a car's state IS (ساري · قرّب يخلص · منتهي).
+  '[&_[role=listbox]]:!border-slate-700 [&_[role=listbox]]:!bg-[#111827] [&_[role=listbox]]:!shadow-2xl [&_[role=listbox]]:!shadow-black/60',
+  '[&_[role=option]:hover]:!bg-brand-500/15 [&_[role=option][aria-selected=true]]:!font-bold [&_[role=option][aria-selected=true]]:!text-brand-200',
+  // «مسح الفلاتر» and the Excel button are buttons, so they are purple here too.
+  '[&_.ms-auto>button]:!border-brand-500/50 [&_.ms-auto>button]:!bg-brand-500/15 [&_.ms-auto>button]:!text-brand-300 [&_.ms-auto>button:hover]:!bg-brand-500/25',
+  // Larger than a tablet: ONE row. Every filter shares the width evenly instead of holding its
+  // own, so eleven of them fit beside each other; the reset button keeps its size.
+  'lg:[&>div]:!flex-nowrap lg:[&>div]:!gap-1.5 lg:[&>div>*]:!min-w-0 lg:[&>div>*]:!flex-1 lg:[&>div>.ms-auto]:!flex-none',
+  // A small computer screen (1024–1279) takes the words a size down so «رقم الشاسيه» and
+  // «التشغيل» still read whole instead of ending in «…».
+  'lg:max-xl:[&_input]:!px-1.5 lg:max-xl:[&_input]:!text-xs lg:max-xl:[&_button[aria-haspopup]]:!px-1.5 lg:max-xl:[&_button[aria-haspopup]]:!text-xs lg:max-xl:[&_button[aria-haspopup]_svg]:!h-3 lg:max-xl:[&_button[aria-haspopup]_svg]:!w-3',
+);
+
+/** The fuel screens' dark table, laid over `DataTable`. */
+const DARK_TABLE = cn(
+  '[&>div]:!rounded-2xl [&>div]:!border-slate-800 [&>div]:!bg-[#111827]',
+  '[&_thead_tr]:!bg-[#0c121e] [&_thead_th]:!text-slate-400 [&_thead_button]:hover:!text-slate-100',
+  '[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-200',
+  '[&_th]:!px-2 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_td]:!px-2 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-[13px]',
+  '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
+);
+
+/** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */
+const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.Element | null => {
+  const t = useT();
+  if (state === 'unknown') return null;
+  return (
+    <span
+      className={cn(
+        'rounded border px-1 py-[0.05rem] text-[10px] font-medium',
+        state === 'valid' && 'border-emerald-800/50 bg-emerald-950 text-emerald-400',
+        state === 'soon' && 'border-amber-700/50 bg-amber-950 text-amber-400',
+        state === 'expired' && 'border-red-700/50 bg-red-950 text-red-400',
+      )}
+    >
+      {t(`fleet.fuelCards.expiry.${state}`)}
+    </span>
+  );
+};
+
+/** One car on a tablet or a phone: the code and its state on top, the facts, then the actions. */
+const VehicleCard = ({
+  vehicle,
+  typeName,
+  facts,
+  licence,
+  image,
+  actions,
+}: {
+  vehicle: FleetVehicleDto;
+  typeName: string;
+  facts: readonly (readonly [string, string])[];
+  licence: ReactNode;
+  image: ReactNode;
+  actions: ReactNode;
+}): JSX.Element => {
+  const t = useT();
+  return (
+    <article
+      data-vehicle-card={vehicle.id}
+      className="overflow-hidden rounded-2xl border border-slate-800 bg-[#111827] shadow-sm"
+    >
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-gradient-to-l from-slate-900 via-[#11192b] to-[#0c121e] px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            className={cn(
+              'shrink-0 rounded-lg border border-slate-600 bg-slate-800 px-2.5 py-0.5 text-xl font-black tracking-wider text-white',
+              NUM,
+            )}
+          >
+            {vehicle.code}
+          </span>
+          <span className="truncate text-sm font-bold text-white">{typeName}</span>
+        </div>
+        <span className="flex shrink-0 items-center gap-1.5">
+          <VehicleStatusBadge status={vehicle.status} />
+          <InWorkshopBadge inWorkshop={vehicle.inWorkshop} />
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 md:grid-cols-2">
+        <div className="col-span-2 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1.5 sm:col-span-3 md:col-span-2">
+          <span className="block text-[10px] text-slate-500">
+            {t('fleet.vehicles.columns.license')}
+          </span>
+          {licence}
+        </div>
+        {facts.map(([label, value]) => (
+          <div
+            key={label}
+            className="min-w-0 rounded-md border border-slate-800 bg-[#0b0f19] px-2.5 py-1.5"
+          >
+            <span className="block text-[10px] text-slate-500">{label}</span>
+            <span className="block truncate text-xs font-semibold text-slate-200">{value}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between gap-2 border-t border-slate-800 px-3 py-2 [&_button]:!text-slate-300 [&_label]:!text-slate-300">
+        <span className="flex items-center gap-1 text-[11px] text-slate-500">
+          {t('fleet.vehicles.columns.licenseImage')} {image}
+        </span>
+        {actions}
+      </div>
+    </article>
+  );
+};
+
+/** One figure across the top: small, one line of words over one number. */
+const FigureChip = ({
+  icon,
+  iconClass,
+  label,
+  value,
+  valueClass,
+  unit,
+  note,
+}: {
+  icon: readonly string[];
+  iconClass: string;
+  label: string;
+  value: number;
+  valueClass?: string;
+  unit: string;
+  note?: string;
+}): JSX.Element => (
+  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-800 bg-[#111827] px-2.5 py-3 sm:gap-3 sm:px-4">
+    <span className={cn('shrink-0 rounded-lg p-2 sm:p-2.5', iconClass)}>
+      <BoardIcon d={icon} className="h-5 w-5" />
+    </span>
+    <span className="leading-tight">
+      <span className="block text-xs font-medium text-slate-400">{label}</span>
+      <span className="flex items-baseline gap-1">
+        <span className={cn('text-2xl font-black text-white', NUM, valueClass)}>{value}</span>
+        <span className="text-xs text-slate-400">{unit}</span>
+      </span>
+      {note !== undefined && <span className="block text-[11px] text-slate-500">{note}</span>}
+    </span>
+  </div>
+);
+
+/** One list — licence classes, operations or insurers — with how many cars sit in each entry. */
+const BreakdownCard = ({
+  title,
+  rows,
+  total,
+}: {
+  title: string;
+  rows: readonly { id: string; name: string; count: number }[];
+  total: number;
+}): JSX.Element => (
+  <div className="rounded-xl border border-slate-800 bg-[#111827] p-3">
+    <div className="mb-2 flex items-center justify-between">
+      <span className="text-xs font-bold text-slate-200">{title}</span>
+      <span className={cn('rounded-md bg-slate-800 px-1.5 text-[11px] text-slate-400', NUM)}>
+        {rows.filter((row) => row.id !== '').length}
+      </span>
+    </div>
+    <ul className="space-y-1.5">
+      {rows.map((row) => (
+        <li key={row.id} className="text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className={cn('truncate', row.id === '' ? 'text-slate-500' : 'text-slate-300')}>
+              {row.name}
+            </span>
+            <span className={cn('shrink-0 font-bold text-white', NUM)}>{row.count}</span>
+          </div>
+          <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-blue-400/70"
+              style={{ width: `${total === 0 ? 0 : Math.round((row.count / total) * 100)}%` }}
+            />
+          </div>
+        </li>
+      ))}
+    </ul>
+  </div>
+);

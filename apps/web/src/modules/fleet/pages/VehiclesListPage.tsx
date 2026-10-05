@@ -74,6 +74,7 @@ const REMEMBERED_FILTERS = [
   'chassis',
   'insurance',
   'licenseClass',
+  'licenseMonth',
   'motor',
   'operation',
   'plate',
@@ -85,6 +86,19 @@ const REMEMBERED_FILTERS = [
 ] as const;
 
 const DEFAULT_PAGE_SIZE = 25;
+
+/** A `YYYY-MM` month as its first and last instant (UTC, as the licence dates are stored). */
+export const monthWindow = (month: string): { from: string; before: string } | null => {
+  const match = /^(\d{4})-(\d{2})$/u.exec(month);
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const index = Number(match[2]) - 1;
+  if (index < 0 || index > 11) return null;
+  return {
+    from: new Date(Date.UTC(year, index, 1)).toISOString(),
+    before: new Date(Date.UTC(year, index + 1, 1) - 1).toISOString(),
+  };
+};
 
 /** Build an id → localized-name map from a catalog list, for the table's reference columns. */
 const nameMap = (
@@ -120,6 +134,10 @@ export const VehiclesListPage = (): JSX.Element => {
   const chassis = sp.get('chassis') ?? '';
   const motor = sp.get('motor') ?? '';
   const licenseClassIds = readList(sp, 'licenseClass');
+  // «تاريخ انتهاء الترخيص … أقدر أختار شهر فى سنه معينه» — `YYYY-MM`, what `<input type="month">`
+  // reads and writes; asked of the server as that month's first and last instant.
+  const licenseMonth = sp.get('licenseMonth') ?? '';
+  const licenseWindow = monthWindow(licenseMonth);
   const operationIds = readList(sp, 'operation');
   const insuranceCompanyIds = readList(sp, 'insurance');
   const branchIds = readList(sp, 'branch');
@@ -180,6 +198,7 @@ export const VehiclesListPage = (): JSX.Element => {
     chassis !== '' ||
     motor !== '' ||
     licenseClassIds.length > 0 ||
+    licenseMonth !== '' ||
     operationIds.length > 0 ||
     insuranceCompanyIds.length > 0 ||
     branchIds.length > 0;
@@ -196,6 +215,8 @@ export const VehiclesListPage = (): JSX.Element => {
       chassisNumber: chassis || undefined,
       motorNumber: motor || undefined,
       licenseClassId: licenseClassIds.length === 0 ? undefined : licenseClassIds,
+      licenseExpiresFrom: licenseWindow?.from,
+      licenseExpiresBefore: licenseWindow?.before,
       operationId: operationIds.length === 0 ? undefined : operationIds,
       insuranceCompanyId: insuranceCompanyIds.length === 0 ? undefined : insuranceCompanyIds,
       branchId: branchIds.length === 0 ? undefined : branchIds,
@@ -658,6 +679,7 @@ export const VehiclesListPage = (): JSX.Element => {
               chassis: null,
               motor: null,
               licenseClass: null,
+              licenseMonth: null,
               operation: null,
               insurance: null,
               branch: null,
@@ -676,36 +698,48 @@ export const VehiclesListPage = (): JSX.Element => {
             Direction is untouched: the bar inherits RTL from the page, so in Arabic the row reads
             الكود → اللوحة → الشاسيه → الموتور from the right.
           */}
-          <VehicleCodeFilter
-            className="shrink-0"
-            value={vehicleCodes}
-            onChange={(next) => patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })}
-          />
-          <div className="w-36">
+          {/* «عايز الفلتر فى صف واحد … طبقاً لطول البيانات اللى ممكن تتكتب فيه»: every control is
+              as wide as what it holds — a plate is ten characters, a code four — and the
+              dropdowns run tight, so the whole bar is one row on a desktop screen. */}
+          <div className="w-24 shrink-0">
+            <VehicleCodeFilter
+              fullWidth
+              density="tight"
+              placeholder={t('fleet.vehicles.filters.short.code')}
+              value={vehicleCodes}
+              onChange={(next) =>
+                patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+              }
+            />
+          </div>
+          <div className="w-24 shrink-0">
             <Input
               aria-label={t('fleet.vehicles.columns.plate')}
               placeholder={t('fleet.vehicles.columns.plate')}
               value={plate}
               onChange={(e) => patch({ plate: e.target.value || null })}
               rule="plate"
+              density="tight"
             />
           </div>
-          <div className="w-40">
+          <div className="w-24 shrink-0">
             <Input
               aria-label={t('fleet.vehicles.columns.chassis')}
               placeholder={t('fleet.vehicles.columns.chassis')}
               value={chassis}
               onChange={(e) => patch({ chassis: e.target.value || null })}
               rule="english"
+              density="tight"
             />
           </div>
-          <div className="w-40">
+          <div className="w-24 shrink-0">
             <Input
               aria-label={t('fleet.vehicles.columns.motor')}
               placeholder={t('fleet.vehicles.columns.motor')}
               value={motor}
               onChange={(e) => patch({ motor: e.target.value || null })}
               rule="english"
+              density="tight"
             />
           </div>
           {/* The dropdowns: make, then the three catalog references, then branch and status —
@@ -715,10 +749,12 @@ export const VehiclesListPage = (): JSX.Element => {
               written; the other five now read the same way. */}
           <MultiSelect
             clearable
-            className="shrink-0"
+            className="w-24 shrink-0"
+            fullWidth
+            density="tight"
             showSelectedValues
             chips
-            label={t('fleet.vehicles.filters.make')}
+            label={t('fleet.vehicles.filters.short.make')}
             options={(types.data?.items ?? []).map((type) => ({
               value: type.id,
               label: localized(type.name, locale),
@@ -728,33 +764,73 @@ export const VehiclesListPage = (): JSX.Element => {
           />
           <CatalogMultiSelect
             kind="licenseClass"
+            className="w-24 shrink-0"
+            fullWidth
+            density="tight"
             value={licenseClassIds}
             onChange={(ids) => patch({ licenseClass: writeList(ids) })}
-            label={t('fleet.vehicles.filters.licenseClass')}
+            label={t('fleet.vehicles.filters.short.licenseClass')}
           />
-          <BranchFilterSelect
-            clearable
-            value={branchIds}
-            onChange={(ids) => patch({ branch: writeList(ids) })}
-          />
+          {/* One MONTH of one year — the licences that run out in it. Empty, the box reads its own
+              name in place of the browser's «----- ----». */}
+          <div className="relative w-40 shrink-0">
+            <Input
+              type="month"
+              density="tight"
+              data-licence-month="true"
+              aria-label={t('fleet.vehicles.filters.licenseMonth')}
+              title={t('fleet.vehicles.filters.licenseMonth')}
+              value={licenseMonth}
+              onChange={(e) => patch({ licenseMonth: e.target.value || null })}
+              className={
+                licenseMonth === ''
+                  ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0'
+                  : undefined
+              }
+            />
+            {licenseMonth === '' && (
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-2 right-8 flex items-center justify-center truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
+              >
+                {t('fleet.vehicles.filters.short.licenseMonth')}
+              </span>
+            )}
+          </div>
+          {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
+          <div className="w-20 shrink-0 [&>div>div]:flex [&>div>div]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!px-2">
+            <BranchFilterSelect
+              clearable
+              value={branchIds}
+              onChange={(ids) => patch({ branch: writeList(ids) })}
+            />
+          </div>
           <CatalogMultiSelect
             kind="operation"
+            className="w-24 shrink-0"
+            fullWidth
+            density="tight"
             value={operationIds}
             onChange={(ids) => patch({ operation: writeList(ids) })}
-            label={t('fleet.vehicles.filters.operation')}
+            label={t('fleet.vehicles.filters.short.operation')}
           />
           <CatalogMultiSelect
             kind="insuranceCompany"
+            className="w-24 shrink-0"
+            fullWidth
+            density="tight"
             value={insuranceCompanyIds}
             onChange={(ids) => patch({ insurance: writeList(ids) })}
-            label={t('fleet.vehicles.filters.insurance')}
+            label={t('fleet.vehicles.filters.short.insurance')}
           />
           {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet
               («داخل الورشة / خرج», «مفتوح / مغلق») stay as they are: with two options a
               multi-select can only say what a single one already said. */}
           <MultiSelect
             clearable
-            className="shrink-0"
+            className="w-20 shrink-0"
+            fullWidth
+            density="tight"
             showSelectedValues
             label={t('fleet.vehicles.columns.status')}
             options={(['active', 'outOfService', 'disposed'] as const).map((value) => ({

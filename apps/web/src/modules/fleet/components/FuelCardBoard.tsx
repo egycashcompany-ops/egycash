@@ -274,7 +274,7 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   };
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
-    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 xl:justify-self-stretch">
+    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 fuel-grid:justify-self-stretch">
       <span className="font-mono text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
       <span
         className={cn(
@@ -322,7 +322,7 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
     toast.success(t('fleet.fuelCards.numberCopied'));
   };
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-stretch">
+    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch">
       <span
         data-fuel-number={card.id}
         dir="ltr"
@@ -348,17 +348,19 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
 };
 
 /**
- * «بيانات الفيزتين اكنهم جدول»: on a computer every card line is a row of the same columns, so a
- * card's number, its expiry and its PIN sit under the line above's — never wherever its
- * neighbours' widths pushed them. No column names above — the boxes alone line up. The figures sit
- * close together («الpin … يكون اقرب») in the middle of the line («ف النص»): on a wide screen the
- * name's column and the buttons' column share what is left equally; a narrower one keeps the
- * whole name and puts the figures right after it.
+ * «بيانات الفيزتين اكنهم جدول»: every card line is a row of the same columns, so a card's number,
+ * its expiry and its PIN sit under the line above's, each box as wide as its column. Where the
+ * line has the room it is one line, the figures in the middle («ف النص»); where it has not
+ * («لو الشاشه صغرت»), the card's name sits whole on top and the same columns follow under it —
+ * nothing cut, nothing on two lines. A phone keeps the stacked card.
  */
 export const CARD_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(10rem,17rem)_15rem_12.5rem_8rem_1fr] 2xl:grid-cols-[minmax(17rem,1fr)_15rem_12.5rem_8rem_1fr] xl:items-center xl:gap-3';
+  'fuel-grid:grid fuel-grid:grid-cols-[15rem_12.5rem_8rem_1fr] fuel-grid:items-center fuel-grid:gap-x-3 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_15rem_12.5rem_8rem_1fr]';
 export const CHARGE_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(9rem,17rem)_14rem_12.5rem_15.5rem_1fr] 2xl:grid-cols-[minmax(17rem,1fr)_14rem_12.5rem_15.5rem_1fr] xl:items-center xl:gap-3';
+  'fuel-grid:grid fuel-grid:grid-cols-[14rem_12.5rem_15.5rem_1fr] fuel-grid:items-center fuel-grid:gap-x-3 fuel-grid:gap-y-2 fuel-line:grid-cols-[minmax(19rem,1fr)_14rem_12.5rem_15.5rem_1fr]';
+
+/** The card's name and company: a whole line above the boxes, or the line's first column. */
+export const NAME_CELL = 'fuel-grid:col-span-full fuel-grid:min-w-0 fuel-line:col-span-1';
 
 export const FuelCardRow = ({
   card,
@@ -385,12 +387,12 @@ export const FuelCardRow = ({
         CARD_COLUMNS,
       )}
     >
-      <div className="flex min-w-[210px] items-center gap-3 xl:min-w-0">
+      <div className={cn('flex min-w-[210px] items-center gap-3', NAME_CELL)}>
         <CompanyBadge company={card.company} />
         <div className="flex min-w-0 flex-col">
           <span
             title={card.name}
-            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white xl:truncate"
+            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white"
           >
             {card.name}
           </span>
@@ -401,7 +403,7 @@ export const FuelCardRow = ({
         </div>
       </div>
 
-      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4 xl:contents">
+      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4 fuel-grid:contents">
         <NumberBox card={card} />
         <div
           className={cn(
@@ -418,7 +420,7 @@ export const FuelCardRow = ({
         <PinBox card={card} />
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5 xl:justify-self-end">
+      <div className="flex shrink-0 items-center gap-1.5 fuel-grid:justify-self-end">
         <button
           type="button"
           data-fuel-image={card.id}
@@ -427,7 +429,9 @@ export const FuelCardRow = ({
           className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
         >
           <Svg d={PATH.image} className={cn('h-3.5 w-3.5', tone.text)} />
-          <span className="xl:max-2xl:sr-only">{t('fleet.fuelCards.board.photo')}</span>
+          <span className="fuel-grid:sr-only fuel-wide:not-sr-only">
+            {t('fleet.fuelCards.board.photo')}
+          </span>
         </button>
         {can('fleetFuelCard.edit') && (
           <button
@@ -675,7 +679,7 @@ export const VehicleFuelGroup = ({
         {held === 0 ? (
           children
         ) : (
-          <div className="flex flex-1 flex-col justify-center space-y-2 bg-slate-50 dark:bg-[#0c121e]/50 p-2.5">
+          <div className="flex flex-1 flex-col justify-center space-y-2 bg-slate-50 p-2.5 [container:fuel-rows/inline-size] dark:bg-[#0c121e]/50">
             {children}
           </div>
         )}

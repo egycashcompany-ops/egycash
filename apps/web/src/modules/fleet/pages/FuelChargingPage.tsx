@@ -34,6 +34,7 @@ import {
   BOARD_FONT,
   BoardIcon,
   CHARGE_COLUMNS,
+  NAME_CELL,
   BoardKpi,
   CompanyBadge,
   EmptySlotRow,
@@ -106,7 +107,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors xl:justify-self-stretch',
+        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors fuel-grid:justify-self-stretch',
         'focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
         'border-slate-200 dark:border-slate-800',
       )}
@@ -196,12 +197,12 @@ const ChargeRow = ({
               : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] hover:border-slate-300 dark:hover:border-slate-700/80',
       )}
     >
-      <div className="flex min-w-[190px] shrink-0 items-center gap-3 xl:min-w-0">
+      <div className={cn('flex min-w-[190px] shrink-0 items-center gap-3', NAME_CELL)}>
         <CompanyBadge company={card.company} />
         <div className="flex min-w-0 flex-col">
           <span
             title={card.name}
-            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white xl:truncate"
+            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white"
           >
             {card.name}
           </span>
@@ -223,8 +224,8 @@ const ChargeRow = ({
           </span>
         </div>
       </div>
-      <div className="my-auto flex flex-wrap items-center gap-2.5 xl:contents">
-        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-stretch">
+      <div className="my-auto flex flex-wrap items-center gap-2.5 fuel-grid:contents">
+        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch">
           <span
             dir="ltr"
             className={cn(
@@ -237,7 +238,7 @@ const ChargeRow = ({
         </div>
         <div
           data-fuel-balance={card.id}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-stretch"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 fuel-grid:justify-self-stretch"
         >
           <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
           <span
@@ -275,7 +276,7 @@ const ChargeRow = ({
         </div>
         <ChargeRequest card={card} />
       </div>
-      <div className="flex items-center gap-2 xl:justify-self-end">
+      <div className="flex items-center gap-2 fuel-grid:justify-self-end">
         <button
           type="button"
           data-fuel-history={card.id}

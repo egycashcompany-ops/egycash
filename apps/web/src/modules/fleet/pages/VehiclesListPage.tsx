@@ -755,7 +755,7 @@ export const VehiclesListPage = (): JSX.Element => {
         <div className="flex items-center justify-between gap-1.5 sm:gap-2" data-vehicle-toolbar="true">
           <span
             data-vehicle-count
-            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300 sm:text-sm"
+            className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300 sm:text-sm min-[1750px]:text-base"
           >
             {data === undefined
               ? ''
@@ -889,7 +889,12 @@ export const VehiclesListPage = (): JSX.Element => {
             </div>
           </section>
         )}
-        <div className={DARK_BAR}>
+        <div
+          className={cn(
+            DARK_BAR,
+            'min-[1750px]:[&_input]:!text-[15px] min-[1750px]:[&_button[aria-haspopup]]:!text-[15px]',
+          )}
+        >
           <FilterBar
             hasActiveFilters={hasActiveFilters}
             onClear={() =>
@@ -1200,6 +1205,9 @@ const DARK_TABLE = cn(
   '[&_tbody_tr]:!border-slate-200 dark:[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-slate-100 dark:[&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-800 dark:[&_tbody_td]:!text-slate-200',
   '[&_th]:!px-1.5 [&_th]:!whitespace-normal [&_th]:!leading-tight [&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!px-1.5 [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
   '[&_td_button]:!h-7 [&_td_button]:!w-7 [&_td_.gap-1]:!gap-0.5',
+  // «لما عملت المتصفح على 110 ف الميه الداتا ظاهره احسن»: a wide screen takes the type a size up,
+  // from where the whole table still fits beside the menu.
+  'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
 );
 
 /** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */

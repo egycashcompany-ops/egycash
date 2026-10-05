@@ -350,12 +350,13 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
 /**
  * «بيانات الفيزتين اكنهم جدول»: on a computer every card line is a row of the same columns, so a
  * card's number, its expiry and its PIN sit under the line above's — never wherever its
- * neighbours' widths pushed them. The header above the groups uses the same template.
+ * neighbours' widths pushed them. The header above the groups uses the same template. The name
+ * takes what is left; the figures after it are fixed and close together («الpin … يكون اقرب»).
  */
 export const CARD_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(10rem,1.2fr)_minmax(14.5rem,1fr)_minmax(11.5rem,1fr)_minmax(7rem,0.6fr)_auto] xl:items-center xl:gap-3 2xl:gap-4';
+  'xl:grid xl:grid-cols-[minmax(10rem,1fr)_15rem_12.5rem_8rem_auto] xl:items-center xl:gap-3';
 export const CHARGE_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(9rem,1.2fr)_minmax(14rem,1fr)_minmax(10.5rem,1fr)_minmax(14.5rem,1fr)_auto] xl:items-center xl:gap-3 2xl:gap-4';
+  'xl:grid xl:grid-cols-[minmax(9rem,1fr)_15rem_12rem_15rem_auto] xl:items-center xl:gap-3';
 
 /** The column names over the groups — placed where a group's lines are, past its car column. */
 export const BoardColumnHeader = ({

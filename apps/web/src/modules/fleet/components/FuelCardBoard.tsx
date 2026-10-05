@@ -274,7 +274,7 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   };
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
-    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 xl:justify-self-start">
+    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 xl:justify-self-stretch">
       <span className="font-mono text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
       <span
         className={cn(
@@ -322,7 +322,7 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
     toast.success(t('fleet.fuelCards.numberCopied'));
   };
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-start">
+    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-stretch">
       <span
         data-fuel-number={card.id}
         dir="ltr"
@@ -351,13 +351,14 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
  * «بيانات الفيزتين اكنهم جدول»: on a computer every card line is a row of the same columns, so a
  * card's number, its expiry and its PIN sit under the line above's — never wherever its
  * neighbours' widths pushed them. No column names above — the boxes alone line up. The figures sit
- * right after the name («قريبه من الاسم»), close together («الpin … يكون اقرب»); what is left
- * goes before the buttons at the end.
+ * close together («الpin … يكون اقرب») in the middle of the line («ف النص»): on a wide screen the
+ * name's column and the buttons' column share what is left equally; a narrower one keeps the
+ * whole name and puts the figures right after it.
  */
 export const CARD_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(10rem,17rem)_15rem_12.5rem_8rem_1fr] xl:items-center xl:gap-3';
+  'xl:grid xl:grid-cols-[minmax(10rem,17rem)_15rem_12.5rem_8rem_1fr] 2xl:grid-cols-[minmax(17rem,1fr)_15rem_12.5rem_8rem_1fr] xl:items-center xl:gap-3';
 export const CHARGE_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(9rem,17rem)_14rem_11.5rem_14rem_1fr] xl:items-center xl:gap-3';
+  'xl:grid xl:grid-cols-[minmax(9rem,17rem)_14rem_12.5rem_15.5rem_1fr] 2xl:grid-cols-[minmax(17rem,1fr)_14rem_12.5rem_15.5rem_1fr] xl:items-center xl:gap-3';
 
 export const FuelCardRow = ({
   card,

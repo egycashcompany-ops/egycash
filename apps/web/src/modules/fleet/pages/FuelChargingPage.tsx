@@ -106,7 +106,7 @@ const ChargeRequest = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   return (
     <div
       className={cn(
-        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors xl:justify-self-start',
+        'flex items-center gap-1.5 rounded-md border bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 transition-colors xl:justify-self-stretch',
         'focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500',
         'border-slate-200 dark:border-slate-800',
       )}
@@ -224,7 +224,7 @@ const ChargeRow = ({
         </div>
       </div>
       <div className="my-auto flex flex-wrap items-center gap-2.5 xl:contents">
-        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-start">
+        <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-stretch">
           <span
             dir="ltr"
             className={cn(
@@ -237,7 +237,7 @@ const ChargeRow = ({
         </div>
         <div
           data-fuel-balance={card.id}
-          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-start"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-stretch"
         >
           <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
           <span

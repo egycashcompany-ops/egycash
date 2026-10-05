@@ -1066,17 +1066,18 @@ export const DriverViolationsPanel = ({
                 reader could see. See the company panel for the full note. Rendered here rather
                 than through `FilterBar`'s own `onClear` so the button keeps the hook the tests
                 press it by. */}
-            <button
-              type="button"
-              data-driver-clear="true"
-              aria-label={t('common.filters.clear')}
-              title={t('common.filters.clear')}
-              onClick={onClear}
-              disabled={!hasActiveFilters}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition-colors hover:bg-red-100 hover:text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-default disabled:opacity-50 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
-            >
-              <ResetIcon className="h-4 w-4" />
-            </button>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                data-driver-clear="true"
+                aria-label={t('common.filters.clear')}
+                title={t('common.filters.clear')}
+                onClick={onClear}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition-colors hover:bg-red-100 hover:text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
+              >
+                <ResetIcon className="h-4 w-4" />
+              </button>
+            )}
             {/* HOW MANY the bar just matched — beside the question, not inside the table. */}
             <span
               data-driver-count-badge

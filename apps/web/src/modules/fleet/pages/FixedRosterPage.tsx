@@ -1149,18 +1149,19 @@ export const FixedRosterPage = (): JSX.Element => {
 
         {/* Offered only when there is something to undo — the daily board's rule and its
             button, down to the hue. Clears the three view filters together. */}
-        <button
-          type="button"
-          data-reset-filters="true"
-          onClick={resetFilters}
-          disabled={!filtered}
-          aria-label={t('common.filters.clear')}
-          title={t('common.filters.clear')}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-default disabled:opacity-50 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
-        >
-          <ResetIcon className="h-3.5 w-3.5" />
-          {t('common.filters.clear')}
-        </button>
+        {filtered && (
+          <button
+            type="button"
+            data-reset-filters="true"
+            onClick={resetFilters}
+            aria-label={t('common.filters.clear')}
+            title={t('common.filters.clear')}
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-2.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-200 dark:hover:bg-red-900"
+          >
+            <ResetIcon className="h-3.5 w-3.5" />
+            {t('common.filters.clear')}
+          </button>
+        )}
 
         {/* «حفظ» at the END of the strip, where the daily board keeps it — not in the page
             header. It belongs beside the tally that says what the board currently IS, and the

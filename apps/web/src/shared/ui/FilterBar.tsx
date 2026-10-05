@@ -23,10 +23,9 @@ const singleRowBreakpoint: Record<1280 | 1400 | 1440 | 1536, string> = {
 
 /**
  * How a module wants its reset. The default is the app's: amber, and shown only once a filter is
- * set. Fleet asks for «زرار ريست يكون موجود برضو فى كل الشاشات يكون لونه احمر ويكون قبل رقم
- * الفلاتر» — always there, red, and (being the first thing in the trailing group) before the
- * count. Off while nothing is filtered: there is nothing to undo, but the way out is where the
- * reader expects it.
+ * set. Fleet asks for «زرار ريست … يكون لونه احمر ويكون قبل رقم الفلاتر» — red, and (being the
+ * first thing in the trailing group) before the count. `always` keeps it on screen, off while
+ * nothing is filtered, for a module that wants it there regardless.
  */
 export interface FilterResetStyle {
   tone: 'amber' | 'red';

@@ -720,20 +720,21 @@ export const CompanyViolationsPanel = ({
             {/* CLEARS this half's filters, which is what its icon and its position have always
                 promised. It called `refetch()` before — a button that re-asked a question whose
                 answer had not changed, so pressing it did nothing a reader could see, on a control
-                that looks exactly like «مسح الفلاتر» everywhere else in the app. Always shown and red, as every Fleet bar's reset is — off while
-                there is nothing to clear; rendered here rather than through
+                that looks exactly like «مسح الفلاتر» everywhere else in the app. Shown only when
+                there is something to clear, red as every Fleet bar's reset; rendered here rather than through
                 `FilterBar`'s own `onClear` so it keeps the hook the tests press it by. */}
-            <button
-              type="button"
-              data-company-clear="true"
-              aria-label={t('common.filters.clear')}
-              title={t('common.filters.clear')}
-              onClick={onClear}
-              disabled={!hasActiveFilters}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition-colors hover:bg-red-100 hover:text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 disabled:cursor-default disabled:opacity-50 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
-            >
-              <ResetIcon className="h-4 w-4" />
-            </button>
+            {hasActiveFilters && (
+              <button
+                type="button"
+                data-company-clear="true"
+                aria-label={t('common.filters.clear')}
+                title={t('common.filters.clear')}
+                onClick={onClear}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-red-300 bg-red-50 text-red-700 transition-colors hover:bg-red-100 hover:text-red-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
+              >
+                <ResetIcon className="h-4 w-4" />
+              </button>
+            )}
             <span
               data-company-count
               role="status"

@@ -53,9 +53,9 @@ import { CustodyPage } from './pages/CustodyPage';
 import { CatalogsPage } from './pages/CatalogsPage';
 import { FleetSettingsPage } from './pages/FleetSettingsPage';
 
-// «زرار ريست يكون موجود برضو فى كل الشاشات يكون لونه احمر ويكون قبل رقم الفلاتر» — every Fleet
-// filter bar shows its reset, red, whether or not a filter is set.
-const FLEET_RESET = { tone: 'red', always: true } as const;
+// «زرار ريست … يكون لونه احمر ويكون قبل رقم الفلاتر … يظهر لو عامل فلتر» — every Fleet filter bar's
+// reset is red, and shows once a filter is set.
+const FLEET_RESET = { tone: 'red', always: false } as const;
 
 export default function FleetRoutes(): JSX.Element {
   return (

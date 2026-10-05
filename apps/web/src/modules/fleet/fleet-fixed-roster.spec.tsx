@@ -1595,12 +1595,12 @@ describe('the standing board wears the daily board’s bar', () => {
     }
   });
 
-  it('carries the daily board’s reset, pressable only when there is something to undo', () => {
+  it('carries the daily board’s reset, offered only when there is something to undo', () => {
     expect(CODE).toContain('data-reset-filters="true"');
     expect(DAILY, 'the same hook on the twin').toContain('data-reset-filters="true"');
     const at = CODE.indexOf('data-reset-filters');
-    expect(CODE.slice(at, at + 400), 'off without an active filter').toContain(
-      'disabled={!filtered}',
+    expect(CODE.slice(Math.max(0, at - 400), at), 'gated on an active filter').toContain(
+      'filtered &&',
     );
     // …and «an active filter» is any of the three, not the code search alone.
     expect(CODE).toContain("const filtered = search !== '' || missions.length > 0 || view !== null;");
@@ -1825,13 +1825,10 @@ describe('the counters count the BOARD, never the filtered rows', () => {
 });
 
 describe('Reset, on the standing board', () => {
-  it('is pressable for any of the three filters, and off otherwise', () => {
-    const resetButton = (html: string): string =>
-      html.match(/<button[^>]*data-reset-filters="true"[^>]*>/)?.[0] ?? '';
-    expect(resetButton(at('')), 'there, with nothing to undo').toContain('disabled=""');
+  it('is offered for any of the three filters, and not otherwise', () => {
+    expect(at(''), 'nothing to undo').not.toContain('data-reset-filters');
     for (const query of ['?q=150', `?mission=${MT}`, '?view=crewed', '?view=uncrewed']) {
-      expect(resetButton(at(query)), query).not.toBe('');
-      expect(resetButton(at(query)), query).not.toContain('disabled=""');
+      expect(at(query), query).toContain('data-reset-filters');
     }
   });
 

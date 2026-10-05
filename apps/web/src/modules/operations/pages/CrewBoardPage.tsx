@@ -297,28 +297,37 @@ export const CrewBoardPage = (): JSX.Element => {
                       </Badge>
                     )}
                   </h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Input
-                      className="w-36"
-                      placeholder={t('operations.crew.direction')}
-                      value={row.direction ?? ''}
-                      disabled={!canPlan}
-                      onChange={(e) =>
-                        setRows((prev) => setRowField(prev, row.vehicleId, 'direction', e.target.value))
-                      }
-                    />
-                    <Input
-                      className="w-28"
-                      type="time"
-                      aria-label={t('operations.crew.plannedTime')}
-                      value={row.plannedTime ?? ''}
-                      disabled={!canPlan}
-                      onChange={(e) =>
-                        setRows((prev) =>
-                          setRowField(prev, row.vehicleId, 'plannedTime', e.target.value),
-                        )
-                      }
-                    />
+                  {/* الاتجاه and التوقيت on ONE line, as the legacy row had them. The boxes are sized by
+                      a wrapper, not by a class on the Input: the Input carries `w-full`, `cn` does
+                      not resolve Tailwind conflicts, and `.w-full` is emitted after `.w-36` — so a
+                      width given to the Input itself silently lost, every box took the whole row,
+                      and the two wrapped one under the other. On a phone the group drops below the
+                      vehicle code as ONE line, with the direction taking whatever width is left. */}
+                  <div className="flex w-full items-center gap-2 sm:w-auto">
+                    <div className="min-w-0 flex-1 sm:w-56 sm:flex-none">
+                      <Input
+                        aria-label={t('operations.crew.direction')}
+                        placeholder={t('operations.crew.direction')}
+                        value={row.direction ?? ''}
+                        disabled={!canPlan}
+                        onChange={(e) =>
+                          setRows((prev) => setRowField(prev, row.vehicleId, 'direction', e.target.value))
+                        }
+                      />
+                    </div>
+                    <div className="w-36 shrink-0">
+                      <Input
+                        type="time"
+                        aria-label={t('operations.crew.plannedTime')}
+                        value={row.plannedTime ?? ''}
+                        disabled={!canPlan}
+                        onChange={(e) =>
+                          setRows((prev) =>
+                            setRowField(prev, row.vehicleId, 'plannedTime', e.target.value),
+                          )
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
 

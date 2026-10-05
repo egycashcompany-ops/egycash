@@ -1,14 +1,17 @@
-// `it_custody_receipts` — إيصال استلام, the paper an employee signs for what they were handed (FR-18).
+// `it_custody_receipts` — the paper an employee signs for what they were handed (FR-18): the IT
+// department's «إقرار استلام».
 //
-// One receipt per HAND-OVER, not per asset: the company's form (EGYCASH-IT-F-14-02) lists every
-// item handed over together in one table, under one signature. Each line names the custody
-// interval it opened, and each interval names its receipt back (`receiptId`).
+// One receipt per HAND-OVER, not per asset: everything handed over together is one paper under
+// one number — a page per device, each signed. Each line names the custody interval it opened,
+// and each interval names its receipt back (`receiptId`).
 //
 // The lines and the employee are a SNAPSHOT of what was printed. The receipt is the document the
-// employee signed; reprinting it after the asset was renamed, or the employee's title changed,
-// must reproduce that paper — not compose a different one under the same signature.
+// employee signed; reprinting it after the asset was edited (its specifications, its accessories)
+// or the employee's title changed must reproduce that paper — not compose a different one under
+// the same signature.
 import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
+import { assetSpecsSchema, type ItAssetSpecsSub } from './asset.model';
 
 export interface ItCustodyReceiptLineSub {
   assetId: Types.ObjectId;
@@ -18,6 +21,16 @@ export interface ItCustodyReceiptLineSub {
   serialNumber: string | null;
   conditionOnIssue: string | null;
   notes: string | null;
+  // The acknowledgment's own fields («إقرار استلام»). Optional in the type: receipts issued before
+  // the acknowledgment replaced the item table have none, and print without them.
+  /** «جهاز لاب توب» — the asset's category, as the paper names the device. */
+  deviceType?: string | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  /** The specifications table as it was printed. */
+  specs?: ItAssetSpecsSub | null;
+  /** «مشتملاته» — what was handed over with the device. */
+  accessories?: string[];
 }
 
 /** The signed paper, scanned or photographed — Files owns the bytes, the receipt owns the link. */
@@ -57,6 +70,11 @@ const lineSchema = new Schema<ItCustodyReceiptLineSub>(
     serialNumber: { type: String, default: null },
     conditionOnIssue: { type: String, default: null },
     notes: { type: String, default: null },
+    deviceType: { type: String, default: null },
+    manufacturer: { type: String, default: null },
+    model: { type: String, default: null },
+    specs: { type: assetSpecsSchema, default: null },
+    accessories: { type: [String], default: [] },
   },
   { _id: false },
 );

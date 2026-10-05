@@ -860,6 +860,75 @@ describe('asset custody', () => {
     expect((await receipts('/preview').post(body)).status).toBe(409);
   });
 
+  it('each page names the device — its kind, make, specifications and accessories — and keeps them', async () => {
+    const registered = await createAsset(adminToken, {
+      name: 'Dell Inspiron N4050',
+      manufacturer: 'Dell',
+      model: 'N4050',
+      specs: {
+        processor: 'Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache',
+        memory: '4.00 GB RAM',
+        networkAdapters: ['Dell Wireless 1701 802.11 b/g/n', 'Realtec PCIe FE Family Controller'],
+      },
+      accessories: ['شاحن لاب توب'],
+    });
+    expect(registered.status).toBe(201);
+    const laptop = data<ItAssetDto>(registered);
+    expect(laptop.specs).toEqual({
+      processor: 'Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache',
+      memory: '4.00 GB RAM',
+      systemType: null,
+      storage: null,
+      mediaDrive: null,
+      displayAdapter: null,
+      graphicsMemory: null,
+      networkAdapters: ['Dell Wireless 1701 802.11 b/g/n', 'Realtec PCIe FE Family Controller'],
+    });
+    expect(laptop.accessories).toEqual(['شاحن لاب توب']);
+
+    // The print: «جهاز <category>» with the asset's table and its own accessories.
+    const preview = await receipts('/preview').post({
+      employeeId: EMPLOYEE_A,
+      lines: [{ assetId: laptop.id }],
+    });
+    expect(preview.status).toBe(200);
+    const paper = data<ItCustodyReceiptDocumentDto>(preview);
+    expect(paper.lines[0]).toMatchObject({
+      deviceType: 'حواسيب محمولة',
+      manufacturer: 'Dell',
+      model: 'N4050',
+      accessories: ['شاحن لاب توب'],
+    });
+    expect(paper.lines[0]?.specs?.memory).toBe('4.00 GB RAM');
+
+    // The hand-over may say what came with it this time.
+    const handed = await receipts('').post({
+      employeeId: EMPLOYEE_A,
+      lines: [{ assetId: laptop.id, accessories: ['شاحن لاب توب', 'حقيبة'] }],
+      formNumber: paper.formNumber,
+    });
+    expect(handed.status).toBe(201);
+    const { receipt } = data<ItHandOverResultDto>(handed);
+    expect(receipt.lines[0]?.accessories).toEqual(['شاحن لاب توب', 'حقيبة']);
+
+    // Editing the asset afterwards changes the asset — never the paper the employee signed.
+    const current = data<ItAssetDto>(
+      await request(app)
+        .get(`/api/v1/it/assets/${laptop.id}`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const edited = await request(app)
+      .patch(`/api/v1/it/assets/${laptop.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ specs: null, accessories: [], version: current.version });
+    expect(edited.status).toBe(200);
+    expect(data<ItAssetDto>(edited).specs).toBeNull();
+    expect(data<ItAssetDto>(edited).accessories).toEqual([]);
+    const stored = data<ItCustodyReceiptDto>(await receipts(`/${receipt.id}`).get());
+    expect(stored.lines[0]?.specs?.processor).toBe('Intel® Core™ i3-2330M CPU @ 2.10GHZ 3MB Cache');
+    expect(stored.lines[0]?.accessories).toEqual(['شاحن لاب توب', 'حقيبة']);
+  });
+
   it('numbers every print, records a number on one paper only, and refuses one never printed', async () => {
     const first = await custodyAsset();
     const second = await custodyAsset();

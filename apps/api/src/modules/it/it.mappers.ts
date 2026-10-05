@@ -13,6 +13,7 @@ import {
   type ItTicketPriorityDto,
   type ItAssetAssignmentDto,
   type ItAssetDto,
+  type ItAssetSpecsDto,
   type ItCustodyReceiptDto,
   type ItAssetHistoryEntryDto,
   type ItCatalogItemDto,
@@ -23,7 +24,7 @@ import {
 import { type DirectoryEmployeeListing } from '../../platform/directory';
 import { type ItCatalogItemDoc } from './catalog-items/catalog-item.model';
 import { type ItVendorDoc } from './vendors/vendor.model';
-import { type ItAssetDoc } from './assets/asset.model';
+import { type ItAssetDoc, type ItAssetSpecsSub } from './assets/asset.model';
 import { type ItAssetAssignmentDoc } from './assets/assignment.model';
 import { type ItCustodyReceiptDoc } from './assets/receipt.model';
 import { type ItAssetEventDoc } from './assets/asset-event.model';
@@ -73,6 +74,23 @@ export const toItVendorDto = (doc: ItVendorDoc): ItVendorDto => ({
   updatedAt: iso(doc.updatedAt),
 });
 
+/** The specifications table — an asset's, or the snapshot a receipt printed. Null when none. */
+export const toItAssetSpecsDto = (
+  specs: ItAssetSpecsSub | null | undefined,
+): ItAssetSpecsDto | null =>
+  specs == null
+    ? null
+    : {
+        processor: specs.processor ?? null,
+        memory: specs.memory ?? null,
+        systemType: specs.systemType ?? null,
+        storage: specs.storage ?? null,
+        mediaDrive: specs.mediaDrive ?? null,
+        displayAdapter: specs.displayAdapter ?? null,
+        graphicsMemory: specs.graphicsMemory ?? null,
+        networkAdapters: specs.networkAdapters ?? [],
+      };
+
 export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
   id: String(doc._id),
   assetCode: doc.assetCode,
@@ -115,6 +133,8 @@ export const toItAssetDto = (doc: ItAssetDoc): ItAssetDto => ({
           terms: doc.warranty.terms,
         },
   notes: doc.notes,
+  specs: toItAssetSpecsDto(doc.specs),
+  accessories: doc.accessories ?? [],
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),
@@ -185,6 +205,11 @@ export const toItCustodyReceiptDto = (doc: ItCustodyReceiptDoc): ItCustodyReceip
     serialNumber: line.serialNumber,
     conditionOnIssue: line.conditionOnIssue,
     notes: line.notes,
+    deviceType: line.deviceType ?? null,
+    manufacturer: line.manufacturer ?? null,
+    model: line.model ?? null,
+    specs: toItAssetSpecsDto(line.specs),
+    accessories: line.accessories ?? [],
   })),
   issuedByUserId: doc.issuedByUserId === null ? null : String(doc.issuedByUserId),
   branchId: String(doc.branchId),

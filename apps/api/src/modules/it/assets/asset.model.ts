@@ -31,6 +31,18 @@ export interface ItAssetDisposalSub {
   notes: string | null;
 }
 
+/** The device's specifications — the rows of the custody acknowledgment's table (FR-18). */
+export interface ItAssetSpecsSub {
+  processor: string | null;
+  memory: string | null;
+  systemType: string | null;
+  storage: string | null;
+  mediaDrive: string | null;
+  displayAdapter: string | null;
+  graphicsMemory: string | null;
+  networkAdapters: string[];
+}
+
 export interface ItAssetDoc extends BaseDocFields {
   assetCode: string;
   name: string;
@@ -54,6 +66,10 @@ export interface ItAssetDoc extends BaseDocFields {
   /** Set once; `status: 'disposed'` is terminal and admits no further custody operation (FR-4). */
   disposal: ItAssetDisposalSub | null;
   notes: string | null;
+  /** Optional in the type: assets registered before specifications have none. */
+  specs?: ItAssetSpecsSub | null;
+  /** «مشتملاته» — what is handed over with the device. Absent on older assets. */
+  accessories?: string[];
 }
 
 const purchaseSchema = new Schema<ItAssetPurchaseSub>(
@@ -86,6 +102,21 @@ const disposalSchema = new Schema<ItAssetDisposalSub>(
   { _id: false },
 );
 
+/** Shared with the receipt line, which keeps the table as it was printed. */
+export const assetSpecsSchema = new Schema<ItAssetSpecsSub>(
+  {
+    processor: { type: String, default: null },
+    memory: { type: String, default: null },
+    systemType: { type: String, default: null },
+    storage: { type: String, default: null },
+    mediaDrive: { type: String, default: null },
+    displayAdapter: { type: String, default: null },
+    graphicsMemory: { type: String, default: null },
+    networkAdapters: { type: [String], default: [] },
+  },
+  { _id: false },
+);
+
 const assetSchema = new Schema<ItAssetDoc>(
   {
     assetCode: { type: String, required: true },
@@ -104,6 +135,8 @@ const assetSchema = new Schema<ItAssetDoc>(
     currentAssignmentId: { type: Schema.Types.ObjectId, default: null },
     disposal: { type: disposalSchema, default: null },
     notes: { type: String, default: null },
+    specs: { type: assetSpecsSchema, default: null },
+    accessories: { type: [String], default: [] },
     ...baseFields,
   },
   baseSchemaOptions,

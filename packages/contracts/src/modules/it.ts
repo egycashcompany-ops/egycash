@@ -194,10 +194,95 @@ export interface ItAssetDto {
   /** Set once, terminal (FR-4). `null` until the asset is disposed. */
   disposal: ItAssetDisposalDto | null;
   notes: string | null;
+  /** The device's specifications — the table its custody acknowledgment prints. */
+  specs: ItAssetSpecsDto | null;
+  /** What is handed over with it («مشتملاته» — a charger, a bag…), one item per entry. */
+  accessories: string[];
   version: number;
   createdAt: string;
   updatedAt: string;
 }
+
+// ── The device's specifications (the custody acknowledgment's table, FR-18) ──
+//
+// «إقرار استلام»: «بأنني قد استلمت جهاز لاب توب برقم مسلسل … ومواصفاته كالتالي:» and a table of
+// Component / Details grouped System · Storage · Graphics · Network — the IT department's own form.
+// The fields are the form's rows, so what is typed on the asset is what the paper prints; the
+// form's «Manufacturer / Model» row is the asset's own manufacturer and model fields.
+
+/** One value per row of the form's table; a row left empty is left off the paper. */
+const specValue = z.string().trim().min(1).max(200);
+
+export const ItAssetSpecsSchema = z
+  .object({
+    processor: specValue.optional(),
+    memory: specValue.optional(),
+    systemType: specValue.optional(),
+    storage: specValue.optional(),
+    mediaDrive: specValue.optional(),
+    displayAdapter: specValue.optional(),
+    graphicsMemory: specValue.optional(),
+    /** A device may have several network adapters — one row each. */
+    networkAdapters: z.array(specValue).max(6).optional(),
+  })
+  .strict();
+export type ItAssetSpecs = z.infer<typeof ItAssetSpecsSchema>;
+
+export interface ItAssetSpecsDto {
+  processor: string | null;
+  memory: string | null;
+  systemType: string | null;
+  storage: string | null;
+  mediaDrive: string | null;
+  displayAdapter: string | null;
+  graphicsMemory: string | null;
+  networkAdapters: string[];
+}
+
+/** The keys of the table's single-value rows. */
+export type ItAssetSpecKey = Exclude<keyof ItAssetSpecsDto, 'networkAdapters'>;
+
+/**
+ * The table as the form lays it out: its groups, in order, and each group's rows with the form's
+ * own English labels. `manufacturerModel` is the asset's manufacturer and model; `networkAdapters`
+ * prints one row per adapter. Shared by the asset form and the printed paper so the two cannot
+ * drift apart.
+ */
+export const IT_ASSET_SPEC_TABLE: readonly {
+  group: string | null;
+  rows: readonly {
+    key: ItAssetSpecKey | 'manufacturerModel' | 'networkAdapters';
+    label: string;
+  }[];
+}[] = [
+  { group: null, rows: [{ key: 'processor', label: 'Processor' }] },
+  {
+    group: 'System',
+    rows: [
+      { key: 'manufacturerModel', label: 'Manufacturer / Model' },
+      { key: 'memory', label: 'Total amount of system memory' },
+      { key: 'systemType', label: 'System type' },
+    ],
+  },
+  {
+    group: 'Storage',
+    rows: [
+      { key: 'storage', label: 'Total size of hard disk(s)' },
+      { key: 'mediaDrive', label: 'Media drive' },
+    ],
+  },
+  {
+    group: 'Graphics',
+    rows: [
+      { key: 'displayAdapter', label: 'Display adapter type' },
+      { key: 'graphicsMemory', label: 'Total available graphics memory' },
+    ],
+  },
+  { group: 'Network', rows: [{ key: 'networkAdapters', label: 'Network Adapter' }] },
+];
+
+/** «مشتملاته» — what is handed over with the device, one item per entry. */
+export const ItAssetAccessoriesSchema = z.array(z.string().trim().min(1).max(200)).max(20);
 
 export const ItAssetPurchaseSchema = z
   .object({
@@ -243,6 +328,8 @@ const assetCore = {
   purchase: ItAssetPurchaseSchema.optional(),
   warranty: ItAssetWarrantySchema.optional(),
   notes: z.string().trim().max(2000).optional(),
+  specs: ItAssetSpecsSchema.optional(),
+  accessories: ItAssetAccessoriesSchema.optional(),
 };
 
 export const CreateItAssetSchema = z.object(assetCore).strict();
@@ -261,6 +348,10 @@ export const UpdateItAssetSchema = z
     purchase: ItAssetPurchaseSchema.nullable().optional(),
     warranty: ItAssetWarrantySchema.nullable().optional(),
     notes: assetCore.notes.nullable().optional(),
+    /** The whole table, replaced — `null` clears it. */
+    specs: ItAssetSpecsSchema.nullable().optional(),
+    /** The whole list, replaced — `[]` clears it. */
+    accessories: ItAssetAccessoriesSchema.optional(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -437,25 +528,25 @@ export type ListItAssignmentsQuery = z.infer<typeof ListItAssignmentsQuerySchema
 // ويكون فى إمكانية رفع صورة الإيصال مره أخري بعد توقيع الموظف (وإمكانية طباعة الإيصال بردو بعد
 // التسليم)».
 //
-// The company's paper form EGYCASH-IT-F-14-02: the employee signs for one or more items in a
-// table — name, serial, condition, notes — under a declaration of responsibility. A hand-over is
-// therefore ONE receipt over one or more assets, and every interval it opens points back at it.
-// The receipt keeps what it printed (a snapshot): it is the document the employee signed, and a
-// later rename of the asset or the person must not reprint a different paper.
+// The paper is the IT department's «إقرار استلام» (EGYCASH | IT Dept.): «أقر أنا / … بوظيفة …
+// بأنني قد استلمت جهاز لاب توب برقم مسلسل … ومواصفاته كالتالي:», the device's specifications
+// table, «ومشتملاته كالتالي:», the undertaking, and «المقر بما فيه» with name, signature and date —
+// ONE PAGE PER DEVICE. A hand-over is still ONE receipt over one or more assets, under one number:
+// a page per line, and every interval it opens points back at it. The receipt keeps what it
+// printed (a snapshot): it is the document the employee signed, and a later edit of the asset or
+// the person must not reprint a different paper.
 
 /** The Files category the signed copies are filed under. */
 export const IT_CUSTODY_RECEIPT_FILE_CATEGORY = 'it-custody-receipts';
 
 /**
- * The form's identity, printed in its footer. Every printed receipt carries its OWN number —
- * «EGYCASH-IT-F-14-0001», one more on every print («ابدأ بـ 0001 وكل طباعة زود رقم») — beside the
- * form's revision; the footer's date is the day it is printed.
+ * The paper's number, printed in its footer («EGYCASH | IT Dept. | EGYCASH-IT-F-14-0001»). Every
+ * print takes its OWN number, one more each time («ابدأ بـ 0001 وكل طباعة زود رقم»).
  */
 export const IT_CUSTODY_RECEIPT_FORM = {
   prefix: 'EGYCASH-IT-F-14',
   /** The number pads to four digits and grows past them — it never truncates. */
   digits: 4,
-  revision: '1/0',
 } as const;
 
 /** `7` → `EGYCASH-IT-F-14-0007`. */
@@ -465,19 +556,24 @@ export const formatCustodyReceiptNumber = (formNumber: number): string =>
 /** The number a printed paper carries: allocated by the server, positive, never reused. */
 export const ItCustodyReceiptNumberSchema = z.number().int().positive();
 
-/** One line of the receipt's table — one asset, its condition on issue and its notes. */
+/** One device handed over — one page of the acknowledgment. */
 export const ItHandOverLineSchema = z
   .object({
     assetId: objectId(),
-    /** «الحالة» — what the paper's condition column says (N for new, …). */
+    /** The condition it was handed over in (N for new, …) — kept on the custody interval. */
     conditionOnIssue: z.string().trim().max(500).optional(),
-    /** «ملاحظات» — what came with it (Mouse & Keyboard, a charger, …). */
+    /** Kept on the custody interval. */
     notes: z.string().trim().max(500).optional(),
+    /**
+     * «مشتملاته» — what is handed over with this device, as the acknowledgment lists it. Omitted,
+     * the asset's own list is used.
+     */
+    accessories: ItAssetAccessoriesSchema.optional(),
   })
   .strict();
 export type ItHandOverLine = z.infer<typeof ItHandOverLineSchema>;
 
-/** A receipt's table is a page, not a register — and an asset is handed over once per paper. */
+/** A page per device: a receipt is a few pages, not a register — and an asset is on it once. */
 export const IT_HAND_OVER_MAX_LINES = 20;
 
 const handOverShape = {
@@ -563,14 +659,21 @@ export interface ItCustodyReceiptLineDto {
   /** The interval this line opened — null on a preview, which opens nothing. */
   assignmentId: string | null;
   assetCode: string;
-  /** «اسم الصنف». */
   name: string;
-  /** «SN». */
+  /** «برقم مسلسل». */
   serialNumber: string | null;
-  /** «الحالة». */
+  /** Recorded with the hand-over; the acknowledgment does not print it. */
   conditionOnIssue: string | null;
-  /** «ملاحظات». */
+  /** Recorded with the hand-over; the acknowledgment does not print it. */
   notes: string | null;
+  /** «جهاز لاب توب» — the device's kind: its asset category, as the paper names it. */
+  deviceType: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  /** The specifications table, as printed. Null for a receipt from before specifications. */
+  specs: ItAssetSpecsDto | null;
+  /** «مشتملاته». */
+  accessories: string[];
 }
 
 /**
@@ -587,10 +690,10 @@ export interface ItCustodyReceiptDocumentDto {
   /** «التاريخ» — the hand-over's own date. */
   issuedAt: string;
   employeeId: string;
-  /** «الإسم». Null when the directory could not name the employee. */
+  /** «أقر أنا /» and «الاسم:». Null when the directory could not name the employee. */
   employeeName: string | null;
   employeeCode: string | null;
-  /** «الوظيفة». */
+  /** «بوظيفة». */
   jobTitle: { ar: string; en: string } | null;
   lines: ItCustodyReceiptLineDto[];
 }

@@ -1217,7 +1217,7 @@ const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.E
   return (
     <span
       className={cn(
-        'rounded border px-1 py-[0.05rem] text-[10px] font-medium',
+        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
         state === 'valid' && 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
         state === 'soon' && 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',
         state === 'expired' && 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400',

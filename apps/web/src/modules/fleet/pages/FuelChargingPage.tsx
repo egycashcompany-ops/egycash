@@ -238,7 +238,7 @@ const ChargeRow = ({
         </div>
         <div
           data-fuel-balance={card.id}
-          className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-start"
+          className="flex items-center gap-1.5 whitespace-nowrap rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-start"
         >
           <span className="text-sm text-slate-500">{t('fleet.fuelCards.fields.balance')}</span>
           <span
@@ -260,7 +260,7 @@ const ChargeRow = ({
           {low !== null && (
             <span
               className={cn(
-                'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
+                'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
                 low === 'red'
                   ? 'border-red-200 dark:border-red-700/50 bg-red-50 dark:bg-red-950 text-red-600 dark:text-red-400'
                   : 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400',

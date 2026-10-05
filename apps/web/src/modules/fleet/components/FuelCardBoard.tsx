@@ -234,7 +234,7 @@ const ExpiryTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
     <span
       data-fuel-expiry={state}
       className={cn(
-        'whitespace-nowrap rounded border px-1 py-[0.05rem] text-[11px] font-medium',
+        'whitespace-nowrap rounded border px-1 py-0 text-[10px] font-medium leading-4',
         state === 'valid' &&
           'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
         state === 'soon' &&
@@ -356,7 +356,7 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
 export const CARD_COLUMNS =
   'xl:grid xl:grid-cols-[minmax(10rem,1fr)_15rem_12.5rem_8rem_auto] xl:items-center xl:gap-3';
 export const CHARGE_COLUMNS =
-  'xl:grid xl:grid-cols-[minmax(9rem,1fr)_15rem_12rem_15rem_auto] xl:items-center xl:gap-3';
+  'xl:grid xl:grid-cols-[minmax(9rem,1fr)_14rem_11.5rem_14rem_auto] xl:items-center xl:gap-3';
 
 /** The column names over the groups — placed where a group's lines are, past its car column. */
 export const BoardColumnHeader = ({

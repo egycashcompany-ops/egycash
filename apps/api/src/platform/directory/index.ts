@@ -301,6 +301,36 @@ export const getDirectoryEmployee = async (
   employeeLookup === null ? null : employeeLookup(employeeId);
 
 /**
+ * What a document the employee SIGNS prints about them beyond the directory's shape.
+ *
+ * IT's custody acknowledgment reads «بطاقة رقم قومي … صادرة من قسم … – …»: the national ID, and
+ * where in the company the person works. The section is one more placement fact; the national ID
+ * is the reason this is a lookup of its own rather than two more fields on `DirectoryEmployee`.
+ * That shape is read by every consumer of the directory, and a RAW national ID one careless
+ * mapping away from a list DTO is what Security Architecture §3 forbids. Here it is asked for by
+ * name, by the one consumer that prints it — which gates its egress behind a sensitive-data
+ * grant of its own.
+ */
+export interface DirectoryIdentityFacts {
+  /** As HR stores it — unmasked. The caller decides who may see it. */
+  nationalId: string | null;
+  sectionId: string | null;
+}
+
+type IdentityFactsLookup = (employeeId: string) => Promise<DirectoryIdentityFacts | null>;
+let identityFactsLookup: IdentityFactsLookup | null = null;
+
+export const registerIdentityFactsLookup = (lookup: IdentityFactsLookup): void => {
+  identityFactsLookup = lookup;
+};
+
+/** Null when HR is absent or does not know the person — the document then leaves the lines blank. */
+export const getDirectoryIdentityFacts = async (
+  employeeId: string,
+): Promise<DirectoryIdentityFacts | null> =>
+  identityFactsLookup === null ? null : identityFactsLookup(employeeId);
+
+/**
  * Display names for many employees at once — id → employee, missing ids omitted.
  *
  * Unregistered returns an EMPTY MAP rather than throwing, which is the same fail-closed posture as

@@ -17,7 +17,7 @@ import { resolveCustodyReceiptCategoryId } from './receipt-files';
 import { readReceiptHolder } from './receipt-holder';
 import { nextReceiptNumber } from './receipt-number';
 import { readDeviceTypes, receiptDeviceFields } from './receipt-device';
-import { auditReceiptIssued, refuseLeaver, refuseUnlessInStock } from './custody.service';
+import { auditReceiptIssued, refuseLeaver, refuseUnlessInStock, signer } from './custody.service';
 import { type ItCustodyReceiptDoc } from './receipt.model';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'custodyReceipt', entityId: id });
@@ -90,6 +90,11 @@ class ItCustodyReceiptService {
       employeeName: holder.employeeName,
       employeeCode: holder.employeeCode,
       jobTitle: holder.jobTitle,
+      // Raw here; the controller withholds it from a caller without `itAsset.viewNationalId`.
+      nationalId: holder.nationalId,
+      nationalIdVisible: true,
+      section: holder.section,
+      department: holder.department,
       lines,
     };
   }
@@ -160,9 +165,7 @@ class ItCustodyReceiptService {
           _id: receiptId,
           formNumber,
           employeeId: assignment.assignedToEmployeeId,
-          employeeCode: holder.employeeCode,
-          employeeName: holder.employeeName,
-          jobTitle: holder.jobTitle,
+          ...signer(holder),
           issuedAt: assignment.assignedAt,
           issuedByUserId: new Types.ObjectId(ctx.userId),
           branchId: assignment.branchId,

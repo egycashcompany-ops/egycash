@@ -162,7 +162,7 @@ expectedReturnAt?, returnedAt?, returnedToUserId?, conditionOnReturn?, notes? }`
 The paper the employee signs — the IT department's «إقرار استلام», one page per device — one per
 hand-over:
 
-`{ formNumber, employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, issuedAt, issuedByUserId, branchId,
+`{ formNumber, employeeId, employeeCode?, employeeName?, jobTitle?{ar,en}, nationalId?, section?{ar,en}, department?{ar,en}, issuedAt, issuedByUserId, branchId,
 lines[{ assetId, assignmentId, assetCode, name, serialNumber?, conditionOnIssue?, notes?,
 deviceType?, manufacturer?, model?, specs?, accessories[] }],
 signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
@@ -176,6 +176,11 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
   custody, so the paper previewed is the paper stored. Lines from before the acknowledgment have
   none of these and print the asset's name as the device.
 - `branchId` is the first line's branch — the read-scope anchor, like an interval's.
+- The identity line («بطاقة رقم قومي … صادرة من قسم … – …») is read from HR through the directory
+  (`getDirectoryIdentityFacts`: the national ID and the section, a lookup of its own so the raw ID
+  never joins `DirectoryEmployee`) and the organization (the section's and department's names).
+  `nationalId` is stored RAW for the paper, and leaves the API only for a caller holding
+  `itAsset.viewNationalId` (`nationalIdVisible` tells «withheld» from «HR has none»).
 - `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
   `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
   before a hand-over takes the next one; the hand-over records the number of the paper that was
@@ -433,8 +438,10 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   the device's kind and serial, the device's specifications table and accessories (recorded on the
   asset; a hand-over may say what came with it this time), the undertaking, and the signature
   block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
-  of several pages, the page count. The national ID and its issue details are left for the pen
-  (§17, 2026-10-05).
+  of several pages, the page count (§17, 2026-10-05). The identity line is filled from the system —
+  the employee's national ID, section and department, and the paper's date — the national ID only
+  for a reader holding `itAsset.viewNationalId`; the name under the signature is the first three
+  parts (§17, 2026-10-05).
 
 ## 6. States catalog
 
@@ -452,7 +459,7 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
 |---|---|---|
 | `/it` (home/dashboards) | any `it*` view permission | — |
 | `/it/assets` (+ scan, + labels) | `itAsset.view` | `itAsset.create`, `.edit`, `.export`, `.delete` (FR-5 only) |
-| `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant) |
+| `/it/assets/:id` custody | `itAsset.view` | `itAsset.assign` (assign + return + transfer — one custody grant, the roster-precedent: one operational surface), `itAsset.dispose` (a write-off decision, its own grant), `itAsset.viewNationalId` (the holder's national ID on the custody acknowledgment — Security Architecture §3's sensitive-data grant; without it the line is left for the pen) |
 | `/it/catalogs` | — | `itCatalog.manage` (asset + ticket categories — one grant, the `fleetCatalog.manage` precedent) |
 | `/it/tickets` | `itTicket.view` (scoped; requesters see own) | `itTicket.create`, `.edit` (work the ticket: status, priority, internal comments), `.assign` (dispatch decision, its own grant), `.close` (close + reopen + cancel, both-directions precedent) |
 | `/it/helpdesk-settings` | — | `itSlaPolicy.manage` (priorities + their SLA targets — behaviour-carrying, its own grant: the `fleetMaintenanceRule.manage` precedent) |
@@ -783,3 +790,17 @@ starts only on an explicit owner GO.
   changed. The formal-Arabic guard listed «ماله» as dialect; it is also «his property», the
   undertaking's own word, so it left the list («مالوش» and «ملوش» stay). Other modules' printing
   is unchanged.
+- **The acknowledgment's identity line, filled** (2026-10-05) — owner request, on a printed paper:
+  «بطاقة رقم قومي … صادرة من قسم … – … بتاريخ … مفروض تملأها تلقائي من النظام !! قسم الموظف
+  وإدارته وتاريخ اليوم ورقمه القومي», and «اسمه جاى على سطرين !! فمش لازم رباعي ممكن ثلاثي فقط تحت
+  عند الإمضاء». The line now reads the employee's national ID, section («قسم») and department
+  («إدارة») from HR, and the paper's date (the hand-over's — today, for the print before it); the
+  receipt keeps all of it, like the name. The national ID is the platform's first unmasked egress
+  of one, so it follows Security Architecture §3: a new grant, `itAsset.viewNationalId`, decides
+  who sees it — the super administrator holds it by the catalogue sync, anyone else is granted it
+  on the roles screen; a reader without it prints the line for the pen and is told why. HR hands it
+  over through a directory lookup of its own (`getDirectoryIdentityFacts`), never as a field of
+  `DirectoryEmployee`, which every module reads. Under the signature the name is the first three
+  PARTS on one line, by the contracts' name rule — which now also binds the compounds that end in
+  their second word («نور الدين», «فتح الله»), so a three-part name never halves one; the
+  quadruple-name advice in HR counts them the same way.

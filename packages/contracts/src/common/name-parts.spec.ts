@@ -4,7 +4,14 @@
 // not an inline `split(' ').length`: a compound part inflates the count, and a name with fewer
 // parts than words deflates it. Every case below is an ordinary Egyptian name, not an edge case.
 import { describe, expect, it } from 'vitest';
-import { countNameParts, isQuadrupleName, loginProfileNames, splitFullName } from './field-rules';
+import {
+  countNameParts,
+  isQuadrupleName,
+  leadingNameParts,
+  loginProfileNames,
+  nameParts,
+  splitFullName,
+} from './field-rules';
 import { LocalizedStringSchema } from './localized';
 
 describe('counting name parts', () => {
@@ -27,6 +34,19 @@ describe('counting name parts', () => {
     expect(countNameParts('عبد الرحمن عبد الله محمد علي')).toBe(4);
   });
 
+  it('binds the compounds that END in their second word too', () => {
+    // «نور الدين» and «فتح الله» are one part each, like «عبد الله».
+    expect(countNameParts('أحمد نور الدين محمد')).toBe(3);
+    expect(countNameParts('محمد فتح الله علي حسن')).toBe(4);
+    expect(countNameParts('زين العابدين محمد علي حسن')).toBe(4);
+    expect(nameParts('أحمد نور الدين عبد الله حسن')).toEqual([
+      'أحمد',
+      'نور الدين',
+      'عبد الله',
+      'حسن',
+    ]);
+  });
+
   it('never lets a trailing binder swallow nothing', () => {
     // A name that ends mid-compound is short, and must be counted short rather than crashing or
     // silently counting the dangling word as a whole part it is not.
@@ -38,6 +58,25 @@ describe('counting name parts', () => {
     expect(countNameParts('  أحمد   محمد  علي حسن  ')).toBe(4);
     expect(countNameParts('')).toBe(0);
     expect(countNameParts('   ')).toBe(0);
+  });
+});
+
+describe('the first parts of a name — «الاسم الثلاثي»', () => {
+  it('takes the first three parts of a longer name', () => {
+    // «مش لازم رباعي ممكن ثلاثي فقط تحت عند الإمضاء».
+    expect(leadingNameParts('بسام هشام رضوان محمد حسنين', 3)).toBe('بسام هشام رضوان');
+    expect(leadingNameParts('مصطفى عثمان محمود عثمان', 3)).toBe('مصطفى عثمان محمود');
+  });
+
+  it('never cuts a compound part in half', () => {
+    expect(leadingNameParts('محمد عبد الله علي حسن', 3)).toBe('محمد عبد الله علي');
+    expect(leadingNameParts('أحمد نور الدين محمد علي', 3)).toBe('أحمد نور الدين محمد');
+  });
+
+  it('returns a shorter name whole, and an empty one empty', () => {
+    expect(leadingNameParts('أحمد محمد', 3)).toBe('أحمد محمد');
+    expect(leadingNameParts('  أحمد   محمد  علي  حسن ', 3)).toBe('أحمد محمد علي');
+    expect(leadingNameParts('', 3)).toBe('');
   });
 });
 

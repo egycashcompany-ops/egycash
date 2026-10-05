@@ -7,9 +7,11 @@ import { describe, expect, it } from 'vitest';
 import { type ItCustodyReceiptDocumentDto, type ItCustodyReceiptLineDto } from '@ecms/contracts';
 import {
   buildCustodyReceiptHtml,
+  formDigits,
   RECEIPT_UNDERTAKING,
   receiptDate,
   receiptNumberLabel,
+  signatureName,
   specGroups,
 } from './custody-receipt-print';
 
@@ -60,9 +62,13 @@ const paper = (
   formNumber: 7,
   issuedAt: '2023-08-30T09:00:00.000Z',
   employeeId: '000000000000000000000a01',
-  employeeName: 'مصطفى عثمان محمود',
+  employeeName: 'مصطفى عثمان محمود عثمان',
   employeeCode: '0100026',
   jobTitle: { ar: 'محاسب', en: 'Accountant' },
+  nationalId: '29801011234567',
+  nationalIdVisible: true,
+  section: { ar: 'التسويات', en: 'Settlements' },
+  department: { ar: 'الإدارة المالية', en: 'Finance' },
   lines: [LAPTOP],
   ...overrides,
 });
@@ -77,27 +83,59 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(html).toContain('<span>قطاع تكنولوجيا المعلومات</span>');
     expect(html).toContain('<polygon');
     expect(html).toContain('<h1>إقرار استلام</h1>');
-    expect(html).toContain('<title>إقرار استلام EGYCASH-IT-F-14-0007 — مصطفى عثمان محمود</title>');
+    expect(html).toContain(
+      '<title>إقرار استلام EGYCASH-IT-F-14-0007 — مصطفى عثمان محمود عثمان</title>',
+    );
   });
 
   it('fills the statement in the form’s red with what the system knows', () => {
-    expect(html).toContain('أقر أنا / <span class="fill"><bdi>مصطفى عثمان محمود</bdi></span>');
+    expect(html).toContain(
+      'أقر أنا / <span class="fill"><bdi>مصطفى عثمان محمود عثمان</bdi></span>',
+    );
     expect(html).toContain('بوظيفة <span class="fill"><bdi>محاسب</bdi></span>');
     expect(html).toContain('بشركة إيجي كاش لتكنولوجيا الحلول النقدية');
     // «جهاز لاب توب» — the device's kind, then its serial, then the table it introduces.
-    expect(html).toContain('بأنني قد استلمت جهاز <span class="fill"><bdi>لاب توب</bdi></span>');
     expect(html).toContain(
-      'برقم مسلسل <span class="fill"><bdi>B600DN3</bdi></span> ومواصفاته كالتالي:',
+      'بأنني قد استلمت جهاز <span class="fill whole"><bdi>لاب توب</bdi></span>',
+    );
+    expect(html).toContain(
+      'برقم مسلسل <span class="fill whole"><bdi>B600DN3</bdi></span> ومواصفاته كالتالي:',
     );
     expect(html).toMatch(/\.fill \{ color: #f00;/u);
+    // A serial, an ID, a date or a device's kind is read whole; a name or a job title wraps like
+    // the sentence around it, so a long one never stretches a gap across the line before it.
+    expect(html).toContain('.fill.whole { white-space: nowrap; }');
+    expect(html).toContain('بوظيفة <span class="fill"><bdi>محاسب</bdi>');
   });
 
-  it('leaves what the system does not hold — the national ID — as a dotted line for the pen', () => {
-    expect(html).toMatch(/بطاقة رقم قومي <span class="fill">\.{8,}<\/span>/u);
-    expect(html).toMatch(
+  it('fills the identity line from the system — national ID, section, department and date', () => {
+    // «مفروض تملأها تلقائي من النظام — قسم الموظف وإدارته وتاريخ اليوم ورقمه القومي».
+    expect(html).toContain(
+      'بطاقة رقم قومي <span class="fill whole"><bdi>٢٩٨٠١٠١١٢٣٤٥٦٧</bdi></span>' +
+        ' – صادرة من قسم <span class="fill"><bdi>التسويات</bdi></span>' +
+        ' – <span class="fill"><bdi>الإدارة المالية</bdi></span>' +
+        ' بتاريخ <span class="fill whole"><bdi>٣٠\u2009/\u2009٨\u2009/\u2009٢٠٢٣</bdi></span> بأنني',
+    );
+  });
+
+  it('leaves the national ID for the pen when the reader may not see it — the rest still fills', () => {
+    const withheld = buildCustodyReceiptHtml(
+      paper({ nationalId: null, nationalIdVisible: false }),
+      LABELS,
+    );
+    expect(withheld).toMatch(/بطاقة رقم قومي <span class="fill whole">\.{8,}<\/span>/u);
+    expect(withheld).toContain('صادرة من قسم <span class="fill"><bdi>التسويات</bdi></span>');
+    expect(withheld).not.toContain('٢٩٨٠١٠١١٢٣٤٥٦٧');
+  });
+
+  it('leaves for the pen whatever HR does not hold — an employee filed under no section', () => {
+    const bare = buildCustodyReceiptHtml(
+      paper({ nationalId: null, section: null, department: null }),
+      LABELS,
+    );
+    expect(bare).toMatch(
       /صادرة من قسم <span class="fill">\.+<\/span> – <span class="fill">\.+<\/span>/u,
     );
-    expect(html).toContain('بتاريخ <span class="fill">..../..../....</span>');
   });
 
   it('prints the specifications table the form has, its rows in its own words', () => {
@@ -124,12 +162,18 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(html).toContain(RECEIPT_UNDERTAKING);
     expect(html).toContain('وهذا إقرار مني بذلك ،،،');
     expect(html).toContain('<div class="by">المقر بما فيه</div>');
+    // Three parts under the signature — «ممكن ثلاثي فقط تحت عند الإمضاء» — the full name above.
     expect(html).toContain('<div>الاسم: مصطفى عثمان محمود</div>');
+    expect(html).toContain(
+      'أقر أنا / <span class="fill"><bdi>مصطفى عثمان محمود عثمان</bdi></span>',
+    );
     expect(html).toContain('<div>التوقيع:</div>');
     expect(html).toContain('<div>التاريخ: ٣٠ / ٨ / ٢٠٢٣</div>');
     // In a right-to-left page the left half is reached by padding the RIGHT one.
     const rule = /^\s*\.signs \{([^}]*)\}/mu.exec(html)?.[1] ?? '';
     expect(rule).toContain('padding-right: 50%');
+    // And a line of it is never broken in two.
+    expect(html).toContain('.signs > div { white-space: nowrap; }');
   });
 
   it('numbers the paper in its footer, beside the department', () => {
@@ -145,7 +189,7 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     expect(pages(two)).toHaveLength(2);
     expect(first).toContain('<bdi>B600DN3</bdi>');
     expect(second).toContain('<bdi>49WNRS3</bdi>');
-    expect(second).toContain('جهاز <span class="fill"><bdi>شاشة</bdi></span>');
+    expect(second).toContain('جهاز <span class="fill whole"><bdi>شاشة</bdi></span>');
     expect(first).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block">1/2</span>');
     expect(second).toContain('EGYCASH-IT-F-14-0007</span>\n    <span class="block">2/2</span>');
     expect(two).toMatch(/\.page \{[^}]*break-after: page;/u);
@@ -153,7 +197,7 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
 
   it('a device with nothing on file prints no table and no accessories — the sentence ends there', () => {
     const [bare] = pages(buildCustodyReceiptHtml(paper({ lines: [SCREEN] }), LABELS));
-    expect(bare).toContain('برقم مسلسل <span class="fill"><bdi>49WNRS3</bdi></span>.</p>');
+    expect(bare).toContain('برقم مسلسل <span class="fill whole"><bdi>49WNRS3</bdi></span>.</p>');
     expect(bare).not.toContain('ومواصفاته كالتالي');
     expect(bare).not.toContain('<table');
     expect(bare).not.toContain('ومشتملاته');
@@ -162,13 +206,13 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
   it('a receipt from before the acknowledgment names the device by the asset’s own name', () => {
     const legacy = { ...SCREEN, deviceType: null };
     const [old] = pages(buildCustodyReceiptHtml(paper({ lines: [legacy] }), LABELS));
-    expect(old).toContain('جهاز <span class="fill"><bdi>Dell Screen</bdi></span>');
+    expect(old).toContain('جهاز <span class="fill whole"><bdi>Dell Screen</bdi></span>');
   });
 
   it('a category already named «جهاز …» is not doubled', () => {
     const named = { ...SCREEN, deviceType: 'جهاز كمبيوتر مكتبي' };
     const [page] = pages(buildCustodyReceiptHtml(paper({ lines: [named] }), LABELS));
-    expect(page).toContain('استلمت <span class="fill"><bdi>جهاز كمبيوتر مكتبي</bdi></span>');
+    expect(page).toContain('استلمت <span class="fill whole"><bdi>جهاز كمبيوتر مكتبي</bdi></span>');
   });
 
   it('leaves a line for the pen when the system cannot name the employee', () => {
@@ -204,6 +248,17 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
 
   it('dates the signature block day / month / year in Arabic digits', () => {
     expect(receiptDate('2023-08-30T09:00:00.000Z')).toBe('٣٠ / ٨ / ٢٠٢٣');
+  });
+
+  it('writes a national ID digit for digit — nothing dropped, grouped or rounded', () => {
+    expect(formDigits('29801011234567')).toBe('٢٩٨٠١٠١١٢٣٤٥٦٧');
+    expect(formDigits('30001010000007')).toBe('٣٠٠٠١٠١٠٠٠٠٠٠٧');
+  });
+
+  it('shortens the signature name to three parts, compound parts whole', () => {
+    expect(signatureName('بسام هشام رضوان محمد حسنين')).toBe('بسام هشام رضوان');
+    expect(signatureName('محمد عبد الله علي حسن')).toBe('محمد عبد الله علي');
+    expect(signatureName(null)).toBe('');
   });
 
   it('escapes what people typed', () => {

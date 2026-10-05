@@ -695,6 +695,18 @@ export interface ItCustodyReceiptDocumentDto {
   employeeCode: string | null;
   /** «بوظيفة». */
   jobTitle: { ar: string; en: string } | null;
+  /**
+   * «بطاقة رقم قومي» — the FULL number, for a caller holding `itAsset.viewNationalId` (Security
+   * Architecture §3: a national ID is shown in full only behind a sensitive-data grant). Null
+   * otherwise, or when HR has none — `nationalIdVisible` tells the two apart, and either way the
+   * paper leaves the line for the pen.
+   */
+  nationalId: string | null;
+  nationalIdVisible: boolean;
+  /** «صادرة من قسم …» — the employee's section, as it was when the paper was printed. */
+  section: { ar: string; en: string } | null;
+  /** «– …» — the employee's department («الإدارة»). */
+  department: { ar: string; en: string } | null;
   lines: ItCustodyReceiptLineDto[];
 }
 

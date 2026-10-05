@@ -52,6 +52,15 @@ export interface ItCustodyReceiptDoc extends BaseDocFields {
   employeeCode: string | null;
   employeeName: string | null;
   jobTitle: { ar: string; en: string } | null;
+  // The identity line — «بطاقة رقم قومي … صادرة من قسم … – …». Optional in the type: receipts
+  // issued before the line was filled in have none, and print it blank for the pen.
+  /**
+   * RAW, as HR stores it — the paper prints it. Leaves the API only for a caller holding
+   * `itAsset.viewNationalId` (Security Architecture §3); `audit.masking` masks it in any change.
+   */
+  nationalId?: string | null;
+  section?: { ar: string; en: string } | null;
+  department?: { ar: string; en: string } | null;
   /** The hand-over's own date — what the paper prints as «التاريخ». */
   issuedAt: Date;
   issuedByUserId: Types.ObjectId | null;
@@ -97,6 +106,15 @@ const receiptSchema = new Schema<ItCustodyReceiptDoc>(
     employeeCode: { type: String, default: null },
     employeeName: { type: String, default: null },
     jobTitle: {
+      type: new Schema({ ar: String, en: String }, { _id: false }),
+      default: null,
+    },
+    nationalId: { type: String, default: null },
+    section: {
+      type: new Schema({ ar: String, en: String }, { _id: false }),
+      default: null,
+    },
+    department: {
       type: new Schema({ ar: String, en: String }, { _id: false }),
       default: null,
     },

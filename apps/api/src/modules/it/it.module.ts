@@ -61,6 +61,17 @@ const assetPermissions = declarePermissions(
       action: 'dispose',
       name: { en: 'Dispose of IT assets', ar: 'استبعاد الأصول' },
     },
+    // The holder's national ID on the custody acknowledgment («بطاقة رقم قومي», FR-18). Its OWN
+    // grant (Security Architecture §3: a national ID is shown in full only behind a sensitive-data
+    // grant): a receipt is read and reprinted on `view`, and reading the register must not be
+    // reading everyone's national ID. Without it the paper leaves the line for the pen.
+    {
+      action: 'viewNationalId',
+      name: {
+        en: "View the holder's national ID on custody receipts",
+        ar: 'عرض الرقم القومي للمستلم في إقرار الاستلام',
+      },
+    },
   ],
   'it.assets',
 );

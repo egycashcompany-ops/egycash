@@ -16,6 +16,7 @@ import {
   registerEmployeesByDepartmentLookup,
   registerEmployeesByJobTitlesLookup,
   registerEmployeesByNamesLookup,
+  registerIdentityFactsLookup,
   registerLeaveLookup,
   registerSelfEmployeeLookup,
 } from '../../platform/directory';
@@ -144,6 +145,17 @@ export const registerHrDirectorySeams = (): void => {
         candidates.map((candidate) => toDirectoryEmployee(candidate.employee)),
       ]),
     );
+  });
+
+  // What a document the employee signs prints about them: the national ID — raw, for the one
+  // consumer that prints it and gates who sees it (IT's custody acknowledgment) — and the section.
+  registerIdentityFactsLookup(async (employeeId) => {
+    const employee = await employeeRepository.findById(employeeId);
+    if (employee === null) return null;
+    return {
+      nationalId: employee.personal.nationalId ?? null,
+      sectionId: employee.sectionId == null ? null : String(employee.sectionId),
+    };
   });
 
   registerSelfEmployeeLookup(async (userId) => {

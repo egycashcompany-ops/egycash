@@ -929,6 +929,44 @@ describe('asset custody', () => {
     expect(stored.lines[0]?.accessories).toEqual(['شاحن لاب توب', 'حقيبة']);
   });
 
+  it('shows the holder’s national ID only to a reader granted itAsset.viewNationalId', async () => {
+    const asset = await custodyAsset();
+    const handed = await receipts('').post({ employeeId: EMPLOYEE_A, lines: [{ assetId: asset.id }] });
+    expect(handed.status).toBe(201);
+    const { receipt } = data<ItHandOverResultDto>(handed);
+    // The receipt keeps the number the paper printed — set here as HR would have answered it.
+    await ItCustodyReceiptModel.updateOne(
+      { _id: receipt.id },
+      {
+        $set: {
+          nationalId: '29801011234567',
+          section: { ar: 'التسويات', en: 'Settlements' },
+          department: { ar: 'الإدارة المالية', en: 'Finance' },
+        },
+      },
+    ).exec();
+
+    // The administrator holds the grant: the full number, for the paper.
+    const full = data<ItCustodyReceiptDto>(await receipts(`/${receipt.id}`).get());
+    expect(full.nationalId).toBe('29801011234567');
+    expect(full.nationalIdVisible).toBe(true);
+    expect(full.section?.ar).toBe('التسويات');
+    expect(full.department?.ar).toBe('الإدارة المالية');
+
+    // A reader of the register is not a reader of everyone's national ID — reprint included.
+    const viewed = data<ItCustodyReceiptDto>(await receipts(`/${receipt.id}`, branchAToken).get());
+    expect(viewed.nationalId).toBeNull();
+    expect(viewed.nationalIdVisible).toBe(false);
+    expect(viewed.section?.ar).toBe('التسويات');
+    const reprinted = await request(app)
+      .post(`/api/v1/it/custody-receipts/${receipt.id}/print`)
+      .set('Authorization', `Bearer ${branchAToken}`)
+      .send({});
+    expect(reprinted.status).toBe(200);
+    expect(data<ItCustodyReceiptDto>(reprinted).nationalId).toBeNull();
+    expect(JSON.stringify(reprinted.body)).not.toContain('29801011234567');
+  });
+
   it('numbers every print, records a number on one paper only, and refuses one never printed', async () => {
     const first = await custodyAsset();
     const second = await custodyAsset();

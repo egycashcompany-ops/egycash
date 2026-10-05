@@ -117,6 +117,9 @@ beforeEach(() => {
     employeeCode: '0100026',
     employeeName: 'مصطفى عثمان محمود',
     jobTitle: { ar: 'محاسب', en: 'Accountant' },
+    nationalId: '29801011234567',
+    section: { ar: 'التسويات', en: 'Settlements' },
+    department: { ar: 'الإدارة المالية', en: 'Finance' },
   });
   mocks.createAssignment.mockImplementation(async (data: Record<string, unknown>) => ({
     ...data,
@@ -181,6 +184,10 @@ describe('a hand-over is ONE receipt over every asset it hands over', () => {
     // «الإسم» and «الوظيفة» — what the paper prints in the signature block, kept as printed.
     expect(receipt.employeeName).toBe('مصطفى عثمان محمود');
     expect(receipt.jobTitle).toEqual({ ar: 'محاسب', en: 'Accountant' });
+    // «بطاقة رقم قومي … صادرة من قسم … – …» — the identity line, kept as printed too.
+    expect(receipt.nationalId).toBe('29801011234567');
+    expect(receipt.section).toEqual({ ar: 'التسويات', en: 'Settlements' });
+    expect(receipt.department).toEqual({ ar: 'الإدارة المالية', en: 'Finance' });
     // Every interval names THIS receipt, and the receipt names every interval.
     for (const [index, assignment] of assignments.entries()) {
       expect(String(assignment.receiptId)).toBe(String(receipt._id));
@@ -335,6 +342,8 @@ describe('a transfer to somebody new is a hand-over: it gets its own paper', () 
     ];
     expect(String(receipt.employeeId)).toBe(EMPLOYEE);
     expect(receipt.lines[0]?.conditionOnIssue).toBe('U');
+    // The new holder's identity line, like any hand-over's.
+    expect((receipt as unknown as { nationalId: string }).nationalId).toBe('29801011234567');
     // The new holder's page describes the device like any hand-over's.
     expect(receipt.lines[0]).toMatchObject({
       deviceType: 'لاب توب',

@@ -188,15 +188,40 @@ export const toItAssetAssignmentDto = (
   };
 };
 
-/** A custody receipt — the paper as it was printed, plus whether its signed copy is in. */
-export const toItCustodyReceiptDto = (doc: ItCustodyReceiptDoc): ItCustodyReceiptDto => ({
+/**
+ * «بطاقة رقم قومي» on the way out: the full number for a caller holding `itAsset.viewNationalId`,
+ * withheld from anyone else (Security Architecture §3) — paired with the flag that tells «not
+ * shown to you» from «HR has none», the employee mapper's `…Visible` convention.
+ */
+export const receiptNationalId = (
+  nationalId: string | null | undefined,
+  reveal: boolean,
+): Pick<ItCustodyReceiptDto, 'nationalId' | 'nationalIdVisible'> => ({
+  nationalId: reveal ? (nationalId ?? null) : null,
+  nationalIdVisible: reveal,
+});
+
+const orgName = (name: { ar: string; en: string } | null | undefined) =>
+  name == null ? null : { ar: name.ar, en: name.en };
+
+/**
+ * A custody receipt — the paper as it was printed, plus whether its signed copy is in. The
+ * national ID only for a caller allowed to see it (`revealNationalId`); withheld by default.
+ */
+export const toItCustodyReceiptDto = (
+  doc: ItCustodyReceiptDoc,
+  revealNationalId = false,
+): ItCustodyReceiptDto => ({
   id: String(doc._id),
   formNumber: doc.formNumber ?? null,
   issuedAt: iso(doc.issuedAt),
   employeeId: String(doc.employeeId),
   employeeName: doc.employeeName,
   employeeCode: doc.employeeCode,
-  jobTitle: doc.jobTitle == null ? null : { ar: doc.jobTitle.ar, en: doc.jobTitle.en },
+  jobTitle: orgName(doc.jobTitle),
+  ...receiptNationalId(doc.nationalId, revealNationalId),
+  section: orgName(doc.section),
+  department: orgName(doc.department),
   lines: doc.lines.map((line) => ({
     assetId: String(line.assetId),
     assignmentId: String(line.assignmentId),

@@ -32,6 +32,15 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The custody acknowledgment fills its identity line from the system.** «بطاقة رقم قومي …
+  صادرة من قسم … – … بتاريخ … مفروض تملأها تلقائي من النظام». The line now carries the employee's
+  national ID, section and department from HR and the paper's date, and the receipt keeps them like
+  the name. The national ID is shown only to a user holding the new permission «عرض الرقم القومي
+  للمستلم في إقرار الاستلام» (`itAsset.viewNationalId`, Security Architecture §3) — the super
+  administrator has it, IT staff are granted it on the roles screen; anyone else prints the line
+  for the pen and is told why. Under the signature the name is the first three parts, on one line
+  («ممكن ثلاثي فقط تحت عند الإمضاء»); compound names («عبد الله», «نور الدين») stay whole, and HR's
+  quadruple-name advice now counts «نور الدين»-type compounds as one part too.
 - **IT prints the department's «إقرار استلام» instead of the item-table receipt.** «ومعلش هنغير
   التصميم بتاع الطباعة فى الـ IT فقط لدا». The paper is reproduced from the form the owner sent —
   its letterhead and banner, «إقرار استلام», the statement «أقر أنا / … بوظيفة … بأنني قد استلمت

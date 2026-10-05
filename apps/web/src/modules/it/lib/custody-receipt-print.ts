@@ -11,10 +11,15 @@
 // signed by hand and filed, so its wording is the form's, not ours.
 //
 // The form's red marks what is filled in for each paper, and it stays red here — filled with what
-// the system knows: the employee's name and job, the device's kind and its serial. What the system
-// does not hold (the national ID, and where and when it was issued) stays a dotted line for the
-// pen. A row of the table nothing was typed against is left off, and so is the whole table, or the
-// accessories, when there is nothing to list.
+// the system knows: the employee's name and job; «بطاقة رقم قومي … صادرة من قسم … – … بتاريخ …»
+// with their national ID, their section and department, and the paper's date («مفروض تملأها
+// تلقائي من النظام»); the device's kind and its serial. What the system does not hold stays a
+// dotted line for the pen — and so does the national ID for a reader not allowed to see it
+// (`itAsset.viewNationalId`). A row of the table nothing was typed against is left off, and so is
+// the whole table, or the accessories, when there is nothing to list.
+//
+// Under the signature the name is the first three PARTS («مش لازم رباعي ممكن ثلاثي فقط تحت عند
+// الإمضاء»), on one line; the statement above it keeps the full name.
 //
 // One receipt is one number: a hand-over of three devices prints three pages under it, each with
 // the page count in the footer's red block.
@@ -32,6 +37,7 @@ import {
   IT_ASSET_SPEC_TABLE,
   IT_CUSTODY_RECEIPT_FORM,
   formatCustodyReceiptNumber,
+  leadingNameParts,
   type ItCustodyReceiptDocumentDto,
   type ItCustodyReceiptLineDto,
 } from '@ecms/contracts';
@@ -83,6 +89,23 @@ export const receiptDate = (iso: string): string => {
     .join(' / ');
 };
 
+/**
+ * «٢٩٨٠١٠١١٢٣٤٥٦٧» — a number written in the form's digits, character by character: a national ID
+ * is a string of digits, not a quantity, so nothing may be dropped, grouped or rounded.
+ */
+export const formDigits = (value: string): string =>
+  value.replace(/[0-9]/gu, (digit) => arabicDigits.format(Number(digit)));
+
+/**
+ * The date inside the statement — «بتاريخ ٥ / ١٠ / ٢٠٢٦» — spaced with THIN spaces: they read the
+ * same right to left, and a justified line cannot stretch them into a gap.
+ */
+export const statementDate = (iso: string): string => receiptDate(iso).replaceAll(' ', '\u2009');
+
+/** The name under the signature: the first three parts, compound parts kept whole. */
+export const signatureName = (fullName: string | null): string =>
+  leadingNameParts(fullName ?? '', 3);
+
 /** The footer's number: the paper's own, or the form's bare prefix for a receipt never numbered. */
 export const receiptNumberLabel = (formNumber: number | null): string =>
   formNumber === null ? IT_CUSTODY_RECEIPT_FORM.prefix : formatCustodyReceiptNumber(formNumber);
@@ -91,16 +114,21 @@ export const receiptNumberLabel = (formNumber: number | null): string =>
 export const RECEIPT_UNDERTAKING =
   'وذلك لاستخدامه في إنهاء أعمال الشركة وأتعهد بالحفاظ عليه حفاظ الشخص الحريص على ماله الخاص وأتعهد برده إلى الشركة متى طلب مني ذلك.';
 
-/** A filled-in part of the form: in its red, or a dotted line where the system has nothing. */
-const fill = (value: string | null | undefined, blank = 24): string => {
+/**
+ * A filled-in part of the form: in its red, or a dotted line where the system has nothing.
+ * `whole` keeps a value on one line — a serial, a national ID, a date or «لاب توب» is read as one
+ * thing; a name or a job title wraps between its words like the rest of the sentence, so a long
+ * one never drags a gap across the line before it.
+ */
+const fill = (value: string | null | undefined, blank = 24, whole = false): string => {
   const text = value?.trim() ?? '';
-  return `<span class="fill">${text === '' ? '.'.repeat(blank) : `<bdi>${esc(text)}</bdi>`}</span>`;
+  return `<span class="fill${whole ? ' whole' : ''}">${text === '' ? '.'.repeat(blank) : `<bdi>${esc(text)}</bdi>`}</span>`;
 };
 
 /** «جهاز لاب توب» — the device's kind; the asset's own name for a receipt from before kinds. */
 const device = (line: ItCustodyReceiptLineDto): string => {
   const kind = line.deviceType?.trim() || line.name;
-  return kind.startsWith('جهاز') ? fill(kind) : `جهاز ${fill(kind)}`;
+  return kind.startsWith('جهاز') ? fill(kind, 24, true) : `جهاز ${fill(kind, 24, true)}`;
 };
 
 /** One row of the specifications table. */
@@ -191,14 +219,14 @@ const page = (
   </header>
   <hr class="rule" />
   <h1>إقرار استلام</h1>
-  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش لتكنولوجيا الحلول النقدية، بطاقة رقم قومي ${fill(null, 26)} – صادرة من قسم ${fill(null, 8)} – ${fill(null, 10)} بتاريخ <span class="fill">..../..../....</span> بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
+  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش لتكنولوجيا الحلول النقدية، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} – صادرة من قسم ${fill(paper.section?.ar, 8)} – ${fill(paper.department?.ar, 10)} بتاريخ ${fill(statementDate(paper.issuedAt), 24, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
   ${accessories.length > 0 ? `<p class="lead">ومشتملاته كالتالي:</p><div class="items">${accessoryList(accessories)}</div>` : ''}
   <p class="undertaking">${RECEIPT_UNDERTAKING}</p>
   <p class="oath">وهذا إقرار مني بذلك ،،،</p>
   <div class="signs">
     <div class="by">المقر بما فيه</div>
-    <div>الاسم: ${esc(paper.employeeName ?? '')}</div>
+    <div>الاسم: ${esc(signatureName(paper.employeeName))}</div>
     <div>التوقيع:</div>
     <div>التاريخ: ${receiptDate(paper.issuedAt)}</div>
   </div>
@@ -238,8 +266,9 @@ export const buildCustodyReceiptHtml = (
   h1 { text-align: center; font-size: 16pt; font-weight: 700; text-decoration: underline; text-underline-offset: 2pt; margin: 3mm 0 4.5mm; }
   .statement, .lead, .items, .undertaking, .signs { margin-left: 12mm; margin-right: 12mm; }
   .statement { margin-top: 0; margin-bottom: 3mm; text-align: justify; }
-  /* A filled-in value is read whole: never split across two lines. */
-  .fill { color: ${COLORS.fill}; white-space: nowrap; }
+  .fill { color: ${COLORS.fill}; }
+  /* A serial, a national ID, a date, a device's kind: read whole, never split across two lines. */
+  .fill.whole { white-space: nowrap; }
   .specs { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.15; }
   .specs col.g { width: 13.9%; }
   .specs col.c { width: 38.2%; }
@@ -253,6 +282,8 @@ export const buildCustodyReceiptHtml = (
   .oath { text-align: center; margin: 5mm 0 0; }
   /* On the LEFT half of the page: in a right-to-left page the free margin goes on the start side. */
   .signs { margin-top: 5mm; padding-right: 50%; line-height: 1.6; }
+  /* Each line of the block is read whole — a name is never broken across two lines. */
+  .signs > div { white-space: nowrap; }
   .signs .by { padding-right: 23mm; margin-bottom: 6mm; }
   .foot { margin-top: auto; display: flex; align-items: flex-start; direction: ltr; padding: 6mm 10.4mm 0; }
   .foot .mark { flex: 1; border-top: 0.5pt solid #000; padding-top: 1.2mm; font-family: Calibri, Carlito, Arial, sans-serif; font-size: 11pt; }

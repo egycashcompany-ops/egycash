@@ -11,8 +11,6 @@ export const DARK_FILTER_BAR = cn(
   '[&_button[aria-haspopup]]:!border-slate-700/80 [&_button[aria-haspopup]]:!bg-[#080C14] [&_button[aria-haspopup]]:!text-slate-200',
   '[&_[role=listbox]]:!border-slate-700 [&_[role=listbox]]:!bg-[#111827] [&_[role=listbox]]:!shadow-2xl [&_[role=listbox]]:!shadow-black/60',
   '[&_[role=option]:hover]:!bg-brand-500/15 [&_[role=option][aria-selected=true]]:!font-bold [&_[role=option][aria-selected=true]]:!text-brand-200',
-  // «مسح الفلاتر» is a button, so it is purple too.
-  '[&_.ms-auto>button]:!border-brand-500/50 [&_.ms-auto>button]:!bg-brand-500/15 [&_.ms-auto>button]:!text-brand-300 [&_.ms-auto>button:hover]:!bg-brand-500/25',
   // Larger than a tablet: ONE row. Every filter shares the width evenly instead of holding its
   // own; the reset button keeps its size.
   'lg:[&>div]:!flex-nowrap lg:[&>div]:!gap-1.5 lg:[&>div>*]:!min-w-0 lg:[&>div>*]:!flex-1 lg:[&>div>.ms-auto]:!flex-none',

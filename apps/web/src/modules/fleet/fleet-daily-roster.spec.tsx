@@ -454,10 +454,16 @@ describe('the counters count the DAY, never the filtered rows', () => {
 });
 
 describe('Reset', () => {
-  it('is offered only when something is filtered', () => {
-    expect(at(''), 'nothing to undo').not.toContain('data-reset-filters');
+  // «زرار ريست يكون موجود برضو فى كل الشاشات يكون لونه احمر»: always on the strip, red, and off
+  // while there is nothing to undo.
+  const resetButton = (html: string): string =>
+    html.match(/<button[^>]*data-reset-filters="true"[^>]*>/)?.[0] ?? '';
+  it('is always there, and pressable only when something is filtered', () => {
+    expect(resetButton(at('')), 'there, with nothing to undo').toContain('disabled=""');
+    expect(resetButton(at('')), 'red').toContain('bg-red-50');
     for (const query of ['&q=150', `&mission=${MT}`, '&view=workshop', '&view=assigned']) {
-      expect(at(query), query).toContain('data-reset-filters');
+      expect(resetButton(at(query)), query).not.toBe('');
+      expect(resetButton(at(query)), query).not.toContain('disabled=""');
     }
   });
 

@@ -42,15 +42,14 @@ import {
   SLOT_POSITIONS,
   assignCaptainWithCrew,
   assignToSlot,
-  availablePool,
   changedRows,
   clearSlot,
-  filterPool,
   removeFromBoard,
   setRowField,
   slotValue,
   type BoardRow,
   type CrewSlot,
+  type PoolKind,
   type RequirementFilter,
 } from '../lib/crew-board';
 import {
@@ -60,13 +59,19 @@ import {
   toStandingRows,
 } from '../lib/standing-crew';
 import { CREW_DRAG_TYPE, CrewMemberCard } from '../components/CrewMemberCard';
-import { CrewRosterNotice } from '../components/CrewRosterNotice';
-import { POOL_FILTERS } from './CrewBoardPage';
+import { CrewPools, type PoolQuery } from '../components/CrewPools';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
-/** Remembered across visits: this screen's pool filters. */
-const REMEMBERED_FILTERS = ['q', 'flags'] as const;
+/**
+ * Each pool's search and icon filters, in the URL and remembered across visits — one pair of
+ * params per pool, because the two pools narrow independently.
+ */
+const POOL_PARAMS: Record<PoolKind, { search: string; flags: string }> = {
+  captains: { search: 'cq', flags: 'cflags' },
+  specialists: { search: 'sq', flags: 'sflags' },
+};
+const REMEMBERED_FILTERS = ['cq', 'cflags', 'sq', 'sflags'] as const;
 
 export const StandingCrewPage = (): JSX.Element => {
   const t = useT();
@@ -84,8 +89,14 @@ export const StandingCrewPage = (): JSX.Element => {
   const [rows, setRows] = useState<BoardRow[]>([]);
   const [sp, setSp] = useSearchParams();
   useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
-  const search = sp.get('q') ?? '';
-  const active = readList(sp, 'flags') as RequirementFilter[];
+  const queryOf = (kind: PoolKind): PoolQuery => ({
+    search: sp.get(POOL_PARAMS[kind].search) ?? '',
+    flags: readList(sp, POOL_PARAMS[kind].flags) as RequirementFilter[],
+  });
+  const queries: Record<PoolKind, PoolQuery> = {
+    captains: queryOf('captains'),
+    specialists: queryOf('specialists'),
+  };
   // Replaces rather than pushes: narrowing the pool is a view of this board, not a place to go
   // Back to. The pool is filtered in the browser, so this only moves where the state lives.
   const patch = (updates: Record<string, string | null>): void => {
@@ -96,7 +107,11 @@ export const StandingCrewPage = (): JSX.Element => {
     }
     setSp(next, { replace: true });
   };
-  const setSearch = (value: string): void => patch({ q: value });
+  const setQuery = (kind: PoolKind, next: PoolQuery): void =>
+    patch({
+      [POOL_PARAMS[kind].search]: next.search,
+      [POOL_PARAMS[kind].flags]: writeList(next.flags),
+    });
   const [adding, setAdding] = useState('');
 
   // The server's list is the truth about WHICH vehicles are in the fleet; the draft is the truth
@@ -109,10 +124,6 @@ export const StandingCrewPage = (): JSX.Element => {
   }, [serverRows]);
 
   const members = directory.data?.members ?? [];
-  const pool = useMemo(
-    () => filterPool(availablePool(members, rows), active, search),
-    [members, rows, active, search],
-  );
   const memberOf = (employeeId: string | null): OperationsCrewMemberDto | undefined =>
     employeeId === null ? undefined : members.find((m) => m.employeeId === employeeId);
 
@@ -176,11 +187,6 @@ export const StandingCrewPage = (): JSX.Element => {
     }
   };
 
-  const toggleFilter = (flag: RequirementFilter): void =>
-    patch({
-      flags: writeList(active.includes(flag) ? active.filter((f) => f !== flag) : [...active, flag]),
-    });
-
   return (
     <PageContainer>
       <PageHeader
@@ -228,62 +234,25 @@ export const StandingCrewPage = (): JSX.Element => {
         </CardBody>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-[18rem_1fr]">
-        {/* ── The pool ────────────────────────────────────────────────────── */}
-        <Card>
-          <CardBody className="space-y-3">
-            <h2 className="text-sm font-semibold">{t('operations.crew.pool')}</h2>
-            <CrewRosterNotice rosterIsDerived={directory.data?.rosterIsDerived} />
-            <Input
-              placeholder={t('operations.crew.searchPool')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-            <div className="flex flex-wrap gap-1">
-              {POOL_FILTERS.map((flag) => (
-                <button
-                  key={flag}
-                  type="button"
-                  aria-pressed={active.includes(flag)}
-                  onClick={() => toggleFilter(flag)}
-                  className={
-                    active.includes(flag)
-                      ? 'rounded-full border border-brand-500 bg-brand-50 px-2 py-0.5 text-xs text-brand-700 dark:bg-brand-950 dark:text-brand-300'
-                      : 'rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400'
-                  }
-                >
-                  {t(`operations.crew.flag.${flag}`)}
-                </button>
-              ))}
-            </div>
-
-            {directory.isLoading && <Spinner />}
-            {directory.isError && (
-              <ErrorState error={directory.error} onRetry={() => void directory.refetch()} />
-            )}
-            {!directory.isLoading && pool.length === 0 && (
-              <p className="text-sm text-slate-500">{t('operations.crew.poolEmpty')}</p>
-            )}
-            <div
-              className="space-y-2"
-              // Dropping back onto the pool clears the member from wherever they were.
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={(e) => {
-                e.preventDefault();
-                const employeeId = e.dataTransfer.getData(CREW_DRAG_TYPE);
-                if (employeeId === '' || !canPlan) return;
-                setRows((prev) => removeFromBoard(prev, employeeId));
-              }}
-            >
-              {pool.map((member) => (
-                <CrewMemberCard key={member.employeeId} member={member} draggable={canPlan} />
-              ))}
-            </div>
-          </CardBody>
-        </Card>
+      {/* Vehicles at the start, the two pools at the end — the same layout as the daily board,
+          for the same reasons (see CrewBoardPage). */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem] 2xl:grid-cols-[minmax(0,1fr)_32rem]">
+        <CrewPools
+          className="lg:sticky lg:top-4 lg:col-start-2 lg:row-start-1 lg:h-[calc(100dvh-7rem)] lg:self-start"
+          members={members}
+          rows={rows}
+          queries={queries}
+          onQueryChange={setQuery}
+          loading={directory.isLoading}
+          error={directory.isError ? directory.error : null}
+          onRetry={() => void directory.refetch()}
+          rosterIsDerived={directory.data?.rosterIsDerived}
+          canPlan={canPlan}
+          onReturn={(employeeId) => setRows((prev) => removeFromBoard(prev, employeeId))}
+        />
 
         {/* ── The cash-transfer vehicles ──────────────────────────────────── */}
-        <div className="space-y-3">
+        <div className="space-y-3 lg:col-start-1 lg:row-start-1">
           {standing.isLoading && <Spinner />}
           {standing.isError && (
             <ErrorState error={standing.error} onRetry={() => void standing.refetch()} />

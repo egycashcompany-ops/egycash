@@ -20,10 +20,16 @@ export const CrewMemberCard = ({
   member,
   draggable = true,
   onRemove,
+  showCaptainBadge = true,
 }: {
   member: OperationsCrewMemberDto;
   draggable?: boolean;
   onRemove?: (() => void) | undefined;
+  /**
+   * Off inside the captains pool, where every card would carry it and so it would say nothing —
+   * and where the column is narrow enough that the width is better spent on the name.
+   */
+  showCaptainBadge?: boolean;
 }): JSX.Element => {
   const t = useT();
   const req = member.requirements;
@@ -41,7 +47,7 @@ export const CrewMemberCard = ({
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium">{member.fullNameAr}</span>
-          {req?.isCaptain === true && (
+          {showCaptainBadge && req?.isCaptain === true && (
             <Badge tone="brand" size="sm">
               {t('operations.crew.role.captain')}
             </Badge>

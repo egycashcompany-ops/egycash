@@ -350,40 +350,13 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
 /**
  * «بيانات الفيزتين اكنهم جدول»: on a computer every card line is a row of the same columns, so a
  * card's number, its expiry and its PIN sit under the line above's — never wherever its
- * neighbours' widths pushed them. The header above the groups uses the same template. The name
- * takes what is left; the figures after it are fixed and close together («الpin … يكون اقرب»).
+ * neighbours' widths pushed them. No column names above — the boxes alone line up. The name takes
+ * what is left; the figures after it are fixed and close together («الpin … يكون اقرب»).
  */
 export const CARD_COLUMNS =
   'xl:grid xl:grid-cols-[minmax(10rem,1fr)_15rem_12.5rem_8rem_auto] xl:items-center xl:gap-3';
 export const CHARGE_COLUMNS =
   'xl:grid xl:grid-cols-[minmax(9rem,1fr)_14rem_11.5rem_14rem_auto] xl:items-center xl:gap-3';
-
-/** The column names over the groups — placed where a group's lines are, past its car column. */
-export const BoardColumnHeader = ({
-  columns,
-  labels,
-}: {
-  columns: string;
-  labels: readonly string[];
-}): JSX.Element => (
-  <div className="hidden border border-transparent xl:flex" data-board-columns="true">
-    <div className="w-52 shrink-0" />
-    <div className="min-w-0 flex-1 px-2.5">
-      <div
-        className={cn(
-          columns,
-          'border border-transparent px-3 pb-1 text-xs font-bold text-slate-500 dark:text-slate-400',
-        )}
-      >
-        {labels.map((label, index) => (
-          <span key={index} className={index === labels.length - 1 ? 'text-end' : undefined}>
-            {label}
-          </span>
-        ))}
-      </div>
-    </div>
-  </div>
-);
 
 export const FuelCardRow = ({
   card,

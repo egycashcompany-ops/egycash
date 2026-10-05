@@ -32,7 +32,6 @@ import { FuelCardHistoryDialog } from '../components/FuelCardHistoryDialog';
 import { FUEL_CARD_COMPANIES, groupByVehicle } from '../components/FuelCardTiles';
 import {
   BOARD_FONT,
-  BoardColumnHeader,
   BoardIcon,
   CHARGE_COLUMNS,
   BoardKpi,
@@ -597,16 +596,6 @@ export const FuelChargingPage = (): JSX.Element => {
           <EmptyState title={t('fleet.fuelCards.empty')} />
         ) : (
           <div className="space-y-3">
-            <BoardColumnHeader
-              columns={CHARGE_COLUMNS}
-              labels={[
-                t('fleet.fuelCards.fields.name'),
-                t('fleet.fuelCards.fields.number'),
-                t('fleet.fuelCards.fields.balance'),
-                t('fleet.fuelCards.fields.request'),
-                t('fleet.fuelCards.history.open'),
-              ]}
-            />
             {tiles.map((tile) => (
               <VehicleFuelGroup
                 key={tile.vehicleId}

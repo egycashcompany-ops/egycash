@@ -23,9 +23,10 @@ describe('the assembled page registry', () => {
   });
 
   // ADR-032 added one page (`platform.delegation`) carrying one key (`delegation.manage`).
-  it('declares 80 pages over 300 permissions', () => {
+  // The custody acknowledgment's national ID added one key and no page (see below).
+  it('declares 80 pages over 301 permissions', () => {
     expect(pages).toHaveLength(80);
-    expect(permissions).toHaveLength(300);
+    expect(permissions).toHaveLength(301);
   });
 
   /**
@@ -76,10 +77,15 @@ describe('the assembled page registry', () => {
    * a record directly — it is written by completing a session, and a key that could mint one would
    * be a way to claim somebody was taught something without a session ever having run. No `edit`
    * and no `delete` either: a record says what somebody was taught, and that is not revised.
+   *
+   * The custody acknowledgment adds ONE key and no page: `itAsset.viewNationalId` decides who sees
+   * the holder's national ID on a receipt (Security Architecture §3's sensitive-data grant). It is
+   * a power over the assets screen's receipts, not a screen, so it routes to `it.assets` and the
+   * unassigned count does not move.
    */
-  it('assigns 271 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 272 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(271);
+    expect(assigned).toHaveLength(272);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.

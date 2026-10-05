@@ -210,11 +210,17 @@ export const CrewPools = ({
     !loading && members.length > 0 && members.every((m) => m.requirements?.isCaptain !== true);
 
   return (
-    <div className={cn('flex min-h-0 flex-col gap-3', className)}>
+    // `lg:overflow-y-auto`: from lg the pages pin this column at a fixed height, and on a short
+    // window — or with the roster notice and an error above the pools — the pools can need more than
+    // that. The column then scrolls; before, the captains list simply ran on over the specialists.
+    <div className={cn('flex min-h-0 flex-col gap-3 lg:overflow-y-auto', className)}>
       <CrewRosterNotice rosterIsDerived={rosterIsDerived} />
       {loading && <Spinner />}
       {error !== null && error !== undefined && <ErrorState error={error} onRetry={onRetry} />}
-      <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-2 xl:grid-cols-2 xl:grid-rows-1">
+      {/* A FLOOR on every row (17rem): a pool's search, filters and hint plus the list's own
+          minimum. Plain `grid-rows-2` is minmax(0, 1fr), which let a short row squeeze a pool
+          below its fixed parts and its content spill into the next pool. */}
+      <div className="grid min-h-0 flex-1 gap-3 sm:grid-cols-2 lg:grid-cols-1 lg:grid-rows-[repeat(2,minmax(17rem,1fr))] xl:grid-cols-2 xl:grid-rows-[minmax(17rem,1fr)]">
         {POOL_KINDS.map((kind) => (
           <PoolColumn
             key={kind}

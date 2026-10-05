@@ -238,7 +238,9 @@ export const StandingCrewPage = (): JSX.Element => {
           rows={rows}
           queries={queries}
           onQueryChange={setQuery}
-          loading={directory.isLoading}
+          // `isPending`, not `isLoading`: offline, a first fetch is PAUSED — pending but not
+          // loading — and an `isLoading` gate then read the empty roster as "nobody left to assign".
+          loading={directory.isPending}
           error={directory.isError ? directory.error : null}
           onRetry={() => void directory.refetch()}
           rosterIsDerived={directory.data?.rosterIsDerived}
@@ -278,11 +280,12 @@ export const StandingCrewPage = (): JSX.Element => {
                       the time could not be clicked. From `sm` up the row never wraps and the direction
                       shrinks — which takes `min-w-0` on the ROW as well as on the box: a flex row's
                       minimum width is otherwise its contents' (224 + 144px), so the box's own
-                      permission to shrink never came into play. On a phone the direction keeps 7rem
-                      and anything that no longer fits — the standing crew's إزالة — moves to the next
-                      line instead of crushing it. */}
+                      permission to shrink never came into play. On a phone the direction keeps 5rem —
+                      small enough that direction and time still share a line on a 320px screen — and
+                      anything that no longer fits, the standing crew's إزالة, moves to the next line
+                      instead of crushing it. */}
                   <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
-                    <div className="min-w-[7rem] flex-1 sm:w-56 sm:min-w-0 sm:flex-initial">
+                    <div className="min-w-20 flex-1 sm:w-56 sm:min-w-0 sm:flex-initial">
                       <Input
                         aria-label={t('operations.crew.direction')}
                         placeholder={t('operations.crew.direction')}

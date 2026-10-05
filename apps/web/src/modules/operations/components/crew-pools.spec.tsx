@@ -3,6 +3,8 @@
 // `crew-board.spec.ts` proves the split; this proves what a planner sees of it: two columns,
 // captains first (so on the right in Arabic, as the legacy board had them), each with its own
 // search, nobody listed twice and nobody already on a card listed at all.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Provider } from 'react-redux';
@@ -273,4 +275,19 @@ describe('CrewPools — nobody marked as a captain', () => {
       translate('ar', 'operations.crew.pools.noCaptainsFlagged'),
     );
   });
+});
+
+// The pages decide what "not answered yet" means, and `isLoading` is the wrong question: offline, a
+// first fetch is PAUSED — pending but not loading — and an `isLoading` gate read that empty roster
+// as "nobody left to assign". The component cannot see which flag it was given, so the choice is
+// pinned where it is made.
+describe('the crew screens wait for the roster with isPending', () => {
+  const PAGES = fileURLToPath(new URL('../pages/', import.meta.url));
+  for (const page of ['CrewBoardPage.tsx', 'StandingCrewPage.tsx']) {
+    it(page, () => {
+      const src = readFileSync(`${PAGES}${page}`, 'utf8');
+      expect(src).toContain('loading={directory.isPending}');
+      expect(src).not.toContain('loading={directory.isLoading}');
+    });
+  }
 });

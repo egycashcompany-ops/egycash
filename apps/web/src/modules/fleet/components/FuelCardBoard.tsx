@@ -234,7 +234,7 @@ const ExpiryTag = ({ state }: { state: ExpiryState }): JSX.Element | null => {
     <span
       data-fuel-expiry={state}
       className={cn(
-        'rounded border px-1 py-[0.05rem] text-[11px] font-medium',
+        'whitespace-nowrap rounded border px-1 py-[0.05rem] text-[11px] font-medium',
         state === 'valid' &&
           'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400',
         state === 'soon' &&
@@ -274,7 +274,7 @@ const PinBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
   };
   const mayReveal = card.hasPassword && can('fleetFuelCard.reveal');
   return (
-    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1">
+    <div className="flex items-center gap-1 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2 py-1 xl:justify-self-start">
       <span className="font-mono text-sm text-slate-500">{t('fleet.fuelCards.board.pin')}</span>
       <span
         className={cn(
@@ -322,11 +322,14 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
     toast.success(t('fleet.fuelCards.numberCopied'));
   };
   return (
-    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1">
+    <div className="flex items-center gap-1.5 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#0b0f19] px-2.5 py-1 xl:justify-self-start">
       <span
         data-fuel-number={card.id}
         dir="ltr"
-        className={cn('text-base font-bold tracking-wider text-slate-800 dark:text-slate-200', NUM)}
+        className={cn(
+          'whitespace-nowrap text-base font-bold tracking-wider text-slate-800 dark:text-slate-200',
+          NUM,
+        )}
       >
         {groupCardNumber(card.number)}
       </span>
@@ -343,6 +346,43 @@ const NumberBox = ({ card }: { card: FleetFuelCardDto }): JSX.Element => {
     </div>
   );
 };
+
+/**
+ * «بيانات الفيزتين اكنهم جدول»: on a computer every card line is a row of the same columns, so a
+ * card's number, its expiry and its PIN sit under the line above's — never wherever its
+ * neighbours' widths pushed them. The header above the groups uses the same template.
+ */
+export const CARD_COLUMNS =
+  'xl:grid xl:grid-cols-[minmax(10rem,1.2fr)_minmax(14.5rem,1fr)_minmax(11.5rem,1fr)_minmax(7rem,0.6fr)_auto] xl:items-center xl:gap-3 2xl:gap-4';
+export const CHARGE_COLUMNS =
+  'xl:grid xl:grid-cols-[minmax(9rem,1.2fr)_minmax(14rem,1fr)_minmax(10.5rem,1fr)_minmax(14.5rem,1fr)_auto] xl:items-center xl:gap-3 2xl:gap-4';
+
+/** The column names over the groups — placed where a group's lines are, past its car column. */
+export const BoardColumnHeader = ({
+  columns,
+  labels,
+}: {
+  columns: string;
+  labels: readonly string[];
+}): JSX.Element => (
+  <div className="hidden border border-transparent xl:flex" data-board-columns="true">
+    <div className="w-52 shrink-0" />
+    <div className="min-w-0 flex-1 px-2.5">
+      <div
+        className={cn(
+          columns,
+          'border border-transparent px-3 pb-1 text-xs font-bold text-slate-500 dark:text-slate-400',
+        )}
+      >
+        {labels.map((label, index) => (
+          <span key={index} className={index === labels.length - 1 ? 'text-end' : undefined}>
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  </div>
+);
 
 export const FuelCardRow = ({
   card,
@@ -364,12 +404,18 @@ export const FuelCardRow = ({
     <div
       data-fuel-line={card.company}
       data-fuel-card={card.id}
-      className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2.5 transition hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-md"
+      className={cn(
+        'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-3 py-2.5 transition hover:border-slate-300 dark:hover:border-slate-700/80 hover:shadow-md',
+        CARD_COLUMNS,
+      )}
     >
-      <div className="flex min-w-[210px] items-center gap-3">
+      <div className="flex min-w-[210px] items-center gap-3 xl:min-w-0">
         <CompanyBadge company={card.company} />
-        <div className="flex flex-col">
-          <span className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white">
+        <div className="flex min-w-0 flex-col">
+          <span
+            title={card.name}
+            className="whitespace-nowrap font-mono text-base font-bold tracking-wide text-slate-900 dark:text-white xl:truncate"
+          >
             {card.name}
           </span>
           <span className={cn('mt-0.5 flex items-center gap-1 text-sm font-medium', tone.text)}>
@@ -379,7 +425,7 @@ export const FuelCardRow = ({
         </div>
       </div>
 
-      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4">
+      <div className="my-auto flex flex-wrap items-center gap-3 sm:gap-4 xl:contents">
         <NumberBox card={card} />
         <div
           className={cn(
@@ -396,7 +442,7 @@ export const FuelCardRow = ({
         <PinBox card={card} />
       </div>
 
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 xl:justify-self-end">
         <button
           type="button"
           data-fuel-image={card.id}
@@ -405,7 +451,7 @@ export const FuelCardRow = ({
           className="inline-flex items-center gap-1 rounded-md border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 px-2.5 py-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white"
         >
           <Svg d={PATH.image} className={cn('h-3.5 w-3.5', tone.text)} />
-          <span>{t('fleet.fuelCards.board.photo')}</span>
+          <span className="xl:max-2xl:sr-only">{t('fleet.fuelCards.board.photo')}</span>
         </button>
         {can('fleetFuelCard.edit') && (
           <button

@@ -796,7 +796,12 @@ describe('the Fleet form dialogs survive a click outside them', () => {
   it('and so does the vehicle form — the longest form in the module', () => {
     // «عند اضافه سياره الموديل اللى يظهر لازم ادوس على الاكس عشان يتقفل مش فى اى حته». Reaching
     // for a field past the edge of the panel threw away every box already filled in.
-    expect(read('components/VehicleFormDialog.tsx')).toContain('dismissOnOutsideClick={false}');
+    // The form is drawn in the fuel dialogs' design now: its backdrop has no click of its own, so
+    // only the ✕, «إلغاء» and Escape close it.
+    const source = read('components/VehicleFormDialog.tsx');
+    expect(source).toContain('data-vehicle-form="true"');
+    expect(source.split('onClick={onClose}'), 'the ✕ and «إلغاء», nothing else').toHaveLength(3);
+    expect(source).not.toMatch(/aria-hidden="true"\s*onClick/u);
   });
 
   it('the default is untouched, so no other module′s dialogs change', () => {

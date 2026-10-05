@@ -38,7 +38,9 @@ import { FuelCardImageDialog } from '../components/FuelCardImage';
 import { FUEL_CARD_COMPANIES } from '../components/FuelCardTiles';
 import {
   BOARD_FONT,
+  BoardColumnHeader,
   BoardIcon,
+  CARD_COLUMNS,
   BoardKpi,
   CompanyBadge,
   EmptySlotRow,
@@ -527,6 +529,16 @@ export const FuelCardsPage = (): JSX.Element => {
           <EmptyState title={t('fleet.fuelCards.empty')} />
         ) : (
           <div className="space-y-3">
+            <BoardColumnHeader
+              columns={CARD_COLUMNS}
+              labels={[
+                t('fleet.fuelCards.fields.name'),
+                t('fleet.fuelCards.fields.number'),
+                t('fleet.fuelCards.fields.expiresAt'),
+                t('fleet.fuelCards.fields.password'),
+                t('fleet.vehicles.columns.actions'),
+              ]}
+            />
             {carGroups.map((group) => {
               const held = FUEL_CARD_COMPANIES.filter((slot) => group.cards[slot] !== undefined);
               const free = FUEL_CARD_COMPANIES.filter((slot) => group.cards[slot] === undefined);

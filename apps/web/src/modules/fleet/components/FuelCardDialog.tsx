@@ -113,13 +113,13 @@ export const carBoxClass = (editing: boolean): string =>
     '[&_.end-2]:!end-3 [&_.end-2]:!gap-1.5 [&_.end-2_svg]:!h-4 [&_.end-2_svg]:!w-4',
     '[&_.end-2_button]:!p-1 [&_.end-2_button:hover]:!text-rose-400',
     '[&_.end-2_button]:relative [&_.end-2_button]:after:absolute [&_.end-2_button]:after:-end-1 [&_.end-2_button]:after:top-1/2 [&_.end-2_button]:after:h-4 [&_.end-2_button]:after:w-px [&_.end-2_button]:after:-translate-y-1/2 [&_.end-2_button]:after:bg-slate-200 dark:[&_.end-2_button]:after:bg-slate-700 [&_.end-2_button]:me-1',
-    '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-slate-200 dark:[&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-[#131d35]',
+    '[&_[role=listbox]]:!rounded-xl [&_[role=listbox]]:!border-slate-200 dark:[&_[role=listbox]]:!border-[#2b3b6b] [&_[role=listbox]]:!bg-white dark:[&_[role=listbox]]:!bg-[#131d35]',
   );
 
 /** The design's calendar button, lightened for the dark box — each design its own filter. */
-const DATE_ICON = {
-  add: '[&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 [&::-webkit-calendar-picker-indicator]:[filter:invert(0.8)_brightness(1.2)] hover:[&::-webkit-calendar-picker-indicator]:opacity-100',
-  edit: '[&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:[filter:invert(0.8)_sepia(0.2)_saturate(2)_hue-rotate(185deg)]',
+export const DATE_ICON = {
+  add: '[&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-70 dark:[&::-webkit-calendar-picker-indicator]:[filter:invert(0.8)_brightness(1.2)] hover:[&::-webkit-calendar-picker-indicator]:opacity-100',
+  edit: '[&::-webkit-calendar-picker-indicator]:cursor-pointer dark:[&::-webkit-calendar-picker-indicator]:[filter:invert(0.8)_sepia(0.2)_saturate(2)_hue-rotate(185deg)]',
 } as const;
 
 /** The «!» circle, filled, inside a refused box. */

@@ -9,6 +9,7 @@
 // The image section renders ONLY when there is an image (§9): an empty "license image" heading
 // over blank paper is worse than no section, so absent means absent.
 import { type Locale } from '@ecms/contracts';
+import { openPrintWindow, writePrintWindow } from '../../../shared/lib/print-window';
 
 export interface VehiclePrintRow {
   label: string;
@@ -121,8 +122,16 @@ export const buildVehiclePrintHtml = (
 </html>`;
 };
 
-/** Compose the document, resolve the image if there is one, and hand it to the print dialog. */
+/**
+ * Compose the document, resolve the image if there is one, and hand it to the print dialog.
+ *
+ * The tab is opened FIRST, inside the click: the image is fetched before the document can be
+ * written, and a tab opened after that round trip is one a popup blocker may refuse. The dialog
+ * opens from the app's own script once the inlined image has decoded (`shared/lib/print-window`).
+ */
 export const printLicenceRecord = async (doc: VehiclePrintDocument): Promise<void> => {
+  const win = openPrintWindow();
+  if (win === null) throw new Error('popup blocked');
   let imageDataUrl: string | null = null;
   if (doc.licenseImage !== null) {
     // A failed image must not cost the user the printout — the record still prints, without it.
@@ -131,12 +140,5 @@ export const printLicenceRecord = async (doc: VehiclePrintDocument): Promise<voi
       .then(blobToDataUrl)
       .catch(() => null);
   }
-  const win = window.open('', '_blank');
-  if (win === null) throw new Error('popup blocked');
-  win.document.open();
-  win.document.write(buildVehiclePrintHtml(doc, imageDataUrl));
-  win.document.close();
-  win.focus();
-  // Let the inlined image decode and the table lay out before the dialog measures the page.
-  win.setTimeout(() => win.print(), 350);
+  writePrintWindow(win, buildVehiclePrintHtml(doc, imageDataUrl));
 };

@@ -39,7 +39,10 @@ describe('two pages in one printed document', () => {
 
   it('starts the second page on a new sheet of paper, and prints once', () => {
     expect(html).toContain('.page + .page { break-before: page; page-break-before: always; }');
-    expect(html.match(/window\.print\(\)/gu)).toHaveLength(1);
+    // ONE document, opened and printed once by the app — the pages carry no print of their own
+    // (a script in them would never run: the tab inherits the app's Content-Security-Policy).
+    expect(html).not.toMatch(/<script/iu);
+    expect(html).not.toContain('window.print');
   });
 
   it('keeps the web font import FIRST in the stylesheet, where CSS honours it', () => {

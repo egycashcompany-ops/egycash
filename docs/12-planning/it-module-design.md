@@ -743,5 +743,9 @@ starts only on an explicit owner GO.
   Found on the way: the tab inherits the app's Content-Security-Policy (`script-src 'self'`,
   `script-src-attr 'none'`), so the inline script that was to open the print dialog never ran; the
   page now carries no script of its own and is driven from the app's script (`wireReceiptWindow`).
-  The same inline-script idiom is used by other modules' printed pages and has the same defect;
-  they are not changed here.
+  The same inline-script idiom was used by other modules' printed pages, with the same defect;
+  the follow-up (2026-10-05, «صلح الطباعة في الأسطول والذهب كمان») moved fleet's reports, notices
+  and licence records, gold's documents and IT's label sheet onto one door,
+  `apps/web/src/shared/lib/print-window.ts`, whose spec holds the whole web app to «no printed page
+  carries a script of its own». The label sheet had a second defect: its tab was opened with
+  `noopener`, for which `window.open` returns null by definition, so the HTML sheet never printed.

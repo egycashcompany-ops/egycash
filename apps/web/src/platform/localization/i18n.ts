@@ -4990,6 +4990,8 @@ const en: Record<string, string> = {
   'it.assets.accessoriesHint':
     'What is handed over with the device, such as a charger or a bag. One per line.',
   'it.assets.noSpecs': 'No specifications or accessories recorded.',
+  'it.assets.prefilledFrom':
+    "Filled from the last asset in this category ({{code}}). Check it, then enter this device's serial number and printed tag.",
 
   'it.scan.subtitle': 'Scan or type an asset code to open its record',
   'it.scan.codeLabel': 'Asset code',
@@ -12447,6 +12449,8 @@ const ar: Record<string, string> = {
   'it.assets.onePerLine': 'بند واحد في كل سطر.',
   'it.assets.accessoriesHint': 'ما يُسلَّم مع الجهاز، مثل الشاحن أو الحقيبة. بند واحد في كل سطر.',
   'it.assets.noSpecs': 'لا توجد مواصفات أو مشتملات مسجّلة.',
+  'it.assets.prefilledFrom':
+    'مُلئت البيانات من آخر أصل في هذه الفئة ({{code}})؛ راجعها، ثم أدخل الرقم التسلسلي والملصق المطبوع لهذا الجهاز.',
 
   'it.scan.subtitle': 'امسح كود الأصل أو اكتبه لفتح سجله',
   'it.scan.codeLabel': 'كود الأصل',

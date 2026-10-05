@@ -814,3 +814,13 @@ starts only on an explicit owner GO.
   (a receipt line already carried both, so stored receipts print the same way). A make and model is
   one name and is kept on one line, so the statement is set from the right edge rather than
   justified — justifying a line that carries a long unbreakable name stretches its gaps.
+- **A new asset starts from the last one of its category** (2026-10-05) — owner request: «ماذا لو
+  عندي 20 جهاز بنفس المواصفات .. هفضل أكتب نفس المواصفات !؟ أكيد لأ .. لما أختار الفئة يحمل
+  البيانات كلها من السابق ماعدا السيريال والـ Tag والحاجات المتغيره فقط». In the create form,
+  picking a category reads the most recently registered asset of that category (the register's
+  own list, scoped as always) and fills every box still empty: name, description, make, model,
+  branch, purchase, warranty, specifications and accessories. What makes one unit itself — the
+  serial number, the printed tag, the location and the notes — is never copied, nothing the user
+  already typed is replaced, and picking another category swaps the first template's values for
+  the second's. A note names the asset the form was filled from. No API change; the rule lives in
+  `apps/web/src/modules/it/lib/asset-form.ts`.

@@ -12,6 +12,10 @@
 // «المواصفات والمشتملات» are what the custody acknowledgment prints for the device (FR-18): a box
 // per row of its specifications table, and the accessories one per line. Left empty, a row is
 // left off the paper.
+//
+// A NEW asset starts from the last one of the category picked for it — «لو عندي 20 جهاز بنفس
+// المواصفات … هفضل أكتب نفس المواصفات !؟ أكيد لأ» — every empty box but the per-unit ones (serial,
+// printed tag, location, notes); see `lib/asset-form.ts`.
 import { useEffect, useState } from 'react';
 import { type ItAssetDto, type Locale } from '@ecms/contracts';
 import { useAppSelector } from '../../../store';
@@ -25,68 +29,14 @@ import { localized } from '../../../shared/lib/format';
 import { ItCatalogSelect } from './ItCatalogSelect';
 import { VendorPicker } from './VendorPicker';
 import { useCreateItAsset, useItBranchOptions, useUpdateItAsset } from '../api/it-queries';
+import * as api from '../api/it-api';
+import { SPEC_FIELDS, fromLines, specsInput, type SpecsDraft } from '../lib/asset-specs';
 import {
-  SPEC_FIELDS,
-  fromLines,
-  specsDraft,
-  specsInput,
-  toLines,
-  type SpecsDraft,
-} from '../lib/asset-specs';
-
-interface FormState {
-  name: string;
-  description: string;
-  categoryId: string;
-  serialNumber: string;
-  model: string;
-  manufacturer: string;
-  externalTag: string;
-  branchId: string;
-  location: string;
-  purchaseDate: string;
-  purchaseCost: string;
-  purchaseVendorId: string;
-  invoiceRef: string;
-  warrantyStart: string;
-  warrantyEnd: string;
-  warrantyVendorId: string;
-  warrantyTerms: string;
-  notes: string;
-  specs: SpecsDraft;
-  /** One per line. */
-  accessories: string;
-}
-
-/** The fields edited as one text box each. */
-type TextKey = { [K in keyof FormState]: FormState[K] extends string ? K : never }[keyof FormState];
-
-const day = (iso: string | null): string => (iso === null ? '' : iso.slice(0, 10));
-
-const fromAsset = (asset: ItAssetDto | null): FormState => ({
-  name: asset?.name ?? '',
-  description: asset?.description ?? '',
-  categoryId: asset?.categoryId ?? '',
-  serialNumber: asset?.serialNumber ?? '',
-  model: asset?.model ?? '',
-  manufacturer: asset?.manufacturer ?? '',
-  externalTag: asset?.externalTag ?? '',
-  branchId: asset?.branchId ?? '',
-  location: asset?.location ?? '',
-  purchaseDate: day(asset?.purchase?.date ?? null),
-  purchaseCost: asset?.purchase?.cost === undefined || asset.purchase === null
-    ? ''
-    : String(asset.purchase.cost ?? ''),
-  purchaseVendorId: asset?.purchase?.vendorId ?? '',
-  invoiceRef: asset?.purchase?.invoiceRef ?? '',
-  warrantyStart: day(asset?.warranty?.start ?? null),
-  warrantyEnd: day(asset?.warranty?.end ?? null),
-  warrantyVendorId: asset?.warranty?.vendorId ?? '',
-  warrantyTerms: asset?.warranty?.terms ?? '',
-  notes: asset?.notes ?? '',
-  specs: specsDraft(asset?.specs ?? null),
-  accessories: toLines(asset?.accessories ?? []),
-});
+  assetFormFrom,
+  prefillFrom,
+  type AssetFormState as FormState,
+  type AssetTextKey as TextKey,
+} from '../lib/asset-form';
 
 export const AssetFormDialog = ({
   open,
@@ -100,12 +50,15 @@ export const AssetFormDialog = ({
 }): JSX.Element => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [form, setForm] = useState<FormState>(fromAsset(asset));
+  const [form, setForm] = useState<FormState>(assetFormFrom(asset));
   const [error, setError] = useState<string | null>(null);
+  // The asset a new one was filled from, and what it filled — so a second category swaps it out.
+  const [template, setTemplate] = useState<{ code: string; form: FormState } | null>(null);
   useEffect(() => {
     if (open) {
-      setForm(fromAsset(asset));
+      setForm(assetFormFrom(asset));
       setError(null);
+      setTemplate(null);
     }
   }, [open, asset]);
 
@@ -117,6 +70,36 @@ export const AssetFormDialog = ({
   const set = (key: TextKey) => (value: string) => setForm((prev) => ({ ...prev, [key]: value }));
   const setSpec = (key: keyof SpecsDraft) => (value: string) =>
     setForm((prev) => ({ ...prev, specs: { ...prev.specs, [key]: value } }));
+
+  /**
+   * Picking a category for a NEW asset fills it from the last one registered in that category. A
+   * convenience, never a gate: no earlier asset, or a read that fails, leaves the form as it was.
+   */
+  const pickCategory = async (categoryId: string): Promise<void> => {
+    set('categoryId')(categoryId);
+    if (asset !== null || categoryId === '') return;
+    try {
+      const page = await api.listAssets({
+        categoryId,
+        sortBy: 'createdAt',
+        sortDir: 'desc',
+        page: 1,
+        pageSize: 1,
+      });
+      const [last] = page.items;
+      if (last === undefined) return;
+      const filled = assetFormFrom(last);
+      // Only if the category is still the one picked — a quicker second pick wins.
+      setForm((current) =>
+        current.categoryId === categoryId
+          ? prefillFrom(current, filled, template?.form ?? null)
+          : current,
+      );
+      setTemplate({ code: last.assetCode, form: filled });
+    } catch {
+      // Typing the device in by hand is still possible; nothing to report.
+    }
+  };
 
   const complete =
     form.name.trim() !== '' && form.categoryId !== '' && (asset !== null || form.branchId !== '');
@@ -257,11 +240,19 @@ export const AssetFormDialog = ({
           <ItCatalogSelect
             kind="assetCategory"
             value={form.categoryId}
-            onChange={set('categoryId')}
+            onChange={(categoryId) => void pickCategory(categoryId)}
             className="w-full"
             ariaLabel={t('it.assets.fields.category')}
           />
         </Field>
+        {asset === null && template !== null && (
+          <p
+            role="note"
+            className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 sm:col-span-2 dark:bg-sky-950/40 dark:text-sky-200"
+          >
+            {t('it.assets.prefilledFrom', { code: template.code })}
+          </p>
+        )}
         <Field label={t('it.assets.fields.serialNumber')} hint={t('it.assets.serialHint')}>
           <Input
             value={form.serialNumber}

@@ -9,6 +9,15 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Added
+
+- **Registering a batch of identical IT devices no longer means retyping them.** «ماذا لو عندي 20
+  جهاز بنفس المواصفات .. هفضل أكتب نفس المواصفات !؟ أكيد لأ». When a new asset's category is picked,
+  the form fills from the last asset registered in that category — name, make, model, branch,
+  purchase, warranty, specifications and accessories — leaving only what is different for each
+  unit: the serial number, the printed tag, the location and the notes. Nothing already typed is
+  replaced, and a note names the asset the data came from.
+
 ### Fixed
 
 - **Fleet and gold printouts open the print dialog by themselves again — or, in truth, for the

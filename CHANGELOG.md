@@ -9,7 +9,24 @@ its entry here in the same PR.
 
 ## [Unreleased]
 
+### Changed
+
+- **The IT custody receipt carries its own number and the day it is printed.** The footer's fixed
+  «EGYCASH-IT -F-14-02 · Issue date: 1/5/2022» becomes the paper's number — EGYCASH-IT-F-14-0001,
+  one more on every print — beside the form's revision and today's date. The hand-over records the
+  number of the paper the employee signed (a number never printed, or one already used, is
+  refused), and printing a stored receipt again keeps its number; a receipt from before numbering
+  is given one on its next print. The signature block («المستلم», «التوقيع», «الاسم», «الوظيفة») now
+  sits on the left of the page.
+
 ### Fixed
+
+- **The receipt opens as an A4 page that actually prints.** The print tab showed the receipt
+  stretched across the whole window, and the print dialog never opened by itself: the tab inherits
+  the app's Content-Security-Policy, which blocks the inline script that was meant to open it. The
+  tab now shows the paper as an A4 sheet on a grey desk with a toolbar («طباعة الإيصال»,
+  «إغلاق»), and the print dialog is opened from the app's own script once the letterhead has
+  loaded.
 
 - **A tab left open across a deploy reloads itself into the new version instead of breaking.**
   «لما بسيب الموقع مدة طويلة وأرجع بلاقى… Failed to fetch dynamically imported module». Every

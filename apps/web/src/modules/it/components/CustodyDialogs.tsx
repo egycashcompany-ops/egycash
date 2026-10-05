@@ -173,6 +173,8 @@ export const AssignAssetDialog = ({
   const [assignedAt, setAssignedAt] = useState('');
   const [expectedReturnAt, setExpectedReturnAt] = useState('');
   const [printedFor, setPrintedFor] = useState<string | null>(null);
+  // The number on the paper last printed — the one the hand-over records (EGYCASH-IT-F-14-…).
+  const [printedNumber, setPrintedNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   // The id, not the object: a refetch of the asset while the dialog is open must not wipe a
   // receipt that has already been printed.
@@ -186,6 +188,7 @@ export const AssignAssetDialog = ({
       setAssignedAt(nowLocal());
       setExpectedReturnAt('');
       setPrintedFor(null);
+      setPrintedNumber(null);
       setError(null);
     }
   }, [open, startingAssetId]);
@@ -216,7 +219,7 @@ export const AssignAssetDialog = ({
   const print = async (): Promise<void> => {
     setError(null);
     const key = payloadKey;
-    const done = await printer.print(async () => {
+    const paper = await printer.print(async () => {
       try {
         return await api.previewCustodyReceipt(body);
       } catch (err) {
@@ -224,13 +227,19 @@ export const AssignAssetDialog = ({
         throw err;
       }
     });
-    if (done) setPrintedFor(key);
+    if (paper !== null) {
+      setPrintedFor(key);
+      setPrintedNumber(paper.formNumber);
+    }
   };
 
   const submit = async (): Promise<void> => {
     setError(null);
     try {
-      await handOver.mutateAsync(body);
+      await handOver.mutateAsync({
+        ...body,
+        ...(printedNumber === null ? {} : { formNumber: printedNumber }),
+      });
       toast.success(t('it.custody.receipt.handedOver'));
       onClose();
     } catch (err) {
@@ -469,6 +478,7 @@ export const TransferAssetDialog = ({
   const [condition, setCondition] = useState('');
   const [notes, setNotes] = useState('');
   const [printedFor, setPrintedFor] = useState<string | null>(null);
+  const [printedNumber, setPrintedNumber] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const printer = useReceiptPrinter();
 
@@ -481,6 +491,7 @@ export const TransferAssetDialog = ({
       setCondition('');
       setNotes('');
       setPrintedFor(null);
+      setPrintedNumber(null);
       setError(null);
     }
   }, [open]);
@@ -506,7 +517,7 @@ export const TransferAssetDialog = ({
   const print = async (): Promise<void> => {
     setError(null);
     const key = payloadKey;
-    const done = await printer.print(async () => {
+    const paper = await printer.print(async () => {
       try {
         return await api.previewCustodyReceipt({
           kind: 'transfer',
@@ -525,13 +536,22 @@ export const TransferAssetDialog = ({
         throw err;
       }
     });
-    if (done) setPrintedFor(key);
+    if (paper !== null) {
+      setPrintedFor(key);
+      setPrintedNumber(paper.formNumber);
+    }
   };
 
   const submit = async (): Promise<void> => {
     setError(null);
     try {
-      await transfer.mutateAsync({ id: asset.id, body });
+      await transfer.mutateAsync({
+        id: asset.id,
+        body: {
+          ...body,
+          ...(movesHolder && printedNumber !== null ? { formNumber: printedNumber } : {}),
+        },
+      });
       toast.success(t('it.custody.transferred'));
       onClose();
     } catch (err) {

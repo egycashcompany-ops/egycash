@@ -68,6 +68,17 @@ export const getItCustodyReceipt = async (req: Request, res: Response): Promise<
   ok(res, toItCustodyReceiptDto(await itCustodyReceiptService.get(params.id, custodyScope(req))));
 };
 
+/** «طباعة الإيصال» again — the receipt as it prints, its number assured. */
+export const printItCustodyReceipt = async (req: Request, res: Response): Promise<void> => {
+  const { params } = validated<never, never, IdParam>(req);
+  const receipt = await itCustodyReceiptService.print(
+    params.id,
+    authContext(req),
+    custodyScope(req),
+  );
+  ok(res, toItCustodyReceiptDto(receipt));
+};
+
 export const issueItAssignmentReceipt = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
   const receipt = await itCustodyReceiptService.issueForAssignment(

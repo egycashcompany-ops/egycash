@@ -42,6 +42,10 @@ vi.mock('./receipt.repository', () => ({
     ensureCollection: vi.fn(async () => undefined),
   },
 }));
+// The paper's number comes from the counter; here, whatever the hand-over names, or 1.
+vi.mock('./receipt-number', () => ({
+  receiptNumberFor: async (printed?: number) => printed ?? 1,
+}));
 vi.mock('../../../platform/kernel/unit-of-work', () => ({ unitOfWork: mocks.unitOfWork }));
 vi.mock('../../../platform/kernel/event-bus', () => ({ emit: vi.fn(async () => undefined) }));
 vi.mock('../../../platform/audit', () => ({

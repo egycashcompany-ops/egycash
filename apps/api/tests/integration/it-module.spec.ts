@@ -30,6 +30,7 @@ import { userService } from '../../src/platform/users';
 import { settingsService } from '../../src/platform/settings';
 import { disconnectMongo } from '../../src/infrastructure/database/mongo';
 import { ItAssetAssignmentModel } from '../../src/modules/it/assets/assignment.model';
+import { ItCustodyReceiptModel } from '../../src/modules/it/assets/receipt.model';
 import { type AuthContext } from '../../src/shared/types';
 
 const PASSWORD = 'Str0ng#Pass!';
@@ -812,6 +813,8 @@ describe('asset custody', () => {
     const preview = await receipts('/preview').post(body);
     expect(preview.status).toBe(200);
     const paper = data<ItCustodyReceiptDocumentDto>(preview);
+    // The paper's own number, taken by the print — EGYCASH-IT-F-14-…
+    expect(Number.isInteger(paper.formNumber) && (paper.formNumber ?? 0) > 0).toBe(true);
     expect(paper.lines.map((line) => line.assetCode)).toEqual([pc.assetCode, screen.assetCode]);
     expect(paper.lines.every((line) => line.assignmentId === null)).toBe(true);
     // The paper is not the hand-over: both assets are still in stock.
@@ -820,9 +823,11 @@ describe('asset custody', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(data<ItAssetDto>(stillIn).status).toBe('inStock');
 
-    const handed = await receipts('').post(body);
+    const handed = await receipts('').post({ ...body, formNumber: paper.formNumber });
     expect(handed.status).toBe(201);
     const { receipt, assets } = data<ItHandOverResultDto>(handed);
+    // The hand-over records the number of the paper that was signed.
+    expect(receipt.formNumber).toBe(paper.formNumber);
     expect(assets.map((a) => a.status)).toEqual(['assigned', 'assigned']);
     expect(receipt.lines.map((line) => [line.assetCode, line.conditionOnIssue, line.notes])).toEqual(
       [
@@ -832,10 +837,13 @@ describe('asset custody', () => {
     );
     expect(receipt.signedCopy).toBeNull();
 
-    // Printed again, after: the same paper.
-    const again = await receipts(`/${receipt.id}`).get();
+    // Read back, and printed again after: the same paper, under the same number.
+    const stored = await receipts(`/${receipt.id}`).get();
+    expect(stored.status).toBe(200);
+    expect(data<ItCustodyReceiptDto>(stored).lines).toEqual(receipt.lines);
+    const again = await receipts(`/${receipt.id}/print`).post({});
     expect(again.status).toBe(200);
-    expect(data<ItCustodyReceiptDto>(again).lines).toEqual(receipt.lines);
+    expect(data<ItCustodyReceiptDto>(again).formNumber).toBe(paper.formNumber);
 
     // The register names the receipt on every interval it opened, still awaiting its signature.
     const rows = data<ItAssetAssignmentDto[]>(
@@ -850,6 +858,69 @@ describe('asset custody', () => {
 
     // And the paper is refused for what is no longer in stock.
     expect((await receipts('/preview').post(body)).status).toBe(409);
+  });
+
+  it('numbers every print, records a number on one paper only, and refuses one never printed', async () => {
+    const first = await custodyAsset();
+    const second = await custodyAsset();
+    const paperFor = async (assetId: string): Promise<number> => {
+      const res = await receipts('/preview').post({
+        employeeId: EMPLOYEE_A,
+        lines: [{ assetId }],
+      });
+      expect(res.status).toBe(200);
+      return data<ItCustodyReceiptDocumentDto>(res).formNumber ?? 0;
+    };
+
+    // «كل طباعة زود رقم» — printing the same paper again takes the next number.
+    const once = await paperFor(first.id);
+    const twice = await paperFor(first.id);
+    expect(twice).toBe(once + 1);
+
+    const handed = await receipts('').post({
+      employeeId: EMPLOYEE_A,
+      lines: [{ assetId: first.id }],
+      formNumber: twice,
+    });
+    expect(handed.status).toBe(201);
+
+    // That number is on one paper: a second hand-over cannot claim it, and records nothing.
+    const reused = await receipts('').post({
+      employeeId: EMPLOYEE_A,
+      lines: [{ assetId: second.id }],
+      formNumber: twice,
+    });
+    expect(reused.status).toBe(409);
+    // A number the counter never handed out belongs to a paper not printed yet.
+    const invented = await receipts('').post({
+      employeeId: EMPLOYEE_A,
+      lines: [{ assetId: second.id }],
+      formNumber: twice + 1000,
+    });
+    expect(invented.status).toBe(422);
+    const stillIn = await request(app)
+      .get(`/api/v1/it/assets/${second.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(data<ItAssetDto>(stillIn).status).toBe('inStock');
+  });
+
+  it('a receipt from before numbering is given its number on its first print, and keeps it', async () => {
+    const asset = await custodyAsset();
+    await act(asset.id, 'assign', { employeeId: EMPLOYEE_A });
+    const [row] = data<ItAssetAssignmentDto[]>(
+      await request(app)
+        .get(`/api/v1/it/assets/${asset.id}/assignments`)
+        .set('Authorization', `Bearer ${adminToken}`),
+    );
+    const receiptId = row?.receiptId ?? '';
+    await ItCustodyReceiptModel.updateOne({ _id: receiptId }, { $set: { formNumber: null } }).exec();
+
+    const printed = await receipts(`/${receiptId}/print`).post({});
+    expect(printed.status).toBe(200);
+    const number = data<ItCustodyReceiptDto>(printed).formNumber;
+    expect(Number.isInteger(number) && (number ?? 0) > 0).toBe(true);
+    const reprinted = await receipts(`/${receiptId}/print`).post({});
+    expect(data<ItCustodyReceiptDto>(reprinted).formNumber).toBe(number);
   });
 
   it('a hand-over that cannot complete records nothing — no interval, no receipt', async () => {

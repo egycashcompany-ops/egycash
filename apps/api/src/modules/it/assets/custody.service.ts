@@ -41,6 +41,7 @@ import { type ItAssetDoc } from './asset.model';
 import { itCustodyReceiptRepository } from './receipt.repository';
 import { type ItCustodyReceiptDoc, type ItCustodyReceiptLineSub } from './receipt.model';
 import { readReceiptHolder, type ReceiptHolder } from './receipt-holder';
+import { receiptNumberFor } from './receipt-number';
 
 const entityRef = (id: string) => ({ moduleId: 'it', entityType: 'asset', entityId: id });
 
@@ -252,6 +253,9 @@ class ItAssetCustodyService {
     const holder = await readReceiptHolder(input.employeeId);
     refuseLeaver(holder.employee);
     await itCustodyReceiptRepository.ensureCollection();
+    // The number on the paper that was printed for this hand-over — or the next one, for a caller
+    // that printed nothing. Outside the transaction, so a retry of it never takes a second number.
+    const formNumber = await receiptNumberFor(input.formNumber);
     // Allocated up front so each interval can name its receipt as it is created.
     const receiptId = new Types.ObjectId();
 
@@ -337,6 +341,7 @@ class ItAssetCustodyService {
       const receipt = await itCustodyReceiptRepository.create(
         {
           _id: receiptId,
+          formNumber,
           employeeId: new Types.ObjectId(input.employeeId),
           ...signer(holder),
           issuedAt: at,
@@ -462,6 +467,9 @@ class ItAssetCustodyService {
     const named =
       input.toEmployeeId === undefined ? null : await readReceiptHolder(input.toEmployeeId);
     if (named !== null) await itCustodyReceiptRepository.ensureCollection();
+    // Taken only once the transfer is known to hand the asset to somebody new, and kept across a
+    // retry of the transaction so a retry never takes a second number.
+    let formNumber: number | null = null;
     const result = await unitOfWork(async (session) => {
       const asset = await this.loadForTransition(assetId, scope, session);
       await this.assertNoActiveMaintenance(asset, 'transfer', session);
@@ -523,9 +531,11 @@ class ItAssetCustodyService {
       );
 
       if (!sameHolder && receiptId !== null && named !== null) {
+        formNumber ??= await receiptNumberFor(input.formNumber);
         await itCustodyReceiptRepository.create(
           {
             _id: receiptId,
+            formNumber,
             employeeId: new Types.ObjectId(toEmployeeId),
             ...signer(named),
             issuedAt: at,

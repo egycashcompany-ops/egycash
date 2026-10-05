@@ -171,6 +171,7 @@ export const toItAssetAssignmentDto = (
 /** A custody receipt — the paper as it was printed, plus whether its signed copy is in. */
 export const toItCustodyReceiptDto = (doc: ItCustodyReceiptDoc): ItCustodyReceiptDto => ({
   id: String(doc._id),
+  formNumber: doc.formNumber ?? null,
   issuedAt: iso(doc.issuedAt),
   employeeId: String(doc.employeeId),
   employeeName: doc.employeeName,

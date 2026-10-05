@@ -30,6 +30,11 @@ export interface ItCustodyReceiptSignedCopySub {
 }
 
 export interface ItCustodyReceiptDoc extends BaseDocFields {
+  /**
+   * The paper's own number (`EGYCASH-IT-F-14-0001`). Optional in the type because receipts from
+   * before numbering have none until they are printed again.
+   */
+  formNumber?: number | null;
   employeeId: Types.ObjectId;
   employeeCode: string | null;
   employeeName: string | null;
@@ -69,6 +74,7 @@ const signedCopySchema = new Schema<ItCustodyReceiptSignedCopySub>(
 
 const receiptSchema = new Schema<ItCustodyReceiptDoc>(
   {
+    formNumber: { type: Number, default: null },
     employeeId: { type: Schema.Types.ObjectId, required: true },
     employeeCode: { type: String, default: null },
     employeeName: { type: String, default: null },
@@ -86,6 +92,15 @@ const receiptSchema = new Schema<ItCustodyReceiptDoc>(
   baseSchemaOptions,
 );
 
+// A number is on one paper only — the database holds that, not the code that happens to write it.
+receiptSchema.index(
+  { formNumber: 1 },
+  {
+    unique: true,
+    name: 'ux_form_number',
+    partialFilterExpression: { formNumber: { $type: 'number' } },
+  },
+);
 // An employee's receipts, newest first — their history page.
 receiptSchema.index({ employeeId: 1, issuedAt: -1 }, { name: 'ix_employee_issued' });
 // The receipt an asset was handed over on.

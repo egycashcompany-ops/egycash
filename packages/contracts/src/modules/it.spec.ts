@@ -55,6 +55,7 @@ import {
   UpdateItTicketSchema,
   HandOverItAssetsSchema,
   IT_HAND_OVER_MAX_LINES,
+  formatCustodyReceiptNumber,
   PreviewItCustodyReceiptSchema,
 } from './it.js';
 
@@ -605,6 +606,22 @@ describe('it custody receipt contracts', () => {
       HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [line(2)], kind: 'handOver' })
         .success,
     ).toBe(false);
+  });
+
+  it('a hand-over may name the number its paper was printed with; a preview may not — it takes one', () => {
+    expect(
+      HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [line(2)], formNumber: 7 })
+        .success,
+    ).toBe(true);
+    expect(
+      HandOverItAssetsSchema.safeParse({ employeeId: oid(1), lines: [line(2)], formNumber: 0 })
+        .success,
+    ).toBe(false);
+    expect(
+      PreviewItCustodyReceiptSchema.safeParse({ employeeId: oid(1), lines: [line(2)], formNumber: 7 })
+        .success,
+    ).toBe(false);
+    expect(formatCustodyReceiptNumber(1)).toBe('EGYCASH-IT-F-14-0001');
   });
 
   it('a preview defaults to a hand-over; a transfer’s paper carries exactly one asset', () => {

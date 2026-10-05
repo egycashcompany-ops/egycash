@@ -223,6 +223,9 @@ export const handOverAssets = (body: HandOverItAssets): Promise<ItHandOverResult
   post<ItHandOverResultDto>('/it/custody-receipts', body);
 export const getCustodyReceipt = (id: string): Promise<ItCustodyReceiptDto> =>
   get<ItCustodyReceiptDto>(`/it/custody-receipts/${id}`);
+/** Print a stored receipt again — it keeps its number; one from before numbering gets its first. */
+export const printCustodyReceipt = (id: string): Promise<ItCustodyReceiptDto> =>
+  post<ItCustodyReceiptDto>(`/it/custody-receipts/${id}/print`, {});
 /** A receipt for custody handed over before receipts existed. */
 export const issueAssignmentReceipt = (assignmentId: string): Promise<ItCustodyReceiptDto> =>
   post<ItCustodyReceiptDto>(`/it/assignments/${assignmentId}/receipt`, {});

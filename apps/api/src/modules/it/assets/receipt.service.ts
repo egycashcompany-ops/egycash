@@ -15,6 +15,7 @@ import { itAssetAssignmentRepository } from './assignment.repository';
 import { itCustodyReceiptRepository } from './receipt.repository';
 import { resolveCustodyReceiptCategoryId } from './receipt-files';
 import { readReceiptHolder } from './receipt-holder';
+import { nextReceiptNumber } from './receipt-number';
 import { auditReceiptIssued, refuseLeaver, refuseUnlessInStock } from './custody.service';
 import { type ItCustodyReceiptDoc } from './receipt.model';
 
@@ -26,7 +27,9 @@ class ItCustodyReceiptService {
    *
    * Refuses exactly what the hand-over would refuse (a leaver, an asset out of stock, one the
    * caller cannot see), so nobody signs a receipt for a hand-over the system then turns down.
-   * Writes nothing: the receipt only exists once the hand-over does.
+   * The one thing it writes is the counter: every print takes the next receipt number («كل طباعة
+   * زود رقم»), and the hand-over records the number of the paper that was signed. The receipt
+   * itself only exists once the hand-over does.
    */
   async preview(
     input: PreviewItCustodyReceipt,
@@ -77,6 +80,8 @@ class ItCustodyReceiptService {
     }
 
     return {
+      // Last, once nothing above refused: a paper that is never printed takes no number.
+      formNumber: await nextReceiptNumber(),
       issuedAt: (input.assignedAt ?? new Date()).toISOString(),
       employeeId: input.employeeId,
       employeeName: holder.employeeName,
@@ -86,11 +91,27 @@ class ItCustodyReceiptService {
     };
   }
 
-  /** A stored receipt — to print it again. Scoped like every custody read. */
+  /** A stored receipt. Scoped like every custody read. */
   async get(id: string, scope: ScopeSelector): Promise<ItCustodyReceiptDoc> {
     const receipt = await itCustodyReceiptRepository.findById(id, scope);
     if (receipt === null) throw new NotFoundError('receipt not found');
     return receipt;
+  }
+
+  /**
+   * A stored receipt, to print it again. It keeps the number it was handed over on — a copy of
+   * the paper the employee signed is the same paper. A receipt from before numbering is given its
+   * number on the first print, once: every later print shows that one.
+   */
+  async print(id: string, ctx: AuthContext, scope: ScopeSelector): Promise<ItCustodyReceiptDoc> {
+    const receipt = await this.get(id, scope);
+    if (receipt.formNumber != null) return receipt;
+    await itCustodyReceiptRepository.ensureCollection();
+    return itCustodyReceiptRepository.updateById(
+      id,
+      { formNumber: await nextReceiptNumber() },
+      { by: ctx.userId, version: receipt.__v, scope },
+    );
   }
 
   /**
@@ -117,6 +138,9 @@ class ItCustodyReceiptService {
     if (asset === undefined) throw new NotFoundError('asset not found');
     const holder = await readReceiptHolder(String(assignment.assignedToEmployeeId));
     await itCustodyReceiptRepository.ensureCollection();
+    // Issued to be printed at once: it takes the next number, outside the transaction so a retry
+    // of it never takes a second one.
+    const formNumber = await nextReceiptNumber();
 
     const receiptId = new Types.ObjectId();
     return unitOfWork(async (session) => {
@@ -130,6 +154,7 @@ class ItCustodyReceiptService {
       const receipt = await itCustodyReceiptRepository.create(
         {
           _id: receiptId,
+          formNumber,
           employeeId: assignment.assignedToEmployeeId,
           employeeCode: holder.employeeCode,
           employeeName: holder.employeeName,

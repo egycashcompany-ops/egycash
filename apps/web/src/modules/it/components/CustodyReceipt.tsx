@@ -33,27 +33,34 @@ const iconButton =
   'inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100';
 
 /**
- * Print a receipt — the window first, while the click still counts, then the paper. Says so when
- * the browser blocked the window, rather than leaving a button that seems to do nothing.
+ * Print a receipt — the tab first, while the click still counts, then the paper. Answers the paper
+ * that was printed (the hand-over records its number), or null when nothing was: the browser
+ * blocked the tab, or the server refused the receipt — each said, rather than a button that seems
+ * to do nothing.
  */
 export const useReceiptPrinter = (): {
-  print: (load: () => Promise<ItCustodyReceiptDocumentDto>) => Promise<boolean>;
+  print: (
+    load: () => Promise<ItCustodyReceiptDocumentDto>,
+  ) => Promise<ItCustodyReceiptDocumentDto | null>;
   isPrinting: boolean;
 } => {
   const t = useT();
   const [isPrinting, setPrinting] = useState(false);
-  const print = async (load: () => Promise<ItCustodyReceiptDocumentDto>): Promise<boolean> => {
+  const print = async (
+    load: () => Promise<ItCustodyReceiptDocumentDto>,
+  ): Promise<ItCustodyReceiptDocumentDto | null> => {
     setPrinting(true);
     try {
-      const outcome = await printCustodyReceipt(load, t('it.custody.receipt.preparing'));
-      if (outcome === 'blocked') {
-        toast.error(t('it.custody.receipt.popupBlocked'));
-        return false;
-      }
-      return true;
+      const paper = await printCustodyReceipt(load, {
+        waiting: t('it.custody.receipt.preparing'),
+        print: t('it.custody.receipt.print'),
+        close: t('common.close'),
+      });
+      if (paper === null) toast.error(t('it.custody.receipt.popupBlocked'));
+      return paper;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : t('common.error'));
-      return false;
+      return null;
     } finally {
       setPrinting(false);
     }
@@ -307,7 +314,7 @@ export const CustodyReceiptActions = ({
         title={t('it.custody.receipt.print')}
         aria-label={t('it.custody.receipt.print')}
         disabled={printer.isPrinting}
-        onClick={() => void printer.print(() => api.getCustodyReceipt(receiptId))}
+        onClick={() => void printer.print(() => api.printCustodyReceipt(receiptId))}
       >
         <PrinterIcon className="h-4 w-4" />
       </button>

@@ -46,6 +46,9 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The acknowledgment prints the employee's code.** «عايز بردو أضيف كود الموظف هنا»: the
+  statement reads «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …», the code filled from
+  the system in the form's red and digits, or left for the pen when the employee cannot be named.
 - **The acknowledgment no longer prints «صادرة من قسم … – … بتاريخ …».** «شيل الجزء دا من الإيصال»:
   the statement runs «… بطاقة رقم قومي … بأنني قد استلمت جهاز …», and the paper's date stays in the
   signature block. The section and department are still kept on the receipt, unprinted.

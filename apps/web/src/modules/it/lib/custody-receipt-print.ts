@@ -3,18 +3,19 @@
 // «ومعلش هنغير التصميم بتاع الطباعة فى الـ IT فقط لدا»: the owner replaced the item-table receipt
 // with the department's own form, and this is that form, ONE PAGE PER DEVICE. The letterhead (the
 // logo, and «قطاع تكنولوجيا المعلومات» on its banner) over a rule; «إقرار استلام»; the statement —
-// «أقر أنا / … بوظيفة … بشركة إيجي كاش للحلول النقدية، بطاقة رقم قومي … بأنني قد استلمت
-// جهاز … برقم مسلسل … ومواصفاته كالتالي:»; the specifications table (Component / Details, grouped
-// System · Storage · Graphics · Network); «ومشتملاته كالتالي:» and its numbered list; the
+// «أقر أنا / … بوظيفة … بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي … بأنني قد
+// استلمت جهاز … برقم مسلسل … ومواصفاته كالتالي:»; the specifications table (Component / Details,
+// grouped System · Storage · Graphics · Network); «ومشتملاته كالتالي:» and its numbered list; the
 // undertaking; «وهذا إقرار مني بذلك»; «المقر بما فيه» with the name, signature and date on the
 // left; and the footer «EGYCASH | IT Dept. |» with the paper's own number and the red block. It is
 // signed by hand and filed, so its wording is the form's, not ours.
 //
 // The form's red marks what is filled in for each paper, and it stays red here — filled with what
-// the system knows: the employee's name and job; «بطاقة رقم قومي …» with their national ID («مفروض
-// تملأها تلقائي من النظام»); the device by its make and model («خليه يظهر الـ Manufacturer /
-// Model») and its serial. The form's «صادرة من قسم … – … بتاريخ …» is left out altogether («شيل
-// الجزء دا من الإيصال»): the paper's date is in the signature block. What the system does not hold
+// the system knows: the employee's name and job; «كود …» with their employee code («عايز بردو
+// أضيف كود الموظف هنا»); «بطاقة رقم قومي …» with their national ID («مفروض تملأها تلقائي من
+// النظام»); the device by its make and model («خليه يظهر الـ Manufacturer / Model») and its
+// serial. The form's «صادرة من قسم … – … بتاريخ …» is left out altogether («شيل الجزء دا من
+// الإيصال»): the paper's date is in the signature block. What the system does not hold
 // stays a dotted line for the pen — and so does the national ID for a reader not allowed to see it
 // (`itAsset.viewNationalId`). A row of the table nothing was typed against is left off, and so is
 // the whole table, or the accessories, when there is nothing to list.
@@ -232,7 +233,7 @@ const page = (
   </header>
   <hr class="rule" />
   <h1>إقرار استلام</h1>
-  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
+  <p class="statement">أقر أنا / ${fill(paper.employeeName, 36)} بوظيفة ${fill(paper.jobTitle?.ar, 32)} بشركة إيجي كاش للحلول النقدية، كود ${fill(paper.employeeCode === null ? null : formDigits(paper.employeeCode), 12, true)}، بطاقة رقم قومي ${fill(paper.nationalId === null ? null : formDigits(paper.nationalId), 26, true)} بأنني قد استلمت ${device(line)} برقم مسلسل ${fill(line.serialNumber, 18, true)}${groups.length > 0 ? ' ومواصفاته كالتالي:' : '.'}</p>
   ${groups.length > 0 ? specTable(groups) : ''}
   ${accessories.length > 0 ? `<p class="lead">ومشتملاته كالتالي:</p><div class="items">${accessoryList(accessories)}</div>` : ''}
   <p class="undertaking">${RECEIPT_UNDERTAKING}</p>

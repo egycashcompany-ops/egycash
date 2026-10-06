@@ -3,7 +3,7 @@
 // `fleetCatalog.manage`. Items ARCHIVE instead of delete (history references them), so the row
 // action is edit only and the status column tells the truth. `countsForAlarm` renders only on
 // the workType tab, exactly where the schema allows it.
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   FLEET_CATALOG_KINDS,
@@ -57,6 +57,11 @@ export const CatalogsPage = (): JSX.Element => {
   // same table the Fleet settings page has — «سيبها في المكانين».
   const onMakes = kindParam === MAKES_TAB;
   const [creatingMake, setCreatingMake] = useState(false);
+  // Leaving the tab closes its add dialog for good — the page outlives the tab, and a flag left
+  // set would open the dialog again by itself on the next visit.
+  useEffect(() => {
+    if (!onMakes) setCreatingMake(false);
+  }, [onMakes]);
   const active = sp.get('active') ?? '';
   const patch = (updates: Record<string, string | null>, resetPage = true): void => {
     const next = new URLSearchParams(sp);

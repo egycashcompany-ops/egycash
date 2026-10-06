@@ -11,7 +11,7 @@ import {
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   createVehicleType,
@@ -25,10 +25,13 @@ const IdParamSchema = z.object({ id: objectId() }).strict();
 
 export const buildFleetVehicleTypesRouter = (): Router => {
   const router = Router();
+  // The list — also from «قوائم الحركة» (fleetCatalog.manage) and the settings page that arranges
+  // the makes (fleetMaintenanceRule.manage): a catalog manager without vehicle-view must not get
+  // an error on the makes' tab. Reading make names exposes nothing else.
   router.get(
     '/',
     authenticate,
-    authorize('fleetVehicle.view'),
+    authorizeAny('fleetVehicle.view', 'fleetCatalog.manage', 'fleetMaintenanceRule.manage'),
     validate({ query: PaginationQuerySchema.strict() }),
     asyncHandler(listVehicleTypes),
   );

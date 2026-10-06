@@ -222,14 +222,27 @@ export const MultiSelect = ({
   useLayoutEffect(() => {
     if (!open) {
       setPin(null);
-      return;
+      return undefined;
     }
-    const panel = panelRef.current;
-    if (panel === null || typeof window === 'undefined') return;
-    const rect = panel.getBoundingClientRect();
-    if (rect.left < 8) setPin('left');
-    else if (rect.right > window.innerWidth - 8) setPin('right');
-  }, [open]);
+    // Measured from the TRIGGER, whose place does not depend on the pin — so it can be measured
+    // again (a resize, a trigger that grew with its picks) without a reset-then-measure cycle.
+    const place = (): void => {
+      const box = boxRef.current;
+      const panel = panelRef.current;
+      if (box === null || panel === null) return;
+      const trigger = box.getBoundingClientRect();
+      const width = panel.offsetWidth;
+      // Where the panel would sit unpinned: from the trigger's start edge, along the text.
+      const rtl = getComputedStyle(box).direction === 'rtl';
+      const left = rtl ? trigger.right - width : trigger.left;
+      if (left < 8) setPin('left');
+      else if (left + width > window.innerWidth - 8) setPin('right');
+      else setPin(null);
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [open, value.length]);
 
   const remote = onSearch !== undefined;
   const searchable = remote || options.length >= searchThreshold;

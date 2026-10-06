@@ -50,6 +50,11 @@ describe('the makes’ order', () => {
     expect(after.indexOf('ب ماركة')).toBeGreaterThan(1);
     void b;
 
+    // A make added after the list was arranged goes to its end, not before the placed ones.
+    await make('ء ماركة جديدة');
+    const withNew = await names();
+    expect(withNew[withNew.length - 1]).toBe('ء ماركة جديدة');
+
     await expect(
       fleetVehicleTypeService.order({ ids: [new Types.ObjectId().toString()] }, ACTOR),
     ).rejects.toThrow();

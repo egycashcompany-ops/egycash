@@ -33,6 +33,17 @@ class FleetVehicleTypeRepository extends BaseRepository<FleetVehicleTypeDoc> {
     );
   }
 
+  /** The highest place used in the makes' list, or null when it has never been arranged. */
+  async maxOrder(): Promise<number | null> {
+    const top = await this.model
+      .findOne({ isDeleted: false, sortOrder: { $ne: null } })
+      .sort({ sortOrder: -1 })
+      .select({ sortOrder: 1 })
+      .lean<{ sortOrder: number | null }>()
+      .exec();
+    return top?.sortOrder ?? null;
+  }
+
   async findActiveById(id: string): Promise<FleetVehicleTypeDoc | null> {
     const doc = await this.findById(id);
     return doc !== null && doc.isActive ? doc : null;

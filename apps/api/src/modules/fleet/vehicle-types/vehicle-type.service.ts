@@ -27,6 +27,12 @@ const snapshot = (doc: FleetVehicleTypeDoc) => ({
 });
 
 class FleetVehicleTypeService {
+  /** The place after the last arranged make, or null while the list has never been arranged. */
+  private async nextOrder(): Promise<number | null> {
+    const max = await fleetVehicleTypeRepository.maxOrder();
+    return max === null ? null : max + 1;
+  }
+
   async create(input: CreateFleetVehicleType, by: string): Promise<FleetVehicleTypeDoc> {
     const existing = await fleetVehicleTypeRepository.findByNameAr(input.name.ar);
     if (existing !== null) {
@@ -38,6 +44,9 @@ class FleetVehicleTypeService {
         name: withEnglishName(input.name),
         maintenanceIntervalKm: input.maintenanceIntervalKm,
         isActive: true,
+        // A make added to an arranged list goes to its END — as a catalog item does. Left null,
+        // Mongo's ascending sort would put it before every placed make.
+        sortOrder: await this.nextOrder(),
       },
       { by },
     );

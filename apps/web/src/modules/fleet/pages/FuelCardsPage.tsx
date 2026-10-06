@@ -126,8 +126,13 @@ export const FuelCardsPage = (): JSX.Element => {
         if (chosen) byCar.set(vehicle.id, { vehicleId: vehicle.id, code: vehicle.code, cards: {} });
       }
     }
-    return [...byCar.values()].sort((a, b) =>
-      a.code.localeCompare(b.code, 'en', { numeric: true }),
+    // The numbered cars first, in order; a code that is no number («.», «..») after them all, so
+    // it never stands between the reader and the cards.
+    const numbered = (code: string): number => (/^\d/u.test(code) ? 0 : 1);
+    return [...byCar.values()].sort(
+      (a, b) =>
+        numbered(a.code) - numbered(b.code) ||
+        a.code.localeCompare(b.code, 'en', { numeric: true }),
     );
   }, [cards, vehicles.data, cardFiltered, vehicleCodes.join(',')]);
 

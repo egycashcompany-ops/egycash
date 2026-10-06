@@ -62,7 +62,9 @@ const UserMenu = (): JSX.Element => {
       {open && (
         <div
           role="menu"
-          className="absolute end-0 mt-2 w-56 origin-top animate-menu-in rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
+          // Above the page: a screen's own positioned pieces (a sticky filter bar, an icon in a
+          // box) painted over an unstacked menu — «بيظهر بالشكل البايظ دا».
+          className="absolute end-0 z-50 mt-2 w-56 origin-top animate-menu-in rounded-lg border border-slate-200 bg-white py-1 shadow-elevated dark:border-slate-700 dark:bg-slate-800"
         >
           <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-700">
             <p className="truncate text-sm font-medium text-slate-800 dark:text-slate-100">{name}</p>
@@ -150,7 +152,7 @@ export const Topbar = ({ onOpenSearch }: { onOpenSearch: () => void }): JSX.Elem
     // `flex-nowrap` and `h-14` again: one row, same order, same everything. Nothing here is
     // conditional on a device — it is the width that decides, so a narrow desktop window gets the
     // two-row bar too rather than the clipping.
-    <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900 md:h-14 md:flex-nowrap md:py-0">
+    <header className="relative z-30 flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 dark:border-slate-800 dark:bg-slate-900 md:h-14 md:flex-nowrap md:py-0">
       <button
         type="button"
         onClick={() => dispatch(toggleSidebar())}

@@ -166,6 +166,23 @@ describe('the registry holds TWO columns at once', () => {
     expect(tbody(at('/fleet/vehicles', client(fallback)))).toContain('150');
   });
 
+  it('marks NO column while the table stands in its own order («السهم الافتراضى … يبقى متشال»)', () => {
+    const fallback = { sortBy: 'code', sortDir: 'asc', sort: 'code:asc' };
+    const markup = at('/fleet/vehicles', client(fallback));
+    expect(tbody(markup), 'still ordered by the code').toContain('150');
+    expect(header(markup, CODE), 'the code arrow rests like any other').toContain('opacity-30');
+    expect(header(markup, CODE)).not.toContain('rotate-180');
+    expect(markup, 'nothing to go back to').not.toContain('data-vehicle-sort-reset');
+  });
+
+  it('offers the way back once the reader has ordered it («تعيد ترتيب الجدول من تانى»)', () => {
+    const one = { sortBy: 'code', sortDir: 'asc', sort: 'code:asc' };
+    const markup = at('/fleet/vehicles?sort=code:asc', client(one));
+    expect(header(markup, CODE), 'the chosen column lights up').toContain('opacity-100');
+    expect(markup).toContain('data-vehicle-sort-reset="true"');
+    expect(markup).toContain(t('fleet.vehicles.sortReset'));
+  });
+
   it('survives a hand-edited parameter instead of showing an empty registry', () => {
     const fallback = { sortBy: 'code', sortDir: 'asc', sort: 'code:asc' };
     expect(tbody(at('/fleet/vehicles?sort=%40%40%40', client(fallback)))).toContain('150');
@@ -215,10 +232,13 @@ describe('every Fleet table is wired the same way', () => {
     // in one order and a click would turn a different one round.
     const source = code(join('pages', name));
     expect(source).toMatch(/const DEFAULT_SORT = '[^']+';/);
+    // A screen whose own order shows no arrow (`clickChosenSort`) never hands the default to the
+    // click — only the request reads it.
+    const unmarked = source.includes('clickChosenSort(');
     expect(
       source.match(/DEFAULT_SORT/g)?.length,
       'declared once, read by the memo and by the click',
-    ).toBe(3);
+    ).toBe(unmarked ? 2 : 3);
   });
 
   it.each(PAGES)('%s sends a click through the one rule, default and all', (name) => {
@@ -227,7 +247,12 @@ describe('every Fleet table is wired the same way', () => {
     // as something the READER asked for. Joined, a first click on «النوع» left «الكود» deciding
     // and both columns marked — «وانا مجتش جمبه». The paged registers keep their page number
     // («, false»); the whole boards have no page to keep.
-    expect(source).toContain('patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }');
+    // Or, on a screen whose own order is unmarked («السهم الافتراضى … يبقى متشال»), the reader's
+    // own order alone — none, ascending, descending, none.
+    expect(
+      source.includes('patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }') ||
+        source.includes('patch({ sort: writeSorts(clickChosenSort(sortParam, by)) }'),
+    ).toBe(true);
     expect(source, 'nothing toggles against the default any more').not.toContain(
       'toggleSort(sorts, by)',
     );
@@ -257,7 +282,8 @@ describe('every Fleet table is wired the same way', () => {
   });
 
   it.each(PAGES)('%s hands the table the list, so the badges can be drawn', (name) => {
-    expect(code(join('pages', name))).toContain('sort={sorts}');
+    const source = code(join('pages', name));
+    expect(source.includes('sort={sorts}') || source.includes('sort={chosen}')).toBe(true);
   });
 
   it('keeps ONE rule module — seven copies of a toggle is seven behaviours', () => {

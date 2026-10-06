@@ -287,7 +287,7 @@ export const VehicleFormDialog = ({
               data-vehicle-form="true"
               className={cn(
                 SANS,
-                'relative my-auto w-full animate-pop-in overflow-hidden rounded-2xl border text-slate-900 antialiased dark:text-slate-100',
+                'relative my-auto w-full animate-dialog-in overflow-hidden rounded-2xl border text-slate-900 antialiased dark:text-slate-100',
                 look.panel,
                 '!max-w-3xl',
               )}

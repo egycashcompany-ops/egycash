@@ -37,6 +37,7 @@ import {
 } from '../../../shared/ui/icons';
 import {
   useDeleteNotice,
+  useDeleteNoticeImage,
   useNotices,
   useNoticesSummary,
   useSetNoticeDone,
@@ -904,10 +905,20 @@ const NoticeLicencesButton = ({
   const open = (): void => {
     const box = button.current?.getBoundingClientRect();
     if (box === undefined) return;
-    const width = 300;
+    const width = 340;
     // Under the arrow, held inside the screen at either edge.
     const left = Math.min(Math.max(8, box.left), window.innerWidth - width - 8);
     setAt({ top: box.bottom + 6, left });
+  };
+  const remove = useDeleteNoticeImage();
+  // «↺ رجوع»: the picture uploaded with the notice goes; the registry's is shown again.
+  const revert = async (kind: 'vehicleLicense' | 'driverLicense'): Promise<void> => {
+    try {
+      await remove.mutateAsync({ id: row.id, kind });
+      toast.success(t('fleet.notices.image.deleted'));
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
   };
   const pick = async (kind: 'vehicleLicense' | 'driverLicense', file: File): Promise<void> => {
     try {
@@ -962,18 +973,45 @@ const NoticeLicencesButton = ({
             {t('fleet.notices.licences.upload')}
           </PhotoPickButton>
         ) : (
-          <button
-            type="button"
-            className={NOTICE_ACTION_BUTTON}
-            aria-label={t(`fleet.notices.image.${kind}.view`)}
-            title={t(`fleet.notices.image.${kind}.view`)}
-            onClick={() => {
-              setAt(null);
-              onPreview({ row, kind });
-            }}
-          >
-            <EyeIcon className="h-4 w-4" />
-          </button>
+          <span className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className={NOTICE_ACTION_BUTTON}
+              aria-label={t(`fleet.notices.image.${kind}.view`)}
+              title={t(`fleet.notices.image.${kind}.view`)}
+              onClick={() => {
+                setAt(null);
+                onPreview({ row, kind });
+              }}
+            >
+              <EyeIcon className="h-4 w-4" />
+            </button>
+            {/* «عايز اعدل رخصة السواق او رخصة العربية»: a new picture for THIS notice alone —
+                the vehicles and drivers screens keep theirs. */}
+            <PhotoPickButton
+              accept={LICENSE_IMAGE_ACCEPT}
+              className="inline-flex items-center gap-1 rounded-md border border-brand-500/60 px-2 py-1 text-xs font-bold text-brand-700 hover:bg-brand-500/15 dark:text-brand-200"
+              disabled={upload.isPending}
+              label={t('fleet.notices.licences.changeTitle')}
+              data-notice-licence-change={`${kind}:${row.id}`}
+              onFile={(file) => void pick(kind, file)}
+            >
+              <UploadIcon className="h-3.5 w-3.5" />
+              {t('fleet.notices.licences.change')}
+            </PhotoPickButton>
+            {source === 'notice' && (
+              <button
+                type="button"
+                data-notice-licence-revert={`${kind}:${row.id}`}
+                disabled={remove.isPending}
+                title={t('fleet.notices.licences.revertTitle')}
+                onClick={() => void revert(kind)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {t('fleet.notices.licences.revert')}
+              </button>
+            )}
+          </span>
         )}
       </div>
     );
@@ -1002,7 +1040,7 @@ const NoticeLicencesButton = ({
             <div
               role="dialog"
               aria-label={t('fleet.notices.licences.title')}
-              style={{ top: at.top, left: at.left, width: 300 }}
+              style={{ top: at.top, left: at.left, width: 340 }}
               className="fixed z-[81] animate-menu-in space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-700 dark:bg-[#111827]"
             >
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400">

@@ -204,19 +204,23 @@ const withCodes = async (
   );
   return docs.map((doc) => {
     const vehicle = doc.vehicleId === null ? undefined : byVehicle.get(String(doc.vehicleId));
+    // A copy uploaded with the notice wins — «عايز اعدل رخصة السواق او رخصة العربية» for this
+    // notice alone; without one, the registry's own when the reader may open it.
     const vehicleLicense: FleetNoticeLicenceSource =
-      vehicle?.licenseImage != null && !vehicle.isDeleted && mayReadRegistry(ctx, 'vehicleLicense')
-        ? 'registry'
-        : doc.vehicleLicenseImage != null
-          ? 'notice'
+      doc.vehicleLicenseImage != null
+        ? 'notice'
+        : vehicle?.licenseImage != null &&
+            !vehicle.isDeleted &&
+            mayReadRegistry(ctx, 'vehicleLicense')
+          ? 'registry'
           : null;
     const driverLicense: FleetNoticeLicenceSource =
-      doc.driverEmployeeId != null &&
-      licensed.has(String(doc.driverEmployeeId)) &&
-      mayReadRegistry(ctx, 'driverLicense')
-        ? 'registry'
-        : doc.driverLicenseImage != null
-          ? 'notice'
+      doc.driverLicenseImage != null
+        ? 'notice'
+        : doc.driverEmployeeId != null &&
+            licensed.has(String(doc.driverEmployeeId)) &&
+            mayReadRegistry(ctx, 'driverLicense')
+          ? 'registry'
           : null;
     return Object.assign(doc, {
       vehicleCode: vehicle?.code ?? null,
@@ -443,22 +447,17 @@ class FleetNoticeService {
     kind: FleetNoticeImageKind,
   ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
     const row = await fleetNoticeRepository.getById(id);
-    // A licence is the registry's own when it has one the caller may read; the notice's copy
-    // stands in without it — and when the registry's cannot be read after all.
+    // The notice's own copy first — a licence changed for this notice alone; the registry's when
+    // there is none and the caller may read it.
     const own = row[IMAGE_FIELD[kind]];
-    const registry =
-      (kind === 'vehicleLicense' || kind === 'driverLicense') && mayReadRegistry(ctx, kind)
-        ? await this.registryLicence(row, kind)
-        : null;
-    if (registry !== null) {
-      try {
+    if (own == null && (kind === 'vehicleLicense' || kind === 'driverLicense')) {
+      const registry = mayReadRegistry(ctx, kind) ? await this.registryLicence(row, kind) : null;
+      if (registry !== null) {
         const { doc, buffer } = await fileService.readEntityOwnedBuffer(
           ctx,
           String(registry.fileId),
         );
         return { buffer, mime: doc.mime, fileName: doc.originalName };
-      } catch (error) {
-        if (own == null) throw error;
       }
     }
     if (own == null) throw new NotFoundError('this notice has no such scan');

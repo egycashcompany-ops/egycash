@@ -20,7 +20,7 @@ import {
 import { auditService } from '../../../platform/audit';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
-import { type AuthContext } from '../../../shared/types';
+import { type AuthContext, hasPermission } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
 import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
@@ -169,7 +169,23 @@ export const toNoticeSettingsDto = (
  * The car codes for a page of notices, and where each licence image comes from — one registry read
  * and one driver read, not one per row.
  */
-const withCodes = async (docs: FleetNoticeDoc[]): Promise<FleetNoticeWithCode[]> => {
+/**
+ * Whether the caller may read a registry licence — the vehicles' or the drivers' own grant, which
+ * the file's authorizer asks again. Without it the notice's own copy stands, or the upload is
+ * offered: no caller is shown a licence it would then be refused. No caller — an internal read —
+ * reads them all.
+ */
+const mayReadRegistry = (
+  ctx: AuthContext | undefined,
+  kind: 'vehicleLicense' | 'driverLicense',
+): boolean =>
+  ctx === undefined ||
+  hasPermission(ctx, kind === 'vehicleLicense' ? 'fleetVehicle.view' : 'fleetDriver.view');
+
+const withCodes = async (
+  docs: FleetNoticeDoc[],
+  ctx?: AuthContext,
+): Promise<FleetNoticeWithCode[]> => {
   const ids = [
     ...new Set(docs.flatMap((doc) => (doc.vehicleId === null ? [] : [String(doc.vehicleId)]))),
   ];
@@ -189,13 +205,15 @@ const withCodes = async (docs: FleetNoticeDoc[]): Promise<FleetNoticeWithCode[]>
   return docs.map((doc) => {
     const vehicle = doc.vehicleId === null ? undefined : byVehicle.get(String(doc.vehicleId));
     const vehicleLicense: FleetNoticeLicenceSource =
-      vehicle?.licenseImage != null
+      vehicle?.licenseImage != null && !vehicle.isDeleted && mayReadRegistry(ctx, 'vehicleLicense')
         ? 'registry'
         : doc.vehicleLicenseImage != null
           ? 'notice'
           : null;
     const driverLicense: FleetNoticeLicenceSource =
-      doc.driverEmployeeId != null && licensed.has(String(doc.driverEmployeeId))
+      doc.driverEmployeeId != null &&
+      licensed.has(String(doc.driverEmployeeId)) &&
+      mayReadRegistry(ctx, 'driverLicense')
         ? 'registry'
         : doc.driverLicenseImage != null
           ? 'notice'
@@ -209,7 +227,10 @@ const withCodes = async (docs: FleetNoticeDoc[]): Promise<FleetNoticeWithCode[]>
 };
 
 class FleetNoticeService {
-  async list(query: ListFleetNoticesQuery): Promise<Paginated<FleetNoticeWithCode>> {
+  async list(
+    query: ListFleetNoticesQuery,
+    ctx?: AuthContext,
+  ): Promise<Paginated<FleetNoticeWithCode>> {
     const page = await fleetNoticeRepository.list({
       filter: await noticeFilter(query),
       page: query.page,
@@ -218,12 +239,18 @@ class FleetNoticeService {
       sortDir: query.sortDir ?? 'desc',
       sortableFields: ['updatedAt', 'createdAt', 'noticeDate', 'noticeNumber'],
     });
-    return { ...page, items: await withCodes(page.items) };
+    return { ...page, items: await withCodes(page.items, ctx) };
   }
 
   /** «الإحصائيات» — over the notices the filters leave. */
-  async summary(query: FleetNoticesSummaryQuery): Promise<FleetNoticesSummaryDto> {
-    const docs = await withCodes(await fleetNoticeRepository.findLive(await noticeFilter(query)));
+  async summary(
+    query: FleetNoticesSummaryQuery,
+    ctx?: AuthContext,
+  ): Promise<FleetNoticesSummaryDto> {
+    const docs = await withCodes(
+      await fleetNoticeRepository.findLive(await noticeFilter(query)),
+      ctx,
+    );
     const byTemplate = new Map<FleetNoticeTemplate, number>();
     const byMonth = new Map<string, number>();
     for (const doc of docs) {
@@ -251,8 +278,8 @@ class FleetNoticeService {
     };
   }
 
-  async get(id: string): Promise<FleetNoticeWithCode> {
-    const [doc] = await withCodes([await fleetNoticeRepository.getById(id)]);
+  async get(id: string, ctx?: AuthContext): Promise<FleetNoticeWithCode> {
+    const [doc] = await withCodes([await fleetNoticeRepository.getById(id)], ctx);
     return doc as FleetNoticeWithCode;
   }
 
@@ -321,7 +348,12 @@ class FleetNoticeService {
   //
   // «مقدرش اعمل صح لو مفيش صوره شيك»: a notice closes only once the insurer's cheque is in. Opening
   // it again needs nothing.
-  async setDone(id: string, input: SetFleetNoticeDone, by: string): Promise<FleetNoticeWithCode> {
+  async setDone(
+    id: string,
+    input: SetFleetNoticeDone,
+    by: string,
+    ctx?: AuthContext,
+  ): Promise<FleetNoticeWithCode> {
     const before = await fleetNoticeRepository.getById(id);
     if (input.done && before.checkImage == null) {
       throw new ValidationError([
@@ -343,7 +375,7 @@ class FleetNoticeService {
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
-    return this.get(id);
+    return this.get(id, ctx);
   }
 
   // ── The two scans (Files owns the bytes, the notice owns the link) — as the dealership's ─────
@@ -402,7 +434,7 @@ class FleetNoticeService {
         { field, old: current === null ? null : String(current.fileId), new: String(file._id) },
       ],
     });
-    return this.get(id);
+    return this.get(id, ctx);
   }
 
   async readImage(
@@ -411,11 +443,26 @@ class FleetNoticeService {
     kind: FleetNoticeImageKind,
   ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
     const row = await fleetNoticeRepository.getById(id);
-    // A licence is the registry's own when it has one; the notice's copy stands in only without.
-    const registry = await this.registryLicence(row, kind);
-    const image = registry ?? row[IMAGE_FIELD[kind]];
-    if (image == null) throw new NotFoundError('this notice has no such scan');
-    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(image.fileId));
+    // A licence is the registry's own when it has one the caller may read; the notice's copy
+    // stands in without it — and when the registry's cannot be read after all.
+    const own = row[IMAGE_FIELD[kind]];
+    const registry =
+      (kind === 'vehicleLicense' || kind === 'driverLicense') && mayReadRegistry(ctx, kind)
+        ? await this.registryLicence(row, kind)
+        : null;
+    if (registry !== null) {
+      try {
+        const { doc, buffer } = await fileService.readEntityOwnedBuffer(
+          ctx,
+          String(registry.fileId),
+        );
+        return { buffer, mime: doc.mime, fileName: doc.originalName };
+      } catch (error) {
+        if (own == null) throw error;
+      }
+    }
+    if (own == null) throw new NotFoundError('this notice has no such scan');
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(own.fileId));
     return { buffer, mime: doc.mime, fileName: doc.originalName };
   }
 
@@ -426,7 +473,7 @@ class FleetNoticeService {
   ): Promise<{ fileId: Types.ObjectId } | null> {
     if (kind === 'vehicleLicense' && row.vehicleId !== null) {
       const [vehicle] = await fleetVehicleRepository.findByIdsSystem([String(row.vehicleId)]);
-      return vehicle?.licenseImage ?? null;
+      return vehicle === undefined || vehicle.isDeleted ? null : (vehicle.licenseImage ?? null);
     }
     if (kind === 'driverLicense' && row.driverEmployeeId != null) {
       const driver = await fleetDriverProfileRepository.findDriverByEmployeeId(
@@ -462,7 +509,7 @@ class FleetNoticeService {
       action: 'update',
       changes: [{ field, old: fileId, new: null }],
     });
-    return this.get(id);
+    return this.get(id, ctx);
   }
 
   // ── A form's set-up ─────────────────────────────────────────────────────────────────────────

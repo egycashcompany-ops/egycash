@@ -237,7 +237,7 @@ export const printNoticePages = (
   });
   const photoPages = photos.map(
     (photo) =>
-      `<section class="nt-page nt-photo"><p>${esc(photo.caption)}</p><img src="${esc(photo.src)}" alt="" /></section>`,
+      `<section class="nt-photo"><p>${esc(photo.caption)}</p><img src="${esc(photo.src)}" alt="" /></section>`,
   );
   // No script in the page: the tab inherits the app's Content-Security-Policy, which never runs
   // one. The dialog opens from the app's own script once every scan has decoded, with the same
@@ -250,9 +250,9 @@ ${NOTICE_CSS}
 html, body { margin: 0; padding: 0; background: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Arabic', Arial, sans-serif; }
 .nt-page { width: 210mm; }
 .nt-page + .nt-page { break-before: page; page-break-before: always; }
-.nt-photo { box-sizing: border-box; height: 297mm; padding: 12mm; display: flex; flex-direction: column; align-items: center; gap: 6mm; }
+.nt-photo { box-sizing: border-box; width: 210mm; height: 297mm; padding: 12mm; display: flex; flex-direction: column; align-items: center; gap: 6mm; break-before: page; page-break-before: always; }
 .nt-photo p { margin: 0; font-size: 14pt; font-weight: 700; }
-.nt-photo img { max-width: 100%; max-height: 260mm; object-fit: contain; }
+.nt-photo img { position: static; display: block; width: auto; height: auto; max-width: 100%; max-height: 260mm; object-fit: contain; }
 </style></head>
 <body>${[...copies, ...photoPages].join('')}
 </body></html>`;

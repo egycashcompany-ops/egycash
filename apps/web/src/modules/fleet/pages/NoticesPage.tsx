@@ -752,19 +752,23 @@ const dataUrl = (blob: Blob): Promise<string> =>
  */
 const useLicencePhotos = (
   row: FleetNoticeDto | null,
-): { kind: 'vehicleLicense' | 'driverLicense'; src: string }[] => {
-  const [photos, setPhotos] = useState<{ kind: 'vehicleLicense' | 'driverLicense'; src: string }[]>(
-    [],
-  );
+): { photos: { kind: 'vehicleLicense' | 'driverLicense'; src: string }[]; loading: boolean } => {
+  const [state, setState] = useState<{
+    photos: { kind: 'vehicleLicense' | 'driverLicense'; src: string }[];
+    loading: boolean;
+  }>({ photos: [], loading: false });
   const key =
     row === null ? '' : `${row.id}:${row.vehicleLicense}:${row.driverLicense}:${row.updatedAt}`;
   useEffect(() => {
-    setPhotos([]);
-    if (row === null) return undefined;
+    if (row === null) {
+      setState({ photos: [], loading: false });
+      return undefined;
+    }
     let cancelled = false;
     const kinds = (['vehicleLicense', 'driverLicense'] as const).filter((kind) =>
       kind === 'vehicleLicense' ? row.vehicleLicense !== null : row.driverLicense !== null,
     );
+    setState({ photos: [], loading: kinds.length > 0 });
     void Promise.all(
       kinds.map((kind) =>
         fetchNoticeImage(row.id, kind)
@@ -773,13 +777,15 @@ const useLicencePhotos = (
           .catch(() => null),
       ),
     ).then((found) => {
-      if (!cancelled) setPhotos(found.filter((photo) => photo !== null));
+      if (!cancelled) {
+        setState({ photos: found.filter((photo) => photo !== null), loading: false });
+      }
     });
     return () => {
       cancelled = true;
     };
   }, [key]);
-  return photos;
+  return state;
 };
 
 const NoticeSheetDialog = ({
@@ -792,7 +798,8 @@ const NoticeSheetDialog = ({
   const t = useT();
   const pages = useRef<HTMLElement[]>([]) as MutableRefObject<HTMLElement[]>;
   const template = target === null ? undefined : noticeTemplate(target.row.template);
-  const photos = useLicencePhotos(target?.row ?? null);
+  // The print waits for the licences: pressed before they arrive, it would leave them out.
+  const { photos, loading } = useLicencePhotos(target?.row ?? null);
   const print = (): void => {
     if (template === undefined) return;
     try {
@@ -830,7 +837,12 @@ const NoticeSheetDialog = ({
           <Button variant="secondary" onClick={onClose}>
             {t('common.close')}
           </Button>
-          <Button onClick={print} data-notice-sheet-print="true" autoFocus={target?.print === true}>
+          <Button
+            onClick={print}
+            loading={loading}
+            data-notice-sheet-print="true"
+            autoFocus={target?.print === true}
+          >
             {t('fleet.notices.print')}
           </Button>
         </>

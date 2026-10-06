@@ -203,32 +203,49 @@ export const FuelTransferDialog = ({
         ),
       };
     });
-  const pickFromPlace = (key: number, place: string): void =>
-    editTransfer(key, (transfer) => ({
+  /** Every receiving card re-picked to the giving card's company, or let go. */
+  const aligned = (transfer: Transfer): Transfer => {
+    const company = cardById(transfer.card)?.company;
+    if (company === undefined) return transfer;
+    return {
       ...transfer,
-      place,
-      // A card already chosen on the «to» side picks the giving car's card of its company.
-      card: cardOfCompany(
-        place,
-        cardById(transfer.targets.find((other) => other.card !== '')?.card ?? '')?.company,
-      ),
-      // The money goes to another car — a «to» on the same place is emptied.
       targets: transfer.targets.map((target) =>
-        target.place === place && place !== '' ? { ...target, place: '', card: '' } : target,
+        target.card === '' || cardById(target.card)?.company === company
+          ? target
+          : { ...target, card: cardOfCompany(target.place, company) },
       ),
-    }));
+    };
+  };
+  const pickFromPlace = (key: number, place: string): void =>
+    editTransfer(key, (transfer) =>
+      aligned({
+        ...transfer,
+        place,
+        // A card already chosen on the «to» side picks the giving car's card of its company.
+        card: cardOfCompany(
+          place,
+          cardById(transfer.targets.find((other) => other.card !== '')?.card ?? '')?.company,
+        ),
+        // The money goes to another car — a «to» on the same place is emptied.
+        targets: transfer.targets.map((target) =>
+          target.place === place && place !== '' ? { ...target, place: '', card: '' } : target,
+        ),
+      }),
+    );
   // …and the other way: a «to» card picked first picks the giving card of its company.
   const pickToCard = (key: number, targetKey: number, cardId: string): void =>
-    editTransfer(key, (transfer) => ({
-      ...transfer,
-      card:
-        transfer.card !== '' || transfer.place === ''
-          ? transfer.card
-          : cardOfCompany(transfer.place, cardById(cardId)?.company),
-      targets: transfer.targets.map((target) =>
-        target.key === targetKey ? { ...target, card: cardId } : target,
-      ),
-    }));
+    editTransfer(key, (transfer) =>
+      aligned({
+        ...transfer,
+        card:
+          transfer.card !== '' || transfer.place === ''
+            ? transfer.card
+            : cardOfCompany(transfer.place, cardById(cardId)?.company),
+        targets: transfer.targets.map((target) =>
+          target.key === targetKey ? { ...target, card: cardId } : target,
+        ),
+      }),
+    );
 
   // ── What every card holds before and after, step by step ────────────────────────────────────
   const steps = useMemo(() => {

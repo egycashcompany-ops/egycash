@@ -203,8 +203,15 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
     const refs = {
       vehicleId: vehicleId === '' ? null : vehicleId,
       driverEmployeeId: driverId === '' ? null : driverId,
-      noticeNumber: meta.noticeNumber,
-      noticeDate: meta.noticeDate === null ? null : new Date(meta.noticeDate),
+      // A notice saved before its number and date were read off the boxes keeps what was typed,
+      // until the boxes say something.
+      noticeNumber: meta.noticeNumber ?? current.data?.noticeNumber ?? null,
+      noticeDate:
+        meta.noticeDate !== null
+          ? new Date(meta.noticeDate)
+          : current.data?.noticeDate == null
+            ? null
+            : new Date(current.data.noticeDate),
     };
     try {
       if (id === '' || current.data === undefined) {

@@ -580,8 +580,14 @@ export const VehiclesListPage = (): JSX.Element => {
           <span className="font-mono text-sm font-bold" dir="ltr">
             {v.code}
           </span>
-          <VehicleStatusBadge status={v.status} />
-          <InWorkshopBadge inWorkshop={v.inWorkshop} />
+          {/* «الجدول … مش ظاهر كله»: a laptop has no room for two pills beside every code, so
+              below the wide screen the state is a coloured dot and the workshop a small icon —
+              the words on hover — and the whole table fits. A wide screen keeps the pills. */}
+          <span className="hidden items-center gap-1.5 min-[1750px]:inline-flex">
+            <VehicleStatusBadge status={v.status} />
+            <InWorkshopBadge inWorkshop={v.inWorkshop} />
+          </span>
+          <CompactVehicleState status={v.status} inWorkshop={v.inWorkshop} />
         </span>
       ),
     },
@@ -645,7 +651,9 @@ export const VehiclesListPage = (): JSX.Element => {
             >
               {ymd(v.licenseExpiresAt)}
             </span>
-            <LicenceTag state={state} />
+            <span className="hidden min-[1750px]:inline">
+              <LicenceTag state={state} />
+            </span>
           </span>
         );
       },
@@ -1163,7 +1171,7 @@ export const VehiclesListPage = (): JSX.Element => {
             sort={chosen}
             onSortChange={changeSort}
             empty={undefined}
-            minColumnWidth={6}
+            minColumnWidth={4}
             stickyHead
           />
         </div>
@@ -1286,10 +1294,54 @@ const DARK_TABLE = cn(
   'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
   // «على اللاب … المسافات قربت»: below that, the heavy figures take a size down and the columns
   // more room between them, so nothing sits against its neighbour.
-  'max-[1749px]:[&_td]:!px-2.5 max-[1749px]:[&_th]:!px-2.5 max-[1749px]:[&_td]:!text-[13px] max-[1749px]:[&_td_.font-mono]:!text-[13px]',
+  'max-[1749px]:[&_td]:!px-[5px] max-[1749px]:[&_th]:!px-[5px] max-[1749px]:[&_td]:!text-[12.5px] max-[1749px]:[&_td_.font-mono]:!text-[12.5px] max-[1749px]:[&_td_button]:!h-6 max-[1749px]:[&_td_button]:!w-[22px]',
 );
 
 /** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */
+/** A wrench — the workshop. */
+const WRENCH = [
+  'M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z',
+];
+
+/** A laptop's code cell: the car's state as a dot, and the workshop as a wrench — words on hover. */
+const CompactVehicleState = ({
+  status,
+  inWorkshop,
+}: {
+  status: FleetVehicleDto['status'];
+  inWorkshop: boolean;
+}): JSX.Element => {
+  const t = useT();
+  const label = t(`fleet.vehicles.status.${status}`);
+  return (
+    <span className="inline-flex items-center gap-1 min-[1750px]:hidden">
+      <span
+        title={label}
+        data-vehicle-state-dot={status}
+        className={cn(
+          'h-2.5 w-2.5 rounded-full',
+          status === 'active'
+            ? 'bg-emerald-500'
+            : status === 'outOfService'
+              ? 'bg-amber-500'
+              : 'bg-slate-400',
+        )}
+      >
+        <span className="sr-only">{label}</span>
+      </span>
+      {inWorkshop && (
+        <span
+          title={t('fleet.vehicles.inWorkshop')}
+          className="inline-flex rounded bg-sky-500/15 p-0.5 text-sky-600 dark:text-sky-300"
+        >
+          <BoardIcon d={WRENCH} className="h-3 w-3" />
+          <span className="sr-only">{t('fleet.vehicles.inWorkshop')}</span>
+        </span>
+      )}
+    </span>
+  );
+};
+
 const LicenceTag = ({ state }: { state: ReturnType<typeof expiryState> }): JSX.Element | null => {
   const t = useT();
   if (state === 'unknown') return null;

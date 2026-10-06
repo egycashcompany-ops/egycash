@@ -4,6 +4,7 @@ import {
   CreateFleetNoticeSchema,
   FleetNoticeImageKindSchema,
   FleetNoticeTemplateSchema,
+  FleetNoticesSummaryQuerySchema,
   ListFleetNoticesQuerySchema,
   SaveFleetNoticeSettingsSchema,
   SetFleetNoticeDoneSchema,
@@ -22,6 +23,7 @@ import {
   getNoticeImage,
   getNoticeSettings,
   listNotices,
+  noticesSummary,
   saveNoticeSettings,
   setNoticeDone,
   updateNotice,
@@ -55,6 +57,14 @@ export const buildFleetNoticesRouter = (): Router => {
     authorize('fleetNotice.view'),
     validate({ query: ListFleetNoticesQuerySchema }),
     asyncHandler(listNotices),
+  );
+  // «الإحصائيات» — before `/:id`, which would otherwise read `summary` as an id.
+  router.get(
+    '/summary',
+    authenticate,
+    authorize('fleetNotice.view'),
+    validate({ query: FleetNoticesSummaryQuerySchema }),
+    asyncHandler(noticesSummary),
   );
   router.get(
     '/:id',

@@ -8,6 +8,7 @@ import {
   type ListFleetFuelCardsQuery,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type TransferFleetFuelBatch,
   type UpdateFleetFuelCardMovement,
   type UpdateFleetFuelCard,
 } from '@ecms/contracts';
@@ -80,6 +81,11 @@ export const approveFuelCharge = async (req: Request, res: Response): Promise<vo
 export const transferFuelBalance = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<TransferFleetFuelBalance>(req);
   ok(res, await fleetFuelCardService.transfer(body, authContext(req).userId));
+};
+
+export const transferFuelBatch = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<TransferFleetFuelBatch>(req);
+  ok(res, await fleetFuelCardService.transferBatch(body, authContext(req).userId));
 };
 
 export const listFuelCardMovements = async (req: Request, res: Response): Promise<void> => {

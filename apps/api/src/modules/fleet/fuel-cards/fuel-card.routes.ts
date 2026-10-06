@@ -8,6 +8,7 @@ import {
   ListFleetFuelCardsQuerySchema,
   RequestFleetFuelChargeSchema,
   TransferFleetFuelBalanceSchema,
+  TransferFleetFuelBatchSchema,
   UpdateFleetFuelCardMovementSchema,
   UpdateFleetFuelCardSchema,
   objectId,
@@ -29,6 +30,7 @@ import {
   requestFuelCharge,
   revealFuelCardPassword,
   transferFuelBalance,
+  transferFuelBatch,
   updateFuelCardMovement,
   deleteFuelCardMovement,
   updateFuelCard,
@@ -84,6 +86,14 @@ export const buildFleetFuelCardsRouter = (): Router => {
     authorize('fleetFuelCharge.transfer'),
     validate({ body: TransferFleetFuelBalanceSchema }),
     asyncHandler(transferFuelBalance),
+  );
+  // Several transfers in one press — each one card to one card or more.
+  router.post(
+    '/transfers',
+    authenticate,
+    authorize('fleetFuelCharge.transfer'),
+    validate({ body: TransferFleetFuelBatchSchema }),
+    asyncHandler(transferFuelBatch),
   );
   router.get(
     '/:id',

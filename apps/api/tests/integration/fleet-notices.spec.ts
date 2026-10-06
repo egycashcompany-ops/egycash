@@ -176,6 +176,8 @@ describe('a form’s set-up («إعداد النماذج»)', () => {
       template: 'deltaInsurance',
       defaults: {},
       links: [],
+      numberField: null,
+      dateField: null,
       version: null,
       updatedAt: null,
     });
@@ -217,5 +219,88 @@ describe('a form’s set-up («إعداد النماذج»)', () => {
       ),
     ).rejects.toThrow();
     expect((await fleetNoticeService.getSettings('misrInsurance')).version).toBe(second.version);
+  });
+});
+
+describe('the notices table’s filters and figures', () => {
+  it('narrows by number, date window, form, state and cheque, and counts what it leaves', async () => {
+    const make = async (
+      template: 'misrInsurance' | 'deltaInsurance',
+      noticeNumber: string,
+      noticeDate: string,
+    ) =>
+      fleetNoticeService.create(
+        CreateFleetNoticeSchema.parse({ template, noticeNumber, noticeDate }),
+        ACTOR,
+      );
+    const a = await make('misrInsurance', 'F-7101', '2026-08-30');
+    const b = await make('deltaInsurance', 'F-7102', '2026-09-01');
+    const c = await make('misrInsurance', 'F-7203', '2026-09-30');
+    // Closed by hand — the filters read the stored state, not how it got there.
+    await FleetNoticeModel.updateOne(
+      { _id: c._id },
+      {
+        completedAt: new Date(),
+        checkImage: {
+          fileId: new Types.ObjectId(),
+          fileName: 'c.jpg',
+          mime: 'image/jpeg',
+          size: 1,
+          uploadedAt: new Date(),
+        },
+      },
+    ).exec();
+    const ids = async (query: Record<string, unknown>): Promise<string[]> =>
+      (await fleetNoticeService.list({ page: 1, pageSize: 100, ...query } as never)).items.map(
+        (doc) => String(doc._id),
+      );
+
+    expect(await ids({ noticeNumber: 'f-71' })).toEqual(
+      expect.arrayContaining([String(a._id), String(b._id)]),
+    );
+    expect(await ids({ noticeNumber: 'f-71' })).not.toContain(String(c._id));
+    // «من … إلى»: both days whole.
+    const september = await ids({ from: new Date('2026-09-01'), to: new Date('2026-09-30') });
+    expect(september).toEqual(expect.arrayContaining([String(b._id), String(c._id)]));
+    expect(september).not.toContain(String(a._id));
+    expect(await ids({ templates: ['deltaInsurance'], noticeNumber: 'F-7' })).toEqual([
+      String(b._id),
+    ]);
+    expect(await ids({ status: 'done', noticeNumber: 'F-7' })).toEqual([String(c._id)]);
+    expect(await ids({ checkImage: 'missing', noticeNumber: 'F-7' })).not.toContain(String(c._id));
+
+    const figures = await fleetNoticeService.summary({ noticeNumber: 'F-7' } as never);
+    expect(figures).toMatchObject({ total: 3, done: 1, open: 2, missingCheckImage: 2 });
+    expect(figures.months).toEqual([
+      { month: '2026-08', count: 1 },
+      { month: '2026-09', count: 2 },
+    ]);
+    expect(figures.byTemplate).toEqual(
+      expect.arrayContaining([
+        { template: 'misrInsurance', count: 2 },
+        { template: 'deltaInsurance', count: 1 },
+      ]),
+    );
+    // No car and no driver on these: neither licence is on file.
+    expect(figures.missingLicences).toBe(3);
+    expect(toNoticeDto((await fleetNoticeService.get(String(a._id))) as never)).toMatchObject({
+      vehicleLicense: null,
+      driverLicense: null,
+    });
+  });
+
+  it('keeps the boxes a form reads its number and date from', async () => {
+    const saved = await fleetNoticeService.saveSettings(
+      'deltaInsurance',
+      { defaults: {}, links: [], numberField: 'claimNo', dateField: 'reportDate' },
+      ACTOR,
+    );
+    expect(saved).toMatchObject({ numberField: 'claimNo', dateField: 'reportDate' });
+    const cleared = await fleetNoticeService.saveSettings(
+      'deltaInsurance',
+      { defaults: {}, links: [], numberField: null, version: saved.version ?? 0 },
+      ACTOR,
+    );
+    expect(cleared).toMatchObject({ numberField: null, dateField: null });
   });
 });

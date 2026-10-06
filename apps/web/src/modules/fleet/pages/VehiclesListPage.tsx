@@ -66,6 +66,8 @@ import { printLicenceRecord } from '../components/vehicle-print';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
 import { chosenSorts, clickChosenSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
+import { licenceMonthOptions } from '../lib/licence-months';
+import { BreakdownCard, FigureChip } from '../components/FleetFigures';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
@@ -86,35 +88,6 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
-/**
- * The months the registry's licences run out in — the options of «شهر انتهاء الترخيص», each with
- * how many cars it holds, oldest first. Only months a car has, so the list is never a calendar of
- * empty choices.
- */
-export const licenceMonthOptions = (
-  vehicles: readonly { licenseExpiresAt: string | null }[],
-  locale: string,
-): { value: string; label: string }[] => {
-  const counts = new Map<string, number>();
-  for (const vehicle of vehicles) {
-    if (vehicle.licenseExpiresAt === null) continue;
-    const month = vehicle.licenseExpiresAt.slice(0, 7);
-    counts.set(month, (counts.get(month) ?? 0) + 1);
-  }
-  const tag = locale === 'ar' ? 'ar-EG' : 'en-GB';
-  const digits = new Intl.NumberFormat(tag);
-  const name = new Intl.DateTimeFormat(tag, {
-    month: 'long',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-  return [...counts.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, count]) => ({
-      value: month,
-      label: `${name.format(new Date(`${month}-01T00:00:00.000Z`))} (${digits.format(count)})`,
-    }));
-};
 
 /** Build an id → localized-name map from a catalog list, for the table's reference columns. */
 const nameMap = (
@@ -573,10 +546,11 @@ export const VehiclesListPage = (): JSX.Element => {
   const columns: Column<FleetVehicleDto>[] = [
     {
       key: 'code',
+      align: 'center',
       header: t('fleet.vehicles.columns.code'),
       sortable: true,
       render: (v) => (
-        <span className="flex items-center gap-1.5 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <span className="font-mono text-sm font-bold" dir="ltr">
             {v.code}
           </span>
@@ -593,6 +567,8 @@ export const VehiclesListPage = (): JSX.Element => {
     },
     {
       key: 'type',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
       header: t('fleet.vehicles.columns.type'),
       // «عاوز هنا يكون فيه سهم عشان ارتب العربيات على حسب النوع تصاعدى وتنازلى». The column shows a
       // NAME and the row stores a `typeId`, so the server joins the name in before it cuts the
@@ -601,9 +577,15 @@ export const VehiclesListPage = (): JSX.Element => {
       sortKey: 'typeName',
       render: (v) => dash(typeName.get(v.typeId)),
     },
-    { key: 'plate', header: t('fleet.vehicles.columns.plate'), render: (v) => v.plateNumber },
+    {
+      key: 'plate',
+      align: 'center',
+      header: t('fleet.vehicles.columns.plate'),
+      render: (v) => v.plateNumber,
+    },
     {
       key: 'chassis',
+      align: 'center',
       header: t('fleet.vehicles.columns.chassis'),
       render: (v) => (
         <span className="font-mono text-xs" dir="ltr">
@@ -613,6 +595,7 @@ export const VehiclesListPage = (): JSX.Element => {
     },
     {
       key: 'motor',
+      align: 'center',
       header: t('fleet.vehicles.columns.motor'),
       render: (v) => (
         <span className="font-mono text-xs" dir="ltr">
@@ -622,6 +605,7 @@ export const VehiclesListPage = (): JSX.Element => {
     },
     {
       key: 'joinedAt',
+      align: 'center',
       header: t('fleet.vehicles.columns.joinedAt'),
       render: (v) => (
         <span className="tabular-nums" dir="ltr">
@@ -631,12 +615,13 @@ export const VehiclesListPage = (): JSX.Element => {
     },
     {
       key: 'licenseExpiresAt',
+      align: 'center',
       header: t('fleet.vehicles.columns.license'),
       sortable: true,
       render: (v) => {
         const state = expiryState(v.licenseExpiresAt, 30);
         return (
-          <span className="flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1.5">
             <span
               dir="ltr"
               className={cn(
@@ -660,22 +645,30 @@ export const VehiclesListPage = (): JSX.Element => {
     },
     {
       key: 'licenseClass',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
       header: t('fleet.vehicles.columns.licenseClass'),
       render: (v) =>
         dash(v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)),
     },
     {
       key: 'branch',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
       header: t('fleet.vehicles.columns.branch'),
       render: (v) => dash(v.branchId === null ? undefined : branchName.get(v.branchId)),
     },
     {
       key: 'operation',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
       header: t('fleet.vehicles.columns.operation'),
       render: (v) => dash(v.operationId === null ? undefined : operationName.get(v.operationId)),
     },
     {
       key: 'insurance',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
       header: t('fleet.vehicles.columns.insurance'),
       render: (v) =>
         dash(v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)),
@@ -1296,8 +1289,16 @@ const DARK_TABLE = cn(
   'min-[1750px]:[&_td]:!text-[15px] min-[1750px]:[&_th]:!text-sm min-[1750px]:[&_td]:!py-3 min-[1750px]:[&_td_.font-mono]:!text-base',
   // «على اللاب … المسافات قربت»: below that, the heavy figures take a size down and the columns
   // more room between them, so nothing sits against its neighbour.
-  'max-[1749px]:[&_td]:!px-[5px] max-[1749px]:[&_th]:!px-[5px] max-[1749px]:[&_td]:!text-[12.5px] max-[1749px]:[&_td_.font-mono]:!text-[12.5px] max-[1749px]:[&_td_button]:!h-6 max-[1749px]:[&_td_button]:!w-[22px]',
+  // «الداتا … داخله فى بعض»: a faint line between columns, so every value reads as its own.
+  '[&_td+td]:border-s [&_th+th]:border-s [&_td+td]:border-slate-200/70 [&_th+th]:border-slate-200/70 dark:[&_td+td]:border-slate-700/40 dark:[&_th+th]:border-slate-700/40',
+  'max-[1749px]:[&_td]:!px-[9px] max-[1749px]:[&_th]:!px-[9px] max-[1749px]:[&_td]:!text-[12.5px] max-[1749px]:[&_td_.font-mono]:!text-[12.5px] max-[1749px]:[&_td_button]:!h-6 max-[1749px]:[&_td_button]:!w-[22px]',
 );
+
+/**
+ * «الداتا … داخله فى بعض»: on a laptop a NAME may take two lines — a make, an insurer — so the
+ * figures beside it get the room between columns instead of sitting against it.
+ */
+const WRAPS_ON_LAPTOP = 'max-[1749px]:!whitespace-normal max-[1749px]:leading-snug';
 
 /** «ساري» / «ينتهي قريباً» / «منتهي» beside a licence date — the fuel screens' tag. */
 /** A wrench — the workshop. */
@@ -1438,74 +1439,3 @@ const VehicleCard = ({
     </article>
   );
 };
-
-/** One figure across the top: small, one line of words over one number. */
-const FigureChip = ({
-  icon,
-  iconClass,
-  label,
-  value,
-  valueClass,
-  unit,
-  note,
-}: {
-  icon: readonly string[];
-  iconClass: string;
-  label: string;
-  value: number;
-  valueClass?: string;
-  unit: string;
-  note?: string;
-}): JSX.Element => (
-  <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] px-2.5 py-3 sm:gap-3 sm:px-4">
-    <span className={cn('shrink-0 rounded-lg p-2 sm:p-2.5', iconClass)}>
-      <BoardIcon d={icon} className="h-5 w-5" />
-    </span>
-    <span className="leading-tight">
-      <span className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span>
-      <span className="flex items-baseline gap-1">
-        <span className={cn('text-2xl font-black text-slate-900 dark:text-white', NUM, valueClass)}>{value}</span>
-        <span className="text-xs text-slate-500 dark:text-slate-400">{unit}</span>
-      </span>
-      {note !== undefined && <span className="block text-[11px] text-slate-500">{note}</span>}
-    </span>
-  </div>
-);
-
-/** One list — licence classes, operations or insurers — with how many cars sit in each entry. */
-const BreakdownCard = ({
-  title,
-  rows,
-  total,
-}: {
-  title: string;
-  rows: readonly { id: string; name: string; count: number }[];
-  total: number;
-}): JSX.Element => (
-  <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#111827] p-3">
-    <div className="mb-2 flex items-center justify-between">
-      <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{title}</span>
-      <span className={cn('rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 text-[11px] text-slate-500 dark:text-slate-400', NUM)}>
-        {rows.filter((row) => row.id !== '').length}
-      </span>
-    </div>
-    <ul className="space-y-1.5">
-      {rows.map((row) => (
-        <li key={row.id} className="text-xs">
-          <div className="flex items-center justify-between gap-2">
-            <span className={cn('truncate', row.id === '' ? 'text-slate-500' : 'text-slate-600 dark:text-slate-300')}>
-              {row.name}
-            </span>
-            <span className={cn('shrink-0 font-bold text-slate-900 dark:text-white', NUM)}>{row.count}</span>
-          </div>
-          <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-            <div
-              className="h-full rounded-full bg-blue-400/70"
-              style={{ width: `${total === 0 ? 0 : Math.round((row.count / total) * 100)}%` }}
-            />
-          </div>
-        </li>
-      ))}
-    </ul>
-  </div>
-);

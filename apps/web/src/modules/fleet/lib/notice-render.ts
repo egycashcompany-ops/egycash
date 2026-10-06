@@ -222,6 +222,8 @@ export const printNoticePages = (
   pages: readonly HTMLElement[],
   title: string,
   blank: boolean,
+  /** Pictures printed after the form, one to a page — the car's and the driver's licences. */
+  photos: readonly { src: string; caption: string }[] = [],
 ): void => {
   const copies = pages.map((page) => {
     const copy = page.cloneNode(true) as HTMLElement;
@@ -233,6 +235,10 @@ export const printNoticePages = (
     copy.removeAttribute('style');
     return copy.outerHTML;
   });
+  const photoPages = photos.map(
+    (photo) =>
+      `<section class="nt-page nt-photo"><p>${esc(photo.caption)}</p><img src="${esc(photo.src)}" alt="" /></section>`,
+  );
   // No script in the page: the tab inherits the app's Content-Security-Policy, which never runs
   // one. The dialog opens from the app's own script once every scan has decoded, with the same
   // timer behind it (`shared/lib/print-window.ts`).
@@ -244,8 +250,11 @@ ${NOTICE_CSS}
 html, body { margin: 0; padding: 0; background: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Arabic', Arial, sans-serif; }
 .nt-page { width: 210mm; }
 .nt-page + .nt-page { break-before: page; page-break-before: always; }
+.nt-photo { box-sizing: border-box; height: 297mm; padding: 12mm; display: flex; flex-direction: column; align-items: center; gap: 6mm; }
+.nt-photo p { margin: 0; font-size: 14pt; font-weight: 700; }
+.nt-photo img { max-width: 100%; max-height: 260mm; object-fit: contain; }
 </style></head>
-<body>${copies.join('')}
+<body>${[...copies, ...photoPages].join('')}
 </body></html>`;
   if (openPrintDocument(html, { readyTimeoutMs: 2500 }) === null) throw new Error('popup blocked');
 };

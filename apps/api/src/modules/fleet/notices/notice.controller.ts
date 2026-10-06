@@ -3,6 +3,7 @@ import { type Request, type Response } from 'express';
 import {
   type CreateFleetNotice,
   type FleetNoticeImageKind,
+  type FleetNoticesSummaryQuery,
   type FleetNoticeTemplate,
   type ListFleetNoticesQuery,
   type SaveFleetNoticeSettings,
@@ -21,6 +22,11 @@ type TemplateParam = { template: FleetNoticeTemplate };
 export const listNotices = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetNoticesQuery>(req);
   okPage(res, await fleetNoticeService.list(query), toNoticeDto);
+};
+
+export const noticesSummary = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetNoticesSummaryQuery>(req);
+  ok(res, await fleetNoticeService.summary(query));
 };
 
 export const getNotice = async (req: Request, res: Response): Promise<void> => {

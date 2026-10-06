@@ -101,3 +101,60 @@ export const withLinked = (
   }
   return next;
 };
+
+// ── «رقم الإخطار والتاريخ … يتحطه تلقائى» ──────────────────────────────────────────────────────
+
+/** Where a form's number and date come from when its set-up has not chosen: its header boxes. */
+const META_DEFAULTS: Record<string, { number: string; date: string }> = {
+  misrInsurance: { number: 'accidentNo', date: 'reportDate' },
+  deltaInsurance: { number: 'claimNo', date: 'reportDate' },
+};
+
+/** The boxes the notices table reads a notice's number and date from. */
+export const metaFields = (
+  template: NoticeTemplate,
+  settings: Pick<FleetNoticeSettingsDto, 'numberField' | 'dateField'> | undefined,
+): { number: string | null; date: string | null } => {
+  const fallback = META_DEFAULTS[template.key];
+  return {
+    number: settings?.numberField ?? fallback?.number ?? null,
+    date: settings?.dateField ?? fallback?.date ?? null,
+  };
+};
+
+const ARABIC_DIGITS = /[٠-٩]/gu;
+const DAY_FIRST = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/u;
+
+/**
+ * A day as a box holds it — `2026-10-05`, `2026/10/05`, `5/10/2026`, in either set of digits — as
+ * `YYYY-MM-DD`, or `null` when the words are no day at all.
+ */
+export const parseNoticeDay = (text: string): string | null => {
+  const plain = text.trim().replace(ARABIC_DIGITS, (digit) => String(digit.charCodeAt(0) - 0x0660));
+  const yearFirst = ISO_DAY.exec(plain) ?? SLASH_DAY.exec(plain);
+  const dayFirst = DAY_FIRST.exec(plain);
+  const [year, month, day] =
+    yearFirst !== null
+      ? [yearFirst[1], yearFirst[2], yearFirst[3]]
+      : dayFirst !== null
+        ? [dayFirst[3], dayFirst[2], dayFirst[1]]
+        : [undefined, undefined, undefined];
+  if (year === undefined || month === undefined || day === undefined) return null;
+  const iso = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  const parsed = new Date(`${iso}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== iso ? null : iso;
+};
+
+/** A notice's number and date, read off its own boxes. */
+export const noticeMeta = (
+  template: NoticeTemplate,
+  settings: Pick<FleetNoticeSettingsDto, 'numberField' | 'dateField'> | undefined,
+  values: Record<string, string>,
+): { noticeNumber: string | null; noticeDate: string | null } => {
+  const from = metaFields(template, settings);
+  const number = from.number === null ? '' : (values[from.number] ?? '').trim();
+  return {
+    noticeNumber: number === '' ? null : number,
+    noticeDate: from.date === null ? null : parseNoticeDay(values[from.date] ?? ''),
+  };
+};

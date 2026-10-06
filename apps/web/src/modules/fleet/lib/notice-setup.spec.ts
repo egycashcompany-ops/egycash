@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { type FleetNoticeSettingsDto } from '@ecms/contracts';
 import { noticeTemplate } from './notice-templates';
-import { handTypedKeys, startingValues, todayFor, valueFor, withLinked } from './notice-setup';
+import {
+  handTypedKeys,
+  noticeMeta,
+  parseNoticeDay,
+  startingValues,
+  todayFor,
+  valueFor,
+  withLinked,
+} from './notice-setup';
 
 const misr = noticeTemplate('misrInsurance')!;
 const fields = new Map(misr.sections.flatMap((s) => s.fields).map((f) => [f.key, f]));
@@ -16,6 +24,8 @@ const settings: FleetNoticeSettingsDto = {
     { name: 'تاريخ الحادث', keys: ['accidentDate', 'date'] },
     { name: 'تاريخ اليوم', keys: ['reportDate', 'signedAt'] },
   ],
+  numberField: null,
+  dateField: null,
   version: 0,
   updatedAt: null,
 };
@@ -45,5 +55,33 @@ describe('a form’s set-up on a new notice', () => {
 
   it('names the boxes the system must not fill', () => {
     expect([...handTypedKeys(settings)]).toEqual(['place']);
+  });
+});
+
+describe('the notice’s number and date, read off its boxes', () => {
+  it('takes the header boxes until the set-up chooses others', () => {
+    expect(noticeMeta(misr, undefined, { accidentNo: ' 1452 ', reportDate: '5/10/2026' })).toEqual({
+      noticeNumber: '1452',
+      noticeDate: '2026-10-05',
+    });
+    expect(
+      noticeMeta(
+        misr,
+        { numberField: 'policyNo', dateField: 'accidentDate' },
+        {
+          accidentNo: '1452',
+          policyNo: 'P-9',
+          accidentDate: '2026-09-30',
+        },
+      ),
+    ).toEqual({ noticeNumber: 'P-9', noticeDate: '2026-09-30' });
+    expect(noticeMeta(misr, undefined, {})).toEqual({ noticeNumber: null, noticeDate: null });
+  });
+
+  it('reads a day however it was written, and nothing that is no day', () => {
+    expect(parseNoticeDay('2026/10/05')).toBe('2026-10-05');
+    expect(parseNoticeDay('٥/١٠/٢٠٢٦')).toBe('2026-10-05');
+    expect(parseNoticeDay('31/02/2026')).toBeNull();
+    expect(parseNoticeDay('أمس')).toBeNull();
   });
 });

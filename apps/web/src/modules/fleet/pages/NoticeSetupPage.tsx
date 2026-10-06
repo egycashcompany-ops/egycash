@@ -21,6 +21,7 @@ import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
 import { Button } from '../../../shared/ui/Button';
 import { Input, Select } from '../../../shared/ui/form';
+import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
@@ -28,7 +29,8 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { PlusIcon, TrashIcon } from '../../../shared/ui/icons';
 import { useNoticeSettings, useSaveNoticeSettings } from '../api/fleet-queries';
 import { NOTICE_TEMPLATES, noticeTemplate, type NoticeField } from '../lib/notice-templates';
-import { startingValues } from '../lib/notice-setup';
+import { metaFields, startingValues } from '../lib/notice-setup';
+import { pickOne } from '../components/dark-filter-bar';
 import { NoticeSheet } from '../components/NoticeSheet';
 
 type Rule = { mode: FleetNoticeDefaultMode; value: string };
@@ -81,11 +83,16 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
 
   const [rules, setRules] = useState<Record<string, Rule>>({});
   const [groups, setGroups] = useState<Group[]>([]);
+  // «رقم الإخطار والتاريخ … يتحطه تلقائى» — the boxes they are read from; `null` the form's own.
+  const [numberField, setNumberField] = useState<string | null>(null);
+  const [dateField, setDateField] = useState<string | null>(null);
   const [loadedVersion, setLoadedVersion] = useState<number | null | undefined>(undefined);
   useEffect(() => {
     if (settings.data === undefined || loadedVersion === settings.data.version) return;
     setRules(settings.data.defaults);
     setGroups(settings.data.links.map((link) => ({ name: link.name, keys: [...link.keys] })));
+    setNumberField(settings.data.numberField);
+    setDateField(settings.data.dateField);
     setLoadedVersion(settings.data.version);
   }, [settings.data, loadedVersion]);
 
@@ -115,6 +122,26 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
             : group.keys.filter((k) => k !== fieldKey),
       })),
     );
+  /** A group's boxes, all at once — a box ticked here leaves whichever group held it before. */
+  const setKeys = (index: number, keys: string[]): void =>
+    setGroups((prev) =>
+      prev.map((group, i) =>
+        i === index
+          ? { ...group, keys }
+          : { ...group, keys: group.keys.filter((k) => !keys.includes(k)) },
+      ),
+    );
+  const boxOptions = useMemo(
+    () =>
+      fields.map((field) => ({
+        value: field.key,
+        label: labelOf(field.key),
+        shortLabel: field.label,
+      })),
+    [fields],
+  );
+  // What the two pickers show: the chosen box, else the form's own.
+  const meta = metaFields(template, { numberField, dateField });
   const addGroup = (): void =>
     setGroups((prev) => [
       ...prev,
@@ -139,10 +166,12 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
       links: groups
         .filter((group) => group.keys.length >= 2)
         .map((group) => ({ name: group.name.trim() || '—', keys: group.keys })),
+      numberField,
+      dateField,
       version: settings.data?.version ?? null,
       updatedAt: null,
     };
-  }, [fields, rules, groups, templateKey, settings.data]);
+  }, [fields, rules, groups, templateKey, settings.data, numberField, dateField]);
 
   const preview = useMemo(() => startingValues(template, draft), [template, draft]);
 
@@ -153,6 +182,8 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
         body: {
           defaults: draft.defaults,
           links: draft.links,
+          numberField,
+          dateField,
           ...(settings.data?.version === null || settings.data === undefined
             ? {}
             : { version: settings.data.version }),
@@ -289,6 +320,53 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
         </section>
 
         <section className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto">
+          {/* «رقم الإخطار والتاريخ يتسجله من الحاجات اللى انا بخترها»: which boxes of this form the
+              notices table reads a notice's number and date from. */}
+          <div
+            data-notice-setup-meta="true"
+            className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+          >
+            <h2 className="text-sm font-bold text-brand-700 dark:text-brand-300">
+              {t('fleet.notices.setup.metaTitle')}
+            </h2>
+            <p className="mb-3 mt-1 text-xs text-slate-500 dark:text-slate-400">
+              {t('fleet.notices.setup.metaHint')}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ['number', meta.number, setNumberField],
+                  ['date', meta.date, setDateField],
+                ] as const
+              ).map(([which, chosen, set]) => (
+                <label
+                  key={which}
+                  className="block text-xs font-bold text-slate-600 dark:text-slate-300"
+                >
+                  {t(`fleet.notices.setup.meta.${which}`)}
+                  <span className="mt-1 block [&_button[aria-haspopup]]:w-full">
+                    <MultiSelect
+                      clearable
+                      fullWidth
+                      density="tight"
+                      showSelectedValues
+                      searchThreshold={0}
+                      panelWidth="w-80"
+                      label={t(`fleet.notices.setup.meta.${which}`)}
+                      options={boxOptions}
+                      value={chosen === null ? [] : [chosen]}
+                      onChange={(next) => {
+                        if (!mayEdit) return;
+                        const picked = pickOne(chosen === null ? [] : [chosen], next);
+                        set(picked);
+                      }}
+                    />
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+
           <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h2 className="text-sm font-bold text-brand-700 dark:text-brand-300">
@@ -360,24 +438,19 @@ const NoticeSetup = ({ templateKey }: { templateKey: FleetNoticeTemplate }): JSX
                         )}
                       </span>
                     ))}
+                    {/* «ممكن اختار اكتر من اختيار فى مره واحده»: the filters' own list, ticks and a
+                        search — every box ticked joins this group, leaving any other it was in. */}
                     {mayEdit && (
-                      <select
-                        aria-label={t('fleet.notices.setup.addBox')}
-                        value=""
-                        onChange={(event) => {
-                          if (event.target.value !== '') assign(event.target.value, index);
-                        }}
-                        className="rounded-full border border-dashed border-slate-400 bg-transparent px-2 py-0.5 text-[11px] dark:border-slate-600"
-                      >
-                        <option value="">{t('fleet.notices.setup.addBox')}</option>
-                        {fields
-                          .filter((field) => !group.keys.includes(field.key))
-                          .map((field) => (
-                            <option key={field.key} value={field.key}>
-                              {labelOf(field.key)}
-                            </option>
-                          ))}
-                      </select>
+                      <MultiSelect
+                        clearable
+                        label={t('fleet.notices.setup.addBox')}
+                        density="tight"
+                        searchThreshold={0}
+                        panelWidth="w-80"
+                        options={boxOptions}
+                        value={group.keys}
+                        onChange={(next) => setKeys(index, next)}
+                      />
                     )}
                   </div>
                   {group.keys.length < 2 && (

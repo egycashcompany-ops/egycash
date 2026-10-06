@@ -16,7 +16,6 @@ import { errorMessage } from '../../../shared/lib/errors';
 import { cn } from '../../../shared/lib/cn';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import {
-  useAccidents,
   useCreateNotice,
   useDeleteNotice,
   useDrivers,
@@ -39,7 +38,7 @@ import {
 } from '../lib/notice-templates';
 import { printNoticePages, type NoticeAnswers } from '../lib/notice-render';
 import { autofillValues, type NoticeSystemFacts } from '../lib/notice-autofill';
-import { handTypedKeys, linkOf, startingValues, withLinked } from '../lib/notice-setup';
+import { handTypedKeys, linkOf, noticeMeta, startingValues, withLinked } from '../lib/notice-setup';
 
 /** What a saved notice is called in the list of saved ones: when, and what it is about. */
 const savedLabel = (notice: FleetNoticeDto, untitled: string): string => {
@@ -96,11 +95,8 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
     [template, settings.data],
   );
   const handTyped = useMemo(() => handTypedKeys(settings.data), [settings.data]);
-  const [noticeNumber, setNoticeNumber] = useState('');
-  const [noticeDate, setNoticeDate] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   const [driverId, setDriverId] = useState('');
-  const [accidentId, setAccidentId] = useState('');
   const [focus, setFocus] = useState<string | undefined>(undefined);
   const [blank, setBlank] = useState(false);
   const pages = useRef<HTMLElement[]>([]);
@@ -112,24 +108,19 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
     if (notice === undefined || loaded.current === notice.id) return;
     loaded.current = notice.id;
     setAnswers({ values: notice.values, checks: notice.checks });
-    setNoticeNumber(notice.noticeNumber ?? '');
-    setNoticeDate(notice.noticeDate?.slice(0, 10) ?? '');
     setVehicleId(notice.vehicleId ?? '');
     setDriverId(notice.driverEmployeeId ?? '');
-    setAccidentId(notice.accidentId ?? '');
   }, [current.data]);
 
   // ── «املأ من النظام» ──────────────────────────────────────────────────────
   // A pick ARMS its group; the facts are written when they have arrived, and only then. Opening a
-  // saved notice sets the same three pickers without arming anything, so it never overwrites
+  // saved notice sets the same two pickers without arming anything, so it never overwrites
   // what was saved.
-  const armed = useRef({ vehicle: false, driver: false, accident: false });
+  const armed = useRef({ vehicle: false, driver: false });
   const vehicle = useVehicle(vehicleId);
   const types = useVehicleTypes();
   const people = useFleetPeopleMap();
   const drivers = useDrivers({ employeeIds: [driverId], pageSize: 1 }, driverId !== '');
-  const vehicleCode = vehicle.data?.code ?? '';
-  const accidents = useAccidents({ vehicleCodes: vehicleCode, pageSize: 50 }, vehicleCode !== '');
 
   // A new notice takes the set-up's defaults once they have arrived — never a saved one.
   const seeded = useRef(false);
@@ -171,13 +162,6 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
     fill({ person, profile });
   }, [driverReady, person, profile]);
 
-  const accident = accidents.data?.items.find((row) => row.id === accidentId);
-  useEffect(() => {
-    if (!armed.current.accident || accident === undefined) return;
-    armed.current.accident = false;
-    fill({ accident });
-  }, [accident]);
-
   // ── editing ──────────────────────────────────────────────────────────────
   // «تكتب واحدة، الباقي يتملي لوحده» — one answer reaches every box that shares it.
   const setValue = (field: string, value: string): void =>
@@ -208,21 +192,19 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
       values: { ...autofillValues(template, { company: true }), ...starting },
       checks: {},
     });
-    setNoticeNumber('');
-    setNoticeDate('');
     setVehicleId('');
     setDriverId('');
-    setAccidentId('');
     openSaved('');
   };
 
   const onSave = async (): Promise<void> => {
+    // «رقم الإخطار والتاريخ … يتحطه تلقائى»: read off the boxes the form's set-up names.
+    const meta = noticeMeta(template, settings.data, answers.values);
     const refs = {
       vehicleId: vehicleId === '' ? null : vehicleId,
       driverEmployeeId: driverId === '' ? null : driverId,
-      accidentId: accidentId === '' ? null : accidentId,
-      noticeNumber: noticeNumber.trim() === '' ? null : noticeNumber.trim(),
-      noticeDate: noticeDate === '' ? null : new Date(noticeDate),
+      noticeNumber: meta.noticeNumber,
+      noticeDate: meta.noticeDate === null ? null : new Date(meta.noticeDate),
     };
     try {
       if (id === '' || current.data === undefined) {
@@ -390,30 +372,10 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:flex-row">
         <section className="min-h-0 overflow-auto rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:w-[42%]">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-            {/* «رقم الإخطار» and its date — what the notices table lists this notice by. */}
-            <div className="mb-3 grid gap-3 sm:grid-cols-2">
-              <Field label={t('fleet.notices.number')} htmlFor="notice-meta-number">
-                <Input
-                  id="notice-meta-number"
-                  data-notice-number="true"
-                  value={noticeNumber}
-                  onChange={(event) => setNoticeNumber(event.target.value)}
-                />
-              </Field>
-              <Field label={t('fleet.notices.date')} htmlFor="notice-meta-date">
-                <Input
-                  id="notice-meta-date"
-                  type="date"
-                  data-notice-date="true"
-                  value={noticeDate}
-                  onChange={(event) => setNoticeDate(event.target.value)}
-                />
-              </Field>
-            </div>
             <h2 className="mb-2 text-sm font-bold text-brand-700 dark:text-brand-300">
               {t('fleet.notices.fromSystem')}
             </h2>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Field label={t('fleet.notices.vehicle')}>
                 <VehicleCodeCombobox
                   value={vehicleId}
@@ -423,7 +385,6 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
                   onChange={(next) => {
                     armed.current.vehicle = next !== '';
                     setVehicleId(next);
-                    setAccidentId('');
                   }}
                 />
               </Field>
@@ -438,23 +399,6 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
                     setDriverId(picked);
                   }}
                 />
-              </Field>
-              <Field label={t('fleet.notices.accident')}>
-                <Select
-                  value={accidentId}
-                  disabled={vehicleCode === ''}
-                  onChange={(event) => {
-                    armed.current.accident = event.target.value !== '';
-                    setAccidentId(event.target.value);
-                  }}
-                >
-                  <option value="">{t('fleet.notices.none')}</option>
-                  {(accidents.data?.items ?? []).map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {`${row.occurredAt?.slice(0, 10) ?? '—'} · ${row.statement.slice(0, 40)}`}
-                    </option>
-                  ))}
-                </Select>
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">

@@ -38,6 +38,8 @@ export type FleetNoticeWithCode = FleetNoticeDoc & {
   vehicleCode: string | null;
   vehicleLicense: FleetNoticeLicenceSource;
   driverLicense: FleetNoticeLicenceSource;
+  vehicleLicenseOnFile: boolean;
+  driverLicenseOnFile: boolean;
 };
 
 /** Which stored field each image is. */
@@ -145,6 +147,8 @@ export const toNoticeDto = (doc: FleetNoticeDoc | FleetNoticeWithCode): FleetNot
   noticeImage: imageDto(doc.noticeImage),
   vehicleLicense: 'vehicleLicense' in doc ? doc.vehicleLicense : null,
   driverLicense: 'driverLicense' in doc ? doc.driverLicense : null,
+  vehicleLicenseOnFile: 'vehicleLicenseOnFile' in doc ? doc.vehicleLicenseOnFile : false,
+  driverLicenseOnFile: 'driverLicenseOnFile' in doc ? doc.driverLicenseOnFile : false,
   checkImage: imageDto(doc.checkImage),
   completedAt: doc.completedAt == null ? null : doc.completedAt.toISOString(),
   version: doc.__v,
@@ -204,28 +208,24 @@ const withCodes = async (
   );
   return docs.map((doc) => {
     const vehicle = doc.vehicleId === null ? undefined : byVehicle.get(String(doc.vehicleId));
+    const vehicleLicenseOnFile =
+      vehicle?.licenseImage != null && !vehicle.isDeleted && mayReadRegistry(ctx, 'vehicleLicense');
+    const driverLicenseOnFile =
+      doc.driverEmployeeId != null &&
+      licensed.has(String(doc.driverEmployeeId)) &&
+      mayReadRegistry(ctx, 'driverLicense');
     // A copy uploaded with the notice wins — «عايز اعدل رخصة السواق او رخصة العربية» for this
     // notice alone; without one, the registry's own when the reader may open it.
     const vehicleLicense: FleetNoticeLicenceSource =
-      doc.vehicleLicenseImage != null
-        ? 'notice'
-        : vehicle?.licenseImage != null &&
-            !vehicle.isDeleted &&
-            mayReadRegistry(ctx, 'vehicleLicense')
-          ? 'registry'
-          : null;
+      doc.vehicleLicenseImage != null ? 'notice' : vehicleLicenseOnFile ? 'registry' : null;
     const driverLicense: FleetNoticeLicenceSource =
-      doc.driverLicenseImage != null
-        ? 'notice'
-        : doc.driverEmployeeId != null &&
-            licensed.has(String(doc.driverEmployeeId)) &&
-            mayReadRegistry(ctx, 'driverLicense')
-          ? 'registry'
-          : null;
+      doc.driverLicenseImage != null ? 'notice' : driverLicenseOnFile ? 'registry' : null;
     return Object.assign(doc, {
       vehicleCode: vehicle?.code ?? null,
       vehicleLicense,
       driverLicense,
+      vehicleLicenseOnFile,
+      driverLicenseOnFile,
     });
   });
 };

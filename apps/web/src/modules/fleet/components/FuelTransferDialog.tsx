@@ -304,7 +304,13 @@ export const FuelTransferDialog = ({
           one.company === cardById(transfer.picked[0] ?? '')?.company,
       );
       const auto = !keep && candidates.length === 1 ? (candidates[0]?.id ?? '') : '';
-      return tidy({ ...transfer, fromPlaces: places, card: keep ? transfer.card : auto });
+      // The money goes to another car — the giving car leaves «إلى» if it was there.
+      return tidy({
+        ...transfer,
+        fromPlaces: places,
+        card: keep ? transfer.card : auto,
+        toPlaces: transfer.toPlaces.filter((place) => !places.includes(place)),
+      });
     });
   const pickFromCard = (key: number, cardId: string): void =>
     edit(key, (transfer) => {
@@ -571,7 +577,8 @@ export const FuelTransferDialog = ({
                   (card) =>
                     card.id !== item.card && (company === undefined || card.company === company),
                 ),
-                otherCompanyOnly: here.length > 0 && company !== undefined,
+                otherCompanyOnly:
+                  here.some((card) => card.id !== item.card) && company !== undefined,
               };
             });
             return (
@@ -619,6 +626,7 @@ export const FuelTransferDialog = ({
                           replaces the first. */}
                       <VehicleCodeFilter
                         fullWidth
+                        plainSearch
                         placeholder={t('fleet.fuelCards.board.searchCar')}
                         options={placeOptions}
                         value={item.fromPlaces}
@@ -670,12 +678,18 @@ export const FuelTransferDialog = ({
                     >
                       <VehicleCodeFilter
                         fullWidth
+                        plainSearch
                         placeholder={t('fleet.fuelCards.board.searchCar')}
                         options={placeOptions.filter(
                           (option) => from === undefined || option.value !== placeOf(from),
                         )}
                         value={item.toPlaces}
-                        onChange={(places) => pickToPlaces(item.key, places)}
+                        onChange={(places) =>
+                          pickToPlaces(
+                            item.key,
+                            places.filter((place) => !item.fromPlaces.includes(place)),
+                          )
+                        }
                       />
                     </FilterWithIcon>
                   </DesignField>

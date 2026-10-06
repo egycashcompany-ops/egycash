@@ -371,6 +371,19 @@ export const NoticesPage = (): JSX.Element => {
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const dateBound = (labelKey: string, value: string, param: string): JSX.Element => {
     const asDate = value !== '' || editingDate === param;
+    // A press (or Enter / Space / ↓ from the keyboard) turns the box into the date box and opens
+    // its calendar. Focus alone changes nothing, so Tab and Shift+Tab pass through as usual.
+    const openCalendar = (box: HTMLInputElement): void => {
+      setEditingDate(param);
+      requestAnimationFrame(() => {
+        try {
+          box.focus();
+          box.showPicker();
+        } catch {
+          // A browser without the picker call opens it on the next press.
+        }
+      });
+    };
     return (
       <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
         <Input
@@ -381,19 +394,17 @@ export const NoticesPage = (): JSX.Element => {
           title={t(labelKey)}
           placeholder={t(labelKey)}
           value={value}
-          onFocus={(e) => {
-            setEditingDate(param);
-            const box = e.currentTarget;
-            requestAnimationFrame(() => {
-              try {
-                box.showPicker();
-              } catch {
-                // A browser without the picker call opens it on the next press.
-              }
-            });
+          readOnly={!asDate}
+          onPointerDown={(e) => {
+            if (!asDate) openCalendar(e.currentTarget);
+          }}
+          onKeyDown={(e) => {
+            if (!asDate && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+              e.preventDefault();
+              openCalendar(e.currentTarget);
+            }
           }}
           onBlur={() => setEditingDate((prev) => (prev === param ? null : prev))}
-          // Words typed into the empty box are not a day; only the date box writes the filter.
           onChange={(e) => {
             if (e.currentTarget.type === 'date') patch({ [param]: e.target.value || null });
           }}
@@ -893,6 +904,8 @@ const NoticeLicencesButton = ({
   onPreview: (target: NoticeImageTarget) => void;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
+  const mayEdit = can('fleetNotice.edit');
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const upload = useUploadNoticeImage();
   const button = useRef<HTMLButtonElement>(null);
@@ -936,6 +949,7 @@ const NoticeLicencesButton = ({
   };
   const line = (kind: 'vehicleLicense' | 'driverLicense'): JSX.Element => {
     const source = kind === 'vehicleLicense' ? row.vehicleLicense : row.driverLicense;
+    const onFile = kind === 'vehicleLicense' ? row.vehicleLicenseOnFile : row.driverLicenseOnFile;
     return (
       <div
         key={kind}
@@ -967,17 +981,19 @@ const NoticeLicencesButton = ({
           </span>
         </span>
         {source === null ? (
-          <PhotoPickButton
-            accept={LICENSE_IMAGE_ACCEPT}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/60 px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
-            disabled={upload.isPending}
-            label={t(`fleet.notices.image.${kind}.upload`)}
-            data-notice-image-upload={`${kind}:${row.id}`}
-            onFile={(file) => void pick(kind, file)}
-          >
-            <UploadIcon className="h-3.5 w-3.5" />
-            {t('fleet.notices.licences.upload')}
-          </PhotoPickButton>
+          !mayEdit ? null : (
+            <PhotoPickButton
+              accept={LICENSE_IMAGE_ACCEPT}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/60 px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
+              disabled={upload.isPending}
+              label={t(`fleet.notices.image.${kind}.upload`)}
+              data-notice-image-upload={`${kind}:${row.id}`}
+              onFile={(file) => void pick(kind, file)}
+            >
+              <UploadIcon className="h-3.5 w-3.5" />
+              {t('fleet.notices.licences.upload')}
+            </PhotoPickButton>
+          )
         ) : (
           <span className="flex shrink-0 items-center gap-1">
             <button
@@ -994,18 +1010,21 @@ const NoticeLicencesButton = ({
             </button>
             {/* «عايز اعدل رخصة السواق او رخصة العربية»: a new picture for THIS notice alone —
                 the vehicles and drivers screens keep theirs. */}
-            <PhotoPickButton
-              accept={LICENSE_IMAGE_ACCEPT}
-              className="inline-flex items-center gap-1 rounded-md border border-brand-500/60 px-2 py-1 text-xs font-bold text-brand-700 hover:bg-brand-500/15 dark:text-brand-200"
-              disabled={upload.isPending}
-              label={t('fleet.notices.licences.changeTitle')}
-              data-notice-licence-change={`${kind}:${row.id}`}
-              onFile={(file) => void pick(kind, file)}
-            >
-              <UploadIcon className="h-3.5 w-3.5" />
-              {t('fleet.notices.licences.change')}
-            </PhotoPickButton>
-            {source === 'notice' && (
+            {mayEdit && (
+              <PhotoPickButton
+                accept={LICENSE_IMAGE_ACCEPT}
+                className="inline-flex items-center gap-1 rounded-md border border-brand-500/60 px-2 py-1 text-xs font-bold text-brand-700 hover:bg-brand-500/15 dark:text-brand-200"
+                disabled={upload.isPending}
+                label={t('fleet.notices.licences.changeTitle')}
+                data-notice-licence-change={`${kind}:${row.id}`}
+                onFile={(file) => void pick(kind, file)}
+              >
+                <UploadIcon className="h-3.5 w-3.5" />
+                {t('fleet.notices.licences.change')}
+              </PhotoPickButton>
+            )}
+            {/* Only where there is something to go back to — the registry's own picture. */}
+            {mayEdit && source === 'notice' && onFile && (
               <button
                 type="button"
                 data-notice-licence-revert={`${kind}:${row.id}`}

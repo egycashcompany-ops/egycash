@@ -44,6 +44,7 @@ export const VehicleCodeFilter = ({
   placeholder,
   density,
   fullWidth = false,
+  plainSearch = false,
 }: {
   /** The codes currently filtering, in the order they were chosen. */
   value: string[];
@@ -65,6 +66,12 @@ export const VehicleCodeFilter = ({
   density?: ControlDensity;
   /** Fill the width this control was given — see `MultiSelect`. */
   fullWidth?: boolean;
+  /**
+   * Search the offered names as they are written, spaces and all — for a list that holds labels
+   * («سفر 1», «تويوتا اللواء») besides codes, where a space is part of the name and not the end of a
+   * code. Enter takes the one offered name typed in full; nothing typed becomes a pick by itself.
+   */
+  plainSearch?: boolean;
 }): JSX.Element => {
   const t = useT();
   // What is still being TYPED — the trailing fragment, after the completed codes have been taken
@@ -85,6 +92,10 @@ export const VehicleCodeFilter = ({
 
   /** The rule, and why, live beside their own test in `readTypedVehicleCodes`. */
   const consume = (raw: string): void => {
+    if (plainSearch) {
+      setSearch(raw);
+      return;
+    }
     // `MultiSelect` asks with '' every time it opens: a list loaded a while ago is asked again, so a
     // car registered since — by anyone — is on offer without reloading the page.
     if (raw === '' && remote && vehicles.isStale) void vehicles.refetch();
@@ -101,8 +112,14 @@ export const VehicleCodeFilter = ({
     () =>
       options === undefined
         ? registryVehicleCodeOptions(vehicles.data?.items ?? [], search, value)
-        : narrowVehicleCodeOptions(options, search, value),
-    [options, vehicles.data, search, value.join(',')],
+        : plainSearch
+          ? options.filter(
+              (option) =>
+                value.includes(option.value) ||
+                option.label.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+            )
+          : narrowVehicleCodeOptions(options, search, value),
+    [options, vehicles.data, search, value.join(','), plainSearch],
   );
 
   return (
@@ -126,7 +143,15 @@ export const VehicleCodeFilter = ({
       // Enter takes whatever is left in the box, separator or not — the last code of a list needs
       // no trailing punctuation to be meant.
       onCommitSearch={(raw) => {
-        add(splitVehicleCodeList(raw));
+        if (plainSearch) {
+          const typed = raw.trim();
+          const exact = (options ?? []).find(
+            (option) => option.value === typed || option.label === typed,
+          );
+          if (exact !== undefined) add([exact.value]);
+        } else {
+          add(splitVehicleCodeList(raw));
+        }
         setSearch('');
       }}
       {...(placeholder === undefined ? {} : { placeholder })}

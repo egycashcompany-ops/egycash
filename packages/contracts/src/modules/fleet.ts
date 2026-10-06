@@ -3002,6 +3002,12 @@ export interface FleetNoticeDto {
    */
   vehicleLicense: FleetNoticeLicenceSource;
   driverLicense: FleetNoticeLicenceSource;
+  /**
+   * Whether the registry holds a licence the reader may open — what «↺ رجوع» falls back to once
+   * the picture uploaded with the notice is removed.
+   */
+  vehicleLicenseOnFile: boolean;
+  driverLicenseOnFile: boolean;
   /** The insurer's cheque — «صورة الشيك». A notice is closed only once it is in. */
   checkImage: FleetLicenseImageDto | null;
   /** «✓» — when the notice was closed; `null` while it is open. */

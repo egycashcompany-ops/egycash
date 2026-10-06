@@ -15,6 +15,7 @@ import {
   type CreateFleetNotice,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type TransferFleetFuelBatch,
   type UpdateFleetFuelCardMovement,
   type UpdateFleetDealershipInvoice,
   type CreateFleetReceipt,
@@ -853,6 +854,15 @@ export const useNotices = (params: FleetListParams, enabled = true) =>
     enabled,
   });
 
+export const useNoticesSummary = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    // Under the list's own key, so every notice change refreshes the figures too.
+    queryKey: listKey(MODULE, 'notices', { summary: true, ...params }),
+    queryFn: () => api.noticesSummary(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
 export const useNotice = (id: string) =>
   useQuery({
     queryKey: detailKey(MODULE, 'notices', id),
@@ -1004,6 +1014,8 @@ export const useApproveFuelCharge = () =>
   );
 export const useTransferFuelBalance = () =>
   useFuelCardMutation((body: TransferFleetFuelBalance) => api.transferFuelBalance(body));
+export const useTransferFuelBatch = () =>
+  useFuelCardMutation((body: TransferFleetFuelBatch) => api.transferFuelBatch(body));
 export const useUpdateFuelCardMovement = () =>
   useFuelCardMutation(({ id, body }: { id: string; body: UpdateFleetFuelCardMovement }) =>
     api.updateFuelCardMovement(id, body),

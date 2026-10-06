@@ -9293,6 +9293,57 @@ describe('fuel cards (الفيز) — «لكل عربيه كارتين واحد 
     expect((await read(to.id)).balance).toBe(800);
   });
 
+  it('several transfers in one press — one card to several, each its own — all or nothing', async () => {
+    const a = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const b = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const c = data<FleetVehicleDto>(await createVehicle(adminToken));
+    const giver = data<Card>(await mkCard(a.id, 'wataniya'));
+    const second = data<Card>(await mkCard(b.id, 'wataniya'));
+    const third = data<Card>(await mkCard(c.id, 'wataniya'));
+    const shellGiver = data<Card>(await mkCard(a.id, 'chillout'));
+    const shellTaker = data<Card>(await mkCard(c.id, 'chillout'));
+    await approve(data<Card>(await requestCharge(giver, 1000)));
+    await approve(data<Card>(await requestCharge(shellGiver, 300)));
+    const batch = (transfers: unknown) =>
+      request(app)
+        .post('/api/v1/fleet/fuel-cards/transfers')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ transfers });
+
+    // The second step asks more than the first one left: nothing at all is written.
+    const short = await batch([
+      { fromCardId: giver.id, targets: [{ toCardId: second.id, amount: 700 }] },
+      { fromCardId: giver.id, targets: [{ toCardId: third.id, amount: 400 }] },
+    ]);
+    expect(short.status).toBe(400);
+    expect((await read(giver.id)).balance).toBe(1000);
+    expect((await read(second.id)).balance).toBe(0);
+
+    // A target of the other company refuses the whole press.
+    const crossed = await batch([
+      { fromCardId: giver.id, targets: [{ toCardId: shellTaker.id, amount: 10 }] },
+    ]);
+    expect(crossed.status).toBe(400);
+
+    const moved = await batch([
+      {
+        fromCardId: giver.id,
+        targets: [
+          { toCardId: second.id, amount: 600 },
+          { toCardId: third.id, amount: 150 },
+        ],
+      },
+      { fromCardId: shellGiver.id, targets: [{ toCardId: shellTaker.id, amount: 300 }] },
+    ]);
+    expect(moved.status).toBe(200);
+    expect(data<{ moves: number; total: number }>(moved)).toMatchObject({ moves: 3, total: 1050 });
+    expect((await read(giver.id)).balance).toBe(250);
+    expect((await read(second.id)).balance).toBe(600);
+    expect((await read(third.id)).balance).toBe(150);
+    expect((await read(shellGiver.id)).balance).toBe(0);
+    expect((await read(shellTaker.id)).balance).toBe(300);
+  });
+
   it('sums the balances by company and counts the requests waiting', async () => {
     const res = await request(app)
       .get('/api/v1/fleet/fuel-cards/summary')

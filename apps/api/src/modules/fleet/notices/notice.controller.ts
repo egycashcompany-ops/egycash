@@ -3,6 +3,7 @@ import { type Request, type Response } from 'express';
 import {
   type CreateFleetNotice,
   type FleetNoticeImageKind,
+  type FleetNoticesSummaryQuery,
   type FleetNoticeTemplate,
   type ListFleetNoticesQuery,
   type SaveFleetNoticeSettings,
@@ -20,24 +21,29 @@ type TemplateParam = { template: FleetNoticeTemplate };
 
 export const listNotices = async (req: Request, res: Response): Promise<void> => {
   const { query } = validated<never, ListFleetNoticesQuery>(req);
-  okPage(res, await fleetNoticeService.list(query), toNoticeDto);
+  okPage(res, await fleetNoticeService.list(query, authContext(req)), toNoticeDto);
+};
+
+export const noticesSummary = async (req: Request, res: Response): Promise<void> => {
+  const { query } = validated<never, FleetNoticesSummaryQuery>(req);
+  ok(res, await fleetNoticeService.summary(query, authContext(req)));
 };
 
 export const getNotice = async (req: Request, res: Response): Promise<void> => {
   const { params } = validated<never, never, IdParam>(req);
-  ok(res, toNoticeDto(await fleetNoticeService.get(params.id)));
+  ok(res, toNoticeDto(await fleetNoticeService.get(params.id, authContext(req))));
 };
 
 export const createNotice = async (req: Request, res: Response): Promise<void> => {
   const { body } = validated<CreateFleetNotice>(req);
   const doc = await fleetNoticeService.create(body, authContext(req).userId);
-  created(res, toNoticeDto(await fleetNoticeService.get(String(doc._id))));
+  created(res, toNoticeDto(await fleetNoticeService.get(String(doc._id), authContext(req))));
 };
 
 export const updateNotice = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<UpdateFleetNotice, never, IdParam>(req);
   await fleetNoticeService.update(params.id, body, authContext(req).userId);
-  ok(res, toNoticeDto(await fleetNoticeService.get(params.id)));
+  ok(res, toNoticeDto(await fleetNoticeService.get(params.id, authContext(req))));
 };
 
 export const deleteNotice = async (req: Request, res: Response): Promise<void> => {
@@ -48,7 +54,12 @@ export const deleteNotice = async (req: Request, res: Response): Promise<void> =
 
 export const setNoticeDone = async (req: Request, res: Response): Promise<void> => {
   const { body, params } = validated<SetFleetNoticeDone, never, IdParam>(req);
-  ok(res, toNoticeDto(await fleetNoticeService.setDone(params.id, body, authContext(req).userId)));
+  ok(
+    res,
+    toNoticeDto(
+      await fleetNoticeService.setDone(params.id, body, authContext(req).userId, authContext(req)),
+    ),
+  );
 };
 
 export const uploadNoticeImage = async (req: Request, res: Response): Promise<void> => {

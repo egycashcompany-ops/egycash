@@ -2934,10 +2934,52 @@ export const UpdateFleetNoticeSchema = z
   .strict();
 export type UpdateFleetNotice = z.infer<typeof UpdateFleetNoticeSchema>;
 
-export const ListFleetNoticesQuerySchema = PaginationQuerySchema.extend({
+/** A scan is in, or still owed — the notices screen's two image filters. */
+export const FLEET_NOTICE_IMAGE_STATES = ['has', 'missing'] as const;
+export const FleetNoticeImageStateSchema = z.enum(FLEET_NOTICE_IMAGE_STATES);
+export type FleetNoticeImageState = z.infer<typeof FleetNoticeImageStateSchema>;
+
+/** Open, or closed with «✓». */
+export const FLEET_NOTICE_STATUSES = ['open', 'done'] as const;
+export const FleetNoticeStatusSchema = z.enum(FLEET_NOTICE_STATUSES);
+export type FleetNoticeStatus = z.infer<typeof FleetNoticeStatusSchema>;
+
+/**
+ * The notices table's filters — «فلاتر … زى شاشه السيارات»: the car, the number, the months of
+ * the notice's date, the insurer's form, open or closed, and whether each scan is in.
+ */
+const noticeFilters = {
+  /** One form — what the editor's list of saved copies asks. */
   template: FleetNoticeTemplateSchema.optional(),
-});
+  templates: listQuery(FleetNoticeTemplateSchema),
+  vehicleCodes: vehicleCodesQuery(),
+  noticeNumber: z.string().trim().max(60).optional(),
+  /** «التاريخ فى الفلاتر خليه من الى» — the notice's date, from and to, both days included. */
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  status: FleetNoticeStatusSchema.optional(),
+  checkImage: FleetNoticeImageStateSchema.optional(),
+};
+export const ListFleetNoticesQuerySchema = PaginationQuerySchema.extend(noticeFilters);
 export type ListFleetNoticesQuery = z.infer<typeof ListFleetNoticesQuerySchema>;
+
+/** The same filters, for the figures behind «الإحصائيات». */
+export const FleetNoticesSummaryQuerySchema = z.object(noticeFilters).strict();
+export type FleetNoticesSummaryQuery = z.infer<typeof FleetNoticesSummaryQuerySchema>;
+
+/** «الإحصائيات» of the notices screen, over the notices the filters leave. */
+export interface FleetNoticesSummaryDto {
+  total: number;
+  done: number;
+  open: number;
+  /** The car's or the driver's licence is not on file and nothing was uploaded with the notice. */
+  missingLicences: number;
+  /** No «صورة الشيك» yet. */
+  missingCheckImage: number;
+  byTemplate: { template: FleetNoticeTemplate; count: number }[];
+  /** The months of the notices' dates, oldest first — the month filter's options and counts. */
+  months: { month: string; count: number }[];
+}
 
 export interface FleetNoticeDto {
   id: string;
@@ -2953,6 +2995,13 @@ export interface FleetNoticeDto {
   noticeDate: string | null;
   /** The signed paper, scanned — «صورة الإخطار». */
   noticeImage: FleetLicenseImageDto | null;
+  /**
+   * What prints with the form — «صوره الرخصه العربيه وصوره رخصه السواق»: where the car's and the
+   * driver's licence images come from — the registry's own, one uploaded with the notice because the
+   * registry has none, or nowhere yet.
+   */
+  vehicleLicense: FleetNoticeLicenceSource;
+  driverLicense: FleetNoticeLicenceSource;
   /** The insurer's cheque — «صورة الشيك». A notice is closed only once it is in. */
   checkImage: FleetLicenseImageDto | null;
   /** «✓» — when the notice was closed; `null` while it is open. */
@@ -2963,7 +3012,20 @@ export interface FleetNoticeDto {
 }
 
 /** The two scans a notice carries: the signed paper and the insurer's cheque. */
-export const FLEET_NOTICE_IMAGE_KINDS = ['notice', 'check'] as const;
+/**
+ * The images a notice holds: the cheque; the car's and the driver's licences when the registry has
+ * none of its own; and `notice`, the signed-form scan of the first release, kept readable for the
+ * notices that have one.
+ */
+export const FLEET_NOTICE_IMAGE_KINDS = [
+  'notice',
+  'check',
+  'vehicleLicense',
+  'driverLicense',
+] as const;
+
+/** Where a licence image printed with a notice comes from. */
+export type FleetNoticeLicenceSource = 'registry' | 'notice' | null;
 export const FleetNoticeImageKindSchema = z.enum(FLEET_NOTICE_IMAGE_KINDS);
 export type FleetNoticeImageKind = z.infer<typeof FleetNoticeImageKindSchema>;
 
@@ -3009,6 +3071,12 @@ export const SaveFleetNoticeSettingsSchema = z
       .refine((values) => Object.keys(values).length <= 200, 'too many boxes')
       .default({}),
     links: z.array(noticeLink).max(30).default([]),
+    /**
+     * «رقم الإخطار والتاريخ … يتحطه تلقائى»: the boxes of the form the notices table reads its
+     * number and its date from. `null` — the form's own default.
+     */
+    numberField: noticeKey.nullish(),
+    dateField: noticeKey.nullish(),
     /** The version read, or absent for a form never set up. */
     version: z.number().int().min(0).optional(),
   })
@@ -3019,6 +3087,9 @@ export interface FleetNoticeSettingsDto {
   template: FleetNoticeTemplate;
   defaults: Record<string, { mode: FleetNoticeDefaultMode; value: string }>;
   links: { name: string; keys: string[] }[];
+  /** The boxes the notice's number and date are read from; `null` — the form's own default. */
+  numberField: string | null;
+  dateField: string | null;
   /** `null` — the form has never been set up. */
   version: number | null;
   updatedAt: string | null;
@@ -3302,6 +3373,46 @@ export const TransferFleetFuelBalanceSchema = z
     path: ['toCardId'],
   });
 export type TransferFleetFuelBalance = z.infer<typeof TransferFleetFuelBalanceSchema>;
+
+/**
+ * Several transfers in one press — «اكتر من من ويدى اكتر من الى بس كل واحده لوحدها». Each takes ONE
+ * card and gives to one card or more, each with its own amount, all of the first card's company. A
+ * card may give in more than one transfer; every step reads the balance the step before left.
+ */
+export const TransferFleetFuelBatchSchema = z
+  .object({
+    transfers: z
+      .array(
+        z
+          .object({
+            fromCardId: objectId(),
+            targets: z
+              .array(z.object({ toCardId: objectId(), amount: egp().positive() }).strict())
+              .min(1)
+              .max(20),
+          })
+          .strict()
+          .refine(
+            (value) => value.targets.every((target) => target.toCardId !== value.fromCardId),
+            {
+              message: 'a card cannot transfer to itself',
+              path: ['targets'],
+            },
+          ),
+      )
+      .min(1)
+      .max(20),
+  })
+  .strict();
+export type TransferFleetFuelBatch = z.infer<typeof TransferFleetFuelBatchSchema>;
+
+/** What a batch of transfers left every card it touched holding. */
+export interface FleetFuelTransferBatchResultDto {
+  cards: FleetFuelCardDto[];
+  /** How many card-to-card moves were written. */
+  moves: number;
+  total: number;
+}
 
 /** What a transfer did to both cards — «اللى انا اخدت منها كانت كام وبقت كام». */
 export interface FleetFuelTransferResultDto {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { licenceMonthOptions } from '../pages/VehiclesListPage';
+import { licenceMonthOptions } from './licence-months';
 
 describe('the licence-expiry months offered on the vehicles screen', () => {
   it('lists each month a licence runs out in, oldest first, with its count of cars', () => {

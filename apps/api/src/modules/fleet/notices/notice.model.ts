@@ -29,6 +29,10 @@ export interface FleetNoticeDoc extends BaseDocFields {
   noticeImage: FleetNoticeImage | null;
   /** «صورة الشيك» — the insurer's cheque; a notice closes only with it. */
   checkImage: FleetNoticeImage | null;
+  /** The car's licence, uploaded with the notice because the registry has none. */
+  vehicleLicenseImage: FleetNoticeImage | null;
+  /** The driver's licence, uploaded with the notice because the driver's file has none. */
+  driverLicenseImage: FleetNoticeImage | null;
   /** «✓» — `null` while the notice is open. */
   completedAt: Date | null;
 }
@@ -57,6 +61,8 @@ const noticeSchema = new Schema<FleetNoticeDoc>(
     noticeDate: { type: Date, default: null },
     noticeImage: { type: imageSchema, default: null },
     checkImage: { type: imageSchema, default: null },
+    vehicleLicenseImage: { type: imageSchema, default: null },
+    driverLicenseImage: { type: imageSchema, default: null },
     completedAt: { type: Date, default: null },
     ...baseFields,
   },

@@ -23,8 +23,33 @@ import { noticeTemplate } from '../lib/notice-templates';
 export const NOTICE_ACTION_BUTTON =
   'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
-const imageOf = (row: FleetNoticeDto, kind: FleetNoticeImageKind) =>
-  kind === 'check' ? row.checkImage : row.noticeImage;
+/**
+ * What identifies the image a row shows for a kind — the file, or for a licence where it comes
+ * from — `null` when there is none. Keys the fetched picture, so a new upload is fetched anew.
+ */
+const imageKey = (row: FleetNoticeDto, kind: FleetNoticeImageKind): string | null => {
+  switch (kind) {
+    case 'check':
+      return row.checkImage?.fileId ?? null;
+    case 'notice':
+      return row.noticeImage?.fileId ?? null;
+    case 'vehicleLicense':
+      return row.vehicleLicense;
+    case 'driverLicense':
+      return row.driverLicense;
+  }
+};
+
+/**
+ * Whether the image is the NOTICE's own — only that can be removed from here. A licence the
+ * registry holds belongs to the vehicles or the drivers screen.
+ */
+export const ownNoticeImage = (row: FleetNoticeDto, kind: FleetNoticeImageKind): boolean =>
+  kind === 'vehicleLicense'
+    ? row.vehicleLicense === 'notice'
+    : kind === 'driverLicense'
+      ? row.driverLicense === 'notice'
+      : imageKey(row, kind) !== null;
 
 /** The scan as an object URL, revoked on every change — keyed on the file, not the row. */
 const useNoticeImageUrl = (
@@ -129,7 +154,7 @@ export const NoticeImagePreviewDialog = ({
   const can = useCan();
   const row = target?.row ?? null;
   const kind = target?.kind ?? 'notice';
-  const fileId = row === null ? null : (imageOf(row, kind)?.fileId ?? null);
+  const fileId = row === null ? null : imageKey(row, kind);
   const { url, loading, failed } = useNoticeImageUrl(row?.id ?? '', kind, fileId);
   const [confirming, setConfirming] = useState<NoticeImageTarget | null>(null);
   return (
@@ -145,7 +170,7 @@ export const NoticeImagePreviewDialog = ({
             <Button variant="secondary" onClick={onClose}>
               {t('common.close')}
             </Button>
-            {can('fleetNotice.edit') && target !== null && (
+            {can('fleetNotice.edit') && target !== null && ownNoticeImage(target.row, kind) && (
               <Button variant="danger" onClick={() => setConfirming(target)}>
                 {t(`fleet.notices.image.${kind}.delete`)}
               </Button>
@@ -193,7 +218,7 @@ export const printNoticeImage = async (
       { label: t('fleet.notices.columns.template'), value: who.insurer },
     ],
     licenseImage:
-      imageOf(row, kind) === null
+      imageKey(row, kind) === null
         ? null
         : {
             fetch: () => fetchNoticeImage(row.id, kind),
@@ -228,7 +253,7 @@ export const NoticeImageCell = ({
     }
   };
 
-  if (imageOf(row, kind) === null) {
+  if (imageKey(row, kind) === null) {
     if (!mayEdit) return <span className="text-slate-400">—</span>;
     return (
       <PhotoPickButton

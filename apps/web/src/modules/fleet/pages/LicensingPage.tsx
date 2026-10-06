@@ -26,6 +26,7 @@ import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { ExportSheetButton } from '../components/ExportSheetButton';
 import { saveSheet } from '../lib/fleet-sheet';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
+import { licenceMonthOptions } from '../lib/licence-months';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { Skeleton } from '../../../shared/ui/Skeleton';
@@ -163,11 +164,9 @@ export const LicensingPage = (): JSX.Element => {
   const chassis = sp.get('chassis') ?? '';
   const insurance = readList(sp, 'ins');
   const tax = readList(sp, 'tax');
-  // The licence-expiry WINDOW — «وفى الفلاتر الفتره». Two open-ended bounds rather than one
-  // preset («هذا الشهر»): a renewal run is planned over whatever stretch the office is working,
-  // and either end alone is an ordinary question — «كل اللى خلص قبل اليوم».
-  // `YYYY-MM`, exactly what `<input type="month">` reads and writes.
-  const month = sp.get('month') ?? '';
+  // The months the licences run out in — «زى شاشه السيارات»: several at once, each with its count
+  // of cars, picked from a list. A link from before carries one month; it reads as a list of one.
+  const months = readList(sp, 'month');
   /**
    * WHICH WAY THE EXPIRY RUNS — «عاوز اعمل سهم هنا عشان اقدر اتحكم فى التاريخ تصاعديا و تنازليا».
    *
@@ -200,7 +199,7 @@ export const LicensingPage = (): JSX.Element => {
     vehicleCodes.length > 0 ||
     plate !== '' ||
     chassis !== '' ||
-    month !== '' ||
+    months.length > 0 ||
     insurance.length > 0 ||
     tax.length > 0;
 
@@ -220,11 +219,19 @@ export const LicensingPage = (): JSX.Element => {
           (vehicleCodes.length === 0 || vehicleCodes.includes(row.code)) &&
           contains(row.plateNumber, plate) &&
           contains(row.chassisNumber, chassis) &&
-          inMonth(row.licenseExpiresAt, month) &&
+          (months.length === 0 || months.some((m) => inMonth(row.licenseExpiresAt, m))) &&
           matchesPaper(row, PAPERS[0], insurance) &&
           matchesPaper(row, PAPERS[1], tax),
       ),
-    [all, vehicleCodes.join(','), plate, chassis, month, insurance.join(','), tax.join(',')],
+    [
+      all,
+      vehicleCodes.join(','),
+      plate,
+      chassis,
+      months.join(','),
+      insurance.join(','),
+      tax.join(','),
+    ],
   );
 
   /**
@@ -235,6 +242,7 @@ export const LicensingPage = (): JSX.Element => {
    * would list every «برقاش م» car in the fleet — cars this screen can never show — so picking one
    * would empty the board with nothing to say why.
    */
+  const monthOptions = useMemo(() => licenceMonthOptions(all, locale), [all, locale]);
   const carOptions = useMemo(() => boardVehicleOptions(all, vehicleCodes), [all, vehicleCodes.join(',')]);
 
   /**
@@ -412,16 +420,19 @@ export const LicensingPage = (): JSX.Element => {
             rule="english"
           />
         </div>
-        {/* ONE MONTH, not a pair of dates — «واحد بس بيجيب الشهر بس». A renewal run is a month's
-            work, and the two bounds it replaces asked the clerk to type that month's first and
-            last day every time they wanted the obvious question. */}
+        {/* The months the licences run out in — the same list the vehicles screen filters by. */}
         <div className="w-44 shrink-0">
-          <Input
-            type="month"
-            aria-label={t('fleet.vehicles.fields.licenseExpiresAt')}
-            value={month}
-            onChange={(e) => patch({ month: e.target.value || null })}
-            textScale="comfortable"
+          <MultiSelect
+            clearable
+            fullWidth
+            density="tight"
+            showSelectedValues
+            searchThreshold={0}
+            panelWidth="w-60"
+            label={t('fleet.vehicles.filters.short.licenseMonth')}
+            options={monthOptions}
+            value={months}
+            onChange={(next) => patch({ month: writeList(next) })}
           />
         </div>
         {/* Each paper picks among its OWN two squares. Two controls rather than one list of four,

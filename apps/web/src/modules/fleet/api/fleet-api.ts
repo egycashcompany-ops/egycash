@@ -17,12 +17,15 @@ import {
   type FleetFuelCardSecretDto,
   type FleetFuelCardTotalsDto,
   type FleetFuelTransferResultDto,
+  type FleetFuelTransferBatchResultDto,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type TransferFleetFuelBatch,
   type UpdateFleetFuelCardMovement,
   type UpdateFleetFuelCard,
   type FleetDealershipTotalsDto,
   type FleetNoticeDto,
+  type FleetNoticesSummaryDto,
   type FleetNoticeImageKind,
   type FleetNoticeSettingsDto,
   type FleetNoticeTemplate,
@@ -441,6 +444,9 @@ export const listFleetPeople = (includeExited = false): Promise<FleetPersonDto[]
 // ── Insurance notices (الإخطارات) ─────────────────────────────────────────────
 export const listNotices = (params: FleetListParams): Promise<Paginated<FleetNoticeDto>> =>
   getPage<FleetNoticeDto>(`/fleet/notices${buildQuery(params)}`);
+/** «الإحصائيات» of the notices screen, over the same filters as the table. */
+export const noticesSummary = (params: FleetListParams): Promise<FleetNoticesSummaryDto> =>
+  get<FleetNoticesSummaryDto>(`/fleet/notices/summary${buildQuery(params)}`);
 export const getNotice = (id: string): Promise<FleetNoticeDto> =>
   get<FleetNoticeDto>(`/fleet/notices/${id}`);
 export const createNotice = (body: CreateFleetNotice): Promise<FleetNoticeDto> =>
@@ -536,6 +542,11 @@ export const transferFuelBalance = (
   body: TransferFleetFuelBalance,
 ): Promise<FleetFuelTransferResultDto> =>
   post<FleetFuelTransferResultDto>('/fleet/fuel-cards/transfer', body);
+/** Several transfers in one press — each one card to one card or more. */
+export const transferFuelBatch = (
+  body: TransferFleetFuelBatch,
+): Promise<FleetFuelTransferBatchResultDto> =>
+  post<FleetFuelTransferBatchResultDto>('/fleet/fuel-cards/transfers', body);
 export const listFuelCardMovements = (
   params: FleetListParams,
 ): Promise<Paginated<FleetFuelCardMovementDto>> =>

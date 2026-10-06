@@ -1,6 +1,10 @@
 // «تحويل رصيد بين كارتين»: pick a car and one of its two cards (from), a car and a card (to), the
 // amount — and see what each card was and what it becomes before pressing the button.
-import { useEffect, useMemo, useState } from 'react';
+//
+// «يبقى تحول 1 اختار من اقدر اضيف اكتر من كارت … و + اضافه تحويل لما ادوس عليها يجيب من و الى»:
+// one press may carry several transfers, each ONE card giving to one card or more — the same look,
+// repeated. A card that gives twice is held to what the transfer before it left.
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { type FleetFuelCardDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -14,7 +18,7 @@ import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatMoney } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
-import { useTransferFuelBalance } from '../api/fleet-queries';
+import { useTransferFuelBatch } from '../api/fleet-queries';
 import { VehicleCodeCombobox } from './VehicleCodeCombobox';
 import { fuelCardPlace, noCarPlaces } from './FuelCardTiles';
 import { Spinner } from '../../../shared/ui/Spinner';
@@ -128,6 +132,9 @@ export const CardPick = ({
   );
 };
 
+type Target = { key: number; place: string; card: string; amount: string };
+type Transfer = { key: number; place: string; card: string; targets: Target[] };
+
 export const FuelTransferDialog = ({
   open,
   onClose,
@@ -140,126 +147,191 @@ export const FuelTransferDialog = ({
 }): JSX.Element | null => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const [fromVehicle, setFromVehicle] = useState('');
-  const [toVehicle, setToVehicle] = useState('');
-  const [fromCard, setFromCard] = useState('');
-  const [toCard, setToCard] = useState('');
-  const [amount, setAmount] = useState('');
+  const next = useRef(0);
+  const id = (): number => (next.current += 1);
+  const blankTarget = (): Target => ({ key: id(), place: '', card: '', amount: '' });
+  const blankTransfer = (): Transfer => ({
+    key: id(),
+    place: '',
+    card: '',
+    targets: [blankTarget()],
+  });
+  const [transfers, setTransfers] = useState<Transfer[]>(() => [blankTransfer()]);
   useEffect(() => {
-    if (!open) return;
-    setFromVehicle('');
-    setToVehicle('');
-    setFromCard('');
-    setToCard('');
-    setAmount('');
+    if (open) setTransfers([blankTransfer()]);
   }, [open]);
-  // The car the money comes from is never offered as the one it goes to; picking it on the «from»
-  // side after it was chosen as «to» empties «to».
-  useEffect(() => {
-    if (fromVehicle !== '' && toVehicle === fromVehicle) {
-      setToVehicle('');
-      setToCard('');
-    }
-  }, [fromVehicle, toVehicle]);
 
   // A «car» here is a car's id, or the label of cards on no car — they are picked the same way.
-  const byVehicle = (vehicleId: string): FleetFuelCardDto[] =>
-    vehicleId === '' ? [] : cards.filter((card) => fuelCardPlace(card) === vehicleId);
-  // «لما ادوس على كارت شركه من تلقائي يحدد نفس الشركه الى والعكس»: a card picked on one side
-  // picks the other car's card of the same company, whichever side is picked first — and a car
-  // chosen after the other side's card arrives with its card of that company already ticked.
-  const companyOf = (cardId: string): FleetFuelCardDto['company'] | null =>
-    cards.find((card) => card.id === cardId)?.company ?? null;
-  const cardOfCompany = (vehicleId: string, company: FleetFuelCardDto['company'] | null): string =>
-    company === null
+  const byPlace = (place: string): FleetFuelCardDto[] =>
+    place === '' ? [] : cards.filter((card) => fuelCardPlace(card) === place);
+  const cardById = (cardId: string): FleetFuelCardDto | undefined =>
+    cards.find((card) => card.id === cardId);
+  // «لما ادوس على كارت شركه من تلقائي يحدد نفس الشركه»: a place picked on the «to» side arrives
+  // with its card of the giving card's company already ticked.
+  const cardOfCompany = (
+    place: string,
+    company: FleetFuelCardDto['company'] | undefined,
+  ): string =>
+    company === undefined
       ? ''
-      : (byVehicle(vehicleId).find((card) => card.company === company)?.id ?? '');
-  const pickFromVehicle = (vehicleId: string): void => {
-    setFromVehicle(vehicleId);
-    setFromCard(cardOfCompany(vehicleId, companyOf(toCard)));
-  };
-  const pickToVehicle = (vehicleId: string): void => {
-    setToVehicle(vehicleId);
-    setToCard(cardOfCompany(vehicleId, companyOf(fromCard)));
-  };
-  const pickFromCard = (cardId: string): void => {
-    setFromCard(cardId);
-    const match = cardOfCompany(toVehicle, companyOf(cardId));
-    if (toVehicle !== '') setToCard(match);
-  };
-  const pickToCard = (cardId: string): void => {
-    setToCard(cardId);
-    const match = cardOfCompany(fromVehicle, companyOf(cardId));
-    if (fromVehicle !== '' && match !== '') setFromCard(match);
-  };
+      : (byPlace(place).find((card) => card.company === company)?.id ?? '');
   const places = useMemo(() => noCarPlaces(cards), [cards]);
-  // «لازم تكون نفس الشركه … وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت والعكس صحيح»: once the first
-  // card is chosen, the second is offered from its company only.
-  const fromCompany = cards.find((card) => card.id === fromCard)?.company ?? null;
-  // «مينفعش نفس العربيه من تكون الى هى هى نفس العربيه»: the money goes to another car — the «to»
-  // box does not offer the «from» car at all; this guard only holds the line in between.
-  const sameCar = fromVehicle !== '' && toVehicle === fromVehicle;
-  const toChoices = sameCar
-    ? []
-    : byVehicle(toVehicle).filter((card) => fromCompany === null || card.company === fromCompany);
-  // A first card of the other company makes a chosen second card unreachable — it is dropped.
-  useEffect(() => {
-    if (fromCompany === null) return;
-    const chosen = cards.find((card) => card.id === toCard);
-    if (chosen !== undefined && chosen.company !== fromCompany) setToCard('');
-  }, [fromCompany, toCard, cards]);
-  const from = useMemo(() => cards.find((card) => card.id === fromCard) ?? null, [cards, fromCard]);
-  const to = useMemo(() => cards.find((card) => card.id === toCard) ?? null, [cards, toCard]);
-  const value = Number(amount);
-  const enough = from !== null && value <= from.balance;
+
+  const editTransfer = (key: number, change: (transfer: Transfer) => Transfer): void =>
+    setTransfers((all) =>
+      all.map((transfer) => (transfer.key === key ? change(transfer) : transfer)),
+    );
+  const editTarget = (key: number, targetKey: number, change: Partial<Target>): void =>
+    editTransfer(key, (transfer) => ({
+      ...transfer,
+      targets: transfer.targets.map((target) =>
+        target.key === targetKey ? { ...target, ...change } : target,
+      ),
+    }));
+  // «لازم تكون نفس الشركه … وطنيه ل وطنيه»: a giving card of another company re-picks every
+  // receiving card to its own company, or drops it.
+  const pickFromCard = (key: number, cardId: string): void =>
+    editTransfer(key, (transfer) => {
+      const company = cardById(cardId)?.company;
+      return {
+        ...transfer,
+        card: cardId,
+        targets: transfer.targets.map((target) =>
+          cardById(target.card)?.company === company
+            ? target
+            : { ...target, card: cardOfCompany(target.place, company) },
+        ),
+      };
+    });
+  /** Every receiving card re-picked to the giving card's company, or let go. */
+  const aligned = (transfer: Transfer): Transfer => {
+    const company = cardById(transfer.card)?.company;
+    if (company === undefined) return transfer;
+    return {
+      ...transfer,
+      targets: transfer.targets.map((target) =>
+        target.card === '' || cardById(target.card)?.company === company
+          ? target
+          : { ...target, card: cardOfCompany(target.place, company) },
+      ),
+    };
+  };
+  const pickFromPlace = (key: number, place: string): void =>
+    editTransfer(key, (transfer) =>
+      aligned({
+        ...transfer,
+        place,
+        // A card already chosen on the «to» side picks the giving car's card of its company.
+        card: cardOfCompany(
+          place,
+          cardById(transfer.targets.find((other) => other.card !== '')?.card ?? '')?.company,
+        ),
+        // The money goes to another car — a «to» on the same place is emptied.
+        targets: transfer.targets.map((target) =>
+          target.place === place && place !== '' ? { ...target, place: '', card: '' } : target,
+        ),
+      }),
+    );
+  // …and the other way: a «to» card picked first picks the giving card of its company.
+  const pickToCard = (key: number, targetKey: number, cardId: string): void =>
+    editTransfer(key, (transfer) =>
+      aligned({
+        ...transfer,
+        card:
+          transfer.card !== '' || transfer.place === ''
+            ? transfer.card
+            : cardOfCompany(transfer.place, cardById(cardId)?.company),
+        targets: transfer.targets.map((target) =>
+          target.key === targetKey ? { ...target, card: cardId } : target,
+        ),
+      }),
+    );
+
+  // ── What every card holds before and after, step by step ────────────────────────────────────
+  const steps = useMemo(() => {
+    const running = new Map(cards.map((card) => [card.id, card.balance]));
+    return transfers.map((transfer) => {
+      const fromBefore = running.get(transfer.card) ?? 0;
+      const lines = transfer.targets.map((target) => {
+        const value = Number(target.amount);
+        const amount = Number.isFinite(value) && value > 0 ? value : 0;
+        const giverBefore = running.get(transfer.card) ?? 0;
+        const before = running.get(target.card) ?? 0;
+        const enough = transfer.card === '' || amount <= giverBefore + 1e-9;
+        if (transfer.card !== '' && target.card !== '' && amount > 0) {
+          running.set(transfer.card, Math.round((giverBefore - amount) * 100) / 100);
+          running.set(target.card, Math.round((before + amount) * 100) / 100);
+        }
+        return { target, amount, before, giverBefore, enough };
+      });
+      const taken = lines.reduce((sum, line) => sum + line.amount, 0);
+      return { transfer, fromBefore, taken, lines };
+    });
+  }, [transfers, cards]);
+
   const money = (n: number): string => formatMoney(n, 'EGP', locale);
-  // The button stays pressable: pressing it short of a valid transfer names what is missing and
-  // turns it red (`useRequiredFields`). The same card on both sides is the «to» card's fault; more
-  // than the first card holds is the amount's, which keeps its own «not enough» line.
+  const many = transfers.length > 1;
   const required = useRequiredFields(
-    [
-      {
-        key: 'fromVehicle',
-        label: `${t('fleet.fuelCards.transfer.from')} · ${t('fleet.odometer.columns.vehicle')}`,
-        ok: fromVehicle !== '',
-      },
-      {
-        key: 'fromCard',
-        label: `${t('fleet.fuelCards.transfer.from')} · ${t('fleet.fuelCards.fields.card')}`,
-        ok: from !== null,
-      },
-      {
-        key: 'toVehicle',
-        label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.odometer.columns.vehicle')}`,
-        ok: toVehicle !== '' && !sameCar,
-      },
-      {
-        key: 'toCard',
-        label: `${t('fleet.fuelCards.transfer.to')} · ${t('fleet.fuelCards.fields.card')}`,
-        ok:
-          !sameCar &&
-          to !== null &&
-          to.id !== from?.id &&
-          (from === null || to.company === from.company),
-      },
-      {
-        key: 'amount',
-        label: t('fleet.fuelCards.transfer.amount'),
-        ok: Number.isFinite(value) && value > 0 && (from === null || enough),
-      },
-    ],
+    steps.flatMap(({ transfer, lines }, i) => {
+      const from = cardById(transfer.card);
+      const prefix = many
+        ? `${t('fleet.fuelCards.transfer.transferN', { n: String(i + 1) })} · `
+        : '';
+      return [
+        {
+          key: `${transfer.key}:place`,
+          label: `${prefix}${t('fleet.fuelCards.transfer.from')} · ${t('fleet.odometer.columns.vehicle')}`,
+          ok: transfer.place !== '',
+        },
+        {
+          key: `${transfer.key}:card`,
+          label: `${prefix}${t('fleet.fuelCards.transfer.from')} · ${t('fleet.fuelCards.fields.card')}`,
+          ok: from !== undefined,
+        },
+        ...lines.flatMap(({ target, amount, enough }) => {
+          const to = cardById(target.card);
+          return [
+            {
+              key: `${target.key}:place`,
+              label: `${prefix}${t('fleet.fuelCards.transfer.to')} · ${t('fleet.odometer.columns.vehicle')}`,
+              ok: target.place !== '' && target.place !== transfer.place,
+            },
+            {
+              key: `${target.key}:card`,
+              label: `${prefix}${t('fleet.fuelCards.transfer.to')} · ${t('fleet.fuelCards.fields.card')}`,
+              ok:
+                to !== undefined &&
+                to.id !== from?.id &&
+                (from === undefined || to.company === from.company),
+            },
+            {
+              key: `${target.key}:amount`,
+              label: `${prefix}${t('fleet.fuelCards.transfer.amount')}`,
+              ok: amount > 0 && enough,
+            },
+          ];
+        }),
+      ];
+    }),
     open,
   );
 
-  const transfer = useTransferFuelBalance();
+  const transfer = useTransferFuelBatch();
+  const total = steps.reduce((sum, step) => sum + step.taken, 0);
   const submit = async (): Promise<void> => {
-    if (from === null || to === null) return;
-    await transfer.mutateAsync({ fromCardId: from.id, toCardId: to.id, amount: value });
+    const result = await transfer.mutateAsync({
+      transfers: transfers.map((item) => ({
+        fromCardId: item.card,
+        targets: item.targets.map((target) => ({
+          toCardId: target.card,
+          amount: Number(target.amount),
+        })),
+      })),
+    });
     toast.success(
-      t('fleet.fuelCards.transfer.doneDetail', {
-        amount: money(value),
-        from: from.vehicleCode ?? from.label ?? '—',
-        to: to.vehicleCode ?? to.label ?? '—',
+      t('fleet.fuelCards.transfer.doneMany', {
+        count: String(result.moves),
+        amount: money(result.total),
       }),
     );
     onClose();
@@ -268,10 +340,79 @@ export const FuelTransferDialog = ({
   if (!open) return null;
   const look = LOOK.add;
   const box = boxTone(look);
-  const heading = (text: string): JSX.Element => (
-    <h3 className="border-b border-slate-200 dark:border-[#2b3b6b]/60 pb-2 text-[15px] font-bold text-slate-900 dark:text-white">
-      {text}
+  const heading = (text: string, extra?: JSX.Element): JSX.Element => (
+    <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-[#2b3b6b]/60 pb-2 text-[15px] font-bold text-slate-900 dark:text-white">
+      <span>{text}</span>
+      {extra}
     </h3>
+  );
+  const addButton = (label: string, onClick: () => void, testId: string): JSX.Element => (
+    <button
+      type="button"
+      data-fuel-transfer-add={testId}
+      onClick={onClick}
+      className="w-full rounded-xl border border-dashed border-[#6c63ff]/60 py-2 text-sm font-bold text-brand-700 transition hover:bg-[#6c63ff]/10 dark:text-[#a5a0ff]"
+    >
+      {label}
+    </button>
+  );
+  const removeButton = (label: string, onClick: () => void): JSX.Element => (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="rounded-md p-1 text-rose-500 transition hover:bg-rose-500/10"
+    >
+      <Stroke d={CLOSE_PATH} className="h-4 w-4" />
+    </button>
+  );
+  const valueLine = (
+    key: string,
+    title: string,
+    sign: -1 | 1,
+    was: number,
+    moved: number,
+    movedLabel: string,
+  ): JSX.Element => (
+    <div key={key} data-fuel-transfer-line={key} className="space-y-2">
+      <p className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
+        <span className={cn('h-2 w-2 rounded-full', sign < 0 ? 'bg-rose-400' : 'bg-emerald-400')} />
+        {title}
+      </p>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[
+          {
+            label: t('fleet.fuelCards.transfer.was'),
+            amount: was,
+            tone: 'text-slate-900 dark:text-white',
+          },
+          {
+            label: movedLabel,
+            amount: moved,
+            tone: sign < 0 ? 'text-rose-400' : 'text-emerald-600 dark:text-emerald-400',
+          },
+          {
+            label: t('fleet.fuelCards.transfer.becomes'),
+            amount: was + sign * moved,
+            // More than the card holds: what it would become reads red.
+            tone: was + sign * moved < 0 ? 'text-rose-400' : 'text-slate-900 dark:text-white',
+          },
+        ].map((cell) => (
+          <span
+            key={cell.label}
+            className="rounded-lg border border-slate-200 dark:border-[#2b3b6b]/70 bg-white dark:bg-[#121c3f] px-2 py-2"
+          >
+            <span className="block text-[12px] font-medium text-slate-600 dark:text-slate-300">
+              {cell.label}
+            </span>
+            <b className={cn('text-[15px]', MONO, cell.tone)} dir="ltr">
+              {money(cell.amount)}
+            </b>
+          </span>
+        ))}
+      </div>
+    </div>
   );
 
   return createPortal(
@@ -328,189 +469,230 @@ export const FuelTransferDialog = ({
 
         <div className={cn('max-h-[calc(100vh-9rem)] space-y-6 overflow-y-auto', look.body)}>
           <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
-          <section className="space-y-4">
-            {heading(t('fleet.fuelCards.transfer.from'))}
-            <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
-              <DesignField
-                label={t('fleet.odometer.columns.vehicle')}
-                required
-                missing={required.isMissing('fromVehicle')}
+          {steps.map(({ transfer: item, fromBefore, taken, lines }, i) => {
+            const from = cardById(item.card);
+            const fromCompany = from?.company;
+            return (
+              <div
+                key={item.key}
+                data-fuel-transfer-block={i + 1}
+                className={cn(
+                  'space-y-6',
+                  many && 'rounded-2xl border border-[#6c63ff]/40 p-4 dark:bg-[#0a1233]/40',
+                )}
               >
-                <div className={carBoxClass(false)}>
-                  <VehicleCodeCombobox
-                    value={fromVehicle}
-                    onChange={pickFromVehicle}
-                    ariaLabel={t('fleet.fuelCards.transfer.from')}
-                    placeholder={t('fleet.accidents.vehiclePlaceholder')}
-                    testId="fuel-transfer-from"
-                    extra={places}
-                  />
-                </div>
-              </DesignField>
-              <div className="md:col-span-2">
-                <DesignField
-                  label={t('fleet.fuelCards.fields.card')}
-                  required
-                  missing={required.isMissing('fromCard')}
-                  endAdornment={null}
-                >
-                  <CardPick
-                    cards={byVehicle(fromVehicle)}
-                    value={fromCard}
-                    onChange={pickFromCard}
-                    side="from"
-                  />
-                </DesignField>
-              </div>
-            </div>
-          </section>
-          <section className="space-y-4">
-            {heading(t('fleet.fuelCards.transfer.to'))}
-            <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
-              <DesignField
-                label={t('fleet.odometer.columns.vehicle')}
-                required
-                missing={required.isMissing('toVehicle')}
-              >
-                <div className={carBoxClass(false)}>
-                  <VehicleCodeCombobox
-                    value={toVehicle}
-                    onChange={pickToVehicle}
-                    ariaLabel={t('fleet.fuelCards.transfer.to')}
-                    placeholder={t('fleet.accidents.vehiclePlaceholder')}
-                    testId="fuel-transfer-to"
-                    extra={places}
-                    exclude={fromVehicle === '' ? [] : [fromVehicle]}
-                  />
-                </div>
-              </DesignField>
-              <div className="md:col-span-2">
-                <DesignField
-                  label={t('fleet.fuelCards.fields.card')}
-                  required
-                  missing={required.isMissing('toCard')}
-                  endAdornment={null}
-                  // The same card on both sides: say so rather than «required».
-                  error={
-                    required.isMissing('toCard') && to !== null
-                      ? t('fleet.fuelCards.transfer.sameCard')
-                      : undefined
-                  }
-                >
-                  <CardPick
-                    cards={toChoices}
-                    value={toCard}
-                    onChange={pickToCard}
-                    side="to"
-                    {...(!sameCar &&
-                    toVehicle !== '' &&
-                    fromCompany !== null &&
-                    toChoices.length === 0
-                      ? {
-                          emptyText: t('fleet.fuelCards.transfer.otherCompany', {
-                            company: t(`fleet.fuelCards.company.${fromCompany}`),
-                          }),
-                        }
-                      : {})}
-                  />
-                </DesignField>
-              </div>
-            </div>
-          </section>
-          <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-            <DesignField
-              label={t('fleet.fuelCards.transfer.amount')}
-              required
-              missing={required.isMissing('amount')}
-              error={
-                from !== null && !enough && value > 0
-                  ? t('fleet.fuelCards.transfer.notEnough', { balance: money(from.balance) })
-                  : undefined
-              }
-            >
-              <MoneyInput
-                value={amount}
-                onChange={setAmount}
-                placeholder="0.00"
-                tone={cn(box, MONO, '!py-3 !pl-10 text-right')}
-              />
-            </DesignField>
-          </div>
-          {/* «لما اكتب المبلغ يجيب الكارت من قبل الخصم كام وبعد الخصم كام والكارت الى كام وبعد
-              الاضافه كام» — as soon as there is an amount, each card already chosen shows its line. */}
-          {Number.isFinite(value) && value > 0 && (from !== null || (to !== null && !sameCar)) && (
-            <div
-              data-fuel-transfer-summary="true"
-              className="space-y-4 rounded-xl border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233] p-4"
-            >
-              {/* «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام» —
-                  each card on its own line: what it held, what moves, what it will hold. */}
-              {(
-                [
-                  ...(from === null ? [] : [{ side: 'from', card: from, sign: -1 }]),
-                  ...(to === null || sameCar ? [] : [{ side: 'to', card: to, sign: 1 }]),
-                ] as const
-              ).map(({ side, card, sign }) => (
-                <div key={side} data-fuel-transfer-line={side} className="space-y-2">
-                  <p className="flex items-center gap-2 text-[15px] font-bold text-slate-900 dark:text-white">
-                    <span
-                      className={cn(
-                        'h-2 w-2 rounded-full',
-                        sign < 0 ? 'bg-rose-400' : 'bg-emerald-400',
-                      )}
-                    />
-                    {t(
-                      side === 'from'
-                        ? 'fleet.fuelCards.transfer.fromCard'
-                        : 'fleet.fuelCards.transfer.toCard',
-                      {
-                        company: t(`fleet.fuelCards.company.${card.company}`),
-                        code: card.vehicleCode ?? card.label ?? '—',
-                      },
+                {many && (
+                  <div className="flex items-center justify-between">
+                    <b className="text-[15px] text-brand-700 dark:text-[#a5a0ff]">
+                      {t('fleet.fuelCards.transfer.transferN', { n: String(i + 1) })}
+                    </b>
+                    {removeButton(t('fleet.fuelCards.transfer.removeTransfer'), () =>
+                      setTransfers((all) => all.filter((other) => other.key !== item.key)),
                     )}
-                  </p>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    {[
-                      {
-                        label: t('fleet.fuelCards.transfer.was'),
-                        amount: card.balance,
-                        tone: 'text-slate-900 dark:text-white',
-                      },
-                      {
-                        label: t(
-                          side === 'from'
-                            ? 'fleet.fuelCards.transfer.taken'
-                            : 'fleet.fuelCards.transfer.given',
-                        ),
-                        amount: value,
-                        tone: sign < 0 ? 'text-rose-400' : 'text-emerald-600 dark:text-emerald-400',
-                      },
-                      {
-                        label: t('fleet.fuelCards.transfer.becomes'),
-                        amount: card.balance + sign * value,
-                        // More than the first card holds: what it would become reads red.
-                        tone:
-                          card.balance + sign * value < 0
-                            ? 'text-rose-400'
-                            : 'text-slate-900 dark:text-white',
-                      },
-                    ].map((cell) => (
-                      <span
-                        key={cell.label}
-                        className="rounded-lg border border-slate-200 dark:border-[#2b3b6b]/70 bg-[#121c3f] px-2 py-2"
-                      >
-                        <span className="block text-[12px] font-medium text-slate-600 dark:text-slate-300">
-                          {cell.label}
-                        </span>
-                        <b className={cn('text-[15px]', MONO, cell.tone)} dir="ltr">
-                          {money(cell.amount)}
-                        </b>
-                      </span>
-                    ))}
                   </div>
-                </div>
-              ))}
-            </div>
+                )}
+                <section className="space-y-4">
+                  {heading(t('fleet.fuelCards.transfer.from'))}
+                  <div className="grid grid-cols-1 items-start gap-5 md:grid-cols-2">
+                    <DesignField
+                      label={t('fleet.odometer.columns.vehicle')}
+                      required
+                      missing={required.isMissing(`${item.key}:place`)}
+                    >
+                      <div className={carBoxClass(false)}>
+                        <VehicleCodeCombobox
+                          value={item.place}
+                          onChange={(place) => pickFromPlace(item.key, place)}
+                          ariaLabel={t('fleet.fuelCards.transfer.from')}
+                          placeholder={t('fleet.accidents.vehiclePlaceholder')}
+                          testId={`fuel-transfer-from-${i + 1}`}
+                          extra={places}
+                        />
+                      </div>
+                    </DesignField>
+                    <div className="md:col-span-2">
+                      <DesignField
+                        label={t('fleet.fuelCards.fields.card')}
+                        required
+                        missing={required.isMissing(`${item.key}:card`)}
+                        endAdornment={null}
+                      >
+                        <CardPick
+                          cards={byPlace(item.place)}
+                          value={item.card}
+                          onChange={(cardId) => pickFromCard(item.key, cardId)}
+                          side="from"
+                        />
+                      </DesignField>
+                    </div>
+                  </div>
+                </section>
+                <section className="space-y-4">
+                  {heading(t('fleet.fuelCards.transfer.to'))}
+                  {lines.map(({ target, giverBefore, enough, amount }, j) => {
+                    const choices =
+                      target.place === item.place
+                        ? []
+                        : byPlace(target.place).filter(
+                            (card) => fromCompany === undefined || card.company === fromCompany,
+                          );
+                    return (
+                      <div
+                        key={target.key}
+                        data-fuel-transfer-target={`${i + 1}:${j + 1}`}
+                        className={cn(
+                          'grid grid-cols-1 items-start gap-5 md:grid-cols-2',
+                          j > 0 &&
+                            'border-t border-dashed border-slate-200 pt-5 dark:border-[#2b3b6b]/60',
+                        )}
+                      >
+                        <DesignField
+                          label={t('fleet.odometer.columns.vehicle')}
+                          required
+                          missing={required.isMissing(`${target.key}:place`)}
+                        >
+                          <div className={carBoxClass(false)}>
+                            <VehicleCodeCombobox
+                              value={target.place}
+                              onChange={(place) =>
+                                editTarget(item.key, target.key, {
+                                  place,
+                                  card: cardOfCompany(place, fromCompany),
+                                })
+                              }
+                              ariaLabel={t('fleet.fuelCards.transfer.to')}
+                              placeholder={t('fleet.accidents.vehiclePlaceholder')}
+                              testId={`fuel-transfer-to-${i + 1}-${j + 1}`}
+                              extra={places}
+                              exclude={item.place === '' ? [] : [item.place]}
+                            />
+                          </div>
+                        </DesignField>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            <DesignField
+                              label={t('fleet.fuelCards.transfer.amount')}
+                              required
+                              missing={required.isMissing(`${target.key}:amount`)}
+                              error={
+                                from !== undefined && !enough && amount > 0
+                                  ? t('fleet.fuelCards.transfer.notEnough', {
+                                      balance: money(giverBefore),
+                                    })
+                                  : undefined
+                              }
+                            >
+                              <MoneyInput
+                                value={target.amount}
+                                onChange={(value) =>
+                                  editTarget(item.key, target.key, { amount: value })
+                                }
+                                placeholder="0.00"
+                                tone={cn(box, MONO, '!py-3 !pl-10 text-right')}
+                              />
+                            </DesignField>
+                          </div>
+                          {item.targets.length > 1 && (
+                            <span className="mt-8">
+                              {removeButton(t('fleet.fuelCards.transfer.removeTarget'), () =>
+                                editTransfer(item.key, (current) => ({
+                                  ...current,
+                                  targets: current.targets.filter(
+                                    (other) => other.key !== target.key,
+                                  ),
+                                })),
+                              )}
+                            </span>
+                          )}
+                        </div>
+                        <div className="md:col-span-2">
+                          <DesignField
+                            label={t('fleet.fuelCards.fields.card')}
+                            required
+                            missing={required.isMissing(`${target.key}:card`)}
+                            endAdornment={null}
+                            // The same card on both sides: say so rather than «required».
+                            error={
+                              required.isMissing(`${target.key}:card`) &&
+                              target.card === item.card &&
+                              item.card !== ''
+                                ? t('fleet.fuelCards.transfer.sameCard')
+                                : undefined
+                            }
+                          >
+                            <CardPick
+                              cards={choices}
+                              value={target.card}
+                              onChange={(cardId) => pickToCard(item.key, target.key, cardId)}
+                              side="to"
+                              {...(target.place !== '' &&
+                              target.place !== item.place &&
+                              fromCompany !== undefined &&
+                              choices.length === 0
+                                ? {
+                                    emptyText: t('fleet.fuelCards.transfer.otherCompany', {
+                                      company: t(`fleet.fuelCards.company.${fromCompany}`),
+                                    }),
+                                  }
+                                : {})}
+                            />
+                          </DesignField>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {addButton(
+                    t('fleet.fuelCards.transfer.addTarget'),
+                    () =>
+                      editTransfer(item.key, (current) => ({
+                        ...current,
+                        targets: [...current.targets, blankTarget()],
+                      })),
+                    `target-${i + 1}`,
+                  )}
+                </section>
+                {/* «القديم كان كام واتحول منه كام بقى كام والجديد كان كام واتحوله المبلغ بقى كام» —
+                    the giving card once, then each card it gives to. */}
+                {from !== undefined && taken > 0 && (
+                  <div
+                    data-fuel-transfer-summary={i + 1}
+                    className="space-y-4 rounded-xl border border-slate-200 dark:border-[#2b3b6b] bg-slate-50 dark:bg-[#0a1233] p-4"
+                  >
+                    {valueLine(
+                      `${i + 1}:from`,
+                      t('fleet.fuelCards.transfer.fromCard', {
+                        company: t(`fleet.fuelCards.company.${from.company}`),
+                        code: from.vehicleCode ?? from.label ?? '—',
+                      }),
+                      -1,
+                      fromBefore,
+                      taken,
+                      t('fleet.fuelCards.transfer.taken'),
+                    )}
+                    {lines.map(({ target, before, amount }, j) => {
+                      const to = cardById(target.card);
+                      if (to === undefined || amount <= 0 || to.id === from.id) return null;
+                      return valueLine(
+                        `${i + 1}:to:${j + 1}`,
+                        t('fleet.fuelCards.transfer.toCard', {
+                          company: t(`fleet.fuelCards.company.${to.company}`),
+                          code: to.vehicleCode ?? to.label ?? '—',
+                        }),
+                        1,
+                        before,
+                        amount,
+                        t('fleet.fuelCards.transfer.given'),
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {addButton(
+            t('fleet.fuelCards.transfer.addTransfer'),
+            () => setTransfers((all) => [...all, blankTransfer()]),
+            'transfer',
           )}
 
           <div className={cn('mt-6 flex items-center justify-start gap-3 border-t', look.footer)}>
@@ -525,7 +707,10 @@ export const FuelTransferDialog = ({
               )}
             >
               {transfer.isPending && <Spinner className="h-4 w-4" />}
-              <span>{t('fleet.fuelCards.transfer.action')}</span>
+              <span>
+                {t('fleet.fuelCards.transfer.action')}
+                {total > 0 && ` — ${money(total)}`}
+              </span>
             </button>
             <button
               type="button"

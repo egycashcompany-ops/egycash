@@ -409,30 +409,34 @@ describe('charging', () => {
     expect(DIALOG).toContain("'fleet.fuelCards.transfer.taken'");
     expect(DIALOG).toContain("'fleet.fuelCards.transfer.given'");
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.becomes')");
-    expect(DIALOG).toContain('amount: card.balance + sign * value');
-    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.doneDetail'");
-    expect(DIALOG).toContain('const enough = from !== null && value <= from.balance;');
+    expect(DIALOG).toContain('amount: was + sign * moved');
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.doneMany'");
+    // «اقدر اضيف اكتر من كارت»: each step is held to what the step before it left the giving card.
+    expect(DIALOG).toContain(
+      "const enough = transfer.card === '' || amount <= giverBefore + 1e-9;",
+    );
     expect(ar('fleet.fuelCards.transfer.was')).toBe('كان');
     expect(ar('fleet.fuelCards.transfer.becomes')).toBe('يصبح');
     // The button stays pressable; the press goes through the guard, which refuses — and names —
     // more than the first card holds, and the same card on both sides.
     expect(DIALOG).toContain('onClick={required.guard(submit)}');
     expect(DIALOG).not.toContain('disabled={');
-    expect(DIALOG).toContain(
-      'ok: Number.isFinite(value) && value > 0 && (from === null || enough),',
-    );
+    expect(DIALOG).toContain('ok: amount > 0 && enough,');
     expect(DIALOG).toContain('to.id !== from?.id &&');
-    expect(DIALOG).toContain('(from === null || to.company === from.company)');
+    expect(DIALOG).toContain('(from === undefined || to.company === from.company)');
     // «متجبش اوبشن انه يختار نفس العربيه اصلا»: the «to» box leaves the «from» car out.
-    expect(DIALOG).toContain("exclude={fromVehicle === '' ? [] : [fromVehicle]}");
+    expect(DIALOG).toContain("exclude={item.place === '' ? [] : [item.place]}");
     // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت»: the second card is offered from the first's
     // company only, and says so when the car has none of it.
-    expect(DIALOG).toContain('fromCompany === null || card.company === fromCompany');
-    expect(DIALOG).toContain('cards={toChoices}');
+    expect(DIALOG).toContain('fromCompany === undefined || card.company === fromCompany');
+    expect(DIALOG).toContain('cards={choices}');
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.otherCompany'");
     // The «not enough» line stays under the amount, and the amount box turns red with it.
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.notEnough'");
-    expect(DIALOG).toContain("missing={required.isMissing('amount')}");
+    expect(DIALOG).toContain('missing={required.isMissing(`${target.key}:amount`)}');
+    // «+ اضافه تحويل … يجيب من و الى»: more transfers, and more cards to give to, in one press.
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.addTransfer')");
+    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.addTarget')");
   });
 });
 

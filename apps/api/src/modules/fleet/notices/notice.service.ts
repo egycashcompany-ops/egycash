@@ -1,12 +1,15 @@
 // Filled insurance notices — create, read, edit, soft-delete, the two scans, «✓», and each form's
 // set-up. Audited like every Fleet record.
-import { Types } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import {
   type CreateFleetNotice,
   type FleetLicenseImageDto,
   type FleetNoticeDto,
   type FleetNoticeImageKind,
+  type FleetNoticeLicenceSource,
   type FleetNoticeSettingsDto,
+  type FleetNoticesSummaryDto,
+  type FleetNoticesSummaryQuery,
   type FleetNoticeTemplate,
   type ListFleetNoticesQuery,
   type Paginated,
@@ -17,20 +20,76 @@ import {
 import { auditService } from '../../../platform/audit';
 import { fileService, type FileDoc, type UploadedBinary } from '../../../platform/files';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors';
-import { type AuthContext } from '../../../shared/types';
+import { type AuthContext, hasPermission } from '../../../shared/types';
 import { diffChanges } from '../../../shared/utils/diff';
 import { fleetVehicleRepository } from '../vehicles/vehicle.repository';
+import { fleetDriverProfileRepository } from '../driver-profiles/driver-profile.repository';
 import { fleetNoticeRepository } from './notice.repository';
 import { fleetNoticeSettingsRepository } from './notice-settings.repository';
 import { resolveNoticeDocsCategoryId } from './notice-files';
 import { type FleetNoticeDoc, type FleetNoticeImage } from './notice.model';
 import { type FleetNoticeSettingsDoc } from './notice-settings.model';
 
-/** A notice with the car's code read from the registry — what the table lists it by. */
-export type FleetNoticeWithCode = FleetNoticeDoc & { vehicleCode: string | null };
+/**
+ * A notice with what the registry adds: the car's code — what the table lists it by — and where the
+ * car's and the driver's licence images come from.
+ */
+export type FleetNoticeWithCode = FleetNoticeDoc & {
+  vehicleCode: string | null;
+  vehicleLicense: FleetNoticeLicenceSource;
+  driverLicense: FleetNoticeLicenceSource;
+};
 
-/** Which stored field each scan is. */
-const IMAGE_FIELD = { notice: 'noticeImage', check: 'checkImage' } as const;
+/** Which stored field each image is. */
+const IMAGE_FIELD = {
+  notice: 'noticeImage',
+  check: 'checkImage',
+  vehicleLicense: 'vehicleLicenseImage',
+  driverLicense: 'driverLicenseImage',
+} as const;
+
+const IMAGE_NAME: Record<FleetNoticeImageKind, string> = {
+  notice: 'notice — signed form',
+  check: 'notice — cheque',
+  vehicleLicense: 'notice — car licence',
+  driverLicense: 'notice — driver licence',
+};
+
+/** The day after — a «to» date counts its whole day. */
+const dayAfter = (day: Date): Date => new Date(day.getTime() + 24 * 60 * 60 * 1000);
+
+/** The notices table's filters, as one database filter. */
+const noticeFilter = async (
+  query: FleetNoticesSummaryQuery,
+): Promise<FilterQuery<FleetNoticeDoc>> => {
+  const filter: FilterQuery<FleetNoticeDoc> = {};
+  const templates = [
+    ...(query.templates ?? []),
+    ...(query.template === undefined ? [] : [query.template]),
+  ];
+  if (templates.length > 0) filter.template = { $in: templates };
+  if (query.vehicleCodes !== undefined) {
+    const ids = await fleetVehicleRepository.idsByCodes(query.vehicleCodes);
+    filter.vehicleId = { $in: ids.map((id) => new Types.ObjectId(id)) };
+  }
+  if (query.noticeNumber !== undefined && query.noticeNumber !== '') {
+    filter.noticeNumber = {
+      $regex: query.noticeNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+      $options: 'i',
+    };
+  }
+  if (query.from !== undefined || query.to !== undefined) {
+    filter.noticeDate = {
+      ...(query.from === undefined ? {} : { $gte: query.from }),
+      ...(query.to === undefined ? {} : { $lt: dayAfter(query.to) }),
+    };
+  }
+  if (query.status === 'done') filter.completedAt = { $ne: null };
+  if (query.status === 'open') filter.completedAt = null;
+  if (query.checkImage === 'has') filter.checkImage = { $ne: null };
+  if (query.checkImage === 'missing') filter.checkImage = null;
+  return filter;
+};
 
 const entityRef = (id: string) => ({ moduleId: 'fleet', entityType: 'notice', entityId: id });
 
@@ -84,6 +143,8 @@ export const toNoticeDto = (doc: FleetNoticeDoc | FleetNoticeWithCode): FleetNot
   noticeNumber: doc.noticeNumber ?? null,
   noticeDate: doc.noticeDate == null ? null : doc.noticeDate.toISOString(),
   noticeImage: imageDto(doc.noticeImage),
+  vehicleLicense: 'vehicleLicense' in doc ? doc.vehicleLicense : null,
+  driverLicense: 'driverLicense' in doc ? doc.driverLicense : null,
   checkImage: imageDto(doc.checkImage),
   completedAt: doc.completedAt == null ? null : doc.completedAt.toISOString(),
   version: doc.__v,
@@ -98,39 +159,127 @@ export const toNoticeSettingsDto = (
   template,
   defaults: doc?.defaults ?? {},
   links: doc?.links ?? [],
+  numberField: doc?.numberField ?? null,
+  dateField: doc?.dateField ?? null,
   version: doc === null ? null : doc.__v,
   updatedAt: doc === null ? null : doc.updatedAt.toISOString(),
 });
 
-/** The car codes for a page of notices — one registry read, not one per row. */
-const withCodes = async (docs: FleetNoticeDoc[]): Promise<FleetNoticeWithCode[]> => {
+/**
+ * The car codes for a page of notices, and where each licence image comes from — one registry read
+ * and one driver read, not one per row.
+ */
+/**
+ * Whether the caller may read a registry licence — the vehicles' or the drivers' own grant, which
+ * the file's authorizer asks again. Without it the notice's own copy stands, or the upload is
+ * offered: no caller is shown a licence it would then be refused. No caller — an internal read —
+ * reads them all.
+ */
+const mayReadRegistry = (
+  ctx: AuthContext | undefined,
+  kind: 'vehicleLicense' | 'driverLicense',
+): boolean =>
+  ctx === undefined ||
+  hasPermission(ctx, kind === 'vehicleLicense' ? 'fleetVehicle.view' : 'fleetDriver.view');
+
+const withCodes = async (
+  docs: FleetNoticeDoc[],
+  ctx?: AuthContext,
+): Promise<FleetNoticeWithCode[]> => {
   const ids = [
     ...new Set(docs.flatMap((doc) => (doc.vehicleId === null ? [] : [String(doc.vehicleId)]))),
   ];
-  const vehicles = ids.length === 0 ? [] : await fleetVehicleRepository.findByIdsSystem(ids);
-  const codes = new Map(vehicles.map((vehicle) => [String(vehicle._id), vehicle.code]));
-  return docs.map((doc) =>
-    Object.assign(doc, {
-      vehicleCode: doc.vehicleId === null ? null : (codes.get(String(doc.vehicleId)) ?? null),
-    }),
+  const employees = [
+    ...new Set(
+      docs.flatMap((doc) => (doc.driverEmployeeId == null ? [] : [String(doc.driverEmployeeId)])),
+    ),
+  ];
+  const [vehicles, drivers] = await Promise.all([
+    ids.length === 0 ? [] : fleetVehicleRepository.findByIdsSystem(ids),
+    fleetDriverProfileRepository.findForEmployeesSystem(employees),
+  ]);
+  const byVehicle = new Map(vehicles.map((vehicle) => [String(vehicle._id), vehicle]));
+  const licensed = new Set(
+    drivers.flatMap((driver) => (driver.licenseImage == null ? [] : [String(driver.employeeId)])),
   );
+  return docs.map((doc) => {
+    const vehicle = doc.vehicleId === null ? undefined : byVehicle.get(String(doc.vehicleId));
+    const vehicleLicense: FleetNoticeLicenceSource =
+      vehicle?.licenseImage != null && !vehicle.isDeleted && mayReadRegistry(ctx, 'vehicleLicense')
+        ? 'registry'
+        : doc.vehicleLicenseImage != null
+          ? 'notice'
+          : null;
+    const driverLicense: FleetNoticeLicenceSource =
+      doc.driverEmployeeId != null &&
+      licensed.has(String(doc.driverEmployeeId)) &&
+      mayReadRegistry(ctx, 'driverLicense')
+        ? 'registry'
+        : doc.driverLicenseImage != null
+          ? 'notice'
+          : null;
+    return Object.assign(doc, {
+      vehicleCode: vehicle?.code ?? null,
+      vehicleLicense,
+      driverLicense,
+    });
+  });
 };
 
 class FleetNoticeService {
-  async list(query: ListFleetNoticesQuery): Promise<Paginated<FleetNoticeWithCode>> {
+  async list(
+    query: ListFleetNoticesQuery,
+    ctx?: AuthContext,
+  ): Promise<Paginated<FleetNoticeWithCode>> {
     const page = await fleetNoticeRepository.list({
-      filter: query.template === undefined ? {} : { template: query.template },
+      filter: await noticeFilter(query),
       page: query.page,
       pageSize: query.pageSize,
       sortBy: query.sortBy ?? 'createdAt',
       sortDir: query.sortDir ?? 'desc',
       sortableFields: ['updatedAt', 'createdAt', 'noticeDate', 'noticeNumber'],
     });
-    return { ...page, items: await withCodes(page.items) };
+    return { ...page, items: await withCodes(page.items, ctx) };
   }
 
-  async get(id: string): Promise<FleetNoticeWithCode> {
-    const [doc] = await withCodes([await fleetNoticeRepository.getById(id)]);
+  /** «الإحصائيات» — over the notices the filters leave. */
+  async summary(
+    query: FleetNoticesSummaryQuery,
+    ctx?: AuthContext,
+  ): Promise<FleetNoticesSummaryDto> {
+    const docs = await withCodes(
+      await fleetNoticeRepository.findLive(await noticeFilter(query)),
+      ctx,
+    );
+    const byTemplate = new Map<FleetNoticeTemplate, number>();
+    const byMonth = new Map<string, number>();
+    for (const doc of docs) {
+      byTemplate.set(doc.template, (byTemplate.get(doc.template) ?? 0) + 1);
+      if (doc.noticeDate != null) {
+        const month = doc.noticeDate.toISOString().slice(0, 7);
+        byMonth.set(month, (byMonth.get(month) ?? 0) + 1);
+      }
+    }
+    const done = docs.filter((doc) => doc.completedAt != null).length;
+    return {
+      total: docs.length,
+      done,
+      open: docs.length - done,
+      missingLicences: docs.filter(
+        (doc) => doc.vehicleLicense === null || doc.driverLicense === null,
+      ).length,
+      missingCheckImage: docs.filter((doc) => doc.checkImage == null).length,
+      byTemplate: [...byTemplate.entries()]
+        .sort(([, a], [, b]) => b - a)
+        .map(([template, count]) => ({ template, count })),
+      months: [...byMonth.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, count]) => ({ month, count })),
+    };
+  }
+
+  async get(id: string, ctx?: AuthContext): Promise<FleetNoticeWithCode> {
+    const [doc] = await withCodes([await fleetNoticeRepository.getById(id)], ctx);
     return doc as FleetNoticeWithCode;
   }
 
@@ -147,6 +296,8 @@ class FleetNoticeService {
         noticeDate: input.noticeDate ?? null,
         noticeImage: null,
         checkImage: null,
+        vehicleLicenseImage: null,
+        driverLicenseImage: null,
         completedAt: null,
       },
       { by },
@@ -197,7 +348,12 @@ class FleetNoticeService {
   //
   // «مقدرش اعمل صح لو مفيش صوره شيك»: a notice closes only once the insurer's cheque is in. Opening
   // it again needs nothing.
-  async setDone(id: string, input: SetFleetNoticeDone, by: string): Promise<FleetNoticeWithCode> {
+  async setDone(
+    id: string,
+    input: SetFleetNoticeDone,
+    by: string,
+    ctx?: AuthContext,
+  ): Promise<FleetNoticeWithCode> {
     const before = await fleetNoticeRepository.getById(id);
     if (input.done && before.checkImage == null) {
       throw new ValidationError([
@@ -219,7 +375,7 @@ class FleetNoticeService {
       action: 'update',
       changes: diffChanges(snapshot(before), snapshot(updated)),
     });
-    return this.get(id);
+    return this.get(id, ctx);
   }
 
   // ── The two scans (Files owns the bytes, the notice owns the link) — as the dealership's ─────
@@ -243,7 +399,7 @@ class FleetNoticeService {
           entityType: 'fleetNotice',
           entityId: id,
           categoryId: await resolveNoticeDocsCategoryId(),
-          displayName: kind === 'check' ? 'notice — cheque' : 'notice — signed form',
+          displayName: IMAGE_NAME[kind],
           visibility: 'private',
           tags: [],
         },
@@ -278,7 +434,7 @@ class FleetNoticeService {
         { field, old: current === null ? null : String(current.fileId), new: String(file._id) },
       ],
     });
-    return this.get(id);
+    return this.get(id, ctx);
   }
 
   async readImage(
@@ -287,10 +443,45 @@ class FleetNoticeService {
     kind: FleetNoticeImageKind,
   ): Promise<{ buffer: Buffer; mime: string; fileName: string }> {
     const row = await fleetNoticeRepository.getById(id);
-    const image = row[IMAGE_FIELD[kind]];
-    if (image == null) throw new NotFoundError('this notice has no such scan');
-    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(image.fileId));
+    // A licence is the registry's own when it has one the caller may read; the notice's copy
+    // stands in without it — and when the registry's cannot be read after all.
+    const own = row[IMAGE_FIELD[kind]];
+    const registry =
+      (kind === 'vehicleLicense' || kind === 'driverLicense') && mayReadRegistry(ctx, kind)
+        ? await this.registryLicence(row, kind)
+        : null;
+    if (registry !== null) {
+      try {
+        const { doc, buffer } = await fileService.readEntityOwnedBuffer(
+          ctx,
+          String(registry.fileId),
+        );
+        return { buffer, mime: doc.mime, fileName: doc.originalName };
+      } catch (error) {
+        if (own == null) throw error;
+      }
+    }
+    if (own == null) throw new NotFoundError('this notice has no such scan');
+    const { doc, buffer } = await fileService.readEntityOwnedBuffer(ctx, String(own.fileId));
     return { buffer, mime: doc.mime, fileName: doc.originalName };
+  }
+
+  /** The car's or the driver's licence as the registry holds it, for a licence kind. */
+  private async registryLicence(
+    row: FleetNoticeDoc,
+    kind: FleetNoticeImageKind,
+  ): Promise<{ fileId: Types.ObjectId } | null> {
+    if (kind === 'vehicleLicense' && row.vehicleId !== null) {
+      const [vehicle] = await fleetVehicleRepository.findByIdsSystem([String(row.vehicleId)]);
+      return vehicle === undefined || vehicle.isDeleted ? null : (vehicle.licenseImage ?? null);
+    }
+    if (kind === 'driverLicense' && row.driverEmployeeId != null) {
+      const driver = await fleetDriverProfileRepository.findDriverByEmployeeId(
+        String(row.driverEmployeeId),
+      );
+      return driver?.licenseImage ?? null;
+    }
+    return null;
   }
 
   async deleteImage(
@@ -318,7 +509,7 @@ class FleetNoticeService {
       action: 'update',
       changes: [{ field, old: fileId, new: null }],
     });
-    return this.get(id);
+    return this.get(id, ctx);
   }
 
   // ── A form's set-up ─────────────────────────────────────────────────────────────────────────
@@ -340,21 +531,38 @@ class FleetNoticeService {
       ),
     );
     const links = input.links.map((link) => ({ name: link.name, keys: [...new Set(link.keys)] }));
+    const numberField = input.numberField ?? null;
+    const dateField = input.dateField ?? null;
     const before = await fleetNoticeSettingsRepository.findOne({ template });
     const saved =
       before === null
-        ? await fleetNoticeSettingsRepository.create({ template, defaults, links }, { by })
+        ? await fleetNoticeSettingsRepository.create(
+            { template, defaults, links, numberField, dateField },
+            { by },
+          )
         : await fleetNoticeSettingsRepository.updateById(
             String(before._id),
-            { defaults, links },
+            { defaults, links, numberField, dateField },
             { by, version: input.version ?? before.__v },
           );
     await auditService.record({
       entityRef: { moduleId: 'fleet', entityType: 'noticeSettings', entityId: String(saved._id) },
       action: before === null ? 'create' : 'update',
       changes: diffChanges(
-        before === null ? {} : { defaults: before.defaults, links: before.links },
-        { defaults: saved.defaults, links: saved.links },
+        before === null
+          ? {}
+          : {
+              defaults: before.defaults,
+              links: before.links,
+              numberField: before.numberField ?? null,
+              dateField: before.dateField ?? null,
+            },
+        {
+          defaults: saved.defaults,
+          links: saved.links,
+          numberField: saved.numberField ?? null,
+          dateField: saved.dateField ?? null,
+        },
       ),
     });
     return toNoticeSettingsDto(template, saved);

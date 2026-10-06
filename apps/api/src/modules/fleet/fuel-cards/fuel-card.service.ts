@@ -14,6 +14,8 @@ import {
   type Paginated,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
+  type TransferFleetFuelBatch,
+  type FleetFuelTransferBatchResultDto,
   type UpdateFleetFuelCard,
   parseFleetSort,
 } from '@ecms/contracts';
@@ -402,6 +404,121 @@ class FleetFuelCardService {
       from: toFuelCardDto({ doc: from, vehicleCode: codes.get(String(from.vehicleId)) ?? null }),
       to: toFuelCardDto({ doc: to, vehicleCode: codes.get(String(to.vehicleId)) ?? null }),
       amount: input.amount,
+    };
+  }
+
+  /**
+   * Several transfers in one press — each ONE card giving to one card or more — written together
+   * or not at all. Every step reads the balances the step before left, so a card that gives twice
+   * is held to what it has left; each card's log gets its own line per move, and the audit one
+   * entry per card, from what it held before the press to what it holds after.
+   */
+  async transferBatch(
+    input: TransferFleetFuelBatch,
+    by: string,
+  ): Promise<FleetFuelTransferBatchResultDto> {
+    let before = new Map<string, number>();
+    let after = new Map<string, FleetFuelCardDoc>();
+    let moves = 0;
+    let total = 0;
+    await unitOfWork(async (session) => {
+      // A retried transaction starts over from nothing.
+      before = new Map();
+      after = new Map();
+      moves = 0;
+      total = 0;
+      const now = new Date();
+      for (const [t, transfer] of input.transfers.entries()) {
+        for (const [g, target] of transfer.targets.entries()) {
+          const at = `body.transfers.${t}.targets.${g}`;
+          const [from, to] = await Promise.all([
+            fleetFuelCardRepository.findLive(transfer.fromCardId, session),
+            fleetFuelCardRepository.findLive(target.toCardId, session),
+          ]);
+          if (from === null || to === null) throw new NotFoundError('card not found');
+          if (from.company !== to.company) {
+            throw new ValidationError([
+              {
+                field: `${at}.toCardId`,
+                code: 'INVALID',
+                message: 'a balance moves only between two cards of the same company',
+              },
+            ]);
+          }
+          if (piastres(from.balance) < piastres(target.amount)) {
+            throw new ValidationError([
+              {
+                field: `${at}.amount`,
+                code: 'INVALID',
+                message: `the card holds only ${from.balance} — it cannot give ${target.amount}`,
+              },
+            ]);
+          }
+          for (const card of [from, to]) {
+            if (!before.has(String(card._id))) before.set(String(card._id), card.balance);
+          }
+          const fromAfter = (piastres(from.balance) - piastres(target.amount)) / 100;
+          const toAfter = (piastres(to.balance) + piastres(target.amount)) / 100;
+          const fromUpdated = await fleetFuelCardRepository.updateById(
+            String(from._id),
+            { balance: fromAfter },
+            { by, version: from.__v, session },
+          );
+          const toUpdated = await fleetFuelCardRepository.updateById(
+            String(to._id),
+            { balance: toAfter },
+            { by, version: to.__v, session },
+          );
+          await this.movement(
+            from,
+            'transferOut',
+            -target.amount,
+            fromAfter,
+            to._id,
+            null,
+            now,
+            by,
+            session,
+          );
+          await this.movement(
+            to,
+            'transferIn',
+            target.amount,
+            toAfter,
+            from._id,
+            null,
+            now,
+            by,
+            session,
+          );
+          after.set(String(fromUpdated._id), fromUpdated);
+          after.set(String(toUpdated._id), toUpdated);
+          moves += 1;
+          total = (piastres(total) + piastres(target.amount)) / 100;
+        }
+      }
+    });
+    for (const [id, card] of after) {
+      await auditService.record({
+        entityRef: entityRef(id),
+        action: 'transfer',
+        changes: [
+          {
+            field: 'balance',
+            old: String(before.get(id) ?? card.balance),
+            new: String(card.balance),
+          },
+        ],
+      });
+    }
+    const cards = [...after.values()];
+    const codes = await this.codesFor(cards);
+    return {
+      cards: cards.map((doc) =>
+        toFuelCardDto({ doc, vehicleCode: codes.get(String(doc.vehicleId)) ?? null }),
+      ),
+      moves,
+      total,
     };
   }
 

@@ -16,6 +16,9 @@ export interface FleetNoticeSettingsDoc extends BaseDocFields {
   template: FleetNoticeTemplate;
   defaults: Record<string, { mode: FleetNoticeDefaultMode; value: string }>;
   links: { name: string; keys: string[] }[];
+  /** «رقم الإخطار والتاريخ … يتحطه تلقائى» — the boxes they are read from; `null` the form's own. */
+  numberField: string | null;
+  dateField: string | null;
 }
 
 const noticeSettingsSchema = new Schema<FleetNoticeSettingsDoc>(
@@ -23,6 +26,8 @@ const noticeSettingsSchema = new Schema<FleetNoticeSettingsDoc>(
     template: { type: String, enum: FLEET_NOTICE_TEMPLATES, required: true },
     defaults: { type: Schema.Types.Mixed, required: true, default: {} },
     links: { type: Schema.Types.Mixed, required: true, default: [] },
+    numberField: { type: String, default: null },
+    dateField: { type: String, default: null },
     ...baseFields,
   },
   { ...baseSchemaOptions, minimize: false },

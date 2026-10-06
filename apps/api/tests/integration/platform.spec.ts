@@ -802,7 +802,15 @@ describe('login → permission → scoped data → audit trail', () => {
     expect(allIds).not.toContain(willDeactivate);
 
     // Only the fields the navigation renderer needs are returned.
-    expect(Object.keys(groups[0]?.applications[0] ?? {}).sort()).toEqual(['icon', 'id', 'name', 'route']);
+    // `personal` says whether this row shows the reader only his own data — the landing rule skips
+    // those, so an employee holding «الإجازات» over himself stops being sent to an HR screen.
+    expect(Object.keys(groups[0]?.applications[0] ?? {}).sort()).toEqual([
+      'icon',
+      'id',
+      'name',
+      'personal',
+      'route',
+    ]);
     // `sections` joined the payload with the grouping feature; `applications` still carries the
     // rows that belong to no section, which is what a pre-sections client reads.
     expect(Object.keys(groups[0] ?? {}).sort()).toEqual([

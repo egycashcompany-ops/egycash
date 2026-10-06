@@ -4945,6 +4945,7 @@ const en: Record<string, string> = {
   'fleet.catalogs.subtitle':
     'The lists every fleet form reads — items archive instead of delete, because history references them.',
   'fleet.catalogs.kind.workshop': 'Workshops',
+  'fleet.catalogs.makes': 'Makes',
   'fleet.catalogs.kind.workType': 'Work types',
   'fleet.catalogs.kind.sparePart': 'Spare parts',
   'fleet.catalogs.kind.missionType': 'Mission types',
@@ -12537,6 +12538,7 @@ const ar: Record<string, string> = {
   'fleet.catalogs.subtitle':
     'القوائم التي تقرأها كل نماذج الحركة — العناصر تُؤرشف ولا تُحذف لأن التاريخ يشير إليها.',
   'fleet.catalogs.kind.workshop': 'الورش',
+  'fleet.catalogs.makes': 'الماركة',
   'fleet.catalogs.kind.workType': 'أنواع الأعمال',
   'fleet.catalogs.kind.sparePart': 'قطع الغيار',
   'fleet.catalogs.kind.missionType': 'أنواع المهمات',

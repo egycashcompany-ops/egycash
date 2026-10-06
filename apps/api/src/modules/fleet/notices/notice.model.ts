@@ -7,6 +7,15 @@ import { Schema, model, type Types } from 'mongoose';
 import { baseFields, baseSchemaOptions, type BaseDocFields } from '../../../shared/base/base.model';
 import { FLEET_NOTICE_TEMPLATES, type FleetNoticeTemplate } from '@ecms/contracts';
 
+/** A scan's link — Files owns the bytes, the notice owns the link. */
+export interface FleetNoticeImage {
+  fileId: Types.ObjectId;
+  fileName: string;
+  mime: string;
+  size: number;
+  uploadedAt: Date;
+}
+
 export interface FleetNoticeDoc extends BaseDocFields {
   template: FleetNoticeTemplate;
   values: Record<string, string>;
@@ -14,7 +23,26 @@ export interface FleetNoticeDoc extends BaseDocFields {
   vehicleId: Types.ObjectId | null;
   driverEmployeeId: Types.ObjectId | null;
   accidentId: Types.ObjectId | null;
+  noticeNumber: string | null;
+  noticeDate: Date | null;
+  /** «صورة الإخطار» — the signed paper. */
+  noticeImage: FleetNoticeImage | null;
+  /** «صورة الشيك» — the insurer's cheque; a notice closes only with it. */
+  checkImage: FleetNoticeImage | null;
+  /** «✓» — `null` while the notice is open. */
+  completedAt: Date | null;
 }
+
+const imageSchema = new Schema<FleetNoticeImage>(
+  {
+    fileId: { type: Schema.Types.ObjectId, required: true },
+    fileName: { type: String, required: true },
+    mime: { type: String, required: true },
+    size: { type: Number, required: true },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
 
 const noticeSchema = new Schema<FleetNoticeDoc>(
   {
@@ -25,6 +53,11 @@ const noticeSchema = new Schema<FleetNoticeDoc>(
     vehicleId: { type: Schema.Types.ObjectId, default: null },
     driverEmployeeId: { type: Schema.Types.ObjectId, default: null },
     accidentId: { type: Schema.Types.ObjectId, default: null },
+    noticeNumber: { type: String, default: null },
+    noticeDate: { type: Date, default: null },
+    noticeImage: { type: imageSchema, default: null },
+    checkImage: { type: imageSchema, default: null },
+    completedAt: { type: Date, default: null },
     ...baseFields,
   },
   { ...baseSchemaOptions, minimize: false },
@@ -32,5 +65,7 @@ const noticeSchema = new Schema<FleetNoticeDoc>(
 
 // The editor lists a form's saved copies, newest first.
 noticeSchema.index({ template: 1, updatedAt: -1 }, { name: 'ix_notice_template_updated' });
+// The notices table, newest first.
+noticeSchema.index({ createdAt: -1 }, { name: 'ix_notice_created' });
 
 export const FleetNoticeModel = model<FleetNoticeDoc>('FleetNotice', noticeSchema, 'fleet_notices');

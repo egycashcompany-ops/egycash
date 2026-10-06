@@ -10,6 +10,7 @@ import { applyFleetVocabulary, planFleetVocabulary } from './go-live/vocabulary'
 import { ensureVehicleDocsCategory } from './vehicles/vehicle-files';
 import { ensureDriverDocsCategory } from './driver-profiles/driver-files';
 import { ensureDealershipDocsCategory } from './dealership/dealership-files';
+import { ensureNoticeDocsCategory } from './notices/notice-files';
 import { ensureReceiptDocsCategory } from './receipts/receipt-files';
 import { ensureFuelCardDocsCategory } from './fuel-cards/fuel-card-files';
 import { runFleetMigrations } from './fleet.migration';
@@ -29,6 +30,7 @@ export const seedFleet = async (): Promise<void> => {
   await ensureDealershipDocsCategory();
   await ensureReceiptDocsCategory();
   await ensureFuelCardDocsCategory();
+  await ensureNoticeDocsCategory();
 
   await fleetCatalogItemService.ensure({
     kind: 'workType',

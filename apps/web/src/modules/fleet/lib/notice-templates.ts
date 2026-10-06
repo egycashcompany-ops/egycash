@@ -53,6 +53,8 @@ export interface NoticeField {
   lines?: NoticeSlot[];
   /** The form prints «٢٠٢» and leaves room for one digit — the year's last. */
   yearLastDigit?: boolean;
+  /** The form has room for the year's last two digits only. */
+  yearTwoDigits?: boolean;
   source?: NoticeSource;
 }
 
@@ -238,7 +240,8 @@ export const NOTICE_TEMPLATES: readonly NoticeTemplate[] = [
             label: 'تاريخ الانتهاء',
             page: 0,
             kind: 'text',
-            slot: { right: 110, left: 40, y: 451 },
+            // Between «تاريخ الانتهاء :» and the end of the printed line — not past it.
+            slot: { right: 121, left: 68, y: 451 },
             source: 'licenseExpiry',
           },
         ],
@@ -448,8 +451,11 @@ export const NOTICE_TEMPLATES: readonly NoticeTemplate[] = [
             parts: [
               { right: 657, left: 644, y: 857 },
               { right: 637, left: 617, y: 857 },
-              { right: 609, left: 572, y: 857 },
+              // The form leaves the year a sliver before «توقيع مقدم الإخطار» — two digits fit
+              // there; four ran over the printed words.
+              { right: 616, left: 604, y: 857 },
             ],
+            yearTwoDigits: true,
           },
         ],
       },

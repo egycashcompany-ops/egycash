@@ -44,7 +44,11 @@ export const slotStyle = (slot: NoticeSlot): string =>
  * separator (`28/9/2026`, `2026/09/28`). Anything else goes into the first box as typed — a
  * notice is never refused for how somebody wrote a date.
  */
-export const dateParts = (value: string, yearLastDigit = false): [string, string, string] => {
+export const dateParts = (
+  value: string,
+  yearLastDigit = false,
+  yearTwoDigits = false,
+): [string, string, string] => {
   const text = value.trim();
   const iso = /^(\d{4})\D(\d{1,2})\D(\d{1,2})$/u.exec(text);
   const dmy = /^(\d{1,2})\D(\d{1,2})\D(\d{4})$/u.exec(text);
@@ -52,7 +56,8 @@ export const dateParts = (value: string, yearLastDigit = false): [string, string
     iso === null ? (dmy === null ? null : [dmy[3], dmy[2], dmy[1]]) : [iso[1], iso[2], iso[3]];
   if (found === null) return [text, '', ''];
   const [year = '', month = '', day = ''] = found;
-  return [day.padStart(2, '0'), month.padStart(2, '0'), yearLastDigit ? year.slice(-1) : year];
+  const shown = yearLastDigit ? year.slice(-1) : yearTwoDigits ? year.slice(-2) : year;
+  return [day.padStart(2, '0'), month.padStart(2, '0'), shown];
 };
 
 /** A plate as the form's two boxes: [letters, digits] — the form prints a slash between them. */
@@ -80,7 +85,7 @@ const fieldMarkup = (field: NoticeField, value: string, focus: string | undefine
   if (value.trim() === '') return '';
   switch (field.kind) {
     case 'date': {
-      const parts = dateParts(value, field.yearLastDigit === true);
+      const parts = dateParts(value, field.yearLastDigit === true, field.yearTwoDigits === true);
       return (field.parts ?? [])
         .map((slot, i) => box(parts[i] ?? '', slot, field.key, focus, true))
         .join('');

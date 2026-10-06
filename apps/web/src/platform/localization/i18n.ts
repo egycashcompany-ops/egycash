@@ -4044,6 +4044,11 @@ const en: Record<string, string> = {
   'fleet.notices.licences.fromNotice': 'uploaded with the notice',
   'fleet.notices.licences.missing': 'not on file',
   'fleet.notices.licences.upload': 'Upload',
+  'fleet.notices.licences.change': 'Change',
+  'fleet.notices.licences.changeTitle': 'Upload another picture for this notice only',
+  'fleet.notices.licences.revert': '↺ Back',
+  'fleet.notices.licences.revertTitle':
+    'Remove the picture uploaded with this notice and show the registry’s again',
   'fleet.notices.setup.title': 'Form set-up: {{insurer}}',
   'fleet.notices.setup.save': 'Save the set-up',
   'fleet.notices.setup.saved': 'The set-up was saved.',
@@ -11680,6 +11685,11 @@ const ar: Record<string, string> = {
   'fleet.notices.licences.fromNotice': 'مرفوعة مع الإخطار',
   'fleet.notices.licences.missing': 'غير موجودة',
   'fleet.notices.licences.upload': 'رفع',
+  'fleet.notices.licences.change': 'تغيير',
+  'fleet.notices.licences.changeTitle': 'رفع صورة أخرى لهذا الإخطار فقط',
+  'fleet.notices.licences.revert': '↺ رجوع',
+  'fleet.notices.licences.revertTitle':
+    'حذف الصورة المرفوعة مع الإخطار والرجوع إلى صورة شاشة السيارات أو السائقين',
   'fleet.notices.setup.title': 'إعداد نموذج: {{insurer}}',
   'fleet.notices.setup.save': 'حفظ الإعداد',
   'fleet.notices.setup.saved': 'تم حفظ الإعداد.',

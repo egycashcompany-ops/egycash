@@ -351,6 +351,8 @@ describe('every Fleet car picker offers the WHOLE registry', () => {
       })
       .sort();
     expect(passing).toEqual([
+      // The balance transfer — every place that holds a card, a car or a label on no car.
+      'modules/fleet/components/FuelTransferDialog.tsx',
       // Both rosters — every active car on the day's board.
       'modules/fleet/pages/FixedRosterPage.tsx',
       // «التراخيص» — the «ت» licence-class cars, as the owner asked.
@@ -386,8 +388,6 @@ const CAR_BOX_SCOPES: readonly {
   { file: 'modules/fleet/components/ViolationDialogs.tsx', scope: 'any', boxes: 2 },
   { file: 'modules/fleet/pages/NoticeEditorPage.tsx', scope: 'any' },
   { file: 'modules/fleet/components/FuelCardDialog.tsx', scope: 'active' },
-  // From, and to.
-  { file: 'modules/fleet/components/FuelTransferDialog.tsx', scope: 'active', boxes: 2 },
   { file: 'modules/fleet/components/MaintenanceDialogs.tsx', scope: 'checkIn' },
 ];
 

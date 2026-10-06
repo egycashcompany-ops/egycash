@@ -15,7 +15,7 @@ import { type FleetNoticeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
@@ -37,6 +37,7 @@ import {
 } from '../../../shared/ui/icons';
 import {
   useDeleteNotice,
+  useDeleteNoticeImage,
   useNotices,
   useNoticesSummary,
   useSetNoticeDone,
@@ -364,41 +365,58 @@ export const NoticesPage = (): JSX.Element => {
     },
   ];
 
-  // «التاريخ فى الفلاتر خليه من الى»: two days, each named inside its own box until it is filled —
-  // the maintenance screen's date boxes.
-  const dateBound = (labelKey: string, value: string, param: string): JSX.Element => (
-    <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
-      <Input
-        type="date"
-        dir="ltr"
-        aria-label={t(labelKey)}
-        title={t(labelKey)}
-        value={value}
-        onChange={(e) => patch({ [param]: e.target.value || null })}
-        className={
-          value === '' ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0' : undefined
+  // «التاريخ فى الفلاتر خليه من الى … مكتوب من الى كبليس هولدر»: an empty box is a plain box
+  // that says «من» / «إلى» the way every other filter says its name; pressed, it becomes the date
+  // box and opens its calendar; filled, it shows the day.
+  const [editingDate, setEditingDate] = useState<string | null>(null);
+  const dateBound = (labelKey: string, value: string, param: string): JSX.Element => {
+    const asDate = value !== '' || editingDate === param;
+    // A press (or Enter / Space / ↓ from the keyboard) turns the box into the date box and opens
+    // its calendar. Focus alone changes nothing, so Tab and Shift+Tab pass through as usual.
+    const openCalendar = (box: HTMLInputElement): void => {
+      setEditingDate(param);
+      requestAnimationFrame(() => {
+        try {
+          box.focus();
+          box.showPicker();
+        } catch {
+          // A browser without the picker call opens it on the next press.
         }
-      />
-      {value === '' && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 left-8 right-7 flex items-center justify-start truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
-        >
-          {t(labelKey)}
-        </span>
-      )}
-    </FilterWithIcon>
-  );
+      });
+    };
+    return (
+      <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+        <Input
+          type={asDate ? 'date' : 'text'}
+          {...(asDate ? { dir: 'ltr' } : {})}
+          data-notice-date-filter={param}
+          aria-label={t(labelKey)}
+          title={t(labelKey)}
+          placeholder={t(labelKey)}
+          value={value}
+          readOnly={!asDate}
+          onPointerDown={(e) => {
+            if (!asDate) openCalendar(e.currentTarget);
+          }}
+          onKeyDown={(e) => {
+            if (!asDate && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
+              e.preventDefault();
+              openCalendar(e.currentTarget);
+            }
+          }}
+          onBlur={() => setEditingDate((prev) => (prev === param ? null : prev))}
+          onChange={(e) => {
+            if (e.currentTarget.type === 'date') patch({ [param]: e.target.value || null });
+          }}
+        />
+      </FilterWithIcon>
+    );
+  };
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('fleet.nav.notices')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.notices') },
-        ]}
-      />
+      {/* «شيل بس عنوان الاخطارات من الشاشه»: the screen opens on its own bar, as the vehicles
+          screen does. */}
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2" data-notices-toolbar="true">
           <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
@@ -886,6 +904,8 @@ const NoticeLicencesButton = ({
   onPreview: (target: NoticeImageTarget) => void;
 }): JSX.Element => {
   const t = useT();
+  const can = useCan();
+  const mayEdit = can('fleetNotice.edit');
   const locale = useAppSelector((state): Locale => state.locale.locale);
   const upload = useUploadNoticeImage();
   const button = useRef<HTMLButtonElement>(null);
@@ -904,10 +924,20 @@ const NoticeLicencesButton = ({
   const open = (): void => {
     const box = button.current?.getBoundingClientRect();
     if (box === undefined) return;
-    const width = 300;
+    const width = 340;
     // Under the arrow, held inside the screen at either edge.
     const left = Math.min(Math.max(8, box.left), window.innerWidth - width - 8);
     setAt({ top: box.bottom + 6, left });
+  };
+  const remove = useDeleteNoticeImage();
+  // «↺ رجوع»: the picture uploaded with the notice goes; the registry's is shown again.
+  const revert = async (kind: 'vehicleLicense' | 'driverLicense'): Promise<void> => {
+    try {
+      await remove.mutateAsync({ id: row.id, kind });
+      toast.success(t('fleet.notices.image.deleted'));
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
   };
   const pick = async (kind: 'vehicleLicense' | 'driverLicense', file: File): Promise<void> => {
     try {
@@ -919,6 +949,7 @@ const NoticeLicencesButton = ({
   };
   const line = (kind: 'vehicleLicense' | 'driverLicense'): JSX.Element => {
     const source = kind === 'vehicleLicense' ? row.vehicleLicense : row.driverLicense;
+    const onFile = kind === 'vehicleLicense' ? row.vehicleLicenseOnFile : row.driverLicenseOnFile;
     return (
       <div
         key={kind}
@@ -950,30 +981,62 @@ const NoticeLicencesButton = ({
           </span>
         </span>
         {source === null ? (
-          <PhotoPickButton
-            accept={LICENSE_IMAGE_ACCEPT}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/60 px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
-            disabled={upload.isPending}
-            label={t(`fleet.notices.image.${kind}.upload`)}
-            data-notice-image-upload={`${kind}:${row.id}`}
-            onFile={(file) => void pick(kind, file)}
-          >
-            <UploadIcon className="h-3.5 w-3.5" />
-            {t('fleet.notices.licences.upload')}
-          </PhotoPickButton>
+          !mayEdit ? null : (
+            <PhotoPickButton
+              accept={LICENSE_IMAGE_ACCEPT}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-500/60 px-2 py-1 text-xs font-bold text-amber-700 hover:bg-amber-500/15 dark:text-amber-300"
+              disabled={upload.isPending}
+              label={t(`fleet.notices.image.${kind}.upload`)}
+              data-notice-image-upload={`${kind}:${row.id}`}
+              onFile={(file) => void pick(kind, file)}
+            >
+              <UploadIcon className="h-3.5 w-3.5" />
+              {t('fleet.notices.licences.upload')}
+            </PhotoPickButton>
+          )
         ) : (
-          <button
-            type="button"
-            className={NOTICE_ACTION_BUTTON}
-            aria-label={t(`fleet.notices.image.${kind}.view`)}
-            title={t(`fleet.notices.image.${kind}.view`)}
-            onClick={() => {
-              setAt(null);
-              onPreview({ row, kind });
-            }}
-          >
-            <EyeIcon className="h-4 w-4" />
-          </button>
+          <span className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              className={NOTICE_ACTION_BUTTON}
+              aria-label={t(`fleet.notices.image.${kind}.view`)}
+              title={t(`fleet.notices.image.${kind}.view`)}
+              onClick={() => {
+                setAt(null);
+                onPreview({ row, kind });
+              }}
+            >
+              <EyeIcon className="h-4 w-4" />
+            </button>
+            {/* «عايز اعدل رخصة السواق او رخصة العربية»: a new picture for THIS notice alone —
+                the vehicles and drivers screens keep theirs. */}
+            {mayEdit && (
+              <PhotoPickButton
+                accept={LICENSE_IMAGE_ACCEPT}
+                className="inline-flex items-center gap-1 rounded-md border border-brand-500/60 px-2 py-1 text-xs font-bold text-brand-700 hover:bg-brand-500/15 dark:text-brand-200"
+                disabled={upload.isPending}
+                label={t('fleet.notices.licences.changeTitle')}
+                data-notice-licence-change={`${kind}:${row.id}`}
+                onFile={(file) => void pick(kind, file)}
+              >
+                <UploadIcon className="h-3.5 w-3.5" />
+                {t('fleet.notices.licences.change')}
+              </PhotoPickButton>
+            )}
+            {/* Only where there is something to go back to — the registry's own picture. */}
+            {mayEdit && source === 'notice' && onFile && (
+              <button
+                type="button"
+                data-notice-licence-revert={`${kind}:${row.id}`}
+                disabled={remove.isPending}
+                title={t('fleet.notices.licences.revertTitle')}
+                onClick={() => void revert(kind)}
+                className="rounded-md border border-slate-300 px-2 py-1 text-xs font-bold text-slate-600 hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                {t('fleet.notices.licences.revert')}
+              </button>
+            )}
+          </span>
         )}
       </div>
     );
@@ -1002,7 +1065,7 @@ const NoticeLicencesButton = ({
             <div
               role="dialog"
               aria-label={t('fleet.notices.licences.title')}
-              style={{ top: at.top, left: at.left, width: 300 }}
+              style={{ top: at.top, left: at.left, width: 340 }}
               className="fixed z-[81] animate-menu-in space-y-2 rounded-xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-700 dark:bg-[#111827]"
             >
               <p className="text-xs font-bold text-slate-500 dark:text-slate-400">

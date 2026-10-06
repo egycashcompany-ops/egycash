@@ -340,7 +340,11 @@ describe('cards on no car — «كروت زيادة ملهمش عربيات»', 
       't2',
     ]);
     const TRANSFER = readFileSync(join(HERE, '../components/FuelTransferDialog.tsx'), 'utf8');
-    expect(TRANSFER.match(/extra=\{places\}/gu)).toHaveLength(2);
+    // Both car boxes offer every place that holds a card — a car's code, or a label on no car.
+    expect(TRANSFER).toContain(
+      "const placeOf = (card: FleetFuelCardDto): string => card.vehicleCode ?? card.label ?? '—';",
+    );
+    expect(TRANSFER.match(/options=\{placeOptions/gu)).toHaveLength(2);
   });
 });
 
@@ -422,21 +426,26 @@ describe('charging', () => {
     expect(DIALOG).toContain('onClick={required.guard(submit)}');
     expect(DIALOG).not.toContain('disabled={');
     expect(DIALOG).toContain('ok: amount > 0 && enough,');
-    expect(DIALOG).toContain('to.id !== from?.id &&');
-    expect(DIALOG).toContain('(from === undefined || to.company === from.company)');
+    // A tick that is the giving card, or of the other company, is let go.
+    expect(DIALOG).toContain('id !== transfer.card &&');
+    expect(DIALOG).toContain('(company === undefined || card.company === company)');
     // «متجبش اوبشن انه يختار نفس العربيه اصلا»: the «to» box leaves the «from» car out.
-    expect(DIALOG).toContain("exclude={item.place === '' ? [] : [item.place]}");
-    // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت»: the second card is offered from the first's
-    // company only, and says so when the car has none of it.
-    expect(DIALOG).toContain('fromCompany === undefined || card.company === fromCompany');
-    expect(DIALOG).toContain('cards={choices}');
+    expect(DIALOG).toContain('option.value !== placeOf(from)');
+    // «وطنيه ل وطنيه ومينفعش وطنيه ل شيل اوت»: the receiving cards are offered from the giving
+    // card's company only, and a car with none of it says so.
+    expect(DIALOG).toContain(
+      'card.id !== item.card && (company === undefined || card.company === company)',
+    );
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.otherCompany'");
     // The «not enough» line stays under the amount, and the amount box turns red with it.
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.notEnough'");
-    expect(DIALOG).toContain('missing={required.isMissing(`${target.key}:amount`)}');
-    // «+ اضافه تحويل … يجيب من و الى»: more transfers, and more cards to give to, in one press.
+    expect(DIALOG).toContain('missing={required.isMissing(amountKey)}');
+    // «+ اضافه تحويل … يجيب من و الى»: more transfers in one press, each «من» over «إلى», and
+    // each picking its cars several at once — the charging screen's own car filter.
     expect(DIALOG).toContain("t('fleet.fuelCards.transfer.addTransfer')");
-    expect(DIALOG).toContain("t('fleet.fuelCards.transfer.addTarget')");
+    expect(DIALOG.match(/<VehicleCodeFilter/gu)).toHaveLength(2);
+    expect(DIALOG).toContain('data-fuel-transfer-side={`${i + 1}:from`}');
+    expect(DIALOG).toContain('data-fuel-transfer-side={`${i + 1}:to`}');
   });
 });
 

@@ -248,7 +248,10 @@ export const printNoticePages = (
 ${NOTICE_CSS}
 @page { size: A4 portrait; margin: 0; }
 html, body { margin: 0; padding: 0; background: #fff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans Arabic', Arial, sans-serif; }
-.nt-page { width: 210mm; }
+/* «بعد كل ورقة ورقة فاضية»: the form's own proportions run a fraction of a millimetre taller than
+   A4 at A4's width, and that sliver spilled onto a sheet of its own. Each page is exactly one A4
+   sheet, its overflow clipped. */
+.nt-page { width: 210mm; height: 297mm; aspect-ratio: auto; break-inside: avoid; page-break-inside: avoid; }
 .nt-page + .nt-page { break-before: page; page-break-before: always; }
 .nt-photo { box-sizing: border-box; width: 210mm; height: 297mm; padding: 12mm; display: flex; flex-direction: column; align-items: center; gap: 6mm; break-before: page; page-break-before: always; }
 .nt-photo p { margin: 0; font-size: 14pt; font-weight: 700; }

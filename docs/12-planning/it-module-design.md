@@ -183,6 +183,7 @@ signedCopy?{ fileId, fileName, mime, size, uploadedAt } }`
   paper («بطاقة رقم قومي …»), and leaves the API only for a caller holding `itAsset.viewNationalId`
   (`nationalIdVisible` tells «withheld» from «HR has none»). `section` and `department` are kept
   on the receipt as the record of where the holder worked, but the paper no longer prints them.
+  `employeeCode` (the directory's employee code) is printed after the company («كود …»).
 - `formNumber` is the paper's own number, printed `EGYCASH-IT-F-14-0001` (counter
   `custodyReceipt:global` in `it_sequences`, partial unique index `ux_form_number`). Every print
   before a hand-over takes the next one; the hand-over records the number of the paper that was
@@ -443,7 +444,9 @@ Created directly or from a ticket (`ticketId` link). Start → asset `underMaint
   block, dated the day of the hand-over; the footer carries the receipt's number and, on a receipt
   of several pages, the page count (§17, 2026-10-05). The national ID is filled from the system,
   only for a reader holding `itAsset.viewNationalId`; the form's «صادرة من قسم … – … بتاريخ …» is
-  not printed; the name under the signature is the first three parts (§17, 2026-10-05).
+  not printed; the name under the signature is the first three parts (§17, 2026-10-05). The
+  employee's code follows the company, «… بشركة إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي …»
+  (§17, 2026-10-06).
 
 ## 6. States catalog
 
@@ -829,3 +832,8 @@ starts only on an explicit owner GO.
   statement now runs «… بطاقة رقم قومي … بأنني قد استلمت جهاز …»; the paper's date stays in the
   signature block. The section and department are still read and kept on the receipt — the record
   of where the holder worked when they signed — but no longer printed.
+- **The employee's code on the acknowledgment** (2026-10-06) — owner request: «عايز بردو أضيف كود
+  الموظف هنا . بشركة إيجي كاش للحلول النقدية، كود ......... .». The statement now runs «… بشركة
+  إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي … بأنني قد استلمت جهاز …», the code in the
+  form's red and its digits, like the national ID after it, and a dotted line for the pen when the
+  directory cannot name the employee. The receipt already kept `employeeCode`; no API change.

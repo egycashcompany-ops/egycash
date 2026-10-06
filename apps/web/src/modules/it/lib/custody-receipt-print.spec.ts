@@ -142,6 +142,13 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     );
   });
 
+  it('fills the employee code right after the company — «عايز بردو أضيف كود الموظف هنا»', () => {
+    // Whole, and in the form's digits, like the national ID after it.
+    expect(html).toContain(
+      'بشركة إيجي كاش للحلول النقدية، كود <span class="fill whole"><bdi>٠١٠٠٠٢٦</bdi></span>، بطاقة رقم قومي',
+    );
+  });
+
   it('fills the national ID from the system, straight into «بأنني قد استلمت»', () => {
     // «مفروض تملأها تلقائي من النظام … ورقمه القومي».
     expect(html).toContain(
@@ -246,10 +253,14 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
   });
 
   it('leaves a line for the pen when the system cannot name the employee', () => {
-    const blank = buildCustodyReceiptHtml(paper({ employeeName: null, jobTitle: null }), LABELS);
+    const blank = buildCustodyReceiptHtml(
+      paper({ employeeName: null, jobTitle: null, employeeCode: null }),
+      LABELS,
+    );
     expect(blank).toMatch(
       /أقر أنا \/ <span class="fill">\.{10,}<\/span> بوظيفة <span class="fill">\.{10,}<\/span>/u,
     );
+    expect(blank).toMatch(/، كود <span class="fill whole">\.{8,}<\/span>، بطاقة رقم قومي/u);
     expect(blank).toContain('<div>الاسم: </div>');
   });
 

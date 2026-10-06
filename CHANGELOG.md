@@ -20,6 +20,11 @@ its entry here in the same PR.
 
 ### Fixed
 
+- **proxy-addr 2.0.7 → 2.0.8.** A new critical advisory
+  ([GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h): IP spoofing through
+  an IPv4-mapped IPv6 trust subnet) turned the dependency gate red for every pipeline. proxy-addr
+  comes in through Express, which reads it for `trust proxy`. The patched release sits inside
+  Express's own `~2.0.7` range and keeps the same dependencies, so only the lockfile changes.
 - **Fleet and gold printouts open the print dialog by themselves again — or, in truth, for the
   first time.** «مش بعرف اطبع الpdf بيفتح شاشه وخلاص». Every printed document is written into a
   tab the app opens, and that tab inherits the app's Content-Security-Policy (`script-src 'self'`,
@@ -41,6 +46,9 @@ its entry here in the same PR.
 
 ### Changed
 
+- **The acknowledgment no longer prints «صادرة من قسم … – … بتاريخ …».** «شيل الجزء دا من الإيصال»:
+  the statement runs «… بطاقة رقم قومي … بأنني قد استلمت جهاز …», and the paper's date stays in the
+  signature block. The section and department are still kept on the receipt, unprinted.
 - **The acknowledgment names the device by its make and model, and the company as «إيجي كاش
   للحلول النقدية».** «شيل كلمة لتكنولوجيا … وخليها للحلول النقدية على طول» and «خليه يظهر الـ
   Manufacturer / Model بداله»: the statement now reads «بشركة إيجي كاش للحلول النقدية» and

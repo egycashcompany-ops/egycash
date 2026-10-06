@@ -142,34 +142,30 @@ describe('the custody acknowledgment (إقرار استلام)', () => {
     );
   });
 
-  it('fills the identity line from the system — national ID, section, department and date', () => {
-    // «مفروض تملأها تلقائي من النظام — قسم الموظف وإدارته وتاريخ اليوم ورقمه القومي».
+  it('fills the national ID from the system, straight into «بأنني قد استلمت»', () => {
+    // «مفروض تملأها تلقائي من النظام … ورقمه القومي».
     expect(html).toContain(
-      'بطاقة رقم قومي <span class="fill whole"><bdi>٢٩٨٠١٠١١٢٣٤٥٦٧</bdi></span>' +
-        ' – صادرة من قسم <span class="fill"><bdi>التسويات</bdi></span>' +
-        ' – <span class="fill"><bdi>الإدارة المالية</bdi></span>' +
-        ' بتاريخ <span class="fill whole"><bdi>٣٠\u2009/\u2009٨\u2009/\u2009٢٠٢٣</bdi></span> بأنني',
+      'بطاقة رقم قومي <span class="fill whole"><bdi>٢٩٨٠١٠١١٢٣٤٥٦٧</bdi></span> بأنني قد استلمت',
     );
   });
 
-  it('leaves the national ID for the pen when the reader may not see it — the rest still fills', () => {
+  it('prints no «صادرة من قسم … – … بتاريخ …» — the section, department and date are left out', () => {
+    // «شيل الجزء دا من الإيصال»: even when HR has all three, none of them is on the paper.
+    expect(html).not.toContain('صادرة من');
+    expect(html).not.toContain('بتاريخ');
+    expect(html).not.toContain('التسويات');
+    expect(html).not.toContain('الإدارة المالية');
+    // The paper's date is still there — in the signature block.
+    expect(html).toContain('<div>التاريخ: ٣٠ / ٨ / ٢٠٢٣</div>');
+  });
+
+  it('leaves the national ID for the pen when the reader may not see it', () => {
     const withheld = buildCustodyReceiptHtml(
       paper({ nationalId: null, nationalIdVisible: false }),
       LABELS,
     );
-    expect(withheld).toMatch(/بطاقة رقم قومي <span class="fill whole">\.{8,}<\/span>/u);
-    expect(withheld).toContain('صادرة من قسم <span class="fill"><bdi>التسويات</bdi></span>');
+    expect(withheld).toMatch(/بطاقة رقم قومي <span class="fill whole">\.{8,}<\/span> بأنني/u);
     expect(withheld).not.toContain('٢٩٨٠١٠١١٢٣٤٥٦٧');
-  });
-
-  it('leaves for the pen whatever HR does not hold — an employee filed under no section', () => {
-    const bare = buildCustodyReceiptHtml(
-      paper({ nationalId: null, section: null, department: null }),
-      LABELS,
-    );
-    expect(bare).toMatch(
-      /صادرة من قسم <span class="fill">\.+<\/span> – <span class="fill">\.+<\/span>/u,
-    );
   });
 
   it('prints the specifications table the form has, its rows in its own words', () => {

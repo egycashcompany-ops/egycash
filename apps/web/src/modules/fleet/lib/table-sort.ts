@@ -79,6 +79,24 @@ export const clickSort = (raw: string | null, fallback: string, key: string): Ta
   return [{ by: key, dir: inDefault.dir === 'asc' ? 'desc' : 'asc' }];
 };
 
+/**
+ * THE READER'S OWN ORDER, AND NOTHING ELSE — for a screen whose own order shows no arrow.
+ *
+ * «السهم الافتراضى معمول ل فوق المفروض يبقى متشال»: the vehicles registry opens by the code, and
+ * that is the screen's order, not the reader's — so no header lights up for it. This is what the
+ * table is handed: empty until the reader clicks.
+ */
+export const chosenSorts = (raw: string | null): TableSort[] => parseFleetSort(raw);
+
+/**
+ * One click on such a screen: not sorted → ascending → descending → let go, back on the screen's
+ * own order with no arrow («يسمح لى ان ادوس على حاجه تعيد ترتيب الجدول من تانى» — the same click
+ * one more time, or the screen's «الترتيب الافتراضي»). The code column included: with no arrow on
+ * it, a first click that turned it round would answer a question nobody asked.
+ */
+export const clickChosenSort = (raw: string | null, key: string): TableSort[] =>
+  toggleSort(parseFleetSort(raw), key);
+
 export const toggleSort = (sorts: readonly TableSort[], key: string): TableSort[] => {
   const at = sorts.findIndex((entry) => entry.by === key);
   // «لو عملت فلتر اسم السائق ... وبعدين دوست على السهم كود الموظف يلغى اسم السائق» — a column the

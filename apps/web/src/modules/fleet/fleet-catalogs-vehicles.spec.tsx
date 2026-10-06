@@ -404,9 +404,9 @@ describe('the registry table renders the frozen column order', () => {
   const COLUMNS = [
     // No `ordinal`. «شيل عمود الترتيب من الجدول وحط جمب الفلاتر عدد العربيات» — a serial that
     // only ever counted the rows already on screen spent a column saying what the bar now says
-    // once, for the whole filtered set.
-    'type',
+    // once, for the whole filtered set. «عمود الكود يبقى فى الاول» — the code, then the make.
     'code',
+    'type',
     'plate',
     'chassis',
     'motor',
@@ -509,7 +509,7 @@ describe('the registry table renders the frozen column order', () => {
     // Scoped to <thead>: several filter controls carry the same words as their columns ("الفرع"
     // labels both the branch filter and the branch column), and matching the whole document would
     // read the filter bar's position instead of the header's.
-    const head = html.slice(html.indexOf('<thead>'), html.indexOf('</thead>'));
+    const head = html.slice(html.indexOf('<thead'), html.indexOf('</thead>'));
     const positions = COLUMNS.map((key) => {
       const label = t(`fleet.vehicles.columns.${key}`);
       const at = head.indexOf(`>${label}<`);
@@ -579,7 +579,7 @@ describe('the registry table renders the frozen column order', () => {
   it('wraps rather than overflowing on a narrow screen', () => {
     const html = withRows([vehicle()]);
     // The bar itself carries the wrap; nothing inside it pins a row open.
-    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2'), html.indexOf('<thead>'));
+    const bar = html.slice(html.indexOf('flex flex-wrap items-center gap-2'), html.indexOf('<thead'));
     expect(bar).toContain('flex-wrap');
     expect(bar).not.toContain('flex-nowrap');
   });

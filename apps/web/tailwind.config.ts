@@ -57,8 +57,18 @@ export default {
       // yields to `prefers-reduced-motion` via the guard in styles.css.
       keyframes: {
         'fade-in': { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+        // A panel that opens under its button — the vehicles screen's figures — drops into place.
+        'drop-in': {
+          '0%': { opacity: '0', transform: 'translateY(-8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
         'pop-in': {
           '0%': { opacity: '0', transform: 'translateY(6px) scale(0.98)' },
+          '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
+        },
+        // A form that opens over the page — «إضافة سيارة» — rises and settles in.
+        'dialog-in': {
+          '0%': { opacity: '0', transform: 'translateY(14px) scale(0.96)' },
           '100%': { opacity: '1', transform: 'translateY(0) scale(1)' },
         },
         'menu-in': {
@@ -72,7 +82,9 @@ export default {
       },
       animation: {
         'fade-in': 'fade-in 150ms ease-out',
+        'drop-in': 'drop-in 260ms cubic-bezier(0.16, 1, 0.3, 1)',
         'pop-in': 'pop-in 190ms cubic-bezier(0.16, 1, 0.3, 1)',
+        'dialog-in': 'dialog-in 280ms cubic-bezier(0.16, 1, 0.3, 1)',
         'menu-in': 'menu-in 130ms cubic-bezier(0.16, 1, 0.3, 1)',
         'slide-up': 'slide-up 220ms cubic-bezier(0.16, 1, 0.3, 1)',
       },

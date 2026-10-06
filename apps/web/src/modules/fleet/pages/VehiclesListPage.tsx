@@ -33,6 +33,7 @@ import {
 } from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { Pagination } from '../../../shared/ui/Pagination';
+import { Spinner } from '../../../shared/ui/Spinner';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { Input } from '../../../shared/ui/form';
@@ -63,7 +64,7 @@ import {
 } from '../components/VehicleLicenseImage';
 import { printLicenceRecord } from '../components/vehicle-print';
 import { fetchVehicleLicenseImage } from '../api/fleet-api';
-import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
+import { chosenSorts, clickChosenSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
@@ -125,8 +126,8 @@ const nameMap = (
 /**
  * The order this screen opens in, before the reader has asked for one.
  *
- * Named, because it is used twice and the two must agree: the table is DRAWN in it, and a
- * first click REPLACES it rather than joining it — see `clickSort`.
+ * The list is fetched in it, and no header shows an arrow for it — it is the screen's order, not
+ * one the reader chose. See `changeSort`.
  */
 const DEFAULT_SORT = 'code:asc';
 
@@ -228,11 +229,17 @@ export const VehiclesListPage = (): JSX.Element => {
     // re-running there would fight the very rewrite this just made.
   }, [legacyCode, legacyLookup.isSuccess, legacyNamesAVehicle]);
 
-  // Ascending, then descending, then out of the order altogether — and a column the table
-  // is NOT sorted by joins the end of it rather than replacing what is there.
+  // «السهم الافتراضى معمول ل فوق المفروض يبقى متشال»: the screen's own order (by the code) is
+  // not one the reader chose, so no header shows an arrow for it. A click on any column — the
+  // code included — sorts it ascending, then descending, then lets go, which lands back on the
+  // screen's own order with no arrow at all.
   const changeSort = (by: string): void => {
-    patch({ sort: writeSorts(clickSort(sortParam, DEFAULT_SORT, by)) }, false);
+    patch({ sort: writeSorts(clickChosenSort(sortParam, by)) }, false);
   };
+  /** What the headers show — the reader's own order only. */
+  const chosen = useMemo(() => chosenSorts(sortParam), [sortParam]);
+  /** «اعيد ترتيب الجدول من تانى» — back to the screen's own order, whatever was clicked. */
+  const sortChosen = chosen.length > 0;
   const hasActiveFilters =
     statuses.length > 0 ||
     typeIds.length > 0 ||
@@ -265,7 +272,7 @@ export const VehiclesListPage = (): JSX.Element => {
     }),
     [paramsKey],
   );
-  const { data, isLoading, isError, error, refetch } = useVehicles(params);
+  const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useVehicles(params);
   const rows = data?.items ?? [];
 
   // Reference name maps. Each list is cached per kind, so the three catalog columns and the three
@@ -560,20 +567,10 @@ export const VehiclesListPage = (): JSX.Element => {
     }
   };
 
-  // The frozen §7 order. The lifecycle status and the DERIVED in-workshop pill ride with the code
+  // The frozen §7 order, the code first («عمود الكود يبقى فى الاول») and the make after it. The lifecycle status and the DERIVED in-workshop pill ride with the code
   // rather than taking a fifteenth column: dropping them would lose real information the registry
   // has always shown, and the column list did not ask for them to go.
   const columns: Column<FleetVehicleDto>[] = [
-    {
-      key: 'type',
-      header: t('fleet.vehicles.columns.type'),
-      // «عاوز هنا يكون فيه سهم عشان ارتب العربيات على حسب النوع تصاعدى وتنازلى». The column shows a
-      // NAME and the row stores a `typeId`, so the server joins the name in before it cuts the
-      // page — `typeName`, which is what the sort parameter carries and what the table calls it.
-      sortable: true,
-      sortKey: 'typeName',
-      render: (v) => dash(typeName.get(v.typeId)),
-    },
     {
       key: 'code',
       header: t('fleet.vehicles.columns.code'),
@@ -587,6 +584,16 @@ export const VehiclesListPage = (): JSX.Element => {
           <InWorkshopBadge inWorkshop={v.inWorkshop} />
         </span>
       ),
+    },
+    {
+      key: 'type',
+      header: t('fleet.vehicles.columns.type'),
+      // «عاوز هنا يكون فيه سهم عشان ارتب العربيات على حسب النوع تصاعدى وتنازلى». The column shows a
+      // NAME and the row stores a `typeId`, so the server joins the name in before it cuts the
+      // page — `typeName`, which is what the sort parameter carries and what the table calls it.
+      sortable: true,
+      sortKey: 'typeName',
+      render: (v) => dash(typeName.get(v.typeId)),
     },
     { key: 'plate', header: t('fleet.vehicles.columns.plate'), render: (v) => v.plateNumber },
     {
@@ -752,11 +759,22 @@ export const VehiclesListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <div className={cn(BOARD_FONT, 'space-y-5 text-slate-900 dark:text-slate-100 antialiased')}>
+    // «بيانات الادخال ثابته والفلاتر وراس العمود … بس هى اللى بتنزل وبطلع»: the page is the
+    // screen's height, the toolbar, the figures and the filters keep their place, and only the
+    // table's rows scroll, under a head that stays. A phone, reading cards, scrolls as before.
+    <PageContainer fullHeight>
+      <div
+        className={cn(
+          BOARD_FONT,
+          'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto text-slate-900 antialiased dark:text-slate-100 lg:overflow-hidden',
+        )}
+      >
         {/* The count and the two buttons ride ABOVE the filters, so the filters have the
             whole width and stay on one line on any screen larger than a tablet. */}
-        <div className="flex items-center justify-between gap-1.5 sm:gap-2" data-vehicle-toolbar="true">
+        <div
+          className="flex shrink-0 items-center justify-between gap-1.5 sm:gap-2"
+          data-vehicle-toolbar="true"
+        >
           <span
             data-vehicle-count
             className="min-w-0 truncate whitespace-nowrap text-xs font-bold text-slate-600 dark:text-slate-300 sm:text-sm min-[1750px]:text-base"
@@ -765,13 +783,38 @@ export const VehiclesListPage = (): JSX.Element => {
               ? ''
               : t('fleet.vehicles.count', { count: formatNumber(data.meta.totalItems, locale) })}
           </span>
+          {sortChosen && (
+            <button
+              type="button"
+              data-vehicle-sort-reset="true"
+              title={t('fleet.vehicles.sortResetTitle')}
+              onClick={() => patch({ sort: null }, false)}
+              className="me-auto ms-2 inline-flex shrink-0 animate-fade-in items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 dark:text-brand-200 sm:text-xs"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {t('fleet.vehicles.sortReset')}
+            </button>
+          )}
           <span className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button
               type="button"
               data-vehicle-breakdown-toggle="true"
               aria-expanded={breakdownOpen}
               onClick={() => setBreakdownOpen((open) => !open)}
-              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-1.5 py-1.5 text-[11px] font-bold text-brand-700 dark:text-brand-200 transition hover:bg-brand-500/25 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs"
+              className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-1.5 py-1.5 text-[11px] font-bold text-brand-700 dark:text-brand-200 transition hover:bg-brand-500/25 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs active:scale-95"
             >
               {breakdownOpen
                 ? t('fleet.vehicles.board.breakdownHide')
@@ -794,9 +837,16 @@ export const VehiclesListPage = (): JSX.Element => {
                   data-export="vehicles"
                   disabled={exporting !== null}
                   onClick={() => void exportSheet()}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-emerald-50 dark:hover:bg-emerald-950/60 hover:text-emerald-700 dark:hover:text-emerald-300 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs active:scale-95"
                 >
-                  <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {exporting === 'excel' ? (
+                    <Spinner className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.excel}
+                      className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                    />
+                  )}
                   <span className="sm:hidden">Excel</span>
                   <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
                 </button>
@@ -806,9 +856,16 @@ export const VehiclesListPage = (): JSX.Element => {
                   data-print="vehicles"
                   disabled={exporting !== null}
                   onClick={() => void printSheet()}
-                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 dark:text-slate-200 transition hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs active:scale-95"
                 >
-                  <BoardIcon d={PATH.pdf} className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                  {exporting === 'pdf' ? (
+                    <Spinner className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.pdf}
+                      className="h-3.5 w-3.5 text-red-600 dark:text-red-400"
+                    />
+                  )}
                   <span className="sm:hidden">PDF</span>
                   <span className="hidden sm:inline">{t('fleet.fuelCards.board.pdf')}</span>
                 </button>
@@ -822,7 +879,7 @@ export const VehiclesListPage = (): JSX.Element => {
                   setEditing(null);
                   setFormOpen(true);
                 }}
-                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs"
+                className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-2 py-1.5 text-[11px] font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 sm:gap-1.5 sm:px-3.5 sm:py-2 sm:text-xs active:scale-95"
               >
                 <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
                 <span className="sm:hidden">{t('fleet.vehicles.board.addShort')}</span>
@@ -833,7 +890,7 @@ export const VehiclesListPage = (): JSX.Element => {
         </div>
         {/* Every figure lives behind «الإحصائيات»: the screen opens on the cars themselves. */}
         {breakdownOpen && (
-          <section data-vehicle-figures="true" className="space-y-2">
+          <section data-vehicle-figures="true" className="shrink-0 animate-drop-in space-y-2">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <FigureChip
                 icon={PATH.truck}
@@ -896,7 +953,10 @@ export const VehiclesListPage = (): JSX.Element => {
         <div
           className={cn(
             DARK_BAR,
+            'shrink-0',
             'min-[1750px]:[&_input]:!text-[15px] min-[1750px]:[&_button[aria-haspopup]]:!text-[15px]',
+            // Every filter's list opens with the same small drop the menus use.
+            '[&_[role=listbox]]:animate-menu-in',
           )}
         >
           <FilterBar
@@ -1086,7 +1146,13 @@ export const VehiclesListPage = (): JSX.Element => {
         </div>
 
         {/* A computer's screen reads the table; a tablet or a phone reads one card per car. */}
-        <div className={cn('hidden lg:block', DARK_TABLE)}>
+        <div
+          key={dataUpdatedAt}
+          className={cn(
+            'hidden animate-fade-in lg:flex lg:min-h-[14rem] lg:flex-1 lg:flex-col [&>div]:min-h-0 [&>div]:flex-1',
+            DARK_TABLE,
+          )}
+        >
           <DataTable
             columns={columns}
             rows={rows}
@@ -1094,10 +1160,11 @@ export const VehiclesListPage = (): JSX.Element => {
             loading={isLoading}
             error={isError ? error : undefined}
             onRetry={() => void refetch()}
-            sort={sorts}
+            sort={chosen}
             onSortChange={changeSort}
             empty={undefined}
             minColumnWidth={6}
+            stickyHead
           />
         </div>
         <div className="grid gap-3 md:grid-cols-2 lg:hidden" data-vehicle-cards="true">
@@ -1144,11 +1211,13 @@ export const VehiclesListPage = (): JSX.Element => {
           ))}
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
-            meta={data.meta}
-            onPageChange={(p) => patch({ page: String(p) }, false)}
-            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
-          />
+          <div className="shrink-0">
+            <Pagination
+              meta={data.meta}
+              onPageChange={(p) => patch({ page: String(p) }, false)}
+              onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
+            />
+          </div>
         )}
       </div>
 

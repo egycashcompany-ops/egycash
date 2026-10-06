@@ -8,29 +8,20 @@
 // organization scope; alarm thresholds re-colour the server's alarm projection and the
 // HR-leave switch changes availability verdicts, so saving invalidates those subtrees.
 import { useEffect, useState } from 'react';
-import {
-  FleetSettingKeys,
-  type FleetVehicleTypeDto,
-  type Locale,
-  type ResolvedSettingDto,
-} from '@ecms/contracts';
+import { FleetSettingKeys, type ResolvedSettingDto } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
-import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { Card, CardBody, CardHeader } from '../../../shared/ui/Card';
-import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Button } from '../../../shared/ui/Button';
-import { StatusBadge } from '../../../shared/ui/Badge';
 import { Checkbox, Field, Input } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EditIcon, PlusIcon } from '../../../shared/ui/icons';
-import { formatNumber } from '../../../shared/lib/format';
+import { PlusIcon } from '../../../shared/ui/icons';
 import { useMySettings } from '../../../platform/settings/settings-api';
-import { useSetFleetSetting, useVehicleTypes } from '../api/fleet-queries';
-import { VehicleTypeDialog } from '../components/CatalogDialogs';
+import { useSetFleetSetting } from '../api/fleet-queries';
+import { VehicleTypesTable } from '../components/VehicleTypesTable';
 
 /** The module's §13 defaults surface — labels only; VALUES always come from the resolver. */
 const NUMBER_KEYS = [
@@ -271,68 +262,11 @@ const FleetSettingsCard = ({ resolved }: { resolved: ResolvedSettingDto[] }): JS
 
 export const FleetSettingsPage = (): JSX.Element => {
   const t = useT();
-  const can = useCan();
-  const locale = useAppSelector((state): Locale => state.locale.locale);
 
-  const types = useVehicleTypes({ pageSize: 100, sortBy: 'name.ar', sortDir: 'asc' });
   const settings = useMySettings();
   const fleetSettings = (settings.data ?? []).filter((s) => s.key.startsWith('fleet.'));
 
   const [creatingType, setCreatingType] = useState(false);
-  const [editingType, setEditingType] = useState<FleetVehicleTypeDto | null>(null);
-
-  const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
-  const typeColumns: Column<FleetVehicleTypeDto>[] = [
-    { key: 'nameAr', header: t('fleet.catalogs.fields.nameAr'), render: (r) => r.name.ar },
-    {
-      key: 'nameEn',
-      header: t('fleet.catalogs.fields.nameEn'),
-      render: (r) => <span dir="ltr">{r.name.en}</span>,
-    },
-    {
-      key: 'interval',
-      header: t('fleet.settings.fields.intervalKm'),
-      align: 'end',
-      render: (r) =>
-        r.maintenanceIntervalKm === 0 ? (
-          <span className="text-slate-400">{t('fleet.settings.noRule')}</span>
-        ) : (
-          formatNumber(r.maintenanceIntervalKm, locale)
-        ),
-    },
-    {
-      key: 'status',
-      header: t('fleet.vehicles.columns.status'),
-      render: (r) => (
-        <StatusBadge
-          tone={r.isActive ? 'success' : 'neutral'}
-          label={r.isActive ? t('fleet.catalogs.active') : t('fleet.catalogs.archived')}
-        />
-      ),
-    },
-    ...(can('fleetMaintenanceRule.manage')
-      ? [
-          {
-            key: 'actions',
-            header: t('fleet.vehicles.columns.actions'),
-            align: 'end',
-            render: (r: FleetVehicleTypeDto) => (
-              <button
-                type="button"
-                className={actionButton}
-                aria-label={t('fleet.settings.editType')}
-                title={t('fleet.settings.editType')}
-                onClick={() => setEditingType(r)}
-              >
-                <EditIcon className="h-4 w-4" />
-              </button>
-            ),
-          } satisfies Column<FleetVehicleTypeDto>,
-        ]
-      : []),
-  ];
 
   return (
     <PageContainer>
@@ -361,14 +295,7 @@ export const FleetSettingsPage = (): JSX.Element => {
               </Can>
             }
           />
-          <DataTable
-            columns={typeColumns}
-            rows={types.data?.items ?? []}
-            rowKey={(r) => r.id}
-            loading={types.isLoading}
-            error={types.isError ? types.error : undefined}
-            onRetry={() => void types.refetch()}
-          />
+          <VehicleTypesTable creating={creatingType} onCloseCreate={() => setCreatingType(false)} />
         </Card>
 
         {settings.data !== undefined && <FleetSettingsCard resolved={fleetSettings} />}
@@ -376,13 +303,6 @@ export const FleetSettingsPage = (): JSX.Element => {
         {/* NO go-live report here any more — «نحذف الرسايل دى متظهرش خالص». The runs are still
             written to `fleet_go_live_runs` and readable at `GET /fleet/go-live`; no screen shows them. */}
       </div>
-
-      <VehicleTypeDialog open={creatingType} onClose={() => setCreatingType(false)} type={null} />
-      <VehicleTypeDialog
-        open={editingType !== null}
-        onClose={() => setEditingType(null)}
-        type={editingType}
-      />
     </PageContainer>
   );
 };

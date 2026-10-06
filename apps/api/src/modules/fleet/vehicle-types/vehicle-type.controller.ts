@@ -2,10 +2,11 @@
 import { type Request, type Response } from 'express';
 import {
   type CreateFleetVehicleType,
+  type OrderFleetVehicleTypes,
   type PaginationQuery,
   type UpdateFleetVehicleType,
 } from '@ecms/contracts';
-import { created, ok, okPage, validated } from '../../../platform/web';
+import { created, noContent, ok, okPage, validated } from '../../../platform/web';
 import { authContext } from '../../../platform/auth';
 import { toVehicleTypeDto } from '../fleet.mappers';
 import { fleetVehicleTypeService } from './vehicle-type.service';
@@ -32,4 +33,10 @@ export const updateVehicleType = async (req: Request, res: Response): Promise<vo
   const { body, params } = validated<UpdateFleetVehicleType, never, IdParam>(req);
   const doc = await fleetVehicleTypeService.update(params.id, body, authContext(req).userId);
   ok(res, toVehicleTypeDto(doc));
+};
+
+export const orderVehicleTypes = async (req: Request, res: Response): Promise<void> => {
+  const { body } = validated<OrderFleetVehicleTypes>(req);
+  await fleetVehicleTypeService.order(body, authContext(req).userId);
+  noContent(res);
 };

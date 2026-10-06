@@ -10,6 +10,8 @@ export interface FleetVehicleTypeDoc extends BaseDocFields {
   name: LocalizedString;
   maintenanceIntervalKm: number;
   isActive: boolean;
+  /** Its place in the makes' list — «قوائم الحركه … هيرتب برضو الماركات»; null until placed. */
+  sortOrder?: number | null;
 }
 
 const vehicleTypeSchema = new Schema<FleetVehicleTypeDoc>(
@@ -17,6 +19,7 @@ const vehicleTypeSchema = new Schema<FleetVehicleTypeDoc>(
     name: { ar: { type: String, required: true }, en: { type: String, required: true } },
     maintenanceIntervalKm: { type: Number, required: true, default: 0, min: 0 },
     isActive: { type: Boolean, required: true, default: true },
+    sortOrder: { type: Number, default: null },
     ...baseFields,
   },
   baseSchemaOptions,

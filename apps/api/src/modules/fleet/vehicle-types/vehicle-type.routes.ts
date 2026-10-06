@@ -5,17 +5,19 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   CreateFleetVehicleTypeSchema,
+  OrderFleetVehicleTypesSchema,
   PaginationQuerySchema,
   UpdateFleetVehicleTypeSchema,
   objectId,
 } from '@ecms/contracts';
 import { authenticate } from '../../../platform/auth';
-import { authorize } from '../../../platform/rbac';
+import { authorize, authorizeAny } from '../../../platform/rbac';
 import { asyncHandler, validate } from '../../../platform/web';
 import {
   createVehicleType,
   getVehicleType,
   listVehicleTypes,
+  orderVehicleTypes,
   updateVehicleType,
 } from './vehicle-type.controller';
 
@@ -23,12 +25,23 @@ const IdParamSchema = z.object({ id: objectId() }).strict();
 
 export const buildFleetVehicleTypesRouter = (): Router => {
   const router = Router();
+  // The list — also from «قوائم الحركة» (fleetCatalog.manage) and the settings page that arranges
+  // the makes (fleetMaintenanceRule.manage): a catalog manager without vehicle-view must not get
+  // an error on the makes' tab. Reading make names exposes nothing else.
   router.get(
     '/',
     authenticate,
-    authorize('fleetVehicle.view'),
+    authorizeAny('fleetVehicle.view', 'fleetCatalog.manage', 'fleetMaintenanceRule.manage'),
     validate({ query: PaginationQuerySchema.strict() }),
     asyncHandler(listVehicleTypes),
+  );
+  // «هيرتب برضو الماركات» — the makes' order. Static, before `/:id`.
+  router.put(
+    '/order',
+    authenticate,
+    authorize('fleetMaintenanceRule.manage'),
+    validate({ body: OrderFleetVehicleTypesSchema }),
+    asyncHandler(orderVehicleTypes),
   );
   router.get(
     '/:id',

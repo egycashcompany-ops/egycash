@@ -10,7 +10,7 @@
 //    A filter you have forgotten you set is worse than no filter.
 //  • The list is searchable and folds Arabic spelling, because a stage or branch list gets long and
 //    scrolling to find one entry is slower than typing three letters of it.
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState, useLayoutEffect } from 'react';
 import { cn } from '../lib/cn';
 import { type ControlDensity } from './form';
 import { foldIncludes } from '../lib/fold';
@@ -214,6 +214,35 @@ export const MultiSelect = ({
   };
   const boxRef = useRef<HTMLDivElement>(null);
   useOnClickOutside(boxRef, () => setOpen(false), open);
+  // «لما بفتح دى بتفتح برا الشاشه»: a list wider than its trigger opens toward the page's edge
+  // when the trigger sits at that edge — the last filter of a bar. Measured once open, it is
+  // pinned to the trigger's other side instead, so it opens back into the screen.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [pin, setPin] = useState<'left' | 'right' | null>(null);
+  useLayoutEffect(() => {
+    if (!open) {
+      setPin(null);
+      return undefined;
+    }
+    // Measured from the TRIGGER, whose place does not depend on the pin — so it can be measured
+    // again (a resize, a trigger that grew with its picks) without a reset-then-measure cycle.
+    const place = (): void => {
+      const box = boxRef.current;
+      const panel = panelRef.current;
+      if (box === null || panel === null) return;
+      const trigger = box.getBoundingClientRect();
+      const width = panel.offsetWidth;
+      // Where the panel would sit unpinned: from the trigger's start edge, along the text.
+      const rtl = getComputedStyle(box).direction === 'rtl';
+      const left = rtl ? trigger.right - width : trigger.left;
+      if (left < 8) setPin('left');
+      else if (left + width > window.innerWidth - 8) setPin('right');
+      else setPin(null);
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [open, value.length]);
 
   const remote = onSearch !== undefined;
   const searchable = remote || options.length >= searchThreshold;
@@ -339,8 +368,16 @@ export const MultiSelect = ({
 
       {open && (
         <div
+          ref={panelRef}
           role="listbox"
           aria-multiselectable
+          style={
+            pin === 'left'
+              ? { left: 0, right: 'auto' }
+              : pin === 'right'
+                ? { right: 0, left: 'auto' }
+                : undefined
+          }
           className={cn(
             'absolute z-30 mt-1 max-h-72 overflow-hidden rounded-lg border border-slate-200 shadow-lg',
             // A column, so the list SHRINKS to leave the search, the chips and «مسح الكل» on screen.

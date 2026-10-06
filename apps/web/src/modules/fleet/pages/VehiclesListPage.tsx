@@ -774,7 +774,7 @@ export const VehiclesListPage = (): JSX.Element => {
       <div
         className={cn(
           BOARD_FONT,
-          'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto text-slate-900 antialiased dark:text-slate-100 lg:overflow-hidden',
+          'flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto lg:gap-3 text-slate-900 antialiased dark:text-slate-100 lg:overflow-hidden',
         )}
       >
         {/* The count and the two buttons ride ABOVE the filters, so the filters have the
@@ -1219,7 +1219,9 @@ export const VehiclesListPage = (): JSX.Element => {
           ))}
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (
-          <div className="shrink-0">
+          // «اصغر الحاجات اللى ليها علاقه بالتبويب وكبر الجدول»: the pager is one slim line under
+          // the table, so the rows get the height.
+          <div className="shrink-0 [&>div]:!py-0 [&_button]:!h-7 [&_button]:!min-w-7 [&_button]:!px-2 [&_button]:!text-xs [&_span]:!text-xs [&_select]:!h-7 [&_select]:!py-0 [&_select]:!text-xs [&_button[aria-haspopup]]:!h-7">
             <Pagination
               meta={data.meta}
               onPageChange={(p) => patch({ page: String(p) }, false)}

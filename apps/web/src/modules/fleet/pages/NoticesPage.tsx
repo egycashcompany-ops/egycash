@@ -15,7 +15,7 @@ import { type FleetNoticeDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
@@ -365,41 +365,47 @@ export const NoticesPage = (): JSX.Element => {
     },
   ];
 
-  // «التاريخ فى الفلاتر خليه من الى»: two days, each named inside its own box until it is filled —
-  // the maintenance screen's date boxes.
-  const dateBound = (labelKey: string, value: string, param: string): JSX.Element => (
-    <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
-      <Input
-        type="date"
-        dir="ltr"
-        aria-label={t(labelKey)}
-        title={t(labelKey)}
-        value={value}
-        onChange={(e) => patch({ [param]: e.target.value || null })}
-        className={
-          value === '' ? 'peer [&:not(:focus)::-webkit-datetime-edit]:opacity-0' : undefined
-        }
-      />
-      {value === '' && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 left-8 right-7 flex items-center justify-start truncate text-sm text-slate-400 peer-focus:hidden dark:text-slate-500"
-        >
-          {t(labelKey)}
-        </span>
-      )}
-    </FilterWithIcon>
-  );
+  // «التاريخ فى الفلاتر خليه من الى … مكتوب من الى كبليس هولدر»: an empty box is a plain box
+  // that says «من» / «إلى» the way every other filter says its name; pressed, it becomes the date
+  // box and opens its calendar; filled, it shows the day.
+  const [editingDate, setEditingDate] = useState<string | null>(null);
+  const dateBound = (labelKey: string, value: string, param: string): JSX.Element => {
+    const asDate = value !== '' || editingDate === param;
+    return (
+      <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+        <Input
+          type={asDate ? 'date' : 'text'}
+          {...(asDate ? { dir: 'ltr' } : {})}
+          data-notice-date-filter={param}
+          aria-label={t(labelKey)}
+          title={t(labelKey)}
+          placeholder={t(labelKey)}
+          value={value}
+          onFocus={(e) => {
+            setEditingDate(param);
+            const box = e.currentTarget;
+            requestAnimationFrame(() => {
+              try {
+                box.showPicker();
+              } catch {
+                // A browser without the picker call opens it on the next press.
+              }
+            });
+          }}
+          onBlur={() => setEditingDate((prev) => (prev === param ? null : prev))}
+          // Words typed into the empty box are not a day; only the date box writes the filter.
+          onChange={(e) => {
+            if (e.currentTarget.type === 'date') patch({ [param]: e.target.value || null });
+          }}
+        />
+      </FilterWithIcon>
+    );
+  };
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('fleet.nav.notices')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.notices') },
-        ]}
-      />
+      {/* «شيل بس عنوان الاخطارات من الشاشه»: the screen opens on its own bar, as the vehicles
+          screen does. */}
       <div className="space-y-4">
         <div className="flex items-center justify-between gap-2" data-notices-toolbar="true">
           <span className="text-sm font-bold text-slate-600 dark:text-slate-300">

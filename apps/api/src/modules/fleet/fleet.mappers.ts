@@ -30,6 +30,7 @@ export const toVehicleTypeDto = (doc: FleetVehicleTypeDoc): FleetVehicleTypeDto 
   name: doc.name,
   maintenanceIntervalKm: doc.maintenanceIntervalKm,
   isActive: doc.isActive,
+  sortOrder: doc.sortOrder ?? null,
   version: doc.__v,
   createdAt: iso(doc.createdAt),
   updatedAt: iso(doc.updatedAt),

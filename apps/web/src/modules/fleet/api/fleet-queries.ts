@@ -47,6 +47,7 @@ import {
   type UpdateFleetAccident,
   type UpdateFleetCatalogItem,
   type OrderFleetCatalog,
+  type OrderFleetVehicleTypes,
   type UpdateFleetDriverProfile,
   type UpdateFleetVehicleType,
   type SetFleetViolationCollected,
@@ -268,6 +269,14 @@ export const useOrderCatalog = () => {
   return useMutation({
     mutationFn: (body: OrderFleetCatalog) => api.orderCatalog(body),
     onSettled: () => void qc.invalidateQueries({ queryKey: fleetKeys.catalogs }),
+  });
+};
+
+export const useOrderVehicleTypes = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: OrderFleetVehicleTypes) => api.orderVehicleTypes(body),
+    onSettled: () => void qc.invalidateQueries({ queryKey: fleetKeys.vehicleTypes }),
   });
 };
 

@@ -24,6 +24,8 @@ export interface FleetVehicleTypeDto {
   /** Service interval in km; 0 = no periodic-maintenance rule for this type. */
   maintenanceIntervalKm: number;
   isActive: boolean;
+  /** Its place in the makes' list, as arranged on «قوائم الحركة»; `null` until it is placed. */
+  sortOrder: number | null;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -125,6 +127,18 @@ export const OrderFleetCatalogSchema = z
   })
   .strict();
 export type OrderFleetCatalog = z.infer<typeof OrderFleetCatalogSchema>;
+
+/** «قوائم الحركه اكيد هيرتب برضو الماركات» — the makes' order, as the catalogs' is. */
+export const OrderFleetVehicleTypesSchema = z
+  .object({
+    ids: z
+      .array(objectId())
+      .min(1)
+      .max(1000)
+      .refine((ids) => new Set(ids).size === ids.length, { message: 'A make is listed twice' }),
+  })
+  .strict();
+export type OrderFleetVehicleTypes = z.infer<typeof OrderFleetVehicleTypesSchema>;
 
 export const CreateFleetCatalogItemSchema = z
   .object({

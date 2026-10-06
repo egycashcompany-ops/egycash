@@ -38,6 +38,7 @@ import {
   type UpdateFleetNotice,
   type CreateFleetCatalogItem,
   type OrderFleetCatalog,
+  type OrderFleetVehicleTypes,
   type CreateFleetDriverProfile,
   type CreateFleetUnavailability,
   type CreateFleetVehicle,
@@ -129,6 +130,9 @@ export const createCatalogItem = (body: CreateFleetCatalogItem): Promise<FleetCa
 /** One list's order, as dragged — `ids` first, the rest of the kind after them. */
 export const orderCatalog = (body: OrderFleetCatalog): Promise<void> =>
   put<void>('/fleet/catalog-items/order', body);
+/** «هيرتب برضو الماركات» — the makes' order, saved as the catalogs' is. */
+export const orderVehicleTypes = (body: OrderFleetVehicleTypes): Promise<void> =>
+  put<void>('/fleet/vehicle-types/order', body);
 export const updateCatalogItem = (
   id: string,
   body: UpdateFleetCatalogItem,

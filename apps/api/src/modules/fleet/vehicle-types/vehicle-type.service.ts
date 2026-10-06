@@ -2,6 +2,7 @@
 // no `fleet.vehicleType.*` — a type edit is configuration, audited but not automatable.
 import {
   type CreateFleetVehicleType,
+  type OrderFleetVehicleTypes,
   type Paginated,
   type PaginationQuery,
   type UpdateFleetVehicleType,
@@ -54,7 +55,55 @@ class FleetVehicleTypeService {
       pageSize: query.pageSize,
       sortBy: query.sortBy,
       sortDir: query.sortDir,
-      sortableFields: ['createdAt', 'name.ar', 'maintenanceIntervalKm'],
+      // No order asked for: the makes as ARRANGED on «قوائم الحركة», then by name for any not yet
+      // placed — so every make picker and filter reads the order the reader set.
+      ...(query.sortBy === undefined
+        ? {
+            sorts: [
+              { by: 'sortOrder', dir: 'asc' as const },
+              { by: 'name.ar', dir: 'asc' as const },
+            ],
+          }
+        : {}),
+      sortableFields: ['createdAt', 'name.ar', 'maintenanceIntervalKm', 'sortOrder'],
+    });
+  }
+
+  /**
+   * «قوائم الحركه اكيد هيرتب برضو الماركات» — save the makes' order. The ids named come first, in
+   * the order given; any make not named keeps its place after them.
+   */
+  async order(input: OrderFleetVehicleTypes, by: string): Promise<void> {
+    const all = await fleetVehicleTypeRepository.listAll();
+    const byId = new Map(all.map((type) => [String(type._id), type]));
+    const stranger = input.ids.find((id) => !byId.has(id));
+    if (stranger !== undefined) throw new ConflictError(`${stranger} is not a make`);
+    const current = [...all].sort(
+      (a, b) =>
+        (a.sortOrder ?? Number.MAX_SAFE_INTEGER) - (b.sortOrder ?? Number.MAX_SAFE_INTEGER) ||
+        a.name.ar.localeCompare(b.name.ar, 'ar'),
+    );
+    const named = new Set(input.ids);
+    const ordered = [
+      ...input.ids.map((id) => byId.get(id) as FleetVehicleTypeDoc),
+      ...current.filter((type) => !named.has(String(type._id))),
+    ];
+    await fleetVehicleTypeRepository.writeOrder(
+      ordered.map((type) => type._id),
+      by,
+    );
+    const first = ordered[0];
+    if (first === undefined) return;
+    await auditService.record({
+      entityRef: entityRef(String(first._id)),
+      action: 'update',
+      changes: [
+        {
+          field: 'order.vehicleTypes',
+          old: current.map((type) => type.name.ar),
+          new: ordered.map((type) => type.name.ar),
+        },
+      ],
     });
   }
 

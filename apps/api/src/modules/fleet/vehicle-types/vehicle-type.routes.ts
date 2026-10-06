@@ -5,6 +5,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import {
   CreateFleetVehicleTypeSchema,
+  OrderFleetVehicleTypesSchema,
   PaginationQuerySchema,
   UpdateFleetVehicleTypeSchema,
   objectId,
@@ -16,6 +17,7 @@ import {
   createVehicleType,
   getVehicleType,
   listVehicleTypes,
+  orderVehicleTypes,
   updateVehicleType,
 } from './vehicle-type.controller';
 
@@ -29,6 +31,14 @@ export const buildFleetVehicleTypesRouter = (): Router => {
     authorize('fleetVehicle.view'),
     validate({ query: PaginationQuerySchema.strict() }),
     asyncHandler(listVehicleTypes),
+  );
+  // «هيرتب برضو الماركات» — the makes' order. Static, before `/:id`.
+  router.put(
+    '/order',
+    authenticate,
+    authorize('fleetMaintenanceRule.manage'),
+    validate({ body: OrderFleetVehicleTypesSchema }),
+    asyncHandler(orderVehicleTypes),
   );
   router.get(
     '/:id',

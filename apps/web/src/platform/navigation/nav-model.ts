@@ -145,11 +145,19 @@ const isInAppPath = (route: string): boolean => /^\/[^/\\]/.test(route);
  * instead of guessing at a page the server would refuse.
  */
 export const landingRoute = (data: MyApplicationCategoryDto[]): string | null => {
-  for (const module of visibleModules(data)) {
-    const first = moduleApps(module).find((app) => isInAppPath(app.route));
-    if (first !== undefined) return first.route;
-  }
-  return null;
+  const inOrder = visibleModules(data).flatMap((module) =>
+    moduleApps(module).filter((app) => isInAppPath(app.route)),
+  );
+  // WORK FIRST, OWN DATA SECOND. The catalogue puts Human Resources first, and «الإجازات» sits in
+  // it — a row every employee holds, over himself, to ask for his own leave. So «the first page of
+  // your menu» sent an operations clerk, a vault keeper and a driver alike onto an HR screen
+  // showing them nothing but their own leave: «ميجيبش الاتش ار على طول».
+  //
+  // The server marks those rows per caller (`personal`), because the same row is personal or
+  // administrative depending on the scope the reader holds it at. Here they are simply passed over
+  // — until there is nothing else, which is the whole of a new employee's menu and exactly where
+  // he should land.
+  return inOrder.find((app) => !app.personal)?.route ?? inOrder[0]?.route ?? null;
 };
 
 /** The id of the module owning the app that best (longest-prefix) matches the current path. */

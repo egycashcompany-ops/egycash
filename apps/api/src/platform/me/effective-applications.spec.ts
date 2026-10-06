@@ -199,7 +199,9 @@ describe('assembleEffectiveApplications', () => {
         id: 'c1',
         name: { ar: 'ar-c1', en: 'en-c1' },
         icon: null,
-        applications: [{ id: 'a1', name: { ar: 'ar-a1', en: 'en-a1' }, icon: 'icon-a1', route: '/a1' }],
+        applications: [
+          { id: 'a1', name: { ar: 'ar-a1', en: 'en-a1' }, icon: 'icon-a1', route: '/a1', personal: false },
+        ],
         sections: [],
       },
     ]);
@@ -315,5 +317,61 @@ describe('sections group what the caller may already see', () => {
     );
     expect(result[0]?.sections).toEqual([]);
     expect(result[0]?.applications.map((a) => a.id)).toEqual(['a1']);
+  });
+});
+
+// ── «بياناتي» vs the day's work ─────────────────────────────────────────────
+//
+// `/` sends a person to the first page of their own menu, and the catalogue puts Human Resources
+// first. «الإجازات» sits in it — a row EVERY employee holds, over himself, to ask for his own
+// leave. So an operations clerk, a vault keeper and a driver alike signed in onto an HR screen
+// showing them nothing but their own leave: «عاوز لما اليوزر يخش يخش على شاشاته على طول على حسب
+// الاداره، ميجيبش الاتش ار على طول».
+//
+// The landing rule passes those rows over, so the resolver has to mark them — and the mark is per
+// CALLER, because the same row is not personal or administrative in itself.
+describe('a row that shows the reader only their own data', () => {
+  it('is personal when the caller holds it over himself, and not when he holds it wider', () => {
+    // THE WHOLE POINT. «الإجازات» is one row with one route: a clerk's own leave, and his
+    // manager's approval queue. Nothing about the row says which — only the scope does.
+    const leave = [app('leave', 'c1', 0, { permissionKey: 'leave.view', route: '/leave' })];
+    const mine = assembleEffectiveApplications(leave, [cat('c1', 0)], { 'leave.view': 'own' });
+    expect(mine[0]?.applications[0]?.personal).toBe(true);
+
+    const managers = assembleEffectiveApplications(leave, [cat('c1', 0)], {
+      'leave.view': 'department',
+    });
+    expect(managers[0]?.applications[0]?.personal).toBe(false);
+  });
+
+  it('takes a route that names /me at its word, however wide the permission is held', () => {
+    // «سلفي وقروضي» is `/payroll/employee-loans/me`. A manager holding `employeeLoan.create` over
+    // his department still sees only HIS loans on that page — the route says so.
+    const result = assembleEffectiveApplications(
+      [app('loans', 'c1', 0, { permissionKey: 'employeeLoan.create', route: '/payroll/employee-loans/me' })],
+      [cat('c1', 0)],
+      { 'employeeLoan.create': 'department' },
+    );
+    expect(result[0]?.applications[0]?.personal).toBe(true);
+  });
+
+  it('does not mistake a route that merely ENDS in those letters', () => {
+    // `/fleet/regime` is not `/fleet/me`.
+    const result = assembleEffectiveApplications(
+      [app('regime', 'c1', 0, { permissionKey: 'x.view', route: '/fleet/regime' })],
+      [cat('c1', 0)],
+      { 'x.view': 'branch' },
+    );
+    expect(result[0]?.applications[0]?.personal).toBe(false);
+  });
+
+  it('marks rows inside sections too — grouping does not change what a row shows', () => {
+    const result = assembleEffectiveApplications(
+      [app('leave', 'c1', 0, { permissionKey: 'leave.view', route: '/leave', sectionId: 's1' })],
+      [cat('c1', 0)],
+      { 'leave.view': 'own' },
+      [sec('s1', 'c1', 0)],
+    );
+    expect(result[0]?.sections[0]?.applications[0]?.personal).toBe(true);
   });
 });

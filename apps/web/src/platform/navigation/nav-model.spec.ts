@@ -55,7 +55,7 @@ describe('moduleOfPathname — the sidebar scope comes from the URL', () => {
       name: { ar: 'الموارد البشرية', en: 'HR' },
       icon: 'users',
       applications: [
-        { id: 'a1', name: { ar: 'المتقدمون', en: 'Applicants' }, icon: 'user', route: '/applicants' },
+        { id: 'a1', name: { ar: 'المتقدمون', en: 'Applicants' }, icon: 'user', route: '/applicants', personal: false },
       ],
       sections: [],
     },
@@ -64,8 +64,8 @@ describe('moduleOfPathname — the sidebar scope comes from the URL', () => {
       name: { ar: 'المركبات', en: 'Fleet' },
       icon: 'truck',
       applications: [
-        { id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet' },
-        { id: 'b2', name: { ar: 'المركبات', en: 'Vehicles' }, icon: 'truck', route: '/fleet/vehicles' },
+        { id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet', personal: false },
+        { id: 'b2', name: { ar: 'المركبات', en: 'Vehicles' }, icon: 'truck', route: '/fleet/vehicles', personal: false },
       ],
       sections: [],
     },
@@ -93,8 +93,8 @@ describe('moduleEntryRoute — switching returns you to your desk', () => {
       name: { ar: 'المركبات', en: 'Fleet' },
       icon: 'truck',
       applications: [
-        { id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet' },
-        { id: 'b2', name: { ar: 'المركبات', en: 'Vehicles' }, icon: 'truck', route: '/fleet/vehicles' },
+        { id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet', personal: false },
+        { id: 'b2', name: { ar: 'المركبات', en: 'Vehicles' }, icon: 'truck', route: '/fleet/vehicles', personal: false },
       ],
       sections: [],
     },
@@ -135,15 +135,15 @@ describe('sections do not hide pages from the model', () => {
       name: { ar: 'الموارد البشرية', en: 'HR' },
       icon: 'users',
       applications: [
-        { id: 'loose', name: { ar: 'حر', en: 'Loose' }, icon: 'file', route: '/loose' },
+        { id: 'loose', name: { ar: 'حر', en: 'Loose' }, icon: 'file', route: '/loose', personal: false },
       ],
       sections: [
         {
           id: 's1',
           name: { ar: 'التوظيف', en: 'Recruitment' },
           applications: [
-            { id: 'a1', name: { ar: 'المتقدمون', en: 'Applicants' }, icon: 'user', route: '/applicants' },
-            { id: 'a2', name: { ar: 'الفرز', en: 'Screening' }, icon: 'clip', route: '/screening' },
+            { id: 'a1', name: { ar: 'المتقدمون', en: 'Applicants' }, icon: 'user', route: '/applicants', personal: false },
+            { id: 'a2', name: { ar: 'الفرز', en: 'Screening' }, icon: 'clip', route: '/screening', personal: false },
           ],
         },
       ],
@@ -167,13 +167,13 @@ describe('sections do not hide pages from the model', () => {
         id: 'hr',
         name: { ar: 'الموارد البشرية', en: 'HR' },
         icon: 'users',
-        applications: [{ id: 'loose', name: { ar: 'حر', en: 'Loose' }, icon: 'file', route: '/loose' }],
+        applications: [{ id: 'loose', name: { ar: 'حر', en: 'Loose' }, icon: 'file', route: '/loose', personal: false }],
         sections: [
           {
             id: 's1',
             name: { ar: 'التوظيف', en: 'Recruitment' },
             applications: [
-              { id: 'a1', name: { ar: 'المتقدمون', en: 'Applicants' }, icon: 'user', route: '/applicants' },
+              { id: 'a1', name: { ar: 'المتقدمون', en: 'Applicants' }, icon: 'user', route: '/applicants', personal: false },
             ],
           },
         ],
@@ -201,7 +201,7 @@ describe('sections do not hide pages from the model', () => {
         id: 'fleet',
         name: { ar: 'المركبات', en: 'Fleet' },
         icon: 'truck',
-        applications: [{ id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet' }],
+        applications: [{ id: 'b1', name: { ar: 'اللوحة', en: 'Dashboard' }, icon: 'grid', route: '/fleet', personal: false }],
         sections: [],
       },
     ]);
@@ -223,6 +223,7 @@ describe('visibleModules — which modules earn chrome', () => {
     name: { ar: id, en: id },
     icon: 'file',
     route,
+    personal: false,
   });
   const section = (id: string, en: string, applications: ReturnType<typeof page>[]) => ({
     id,
@@ -289,7 +290,13 @@ describe('landingRoute — where `/` sends a person', () => {
   // «لو انا عامل لحد ان يشوف الحركه مثلا او العمليات… بيجيب الشاشه بتاعت الاتش ار بس مفيهاش
   // معلومات… انا عاوز يجيب اول شاشه فى اللى مسموح ليه فقط». `/` was HR's recruitment overview for
   // everybody; it is now the first page of the person's own menu.
-  const page = (id: string, route: string) => ({ id, name: { ar: id, en: id }, icon: 'file', route });
+  const page = (id: string, route: string, personal = false) => ({
+    id,
+    name: { ar: id, en: id },
+    icon: 'file',
+    route,
+    personal,
+  });
   const section = (id: string, applications: ReturnType<typeof page>[]) => ({
     id,
     name: { ar: id, en: id },
@@ -356,5 +363,56 @@ describe('landingRoute — where `/` sends a person', () => {
     ]);
     expect(landingRoute([hostile])).toBeNull();
     expect(landingRoute([hostile, module('fleet', [page('f', '/fleet')])])).toBe('/fleet');
+  });
+});
+
+describe('landingRoute passes over the reader’s own data', () => {
+  const page = (id: string, route: string, personal = false) => ({
+    id,
+    name: { ar: id, en: id },
+    icon: 'file',
+    route,
+    personal,
+  });
+  const module = (id: string, applications: ReturnType<typeof page>[]) => ({
+    id,
+    name: { ar: id, en: id },
+    icon: 'grid',
+    applications,
+    sections: [],
+  });
+
+  // THE CASE THIS EXISTS FOR. The catalogue puts Human Resources first (sortOrder 10, ahead of
+  // Fleet's 15), and «الإجازات» sits in it — a row every employee holds, over himself. So an
+  // operations clerk signed in onto an HR screen showing him nothing but his own leave.
+  it('skips the personal row at the top and lands on the first page of real work', () => {
+    const menu = [
+      module('hr', [page('leave', '/leave', true)]),
+      module('fleet', [page('board', '/fleet')]),
+    ];
+    expect(landingRoute(menu)).toBe('/fleet');
+  });
+
+  it('skips every personal row, not just the first', () => {
+    const menu = [
+      module('hr', [page('leave', '/leave', true), page('loans', '/payroll/employee-loans/me', true)]),
+      module('ops', [page('day', '/operations')]),
+    ];
+    expect(landingRoute(menu)).toBe('/operations');
+  });
+
+  // A new employee's whole menu is his own data, and that IS where he should land — the
+  // «nothing granted» message is for somebody holding nothing at all, which is a different person.
+  it('lands on a personal page when it is all the person has', () => {
+    expect(landingRoute([module('hr', [page('leave', '/leave', true)])])).toBe('/leave');
+  });
+
+  it('still refuses a route that would loop or leave the site, personal or not', () => {
+    const menu = [module('hr', [page('self', '/', true)]), module('fleet', [page('board', '/fleet')])];
+    expect(landingRoute(menu)).toBe('/fleet');
+  });
+
+  it('answers null only when there is nowhere at all to go', () => {
+    expect(landingRoute([])).toBeNull();
   });
 });

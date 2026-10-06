@@ -310,6 +310,10 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // The board and nothing else: a tick is a fact about the papers, and no other screen reads it.
   'fleet.vehicleLicensing': [['fleet', 'licensing']],
   'fleet.notice': [['fleet', 'notices']],
+  // A notice's scans (Files rows owned by `fleetNotice`) and a form's set-up both live on the
+  // notices screen and its editor.
+  'fleet.fleetNotice': [['fleet', 'notices']],
+  'fleet.noticeSettings': [['fleet', 'notices']],
   // A private car's bill is also a line of the custody ledger.
   'fleet.dealershipInvoice': [
     ['fleet', 'dealership'],

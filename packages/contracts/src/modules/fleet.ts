@@ -2899,6 +2899,9 @@ export const CreateFleetNoticeSchema = z
     vehicleId: objectId().nullish(),
     driverEmployeeId: objectId().nullish(),
     accidentId: objectId().nullish(),
+    /** «رقم الإخطار» and its date — the two the notices table lists a notice by. */
+    noticeNumber: z.string().trim().max(60).nullish(),
+    noticeDate: z.coerce.date().nullish(),
   })
   .strict();
 export type CreateFleetNotice = z.infer<typeof CreateFleetNoticeSchema>;
@@ -2910,6 +2913,8 @@ export const UpdateFleetNoticeSchema = z
     vehicleId: objectId().nullish(),
     driverEmployeeId: objectId().nullish(),
     accidentId: objectId().nullish(),
+    noticeNumber: z.string().trim().max(60).nullish(),
+    noticeDate: z.coerce.date().nullish(),
     version: z.number().int().min(0),
   })
   .strict();
@@ -2926,11 +2931,83 @@ export interface FleetNoticeDto {
   values: Record<string, string>;
   checks: Record<string, string[]>;
   vehicleId: string | null;
+  /** The car's code, read from the registry — what the notices table lists first. */
+  vehicleCode: string | null;
   driverEmployeeId: string | null;
   accidentId: string | null;
+  noticeNumber: string | null;
+  noticeDate: string | null;
+  /** The signed paper, scanned — «صورة الإخطار». */
+  noticeImage: FleetLicenseImageDto | null;
+  /** The insurer's cheque — «صورة الشيك». A notice is closed only once it is in. */
+  checkImage: FleetLicenseImageDto | null;
+  /** «✓» — when the notice was closed; `null` while it is open. */
+  completedAt: string | null;
   version: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/** The two scans a notice carries: the signed paper and the insurer's cheque. */
+export const FLEET_NOTICE_IMAGE_KINDS = ['notice', 'check'] as const;
+export const FleetNoticeImageKindSchema = z.enum(FLEET_NOTICE_IMAGE_KINDS);
+export type FleetNoticeImageKind = z.infer<typeof FleetNoticeImageKindSchema>;
+
+/** The Files category both scans write into. */
+export const FLEET_NOTICE_FILE_CATEGORY = 'fleet-notices';
+
+/** «✓» on the notices table — close a notice, or open it again. */
+export const SetFleetNoticeDoneSchema = z
+  .object({ done: z.boolean(), version: z.number().int().min(0) })
+  .strict();
+export type SetFleetNoticeDone = z.infer<typeof SetFleetNoticeDoneSchema>;
+
+// ── A form's set-up (إعداد النماذج) ────────────────────────────────────────
+//
+// «ادوس عليه اختار النموذج واحط قيم افتراضيه ... قيم بتتكرر فى اكتر من مكان زى كود العربيه و
+// تواريخ معينه ف انا عاوز احدد دى برضو». One per form: what each box starts with on a new notice,
+// and which boxes share one answer — typed once, written in all of them.
+
+/**
+ * What a box starts with. `fixed` — the same words every time. `today` — the day the notice is
+ * filled. `system` — what «املأ من السيستم» brings from the car, the driver or the accident.
+ * `empty` — typed by hand every time (and never filled by the system).
+ */
+export const FLEET_NOTICE_DEFAULT_MODES = ['fixed', 'today', 'system', 'empty'] as const;
+export const FleetNoticeDefaultModeSchema = z.enum(FLEET_NOTICE_DEFAULT_MODES);
+export type FleetNoticeDefaultMode = z.infer<typeof FleetNoticeDefaultModeSchema>;
+
+const noticeDefault = z
+  .object({ mode: FleetNoticeDefaultModeSchema, value: z.string().max(2000).default('') })
+  .strict();
+
+const noticeLink = z
+  .object({
+    name: z.string().trim().min(1).max(60),
+    keys: z.array(noticeKey).min(2).max(20),
+  })
+  .strict();
+
+export const SaveFleetNoticeSettingsSchema = z
+  .object({
+    defaults: z
+      .record(noticeKey, noticeDefault)
+      .refine((values) => Object.keys(values).length <= 200, 'too many boxes')
+      .default({}),
+    links: z.array(noticeLink).max(30).default([]),
+    /** The version read, or absent for a form never set up. */
+    version: z.number().int().min(0).optional(),
+  })
+  .strict();
+export type SaveFleetNoticeSettings = z.infer<typeof SaveFleetNoticeSettingsSchema>;
+
+export interface FleetNoticeSettingsDto {
+  template: FleetNoticeTemplate;
+  defaults: Record<string, { mode: FleetNoticeDefaultMode; value: string }>;
+  links: { name: string; keys: string[] }[];
+  /** `null` — the form has never been set up. */
+  version: number | null;
+  updatedAt: string | null;
 }
 
 // ── Dealership invoices (التوكيل) ─────────────────────────────────────────────

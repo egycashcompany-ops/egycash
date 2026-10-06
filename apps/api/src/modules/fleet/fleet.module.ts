@@ -26,6 +26,7 @@ import { buildFleetReceiptsRouter } from './receipts/receipt.routes';
 import { buildFleetCustodyRouter } from './custody/custody.routes';
 import { receiptFileAuthorizer } from './receipts/receipt-files';
 import { fuelCardFileAuthorizer } from './fuel-cards/fuel-card-files';
+import { noticeFileAuthorizer } from './notices/notice-files';
 import { dealershipFileAuthorizer } from './dealership/dealership-files';
 import { buildFleetPeopleRouter } from './people/people.routes';
 import { buildFleetAccidentsRouter } from './accidents/accident.routes';
@@ -493,6 +494,7 @@ export const fleetModule: ModuleManifest = {
     'fleet_violation_grievances',
     'fleet_vehicle_licensing',
     'fleet_notices',
+    'fleet_notice_settings',
     'fleet_dealership_invoices',
     'fleet_fuel_cards',
     'fleet_fuel_card_movements',
@@ -507,6 +509,7 @@ export const fleetModule: ModuleManifest = {
     dealershipFileAuthorizer,
     receiptFileAuthorizer,
     fuelCardFileAuthorizer,
+    noticeFileAuthorizer,
   ],
   eventSubscriptions: [
     {

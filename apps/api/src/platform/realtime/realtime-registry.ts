@@ -146,6 +146,9 @@ export const REALTIME_TOPICS: Readonly<Record<string, RealtimeTopicDef>> = {
   'fleet.violationGrievance': { permission: 'fleetViolation.view' },
   'fleet.vehicleLicensing': { permission: 'fleetLicensing.view' },
   'fleet.notice': { permission: 'fleetNotice.view' },
+  // A notice's two scans are Files rows owned by `fleetNotice`; a form's set-up is its own row.
+  'fleet.fleetNotice': { permission: 'fleetNotice.view' },
+  'fleet.noticeSettings': { permission: 'fleetNotice.view' },
   'fleet.dealershipInvoice': { permission: 'fleetDealership.view' },
   'fleet.fuelCard': { permission: 'fleetFuelCard.view' },
   'fleet.receipt': { permission: 'fleetReceipt.view' },

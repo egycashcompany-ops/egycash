@@ -98,3 +98,124 @@ describe('an insurance notice', () => {
     ).toBe(false);
   });
 });
+
+describe('the notices table — number, date, «✓»', () => {
+  it('keeps «رقم الإخطار» and its date, and an emptied number is no number', async () => {
+    const created = await fleetNoticeService.create(
+      CreateFleetNoticeSchema.parse({
+        template: 'misrInsurance',
+        noticeNumber: ' 4471 ',
+        noticeDate: '2026-10-05',
+      }),
+      ACTOR,
+    );
+    const dto = toNoticeDto(await fleetNoticeService.get(String(created._id)));
+    expect(dto).toMatchObject({
+      noticeNumber: '4471',
+      noticeImage: null,
+      checkImage: null,
+      completedAt: null,
+      vehicleCode: null,
+    });
+    expect(dto.noticeDate?.slice(0, 10)).toBe('2026-10-05');
+
+    const cleared = await fleetNoticeService.update(
+      String(created._id),
+      { noticeNumber: '  ', version: created.__v },
+      ACTOR,
+    );
+    expect(cleared.noticeNumber).toBeNull();
+  });
+
+  it('refuses «✓» without the cheque scan, closes with it, and opens again', async () => {
+    const created = await fleetNoticeService.create(
+      CreateFleetNoticeSchema.parse({ template: 'misrInsurance' }),
+      ACTOR,
+    );
+    const id = String(created._id);
+    await expect(
+      fleetNoticeService.setDone(id, { done: true, version: created.__v }, ACTOR),
+    ).rejects.toMatchObject({ details: [{ code: 'CHECK_IMAGE_REQUIRED' }] });
+
+    // The scan's link, as an upload would leave it.
+    await FleetNoticeModel.updateOne(
+      { _id: created._id },
+      {
+        $set: {
+          checkImage: {
+            fileId: new Types.ObjectId(),
+            fileName: 'cheque.jpg',
+            mime: 'image/jpeg',
+            size: 1200,
+            uploadedAt: new Date(),
+          },
+        },
+      },
+    );
+    const closed = await fleetNoticeService.setDone(
+      id,
+      { done: true, version: created.__v },
+      ACTOR,
+    );
+    expect(closed.completedAt).not.toBeNull();
+    expect(toNoticeDto(closed).checkImage?.fileName).toBe('cheque.jpg');
+
+    const reopened = await fleetNoticeService.setDone(
+      id,
+      { done: false, version: closed.__v },
+      ACTOR,
+    );
+    expect(reopened.completedAt).toBeNull();
+  });
+});
+
+describe('a form’s set-up («إعداد النماذج»)', () => {
+  it('reads as empty before anyone set it up', async () => {
+    const settings = await fleetNoticeService.getSettings('deltaInsurance');
+    expect(settings).toEqual({
+      template: 'deltaInsurance',
+      defaults: {},
+      links: [],
+      version: null,
+      updatedAt: null,
+    });
+  });
+
+  it('keeps the defaults and the shared boxes, and drops a fixed default with no words', async () => {
+    const first = await fleetNoticeService.saveSettings(
+      'misrInsurance',
+      {
+        defaults: {
+          insuredName: { mode: 'fixed', value: 'شركة إيجي كاش' },
+          reportDate: { mode: 'today', value: '' },
+          place: { mode: 'empty', value: '' },
+          policyNo: { mode: 'fixed', value: '   ' },
+        },
+        links: [{ name: 'تاريخ الحادث', keys: ['accidentDate', 'date', 'date'] }],
+      },
+      ACTOR,
+    );
+    expect(first.defaults).toEqual({
+      insuredName: { mode: 'fixed', value: 'شركة إيجي كاش' },
+      reportDate: { mode: 'today', value: '' },
+      place: { mode: 'empty', value: '' },
+    });
+    expect(first.links).toEqual([{ name: 'تاريخ الحادث', keys: ['accidentDate', 'date'] }]);
+    expect(first.version).toBe(0);
+
+    const second = await fleetNoticeService.saveSettings(
+      'misrInsurance',
+      { defaults: {}, links: [], version: first.version ?? 0 },
+      ACTOR,
+    );
+    expect(second.defaults).toEqual({});
+    await expect(
+      fleetNoticeService.saveSettings(
+        'misrInsurance',
+        { defaults: {}, links: [], version: first.version ?? 0 },
+        ACTOR,
+      ),
+    ).rejects.toThrow();
+    expect((await fleetNoticeService.getSettings('misrInsurance')).version).toBe(second.version);
+  });
+});

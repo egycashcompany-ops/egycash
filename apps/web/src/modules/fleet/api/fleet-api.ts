@@ -23,6 +23,11 @@ import {
   type UpdateFleetFuelCard,
   type FleetDealershipTotalsDto,
   type FleetNoticeDto,
+  type FleetNoticeImageKind,
+  type FleetNoticeSettingsDto,
+  type FleetNoticeTemplate,
+  type SaveFleetNoticeSettings,
+  type SetFleetNoticeDone,
   type UpdateFleetDealershipInvoice,
   type CreateFleetReceipt,
   type UpdateFleetReceipt,
@@ -439,6 +444,32 @@ export const createNotice = (body: CreateFleetNotice): Promise<FleetNoticeDto> =
 export const updateNotice = (id: string, body: UpdateFleetNotice): Promise<FleetNoticeDto> =>
   patch<FleetNoticeDto>(`/fleet/notices/${id}`, body);
 export const deleteNotice = (id: string): Promise<void> => del<void>(`/fleet/notices/${id}`);
+/** «✓» — close a notice (needs the cheque scan) or open it again. */
+export const setNoticeDone = (id: string, body: SetFleetNoticeDone): Promise<FleetNoticeDto> =>
+  post<FleetNoticeDto>(`/fleet/notices/${id}/done`, body);
+export const uploadNoticeImage = (
+  id: string,
+  kind: FleetNoticeImageKind,
+  file: File,
+): Promise<FleetNoticeDto> => {
+  const form = new FormData();
+  form.append('file', file);
+  return upload<FleetNoticeDto>(`/fleet/notices/${id}/images/${kind}`, form);
+};
+/** The BYTES — the file is guarded, so an `<img src>` could not fetch it. */
+export const fetchNoticeImage = (id: string, kind: FleetNoticeImageKind): Promise<Blob> =>
+  fetchBlob(`/fleet/notices/${id}/images/${kind}`);
+export const deleteNoticeImage = (
+  id: string,
+  kind: FleetNoticeImageKind,
+): Promise<FleetNoticeDto> => del<FleetNoticeDto>(`/fleet/notices/${id}/images/${kind}`);
+export const getNoticeSettings = (template: FleetNoticeTemplate): Promise<FleetNoticeSettingsDto> =>
+  get<FleetNoticeSettingsDto>(`/fleet/notices/settings/${template}`);
+export const saveNoticeSettings = (
+  template: FleetNoticeTemplate,
+  body: SaveFleetNoticeSettings,
+): Promise<FleetNoticeSettingsDto> =>
+  put<FleetNoticeSettingsDto>(`/fleet/notices/settings/${template}`, body);
 
 // ── Dealership invoices (التوكيل) — rows opened by the workshop check-out ──────
 export const listDealershipInvoices = (

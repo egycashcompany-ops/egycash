@@ -174,6 +174,7 @@ const NOT_FILTER_CAPABLE: readonly (readonly [string, string?])[] = [
   ['modules/fleet/pages/FleetDashboardPage.tsx'],
   ['modules/fleet/pages/FleetSettingsPage.tsx'],
   ['modules/fleet/pages/NoticesPage.tsx'],
+  ['modules/fleet/pages/NoticeSetupPage.tsx'],
   ['modules/fleet/pages/VehicleDetailPage.tsx'],
   ['modules/gold/pages/GoldDashboardPage.tsx'],
   ['modules/gold/pages/GoldReportsPage.tsx'],

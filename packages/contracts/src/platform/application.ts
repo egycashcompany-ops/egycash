@@ -222,6 +222,19 @@ export interface MyApplicationDto {
   name: { ar: string; en: string };
   icon: string;
   route: string;
+  /**
+   * This row shows the reader their OWN data and nobody else's — «إجازاتي», «سلفي وقروضي».
+   *
+   * Not a property of the screen: «الإجازات» is a person's own leave to the clerk who holds
+   * `leave.view` over himself, and the approval queue to the manager who holds it over his
+   * department. Same row, same route, two different screens — so this is computed per CALLER,
+   * from the scope he holds it at, and a route that names `/me` outright is taken at its word.
+   *
+   * It exists for the landing rule. `/` sends a person to the first page of their own menu, and
+   * the catalogue puts Human Resources first — so every employee holding `leave.view` over
+   * himself, which is every employee, signed in onto an HR screen. «ميجيبش الاتش ار على طول».
+   */
+  personal: boolean;
 }
 
 /**

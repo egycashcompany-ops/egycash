@@ -77,11 +77,30 @@ export const assembleEffectiveApplications = (
   }
   const activeApps = [...active.values()];
 
+  /**
+   * A row that shows the reader his OWN data and nobody else's.
+   *
+   * Two signals, and the first is the honest one: a screen is not personal or administrative in
+   * itself — «الإجازات» is a clerk's own leave when he holds `leave.view` over HIMSELF, and the
+   * approval queue when a manager holds it over his department. Same row, same route, two
+   * different screens. So the SCOPE decides, per caller.
+   *
+   * The second is the route: one ending in `/me` says what it is outright («سلفي وقروضي» is
+   * `/payroll/employee-loans/me`), and it stays personal however wide the permission behind it is
+   * held — a manager with `employeeLoan.create` over his department still sees only his own loans
+   * on that page.
+   */
+  const isPersonal = (app: EffectiveAppInput): boolean => {
+    if (app.permissionKey !== null && permissions[app.permissionKey] === 'own') return true;
+    return /\/(me|mine)$/.test(app.route);
+  };
+
   const toDto = (app: EffectiveAppInput) => ({
     id: app.id,
     name: app.name,
     icon: app.icon,
     route: app.route,
+    personal: isPersonal(app),
   });
   const byOrder = (a: { sortOrder: number }, b: { sortOrder: number }): number =>
     a.sortOrder - b.sortOrder;

@@ -70,6 +70,7 @@ const OPERATIONS_PAYLOAD: MyApplicationCategoryDto[] = [
       route: route as string,
       icon: icon as string,
       sortOrder: i * 10,
+      personal: false,
     })),
   },
 ];

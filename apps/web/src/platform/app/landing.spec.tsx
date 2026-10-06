@@ -41,7 +41,7 @@ const fleetOnly: MyApplicationCategoryDto[] = [
     id: 'fleet',
     name: { ar: 'الحركة', en: 'Fleet' },
     icon: 'truck',
-    applications: [{ id: 'f1', name: { ar: 'لوحة الحركة', en: 'Fleet' }, icon: 'truck', route: '/fleet' }],
+    applications: [{ id: 'f1', name: { ar: 'لوحة الحركة', en: 'Fleet' }, icon: 'truck', route: '/fleet', personal: false }],
     sections: [],
   },
 ];

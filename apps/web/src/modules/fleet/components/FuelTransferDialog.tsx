@@ -25,6 +25,7 @@ import { cn } from '../../../shared/lib/cn';
 import { useTransferFuelBatch } from '../api/fleet-queries';
 import { VehicleCodeFilter } from './VehicleCodeFilter';
 import { FILTER_ICON, FilterWithIcon } from './FilterWithIcon';
+import { pickOne } from './dark-filter-bar';
 import { Spinner } from '../../../shared/ui/Spinner';
 import {
   CLOSE_PATH,
@@ -577,16 +578,14 @@ export const FuelTransferDialog = ({
               <div
                 key={item.key}
                 data-fuel-transfer-block={i + 1}
-                className={cn(
-                  'space-y-6',
-                  many && 'rounded-2xl border border-[#6c63ff]/40 p-4 dark:bg-[#0a1233]/40',
-                )}
+                // «كل واحدة في بلوك لوحدها مش مع بعض»: every transfer in a frame of its own.
+                className="space-y-6 rounded-2xl border border-[#6c63ff]/40 p-4 dark:bg-[#0a1233]/40"
               >
-                {many && (
-                  <div className="flex items-center justify-between">
-                    <b className="text-[15px] text-brand-700 dark:text-[#a5a0ff]">
-                      {t('fleet.fuelCards.transfer.transferN', { n: String(i + 1) })}
-                    </b>
+                <div className="flex items-center justify-between">
+                  <b className="text-[15px] text-brand-700 dark:text-[#a5a0ff]">
+                    {t('fleet.fuelCards.transfer.transferN', { n: String(i + 1) })}
+                  </b>
+                  {many && (
                     <button
                       type="button"
                       aria-label={t('fleet.fuelCards.transfer.removeTransfer')}
@@ -598,8 +597,8 @@ export const FuelTransferDialog = ({
                     >
                       <Stroke d={CLOSE_PATH} className="h-4 w-4" />
                     </button>
-                  </div>
-                )}
+                  )}
+                </div>
                 {/* ── «من» ── */}
                 <section
                   data-fuel-transfer-side={`${i + 1}:from`}
@@ -616,12 +615,17 @@ export const FuelTransferDialog = ({
                       tone="text-emerald-600 dark:text-emerald-400"
                       className={CAR_PICK}
                     >
+                      {/* «من احدد العربية … عربية 151 مثلا»: ONE car gives — a second pick
+                          replaces the first. */}
                       <VehicleCodeFilter
                         fullWidth
                         placeholder={t('fleet.fuelCards.board.searchCar')}
                         options={placeOptions}
                         value={item.fromPlaces}
-                        onChange={(places) => pickFromPlaces(item.key, places)}
+                        onChange={(places) => {
+                          const one = pickOne(item.fromPlaces, places);
+                          pickFromPlaces(item.key, one === null ? [] : [one]);
+                        }}
                       />
                     </FilterWithIcon>
                   </DesignField>

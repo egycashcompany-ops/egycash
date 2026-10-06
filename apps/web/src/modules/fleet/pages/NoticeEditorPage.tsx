@@ -22,6 +22,7 @@ import {
   useDrivers,
   useNotice,
   useNotices,
+  useNoticeSettings,
   useUpdateNotice,
   useVehicle,
   useVehicleTypes,
@@ -38,6 +39,7 @@ import {
 } from '../lib/notice-templates';
 import { printNoticePages, type NoticeAnswers } from '../lib/notice-render';
 import { autofillValues, type NoticeSystemFacts } from '../lib/notice-autofill';
+import { handTypedKeys, linkOf, startingValues, withLinked } from '../lib/notice-setup';
 
 /** What a saved notice is called in the list of saved ones: when, and what it is about. */
 const savedLabel = (notice: FleetNoticeDto, untitled: string): string => {
@@ -86,6 +88,16 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
     values: autofillValues(template, { company: true }),
     checks: {},
   }));
+  // The form's set-up — «القيم الافتراضية» a new notice starts with, and the boxes that share one
+  // answer («الخانات المتكررة»).
+  const settings = useNoticeSettings(template.key);
+  const starting = useMemo(
+    () => startingValues(template, settings.data),
+    [template, settings.data],
+  );
+  const handTyped = useMemo(() => handTypedKeys(settings.data), [settings.data]);
+  const [noticeNumber, setNoticeNumber] = useState('');
+  const [noticeDate, setNoticeDate] = useState('');
   const [vehicleId, setVehicleId] = useState('');
   const [driverId, setDriverId] = useState('');
   const [accidentId, setAccidentId] = useState('');
@@ -100,6 +112,8 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
     if (notice === undefined || loaded.current === notice.id) return;
     loaded.current = notice.id;
     setAnswers({ values: notice.values, checks: notice.checks });
+    setNoticeNumber(notice.noticeNumber ?? '');
+    setNoticeDate(notice.noticeDate?.slice(0, 10) ?? '');
     setVehicleId(notice.vehicleId ?? '');
     setDriverId(notice.driverEmployeeId ?? '');
     setAccidentId(notice.accidentId ?? '');
@@ -117,10 +131,27 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
   const vehicleCode = vehicle.data?.code ?? '';
   const accidents = useAccidents({ vehicleCodes: vehicleCode, pageSize: 50 }, vehicleCode !== '');
 
+  // A new notice takes the set-up's defaults once they have arrived — never a saved one.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current || id !== '' || settings.data === undefined) return;
+    seeded.current = true;
+    setAnswers((prev) => ({ ...prev, values: { ...prev.values, ...starting } }));
+  }, [id, settings.data, starting]);
+
   const fill = (facts: NoticeSystemFacts): void => {
-    const found = autofillValues(template, facts);
+    // A box set to be typed by hand every time is left to the hand.
+    const found = Object.fromEntries(
+      Object.entries(autofillValues(template, facts)).filter(([key]) => !handTyped.has(key)),
+    );
     if (Object.keys(found).length === 0) return;
-    setAnswers((prev) => ({ ...prev, values: { ...prev.values, ...found } }));
+    setAnswers((prev) => {
+      let values = { ...prev.values };
+      for (const [key, value] of Object.entries(found)) {
+        values = withLinked(template, settings.data, values, key, value);
+      }
+      return { ...prev, values };
+    });
   };
 
   const typeName = types.data?.items.find((type) => type.id === vehicle.data?.typeId)?.name.ar;
@@ -148,8 +179,12 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
   }, [accident]);
 
   // ── editing ──────────────────────────────────────────────────────────────
+  // «تكتب واحدة، الباقي يتملي لوحده» — one answer reaches every box that shares it.
   const setValue = (field: string, value: string): void =>
-    setAnswers((prev) => ({ ...prev, values: { ...prev.values, [field]: value } }));
+    setAnswers((prev) => ({
+      ...prev,
+      values: withLinked(template, settings.data, prev.values, field, value),
+    }));
   const toggle = (check: NoticeCheck, option: string): void =>
     setAnswers((prev) => {
       const chosen = prev.checks[check.key] ?? [];
@@ -169,7 +204,12 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
   };
   const startNew = (): void => {
     loaded.current = '';
-    setAnswers({ values: autofillValues(template, { company: true }), checks: {} });
+    setAnswers({
+      values: { ...autofillValues(template, { company: true }), ...starting },
+      checks: {},
+    });
+    setNoticeNumber('');
+    setNoticeDate('');
     setVehicleId('');
     setDriverId('');
     setAccidentId('');
@@ -181,6 +221,8 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
       vehicleId: vehicleId === '' ? null : vehicleId,
       driverEmployeeId: driverId === '' ? null : driverId,
       accidentId: accidentId === '' ? null : accidentId,
+      noticeNumber: noticeNumber.trim() === '' ? null : noticeNumber.trim(),
+      noticeDate: noticeDate === '' ? null : new Date(noticeDate),
     };
     try {
       if (id === '' || current.data === undefined) {
@@ -348,6 +390,26 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
       <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 lg:flex-row">
         <section className="min-h-0 overflow-auto rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 lg:w-[42%]">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+            {/* «رقم الإخطار» and its date — what the notices table lists this notice by. */}
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+              <Field label={t('fleet.notices.number')} htmlFor="notice-meta-number">
+                <Input
+                  id="notice-meta-number"
+                  data-notice-number="true"
+                  value={noticeNumber}
+                  onChange={(event) => setNoticeNumber(event.target.value)}
+                />
+              </Field>
+              <Field label={t('fleet.notices.date')} htmlFor="notice-meta-date">
+                <Input
+                  id="notice-meta-date"
+                  type="date"
+                  data-notice-date="true"
+                  value={noticeDate}
+                  onChange={(event) => setNoticeDate(event.target.value)}
+                />
+              </Field>
+            </div>
             <h2 className="mb-2 text-sm font-bold text-brand-700 dark:text-brand-300">
               {t('fleet.notices.fromSystem')}
             </h2>
@@ -419,6 +481,13 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
                     className={cn(field.kind === 'multiline' && 'sm:col-span-2')}
                   >
                     {input(field)}
+                    <FieldTags
+                      link={linkOf(settings.data, field.key)?.name}
+                      isDefault={
+                        (starting[field.key] ?? '') !== '' &&
+                        (answers.values[field.key] ?? '') === starting[field.key]
+                      }
+                    />
                   </Field>
                 ))}
               </div>
@@ -464,5 +533,34 @@ const NoticeEditor = ({ template }: { template: NoticeTemplate }): JSX.Element =
         </section>
       </div>
     </div>
+  );
+};
+
+/** Under a box: «افتراضي» while it holds its set-up's default, and the group it shares. */
+const FieldTags = ({
+  link,
+  isDefault,
+}: {
+  link: string | undefined;
+  isDefault: boolean;
+}): JSX.Element | null => {
+  const t = useT();
+  if (link === undefined && !isDefault) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-1">
+      {isDefault && (
+        <span className="rounded-full bg-brand-500/15 px-2 py-0.5 text-[10px] font-bold text-brand-700 dark:text-brand-200">
+          {t('fleet.notices.defaultTag')}
+        </span>
+      )}
+      {link !== undefined && (
+        <span
+          data-notice-linked="true"
+          className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold text-violet-700 dark:text-violet-300"
+        >
+          {t('fleet.notices.linkedTag', { name: link })}
+        </span>
+      )}
+    </span>
   );
 };

@@ -17,6 +17,7 @@
 //   /fleet/violations         fleetViolation.view          FW-9
 //   /fleet/licensing          fleetLicensing.view          التراخيص
 //   /fleet/notices (+/:tpl)   fleetNotice.view             الإخطارات
+//   /fleet/notices/setup/:tpl fleetNotice.view             إعداد النماذج
 //   /fleet/dealership         fleetDealership.view         التوكيل
 //   /fleet/fuel-cards         fleetFuelCard.view           بطاقات الوقود
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
@@ -45,6 +46,7 @@ import { ViolationsPage } from './pages/ViolationsPage';
 import { LicensingPage } from './pages/LicensingPage';
 import { NoticesPage } from './pages/NoticesPage';
 import { NoticeEditorPage } from './pages/NoticeEditorPage';
+import { NoticeSetupPage } from './pages/NoticeSetupPage';
 import { DealershipPage } from './pages/DealershipPage';
 import { FuelCardsPage } from './pages/FuelCardsPage';
 import { FuelChargingPage } from './pages/FuelChargingPage';
@@ -212,6 +214,14 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetCustody.view">
                 <CustodyPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="notices/setup/:template"
+            element={
+              <RequirePermission permission="fleetNotice.view">
+                <NoticeSetupPage />
               </RequirePermission>
             }
           />

@@ -21,6 +21,10 @@ import {
   type UpdateFleetReceipt,
   type UpdateFleetFuelCard,
   type UpdateFleetNotice,
+  type FleetNoticeImageKind,
+  type FleetNoticeTemplate,
+  type SaveFleetNoticeSettings,
+  type SetFleetNoticeDone,
   type CreateFleetCatalogItem,
   type CreateFleetDriverProfile,
   type FleetDriverProfileDto,
@@ -862,6 +866,30 @@ export const useUpdateNotice = () =>
     api.updateNotice(id, body),
   );
 export const useDeleteNotice = () => useNoticeMutation((id: string) => api.deleteNotice(id));
+export const useSetNoticeDone = () =>
+  useNoticeMutation(({ id, body }: { id: string; body: SetFleetNoticeDone }) =>
+    api.setNoticeDone(id, body),
+  );
+export const useUploadNoticeImage = () =>
+  useNoticeMutation(({ id, kind, file }: { id: string; kind: FleetNoticeImageKind; file: File }) =>
+    api.uploadNoticeImage(id, kind, file),
+  );
+export const useDeleteNoticeImage = () =>
+  useNoticeMutation(({ id, kind }: { id: string; kind: FleetNoticeImageKind }) =>
+    api.deleteNoticeImage(id, kind),
+  );
+
+/** A form's set-up — what each box starts with, and which boxes share one answer. */
+export const useNoticeSettings = (template: FleetNoticeTemplate) =>
+  useQuery({
+    queryKey: [...fleetKeys.notices, 'settings', template],
+    queryFn: () => api.getNoticeSettings(template),
+  });
+export const useSaveNoticeSettings = () =>
+  useNoticeMutation(
+    ({ template, body }: { template: FleetNoticeTemplate; body: SaveFleetNoticeSettings }) =>
+      api.saveNoticeSettings(template, body),
+  );
 
 // ── Dealership invoices (التوكيل) ────────────────────────────────────────────
 export const useDealershipInvoices = (params: FleetListParams, enabled = true) =>

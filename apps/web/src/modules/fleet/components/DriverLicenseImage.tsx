@@ -13,7 +13,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
-import { EyeIcon, PrinterIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, TrashIcon, UploadIcon } from '../../../shared/ui/icons';
 import { useAppSelector } from '../../../store';
 import { formatDate, localized } from '../../../shared/lib/format';
 import { fetchDriverLicenseImage } from '../api/fleet-api';
@@ -103,9 +103,7 @@ export const DriverLicenseImageDeleteDialog = ({
       open={open}
       onClose={onClose}
       title={t('fleet.drivers.licenseImage.deleteTitle')}
-      description={
-        driver === null ? '' : `${name ?? ''} — ${driver.licenseNumber ?? '—'}`.trim()
-      }
+      description={driver === null ? '' : `${name ?? ''} — ${driver.licenseNumber ?? '—'}`.trim()}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -251,43 +249,15 @@ const actionButton =
   'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
 /**
- * The registry table's licence-image cell: one upload action when there is no scan, view + delete
- * when there is. Upload posts straight from the cell and the row repaints from the invalidated
- * subtree — no page reload, and no dialog for a one-step action.
+ * Print a driver's licence — the same document the vehicle registry prints, composed from what the
+ * screen already knows about the profile. Offered from the row's actions.
  */
-export const DriverLicenseImageCell = ({
-  driver,
-  onPreview,
-}: {
-  driver: FleetDriverProfileDto;
-  onPreview: (driver: FleetDriverProfileDto) => void;
-}): JSX.Element => {
+export const usePrintDriverLicence = (driver: FleetDriverProfileDto): (() => Promise<void>) => {
   const t = useT();
   const locale = useAppSelector((state): Locale => state.locale.locale);
-  const can = useCan();
-  const upload = useUploadDriverLicenseImage();
-  const [inputKey, setInputKey] = useState(0);
-  const [confirming, setConfirming] = useState(false);
-  const mayManage = can('fleetDriver.manage');
   const { name, code } = useEmployeeName(driver.employeeId);
-
-  const pick = async (file: File | undefined): Promise<void> => {
-    if (file === undefined) return;
-    await upload.mutateAsync({ id: driver.id, file });
-    toast.success(t('fleet.drivers.licenseImage.uploaded'));
-    // Remount the input so picking the SAME file again still fires a change event.
-    setInputKey((k) => k + 1);
-  };
-
-  /**
-   * The licence, on paper — the same document the vehicle registry prints, composed here.
-   *
-   * The rows are what this screen already knows about the profile and nothing else: the printer
-   * fetches no record of its own, so what is printed is what the reader was looking at.
-   */
-  const print = async (): Promise<void> => {
-    // Who this licence belongs to, from the same cached record the row's own name column reads —
-    // so printing costs no request the screen has not already made.
+  return async (): Promise<void> => {
+    // Who this licence belongs to, from the same cached record the row's own name column reads.
     const who =
       name === null ? (code ?? driver.employeeId) : `${name}${code === null ? '' : ` — ${code}`}`;
     try {
@@ -300,9 +270,7 @@ export const DriverLicenseImageCell = ({
           {
             label: t('fleet.drivers.columns.licenseExpiresAt'),
             value:
-              driver.licenseExpiresAt === null
-                ? '—'
-                : formatDate(driver.licenseExpiresAt, locale),
+              driver.licenseExpiresAt === null ? '—' : formatDate(driver.licenseExpiresAt, locale),
           },
         ],
         licenseImage: {
@@ -317,70 +285,96 @@ export const DriverLicenseImageCell = ({
       toast.error(t('fleet.drivers.licenseImage.popupBlocked'));
     }
   };
+};
+
+/**
+ * The table's licence cell: «رفع رخصة السائق» when there is no scan; when there is, a small box
+ * with the eye, edit (replace) and delete.
+ */
+export const DriverLicenseImageCell = ({
+  driver,
+  onPreview,
+}: {
+  driver: FleetDriverProfileDto;
+  onPreview: (driver: FleetDriverProfileDto) => void;
+}): JSX.Element => {
+  const t = useT();
+  const can = useCan();
+  const upload = useUploadDriverLicenseImage();
+  const [inputKey, setInputKey] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const mayManage = can('fleetDriver.manage');
+
+  const pick = async (file: File | undefined): Promise<void> => {
+    if (file === undefined) return;
+    await upload.mutateAsync({ id: driver.id, file });
+    toast.success(t('fleet.drivers.licenseImage.uploaded'));
+    // Remount the input so picking the SAME file again still fires a change event.
+    setInputKey((k) => k + 1);
+  };
+  const fileInput = (labelKey: string): JSX.Element => (
+    <input
+      key={inputKey}
+      type="file"
+      accept={DRIVER_LICENSE_IMAGE_ACCEPT}
+      className="hidden"
+      disabled={upload.isPending}
+      aria-label={t(labelKey)}
+      title={t(labelKey)}
+      onChange={(e) => void pick(e.target.files?.[0])}
+    />
+  );
 
   if (driver.licenseImage === null) {
     if (!mayManage) return <span className="text-slate-400">—</span>;
-    // `relative` on the label is load-bearing, not decoration. `sr-only` is `position: absolute`,
-    // so without a positioned ancestor its containing block is the INITIAL one — the viewport —
-    // and the visually-hidden text lands at a page coordinate of its own rather than inside this
-    // cell. On a table wide enough to scroll, that coordinate is off the left edge of the page in
-    // RTL, and it gives the whole document a horizontal scrollbar nothing on screen explains:
-    // measured, exactly 72px of it at 1280. Positioning the label puts the hidden text back
-    // inside the cell, where the table's own `overflow-x-auto` contains it.
+    // `relative` on the label is load-bearing: the hidden input must stay inside the cell, or a
+    // table wide enough to scroll gains a horizontal scrollbar nothing on screen explains.
     return (
-      <label className={`${actionButton} relative inline-flex cursor-pointer`}>
+      <label
+        data-driver-license-upload={driver.id}
+        className="relative inline-flex cursor-pointer rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+        title={t('fleet.drivers.licenseImage.upload')}
+      >
         <UploadIcon className="h-4 w-4" />
-        <span className="sr-only">{t('fleet.drivers.licenseImage.upload')}</span>
-        <input
-          key={inputKey}
-          type="file"
-          accept={DRIVER_LICENSE_IMAGE_ACCEPT}
-          className="hidden"
-          disabled={upload.isPending}
-          aria-label={t('fleet.drivers.licenseImage.upload')}
-          title={t('fleet.drivers.licenseImage.upload')}
-          onChange={(e) => void pick(e.target.files?.[0])}
-        />
+        {fileInput('fleet.drivers.licenseImage.upload')}
       </label>
     );
   }
 
+  const boxButton = 'rounded p-1 transition';
   return (
-    <span className="flex items-center gap-1">
+    <span data-driver-license-box={driver.id} className="inline-flex items-center gap-0.5">
+      {/* «عاوز لما ارفعها يبقى فيه حذف وتعديل و عين عشان المعاينه»: the eye, edit (replace) and
+          delete. */}
       <button
         type="button"
-        className={actionButton}
+        data-driver-license-view={driver.id}
+        className={`${boxButton} text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800`}
         aria-label={t('fleet.drivers.licenseImage.view')}
         title={t('fleet.drivers.licenseImage.view')}
         onClick={() => onPreview(driver)}
       >
-        <EyeIcon className="h-4 w-4" />
+        <EyeIcon className="h-3.5 w-3.5" />
       </button>
-      {/* PRINT, the one thing this cell could not do that the vehicles' could. The owner asked for
-          the two to match — «تكون زى اللى عند السيارات يقدر يرفع ويشوف ويمسح ويطبع» — and upload,
-          view and delete were already here; only the printer was missing. It prints through the
-          SAME document builder the vehicle registry prints through, which is why the licence
-          arrives inlined as a data URL rather than as a same-origin `<img src>` a torn-off window
-          may not have loaded before the print dialog measures the page. */}
-      <button
-        type="button"
-        data-driver-license-print={driver.id}
-        className={actionButton}
-        aria-label={t('fleet.drivers.licenseImage.print')}
-        title={t('fleet.drivers.licenseImage.print')}
-        onClick={() => void print()}
-      >
-        <PrinterIcon className="h-4 w-4" />
-      </button>
+      {mayManage && (
+        <label
+          data-driver-license-replace={driver.id}
+          className={`${boxButton} relative cursor-pointer text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800`}
+          title={t('fleet.drivers.licenseImage.replace')}
+        >
+          <EditIcon className="h-3.5 w-3.5" />
+          {fileInput('fleet.drivers.licenseImage.replace')}
+        </label>
+      )}
       {mayManage && (
         <button
           type="button"
-          className={actionButton}
+          className="rounded p-1 text-slate-500 transition hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
           aria-label={t('fleet.drivers.licenseImage.delete')}
           title={t('fleet.drivers.licenseImage.delete')}
           onClick={() => setConfirming(true)}
         >
-          <TrashIcon className="h-4 w-4" />
+          <TrashIcon className="h-3.5 w-3.5" />
         </button>
       )}
       <DriverLicenseImageDeleteDialog

@@ -708,11 +708,12 @@ export const useVoidAccidentTransfer = () =>
     api.voidAccidentTransfer(accidentId, transferId),
   );
 
-export const useViolations = (params: FleetListParams) =>
+export const useViolations = (params: FleetListParams, enabled = true) =>
   useQuery({
     queryKey: listKey(MODULE, 'violations', params),
     queryFn: () => api.listViolations(params),
     placeholderData: (prev) => prev,
+    enabled,
   });
 
 /**

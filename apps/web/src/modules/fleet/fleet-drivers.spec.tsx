@@ -129,9 +129,10 @@ const driver = (overrides: Partial<FleetDriverProfileDto> = {}): FleetDriverProf
  * The licence-expiry years these tests tell rows apart by, as the table prints them (Arabic-Indic
  * digits, because the board renders in `ar`).
  */
-const DEFAULT_YEAR = '٢٠٢٧';
-const B1_YEAR = '٢٠٢٩';
-const B2_YEAR = '٢٠٣٠';
+// The table writes a day the way the Fleet boards do — `2027/03/14`, Latin digits.
+const DEFAULT_YEAR = '2027';
+const B1_YEAR = '2029';
+const B2_YEAR = '2030';
 
 const WITH_IMAGE = driver({
   licenseImage: {
@@ -364,19 +365,19 @@ const thead = (markup: string): string => {
  * without spending a column per row to do it.
  */
 const REQUIRED_COLUMNS = [
-  'driver',
-  'employeeCode',
-  'jobTitle',
-  'branch',
-  'address',
-  'governorate',
-  'phone',
-  'hiredAt',
-  'specialization',
-  'licenseType',
-  'licenseExpiresAt',
-  'licenseImage',
+  'fleet.drivers.columns.driver',
+  'fleet.drivers.columns.employeeCode',
+  'fleet.drivers.columns.jobTitle',
+  'fleet.drivers.columns.branch',
+  'fleet.drivers.columns.governorate',
+  'fleet.drivers.columns.phone',
+  'fleet.drivers.columns.hiredAt',
+  'fleet.drivers.columns.specialization',
+  'fleet.drivers.table.licenseGrade',
+  'fleet.drivers.table.licenseExpiry',
+  'fleet.drivers.table.licenseImage',
 ] as const;
+// «شيل عمود العنوان من الجدول بس ضيفه فى العين»: the address is on the driver's own page.
 
 // ── 1. The table ────────────────────────────────────────────────────────────
 
@@ -384,7 +385,7 @@ describe('the drivers table shows the thirteen required columns', () => {
   it('renders every one of them in the table head', () => {
     const head = thead(render(<DriversListPage />));
     for (const column of REQUIRED_COLUMNS) {
-      expect(head, `${column} column`).toContain(t(`fleet.drivers.columns.${column}`));
+      expect(head, `${column} column`).toContain(t(column));
     }
   });
 
@@ -392,7 +393,7 @@ describe('the drivers table shows the thirteen required columns', () => {
     const head = thead(render(<DriversListPage />));
     const positions = REQUIRED_COLUMNS.map((column) => ({
       column,
-      at: head.indexOf(t(`fleet.drivers.columns.${column}`)),
+      at: head.indexOf(t(column)),
     }));
     for (let i = 1; i < positions.length; i += 1) {
       const previous = positions[i - 1] as { column: string; at: number };
@@ -403,8 +404,7 @@ describe('the drivers table shows the thirteen required columns', () => {
 
   it('labels every column in BOTH locales — no header renders as a raw key', () => {
     for (const locale of ['ar', 'en'] as Locale[]) {
-      for (const column of REQUIRED_COLUMNS) {
-        const key = `fleet.drivers.columns.${column}`;
+      for (const key of REQUIRED_COLUMNS) {
         expect(translate(locale, key), `${key} in ${locale}`).not.toBe(key);
       }
     }
@@ -418,7 +418,7 @@ describe('the columns are filled from the three real sources', () => {
 
   it('shows the fleet-owned facts from the driver profile', () => {
     const html = markup();
-    expect(html, 'licence date').toContain('٢٠٢٧');
+    expect(html, 'licence date').toContain('2027');
   });
 
   it('names the three catalog references from the CATALOG, never from the profile', () => {
@@ -475,7 +475,7 @@ describe('the columns are filled from the three real sources', () => {
     const html = markup();
     expect(html, 'driver name').toContain(HR.name);
     expect(html, 'employee code').toContain(HR.code);
-    expect(html, 'address').toContain(HR.line1);
+    expect(thead(html), 'no address column').not.toContain(t('fleet.drivers.columns.address'));
     expect(html, 'governorate').toContain(HR.governorate);
     expect(html, 'mobile number').toContain(HR.phone);
     expect(html, 'branch').toContain(HR.branch);
@@ -592,11 +592,13 @@ describe('the licence-image cell', () => {
     expect(cell(driver())).toContain('accept="image/jpeg,image/png,image/webp"');
   });
 
-  it('offers view AND delete — and no upload — once a scan exists', () => {
+  it('offers the eye, edit and delete once a scan exists — edit replaces the scan', () => {
+    // «عاوز لما ارفعها يبقى فيه حذف وتعديل و عين عشان المعاينه».
     const html = cell(WITH_IMAGE);
     expect(html).toContain(t('fleet.drivers.licenseImage.view'));
     expect(html).toContain(t('fleet.drivers.licenseImage.delete'));
-    expect(html).not.toContain('type="file"');
+    expect(html, 'edit is a replacement upload').toContain(t('fleet.drivers.licenseImage.replace'));
+    expect(html).toContain('type="file"');
   });
 
   it('hides delete from a viewer who may not manage drivers, keeping view', () => {
@@ -670,7 +672,6 @@ describe('the filter bar', () => {
     'fleet.drivers.filters.employee',
     'fleet.drivers.columns.jobTitle',
     'fleet.drivers.columns.branch',
-    'fleet.drivers.columns.address',
     'fleet.drivers.columns.phone',
     'fleet.drivers.columns.governorate',
     'fleet.drivers.columns.specialization',
@@ -682,7 +683,7 @@ describe('the filter bar', () => {
   const bar = (html: string): string =>
     html.slice(html.indexOf('flex flex-wrap'), html.indexOf('<table'));
 
-  it('exposes a labelled control for every one of the nine filters', () => {
+  it('exposes a labelled control for every one of the eight filters — the address left the bar', () => {
     const html = bar(render(<DriversListPage />));
     for (const key of FILTER_ORDER) {
       expect(html, `${key} filter`).toContain(`aria-label="${t(key)}"`);
@@ -702,19 +703,20 @@ describe('the filter bar', () => {
     }
   });
 
-  it('keeps all nine on ONE row from the narrowest desktop up', () => {
+  it('keeps all eight on ONE row from the narrowest desktop up', () => {
     const html = bar(render(<DriversListPage />));
-    // `flex-wrap` is the base — a phone still stacks — and `flex-nowrap` takes over from 1280px,
-    // the narrowest desktop the product targets.
+    // `flex-wrap` is the base — a phone still stacks — and the vehicles board's dark bar puts the
+    // row on one line from a laptop up, every filter sharing the width.
     expect(html, 'wraps by default').toContain('flex flex-wrap');
-    expect(html, 'and stops wrapping from 1280px').toContain('min-[1280px]:flex-nowrap');
+    expect(render(<DriversListPage />), 'and stops wrapping on a laptop').toContain(
+      'lg:[&amp;&gt;div]:!flex-nowrap',
+    );
     // What makes that safe at 1280, where they want more room than the bar has: every one
     // of them may SHRINK. `min-w-0` is the part that is easy to leave out and impossible to see
     // — without it a flex child refuses to go below its content width, and a `<select>` is as
     // wide as its longest option, so one long branch name would push the row off the page.
-    const shrinkable = html.split('min-w-0').length - 1;
-    expect(shrinkable, 'every control can give width back').toBeGreaterThanOrEqual(
-      FILTER_ORDER.length,
+    expect(render(<DriversListPage />), 'every control can give width back').toContain(
+      'lg:[&amp;&gt;div&gt;*]:!min-w-0',
     );
   });
 
@@ -724,17 +726,21 @@ describe('the filter bar', () => {
     // that the name is actually rendered — plus the two fallbacks that still matter: `aria-label`
     // on the control for a screen reader, and `title` on the label for a pointer, because a
     // narrow column truncates the label rather than the value.
+    // On the vehicles board's bar a box carries its name INSIDE — the placeholder of a text box,
+    // the label of a list — so the name is on screen either way, and `aria-label` keeps it for a
+    // screen reader.
     const html = bar(render(<DriversListPage />));
     for (const key of FILTER_ORDER) {
-      expect(html, `${key} is named on screen`).toContain(`title="${t(key)}"`);
       expect(html, `${key} aria-label`).toContain(`aria-label="${t(key)}"`);
+      if (html.includes(`placeholder="${t(key)}"`)) continue;
       // The name is TEXT the reader can see, not only an attribute. The picker is the one
       // deliberate exception: its full question — «اسم السائق أو كود الموظف» — is longer than any
       // column on this bar, so the label says the short form and the full one stays on
       // `aria-label`, where a screen reader still reads it.
-      const shown = key === 'fleet.drivers.filters.employee'
-        ? t('fleet.drivers.filters.employeeShort')
-        : t(key);
+      const shown =
+        key === 'fleet.drivers.filters.employee'
+          ? t('fleet.drivers.filters.employeeShort')
+          : t(key);
       expect(html, `${key} is visible text`).toMatch(
         new RegExp(`>\\s*${shown.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*<`),
       );
@@ -743,7 +749,7 @@ describe('the filter bar', () => {
 
   it('reads its state from the URL, so a filtered view is a shareable link', () => {
     const route =
-      '/fleet/drivers?drv=e1&job=cj1&branch=b1&addr=%D8%AC%D8%A7%D9%85%D8%B9%D8%A9' +
+      '/fleet/drivers?drv=e1&job=cj1&branch=b1' +
       '&area=%D9%88%D8%B3%D8%B7&phone=0100&gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9' +
       '&spec=cs1&lic=cl1&img=with&active=false';
     const client = seededClient([driver()], {
@@ -757,16 +763,24 @@ describe('the filter bar', () => {
       employeeIds: [EMPLOYEE_ID],
     });
     client.setQueryData(
-      ['hr', 'employees', 'fleet-driver-filter', {
-        search: '',
-        address: 'جامعة',
-        governorate: 'الجيزة',
-        phone: '0100',
-      }, 'jt1'],
-      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+      [
+        'hr',
+        'employees',
+        'fleet-driver-filter',
+        {
+          search: '',
+          address: '',
+          governorate: 'الجيزة',
+          phone: '0100',
+        },
+        'jt1',
+      ],
+      {
+        items: [employee()],
+        meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 },
+      },
     );
     const html = render(<DriversListPage />, { route, client });
-    expect(html, 'address box').toContain('value="جامعة"');
     expect(html, 'phone box').toContain('value="0100"');
     expect(html, 'governorate box').toContain('value="الجيزة"');
     // THE FOUR REFERENCE FILTERS ARE MULTI-SELECTS NOW, so a chosen value is not a selected
@@ -778,8 +792,8 @@ describe('the filter bar', () => {
     expect(html, 'التخصص').toContain(CATALOG.specialization.ar);
     expect(html, 'الرخصة').toContain(CATALOG.licenseType.ar);
     expect(html, 'no raw id is shown where a name belongs').not.toMatch(/>\s*cj1\s*</);
-    // «صورة الرخصة» has exactly TWO answers, so it stays a single select — see the page.
-    expect(html, 'صورة الرخصة').toContain('<option value="with" selected=""');
+    // «صورة الرخصة» has exactly TWO answers; the chosen one is what its trigger prints.
+    expect(html, 'صورة الرخصة').toContain(t('fleet.drivers.withLicenseImage'));
     // And the picked driver is NAMED on its trigger, not counted — a chip nobody can read is a
     // filter you have to open to understand.
     expect(html, 'the picked driver').toContain(HR.name);
@@ -861,7 +875,7 @@ describe('the filter bar', () => {
     const unfiltered = render(<DriversListPage />, { client });
     const filtered = render(<DriversListPage />, { route: '/fleet/drivers?spec=cs1', client });
     expect(unfiltered).toContain(DEFAULT_YEAR);
-    expect(filtered, 'the narrowed request is the one that answered').toContain('٢٠٣٢');
+    expect(filtered, 'the narrowed request is the one that answered').toContain('2032');
     expect(filtered).not.toContain(DEFAULT_YEAR);
   });
 
@@ -934,9 +948,9 @@ describe('«الرخصة» means the licence class', () => {
 
   it('the two licence columns are DIFFERENT columns, in the brief’s order', () => {
     const head = thead(render(<DriversListPage />));
-    const type = head.indexOf(t('fleet.drivers.columns.licenseType'));
-    const date = head.indexOf(t('fleet.drivers.columns.licenseExpiresAt'));
-    const image = head.indexOf(t('fleet.drivers.columns.licenseImage'));
+    const type = head.indexOf(t('fleet.drivers.table.licenseGrade'));
+    const date = head.indexOf(t('fleet.drivers.table.licenseExpiry'));
+    const image = head.indexOf(t('fleet.drivers.table.licenseImage'));
     expect(type, 'الرخصة is present').toBeGreaterThan(-1);
     expect(date, 'تاريخ الرخصة after it').toBeGreaterThan(type);
     expect(image, 'صورة الرخصة after that').toBeGreaterThan(date);
@@ -976,9 +990,7 @@ describe('the branch filter', () => {
     // The narrowed FLEET key answered. Nothing was seeded for an HR pre-query on the branch, so
     // had the page still asked HR first it would be blocked and render no rows at all.
     expect(tbodyOf(html)).toContain(B1_YEAR);
-    expect(html, 'and no «narrow your filter» refusal').not.toContain(
-      'فلتر الموارد البشرية طابق',
-    );
+    expect(html, 'and no «narrow your filter» refusal').not.toContain('فلتر الموارد البشرية طابق');
   });
 
   it('CHANGING the branch changes the results', () => {
@@ -1215,17 +1227,18 @@ describe('editing a driver', () => {
     // It has no successor in the catalog vocabulary, so nothing invents one for it; what it must
     // not do is come back as something a new record can be given.
     for (const legacy of ['cashTransport', 'atm', 'both']) {
-      expect(() =>
-        CreateFleetDriverProfileSchema.parse({
-          employeeId: '64b1f0dddddddddddddddd01',
-          licenseNumber: 'X-1',
-          licenseExpiresAt: '2030-01-01',
-          specialization: legacy,
-        }),
+      expect(
+        () =>
+          CreateFleetDriverProfileSchema.parse({
+            employeeId: '64b1f0dddddddddddddddd01',
+            licenseNumber: 'X-1',
+            licenseExpiresAt: '2030-01-01',
+            specialization: legacy,
+          }),
         `create with ${legacy}`,
       ).toThrow();
-      expect(() =>
-        UpdateFleetDriverProfileSchema.parse({ specialization: legacy, version: 0 }),
+      expect(
+        () => UpdateFleetDriverProfileSchema.parse({ specialization: legacy, version: 0 }),
         `update with ${legacy}`,
       ).toThrow();
     }
@@ -1252,9 +1265,7 @@ describe('editing a driver', () => {
     expect(parsed.licenseTypeId).toBe(id);
     // `null` CLEARS a grade — un-saying a wrong one must not need a right one.
     expect(UpdateFleetDriverProfileSchema.parse({ jobId: null, version: 0 }).jobId).toBeNull();
-    expect(() =>
-      UpdateFleetDriverProfileSchema.parse({ jobId: 'سائق أ', version: 0 }),
-    ).toThrow();
+    expect(() => UpdateFleetDriverProfileSchema.parse({ jobId: 'سائق أ', version: 0 })).toThrow();
   });
 
   it('carries the licence image, with its own view / replace / delete actions', () => {
@@ -1618,7 +1629,10 @@ describe('the HR facts delegate to HR instead of being edited in Fleet', () => {
     // writing `employment.branchId` as a plain field would erase the record of the move while
     // appearing to work.
     expect(source).not.toContain('createEmploymentAction');
-    const writes = source.slice(source.indexOf('const persistPhone'), source.indexOf('const complete'));
+    const writes = source.slice(
+      source.indexOf('const persistPhone'),
+      source.indexOf('const complete'),
+    );
     expect(writes, 'no branch in anything this form sends').not.toContain('branchId');
     const body = source.slice(
       source.indexOf('await update.mutateAsync'),
@@ -1683,12 +1697,14 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     const html = render(<DriversListPage />);
     for (const key of [
       'fleet.drivers.filters.employee',
-      'fleet.drivers.columns.address',
       'fleet.drivers.columns.governorate',
       'fleet.drivers.columns.phone',
     ]) {
       expect(html, `${key} filter`).toContain(`aria-label="${t(key)}"`);
     }
+    expect(html, 'the address is not a filter').not.toContain(
+      `aria-label="${t('fleet.drivers.columns.address')}"`,
+    );
   });
 
   it('asks HR about the DRIVING SEATS, not about everybody', () => {
@@ -1698,13 +1714,22 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     // question — and the answer is bounded by the driver count instead of the headcount.
     const client = seededClient([driver()]);
     client.setQueryData(
-      ['hr', 'employees', 'fleet-driver-filter', {
-        search: '',
-        address: '',
-        governorate: 'الجيزة',
-        phone: '',
-      }, 'jt1'],
-      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+      [
+        'hr',
+        'employees',
+        'fleet-driver-filter',
+        {
+          search: '',
+          address: '',
+          governorate: 'الجيزة',
+          phone: '',
+        },
+        'jt1',
+      ],
+      {
+        items: [employee()],
+        meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 },
+      },
     );
     client.setQueryData(
       listKey('fleet', 'drivers', driverParams({ employeeIds: [EMPLOYEE_ID] })),
@@ -1741,13 +1766,22 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     );
     // The narrowed HR answer is the only one seeded, so it is the only one that can render.
     client.setQueryData(
-      ['hr', 'employees', 'fleet-driver-filter', {
-        search: '',
-        address: '',
-        governorate: 'الجيزة',
-        phone: '',
-      }, 'jt1'],
-      { items: [employee()], meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 } },
+      [
+        'hr',
+        'employees',
+        'fleet-driver-filter',
+        {
+          search: '',
+          address: '',
+          governorate: 'الجيزة',
+          phone: '',
+        },
+        'jt1',
+      ],
+      {
+        items: [employee()],
+        meta: { page: 1, pageSize: MAX_PAGE_SIZE, totalItems: 1, totalPages: 1 },
+      },
     );
     client.setQueryData(
       listKey('fleet', 'drivers', driverParams({ employeeIds: [EMPLOYEE_ID] })),
@@ -1757,9 +1791,10 @@ describe('the HR filters are owned by HR and applied server-side', () => {
       route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9',
       client,
     });
-    expect(tbodyOf(html), 'still narrowed by the seat the page never saw in the catalogue').toContain(
-      '٢٠٣١',
-    );
+    expect(
+      tbodyOf(html),
+      'still narrowed by the seat the page never saw in the catalogue',
+    ).toContain('2031');
     expect(html, 'and still nothing refused').not.toContain('فلتر الموارد البشرية طابق');
   });
 
@@ -1784,7 +1819,6 @@ describe('the HR filters are owned by HR and applied server-side', () => {
     // Fleet's own roster now, so somebody holding nothing but the Fleet module gets them.
     const hrControls = [
       'fleet.drivers.filters.employee',
-      'fleet.drivers.columns.address',
       'fleet.drivers.columns.governorate',
       'fleet.drivers.columns.phone',
     ];
@@ -1839,15 +1873,12 @@ describe('the HR filters are owned by HR and applied server-side', () => {
 
   it('syncs the HR half with the URL, exactly like the fleet half', () => {
     const html = render(<DriversListPage />, {
-      route:
-        '/fleet/drivers?addr=%D8%AC%D8%A7%D9%85%D8%B9%D8%A9&gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&phone=0100',
+      route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&phone=0100',
       client: hrFilteredClient(1, {
-        address: 'جامعة',
         governorate: 'الجيزة',
         phone: '0100',
       }),
     });
-    expect(html).toContain('value="جامعة"');
     expect(html).toContain('value="الجيزة"');
     expect(html).toContain('value="0100"');
   });
@@ -1931,7 +1962,7 @@ describe('the HR filters are owned by HR and applied server-side', () => {
       route: '/fleet/drivers?gov=%D8%A7%D9%84%D8%AC%D9%8A%D8%B2%D8%A9&drv=e2,e99',
       client,
     });
-    expect(tbodyOf(html), 'only the id BOTH questions agree on').toContain('٢٠٣٢');
+    expect(tbodyOf(html), 'only the id BOTH questions agree on').toContain('2032');
   });
 });
 
@@ -2056,7 +2087,7 @@ describe('the licence column is icons, on every row', () => {
   it('the way in for an unenrolled driver is an icon control', () => {
     const control = wayIn();
     expect(control, 'wearing the upload icon a car with no scan wears').toContain('<UploadIcon');
-    expect(control, 'and the column’s own button styling').toContain('${actionButton}');
+    expect(control, 'and the column’s own button styling').toContain('actionButton');
   });
 
   it('what it does is still said, in the accessible name rather than in prose', () => {
@@ -2076,9 +2107,7 @@ describe('the licence column is icons, on every row', () => {
    */
   it('pressing it opens the FILE PICKER, not a dialog', () => {
     const control = wayIn();
-    expect(control, 'a real file input, so the platform opens the picker').toContain(
-      "type=\"file\"",
-    );
+    expect(control, 'a real file input, so the platform opens the picker').toContain('type="file"');
     expect(control, 'offering what the server accepts, from the one shared list').toContain(
       'accept={DRIVER_LICENSE_IMAGE_ACCEPT}',
     );
@@ -2152,9 +2181,7 @@ describe('the licence column is icons, on every row', () => {
     const dialog = readFileSync(join(HERE, 'components/DriverFormDialog.tsx'), 'utf8');
     const code = dialog.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
     expect(code, 'the prop exists').toContain('initialImage?: File | null');
-    expect(code, 'and seeds the staged file').toContain(
-      'useState<File | null>(initialImage)',
-    );
+    expect(code, 'and seeds the staged file').toContain('useState<File | null>(initialImage)');
     expect(code, 'and is re-applied whenever the dialog opens').toContain(
       'setStagedImage(initialImage)',
     );

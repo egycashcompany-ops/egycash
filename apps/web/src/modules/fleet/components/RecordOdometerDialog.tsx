@@ -25,6 +25,7 @@ import {
   useExpectedReading,
   useRecordOdometer,
   useAllVehicles,
+  useMaintenanceVisits,
   useRosterDay,
 } from '../api/fleet-queries';
 import { resolveCarriedVehicleCode } from '../lib/vehicle-code-options';
@@ -142,6 +143,40 @@ export const RecordOdometerDialog = ({
     if (rosterRow.driver2EmployeeId !== null)
       setDriver2((prev) => prev || rosterRow.driver2EmployeeId!);
   }, [rosterRow, roster.isPlaceholderData]);
+
+  // «لو فيه هات مفيش هات من شاشه الصيانه … السواق اللى ودها الصيانه لو مفيش هنا او هنا سيبها
+  // فاضيه»: with nobody on the roster for the car that day, the driver who took it to the workshop
+  // that day — checked in that day, else checked out that day. Neither: the slots stay empty.
+  const rosterSettled = !can('fleetRoster.view') || (roster.isFetched && !roster.isPlaceholderData);
+  const rosterHasDriver =
+    rosterRow !== null &&
+    (rosterRow.driver1EmployeeId !== null || rosterRow.driver2EmployeeId !== null);
+  const askWorkshop =
+    open &&
+    can('fleetMaintenance.view') &&
+    vehicleId !== '' &&
+    date !== '' &&
+    rosterSettled &&
+    !rosterHasDriver;
+  const visitsIn = useMaintenanceVisits({ vehicleId, from: date, to: date }, askWorkshop);
+  const visitsOut = useMaintenanceVisits({ vehicleId, outFrom: date, outTo: date }, askWorkshop);
+  const workshopDriver = useMemo(() => {
+    if (!askWorkshop || visitsIn.isPlaceholderData || visitsOut.isPlaceholderData) return null;
+    const checkedIn = visitsIn.data?.items.find((v) => v.driverInEmployeeId !== null);
+    if (checkedIn !== undefined) return checkedIn.driverInEmployeeId;
+    const checkedOut = visitsOut.data?.items.find((v) => v.driverOutEmployeeId !== null);
+    return checkedOut?.driverOutEmployeeId ?? null;
+  }, [
+    askWorkshop,
+    visitsIn.data,
+    visitsIn.isPlaceholderData,
+    visitsOut.data,
+    visitsOut.isPlaceholderData,
+  ]);
+  useEffect(() => {
+    if (workshopDriver === null) return;
+    setDriver1((prev) => prev || workshopDriver);
+  }, [workshopDriver]);
 
   const readingNumber = Number(reading);
   const readingGiven = reading !== '' && Number.isInteger(readingNumber);

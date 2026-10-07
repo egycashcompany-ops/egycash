@@ -11,7 +11,9 @@ import { Button } from '../../../shared/ui/Button';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/required-fields';
 import { toast } from '../../../shared/ui/toast/toast-store';
+import { SwapIcon } from '../../../shared/ui/icons';
 import { useCorrectOdometer } from '../api/fleet-queries';
+import { OptionalDriverField } from './OptionalDriverField';
 
 export const CorrectOdometerDialog = ({
   open,
@@ -27,6 +29,9 @@ export const CorrectOdometerDialog = ({
   const [inReading, setInReading] = useState('');
   const [date, setDate] = useState('');
   const [notes, setNotes] = useState('');
+  // «اسمحلى اعدل اسم السواق»: the two drivers are corrected here too.
+  const [driver1, setDriver1] = useState('');
+  const [driver2, setDriver2] = useState('');
   useEffect(() => {
     if (open && log !== null) {
       // A day recorded WITHOUT a reading has none to correct: the box starts empty and stays shut.
@@ -34,6 +39,8 @@ export const CorrectOdometerDialog = ({
       setInReading(log.inReading === null ? '' : String(log.inReading));
       setDate(log.date.slice(0, 10));
       setNotes(log.notes ?? '');
+      setDriver1(log.driver1EmployeeId ?? '');
+      setDriver2(log.driver2EmployeeId ?? '');
     }
   }, [open, log]);
 
@@ -70,6 +77,12 @@ export const CorrectOdometerDialog = ({
     if (date !== '' && date !== log.date.slice(0, 10)) body.date = new Date(date);
     const trimmed = notes.trim();
     if (trimmed !== (log.notes ?? '')) body.notes = trimmed === '' ? null : trimmed;
+    if (driver1 !== (log.driver1EmployeeId ?? '')) {
+      body.driver1EmployeeId = driver1 === '' ? null : driver1;
+    }
+    if (driver2 !== (log.driver2EmployeeId ?? '')) {
+      body.driver2EmployeeId = driver2 === '' ? null : driver2;
+    }
 
     await correct.mutateAsync({ id: log.id, body });
     toast.success(t('fleet.odometer.corrected'));
@@ -131,6 +144,27 @@ export const CorrectOdometerDialog = ({
         <Field label={t('fleet.attendance.fields.notes')}>
           <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </Field>
+        <Field label={t('fleet.odometer.columns.driver1')}>
+          <OptionalDriverField value={driver1} onChange={setDriver1} />
+        </Field>
+        <Field label={t('fleet.odometer.columns.driver2')}>
+          <OptionalDriverField value={driver2} onChange={setDriver2} />
+        </Field>
+        <div className="flex justify-center sm:col-span-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            data-odometer-correct-swap="true"
+            disabled={driver1 === '' && driver2 === ''}
+            onClick={() => {
+              setDriver1(driver2);
+              setDriver2(driver1);
+            }}
+          >
+            <SwapIcon className="h-3.5 w-3.5" />
+            {t('fleet.odometer.swapDrivers')}
+          </Button>
+        </div>
       </div>
     </Dialog>
   );

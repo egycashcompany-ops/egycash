@@ -59,6 +59,27 @@ export const setSequenceValue = async (
   ).exec();
 };
 
+/**
+ * `count` values for a key at once, inside the caller's transaction — the first of them is
+ * returned. For the go-live inventory import (`go-live/inventory.ts`), which registers hundreds of
+ * assets in one transaction: the codes are taken with the assets, so a run that rolls back gives
+ * every one of them back instead of leaving a gap of hundreds in the register's numbering.
+ */
+export const reserveSequenceBlock = async (
+  key: string,
+  count: number,
+  session: ClientSession,
+): Promise<number> => {
+  const doc = await ItSequenceModel.findOneAndUpdate(
+    { _id: key },
+    { $inc: { value: count } },
+    { new: true, upsert: true, session },
+  )
+    .lean<SequenceDoc>()
+    .exec();
+  return doc.value - count + 1;
+};
+
 /** The last value handed out for a key — 0 when none has been. Reads, never allocates. */
 export const currentSequenceValue = async (key: string): Promise<number> => {
   const doc = await ItSequenceModel.findById(key).lean<SequenceDoc>().exec();

@@ -11,6 +11,13 @@ its entry here in the same PR.
 
 ### Added
 
+- **The IT inventory is on the system.** «عندي فايل Excel فيه 10 شيتات … تسلمه الأجهزة اللى معاه …
+  ولو مكتوب مخزن يبقي مش متسلم … الأفرع … خليها مش متسلمه». A one-time step with the deploy
+  registers the 454 devices of the owner's inventory workbook, reviewed with the owner first: the
+  head office's devices handed over to the 57 employees their two-part names were matched to by
+  branch and department (170 devices, one receipt per employee, ready to print and sign), the IT
+  store, every branch's devices and the head-office devices whose holder was not settled in stock
+  in their branch, each saying who the sheet had it with. «وصال» is the Shorouk branch.
 - **Registering a batch of identical IT devices no longer means retyping them.** «ماذا لو عندي 20
   جهاز بنفس المواصفات .. هفضل أكتب نفس المواصفات !؟ أكيد لأ». When a new asset's category is picked,
   the form fills from the last asset registered in that category — name, make, model, branch,

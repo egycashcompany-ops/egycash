@@ -645,7 +645,17 @@ export const LicensingPage = (): JSX.Element => {
                     </td>
                     {PAPERS.map((paper) => {
                       // ONE READING PER PAPER, used by both its squares — the pair is one errand.
-                      const tint = STAGE_TINT[paperStage(row, paper)];
+                      const stage = paperStage(row, paper);
+                      // TEMPORARY — samples for the «open» colour.
+                      const openTone = sp.get('open');
+                      const tint =
+                        stage === 'open' && openTone === 'sky'
+                          ? 'bg-sky-400/[0.14]'
+                          : stage === 'open' && openTone === 'orange'
+                            ? 'bg-orange-500/[0.16]'
+                            : stage === 'open' && openTone === 'violet'
+                              ? 'bg-violet-400/[0.16]'
+                              : STAGE_TINT[stage];
                       return [
                         <td
                           key={`${paper.key}-out`}

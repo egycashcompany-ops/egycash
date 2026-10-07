@@ -15,15 +15,15 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type FleetLicensingRowDto, type Locale, type MeDto } from '@ecms/contracts';
-import { formatDate } from '../../../shared/lib/format';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
 import { LicensingPage, inMonth, matchesPaper, paperStage } from './LicensingPage';
 
 /** The two tints the board paints, as the cell writes them — never the bare shade. */
-const AMBER = 'bg-amber-50 dark:bg-amber-950/40';
-const GREEN = 'bg-emerald-50 dark:bg-emerald-950/40';
+// «اللون الاصفر دا مش ممكن نغيره»: a paper still out is violet now.
+const OPEN = 'bg-violet-400/[0.16]';
+const GREEN = 'bg-emerald-400/[0.14]';
 
 const row = (over: Partial<FleetLicensingRowDto> = {}): FleetLicensingRowDto => ({
   vehicleId: 'v-1',
@@ -131,12 +131,12 @@ describe('the licensing board has the shape of the form', () => {
 });
 
 describe('a paper colours as a PAIR', () => {
-  it('«تسليم» alone turns the paper YELLOW — both of its squares', () => {
+  it('«تسليم» alone turns the paper VIOLET (it was yellow) — both of its squares', () => {
     // «لما اعمل صح على تسليم فى التأمينات يبقى العمودين بتوع تسليم واستلام بتوع التأمينات
     // يتعمله الصف اصفر».
     const html = render({ rows: [row({ insuranceHandover: true })] });
-    expect(cell(html, '150', 'insurance', 'handover'), 'the square ticked').toContain(AMBER);
-    expect(cell(html, '150', 'insurance', 'receipt'), 'and the one beside it').toContain(AMBER);
+    expect(cell(html, '150', 'insurance', 'handover'), 'the square ticked').toContain(OPEN);
+    expect(cell(html, '150', 'insurance', 'receipt'), 'and the one beside it').toContain(OPEN);
     expect(cell(html, '150', 'insurance', 'handover')).not.toContain(GREEN);
   });
 
@@ -146,7 +146,7 @@ describe('a paper colours as a PAIR', () => {
     });
     expect(cell(html, '150', 'insurance', 'handover')).toContain(GREEN);
     expect(cell(html, '150', 'insurance', 'receipt')).toContain(GREEN);
-    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(AMBER);
+    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(OPEN);
   });
 
   it('and the OTHER paper is untouched by it — «ونفس الكلام دا فى حاله عمود الضرايب»', () => {
@@ -158,14 +158,14 @@ describe('a paper colours as a PAIR', () => {
     });
     const tax = cell(html, '150', 'tax', 'handover');
     expect(tax).not.toContain(GREEN);
-    expect(tax).not.toContain(AMBER);
+    expect(tax).not.toContain(OPEN);
   });
 
   it('the tax pair colours by its OWN ticks', () => {
     const html = render({ rows: [row({ taxHandover: true })] });
-    expect(cell(html, '150', 'tax', 'handover')).toContain(AMBER);
-    expect(cell(html, '150', 'tax', 'receipt')).toContain(AMBER);
-    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(AMBER);
+    expect(cell(html, '150', 'tax', 'handover')).toContain(OPEN);
+    expect(cell(html, '150', 'tax', 'receipt')).toContain(OPEN);
+    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(OPEN);
   });
 
   it('nothing ticked is not a colour — most of the board is in that state', () => {
@@ -173,7 +173,7 @@ describe('a paper colours as a PAIR', () => {
     for (const paper of ['insurance', 'tax']) {
       for (const step of ['handover', 'receipt']) {
         const td = cell(html, '150', paper, step);
-        expect(td, `${paper} ${step}`).not.toContain(AMBER);
+        expect(td, `${paper} ${step}`).not.toContain(OPEN);
         expect(td).not.toContain(GREEN);
       }
     }
@@ -342,8 +342,9 @@ describe('the licence expiry', () => {
   it('is a column on the board — the date the whole errand is about', () => {
     const html = render({ rows: [row({ licenseExpiresAt: '2027-03-15T00:00:00.000Z' })] });
     expect(html, 'the heading').toContain('تاريخ انتهاء الترخيص');
-    // `formatDate`'s own rendering, not a hand-built string: Arabic-Indic digits, medium style.
-    expect(html, 'and the date itself').toContain(formatDate('2027-03-15T00:00:00.000Z', 'ar'));
+    // Written the way the vehicles board writes a licence — «2027/03/15» — with its state beside it.
+    expect(html, 'and the date itself').toContain('2027/03/15');
+    expect(html, 'and the word for its state').toMatch(/data-licensing-expiry="(valid|soon|expired)"/u);
   });
 
   it('narrows by the MONTH it expires in', () => {
@@ -455,7 +456,9 @@ describe('the count beside the filters', () => {
     const html = render({ rows: fleet });
     expect(counter(html)).toContain('٣');
     expect(html, 'the vehicles screen’s own phrasing').toContain('سيارة');
-    expect(html, 'and its own weight').toContain('text-xs font-medium text-slate-500');
+    expect(html, 'and its own weight — the boards’ toolbar count').toContain(
+      'text-sm font-bold text-slate-600',
+    );
     expect(html, 'nothing is labelled any more').not.toContain('المعروض');
     expect(html).not.toContain('الإجمالي');
   });

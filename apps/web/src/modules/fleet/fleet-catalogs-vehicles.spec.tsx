@@ -410,12 +410,13 @@ describe('the registry table renders the frozen column order', () => {
     'plate',
     'chassis',
     'motor',
-    'joinedAt',
-    'license',
-    'licenseClass',
+    // «عاوز انقل فئة الترخيص قبل الاتنين دول والتلاته يتنقلوا قبل صورة الرخصه».
     'branch',
     'operation',
     'insurance',
+    'licenseClass',
+    'joinedAt',
+    'license',
     'licenseImage',
     'actions',
   ];
@@ -553,27 +554,30 @@ describe('the registry table renders the frozen column order', () => {
     }
   });
 
-  it('lays every filter out on one wrapping row, identifiers first', () => {
+  it('lays every filter out on one wrapping row, in the columns\u2019 order', () => {
     const html = withRows([vehicle()]);
     // Each control is a direct child of FilterBar's own `flex flex-wrap` bar — no per-filter row,
     // and no group wrapper claiming a line of its own.
     expect(html).toContain('flex flex-wrap items-center gap-2 rounded-lg border');
     expect(html).not.toContain('basis-full');
 
+    // «عدل ترتيب الفلاتر على اساس العواميد»: make, plate, chassis, motor, then operation,
+    // insurance and the licence class — the table's own order. (The code box comes first; it is a
+    // picker without an `aria-label` of its own.)
+    const at = (label: string): number => html.indexOf(`aria-label="${label}"`);
     const order = [
-      t('fleet.vehicles.columns.code'),
-      t('fleet.vehicles.columns.plate'),
-      t('fleet.vehicles.columns.chassis'),
-      t('fleet.vehicles.columns.motor'),
-    ].map((label) => html.indexOf(`aria-label="${label}"`));
+      at(t('fleet.vehicles.filters.short.make')),
+      at(t('fleet.vehicles.columns.plate')),
+      at(t('fleet.vehicles.columns.chassis')),
+      at(t('fleet.vehicles.columns.motor')),
+      at(t('fleet.vehicles.filters.short.operation')),
+      at(t('fleet.vehicles.filters.short.insurance')),
+      at(t('fleet.vehicles.filters.short.licenseClass')),
+    ];
+    order.forEach((position, index) =>
+      expect(position, `filter #${index} present`).toBeGreaterThan(-1),
+    );
     expect(order).toEqual([...order].sort((a, b) => a - b));
-
-    // Every dropdown follows the last identifier, so reading order matches the intended layout.
-    const lastIdentifier = Math.max(...order);
-    for (const key of ['make', 'licenseClass', 'operation', 'insurance']) {
-      const at = html.indexOf(`aria-label="${t(`fleet.vehicles.filters.short.${key}`)}"`);
-      expect(at, `${key} dropdown missing`).toBeGreaterThan(lastIdentifier);
-    }
   });
 
   it('wraps rather than overflowing on a narrow screen', () => {

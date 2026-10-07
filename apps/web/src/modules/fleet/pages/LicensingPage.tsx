@@ -9,7 +9,7 @@
 // admin makes that class «برقاش م». «لما العربيه تبقى اخرها م زى برقاش م تتشال من الجدول خالص ...
 // اخرها ت تتحط ت من جديد». The server decides it on every read, so this screen has no membership
 // rule of its own to fall out of step.
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   compareFleetVehicleCodes,
@@ -18,12 +18,15 @@ import {
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { Input } from '../../../shared/ui/form';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { ExportSheetButton } from '../components/ExportSheetButton';
+import { DARK_FILTER_BAR } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { FigureChip } from '../components/FleetFigures';
+import { BoardIcon, PATH, expiryState } from '../components/FuelCardBoard';
 import { saveSheet } from '../lib/fleet-sheet';
 import { boardVehicleOptions } from '../lib/board-vehicle-options';
 import { licenceMonthOptions } from '../lib/licence-months';
@@ -122,7 +125,7 @@ export const matchesPaper = (
  * HOW FAR THIS PAPER HAS GOT, which is the only thing the colour says.
  *
  * «لما اعمل صح على تسليم فى التأمينات يبقى العمودين بتوع تسليم واستلام بتوع التأمينات يتعمله الصف
- * اصفر ولما صح على تسليم واستلام الصف يبقى اخضر». Amber is «gone out and not back» — a paper
+ * اصفر ولما صح على تسليم واستلام الصف يبقى اخضر» — the yellow is violet now. Violet is «gone out and not back» — a paper
  * somebody is still holding — and green is «done». Both squares empty is not a state worth
  * colouring: it is the ordinary condition of most of the board.
  *
@@ -141,13 +144,26 @@ export const paperStage = (row: FleetLicensingRowDto, paper: Paper): 'none' | 'o
 
 const STAGE_TINT: Record<'none' | 'open' | 'done', string> = {
   none: '',
-  open: 'bg-amber-50 dark:bg-amber-950/40',
-  done: 'bg-emerald-50 dark:bg-emerald-950/40',
+  // «اللون الاصفر دا مش ممكن نغيره»: the paper still out is violet now; done stays green.
+  open: 'bg-violet-400/[0.16]',
+  done: 'bg-emerald-400/[0.14]',
 };
 
-const head =
-  'px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400';
-const cell = 'px-3 py-2 text-sm text-slate-700 dark:text-slate-200';
+/** `2026-01-20…` → `2026/01/20`, the way the Fleet boards write a day. */
+const day = (iso: string): string => iso.slice(0, 10).replace(/-/gu, '/');
+const BRAND_BUTTON =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
+/** The licence's state as the vehicles board words it — ساري / ينتهي قريبًا / منتهي. */
+const EXPIRY_TAG: Record<'valid' | 'soon' | 'expired', string> = {
+  valid: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  soon: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  expired: 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400',
+};
+const EXPIRY_TEXT: Record<'valid' | 'soon' | 'expired', string> = {
+  valid: 'text-slate-900 dark:text-slate-100',
+  soon: 'text-amber-600 dark:text-amber-400',
+  expired: 'text-red-600 dark:text-red-400',
+};
 
 export const LicensingPage = (): JSX.Element => {
   const t = useT();
@@ -158,6 +174,11 @@ export const LicensingPage = (): JSX.Element => {
   const board = useLicensingBoard();
   const mark = useSetLicensingMark();
   const mayMark = can('fleetLicensing.mark');
+  const [statsOpen, setStatsOpen] = useState(false);
+  // «عاوز تبقى زى اتنين فى كل حاجة ماعدا التاريخ يبقى زى السيارات»: the dealership board's
+  // table — no lines between the columns — with the vehicles board's expiry date.
+  const head = 'px-3 py-2.5 text-center text-[13px] font-bold text-slate-500 dark:text-slate-400';
+  const cell = 'px-3 py-2.5 text-sm font-bold text-slate-800 dark:text-slate-200';
 
   const vehicleCodes = readList(sp, 'vehicleCodes');
   const plate = sp.get('plate') ?? '';
@@ -243,7 +264,10 @@ export const LicensingPage = (): JSX.Element => {
    * would empty the board with nothing to say why.
    */
   const monthOptions = useMemo(() => licenceMonthOptions(all, locale), [all, locale]);
-  const carOptions = useMemo(() => boardVehicleOptions(all, vehicleCodes), [all, vehicleCodes.join(',')]);
+  const carOptions = useMemo(
+    () => boardVehicleOptions(all, vehicleCodes),
+    [all, vehicleCodes.join(',')],
+  );
 
   /**
    * The board, in the reader's order.
@@ -262,6 +286,18 @@ export const LicensingPage = (): JSX.Element => {
       }),
     [rows, expiryDir],
   );
+
+  // «الإحصائيات» — over what the filters left, as every board counts.
+  const figures = useMemo(() => {
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    return {
+      cars: rows.length,
+      thisMonth: rows.filter((row) => inMonth(row.licenseExpiresAt, thisMonth)).length,
+      expired: rows.filter((row) => expiryState(row.licenseExpiresAt, 30) === 'expired').length,
+      insuranceOut: rows.filter((row) => paperStage(row, PAPERS[0]) === 'open').length,
+      taxOut: rows.filter((row) => paperStage(row, PAPERS[1]) === 'open').length,
+    };
+  }, [rows]);
 
   const stepOptions = [
     { value: 'handover', label: t('fleet.licensing.columns.handover') },
@@ -310,10 +346,7 @@ export const LicensingPage = (): JSX.Element => {
     });
   };
 
-  const toggle = async (
-    row: FleetLicensingRowDto,
-    field: FleetLicensingMark,
-  ): Promise<void> => {
+  const toggle = async (row: FleetLicensingRowDto, field: FleetLicensingMark): Promise<void> => {
     if (!mayMark) return;
     try {
       await mark.mutateAsync({ vehicleId: row.vehicleId, mark: field, value: !row[field] });
@@ -324,7 +357,12 @@ export const LicensingPage = (): JSX.Element => {
     }
   };
 
-  const square = (row: FleetLicensingRowDto, field: FleetLicensingMark, paper: Paper, step: string) => (
+  const square = (
+    row: FleetLicensingRowDto,
+    field: FleetLicensingMark,
+    paper: Paper,
+    step: string,
+  ) => (
     <button
       type="button"
       data-licensing-mark={`${row.code}:${field}`}
@@ -339,241 +377,297 @@ export const LicensingPage = (): JSX.Element => {
       title={t('fleet.licensing.mark', { paper: t(paper.label), step: t(step), code: row.code })}
       onClick={() => void toggle(row, field)}
       className={cn(
-        'rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed',
+        'mx-auto flex items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed active:scale-90',
+        // A round badge: green and ticked once done, an empty dashed ring until then.
+        'h-7 w-7 rounded-full',
         row[field]
-          ? 'text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400'
-          : 'text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800',
+          ? 'bg-emerald-500 text-white shadow-md shadow-emerald-700/30 hover:bg-emerald-400'
+          : 'border-2 border-dashed border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-slate-600',
       )}
     >
-      <CheckIcon className="h-4 w-4" />
+      <CheckIcon className="h-4 w-4 stroke-[3]" />
     </button>
   );
 
+  /** The expiry as the vehicles board writes it: the date in its state's colour, and the word. */
+  const expiryCell = (iso: string): JSX.Element => {
+    const state = expiryState(iso, 30);
+    const known = state === 'unknown' ? 'valid' : state;
+    return (
+      <span className="inline-flex items-center gap-1.5" data-licensing-expiry={known}>
+        <span dir="ltr" className={cn('tabular-nums', EXPIRY_TEXT[known])}>
+          {day(iso)}
+        </span>
+        <span
+          className={cn(
+            'whitespace-nowrap rounded border px-1 text-[10px] font-medium leading-4',
+            EXPIRY_TAG[known],
+          )}
+        >
+          {t(`fleet.fuelCards.expiry.${known}`)}
+        </span>
+      </span>
+    );
+  };
+
   return (
     <PageContainer fullHeight>
-      <PageHeader
-        title={t('fleet.nav.licensing')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.licensing') },
-        ]}
-        // Not offered when the board itself failed to load: the file behind it would be empty,
-        // and an empty sheet reads as «مفيش بيانات» rather than as a fetch that did not happen.
-        actions={!board.isError && <ExportSheetButton name="licensing" onExport={exportSheet} />}
-      />
-
-      {/* The module's own filter strip. `singleRow` because five controls fit one line at the width
-          this screen is read at, and a bar that wrapped would push the board itself below the
-          fold on the very screen whose point is seeing the whole list at once. */}
-      <FilterBar
-        singleRow
-        hasActiveFilters={hasFilters}
-        onClear={clearFilters}
-        // ONE NUMBER, in the registry's own words and the registry's own place — «خليهم رقم بس
-        // يكون زى اللى فى باقى شاشات الحركه زى شاشه السيارات». The pair of named figures this
-        // replaces was a shape no other Fleet screen has, and a rail of screens is read by
-        // recognition: the count on this bar has to be the same object as the count on that one.
-        //
-        // It is HOW MANY THE FILTER MATCHED, which is what the vehicles screen's own number is —
-        // there it is the server's `totalItems` for the filtered query, and here it is the rows
-        // the same filters left. Same question, same answer, whichever screen asked it.
-        trailing={
+      <div className="flex min-h-0 flex-1 flex-col gap-4">
+        <div className="flex items-center justify-between gap-2" data-licensing-toolbar="true">
           <span
             data-licensing-count
-            className="whitespace-nowrap text-xs font-medium text-slate-500 dark:text-slate-400"
+            className="text-sm font-bold text-slate-600 dark:text-slate-300"
           >
             {t('fleet.licensing.count', { count: formatNumber(rows.length, locale) })}
           </span>
-        }
-      >
-        {/* PICKED, not typed — the control every other Fleet screen asks «which cars?» with. It
-            also takes codes pasted out of a message («150 - 151»), which the box it replaces could
-            not: that one matched a substring, so `15` quietly meant 150 AND 151 AND 215. */}
-        <div className="w-44 shrink-0">
-          <VehicleCodeFilter
-            options={carOptions}
-            value={vehicleCodes}
-            onChange={(next) => patch({ vehicleCodes: writeList(next) })}
-            placeholder={t('fleet.licensing.columns.vehicle')}
-            density="tight"
-            fullWidth
-            className="w-full"
-          />
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            <button
+              type="button"
+              data-licensing-stats-toggle="true"
+              aria-expanded={statsOpen}
+              onClick={() => setStatsOpen((open) => !open)}
+              className={BRAND_BUTTON}
+            >
+              {statsOpen
+                ? t('fleet.vehicles.board.breakdownHide')
+                : t('fleet.vehicles.board.breakdown')}
+            </button>
+            {!board.isError && (
+              <button
+                type="button"
+                data-export="licensing"
+                onClick={() => void exportSheet()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-800 transition hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300"
+              >
+                <BoardIcon
+                  d={PATH.excel}
+                  className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                />
+                {t('fleet.fuelCards.board.excel')}
+              </button>
+            )}
+          </span>
         </div>
-        <div className="min-w-[8rem] flex-1">
-          <Input
-            aria-label={t('fleet.licensing.columns.plate')}
-            placeholder={t('fleet.licensing.columns.plate')}
-            value={plate}
-            onChange={(e) => patch({ plate: e.target.value || null })}
-            textScale="comfortable"
-            rule="plate"
-          />
-        </div>
-        <div className="min-w-[8rem] flex-1">
-          <Input
-            aria-label={t('fleet.licensing.columns.chassis')}
-            placeholder={t('fleet.licensing.columns.chassis')}
-            value={chassis}
-            onChange={(e) => patch({ chassis: e.target.value || null })}
-            textScale="comfortable"
-            rule="english"
-          />
-        </div>
-        {/* The months the licences run out in — the same list the vehicles screen filters by. */}
-        <div className="w-44 shrink-0">
-          <MultiSelect
-            clearable
-            fullWidth
-            density="tight"
-            showSelectedValues
-            searchThreshold={0}
-            panelWidth="w-60"
-            label={t('fleet.vehicles.filters.short.licenseMonth')}
-            options={monthOptions}
-            value={months}
-            onChange={(next) => patch({ month: writeList(next) })}
-          />
-        </div>
-        {/* Each paper picks among its OWN two squares. Two controls rather than one list of four,
-            because «تسليم» means a different column in each — one list would ask the reader to
-            tell two identically-named entries apart by their position. */}
-        <div className="w-40 shrink-0">
-          <MultiSelect
-            clearable
-            label={t('fleet.licensing.columns.insurance')}
-            options={stepOptions}
-            value={insurance}
-            onChange={(next) => patch({ ins: writeList(next) })}
-            density="tight"
-            fullWidth
-          />
-        </div>
-        <div className="w-40 shrink-0">
-          <MultiSelect
-            clearable
-            label={t('fleet.licensing.columns.tax')}
-            options={stepOptions}
-            value={tax}
-            onChange={(next) => patch({ tax: writeList(next) })}
-            density="tight"
-            fullWidth
-          />
-        </div>
-      </FilterBar>
 
-      {board.isPending ? (
-        <Skeleton className="h-64 w-full" />
-      ) : board.isError ? (
-        <ErrorState error={board.error} onRetry={() => void board.refetch()} />
-      ) : rows.length === 0 ? (
-        // TWO EMPTIES, and they are not the same answer. A board with no «… ت» car on it needs the
-        // rule explained — the hint is the whole of why a fleet of two hundred cars can show an
-        // empty screen. A board whose FILTERS matched nothing needs the opposite: saying «اخرها ت»
-        // there would send the reader to the catalogs screen to fix a filter.
-        <EmptyState
-          title={hasFilters ? t('fleet.licensing.noMatches') : t('fleet.licensing.empty')}
-          {...(hasFilters ? {} : { description: t('fleet.licensing.emptyHint') })}
-        />
-      ) : (
-        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200 dark:border-slate-800">
-          <table data-licensing-table className="w-full border-collapse">
-            {/* A sticky head over scrolling rows has to be OPAQUE, or the rows show through it. */}
-            <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
-              <tr>
-                <th rowSpan={2} className={head}>
-                  {t('fleet.licensing.columns.vehicle')}
-                </th>
-                <th rowSpan={2} className={head}>
-                  {t('fleet.licensing.columns.plate')}
-                </th>
-                <th rowSpan={2} className={head}>
-                  {t('fleet.licensing.columns.chassis')}
-                </th>
-                <th rowSpan={2} className={head}>
-                  {/* The ONE column this board is ordered by, and the arrow that turns it round.
-                      A button rather than a click handler on the cell: the arrow is a control, and
-                      a control a keyboard cannot reach is one half the readers cannot use. */}
-                  <button
-                    type="button"
-                    data-licensing-sort={expiryDir}
-                    onClick={() => patch({ sort: expiryDir === 'asc' ? 'desc' : null })}
-                    aria-label={t('fleet.vehicles.fields.licenseExpiresAt')}
-                    className="mx-auto inline-flex items-center gap-1 rounded hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:hover:text-slate-200"
-                  >
-                    {t('fleet.vehicles.fields.licenseExpiresAt')}
-                    <ChevronIcon
-                      className={cn(
-                        'h-3.5 w-3.5 transition-transform',
-                        expiryDir === 'asc' && 'rotate-180',
-                      )}
-                    />
-                  </button>
-                </th>
-                {PAPERS.map((paper) => (
-                  <th key={paper.key} colSpan={2} className={head}>
-                    {t(paper.label)}
-                  </th>
-                ))}
-              </tr>
-              <tr>
-                {PAPERS.map((paper) => [
-                  <th key={`${paper.key}-out`} className={head}>
-                    {t('fleet.licensing.columns.handover')}
-                  </th>,
-                  <th key={`${paper.key}-back`} className={head}>
-                    {t('fleet.licensing.columns.receipt')}
-                  </th>,
-                ])}
-              </tr>
-            </thead>
-            <tbody>
-              {ordered.map((row) => (
-                <tr
-                  key={row.vehicleId}
-                  data-licensing-row={row.code}
-                  className="border-t border-slate-200 dark:border-slate-800"
-                >
-                  <td className={`${cell} text-center font-mono`} dir="ltr">
-                    {row.code}
-                  </td>
-                  <td className={`${cell} text-center`} dir="ltr">
-                    {row.plateNumber}
-                  </td>
-                  <td className={`${cell} text-center font-mono text-xs`} dir="ltr">
-                    {row.chassisNumber}
-                  </td>
-                  <td className={`${cell} text-center tabular-nums whitespace-nowrap`}>
-                    {formatDate(row.licenseExpiresAt, locale)}
-                  </td>
-                  {PAPERS.map((paper) => {
-                    // ONE READING PER PAPER, used by both its squares — the pair is coloured
-                    // together because the pair is one errand, and computing it twice is how the
-                    // two halves of a cell end up disagreeing.
-                    const tint = STAGE_TINT[paperStage(row, paper)];
-                    return [
-                      <td
-                        key={`${paper.key}-out`}
-                        data-licensing-cell={`${row.code}:${paper.key}:handover`}
-                        className={cn(cell, 'text-center', tint)}
-                      >
-                        {square(row, paper.handover, paper, 'fleet.licensing.columns.handover')}
-                      </td>,
-                      <td
-                        key={`${paper.key}-back`}
-                        data-licensing-cell={`${row.code}:${paper.key}:receipt`}
-                        className={cn(cell, 'text-center', tint)}
-                      >
-                        {square(row, paper.receipt, paper, 'fleet.licensing.columns.receipt')}
-                      </td>,
-                    ];
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {statsOpen && (
+          <section className="grid animate-drop-in grid-cols-2 gap-3 lg:grid-cols-5">
+            <FigureChip
+              icon={PATH.truck}
+              iconClass="bg-slate-500/10 text-slate-600 dark:text-slate-300"
+              label={t('fleet.licensing.stats.cars')}
+              value={figures.cars}
+              unit={t('fleet.vehicles.board.totalUnit')}
+            />
+            <FigureChip
+              icon={PATH.calendar}
+              iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-400"
+              label={t('fleet.licensing.stats.thisMonth')}
+              value={figures.thisMonth}
+              unit={t('fleet.vehicles.board.totalUnit')}
+            />
+            <FigureChip
+              icon={PATH.warn}
+              iconClass="bg-red-500/10 text-red-600 dark:text-red-400"
+              label={t('fleet.licensing.stats.expired')}
+              value={figures.expired}
+              unit={t('fleet.vehicles.board.totalUnit')}
+            />
+            <FigureChip
+              icon={PATH.card}
+              iconClass="bg-sky-500/10 text-sky-600 dark:text-sky-400"
+              label={t('fleet.licensing.stats.insuranceOut')}
+              value={figures.insuranceOut}
+              unit={t('fleet.vehicles.board.totalUnit')}
+            />
+            <FigureChip
+              icon={PATH.card}
+              iconClass="bg-violet-500/10 text-violet-600 dark:text-violet-300"
+              label={t('fleet.licensing.stats.taxOut')}
+              value={figures.taxOut}
+              unit={t('fleet.vehicles.board.totalUnit')}
+            />
+          </section>
+        )}
+
+        <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
+          <FilterBar hasActiveFilters={hasFilters} onClear={clearFilters}>
+            <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400">
+              <VehicleCodeFilter
+                options={carOptions}
+                value={vehicleCodes}
+                onChange={(next) => patch({ vehicleCodes: writeList(next) })}
+                placeholder={t('fleet.licensing.columns.vehicle')}
+                density="tight"
+                fullWidth
+                className="w-full"
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.plate} tone="text-sky-600 dark:text-sky-400">
+              <Input
+                aria-label={t('fleet.licensing.columns.plate')}
+                placeholder={t('fleet.licensing.columns.plate')}
+                value={plate}
+                onChange={(e) => patch({ plate: e.target.value || null })}
+                rule="plate"
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.chassis} tone="text-slate-500 dark:text-slate-400">
+              <Input
+                aria-label={t('fleet.licensing.columns.chassis')}
+                placeholder={t('fleet.licensing.columns.chassis')}
+                value={chassis}
+                onChange={(e) => patch({ chassis: e.target.value || null })}
+                rule="english"
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400">
+              <MultiSelect
+                clearable
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                panelWidth="w-60"
+                label={t('fleet.vehicles.filters.short.licenseMonth')}
+                options={monthOptions}
+                value={months}
+                onChange={(next) => patch({ month: writeList(next) })}
+              />
+            </FilterWithIcon>
+            {/* Each paper picks among its OWN two squares — «تسليم» means a different column in
+                each, so one list of four would ask the reader to tell two of them apart by place. */}
+            <FilterWithIcon icon={FILTER_ICON.insurance} tone="text-sky-600 dark:text-sky-400">
+              <MultiSelect
+                clearable
+                label={t('fleet.licensing.columns.insurance')}
+                options={stepOptions}
+                value={insurance}
+                onChange={(next) => patch({ ins: writeList(next) })}
+                density="tight"
+                fullWidth
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-violet-600 dark:text-violet-300">
+              <MultiSelect
+                clearable
+                label={t('fleet.licensing.columns.tax')}
+                options={stepOptions}
+                value={tax}
+                onChange={(next) => patch({ tax: writeList(next) })}
+                density="tight"
+                fullWidth
+              />
+            </FilterWithIcon>
+          </FilterBar>
         </div>
-      )}
+
+        {board.isPending ? (
+          <Skeleton className="h-64 w-full" />
+        ) : board.isError ? (
+          <ErrorState error={board.error} onRetry={() => void board.refetch()} />
+        ) : rows.length === 0 ? (
+          // TWO EMPTIES, and they are not the same answer: a board with no «… ت» car needs the rule
+          // explained; a board whose FILTERS matched nothing needs the opposite.
+          <EmptyState
+            title={hasFilters ? t('fleet.licensing.noMatches') : t('fleet.licensing.empty')}
+            {...(hasFilters ? {} : { description: t('fleet.licensing.emptyHint') })}
+          />
+        ) : (
+          <div className="min-h-0 flex-1 overflow-auto rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-[#111827]">
+            <table data-licensing-table className="w-full border-collapse">
+              {/* A sticky head over scrolling rows has to be OPAQUE, or the rows show through it. */}
+              <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-[#0c121e]">
+                <tr>
+                  <th rowSpan={2} className={head}>
+                    {t('fleet.licensing.columns.vehicle')}
+                  </th>
+                  <th rowSpan={2} className={head}>
+                    {t('fleet.licensing.columns.plate')}
+                  </th>
+                  <th rowSpan={2} className={head}>
+                    {t('fleet.licensing.columns.chassis')}
+                  </th>
+                  <th rowSpan={2} className={head}>
+                    {/* The ONE column this board is ordered by, and the arrow that turns it round. */}
+                    <button
+                      type="button"
+                      data-licensing-sort={expiryDir}
+                      onClick={() => patch({ sort: expiryDir === 'asc' ? 'desc' : null })}
+                      aria-label={t('fleet.vehicles.fields.licenseExpiresAt')}
+                      className="mx-auto inline-flex items-center gap-1 rounded hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/30 dark:hover:text-slate-200"
+                    >
+                      {t('fleet.vehicles.fields.licenseExpiresAt')}
+                      <ChevronIcon
+                        className={cn(
+                          'h-3.5 w-3.5 transition-transform',
+                          expiryDir === 'asc' && 'rotate-180',
+                        )}
+                      />
+                    </button>
+                  </th>
+                  {PAPERS.map((paper) => (
+                    <th key={paper.key} colSpan={2} className={head}>
+                      {t(paper.label)}
+                    </th>
+                  ))}
+                </tr>
+                <tr>
+                  {PAPERS.map((paper) => [
+                    <th key={`${paper.key}-out`} className={head}>
+                      {t('fleet.licensing.columns.handover')}
+                    </th>,
+                    <th key={`${paper.key}-back`} className={head}>
+                      {t('fleet.licensing.columns.receipt')}
+                    </th>,
+                  ])}
+                </tr>
+              </thead>
+              <tbody>
+                {ordered.map((row) => (
+                  <tr
+                    key={row.vehicleId}
+                    data-licensing-row={row.code}
+                    className="border-t border-slate-200 transition hover:bg-slate-100 dark:border-slate-800 dark:hover:bg-[#16203a]"
+                  >
+                    <td className={`${cell} text-center`} dir="ltr">
+                      {row.code}
+                    </td>
+                    <td className={`${cell} text-center`} dir="ltr">
+                      {row.plateNumber}
+                    </td>
+                    <td className={`${cell} text-center font-mono text-xs`} dir="ltr">
+                      {row.chassisNumber}
+                    </td>
+                    <td className={`${cell} whitespace-nowrap text-center`}>
+                      {expiryCell(row.licenseExpiresAt)}
+                    </td>
+                    {PAPERS.map((paper) => {
+                      // ONE READING PER PAPER, used by both its squares — the pair is one errand.
+                      const tint = STAGE_TINT[paperStage(row, paper)];
+                      return [
+                        <td
+                          key={`${paper.key}-out`}
+                          data-licensing-cell={`${row.code}:${paper.key}:handover`}
+                          className={cn(cell, 'text-center', tint)}
+                        >
+                          {square(row, paper.handover, paper, 'fleet.licensing.columns.handover')}
+                        </td>,
+                        <td
+                          key={`${paper.key}-back`}
+                          data-licensing-cell={`${row.code}:${paper.key}:receipt`}
+                          className={cn(cell, 'text-center', tint)}
+                        >
+                          {square(row, paper.receipt, paper, 'fleet.licensing.columns.receipt')}
+                        </td>,
+                      ];
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </PageContainer>
   );
 };

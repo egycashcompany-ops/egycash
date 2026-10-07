@@ -14,6 +14,7 @@ import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
@@ -288,7 +289,7 @@ export const CustodyPage = (): JSX.Element => {
   );
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.custody')}
         breadcrumbs={[
@@ -299,7 +300,7 @@ export const CustodyPage = (): JSX.Element => {
           !isError && <DocumentActions name="custody" onPrint={onPrint} onExport={exportSheet} />
         }
       />
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         <FilterBar
           hasActiveFilters={hasActiveFilters}
           onClear={() =>
@@ -344,39 +345,53 @@ export const CustodyPage = (): JSX.Element => {
 
         <StatStrip columns={4} labelFirst items={totals} />
 
-        <section data-custody-per-vehicle="true" className="space-y-2">
+        {/* Two tables share the height: the per-car totals take what they need up to three tenths,
+            and the movements take the rest — each scrolls its own rows. */}
+        <section
+          data-custody-per-vehicle="true"
+          className="flex shrink-0 flex-col gap-2 lg:max-h-[30%]"
+        >
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             {t('fleet.custody.perVehicle')}
           </h2>
-          <DataTable
-            columns={vehicleColumns}
-            rows={perVehicle}
-            rowKey={(row) => row.vehicleId ?? `code:${row.vehicleCode ?? ''}`}
-            loading={summary.isLoading}
-            error={summary.isError ? summary.error : undefined}
-            onRetry={() => void summary.refetch()}
-            empty={t('fleet.custody.empty')}
-            rowClassName={(row) =>
-              row.vehicleId === GRAND_TOTAL
-                ? 'bg-slate-50 font-semibold dark:bg-slate-900'
-                : undefined
-            }
-          />
+          <div className="lg:flex lg:min-h-0 lg:flex-col [&>div]:min-h-0">
+            <DataTable
+              columns={vehicleColumns}
+              rows={perVehicle}
+              rowKey={(row) => row.vehicleId ?? `code:${row.vehicleCode ?? ''}`}
+              loading={summary.isLoading}
+              error={summary.isError ? summary.error : undefined}
+              onRetry={() => void summary.refetch()}
+              empty={t('fleet.custody.empty')}
+              rowClassName={(row) =>
+                row.vehicleId === GRAND_TOTAL
+                  ? 'bg-slate-50 font-semibold dark:bg-slate-900'
+                  : undefined
+              }
+              stickyHead
+            />
+          </div>
         </section>
 
-        <section data-custody-movements="true" className="space-y-2">
+        <section
+          data-custody-movements="true"
+          className="flex flex-col gap-2 lg:min-h-[12rem] lg:flex-1"
+        >
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
             {t('fleet.custody.movements')}
           </h2>
-          <DataTable
-            columns={columns}
-            rows={rows}
-            rowKey={(row) => `${row.ref}:${row.id}`}
-            loading={isLoading}
-            error={isError ? error : undefined}
-            onRetry={() => void refetch()}
-            empty={t('fleet.custody.empty')}
-          />
+          <div className={BOARD_TABLE_FILL}>
+            <DataTable
+              columns={columns}
+              rows={rows}
+              rowKey={(row) => `${row.ref}:${row.id}`}
+              loading={isLoading}
+              error={isError ? error : undefined}
+              onRetry={() => void refetch()}
+              empty={t('fleet.custody.empty')}
+              stickyHead
+            />
+          </div>
           {data !== undefined && data.meta.totalItems > 0 && (
             <FleetPager
               meta={data.meta}

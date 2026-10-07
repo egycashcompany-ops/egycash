@@ -19,6 +19,7 @@ import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
@@ -414,10 +415,10 @@ export const NoticesPage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       {/* «شيل بس عنوان الاخطارات من الشاشه»: the screen opens on its own bar, as the vehicles
           screen does. */}
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         <div className="flex items-center justify-between gap-2" data-notices-toolbar="true">
           <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
             {data === undefined
@@ -631,7 +632,7 @@ export const NoticesPage = (): JSX.Element => {
           </FilterBar>
         </div>
 
-        <div key={dataUpdatedAt} className={cn('animate-fade-in', NOTICE_TABLE)}>
+        <div key={dataUpdatedAt} className={cn('animate-fade-in', NOTICE_TABLE, BOARD_TABLE_FILL)}>
           <DataTable
             columns={columns}
             rows={rows}
@@ -645,6 +646,7 @@ export const NoticesPage = (): JSX.Element => {
             }
             rowProps={(row) => ({ 'data-notice-row': row.id }) as never}
             minColumnWidth={6}
+            stickyHead
           />
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (

@@ -24,6 +24,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { ExportSheetButton } from '../components/ExportSheetButton';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { fetchEmployeeNames, personCell } from '../lib/fleet-people';
@@ -502,7 +503,7 @@ export const OdometerPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.odometer')}
         breadcrumbs={[
@@ -530,7 +531,7 @@ export const OdometerPage = (): JSX.Element => {
       />
 
 
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         <FilterBar
           singleRow
           // 1400 was measured for this bar plus its reset; the count badge beside them is new
@@ -653,17 +654,20 @@ export const OdometerPage = (): JSX.Element => {
           </div>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(log) => log.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-          {...(monthIsTheReason ? { empty: emptyMonth } : {})}
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(log) => log.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            {...(monthIsTheReason ? { empty: emptyMonth } : {})}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <FleetPager
             meta={data.meta}

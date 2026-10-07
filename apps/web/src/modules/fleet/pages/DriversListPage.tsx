@@ -75,6 +75,7 @@ import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
 import { BreakdownCard, FigureChip } from '../components/FleetFigures';
 import { BoardIcon, PATH, expiryState } from '../components/FuelCardBoard';
 import { DARK_TABLE } from './VehiclesListPage';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
 import { DriverFormDialog } from '../components/DriverFormDialog';
@@ -864,8 +865,8 @@ export const DriversListPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      <div className={BOARD_FRAME}>
         <div className="flex items-center justify-between gap-2" data-drivers-toolbar="true">
           {/* The count belongs BESIDE the filters' answer: it is what the bar was just asked. */}
           <span
@@ -1189,6 +1190,7 @@ export const DriversListPage = (): JSX.Element => {
         <div
           className={cn(
             DARK_TABLE,
+            BOARD_TABLE_FILL,
             // Thirteen columns on a laptop: the cells take less room between them so the whole row
             // stays on the screen.
             'max-[1749px]:[&_tbody_td]:!px-[5px] max-[1749px]:[&_thead_th]:!px-[5px]',
@@ -1209,6 +1211,7 @@ export const DriversListPage = (): JSX.Element => {
             sort={sorts}
             onSortChange={changeSort}
             minColumnWidth={4}
+            stickyHead
           />
         </div>
         {data !== undefined && !blocked && !emptyMatch && data.meta.totalItems > 0 && (

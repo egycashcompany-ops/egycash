@@ -11,6 +11,7 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -159,7 +160,7 @@ export const AttendancePage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.attendance')}
         breadcrumbs={[
@@ -179,7 +180,7 @@ export const AttendancePage = (): JSX.Element => {
         }
       />
 
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         <FilterBar hasActiveFilters={coversDate !== ''} onClear={() => patch({ date: null })}>
           <Field
             label={t('fleet.attendance.coversDate')}
@@ -195,16 +196,19 @@ export const AttendancePage = (): JSX.Element => {
           </Field>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <FleetPager
             meta={data.meta}

@@ -584,3 +584,9 @@ export const listCustodyMovements = (
   params: FleetListParams,
 ): Promise<Paginated<FleetCustodyMovementDto>> =>
   getPage<FleetCustodyMovementDto>(`/fleet/custody/movements${buildQuery(params)}`);
+
+// ── Licensing expenses (مصروفات التراخيص) ─────────────────────────────────────
+export const listLicenseExpenses = (
+  params: FleetListParams,
+): Promise<Paginated<import('../lib/license-expense-memo').LicenseExpenseMemoRow>> =>
+  getPage(`/fleet/license-expenses${buildQuery(params)}`);

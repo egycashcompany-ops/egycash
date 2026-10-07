@@ -1077,3 +1077,10 @@ export const useCustodyMovements = (params: FleetListParams, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+
+export const useLicenseExpenses = (params: FleetListParams) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'licenseExpenses', params),
+    queryFn: () => api.listLicenseExpenses(params),
+    placeholderData: (prev) => prev,
+  });

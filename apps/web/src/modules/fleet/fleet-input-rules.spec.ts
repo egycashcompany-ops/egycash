@@ -81,6 +81,8 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/pages/FleetSettingsPage.tsx': { integer: 1, money: 1, arabic: 1 },
   'modules/fleet/pages/FuelCardsPage.tsx': { digits: 1 },
   'modules/fleet/pages/FuelChargingPage.tsx': { money: 1 },
+  // Each item's counter and each card's count; each card's amount.
+  'modules/fleet/pages/LicenseExpenseEditorPage.tsx': { integer: 2, money: 1 },
   // Plate and chassis filters.
   'modules/fleet/pages/LicensingPage.tsx': { plate: 1, english: 1 },
   // The form's mobiles, phones and national ids.

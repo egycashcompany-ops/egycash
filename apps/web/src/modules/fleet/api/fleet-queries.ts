@@ -13,6 +13,9 @@ import {
   type ApproveFleetFuelCharge,
   type CreateFleetFuelCard,
   type CreateFleetNotice,
+  type CreateFleetLicenseExpense,
+  type SaveFleetLicenseExpenseSettings,
+  type UpdateFleetLicenseExpense,
   type RequestFleetFuelCharge,
   type TransferFleetFuelBalance,
   type TransferFleetFuelBatch,
@@ -84,6 +87,7 @@ const fleetKeys = {
   roster: featureKey(MODULE, 'roster'),
   accidents: featureKey(MODULE, 'accidents'),
   notices: featureKey(MODULE, 'notices'),
+  licenseExpenses: featureKey(MODULE, 'licenseExpenses'),
   dealership: featureKey(MODULE, 'dealership'),
   fuelCards: featureKey(MODULE, 'fuelCards'),
   receipts: featureKey(MODULE, 'receipts'),
@@ -1077,3 +1081,49 @@ export const useCustodyMovements = (params: FleetListParams, enabled = true) =>
     placeholderData: (prev) => prev,
     enabled,
   });
+
+// ── Licensing expenses (مصروفات التراخيص) ─────────────────────────────────────
+export const useLicenseExpenses = (params: FleetListParams, enabled = true) =>
+  useQuery({
+    queryKey: listKey(MODULE, 'licenseExpenses', params),
+    queryFn: () => api.listLicenseExpenses(params),
+    placeholderData: (prev) => prev,
+    enabled,
+  });
+
+export const useLicenseExpense = (id: string) =>
+  useQuery({
+    queryKey: detailKey(MODULE, 'licenseExpenses', id),
+    queryFn: () => api.getLicenseExpense(id),
+    enabled: id !== '',
+  });
+
+const useLicenseExpenseMutation = <TInput, TResult>(
+  mutationFn: (input: TInput) => Promise<TResult>,
+) => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn,
+    onSuccess: () => void qc.invalidateQueries({ queryKey: fleetKeys.licenseExpenses }),
+  });
+};
+
+export const useCreateLicenseExpense = () =>
+  useLicenseExpenseMutation((body: CreateFleetLicenseExpense) => api.createLicenseExpense(body));
+export const useUpdateLicenseExpense = () =>
+  useLicenseExpenseMutation(({ id, body }: { id: string; body: UpdateFleetLicenseExpense }) =>
+    api.updateLicenseExpense(id, body),
+  );
+export const useDeleteLicenseExpense = () =>
+  useLicenseExpenseMutation((id: string) => api.deleteLicenseExpense(id));
+
+/** The names every new memo starts with — «تتظبط مرة في الإعداد». */
+export const useLicenseExpenseSettings = () =>
+  useQuery({
+    queryKey: [...fleetKeys.licenseExpenses, 'settings'],
+    queryFn: () => api.getLicenseExpenseSettings(),
+  });
+export const useSaveLicenseExpenseSettings = () =>
+  useLicenseExpenseMutation((body: SaveFleetLicenseExpenseSettings) =>
+    api.saveLicenseExpenseSettings(body),
+  );

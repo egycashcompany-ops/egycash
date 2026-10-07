@@ -496,6 +496,14 @@ export const NAVIGATION_CATALOG: CategoryDef[] = [
         permission: 'fleetLicensing.view',
       },
       {
+        en: 'Licensing Expenses',
+        ar: 'مصروفات التراخيص',
+        route: '/fleet/license-expenses',
+        // The department's memo of what licences cost — the receipt glyph, money written on paper.
+        icon: 'receipt',
+        permission: 'fleetLicenseExpense.view',
+      },
+      {
         en: 'Insurance Notices',
         ar: 'الإخطارات',
         route: '/fleet/notices',

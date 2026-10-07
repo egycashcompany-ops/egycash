@@ -24,9 +24,10 @@ describe('the assembled page registry', () => {
 
   // ADR-032 added one page (`platform.delegation`) carrying one key (`delegation.manage`).
   // The custody acknowledgment's national ID added one key and no page (see below).
-  it('declares 80 pages over 301 permissions', () => {
-    expect(pages).toHaveLength(80);
-    expect(permissions).toHaveLength(301);
+  // Fleet's licensing expenses (مصروفات التراخيص) added one page and its four keys.
+  it('declares 81 pages over 305 permissions', () => {
+    expect(pages).toHaveLength(81);
+    expect(permissions).toHaveLength(305);
   });
 
   /**
@@ -83,9 +84,9 @@ describe('the assembled page registry', () => {
    * a power over the assets screen's receipts, not a screen, so it routes to `it.assets` and the
    * unassigned count does not move.
    */
-  it('assigns 272 permissions to a page and leaves 29 deliberately unassigned', () => {
+  it('assigns 276 permissions to a page and leaves 29 deliberately unassigned', () => {
     const assigned = permissions.filter((p) => p.pageId !== null);
-    expect(assigned).toHaveLength(272);
+    expect(assigned).toHaveLength(276);
     // P-HR-APP added two keys and no page, which is the movement this number is here to show: the
     // portal's own key belongs to accounts outside the company and has no staff screen at all, and
     // sending a candidate their link is an action on the applicant screen rather than a screen.
@@ -110,7 +111,7 @@ describe('the assembled page registry', () => {
   it('splits the pages across the four modules as declared', () => {
     const byModule = new Map<string, number>();
     for (const page of pages) byModule.set(page.moduleId, (byModule.get(page.moduleId) ?? 0) + 1);
-    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 17, it: 9 });
+    expect(Object.fromEntries(byModule)).toEqual({ platform: 17, hr: 37, fleet: 18, it: 9 });
   });
 
   // Named rather than counted, because "which permissions have no home" is the question a reviewer

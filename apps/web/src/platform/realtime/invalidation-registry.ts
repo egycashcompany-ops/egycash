@@ -314,6 +314,8 @@ export const INVALIDATION_REGISTRY: Readonly<Record<string, readonly KeyPrefix[]
   // notices screen and its editor.
   'fleet.fleetNotice': [['fleet', 'notices']],
   'fleet.noticeSettings': [['fleet', 'notices']],
+  'fleet.licenseExpense': [['fleet', 'licenseExpenses']],
+  'fleet.licenseExpenseSettings': [['fleet', 'licenseExpenses']],
   // A private car's bill is also a line of the custody ledger.
   'fleet.dealershipInvoice': [
     ['fleet', 'dealership'],

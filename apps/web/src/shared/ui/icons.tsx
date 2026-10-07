@@ -496,3 +496,11 @@ export const PrinterIcon = (p: IconProps): JSX.Element => (
     <rect x="6" y="14" width="12" height="7" rx="1" />
   </Base>
 );
+
+/** A receipt — the torn-edged slip with its lines, for a screen of money written on paper. */
+export const ReceiptIcon = (p: IconProps): JSX.Element => (
+  <Base {...p}>
+    <path d="M5 2h14v20l-2.5-1.5L14 22l-2-1.5L10 22l-2.5-1.5L5 22z" />
+    <path d="M9 7h6M9 11h6M9 15h4" />
+  </Base>
+);

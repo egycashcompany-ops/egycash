@@ -87,6 +87,31 @@ export const seedFleet = async (): Promise<void> => {
     await fleetCatalogItemService.ensure({ kind, name, countsForAlarm: false });
   }
 
+  // «مصروفات التراخيص»: the items the department's own memos list, so the screen's picker is not
+  // empty on day one. Ordinary catalog data — renamable, archivable, extendable from /fleet/catalogs.
+  const licenseExpenseItems: { ar: string; en: string }[] = [
+    { ar: 'براءة ذمة', en: 'Clearance certificate' },
+    { ar: 'تأمين إجباري', en: 'Compulsory insurance' },
+    { ar: 'خدمات مرورية', en: 'Traffic services' },
+    { ar: 'ضرائب', en: 'Taxes' },
+    { ar: 'دمغة', en: 'Stamp duty' },
+    { ar: 'ملفات', en: 'Files' },
+    { ar: 'تصوير', en: 'Photocopies' },
+    { ar: 'ورقة فحص', en: 'Inspection sheet' },
+    { ar: 'استعلام أمني', en: 'Security inquiry' },
+    { ar: 'استمارة تحديث', en: 'Update form' },
+    { ar: 'أمان', en: 'Security deposit' },
+    { ar: 'مستلزمات', en: 'Supplies' },
+    { ar: 'استمارة بيانات', en: 'Data form' },
+  ];
+  for (const name of licenseExpenseItems) {
+    await fleetCatalogItemService.ensure({
+      kind: 'licenseExpenseItem',
+      name,
+      countsForAlarm: false,
+    });
+  }
+
   // The three catalogs added for the vehicle registry (licenseClass, operation, insuranceCompany)
   // are deliberately NOT seeded with values: the admin names them, and guessing a house's
   // operating groups or insurers would put fiction in a dropdown people then pick from. The

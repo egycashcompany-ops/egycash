@@ -18,6 +18,8 @@
 //   /fleet/licensing          fleetLicensing.view          التراخيص
 //   /fleet/notices (+/:tpl)   fleetNotice.view             الإخطارات
 //   /fleet/notices/setup/:tpl fleetNotice.view             إعداد النماذج
+//   /fleet/license-expenses   fleetLicenseExpense.view     مصروفات التراخيص
+//   /fleet/license-expenses/new fleetLicenseExpense.create (/:id .edit)
 //   /fleet/dealership         fleetDealership.view         التوكيل
 //   /fleet/fuel-cards         fleetFuelCard.view           بطاقات الوقود
 //   /fleet/fuel-cards/charging fleetFuelCharge.view        شحن الكروت
@@ -45,6 +47,8 @@ import { AccidentsPage } from './pages/AccidentsPage';
 import { ViolationsPage } from './pages/ViolationsPage';
 import { LicensingPage } from './pages/LicensingPage';
 import { NoticesPage } from './pages/NoticesPage';
+import { LicenseExpensesPage } from './pages/LicenseExpensesPage';
+import { LicenseExpenseEditorPage } from './pages/LicenseExpenseEditorPage';
 import { NoticeEditorPage } from './pages/NoticeEditorPage';
 import { NoticeSetupPage } from './pages/NoticeSetupPage';
 import { DealershipPage } from './pages/DealershipPage';
@@ -174,6 +178,30 @@ export default function FleetRoutes(): JSX.Element {
             element={
               <RequirePermission permission="fleetNotice.view">
                 <NoticesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="license-expenses"
+            element={
+              <RequirePermission permission="fleetLicenseExpense.view">
+                <LicenseExpensesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="license-expenses/new"
+            element={
+              <RequirePermission permission="fleetLicenseExpense.create">
+                <LicenseExpenseEditorPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="license-expenses/:id"
+            element={
+              <RequirePermission permission="fleetLicenseExpense.edit">
+                <LicenseExpenseEditorPage />
               </RequirePermission>
             }
           />

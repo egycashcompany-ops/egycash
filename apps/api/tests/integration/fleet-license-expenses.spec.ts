@@ -1,0 +1,200 @@
+// «مصروفات التراخيص» against a real mongo — a renewal, an extension, or both in one record; nothing
+// in a half is required; a hand-typed plate keeps no car; an edit is versioned; a delete is soft;
+// and the set-up's signatures start from the department's own names.
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
+import { Types } from 'mongoose';
+import {
+  CreateFleetLicenseExpenseSchema,
+  ListFleetLicenseExpensesQuerySchema,
+} from '@ecms/contracts';
+import { bootPlatform } from '../../src/platform/kernel/bootstrap';
+import { moduleManifests } from '../../src/modules';
+import { disconnectMongo } from '../../src/infrastructure/database/mongo';
+import { FleetLicenseExpenseModel } from '../../src/modules/fleet/license-expenses/license-expense.model';
+import {
+  DEFAULT_LICENSE_EXPENSE_SIGNATURES,
+  fleetLicenseExpenseService,
+} from '../../src/modules/fleet/license-expenses/license-expense.service';
+import { FleetCatalogItemModel } from '../../src/modules/fleet/catalogs/catalog-item.model';
+
+let replset: MongoMemoryReplSet | undefined;
+
+const resolveMongoUri = async (): Promise<string> => {
+  if (process.env['MONGO_TEST_URI'] !== undefined) return process.env['MONGO_TEST_URI'];
+  replset = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
+  return replset.getUri();
+};
+
+const ACTOR = new Types.ObjectId().toString();
+const SIGNATURES = { agent: 'أ', director: 'ب', generalManager: 'ج\nد' };
+
+beforeAll(async () => {
+  await bootPlatform({ mongoUri: await resolveMongoUri(), modules: moduleManifests });
+}, 120_000);
+
+afterAll(async () => {
+  await disconnectMongo();
+  await replset?.stop();
+});
+
+describe('a licensing-expenses memo', () => {
+  it('refuses a record that is neither a renewal nor an extension', () => {
+    expect(
+      CreateFleetLicenseExpenseSchema.safeParse({
+        date: '2026-10-04',
+        renewal: null,
+        extension: null,
+        signatures: SIGNATURES,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('saves an empty renewal — nothing in a half is required', async () => {
+    const dto = await fleetLicenseExpenseService.create(
+      CreateFleetLicenseExpenseSchema.parse({
+        date: '2026-10-04',
+        renewal: { vehicles: [], items: [] },
+        extension: null,
+        signatures: SIGNATURES,
+      }),
+      ACTOR,
+    );
+    expect(dto).toMatchObject({
+      date: '2026-10-04',
+      renewal: { vehicles: [], items: [] },
+      extension: null,
+      signatures: SIGNATURES,
+      version: 0,
+    });
+  });
+
+  it('keeps both memos, every line and a hand-typed plate; edits under a version; deletes softly', async () => {
+    const created = await fleetLicenseExpenseService.create(
+      CreateFleetLicenseExpenseSchema.parse({
+        date: '2026-09-24',
+        renewal: {
+          vehicles: [{ vehicleId: null, plate: 'أ ق 1761' }],
+          items: [
+            {
+              itemId: null,
+              label: 'أمان',
+              amount: 600,
+              count: 1,
+              paidBy: 'visa',
+              receipt: true,
+            },
+            {
+              itemId: null,
+              label: 'دمغة',
+              amount: null,
+              count: 4,
+              paidBy: 'cash',
+              receipt: false,
+            },
+          ],
+        },
+        extension: {
+          vehicles: [{ vehicleId: null, plate: 'أ ق 1791' }],
+          items: [
+            {
+              itemId: null,
+              label: 'تصوير',
+              amount: 18,
+              count: 2,
+              paidBy: 'cash',
+              receipt: false,
+            },
+          ],
+        },
+        signatures: SIGNATURES,
+      }),
+      ACTOR,
+    );
+    expect(created.renewal?.vehicles).toEqual([{ vehicleId: null, code: null, plate: 'أ ق 1761' }]);
+    expect(created.renewal?.items.map((item) => [item.label, item.amount, item.paidBy])).toEqual([
+      ['أمان', 600, 'visa'],
+      ['دمغة', null, 'cash'],
+    ]);
+    expect(created.extension?.items[0]).toMatchObject({ label: 'تصوير', count: 2 });
+
+    const edited = await fleetLicenseExpenseService.update(
+      created.id,
+      {
+        date: new Date('2026-09-25'),
+        renewal: null,
+        extension: created.extension,
+        signatures: SIGNATURES,
+        version: created.version,
+      } as never,
+      ACTOR,
+    );
+    expect(edited.renewal).toBeNull();
+    expect(edited.date).toBe('2026-09-25');
+    await expect(
+      fleetLicenseExpenseService.update(
+        created.id,
+        { ...edited, date: new Date('2026-09-26'), version: created.version } as never,
+        ACTOR,
+      ),
+    ).rejects.toThrow();
+
+    const extensions = await fleetLicenseExpenseService.list(
+      ListFleetLicenseExpensesQuerySchema.parse({ kind: 'extension' }),
+    );
+    expect(extensions.items.map((row) => row.id)).toContain(created.id);
+    const renewals = await fleetLicenseExpenseService.list(
+      ListFleetLicenseExpensesQuerySchema.parse({ kind: 'renewal' }),
+    );
+    expect(renewals.items.map((row) => row.id)).not.toContain(created.id);
+
+    await fleetLicenseExpenseService.remove(created.id, ACTOR);
+    const after = await fleetLicenseExpenseService.list(
+      ListFleetLicenseExpensesQuerySchema.parse({}),
+    );
+    expect(after.items.map((row) => row.id)).not.toContain(created.id);
+    // Soft: the row is still in the database, marked deleted.
+    const raw = await FleetLicenseExpenseModel.findById(created.id).lean().exec();
+    expect(raw?.isDeleted).toBe(true);
+  });
+
+  it('filters by date, both days included', async () => {
+    const dto = await fleetLicenseExpenseService.create(
+      CreateFleetLicenseExpenseSchema.parse({
+        date: '2025-01-15',
+        renewal: null,
+        extension: { vehicles: [], items: [] },
+        signatures: SIGNATURES,
+      }),
+      ACTOR,
+    );
+    const inside = await fleetLicenseExpenseService.list(
+      ListFleetLicenseExpensesQuerySchema.parse({ from: '2025-01-15', to: '2025-01-15' }),
+    );
+    expect(inside.items.map((row) => row.id)).toEqual([dto.id]);
+  });
+
+  it('starts the set-up from the department names, then keeps what is saved', async () => {
+    expect(await fleetLicenseExpenseService.getSettings()).toEqual({
+      signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
+      version: null,
+    });
+    const saved = await fleetLicenseExpenseService.saveSettings({ signatures: SIGNATURES }, ACTOR);
+    expect(saved).toEqual({ signatures: SIGNATURES, version: 0 });
+    const again = await fleetLicenseExpenseService.saveSettings(
+      { signatures: { ...SIGNATURES, agent: 'هـ' }, version: 0 },
+      ACTOR,
+    );
+    expect(again.signatures.agent).toBe('هـ');
+  });
+
+  it('seeds the memo items the department lists', async () => {
+    const items = await FleetCatalogItemModel.find({ kind: 'licenseExpenseItem', isDeleted: false })
+      .lean()
+      .exec();
+    expect(items.map((item) => item.name.ar)).toEqual(
+      expect.arrayContaining(['براءة ذمة', 'تأمين إجباري', 'ضرائب', 'أمان', 'استمارة بيانات']),
+    );
+    expect(items).toHaveLength(13);
+  });
+});

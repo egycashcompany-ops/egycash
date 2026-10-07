@@ -152,10 +152,10 @@ const rowWith = (html: string, text: string): string => {
 };
 
 describe('the dealership table', () => {
-  it('shows a workshop exit as a WARNING row waiting for its invoice, with «تسجيل الفاتورة»', () => {
+  it('shows a workshop exit waiting for its invoice, with «تسجيل الفاتورة»', () => {
     const html = render();
     const pending = rowWith(html, 'صيانة');
-    // «حاجه قريبه من الشكل دا واللون دا»: the warm amber row, and «⚠ بانتظار الفاتورة» by the car.
+    // «⚠ بانتظار الفاتورة» by the car; the row itself is not tinted.
     expect(pending).toContain('data-pending="true"');
     expect(pending).toContain('data-dealership-waiting="true"');
     expect(pending).toContain(ar('fleet.dealership.pending'));
@@ -164,7 +164,7 @@ describe('the dealership table', () => {
     expect(pending, 'the insurer came off the car').toContain('مصر للتأمين');
   });
 
-  it('says who paid a recorded row, and does not tint it', () => {
+  it('says who paid a recorded row, and turns it green', () => {
     const html = render({
       rows: [
         row({
@@ -191,6 +191,9 @@ describe('the dealership table', () => {
     expect(dealer).not.toContain('data-dealership-waiting');
     expect(dealer).toContain(ar('fleet.dealership.side.dealership'));
     expect(dealer).toContain('3,250.00');
+    // «عاوز لما اعمل تسجيل الفاتوره تبقى اخضر»: only a recorded row is tinted, and green.
+    expect(PAGE).toContain('[&_tbody_tr[data-pending=false]]:!bg-emerald-50');
+    expect(PAGE).not.toContain('[&_tbody_tr[data-pending=true]]');
     const custody = rowWith(html, 'إصلاح</span>');
     expect(custody).toContain(ar('fleet.dealership.side.custody'));
   });

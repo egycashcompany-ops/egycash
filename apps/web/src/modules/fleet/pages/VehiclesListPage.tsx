@@ -604,6 +604,36 @@ export const VehiclesListPage = (): JSX.Element => {
       ),
     },
     {
+      key: 'branch',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
+      header: t('fleet.vehicles.columns.branch'),
+      render: (v) => dash(v.branchId === null ? undefined : branchName.get(v.branchId)),
+    },
+    {
+      key: 'operation',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
+      header: t('fleet.vehicles.columns.operation'),
+      render: (v) => dash(v.operationId === null ? undefined : operationName.get(v.operationId)),
+    },
+    {
+      key: 'insurance',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
+      header: t('fleet.vehicles.columns.insurance'),
+      render: (v) =>
+        dash(v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)),
+    },
+    {
+      key: 'licenseClass',
+      align: 'center',
+      className: WRAPS_ON_LAPTOP,
+      header: t('fleet.vehicles.columns.licenseClass'),
+      render: (v) =>
+        dash(v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)),
+    },
+    {
       key: 'joinedAt',
       align: 'center',
       header: t('fleet.vehicles.columns.joinedAt'),
@@ -642,36 +672,6 @@ export const VehiclesListPage = (): JSX.Element => {
           </span>
         );
       },
-    },
-    {
-      key: 'licenseClass',
-      align: 'center',
-      className: WRAPS_ON_LAPTOP,
-      header: t('fleet.vehicles.columns.licenseClass'),
-      render: (v) =>
-        dash(v.licenseClassId === null ? undefined : licenseClassName.get(v.licenseClassId)),
-    },
-    {
-      key: 'branch',
-      align: 'center',
-      className: WRAPS_ON_LAPTOP,
-      header: t('fleet.vehicles.columns.branch'),
-      render: (v) => dash(v.branchId === null ? undefined : branchName.get(v.branchId)),
-    },
-    {
-      key: 'operation',
-      align: 'center',
-      className: WRAPS_ON_LAPTOP,
-      header: t('fleet.vehicles.columns.operation'),
-      render: (v) => dash(v.operationId === null ? undefined : operationName.get(v.operationId)),
-    },
-    {
-      key: 'insurance',
-      align: 'center',
-      className: WRAPS_ON_LAPTOP,
-      header: t('fleet.vehicles.columns.insurance'),
-      render: (v) =>
-        dash(v.insuranceCompanyId === null ? undefined : insurerName.get(v.insuranceCompanyId)),
     },
     {
       key: 'licenseImage',
@@ -1005,6 +1005,28 @@ export const VehiclesListPage = (): JSX.Element => {
                 }
               />
             </FilterWithIcon>
+            {/* «عدل ترتيب الفلاتر على اساس العواميد»: the filters run in the table's column order,
+              status last. The dropdowns are EVERY ONE of them multi-valued. «الفئة أ أو ب» and «المتاحة والمتوقفة» are single
+              questions about the fleet, and a one-answer control made the reader ask each of them
+              twice and add the two counts up by hand. Branch has taken several since it was
+              written; the other five now read the same way. */}
+            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300" className="w-24 shrink-0">
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                chips
+                label={t('fleet.vehicles.filters.short.make')}
+                options={(types.data?.items ?? []).map((type) => ({
+                  value: type.id,
+                  label: localized(type.name, locale),
+                }))}
+                value={typeIds}
+                onChange={(ids) => patch({ type: writeList(ids) })}
+              />
+            </FilterWithIcon>
             <FilterWithIcon icon={FILTER_ICON.plate} tone="text-sky-600 dark:text-sky-400" className="w-24 shrink-0">
               <Input
                 aria-label={t('fleet.vehicles.columns.plate')}
@@ -1035,55 +1057,6 @@ export const VehiclesListPage = (): JSX.Element => {
                 density="tight"
               />
             </FilterWithIcon>
-            {/* The dropdowns: make, then the three catalog references, then branch and status —
-              EVERY ONE of them multi-valued. «الفئة أ أو ب» and «المتاحة والمتوقفة» are single
-              questions about the fleet, and a one-answer control made the reader ask each of them
-              twice and add the two counts up by hand. Branch has taken several since it was
-              written; the other five now read the same way. */}
-            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300" className="w-24 shrink-0">
-              <MultiSelect
-                clearable
-                className="w-full"
-                fullWidth
-                density="tight"
-                showSelectedValues
-                chips
-                label={t('fleet.vehicles.filters.short.make')}
-                options={(types.data?.items ?? []).map((type) => ({
-                  value: type.id,
-                  label: localized(type.name, locale),
-                }))}
-                value={typeIds}
-                onChange={(ids) => patch({ type: writeList(ids) })}
-              />
-            </FilterWithIcon>
-            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-700 dark:text-amber-300" className="w-24 shrink-0">
-              <CatalogMultiSelect
-                kind="licenseClass"
-                className="w-full"
-                fullWidth
-                density="tight"
-                value={licenseClassIds}
-                onChange={(ids) => patch({ licenseClass: writeList(ids) })}
-                label={t('fleet.vehicles.filters.short.licenseClass')}
-              />
-            </FilterWithIcon>
-            {/* The months the licences run out in — several at once, each with its count of cars. */}
-            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400" className="w-32 shrink-0">
-              <MultiSelect
-                clearable
-                className="w-full"
-                fullWidth
-                density="tight"
-                showSelectedValues
-                searchThreshold={0}
-                panelWidth="w-60"
-                label={t('fleet.vehicles.filters.short.licenseMonth')}
-                options={monthOptions}
-                value={licenseMonths}
-                onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
-              />
-            </FilterWithIcon>
             {/* `BranchFilterSelect` takes no width of its own; its trigger is sized from here. */}
             <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-600 dark:text-violet-300" className="w-20 shrink-0 [&>div>div:not([role=listbox])]:flex [&>div>div:not([role=listbox])]:w-full [&_button[aria-haspopup]]:w-full [&_button[aria-haspopup]]:justify-between [&_button[aria-haspopup]]:!pe-2">
               <BranchFilterSelect
@@ -1112,6 +1085,33 @@ export const VehiclesListPage = (): JSX.Element => {
                 value={insuranceCompanyIds}
                 onChange={(ids) => patch({ insurance: writeList(ids) })}
                 label={t('fleet.vehicles.filters.short.insurance')}
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-700 dark:text-amber-300" className="w-24 shrink-0">
+              <CatalogMultiSelect
+                kind="licenseClass"
+                className="w-full"
+                fullWidth
+                density="tight"
+                value={licenseClassIds}
+                onChange={(ids) => patch({ licenseClass: writeList(ids) })}
+                label={t('fleet.vehicles.filters.short.licenseClass')}
+              />
+            </FilterWithIcon>
+            {/* The months the licences run out in — several at once, each with its count of cars. */}
+            <FilterWithIcon icon={FILTER_ICON.calendar} tone="text-cyan-600 dark:text-cyan-400" className="w-32 shrink-0">
+              <MultiSelect
+                clearable
+                className="w-full"
+                fullWidth
+                density="tight"
+                showSelectedValues
+                searchThreshold={0}
+                panelWidth="w-60"
+                label={t('fleet.vehicles.filters.short.licenseMonth')}
+                options={monthOptions}
+                value={licenseMonths}
+                onChange={(next) => patch({ licenseMonths: writeList(next), licenseMonth: null })}
               />
             </FilterWithIcon>
             {/* THREE statuses, so it takes several — the two-answer filters elsewhere in Fleet

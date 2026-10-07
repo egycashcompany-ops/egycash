@@ -837,3 +837,23 @@ starts only on an explicit owner GO.
   إيجي كاش للحلول النقدية، كود …، بطاقة رقم قومي … بأنني قد استلمت جهاز …», the code in the
   form's red and its digits, like the national ID after it, and a dotted line for the pen when the
   directory cannot name the employee. The receipt already kept `employeeCode`; no API change.
+- **The IT inventory imported** (2026-10-07) — owner request: «عندي فايل Excel فيه 10 شيتات … الأسماء
+  فى الفرع الرئيسي المهندسين ثنائية ! فهحتاج منك بمعلومية الفرع والإدارة والاسم الثنائي تظبط أنت
+  الأسماء … وتسلمه الأجهزة اللى معاه (لو فى أسم) .. ولو مكتوب مخزن يبقي مش متسلم … الأفرع كل
+  الأجهزة والأصول اللى فيها خليها مش متسلمه». The workbook (`Inventory_Sys_26.xlsx`: the head
+  office's PCs and screens, laptops, IP phones and printers, and six branch sheets — 454 devices)
+  was reviewed with the owner before anything was written: each head-office two-part name was
+  matched against HR by branch and department, and only the matches with one employee were
+  handed over (170 devices, 57 employees); the 14 devices whose match needed the owner's word and
+  the 31 whose holder HR does not have, has as a leaver, or has twice stay in stock with «في الجرد
+  مع: …». «وصال» is the Shorouk branch (owner, 2026-10-07). The reviewed result is
+  `apps/api/assets/it-go-live/inventory-2026-10.json` — employee codes only, nothing else from HR —
+  and a one-time boot step (`go-live/inventory.ts`, key `go-live:it-inventory-2026-10:v1`, after
+  the asset restart) registers every device in ONE transaction: branches matched by spelling and
+  never created (a missing one refuses the run, and the next boot retries); the IT team's own asset
+  category taken where one exists, else «كمبيوتر مكتبي», «شاشة», «لاب توب», «هاتف IP», «طابعة»
+  created (the head office's two Lenovo all-in-ones go under «كمبيوتر All» when that exists); a
+  serial the register already holds left alone and reported; the codes taken as a block inside the
+  transaction. The settled devices are handed over on ONE receipt per employee (the next form
+  numbers), so IT prints each employee's acknowledgment and files the signed copy as for any
+  hand-over; a holder HR shows as having left gets nothing. The run row says what was written.

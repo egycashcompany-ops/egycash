@@ -10,7 +10,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
-import { Pagination } from '../../../shared/ui/Pagination';
+import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -464,7 +464,7 @@ export const ReceiptsPage = (): JSX.Element => {
           onSortChange={changeSort}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
+          <FleetPager
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}
             onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

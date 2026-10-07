@@ -16,7 +16,7 @@ export const FigureChip = ({
   icon: readonly string[];
   iconClass: string;
   label: string;
-  value: number;
+  value: number | string;
   valueClass?: string;
   unit: string;
   note?: string;

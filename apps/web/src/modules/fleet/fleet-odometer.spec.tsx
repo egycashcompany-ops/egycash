@@ -33,7 +33,7 @@ import { localeSlice } from '../../store/localeSlice';
 import { authSlice } from '../../store/authSlice';
 import { translate } from '../../platform/localization/i18n';
 import { listKey } from '../../shared/lib/query-keys';
-import { formatDate, formatNumber } from '../../shared/lib/format';
+import { formatDate } from '../../shared/lib/format';
 import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
@@ -550,8 +550,9 @@ describe('the server answers the whole question — the page never slices', () =
     );
     const html = render({ route: '/fleet/odometer?page=2', qc });
     expect(tbody(html).match(/<tr/g)?.length ?? 0).toBe(25);
-    // The footer proves it is the SECOND page: it counts from 26.
-    expect(html.slice(html.indexOf('</table>'))).toContain(formatNumber(26, 'ar'));
+    // The footer proves it is the SECOND page: it counts from 26 (the Fleet pager writes
+    // «عرض 26 - 50 من أصل 73» in the boards' digits).
+    expect(html.slice(html.indexOf('</table>'))).toMatch(/26[\s\S]{0,20} - [\s\S]{0,20}50/u);
   });
 
   it('takes the totals from the SERVER’s meta, never from the rows in hand', () => {
@@ -564,14 +565,12 @@ describe('the server answers the whole question — the page never slices', () =
     const html = render({ route: '/fleet/odometer?page=3', qc });
     expect(tbody(html).match(/<tr/g)?.length ?? 0, 'the last page is short').toBe(23);
     const footer = html.slice(html.indexOf('</table>'));
-    expect(footer, 'the total is the server’s').toContain(formatNumber(73, 'ar'));
-    expect(footer, 'showing 51–73').toContain(formatNumber(51, 'ar'));
-    expect(footer, 'page 3 of 3').toContain(
-      translate('ar', 'common.pagination.page', {
-        page: formatNumber(3, 'ar'),
-        total: formatNumber(3, 'ar'),
-      }),
+    expect(footer, 'the total is the server’s').toMatch(/>73</u);
+    expect(footer, 'showing 51–73').toMatch(/51[\s\S]{0,20} - [\s\S]{0,20}73/u);
+    expect(footer, 'page 3 is the current one').toMatch(
+      /aria-current="page"[^>]*data-pager-page="3"/u,
     );
+    expect(footer, 'and the last').not.toContain('data-pager-page="4"');
   });
 
   it('offers 10 / 25 / 50 / 100 as the page sizes', () => {

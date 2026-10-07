@@ -32,7 +32,7 @@ import {
   migrateLegacyVehicleCodeParam,
 } from '../lib/legacy-vehicle-filter';
 import { FilterBar } from '../../../shared/ui/FilterBar';
-import { Pagination } from '../../../shared/ui/Pagination';
+import { FleetPager } from '../components/FleetPager';
 import { Spinner } from '../../../shared/ui/Spinner';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
@@ -1215,7 +1215,7 @@ export const VehiclesListPage = (): JSX.Element => {
           // «اصغر الحاجات اللى ليها علاقه بالتبويب وكبر الجدول»: the pager is one slim line under
           // the table, so the rows get the height.
           <div className="shrink-0 [&>div]:!py-0 [&_button]:!h-7 [&_button]:!min-w-7 [&_button]:!px-2 [&_button]:!text-xs [&_span]:!text-xs [&_select]:!h-7 [&_select]:!py-0 [&_select]:!text-xs [&_button[aria-haspopup]]:!h-7">
-            <Pagination
+            <FleetPager
               meta={data.meta}
               onPageChange={(p) => patch({ page: String(p) }, false)}
               onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

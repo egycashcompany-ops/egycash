@@ -36,13 +36,15 @@ describe('the dealership bill', () => {
     );
   });
 
-  it('«ملاكي» is a tick on the car code’s label line, not a field of its own', () => {
+  it('«ملاكي» is a switch on the car code’s label line, not a field of its own', () => {
+    const label = source.indexOf("label={t('fleet.odometer.columns.vehicle')}");
     const tick = source.indexOf('data-dealership-private="true"');
-    const code = source.indexOf("{t('fleet.odometer.columns.vehicle')}");
-    const box = source.indexOf("<Input value={row.vehicleCode ?? '—'} readOnly disabled />");
-    expect(code).toBeGreaterThan(-1);
-    expect(tick, 'after the label').toBeGreaterThan(code);
-    expect(tick, 'above the box').toBeLessThan(box);
+    expect(label).toBeGreaterThan(-1);
+    expect(tick, 'on the car tile').toBeGreaterThan(label);
+    // The tile draws its `aside` on the label line, above the code itself.
+    const fact = source.slice(source.indexOf('const Fact = ('), source.indexOf('export const'));
+    expect(fact.indexOf('{aside}'), 'beside the label').toBeGreaterThan(fact.indexOf('{label}'));
+    expect(fact.indexOf('{aside}'), 'above the value').toBeLessThan(fact.indexOf('{value}'));
     expect(source).not.toContain("label={t('fleet.dealership.privateCar')}\n              hint=");
   });
 });

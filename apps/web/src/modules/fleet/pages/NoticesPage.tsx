@@ -19,7 +19,7 @@ import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
-import { Pagination } from '../../../shared/ui/Pagination';
+import { FleetPager } from '../components/FleetPager';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { errorMessage } from '../../../shared/lib/errors';
@@ -648,7 +648,7 @@ export const NoticesPage = (): JSX.Element => {
           />
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
+          <FleetPager
             meta={data.meta}
             onPageChange={setPage}
             onPageSizeChange={(size) => {

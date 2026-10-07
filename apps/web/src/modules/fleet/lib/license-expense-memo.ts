@@ -131,17 +131,41 @@ const table = (
     </table>`;
 };
 
-/** The memo as one A4 sheet — styles and body together, for the preview and for the printer. */
+/**
+ * The memo as A4 sheets — styles and body together, for the preview and for the printer.
+ *
+ * «ادام الجدول كبير اعمل كل جدول فى صفحة بقى بس امضى واحده»: each table on a page of its own, the
+ * title and the plates on the first, the grand total and the signatures once, after the last.
+ * «لو مفيش جدول للفيزا متعملش جدول … وكذلك نقدى»: a group with nothing in it has no table.
+ */
 export const memoHtml = (doc: LicenseExpenseMemoDoc): string => {
   const visa = doc.items.filter((item) => item.paidBy === 'visa');
   const cash = doc.items.filter((item) => item.paidBy === 'cash');
   const plates = doc.vehicles
     .map((v, index) => `<tr><td>${index + 1}</td><td>${escape(v.plate)}</td></tr>`)
     .join('');
-  // The renewal memo carries both tables, as the department's sheet does; the extension memo
-  // carries the cash one, and the card's only when something was paid by it.
-  const withVisa = doc.kind === 'renewal' || visa.length > 0;
   const gm = escape(doc.signatures.generalManager).replace(/\n/gu, '<br/>');
+  const tables = [
+    ...(visa.length > 0
+      ? [table('بيانات مصروفات ترخيص السيارات (ما تم صرفه بفيزا إدارة الحركة)', visa, 3)]
+      : []),
+    ...(cash.length > 0 ? [table('بيانات مصروفات ترخيص السيارات (تم صرفه نقدًا)', cash, 3)] : []),
+  ];
+  const head = `<div class="title">${escape(memoTitle(doc))}</div>
+    <table class="plates"><thead><tr><th>م</th><th>رقم اللوحة</th></tr></thead><tbody>${plates}</tbody></table>`;
+  const close = `<table class="grand"><tr><td>الإجمالي النهائي لمصروفات الفيزا والنقدي</td><td class="num">${money(sumOf(doc.items))}</td></tr></table>
+    <div class="signs">
+      <div>مندوب التراخيص<br/>${escape(doc.signatures.agent)}<div class="line">التوقيع</div></div>
+      <div>مدير إدارة الحركة<br/>${escape(doc.signatures.director)}<div class="line">التوقيع</div></div>
+    </div>
+    <div class="review">يرجى المراجعة والتصديق على إجمالي المصروفات</div>
+    <div class="gm">${gm}</div>`;
+  // One sheet per table; the first carries the title and plates, the last the close.
+  const bodies = tables.length === 0 ? [''] : tables;
+  const sheets = bodies.map(
+    (body, index) =>
+      `<div class="lx-sheet">${index === 0 ? head : ''}${body}${index === bodies.length - 1 ? close : ''}</div>`,
+  );
   return `<style>
     .lx-sheet{font-family:'Cairo',system-ui,-apple-system,'Segoe UI','Noto Sans Arabic',Tahoma,Arial,sans-serif;direction:rtl;color:#000;background:#fff;width:210mm;min-height:297mm;box-sizing:border-box;padding:14mm 14mm 12mm;font-size:12.5px;line-height:1.45}
     .lx-sheet .title{text-align:center;font-weight:800;font-size:16px;margin:2mm 0 6mm;text-decoration:underline;text-underline-offset:4px}
@@ -166,21 +190,10 @@ export const memoHtml = (doc: LicenseExpenseMemoDoc): string => {
     .lx-sheet .signs .line{margin-top:7mm;font-weight:400}
     .lx-sheet .review{text-align:center;font-weight:800;margin-top:9mm}
     .lx-sheet .gm{text-align:center;font-weight:800;margin-top:12mm;line-height:1.8}
+    @media screen{.lx-sheet+.lx-sheet{border-top:10px solid #94a3b8}}
     @media print{@page{size:A4;margin:0}body{margin:0}.lx-sheet{width:210mm;height:297mm;break-inside:avoid}}
   </style>
-  <div class="lx-sheet">
-    <div class="title">${escape(memoTitle(doc))}</div>
-    <table class="plates"><thead><tr><th>م</th><th>رقم اللوحة</th></tr></thead><tbody>${plates}</tbody></table>
-    ${withVisa ? table('بيانات مصروفات ترخيص السيارات (ما تم صرفه بفيزا إدارة الحركة)', visa, 3) : ''}
-    ${table('بيانات مصروفات ترخيص السيارات (تم صرفه نقدًا)', cash, 3)}
-    <table class="grand"><tr><td>الإجمالي النهائي لمصروفات الفيزا والنقدي</td><td class="num">${money(sumOf(doc.items))}</td></tr></table>
-    <div class="signs">
-      <div>مندوب التراخيص<br/>${escape(doc.signatures.agent)}<div class="line">التوقيع</div></div>
-      <div>مدير إدارة الحركة<br/>${escape(doc.signatures.director)}<div class="line">التوقيع</div></div>
-    </div>
-    <div class="review">يرجى المراجعة والتصديق على إجمالي المصروفات</div>
-    <div class="gm">${gm}</div>
-  </div>`;
+  ${sheets.join('')}`;
 };
 
 /**

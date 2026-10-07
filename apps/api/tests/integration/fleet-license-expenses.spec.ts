@@ -175,17 +175,38 @@ describe('a licensing-expenses memo', () => {
   });
 
   it('starts the set-up from the department names, then keeps what is saved', async () => {
+    const empty = { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } };
     expect(await fleetLicenseExpenseService.getSettings()).toEqual({
       signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
+      templates: empty,
       version: null,
     });
     const saved = await fleetLicenseExpenseService.saveSettings({ signatures: SIGNATURES }, ACTOR);
-    expect(saved).toEqual({ signatures: SIGNATURES, version: 0 });
+    expect(saved).toEqual({ signatures: SIGNATURES, templates: empty, version: 0 });
     const again = await fleetLicenseExpenseService.saveSettings(
       { signatures: { ...SIGNATURES, agent: 'هـ' }, version: 0 },
       ACTOR,
     );
     expect(again.signatures.agent).toBe('هـ');
+  });
+
+  it('keeps the four templates, and leaves them alone when a save does not name them', async () => {
+    const before = await fleetLicenseExpenseService.getSettings();
+    const line = { itemId: null, label: 'ضرائب', amount: 1450, count: 1, receipt: true };
+    const templates = {
+      renewal: { visa: [line], cash: [] },
+      extension: { visa: [], cash: [{ ...line, label: 'دمغة', amount: 5, receipt: false }] },
+    };
+    const saved = await fleetLicenseExpenseService.saveSettings(
+      { signatures: SIGNATURES, templates, version: before.version ?? 0 },
+      ACTOR,
+    );
+    expect(saved.templates).toEqual(templates);
+    const signaturesOnly = await fleetLicenseExpenseService.saveSettings(
+      { signatures: SIGNATURES, version: saved.version ?? 0 },
+      ACTOR,
+    );
+    expect(signaturesOnly.templates, 'untouched by a save without them').toEqual(templates);
   });
 
   it('seeds the memo items the department lists', async () => {

@@ -3785,9 +3785,42 @@ export interface FleetLicenseExpenseDto {
   updatedAt: string;
 }
 
+/**
+ * «عاوز اعمل نموذج للبيانات اللى فيزا و نقدى ل تجديد التراخيص و مد مدة يعنى 4 حالات»: the lines a
+ * new memo starts with, for each of the four — renewal by card, renewal in cash, extension by card,
+ * extension in cash. How a line was paid is the group it sits in, so a line carries no `paidBy`.
+ */
+const LicenseExpenseTemplateLineSchema = z
+  .object({
+    itemId: objectId().nullable(),
+    label: z.string().trim().max(120),
+    amount: egp().max(100_000_000).nullable(),
+    count: z.number().int().min(1).max(10_000),
+    receipt: z.boolean(),
+  })
+  .strict();
+export type FleetLicenseExpenseTemplateLine = z.infer<typeof LicenseExpenseTemplateLineSchema>;
+
+const LicenseExpenseTemplateGroupsSchema = z
+  .object({
+    visa: z.array(LicenseExpenseTemplateLineSchema).max(200),
+    cash: z.array(LicenseExpenseTemplateLineSchema).max(200),
+  })
+  .strict();
+
+export const FleetLicenseExpenseTemplatesSchema = z
+  .object({
+    renewal: LicenseExpenseTemplateGroupsSchema,
+    extension: LicenseExpenseTemplateGroupsSchema,
+  })
+  .strict();
+export type FleetLicenseExpenseTemplates = z.infer<typeof FleetLicenseExpenseTemplatesSchema>;
+
 /** «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: the names every new memo starts with. */
 export interface FleetLicenseExpenseSettingsDto {
   signatures: FleetLicenseExpenseSignatures;
+  /** The four templates; each empty until somebody saves one. */
+  templates: FleetLicenseExpenseTemplates;
   /** `null` before anybody saved the set-up — the defaults are then the department's own. */
   version: number | null;
 }
@@ -3795,6 +3828,8 @@ export interface FleetLicenseExpenseSettingsDto {
 export const SaveFleetLicenseExpenseSettingsSchema = z
   .object({
     signatures: FleetLicenseExpenseSignaturesSchema,
+    /** Left out, the saved templates stay as they are. */
+    templates: FleetLicenseExpenseTemplatesSchema.optional(),
     version: z.number().int().min(0).optional(),
   })
   .strict();

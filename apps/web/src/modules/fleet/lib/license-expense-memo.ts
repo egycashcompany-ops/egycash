@@ -3,6 +3,7 @@
 // line: the title, the plates, what was paid by the traffic department's card, what was paid in
 // cash, the totals, and the signatures.
 import { type FleetLicenseExpenseDto } from '@ecms/contracts';
+import { openPrintDocument } from '../../../shared/lib/print-window';
 
 /** Which memo: a licence renewal, or an extension of a licence's term. */
 export type LicenseExpenseKind = 'renewal' | 'extension';
@@ -84,7 +85,8 @@ export const memoTitle = (
   return `مذكرة بمصروفات ${what} ${carsPhrase(doc.vehicles.length)} شهر ${month} ${when}`.trim();
 };
 
-export const lineTotal = (item: LicenseExpenseItemFields): number => (item.amount ?? 0) * item.count;
+export const lineTotal = (item: LicenseExpenseItemFields): number =>
+  (item.amount ?? 0) * item.count;
 
 export const sumOf = (items: readonly LicenseExpenseItemFields[]): number =>
   items.reduce((sum, item) => sum + lineTotal(item), 0);
@@ -141,7 +143,7 @@ export const memoHtml = (doc: LicenseExpenseMemoDoc): string => {
   const withVisa = doc.kind === 'renewal' || visa.length > 0;
   const gm = escape(doc.signatures.generalManager).replace(/\n/gu, '<br/>');
   return `<style>
-    .lx-sheet{font-family:'Cairo','Segoe UI',Tahoma,sans-serif;direction:rtl;color:#000;background:#fff;width:210mm;min-height:297mm;box-sizing:border-box;padding:14mm 14mm 12mm;font-size:12.5px;line-height:1.45}
+    .lx-sheet{font-family:'Cairo',system-ui,-apple-system,'Segoe UI','Noto Sans Arabic',Tahoma,Arial,sans-serif;direction:rtl;color:#000;background:#fff;width:210mm;min-height:297mm;box-sizing:border-box;padding:14mm 14mm 12mm;font-size:12.5px;line-height:1.45}
     .lx-sheet .title{text-align:center;font-weight:800;font-size:16px;margin:2mm 0 6mm;text-decoration:underline;text-underline-offset:4px}
     .lx-sheet table{border-collapse:collapse}
     .lx-sheet .plates{margin:0 auto 6mm;min-width:70mm}
@@ -188,18 +190,14 @@ export const memoHtml = (doc: LicenseExpenseMemoDoc): string => {
  */
 export const printMemos = (docs: readonly LicenseExpenseMemoDoc[]): void => {
   if (docs.length === 0) return;
-  const win = window.open('', '_blank');
-  if (win === null) throw new Error('popup blocked');
-  win.document.write(
-    `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${escape(
-      docs.map(memoTitle).join(' — '),
-    )}</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&display=swap"><style>@media print{.lx-sheet{page-break-after:always}.lx-sheet:last-of-type{page-break-after:auto}}</style></head><body style="margin:0">${docs
-      .map(memoHtml)
-      .join(
-        '',
-      )}<script>document.fonts.ready.then(function(){setTimeout(function(){window.print()},150)})</script></body></html>`,
-  );
-  win.document.close();
+  // No script in the page: the tab inherits the app's Content-Security-Policy, which never runs
+  // one — the shared print window opens the dialog from the app's own script.
+  const html = `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8" /><title>${escape(
+    docs.map(memoTitle).join(' — '),
+  )}</title><style>html,body{margin:0;padding:0;background:#fff}@media print{.lx-sheet{page-break-after:always}.lx-sheet:last-of-type{page-break-after:auto}}</style></head><body>${docs
+    .map(memoHtml)
+    .join('')}</body></html>`;
+  if (openPrintDocument(html) === null) throw new Error('popup blocked');
 };
 
 /** The department's names as the samples carry them — the settings start from these. */

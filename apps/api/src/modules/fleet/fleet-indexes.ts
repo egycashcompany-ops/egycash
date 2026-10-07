@@ -49,6 +49,8 @@ import { FleetGoLiveRunModel } from './go-live/go-live-run.model';
 import { FleetVehicleLicensingModel } from './licensing/licensing.model';
 import { FleetNoticeModel } from './notices/notice.model';
 import { FleetNoticeSettingsModel } from './notices/notice-settings.model';
+import { FleetLicenseExpenseModel } from './license-expenses/license-expense.model';
+import { FleetLicenseExpenseSettingsModel } from './license-expenses/license-expense-settings.model';
 import { FleetDealershipInvoiceModel } from './dealership/dealership.model';
 import { FleetFuelCardModel, FleetFuelCardMovementModel } from './fuel-cards/fuel-card.model';
 import { FleetReceiptModel } from './receipts/receipt.model';
@@ -80,6 +82,8 @@ export const fleetIndexedModels = (): { collection: string; model: Model<never> 
       FleetVehicleLicensingModel,
       FleetNoticeModel,
       FleetNoticeSettingsModel,
+      FleetLicenseExpenseModel,
+      FleetLicenseExpenseSettingsModel,
       FleetDealershipInvoiceModel,
       FleetFuelCardModel,
       FleetFuelCardMovementModel,

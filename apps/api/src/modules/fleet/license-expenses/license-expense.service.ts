@@ -272,10 +272,9 @@ class FleetLicenseExpenseService {
         entityId: String(saved._id),
       },
       action: before === null ? 'create' : 'update',
-      changes: diffChanges(
-        before === null ? {} : { signatures: signaturesOf(before.signatures) },
-        { signatures: signaturesOf(saved.signatures) },
-      ),
+      changes: diffChanges(before === null ? {} : { signatures: signaturesOf(before.signatures) }, {
+        signatures: signaturesOf(saved.signatures),
+      }),
     });
     return { signatures: signaturesOf(saved.signatures), version: saved.__v };
   }

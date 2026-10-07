@@ -105,7 +105,11 @@ export const seedFleet = async (): Promise<void> => {
     { ar: 'استمارة بيانات', en: 'Data form' },
   ];
   for (const name of licenseExpenseItems) {
-    await fleetCatalogItemService.ensure({ kind: 'licenseExpenseItem', name, countsForAlarm: false });
+    await fleetCatalogItemService.ensure({
+      kind: 'licenseExpenseItem',
+      name,
+      countsForAlarm: false,
+    });
   }
 
   // The three catalogs added for the vehicle registry (licenseClass, operation, insuranceCompany)

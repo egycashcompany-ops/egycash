@@ -1,7 +1,7 @@
 // «مصروفات التراخيص» — every licensing-expenses memo the department wrote, in the boards' look:
 // the count, «الإحصائيات», the dark filters, the table, and «+ مذكرة جديدة» into the editor.
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { type FleetLicenseExpenseDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -15,6 +15,7 @@ import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
+import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useDeleteLicenseExpense, useLicenseExpenses } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
@@ -41,6 +42,10 @@ const BOARD_TABLE = cn(
 const BRAND_BUTTON =
   'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-3 py-2 text-xs font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 dark:text-brand-200';
 const day = (iso: string): string => iso.slice(0, 10).replace(/-/gu, '/');
+/** Remembered across visits: the filters and the page size. `page` is derived, never kept. */
+const REMEMBERED_FILTERS = ['vehicleCodes', 'kind', 'size'] as const;
+const DEFAULT_PAGE_SIZE = 25;
+const csv = (raw: string | null): string[] => (raw ?? '').split(',').filter((v) => v !== '');
 
 export const LicenseExpensesPage = (): JSX.Element => {
   const t = useT();
@@ -68,10 +73,22 @@ export const LicenseExpensesPage = (): JSX.Element => {
       toast.error(t('fleet.vehicles.print.failed'));
     }
   };
-  const [vehicleCodes, setVehicleCodes] = useState<string[]>([]);
-  const [kind, setKind] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [sp, setSp] = useSearchParams();
+  useRememberedFilters([sp, setSp], REMEMBERED_FILTERS);
+  const codesParam = sp.get('vehicleCodes');
+  const vehicleCodes = useMemo(() => csv(codesParam), [codesParam]);
+  const kind = sp.get('kind') ?? '';
+  const page = Math.max(1, Number(sp.get('page') ?? '1') || 1);
+  const pageSize = Number(sp.get('size') ?? String(DEFAULT_PAGE_SIZE)) || DEFAULT_PAGE_SIZE;
+  const patch = (updates: Record<string, string | null>, resetPage = true): void => {
+    const next = new URLSearchParams(sp);
+    for (const [key, val] of Object.entries(updates)) {
+      if (val === null || val === '') next.delete(key);
+      else next.set(key, val);
+    }
+    if (resetPage && !('page' in updates)) next.delete('page');
+    setSp(next);
+  };
   const params = useMemo(
     () => ({
       page,
@@ -293,20 +310,16 @@ export const LicenseExpensesPage = (): JSX.Element => {
         <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
           <FilterBar
             hasActiveFilters={vehicleCodes.length > 0 || kind !== ''}
-            onClear={() => {
-              setVehicleCodes([]);
-              setKind('');
-            }}
+            onClear={() => patch({ vehicleCodes: null, kind: null })}
           >
             <FilterWithIcon icon={FILTER_ICON.car} tone="text-emerald-600 dark:text-emerald-400">
               <VehicleCodeFilter
                 fullWidth
                 density="tight"
                 value={vehicleCodes}
-                onChange={(next) => {
-                  setVehicleCodes(next);
-                  setPage(1);
-                }}
+                onChange={(next) =>
+                  patch({ vehicleCodes: next.length === 0 ? null : next.join(',') })
+                }
               />
             </FilterWithIcon>
             <FilterWithIcon icon={FILTER_ICON.licence} tone="text-violet-600 dark:text-violet-300">
@@ -321,10 +334,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
                   { value: 'extension', label: t('fleet.licenseExpenses.kinds.extension') },
                 ]}
                 value={kind === '' ? [] : [kind]}
-                onChange={(next) => {
-                  setKind(pickOne(kind === '' ? [] : [kind], next) ?? '');
-                  setPage(1);
-                }}
+                onChange={(next) => patch({ kind: pickOne(kind === '' ? [] : [kind], next) })}
               />
             </FilterWithIcon>
           </FilterBar>
@@ -343,11 +353,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
         {data !== undefined && data.meta.totalItems > 0 && (
           <FleetPager
             meta={data.meta}
-            onPageChange={setPage}
-            onPageSizeChange={(size) => {
-              setPageSize(size);
-              setPage(1);
-            }}
+            onPageChange={(p) => patch({ page: String(p) }, false)}
+            onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}
           />
         )}
       </div>

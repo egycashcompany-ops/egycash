@@ -182,7 +182,9 @@ describe('the licensing-expenses memo', () => {
     const both = memo({
       extension: {
         vehicles: [{ vehicleId: null, code: null, plate: 'ن ص 1' }],
-        items: [{ itemId: null, label: 'تصوير', amount: 18, count: 1, paidBy: 'cash', receipt: false }],
+        items: [
+          { itemId: null, label: 'تصوير', amount: 18, count: 1, paidBy: 'cash', receipt: false },
+        ],
       },
     });
     const docs = memosOf(both);

@@ -11,7 +11,7 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
-import { Pagination } from '../../../shared/ui/Pagination';
+import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { Field, Input } from '../../../shared/ui/form';
@@ -206,7 +206,7 @@ export const AttendancePage = (): JSX.Element => {
           onSortChange={changeSort}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
+          <FleetPager
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}
             onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

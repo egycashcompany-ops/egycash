@@ -152,10 +152,13 @@ const rowWith = (html: string, text: string): string => {
 };
 
 describe('the dealership table', () => {
-  it('shows a workshop exit as a YELLOW row waiting for its invoice, with «تسجيل الفاتورة»', () => {
+  it('shows a workshop exit as a WARNING row waiting for its invoice, with «تسجيل الفاتورة»', () => {
     const html = render();
     const pending = rowWith(html, 'صيانة');
-    expect(pending).toContain('bg-amber-50/80');
+    // «حاجه قريبه من الشكل دا واللون دا»: the warm amber row, and «⚠ بانتظار الفاتورة» by the car.
+    expect(pending).toContain('data-pending="true"');
+    expect(pending).toContain('data-dealership-waiting="true"');
+    expect(pending).toContain(ar('fleet.dealership.pending'));
     expect(pending).toContain('data-dealership-record="d-1"');
     expect(pending).toContain(ar('fleet.dealership.record'));
     expect(pending, 'the insurer came off the car').toContain('مصر للتأمين');
@@ -184,32 +187,40 @@ describe('the dealership table', () => {
       ],
     });
     const dealer = rowWith(html, '48213');
-    expect(dealer).not.toContain('bg-amber-50/80');
+    expect(dealer).toContain('data-pending="false"');
+    expect(dealer).not.toContain('data-dealership-waiting');
     expect(dealer).toContain(ar('fleet.dealership.side.dealership'));
     expect(dealer).toContain('3,250.00');
-    const custody = rowWith(html, 'إصلاح</td>');
+    const custody = rowWith(html, 'إصلاح</span>');
     expect(custody).toContain(ar('fleet.dealership.side.custody'));
   });
 
-  it('puts the totals BETWEEN the filters and the table — the server’s figures, over the whole set', () => {
+  it('puts the totals BETWEEN the filters and the table, behind «الإحصائيات» — the server’s figures', () => {
     const html = render();
-    const filters = html.indexOf('data-date-caption="from"');
-    const strip = html.indexOf('3,250.00');
-    const table = html.indexOf('<table');
+    // The figures open from the toolbar's toggle, as on the notices screen.
+    expect(html).toContain('data-dealership-stats-toggle="true"');
+    expect(html, 'closed on the way in').not.toContain('data-dealership-figures');
+    const filters = PAGE.indexOf('DARK_FILTER_BAR, ');
+    const figures = PAGE.indexOf('data-dealership-figures="true"');
+    const table = PAGE.indexOf('<DataTable');
     expect(filters).toBeGreaterThan(-1);
-    expect(strip).toBeGreaterThan(filters);
-    expect(table).toBeGreaterThan(strip);
-    expect(html).toContain(ar('fleet.dealership.totals.dealership'));
-    expect(html).toContain('850.00');
+    expect(figures, 'after the filters').toBeGreaterThan(filters);
+    expect(table, 'before the table').toBeGreaterThan(figures);
+    for (const key of ['dealership', 'custody', 'pending', 'count']) {
+      expect(PAGE).toContain(`t('fleet.dealership.totals.${key}')`);
+    }
     expect(PAGE).toContain('useDealershipSummary(filters)');
   });
 
-  it('offers print and Excel as icons in the page header, above the filters, like the vehicles screen', () => {
+  it('offers Excel and PDF in the toolbar above the filters, like the boards — no page title', () => {
     const html = render();
     expect(html).toContain('data-print="dealership"');
     expect(html).toContain('data-export="dealership"');
-    expect(PAGE).toContain('<DocumentActions name="dealership"');
-    expect(PAGE).not.toContain('order-last');
+    expect(PAGE).not.toContain('<DocumentActions');
+    expect(PAGE).not.toContain('<PageHeader');
+    expect(html.indexOf('data-export="dealership"'), 'above the table').toBeLessThan(
+      html.indexOf('<table'),
+    );
   });
 
   it('carries the image column exactly as the vehicle licence does — upload, then view / print / delete', () => {
@@ -238,7 +249,11 @@ describe('the dealership table', () => {
 
 describe('recording the invoice', () => {
   it('shows the car’s code alone, and «ملاكي» as a tick preset from the operation', () => {
-    expect(FORM).toContain("<Input value={row.vehicleCode ?? '—'} readOnly disabled />");
+    // The workshop's facts are tiles now, read rather than written; «ملاكي» is a switch on the
+    // car tile's label line.
+    expect(FORM).toContain("value={row.vehicleCode ?? '—'}");
+    expect(FORM).toContain('role="switch"');
+    expect(FORM).toContain('aria-checked={privateCar}');
     expect(FORM).toContain('setPrivateCar(row.privateCar)');
     expect(FORM).toContain('data-dealership-private="true"');
   });

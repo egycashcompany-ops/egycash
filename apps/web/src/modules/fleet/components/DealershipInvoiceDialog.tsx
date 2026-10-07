@@ -17,6 +17,9 @@ import { MissingFieldsBanner, useRequiredFields } from '../../../shared/ui/requi
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { formatDate, localized } from '../../../shared/lib/format';
+import { cn } from '../../../shared/lib/cn';
+import { BoardIcon, NUM, PATH } from './FuelCardBoard';
+import { FILTER_ICON } from './FilterWithIcon';
 import {
   useCreateCatalogItem,
   useFleetCatalog,
@@ -24,6 +27,51 @@ import {
   useUpdateVehicle,
   useVehicle,
 } from '../api/fleet-queries';
+
+/** «حسن الفورم»: a section's name over its boxes. */
+const SectionTitle = ({ children }: { children: string }): JSX.Element => (
+  <h3 className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+    <span className="h-3.5 w-1 rounded-full bg-brand-500" />
+    {children}
+  </h3>
+);
+
+/** One fact the workshop wrote — read here, never edited: an icon, its name, its value. */
+const Fact = ({
+  icon,
+  label,
+  value,
+  aside,
+  valueClass,
+}: {
+  icon: readonly string[];
+  label: string;
+  value: string;
+  aside?: JSX.Element;
+  valueClass?: string;
+}): JSX.Element => (
+  <div className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-800 dark:bg-[#0c121e]">
+    <span className="shrink-0 rounded-lg bg-brand-500/10 p-2 text-brand-600 dark:text-brand-300">
+      <BoardIcon d={icon} className="h-4 w-4" />
+    </span>
+    <span className="min-w-0 flex-1 leading-tight">
+      <span className="flex items-center justify-between gap-2">
+        <span className="whitespace-nowrap text-xs font-medium text-slate-500 dark:text-slate-400">
+          {label}
+        </span>
+        {aside}
+      </span>
+      <span
+        className={cn(
+          'block truncate text-base font-bold text-slate-900 dark:text-white',
+          valueClass,
+        )}
+      >
+        {value}
+      </span>
+    </span>
+  </div>
+);
 
 export const DealershipInvoiceDialog = ({
   open,
@@ -189,86 +237,120 @@ export const DealershipInvoiceDialog = ({
       {row !== null && (
         <div className="space-y-4">
           <MissingFieldsBanner missing={required.missing} attempt={required.attempt} />
-          {/* The grey facts: what the workshop knew. Read, not written. */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field label={t('fleet.dealership.columns.outDate')}>
-              <Input value={formatDate(row.outDate, locale)} readOnly disabled />
-            </Field>
-            {/* «علامه ملاكى … فوق كود السياره»: the tick sits on the car code's own label line, so
-                it takes no column of its own. */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="block text-sm font-medium text-slate-700 dark:text-slate-200">
-                  {t('fleet.odometer.columns.vehicle')}
-                </span>
-                <Checkbox
-                  data-dealership-private="true"
-                  label={t('fleet.dealership.privateCar')}
-                  title={t('fleet.dealership.privateCarHint')}
-                  checked={privateCar}
-                  onChange={(e) => setPrivateCar(e.target.checked)}
-                  className="text-xs"
-                />
-              </div>
-              <Input value={row.vehicleCode ?? '—'} readOnly disabled />
+          {/* The workshop's facts: what it knew. Read, not written — tiles, not greyed boxes. */}
+          <section className="space-y-2">
+            <SectionTitle>{t('fleet.dealership.form.workshop')}</SectionTitle>
+            <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_1fr]">
+              <Fact
+                icon={PATH.calendar}
+                label={t('fleet.dealership.columns.outDate')}
+                value={formatDate(row.outDate, locale)}
+                valueClass={NUM}
+              />
+              {/* «علامه ملاكى … فوق كود السياره»: the tick sits on the car code's own label line,
+                  so it takes no column of its own. */}
+              <Fact
+                icon={FILTER_ICON.car}
+                label={t('fleet.odometer.columns.vehicle')}
+                value={row.vehicleCode ?? '—'}
+                valueClass={NUM}
+                aside={
+                  // «مش عاجبنى شكل العربيه بعلامه صح جمبها»: a switch on the label line, purple
+                  // when on, rather than a bare tick box.
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={privateCar}
+                    data-dealership-private="true"
+                    title={t('fleet.dealership.privateCarHint')}
+                    onClick={() => setPrivateCar((on) => !on)}
+                    className={cn(
+                      'inline-flex shrink-0 items-center gap-1.5 rounded-full border py-0.5 pe-2 ps-1 text-[11px] font-bold transition active:scale-95',
+                      privateCar
+                        ? 'border-brand-500/60 bg-brand-500/15 text-brand-700 dark:text-brand-200'
+                        : 'border-slate-300 bg-white text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400',
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        'relative h-3.5 w-6 rounded-full transition-colors',
+                        privateCar ? 'bg-brand-500' : 'bg-slate-300 dark:bg-slate-700',
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute top-0.5 h-2.5 w-2.5 rounded-full bg-white shadow transition-all',
+                          privateCar ? 'start-3' : 'start-0.5',
+                        )}
+                      />
+                    </span>
+                    {t('fleet.dealership.privateCar')}
+                  </button>
+                }
+              />
+              <Fact
+                icon={FILTER_ICON.motor}
+                label={t('fleet.dealership.columns.workType')}
+                value={row.workTypeLabel}
+              />
             </div>
-            <Field label={t('fleet.dealership.columns.workType')}>
-              <Input value={row.workTypeLabel} readOnly disabled />
-            </Field>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Field
-              label={t('fleet.vehicles.fields.insuranceCompany')}
-              missing={required.isMissing('insurer')}
-              // Only ever missing as a NEW name that is not being added to the catalog: say what to
-              // do about it — tick «add», or (without the grant to add one) pick from the list.
-              {...(required.isMissing('insurer')
-                ? {
-                    error: mayAddInsurer
-                      ? t('fleet.dealership.insurerAddOrClear')
-                      : t('fleet.dealership.insurerCannotAdd'),
-                  }
-                : {})}
-              hint={t('fleet.dealership.insurerPick')}
-            >
-              <Input
-                list="dealership-insurers"
-                value={insurer}
-                onChange={(e) => {
-                  setInsurerTouched(true);
-                  setInsurer(e.target.value);
-                }}
-                placeholder={t('fleet.dealership.insurerPlaceholder')}
-                data-dealership-insurer="true"
-              />
-              <datalist id="dealership-insurers">
-                <option value={noInsurer} />
-                {names.map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
-            </Field>
-            <Field
-              label={t('fleet.dealership.columns.invoiceAmount')}
-              required
-              missing={required.isMissing('invoiceAmount')}
-            >
-              <MoneyInput value={invoiceAmount} onChange={setInvoiceAmount} />
-            </Field>
-            <Field
-              label={t('fleet.dealership.columns.invoiceNumber')}
-              required={!privateCar}
-              missing={required.isMissing('invoiceNumber')}
-              {...(privateCar ? { hint: t('fleet.dealership.invoiceNumberOptional') } : {})}
-            >
-              <Input
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                placeholder={privateCar ? t('fleet.dealership.invoiceNumberPrivate') : ''}
-                data-dealership-invoice-number="true"
-              />
-            </Field>
-          </div>
+          </section>
+          <section className="space-y-2">
+            <SectionTitle>{t('fleet.dealership.form.invoice')}</SectionTitle>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field
+                label={t('fleet.vehicles.fields.insuranceCompany')}
+                missing={required.isMissing('insurer')}
+                // Only ever missing as a NEW name that is not being added to the catalog: say what to
+                // do about it — tick «add», or (without the grant to add one) pick from the list.
+                {...(required.isMissing('insurer')
+                  ? {
+                      error: mayAddInsurer
+                        ? t('fleet.dealership.insurerAddOrClear')
+                        : t('fleet.dealership.insurerCannotAdd'),
+                    }
+                  : {})}
+                hint={t('fleet.dealership.insurerPick')}
+              >
+                <Input
+                  list="dealership-insurers"
+                  value={insurer}
+                  onChange={(e) => {
+                    setInsurerTouched(true);
+                    setInsurer(e.target.value);
+                  }}
+                  placeholder={t('fleet.dealership.insurerPlaceholder')}
+                  data-dealership-insurer="true"
+                />
+                <datalist id="dealership-insurers">
+                  <option value={noInsurer} />
+                  {names.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </Field>
+              <Field
+                label={t('fleet.dealership.columns.invoiceAmount')}
+                required
+                missing={required.isMissing('invoiceAmount')}
+              >
+                <MoneyInput value={invoiceAmount} onChange={setInvoiceAmount} />
+              </Field>
+              <Field
+                label={t('fleet.dealership.columns.invoiceNumber')}
+                required={!privateCar}
+                missing={required.isMissing('invoiceNumber')}
+                {...(privateCar ? { hint: t('fleet.dealership.invoiceNumberOptional') } : {})}
+              >
+                <Input
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  placeholder={privateCar ? t('fleet.dealership.invoiceNumberPrivate') : ''}
+                  data-dealership-invoice-number="true"
+                />
+              </Field>
+            </div>
+          </section>
           {isNewInsurer && (
             <div
               data-dealership-new-insurer="true"
@@ -310,10 +392,23 @@ export const DealershipInvoiceDialog = ({
                 onChange={(e) => setWriteOnVehicle(e.target.checked)}
               />
             )}
+          {/* Who pays, in its state's colour: the dealership green, the custody fund amber. */}
           <p
             data-dealership-side={side ?? 'none'}
-            className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            className={cn(
+              'flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold',
+              side === null &&
+                'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-300',
+              side === 'dealership' &&
+                'border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800/60 dark:bg-emerald-950/40 dark:text-emerald-200',
+              side === 'custody' &&
+                'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200',
+            )}
           >
+            <BoardIcon
+              d={side === null ? PATH.warn : FILTER_ICON.status}
+              className="h-4 w-4 shrink-0"
+            />
             {side === null
               ? t('fleet.dealership.sideUnknown')
               : side === 'custody'

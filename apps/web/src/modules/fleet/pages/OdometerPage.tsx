@@ -32,7 +32,7 @@ import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
-import { Pagination } from '../../../shared/ui/Pagination';
+import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
 import { Input } from '../../../shared/ui/form';
@@ -665,7 +665,7 @@ export const OdometerPage = (): JSX.Element => {
           {...(monthIsTheReason ? { empty: emptyMonth } : {})}
         />
         {data !== undefined && data.meta.totalItems > 0 && (
-          <Pagination
+          <FleetPager
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}
             onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

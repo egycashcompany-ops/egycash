@@ -47,10 +47,19 @@ export const BranchSwitcher = (): JSX.Element => {
   const ref = useRef<HTMLDivElement>(null);
   useOnClickOutside(ref, () => setOpen(false), open);
 
-  // An account placed IN a branch already sees only that branch, whatever it sends — so it is
-  // never offered a choice that would do nothing. An account whose grants REACH several branches
-  // is the other population that has something to choose: it is offered exactly those.
-  const orgWide = me !== null && me.branchId === null && (me.branchIds ?? []).length === 0;
+  // WHO HAS SOMETHING TO CHOOSE — decided from the GRANTS, which is what the server decides from.
+  //
+  // `scopeSelector` narrows an `organization` grant to whatever branch the header names, whatever
+  // branch its holder happens to sit in; and with no header it applies no branch filter at all, so
+  // such an account reads every branch on every screen. Reading org-wideness off the PLACEMENT
+  // therefore got it wrong in the one direction that matters: an organization-wide account WITH a
+  // home branch — which is most of them, since a person is posted somewhere — saw the whole company
+  // and was given no control at all to narrow it, nor any way to tell which branch a row came from.
+  //
+  // The test is now the same one the server runs: does this account hold anything at `organization`
+  // scope. An account confined to a single branch still gets nothing, because for it the control
+  // would do nothing; an account whose grants REACH several branches is offered exactly those.
+  const orgWide = me !== null && Object.values(me.permissions ?? {}).includes('organization');
   const reach = me?.branchIds ?? [];
   const multi = !orgWide && reach.length > 1;
 

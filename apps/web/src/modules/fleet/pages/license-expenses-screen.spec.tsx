@@ -140,6 +140,7 @@ const renderEditor = (): string => {
   });
   qc.setQueryData(['fleet', 'licenseExpenses', 'settings'], {
     signatures: SIGNATURES,
+    templates: { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } },
     version: 0,
   });
   return renderToStaticMarkup(
@@ -176,6 +177,33 @@ describe('the licensing-expenses memo', () => {
     expect(html).toContain('لا يوجد');
     expect(html).toContain('طلعت جابر بحيري');
     expect(html).toContain('لواء أ ح / جمال أحمد أبو إسماعيل<br/>المدير العام التنفيذي');
+  });
+
+  it('puts each table on its own page and signs once, after the last', () => {
+    const html = memoHtml(memosOf(memo())[0]!);
+    // «كل جدول فى صفحة … بس امضى واحده»: two tables, two sheets, one signature block.
+    expect(html.split('class="lx-sheet"').length - 1).toBe(2);
+    expect(html.split('مندوب التراخيص').length - 1).toBe(1);
+    const second = html.slice(html.lastIndexOf('class="lx-sheet"'));
+    expect(second, 'the cash table and the close on the last page').toContain('تم صرفه نقدًا');
+    expect(second).toContain('مندوب التراخيص');
+    expect(second, 'the title only on the first').not.toContain('مذكرة بمصروفات');
+  });
+
+  it('draws no table for a group with nothing in it', () => {
+    // «لو مفيش جدول للفيزا متعملش جدول ادام مفيش بيانات وكذلك نقدى».
+    const cashOnly = memo({
+      renewal: {
+        vehicles: [],
+        items: [
+          { itemId: null, label: 'دمغة', amount: 5, count: 1, paidBy: 'cash', receipt: false },
+        ],
+      },
+    });
+    const html = memoHtml(memosOf(cashOnly)[0]!);
+    expect(html).not.toContain('ما تم صرفه بفيزا');
+    expect(html).toContain('تم صرفه نقدًا');
+    expect(html.split('class="lx-sheet"').length - 1, 'one table, one page').toBe(1);
   });
 
   it('prints a record holding both as two memos, the renewal first', () => {
@@ -227,8 +255,12 @@ describe('a new licensing-expenses memo', () => {
     const html = renderEditor();
     expect(html).toMatch(/aria-pressed="true"[^>]*data-license-expense-kind="renewal"/u);
     expect(html).toMatch(/aria-pressed="false"[^>]*data-license-expense-kind="extension"/u);
-    expect(html).toContain('data-license-expense-count="renewal:i-1"');
-    expect(html).toContain('data-license-expense-count="renewal:i-2"');
+    // «يبقى فيه تجميع»: the card's group and the cash group, each with its own counters.
+    expect(html).toContain('data-license-expense-group="renewal:visa"');
+    expect(html).toContain('data-license-expense-group="renewal:cash"');
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).toContain('data-license-expense-count="renewal:cash:i-2"');
+    expect(html, 'no per-line visa / cash switch').not.toContain('data-segment="paid-');
     expect(html).toContain('data-license-expense-preview="renewal"');
     expect(html).not.toContain('data-license-expense-preview="extension"');
     expect(html).toContain('طلعت جابر بحيري');

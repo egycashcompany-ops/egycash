@@ -8,6 +8,7 @@ import {
   type FleetLicenseExpensePartDto,
   type FleetLicenseExpenseSettingsDto,
   type FleetLicenseExpenseSignatures,
+  type FleetLicenseExpenseTemplates,
   type ListFleetLicenseExpensesQuery,
   type Paginated,
   type SaveFleetLicenseExpenseSettings,
@@ -32,6 +33,19 @@ export const DEFAULT_LICENSE_EXPENSE_SIGNATURES: FleetLicenseExpenseSignatures =
 };
 
 const SETTINGS_KEY = 'default';
+
+/** No template saved yet: every group empty. */
+const EMPTY_TEMPLATES: FleetLicenseExpenseTemplates = {
+  renewal: { visa: [], cash: [] },
+  extension: { visa: [], cash: [] },
+};
+
+const templatesOf = (
+  value: FleetLicenseExpenseTemplates | null | undefined,
+): FleetLicenseExpenseTemplates => ({
+  renewal: { visa: value?.renewal?.visa ?? [], cash: value?.renewal?.cash ?? [] },
+  extension: { visa: value?.extension?.visa ?? [], cash: value?.extension?.cash ?? [] },
+});
 
 /** The day after — a «to» date counts its whole day. */
 const dayAfter = (day: Date): Date => new Date(day.getTime() + 24 * 60 * 60 * 1000);
@@ -245,8 +259,16 @@ class FleetLicenseExpenseService {
   async getSettings(): Promise<FleetLicenseExpenseSettingsDto> {
     const doc = await fleetLicenseExpenseSettingsRepository.findOne({ key: SETTINGS_KEY });
     return doc === null
-      ? { signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES, version: null }
-      : { signatures: signaturesOf(doc.signatures), version: doc.__v };
+      ? {
+          signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
+          templates: EMPTY_TEMPLATES,
+          version: null,
+        }
+      : {
+          signatures: signaturesOf(doc.signatures),
+          templates: templatesOf(doc.templates),
+          version: doc.__v,
+        };
   }
 
   async saveSettings(
@@ -254,15 +276,17 @@ class FleetLicenseExpenseService {
     by: string,
   ): Promise<FleetLicenseExpenseSettingsDto> {
     const before = await fleetLicenseExpenseSettingsRepository.findOne({ key: SETTINGS_KEY });
+    // Templates left out of the request stay as they were.
+    const templates = input.templates ?? templatesOf(before?.templates);
     const saved =
       before === null
         ? await fleetLicenseExpenseSettingsRepository.create(
-            { key: SETTINGS_KEY, signatures: input.signatures },
+            { key: SETTINGS_KEY, signatures: input.signatures, templates },
             { by },
           )
         : await fleetLicenseExpenseSettingsRepository.updateById(
             String(before._id),
-            { signatures: input.signatures },
+            { signatures: input.signatures, templates },
             { by, version: input.version ?? before.__v },
           );
     await auditService.record({
@@ -272,11 +296,21 @@ class FleetLicenseExpenseService {
         entityId: String(saved._id),
       },
       action: before === null ? 'create' : 'update',
-      changes: diffChanges(before === null ? {} : { signatures: signaturesOf(before.signatures) }, {
-        signatures: signaturesOf(saved.signatures),
-      }),
+      changes: diffChanges(
+        before === null
+          ? {}
+          : {
+              signatures: signaturesOf(before.signatures),
+              templates: templatesOf(before.templates),
+            },
+        { signatures: signaturesOf(saved.signatures), templates: templatesOf(saved.templates) },
+      ),
     });
-    return { signatures: signaturesOf(saved.signatures), version: saved.__v };
+    return {
+      signatures: signaturesOf(saved.signatures),
+      templates: templatesOf(saved.templates),
+      version: saved.__v,
+    };
   }
 }
 

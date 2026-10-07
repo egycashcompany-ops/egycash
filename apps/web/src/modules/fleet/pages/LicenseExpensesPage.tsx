@@ -7,6 +7,8 @@ import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { Dialog } from '../../../shared/ui/Dialog';
+import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
 import { useLicenseExpenses } from '../api/fleet-queries';
@@ -19,6 +21,7 @@ import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import {
   type LicenseExpenseItemLine,
   type LicenseExpenseMemoRow,
+  memoHtml,
   memoTitle,
   memosOf,
   money,
@@ -39,6 +42,15 @@ const day = (iso: string): string => iso.slice(0, 10).replace(/-/gu, '/');
 export const LicenseExpensesPage = (): JSX.Element => {
   const t = useT();
   const [statsOpen, setStatsOpen] = useState(false);
+  // «عاوز من الاجرات عين اعمل معينه»: the record's memos, read before they are printed.
+  const [viewing, setViewing] = useState<LicenseExpenseMemoRow | null>(null);
+  const print = (row: LicenseExpenseMemoRow): void => {
+    try {
+      printMemos(memosOf(row));
+    } catch {
+      toast.error(t('fleet.vehicles.print.failed'));
+    }
+  };
   const [vehicleCodes, setVehicleCodes] = useState<string[]>([]);
   const [kind, setKind] = useState('');
   const [page, setPage] = useState(1);
@@ -147,6 +159,16 @@ export const LicenseExpensesPage = (): JSX.Element => {
       align: 'end',
       render: (row) => (
         <span className="inline-flex items-center gap-1">
+          <button
+            type="button"
+            data-license-expense-view={row.id}
+            title={t('fleet.licenseExpenses.view')}
+            aria-label={t('fleet.licenseExpenses.view')}
+            onClick={() => setViewing(row)}
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            <BoardIcon d={PATH.eye} className="h-4 w-4" />
+          </button>
           <Link
             to={`/fleet/license-expenses/${row.id}`}
             title={memosOf(row).map(memoTitle).join(' — ')}
@@ -157,13 +179,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
           <button
             type="button"
             title={t('fleet.licenseExpenses.print')}
-            onClick={() => {
-              try {
-                printMemos(memosOf(row));
-              } catch {
-                toast.error(t('fleet.vehicles.print.failed'));
-              }
-            }}
+            onClick={() => print(row)}
             className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <BoardIcon d={PATH.pdf} className="h-4 w-4" />
@@ -305,6 +321,41 @@ export const LicenseExpensesPage = (): JSX.Element => {
           />
         )}
       </div>
+
+      <Dialog
+        open={viewing !== null}
+        onClose={() => setViewing(null)}
+        size="xl"
+        title={t('fleet.licenseExpenses.view')}
+        description={viewing === null ? '' : memosOf(viewing).map(memoTitle).join(' — ')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setViewing(null)}>
+              {t('common.close')}
+            </Button>
+            <Button onClick={() => viewing !== null && print(viewing)}>
+              {t('fleet.licenseExpenses.print')}
+            </Button>
+          </>
+        }
+      >
+        <div className="max-h-[70vh] space-y-4 overflow-auto rounded-lg bg-slate-200 p-3 dark:bg-slate-800">
+          {viewing !== null &&
+            memosOf(viewing).map((memo) => (
+              <div
+                key={memo.kind}
+                className="mx-auto w-[640px] max-w-full overflow-hidden rounded shadow-xl"
+              >
+                <div
+                  data-license-expense-view-sheet={memo.kind}
+                  className="origin-top-right"
+                  style={{ transform: 'scale(0.8)', width: '210mm', marginBottom: '-20%' }}
+                  dangerouslySetInnerHTML={{ __html: memoHtml(memo) }}
+                />
+              </div>
+            ))}
+        </div>
+      </Dialog>
     </PageContainer>
   );
 };

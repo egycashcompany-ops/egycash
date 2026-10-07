@@ -144,8 +144,8 @@ export const paperStage = (row: FleetLicensingRowDto, paper: Paper): 'none' | 'o
 
 const STAGE_TINT: Record<'none' | 'open' | 'done', string> = {
   none: '',
-  open: 'bg-amber-50 dark:bg-amber-950/40',
-  done: 'bg-emerald-50 dark:bg-emerald-950/40',
+  open: 'bg-amber-400/[0.14]',
+  done: 'bg-emerald-400/[0.14]',
 };
 
 /** `2026-01-20…` → `2026/01/20`, the way the Fleet boards write a day. */
@@ -356,6 +356,8 @@ export const LicensingPage = (): JSX.Element => {
     }
   };
 
+  // TEMPORARY — the two samples of the square: a round badge (a), a check box (b).
+  const tickLook = sp.get('tick') === 'b' ? 'b' : 'a';
   const square = (
     row: FleetLicensingRowDto,
     field: FleetLicensingMark,
@@ -376,13 +378,16 @@ export const LicensingPage = (): JSX.Element => {
       title={t('fleet.licensing.mark', { paper: t(paper.label), step: t(step), code: row.code })}
       onClick={() => void toggle(row, field)}
       className={cn(
-        'rounded-md p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed',
+        'mx-auto flex items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed active:scale-90',
+        tickLook === 'a' ? 'h-7 w-7 rounded-full' : 'h-6 w-6 rounded-md',
         row[field]
-          ? 'text-emerald-600 hover:bg-emerald-100 dark:text-emerald-400'
-          : 'text-slate-400 hover:bg-slate-100 hover:text-emerald-600 dark:hover:bg-slate-800',
+          ? 'bg-emerald-500 text-white shadow-md shadow-emerald-700/30 hover:bg-emerald-400'
+          : tickLook === 'a'
+            ? 'border-2 border-dashed border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-slate-600'
+            : 'border-2 border-slate-300 bg-white text-transparent hover:border-emerald-500 hover:text-emerald-500/60 dark:border-slate-600 dark:bg-[#0b1220]',
       )}
     >
-      <CheckIcon className="h-4 w-4" />
+      <CheckIcon className={cn(tickLook === 'a' ? 'h-4 w-4' : 'h-3.5 w-3.5', 'stroke-[3]')} />
     </button>
   );
 

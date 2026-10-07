@@ -69,9 +69,9 @@ const BOARD_TABLE = cn(
   '[&_thead_tr]:!bg-slate-100 dark:[&_thead_tr]:!bg-[#0c121e] [&_thead_th]:!text-slate-500 dark:[&_thead_th]:!text-slate-400',
   '[&_tbody_tr]:!border-slate-200 dark:[&_tbody_tr]:!border-slate-800 [&_tbody_td]:!text-slate-800 dark:[&_tbody_td]:!text-slate-200',
   '[&_th]:!text-[13px] [&_th]:!font-bold [&_td]:!py-2.5 [&_td]:whitespace-nowrap [&_td]:!text-sm [&_td]:!font-semibold',
-  // «حاجه قريبه من الشكل دا واللون دا»: the row waiting for its invoice in a warm amber wash,
-  // with the «⚠ بانتظار الفاتورة» tag beside its car.
-  '[&_tbody_tr[data-pending=true]]:!bg-amber-50 dark:[&_tbody_tr[data-pending=true]]:!bg-[#241d17] [&_tbody_tr[data-pending=true]:hover]:!bg-amber-100 dark:[&_tbody_tr[data-pending=true]:hover]:!bg-[#2c2319]',
+  // «مش عاوز الصفوف تبقى ملونه عاوز لما اعمل تسجيل الفاتوره تبقى اخضر»: a row waiting for its
+  // invoice stays plain, with «⚠ بانتظار الفاتورة» beside its car; a recorded one turns green.
+  '[&_tbody_tr[data-pending=false]]:!bg-emerald-50 dark:[&_tbody_tr[data-pending=false]]:!bg-[#10241c] [&_tbody_tr[data-pending=false]:hover]:!bg-emerald-100 dark:[&_tbody_tr[data-pending=false]:hover]:!bg-[#143026]',
 );
 /** The work's tag: a dot and a word, each kind its own colour. */
 const WORK_TAG: Record<'maintenance' | 'repair' | 'other', string> = {

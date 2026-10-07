@@ -1274,8 +1274,8 @@ export const VehiclesListPage = (): JSX.Element => {
 /** The fuel screens' dark bar, laid over `FilterBar` and the controls inside it. */
 const DARK_BAR = DARK_FILTER_BAR;
 
-/** The fuel screens' dark table, laid over `DataTable`. */
-const DARK_TABLE = cn(
+/** The fuel screens' dark table, laid over `DataTable` — the drivers screen's too. */
+export const DARK_TABLE = cn(
   '[&>div]:!rounded-2xl [&>div]:!border-slate-200 dark:[&>div]:!border-slate-800 [&>div]:!bg-white dark:[&>div]:!bg-[#111827]',
   '[&_thead_tr]:!bg-slate-100 dark:[&_thead_tr]:!bg-[#0c121e] [&_thead_th]:!text-slate-500 dark:[&_thead_th]:!text-slate-400 [&_thead_button]:hover:!text-slate-900 dark:[&_thead_button]:hover:!text-slate-100',
   '[&_tbody_tr]:!border-slate-200 dark:[&_tbody_tr]:!border-slate-800 [&_tbody_tr:hover]:!bg-slate-100 dark:[&_tbody_tr:hover]:!bg-[#16203a] [&_tbody_td]:!text-slate-800 dark:[&_tbody_td]:!text-slate-200',

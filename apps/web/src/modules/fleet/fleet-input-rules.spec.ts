@@ -75,8 +75,8 @@ const TABLE: Record<string, Partial<Record<Kind, number>>> = {
   'modules/fleet/components/ViolationDialogs.tsx': { integer: 2, money: 3 },
   // The driver filter.
   'modules/fleet/pages/CustodyPage.tsx': { arabic: 1 },
-  // Address and governorate; phone.
-  'modules/fleet/pages/DriversListPage.tsx': { arabic: 2, phone: 1 },
+  // Governorate; phone. (The address left the bar with its column.)
+  'modules/fleet/pages/DriversListPage.tsx': { arabic: 1, phone: 1 },
   // The numbers, the fuel prices and balances, and the signatories' names and titles.
   'modules/fleet/pages/FleetSettingsPage.tsx': { integer: 1, money: 1, arabic: 1 },
   'modules/fleet/pages/FuelCardsPage.tsx': { digits: 1 },

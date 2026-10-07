@@ -27,8 +27,12 @@
 //
 // There is no "add driver" action: enrolment left the UI. The create endpoint still exists for the
 // API's own consumers; nothing on this screen reaches it.
+//
+// «عاوز شاشه السائقون تكون زى السيارات»: the vehicles board's look — no page title, a bar with the
+// count, «الإحصائيات» and the Excel / PDF pill, the figures behind it, the dark filter bar with an
+// icon on every filter, and the vehicles table.
 import { useMemo, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   MAX_PAGE_SIZE,
@@ -41,16 +45,18 @@ import {
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { useCan } from '../../../platform/rbac/Can';
-import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
+import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
-import { FilterField } from '../../../shared/ui/FilterField';
-import { Pagination } from '../../../shared/ui/Pagination';
-import { Select } from '../../../shared/ui/form';
+import { FleetPager } from '../components/FleetPager';
 import { MultiSelect } from '../../../shared/ui/MultiSelect';
+import { Spinner } from '../../../shared/ui/Spinner';
+import { toast } from '../../../shared/ui/toast/toast-store';
+import { errorMessage } from '../../../shared/lib/errors';
+import { listKey } from '../../../shared/lib/query-keys';
 import { readList, writeList } from '../../../shared/lib/list-param';
 import { DebouncedInput } from '../../../shared/ui/DebouncedInput';
-import { EditIcon, EyeIcon, UploadIcon } from '../../../shared/ui/icons';
+import { EditIcon, EyeIcon, PrinterIcon, UploadIcon } from '../../../shared/ui/icons';
 import { formatDate, formatNumber, localized } from '../../../shared/lib/format';
 import { cn } from '../../../shared/lib/cn';
 import { useDrivers, useFleetCatalog } from '../api/fleet-queries';
@@ -61,8 +67,14 @@ import {
   useDrivingJobTitles,
 } from '../../hr/recruitment/job-offers/api/job-offer-queries';
 import { useEmployeeRecord } from '../components/EmployeeName';
-import { ExportSheetButton } from '../components/ExportSheetButton';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
+import { printFleetReport } from '../lib/fleet-report-print';
+import { useReportSignatories } from '../lib/use-report-signatories';
+import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
+import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
+import { BreakdownCard, FigureChip } from '../components/FleetFigures';
+import { BoardIcon, PATH, expiryState } from '../components/FuelCardBoard';
+import { DARK_TABLE } from './VehiclesListPage';
 import { CatalogMultiSelect } from '../components/CatalogMultiSelect';
 import { DriverPickerFilter } from '../components/DriverPickerFilter';
 import { DriverFormDialog } from '../components/DriverFormDialog';
@@ -70,6 +82,7 @@ import {
   DRIVER_LICENSE_IMAGE_ACCEPT,
   DriverLicenseImageCell,
   DriverLicenseImagePreviewDialog,
+  usePrintDriverLicence,
 } from '../components/DriverLicenseImage';
 import { driverIdFilter } from '../lib/driver-filter-selection';
 import { clickSort, readSorts, sortQuery, writeSorts } from '../lib/table-sort';
@@ -77,7 +90,6 @@ import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 
 /** Remembered across visits: this screen's filters and view preferences. `page` is derived, never kept. */
 const REMEMBERED_FILTERS = [
-  'addr',
   'branch',
   'drv',
   'gov',
@@ -92,47 +104,14 @@ const REMEMBERED_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 25;
 
-/**
- * Every filter is `density="tight"`: 8px off a text box, 24px off a select, and — since the
- * picker takes it too — the whole row is one size of control rather than ten of one and one of
- * another.
- *
- * That is not cosmetics, it is the arithmetic of the row. Eleven controls at the default gutters
- * spend 430px on their own chrome before a single letter is drawn, and the shell leaves this bar
- * 952px of content at 1280 — so the names had nowhere to go and clipped to «الـ». Tight gutters
- * give that back, which is what lets all eleven NAMES read at the narrowest desktop.
- *
- * MEASURED, not chosen: each wrapper's `basis` below is the width its own label actually needs
- * (text + gutters + chevron), so the eleven ask for 846px of the 864 available once the count
- * chip and the gaps are paid for. Every one of them was clipped mid-word before that arithmetic
- * was done — «الرخص», «التخصـ», «المحافظ», «الفرـ».
- */
+/** Every filter is `density="tight"`, as on the vehicles board. */
 const TIGHT = 'tight' as const;
 
-/**
- * One filter's share of the row, and every filter gets the SAME one.
- *
- * `flex-1 basis-0` is the whole point: a control's width no longer depends on how long its own
- * words happen to be, which is what made the previous bar eleven boxes of eleven arbitrary sizes
- * with no rhythm to them. They divide the row equally and grow together as the screen does.
- *
- * That only became possible once the names moved ABOVE the controls (`FilterField`): a `<select>`
- * whose widest option is «صورة الرخصة» demands that much width, while one whose widest option is
- * «الكل» demands almost none. `min-w` is the floor at which a field's NAME is still readable.
- */
-const CELL = 'flex-1 basis-0 min-w-[4.5rem]';
-
-/**
- * A text box's own width. Unlike a `<select>`, an `<input>` has no content to be as wide as — its
- * intrinsic width is a browser default of about twenty characters, far more than any of these
- * four need — so the one width that has to be stated is theirs.
- */
-// Each control's `basis` is measured from the WORDS ON IT, not from the longest thing it could
-// ever hold. A `<select>` is otherwise as wide as its longest option — «سائق صراف الى», a branch
-// name, a catalog value an admin adds tomorrow — and eleven of them demanded 1478px of a bar that
-// holds 974 at 1280, so the names had nowhere to go. Sized to their own labels the row asks for
-// 984px, every filter NAME reads at the narrowest desktop, and what gives way instead is a long
-// chosen VALUE — the right thing to lose, because the table below is already showing it.
+/** The board's toolbar buttons, from the vehicles screen. */
+const BRAND_BUTTON =
+  'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
+const PILL_BUTTON =
+  'inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-slate-800 transition active:scale-95 disabled:opacity-50 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs dark:text-slate-200';
 
 /** A comma-separated id list on the URL, as the picker holds it. */
 const idList = (raw: string | null): string[] =>
@@ -150,6 +129,12 @@ const useCatalogNames = (kind: FleetCatalogKind, locale: Locale): ReadonlyMap<st
   );
 };
 
+/** id → its place in one fleet catalog, as the admin ordered it. */
+const useCatalogIndex = (kind: FleetCatalogKind): ReadonlyMap<string, number> => {
+  const { data } = useFleetCatalog(kind);
+  return useMemo(() => new Map((data?.items ?? []).map((item, index) => [item.id, index])), [data]);
+};
+
 /**
  * One PERSON-owned cell.
  *
@@ -162,15 +147,113 @@ const EmployeeFact = ({
   employeeId,
   pick,
   className,
+  tone,
+  titled = false,
 }: {
   employeeId: string;
   pick: (person: FleetPersonDto) => string | null;
   className?: string;
+  /** A colour picked from the value itself — a branch keeps its own. */
+  tone?: (value: string) => string;
+  /** Carry the whole value on hover — for a cell cut short with «…». */
+  titled?: boolean;
 }): JSX.Element => {
   const person = useEmployeeRecord(employeeId);
   const value = person === undefined ? null : pick(person);
   if (value === null || value === '') return <span className="text-slate-400">—</span>;
-  return <span className={className}>{value}</span>;
+  return (
+    <span className={cn(className, tone?.(value))} {...(titled ? { title: value } : {})}>
+      {value}
+    </span>
+  );
+};
+
+/** `2020-09-06…` → `2020/09/06`, the way the Fleet boards write a day. */
+const day = (iso: string | null): string | null =>
+  iso === null ? null : iso.slice(0, 10).replace(/-/gu, '/');
+
+/** The avatars' colours — a driver keeps the same one, picked from their code. */
+const AVATAR_TONES = [
+  'bg-gradient-to-br from-violet-500 to-indigo-600 text-white ring-violet-400/40',
+  'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
+  'bg-gradient-to-br from-amber-400 to-orange-500 text-white ring-amber-400/40',
+  'bg-rose-500/10 text-rose-300 ring-rose-500/30',
+  'bg-gradient-to-br from-emerald-500 to-teal-600 text-white ring-emerald-400/40',
+  'bg-indigo-500/10 text-indigo-300 ring-indigo-500/30',
+  'bg-sky-500/10 text-sky-300 ring-sky-500/30',
+] as const;
+
+/** A stable pick from a palette, by a string — the same driver, branch or item, the same colour. */
+const toneOf = <T,>(key: string, palette: readonly T[]): T =>
+  palette[[...key].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % palette.length] as T;
+
+/**
+ * «اسم السائق والموقع», as the reference draws it — a round badge with the first letters of the
+ * name (a green dot on an active driver) and the name. «اللى تحت اسم السواق اللى هى المدينه
+ * والمحافظه شيلها»: nothing under it.
+ */
+const DriverNameCell = ({
+  employeeId,
+  active,
+}: {
+  employeeId: string;
+  active: boolean;
+}): JSX.Element => {
+  const person = useEmployeeRecord(employeeId);
+  if (person === undefined || person.fullNameAr === '') {
+    return <span className="text-slate-400">—</span>;
+  }
+  const words = person.fullNameAr.trim().split(/\s+/u);
+  const initials = words
+    .slice(0, 2)
+    // «السيد» gives «س», not «ا»: the article is not the name.
+    .map((word) => (word.startsWith('ال') && word.length > 2 ? word.charAt(2) : word.charAt(0)))
+    .join('');
+  return (
+    <span className="flex items-center gap-2.5">
+      <span
+        aria-hidden
+        className={cn(
+          'relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-black ring-1',
+          toneOf(person.code, AVATAR_TONES),
+        )}
+      >
+        {initials}
+        {active && (
+          <i className="absolute -bottom-0.5 -end-0.5 h-2.5 w-2.5 rounded-full bg-emerald-400 ring-2 ring-white dark:ring-[#111827]" />
+        )}
+      </span>
+      <span className="min-w-0 leading-tight">
+        <span
+          className="block max-w-[12rem] truncate font-bold min-[1750px]:max-w-[16rem]"
+          title={person.fullNameAr}
+        >
+          {person.fullNameAr}
+        </span>
+      </span>
+    </span>
+  );
+};
+
+/** «درجة أولى» / «درجة ثانية» — the licence class by its place in the catalog. */
+const GRADE_ORDINALS = ['أولى', 'ثانية', 'ثالثة', 'رابعة', 'خامسة'] as const;
+
+/** The row's printer — the driver's licence on the registry's paper. */
+const PrintLicenceButton = ({ driver }: { driver: FleetDriverProfileDto }): JSX.Element => {
+  const t = useT();
+  const print = usePrintDriverLicence(driver);
+  return (
+    <button
+      type="button"
+      data-driver-license-print={driver.id}
+      className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+      aria-label={t('fleet.drivers.licenseImage.print')}
+      title={t('fleet.drivers.licenseImage.print')}
+      onClick={() => void print()}
+    >
+      <PrinterIcon className="h-4 w-4" />
+    </button>
+  );
 };
 
 /**
@@ -210,7 +293,9 @@ export const DriversListPage = (): JSX.Element => {
     // Never set here: this bar names people with the multi-select, which hands over ids rather
     // than a term HR has to resolve — see `DriverPickerFilter`.
     search: '',
-    address: sp.get('addr') ?? '',
+    // «شيله كمان من الفلتر»: the address is no longer a filter here — an old link's `addr` is
+    // ignored rather than narrowing the table by a box nobody can see.
+    address: '',
     governorate: sp.get('gov') ?? '',
     phone: sp.get('phone') ?? '',
   };
@@ -337,6 +422,55 @@ export const DriversListPage = (): JSX.Element => {
   const jobName = useCatalogNames('driverJob', locale);
   const specializationName = useCatalogNames('driverSpecialization', locale);
   const licenseTypeName = useCatalogNames('driverLicenseType', locale);
+  const licenseTypeIndex = useCatalogIndex('driverLicenseType');
+  const signatories = useReportSignatories();
+
+  // The figures describe the WHOLE registry, as the vehicles board's do — read when the reader
+  // opens them, never on the way in.
+  const [statsOpen, setStatsOpen] = useState(false);
+  const wholeRegistry = useQuery({
+    queryKey: listKey('fleet', 'drivers', { whole: true }),
+    queryFn: () =>
+      fetchFilteredRows((pageNo, size) => fleetApi.listDrivers({ page: pageNo, pageSize: size })),
+    enabled: statsOpen,
+    staleTime: 60_000,
+  });
+  const figures = useMemo(() => {
+    const items = wholeRegistry.data ?? [];
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    const now = Date.now();
+    /** How many drivers sit on each entry of one catalog; the unrecorded ones last. */
+    const tally = (
+      pick: (profile: FleetDriverProfileDto) => string | null,
+      names: ReadonlyMap<string, string>,
+    ): { id: string; name: string; count: number }[] => {
+      const counts = new Map<string, number>();
+      for (const d of items) {
+        const id = d.profile === null ? '' : (pick(d.profile) ?? '');
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([id, count]) => ({
+          id,
+          name: id === '' ? t('fleet.drivers.notRecorded') : (names.get(id) ?? '—'),
+          count,
+        }))
+        .sort((a, b) => (a.id === '' ? 1 : b.id === '' ? -1 : b.count - a.count));
+    };
+    const expiries = items.flatMap((d) =>
+      d.profile?.licenseExpiresAt == null ? [] : [d.profile.licenseExpiresAt],
+    );
+    return {
+      total: items.length,
+      recorded: items.filter((d) => d.profile !== null).length,
+      thisMonth: expiries.filter((day) => day.slice(0, 7) === thisMonth).length,
+      expired: expiries.filter((day) => new Date(day).getTime() < now).length,
+      noImage: items.filter((d) => d.profile === null || d.profile.licenseImage === null).length,
+      jobs: tally((profile) => profile.jobId, jobName),
+      specializations: tally((profile) => profile.specializationId, specializationName),
+      licenseTypes: tally((profile) => profile.licenseTypeId, licenseTypeName),
+    };
+  }, [wholeRegistry.data, jobName, specializationName, licenseTypeName, t]);
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<FleetDriverRowDto | null>(null);
@@ -354,28 +488,8 @@ export const DriversListPage = (): JSX.Element => {
   const [pickerKey, setPickerKey] = useState(0);
 
   const actionButton =
-    'rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200';
-
-  // A cell Fleet has not filled in yet. Not «—» alone: the reader is looking at a driver who is
-  // certainly a driver (their seat says so) and whose licence simply has not been entered.
-  const NotRecorded = (): JSX.Element => (
-    <span className="text-xs text-slate-400" title={t('fleet.drivers.notRecordedHint')}>
-      {t('fleet.drivers.notRecorded')}
-    </span>
-  );
-
-  /** One catalog-backed cell: the item's own name, a dash when nobody has chosen one. */
-  const CatalogFact = ({
-    id,
-    names,
-  }: {
-    id: string | null | undefined;
-    names: ReadonlyMap<string, string>;
-  }): JSX.Element => {
-    const name = id == null ? undefined : names.get(id);
-    if (name === undefined) return <span className="text-slate-400">—</span>;
-    return <span>{name}</span>;
-  };
+    // The colour comes with each button, grey as on the vehicles table.
+    'rounded-md p-1.5 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:hover:bg-slate-800';
 
   /**
    * The people this file names — FLEET's own roster, in one request.
@@ -421,15 +535,13 @@ export const DriversListPage = (): JSX.Element => {
    * across five cells: an empty cell is how a spreadsheet says "nothing recorded", and it is what
    * the reader will filter and sort on.
    */
-  const exportSheet = async (): Promise<void> => {
+  const driverSheet = async (): Promise<{ header: string[]; rows: (string | number)[][] }> => {
     const filters = filtersOnly(params);
     const all = await fetchFilteredRows((pageNo, size) =>
       fleetApi.listDrivers({ ...filters, page: pageNo, pageSize: size }),
     );
     const people = await fleetPeople();
-    saveSheet({
-      name: t('fleet.nav.drivers'),
-      serialHeader: t('fleet.violations.report.serial'),
+    return {
       header: [
         t('fleet.drivers.columns.driver'),
         t('fleet.drivers.columns.employeeCode'),
@@ -463,37 +575,96 @@ export const DriversListPage = (): JSX.Element => {
           profile !== null && profile.licenseImage !== null ? t('common.yes') : t('common.no'),
         ];
       }),
-    });
+    };
+  };
+  const [exporting, setExporting] = useState<'excel' | 'pdf' | null>(null);
+  const exportSheet = async (): Promise<void> => {
+    if (exporting !== null) return;
+    setExporting('excel');
+    try {
+      const sheet = await driverSheet();
+      saveSheet({
+        name: t('fleet.nav.drivers'),
+        serialHeader: t('fleet.violations.report.serial'),
+        header: sheet.header,
+        rows: sheet.rows,
+      });
+    } catch (error) {
+      toast.error(errorMessage(error, locale));
+    } finally {
+      setExporting(null);
+    }
+  };
+  // The same rows as the Excel file, on the Fleet report page — as the vehicles screen prints.
+  const printSheet = async (): Promise<void> => {
+    if (exporting !== null) return;
+    setExporting('pdf');
+    try {
+      const sheet = await driverSheet();
+      printFleetReport({
+        title: t('fleet.nav.drivers'),
+        department: t('fleet.violations.report.department'),
+        subtitle: '',
+        header: sheet.header,
+        rows: sheet.rows.map((row) => row.map(String)),
+        totals: [],
+        signatories,
+        serialHeader: t('fleet.violations.report.serial'),
+        emptyLabel: t('fleet.violations.report.empty'),
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error && error.message === 'popup blocked'
+          ? t('fleet.violations.popupBlocked')
+          : errorMessage(error, locale),
+      );
+    } finally {
+      setExporting(null);
+    }
   };
 
   const columns: Column<FleetDriverRowDto>[] = [
     {
       key: 'driver',
       header: t('fleet.drivers.columns.driver'),
-      // THE FIVE HR COLUMNS ORDER THE WHOLE REGISTRY, not the page on screen. The registry is a
-      // join across the FR-11 line — who is a driver comes from the org chart, what Fleet knows
-      // about them comes from Fleet — so it is assembled and paged on the server, and these five
-      // facts now travel with the roster from the directory seam. The browser still SHOWS them
-      // from HR's own record; only the ranking is done where the whole list is.
+      // THE FIVE HR COLUMNS ORDER THE WHOLE REGISTRY, not the page on screen: the roster is
+      // assembled and paged on the server, and these facts travel with it from the directory seam.
       sortable: true,
-      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.fullNameAr} />,
+      render: (d) => (
+        <DriverNameCell employeeId={d.employeeId} active={d.profile?.isActive === true} />
+      ),
     },
     {
       key: 'employeeCode',
+      align: 'center',
       header: t('fleet.drivers.columns.employeeCode'),
       sortable: true,
-      // Plain, like the job title beside it. `font-mono text-xs` made the one column a reader
-      // matches against a paper list the smallest and least legible thing on the row.
-      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.code} />,
+      render: (d) => (
+        <EmployeeFact
+          employeeId={d.employeeId}
+          pick={(e) => e.code}
+          className="font-mono text-xs"
+        />
+      ),
     },
     {
       key: 'jobTitle',
+      align: 'center',
       header: t('fleet.drivers.columns.jobTitle'),
-      render: (d) =>
-        d.profile === null ? <NotRecorded /> : <CatalogFact id={d.profile.jobId} names={jobName} />,
+      render: (d) => {
+        const name = d.profile?.jobId == null ? undefined : jobName.get(d.profile.jobId);
+        return name === undefined ? (
+          <span className="text-xs text-slate-400" title={t('fleet.drivers.notRecordedHint')}>
+            {t('fleet.drivers.notRecorded')}
+          </span>
+        ) : (
+          <span>{name}</span>
+        );
+      },
     },
     {
       key: 'branch',
+      align: 'center',
       header: t('fleet.drivers.columns.branch'),
       render: (d) => (
         <EmployeeFact
@@ -503,18 +674,15 @@ export const DriversListPage = (): JSX.Element => {
       ),
     },
     {
-      key: 'address',
-      header: t('fleet.drivers.columns.address'),
-      render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.address} />,
-    },
-    {
       key: 'governorate',
+      align: 'center',
       header: t('fleet.drivers.columns.governorate'),
       sortable: true,
       render: (d) => <EmployeeFact employeeId={d.employeeId} pick={(e) => e.governorate} />,
     },
     {
       key: 'phone',
+      align: 'center',
       header: t('fleet.drivers.columns.phone'),
       sortable: true,
       render: (d) => (
@@ -527,91 +695,109 @@ export const DriversListPage = (): JSX.Element => {
     },
     {
       key: 'hiredAt',
+      align: 'center',
       header: t('fleet.drivers.columns.hiredAt'),
       sortable: true,
       render: (d) => (
         <EmployeeFact
           employeeId={d.employeeId}
-          pick={(e) => formatDate(e.hiredAt, locale)}
+          pick={(e) => day(e.hiredAt)}
           className="tabular-nums"
         />
       ),
     },
     {
       key: 'specialization',
+      align: 'center',
       header: t('fleet.drivers.columns.specialization'),
-      render: (d) =>
-        d.profile === null ? (
-          <NotRecorded />
+      render: (d) => {
+        const id = d.profile?.specializationId ?? null;
+        const name = id === null ? undefined : specializationName.get(id);
+        return name === undefined ? (
+          <span className="text-xs text-slate-400">{t('fleet.drivers.notRecorded')}</span>
         ) : (
-          <CatalogFact id={d.profile.specializationId} names={specializationName} />
-        ),
+          <span>{name}</span>
+        );
+      },
     },
     {
       key: 'licenseType',
-      header: t('fleet.drivers.columns.licenseType'),
-      render: (d) =>
-        d.profile === null ? (
-          <NotRecorded />
-        ) : (
-          <CatalogFact id={d.profile.licenseTypeId} names={licenseTypeName} />
-        ),
+      align: 'center',
+      header: t('fleet.drivers.table.licenseGrade'),
+      render: (d) => {
+        const id = d.profile?.licenseTypeId ?? null;
+        const index = id === null ? undefined : licenseTypeIndex.get(id);
+        if (id === null || index === undefined) {
+          return <span className="text-slate-400">—</span>;
+        }
+        // «درجة أولى» by the class's place in the list; past the fifth, its own name.
+        const ordinal = GRADE_ORDINALS[index];
+        return (
+          <span title={licenseTypeName.get(id)}>
+            {ordinal === undefined
+              ? (licenseTypeName.get(id) ?? '—')
+              : t('fleet.drivers.table.grade', { grade: ordinal })}
+          </span>
+        );
+      },
     },
     {
       key: 'licenseExpiresAt',
-      header: t('fleet.drivers.columns.licenseExpiresAt'),
+      align: 'center',
+      header: t('fleet.drivers.table.licenseExpiry'),
       sortable: true,
       render: (d) => {
-        if (d.profile === null) return <NotRecorded />;
-        // A PROFILE WITH NO EXPIRY reads the same as no profile at all in this column, because the
-        // column asks one question — when does this licence lapse — and neither row can answer it.
-        // What it must never do is treat the absence as a date: `new Date(null)` is the epoch, and
-        // that would paint the driver red for a lapse that has not happened.
+        // A driver with no Fleet file yet is «قيد المراجعة»; a file with no expiry has no date to
+        // show — never the epoch `new Date(null)` would paint red. As the vehicles table writes
+        // a licence: red once lapsed, amber within the month.
+        if (d.profile === null) {
+          return (
+            <span className="text-amber-600 dark:text-amber-400">
+              {t('fleet.drivers.table.underReview')}
+            </span>
+          );
+        }
         const { licenseExpiresAt } = d.profile;
-        if (licenseExpiresAt === null) return <NotRecorded />;
-        const expired = new Date(licenseExpiresAt).getTime() < Date.now();
+        if (licenseExpiresAt === null) return <span className="text-slate-400">—</span>;
+        const state = expiryState(licenseExpiresAt, 30);
         return (
           <span
-            className={cn('tabular-nums', expired && 'font-medium text-red-600 dark:text-red-400')}
+            dir="ltr"
+            data-licence-expired={state === 'expired'}
+            className={cn(
+              'font-semibold tabular-nums',
+              state === 'expired'
+                ? 'text-red-600 dark:text-red-400'
+                : state === 'soon'
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-slate-900 dark:text-slate-100',
+            )}
           >
-            {formatDate(licenseExpiresAt, locale)}
+            {day(licenseExpiresAt)}
           </span>
         );
       },
     },
     {
       key: 'licenseImage',
-      header: t('fleet.drivers.columns.licenseImage'),
+      header: t('fleet.drivers.table.licenseImage'),
+      align: 'center',
       render: (d) =>
         d.profile === null ? (
           // THE PICKER OPENS FIRST — «تدوس الأيقونة، مستكشف الملفات يفتح على طول، تختار الصورة».
-          //
-          // This is the same icon a car with no scan shows, and now the same GESTURE: press it and
-          // the file picker is there, with no dialog in between. That is the whole of what was
-          // asked, and all of it that the server permits — the licence file hangs on the PROFILE
-          // (every endpoint is `/fleet/drivers/:profileId/license-image`), and a driver with no
-          // profile has no id to upload against. Creating one needs a licence number and an expiry
-          // date, two facts that exist nowhere in the system and that only a person can supply.
-          //
-          // So the order is inverted instead: the scan is chosen FIRST and handed to the dialog
-          // already staged, which then asks only for the two facts it cannot invent and uploads
-          // the file the moment the create returns an id. The reader picks the image once, in the
-          // gesture they expected, and never comes back to this cell for it.
-          //
-          // A `<label>` wrapping a hidden input rather than a button that pokes a ref: it is what
-          // `DriverLicenseImageCell` does one branch over for an enrolled driver, and it gets the
-          // keyboard and the accessible name from the platform rather than from us. `relative` is
-          // load-bearing — `sr-only` is absolutely positioned, and without a positioned ancestor
-          // the hidden text lands at a page coordinate of its own, giving a scrollable table a
-          // horizontal scrollbar nothing on screen explains.
+          // A driver with no profile has no id to upload against, so the scan is chosen first and
+          // handed to the profile dialog already staged; the dialog asks only for what it cannot
+          // invent and uploads the file the moment the create returns an id.
           can('fleetDriver.manage') ? (
             <label
               data-driver-enrol={d.employeeId}
-              className={`${actionButton} relative inline-flex cursor-pointer`}
+              className={cn(
+                actionButton,
+                'relative inline-flex cursor-pointer text-slate-500 dark:text-slate-400',
+              )}
               title={t('fleet.drivers.licenseImage.addViaProfile')}
             >
               <UploadIcon className="h-4 w-4" />
-              <span className="sr-only">{t('fleet.drivers.licenseImage.addViaProfile')}</span>
               <input
                 key={pickerKey}
                 type="file"
@@ -621,8 +807,7 @@ export const DriversListPage = (): JSX.Element => {
                 title={t('fleet.drivers.licenseImage.addViaProfile')}
                 onChange={(e) => {
                   const file = e.target.files?.[0];
-                  // A cancelled picker must change nothing — no dialog, no staged file. The
-                  // change event still fires on some platforms with an empty list.
+                  // A cancelled picker must change nothing — no dialog, no staged file.
                   if (file === undefined) return;
                   setStagedScan(file);
                   setEditing(d);
@@ -632,7 +817,7 @@ export const DriversListPage = (): JSX.Element => {
               />
             </label>
           ) : (
-            <NotRecorded />
+            <span className="text-slate-400">—</span>
           )
         ) : (
           <DriverLicenseImageCell driver={d.profile} onPreview={setPreviewing} />
@@ -640,15 +825,18 @@ export const DriversListPage = (): JSX.Element => {
     },
     {
       key: 'actions',
-      header: t('fleet.vehicles.columns.actions'),
+      header: t('fleet.drivers.table.actions'),
       align: 'end',
       render: (d) => (
         <span className="flex items-center justify-end gap-1">
+          {d.profile !== null && d.profile.licenseImage !== null && (
+            <PrintLicenceButton driver={d.profile} />
+          )}
           {/* The detail screen is ABOUT a profile, so it is offered only once one exists. */}
           {d.profile !== null && (
             <button
               type="button"
-              className={actionButton}
+              className={cn(actionButton, 'text-slate-500 dark:text-slate-400')}
               aria-label={t('fleet.drivers.view')}
               title={t('fleet.drivers.view')}
               onClick={() => navigate(d.profile === null ? '' : d.profile.id)}
@@ -659,7 +847,7 @@ export const DriversListPage = (): JSX.Element => {
           {can('fleetDriver.manage') && (
             <button
               type="button"
-              className={actionButton}
+              className={cn(actionButton, 'text-slate-500 dark:text-slate-400')}
               aria-label={d.profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
               title={d.profile === null ? t('fleet.drivers.record') : t('fleet.drivers.edit')}
               onClick={() => {
@@ -677,245 +865,288 @@ export const DriversListPage = (): JSX.Element => {
 
   return (
     <PageContainer>
-      <PageHeader
-        title={t('fleet.nav.drivers')}
-        breadcrumbs={[
-          { label: t('fleet.module.title'), to: '/fleet' },
-          { label: t('fleet.nav.drivers') },
-        ]}
-        // OFFERED ONLY WHEN THE SCREEN HAS AN ANSWER TO EXPORT. The three states that hold the
-        // table back hold the file back too, and for a sharper reason: `employeeIds` is how this
-        // screen's HR half narrows the list, and an EMPTY or absent one travels as no filter at
-        // all (`buildQuery` drops an empty list). Exporting under a blocked or empty HR match
-        // would hand the reader the WHOLE registry under the name of a filter that matched
-        // nobody — a file that lies, which is worse than no file.
-        actions={
-          <ExportSheetButton
-            name="drivers"
-            onExport={exportSheet}
-            disabled={blocked || emptyMatch}
-          />
-        }
-      />
-
       <div className="space-y-4">
-        {/*
-          ELEVEN filters, ONE row, from 1280px up.
-
-          They SHARE the bar's width rather than each demanding its own. Every child is
-          `flex-1 min-w-0` over a `basis` that says how much of the row it deserves, so the eleven
-          divide whatever there is: they grow on a 1920 screen and shrink on a 1280 one, and the
-          row cannot be pushed off the page at any width in between. Fixed widths could not do
-          this — the controls measure 1478px at their natural size and the bar holds 974px at
-          1280, so a row of `shrink-0` children would have had to wrap (which the brief refuses)
-          or overflow (which it refuses too).
-
-          `min-w-0` is what makes shrinking legal: without it a flex child refuses to go below its
-          content width, and `<select>` content is its longest option — one long branch name would
-          push the row out on its own.
-
-          The width lives on the WRAPPER and the control inside is `w-full`: `cn` does not merge
-          Tailwind classes, so a width passed to `Input` would fight its own `w-full` rather than
-          replace it.
-        */}
-        <FilterBar
-          singleRow
-          singleRowFrom={1280}
-          hasActiveFilters={hasActiveFilters}
-          // The count belongs BESIDE the filters, not in the table: it is the answer to what the
-          // bar was just asked, and a reader comparing two filters compares two counts.
-          trailing={
-            matchedDrivers === null ? undefined : (
-              <span
-                role="status"
-                className="whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2 py-0.5 text-sm font-medium tabular-nums text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                title={t('fleet.drivers.countLabel')}
-              >
-                {t('fleet.drivers.count', { count: formatNumber(matchedDrivers, locale) })}
-              </span>
-            )
-          }
-          onClear={() =>
-            patch({
-              drv: null,
-              job: null,
-              branch: null,
-              addr: null,
-              phone: null,
-              gov: null,
-              spec: null,
-              lic: null,
-              img: null,
-            })
-          }
-        >
-          {/* Eleven fields, EQUAL width, each with its own name above it — see `FilterField`.
-              `flex-1 basis-0` is what makes them equal: the share of the row a control gets no
-              longer depends on how long its own words happen to be, which is what made the old bar
-              read as eleven arbitrary boxes. `min-w` keeps a field from collapsing past the point
-              where its name can be read at all. */}
-          {mayFilterByHr && (
-            <FilterField
-              label={t('fleet.drivers.filters.employeeShort')}
-              active={pickedDrivers.length > 0}
-              className={CELL}
-              density={TIGHT}
-            >
-              <DriverPickerFilter
-                value={pickedDrivers}
-                onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
-                // The same seats the roster is built from, so every name it offers is a name this
-                // table can actually show.
-                density={TIGHT}
-                // The question is written above now, so the trigger says only the ANSWER.
-                placeholder={t('common.filters.all')}
-                // Its trigger is an `inline-flex`, so without this it shrank to the width of the
-                // word «الكل» while the ten selects beside it filled theirs — one small box at the
-                // end of an otherwise even row.
-                fullWidth
-                className="w-full"
-              />
-            </FilterField>
-          )}
-          <FilterField
-            label={t('fleet.drivers.columns.jobTitle')}
-            active={jobs.length > 0}
-            className={CELL}
-            density={TIGHT}
+        <div className="flex items-center justify-between gap-2" data-drivers-toolbar="true">
+          {/* The count belongs BESIDE the filters' answer: it is what the bar was just asked. */}
+          <span
+            role="status"
+            title={t('fleet.drivers.countLabel')}
+            className="text-sm font-bold text-slate-600 dark:text-slate-300"
           >
-            <CatalogMultiSelect
-              kind="driverJob"
-              value={jobs}
-              onChange={(ids) => patch({ job: writeList(ids) })}
-              label={t('fleet.drivers.columns.jobTitle')}
-              placeholder={t('common.filters.all')}
-              className="w-full"
-              fullWidth
-              density={TIGHT}
-            />
-          </FilterField>
-          {can('branch.view') && (
-            <FilterField
-              label={t('fleet.drivers.columns.branch')}
-              active={branchIds.length > 0}
-              className={CELL}
-              density={TIGHT}
+            {matchedDrivers === null
+              ? ''
+              : t('fleet.drivers.count', { count: formatNumber(matchedDrivers, locale) })}
+          </span>
+          <span className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <button
+              type="button"
+              data-driver-stats-toggle="true"
+              aria-expanded={statsOpen}
+              onClick={() => setStatsOpen((open) => !open)}
+              className={BRAND_BUTTON}
             >
+              {statsOpen
+                ? t('fleet.vehicles.board.breakdownHide')
+                : t('fleet.vehicles.board.breakdown')}
+              <svg
+                viewBox="0 0 24 24"
+                aria-hidden
+                className={cn(
+                  'h-3 w-3 transition-transform sm:h-3.5 sm:w-3.5',
+                  statsOpen && 'rotate-180',
+                )}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {/* OFFERED ONLY WHEN THE SCREEN HAS AN ANSWER TO EXPORT. The three states that hold
+                the table back hold the files back too: an empty or absent `employeeIds` travels as
+                no filter at all, and exporting under it would hand the reader the WHOLE registry
+                under the name of a filter that matched nobody. */}
+            {!blocked && !emptyMatch && (
+              <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-300 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-800/80">
+                <button
+                  type="button"
+                  data-export="drivers"
+                  disabled={exporting !== null}
+                  onClick={() => void exportSheet()}
+                  className={cn(
+                    PILL_BUTTON,
+                    'hover:bg-emerald-50 hover:text-emerald-700 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300',
+                  )}
+                >
+                  {exporting === 'excel' ? (
+                    <Spinner className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.excel}
+                      className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                    />
+                  )}
+                  <span className="sm:hidden">Excel</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.excel')}</span>
+                </button>
+                <span className="h-4 w-px bg-slate-200 dark:bg-slate-700" />
+                <button
+                  type="button"
+                  data-print="drivers"
+                  disabled={exporting !== null}
+                  onClick={() => void printSheet()}
+                  className={cn(
+                    PILL_BUTTON,
+                    'hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-400',
+                  )}
+                >
+                  {exporting === 'pdf' ? (
+                    <Spinner className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
+                  ) : (
+                    <BoardIcon
+                      d={PATH.pdf}
+                      className="h-3.5 w-3.5 text-red-600 dark:text-red-400"
+                    />
+                  )}
+                  <span className="sm:hidden">PDF</span>
+                  <span className="hidden sm:inline">{t('fleet.fuelCards.board.pdf')}</span>
+                </button>
+              </div>
+            )}
+          </span>
+        </div>
+
+        {/* Every figure lives behind «الإحصائيات», over the whole registry. */}
+        {statsOpen && wholeRegistry.data !== undefined && (
+          <section data-driver-figures="true" className="animate-drop-in space-y-2">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <FigureChip
+                icon={FILTER_ICON.person}
+                iconClass="bg-blue-500/10 text-blue-600 dark:text-blue-400"
+                label={t('fleet.drivers.board.total')}
+                value={figures.total}
+                unit={t('fleet.drivers.board.unit')}
+                note={t('fleet.drivers.board.totalNote', {
+                  recorded: String(figures.recorded),
+                  missing: String(figures.total - figures.recorded),
+                })}
+              />
+              <FigureChip
+                icon={PATH.calendar}
+                iconClass="bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                label={t('fleet.drivers.board.thisMonth')}
+                value={figures.thisMonth}
+                valueClass="text-amber-600 dark:text-amber-400"
+                unit={t('fleet.drivers.board.licences')}
+              />
+              <FigureChip
+                icon={PATH.warn}
+                iconClass={
+                  figures.expired > 0
+                    ? 'bg-red-500/10 text-red-600 dark:text-red-400'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                }
+                label={t('fleet.drivers.board.expired')}
+                value={figures.expired}
+                valueClass={
+                  figures.expired > 0
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-emerald-600 dark:text-emerald-400'
+                }
+                unit={t('fleet.drivers.board.licences')}
+              />
+              <FigureChip
+                icon={PATH.image}
+                iconClass="bg-cyan-500/10 text-cyan-600 dark:text-cyan-400"
+                label={t('fleet.drivers.withoutLicenseImage')}
+                value={figures.noImage}
+                unit={t('fleet.drivers.board.unit')}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <BreakdownCard
+                title={t('fleet.drivers.columns.jobTitle')}
+                rows={figures.jobs}
+                total={figures.total}
+              />
+              <BreakdownCard
+                title={t('fleet.drivers.columns.specialization')}
+                rows={figures.specializations}
+                total={figures.total}
+              />
+              <BreakdownCard
+                title={t('fleet.drivers.columns.licenseType')}
+                rows={figures.licenseTypes}
+                total={figures.total}
+              />
+            </div>
+          </section>
+        )}
+
+        {/* The vehicles board's dark bar: every filter's name written in its box, an icon at its
+            start, one row on a computer. */}
+        <div className={cn(DARK_FILTER_BAR, '[&_[role=listbox]]:animate-menu-in')}>
+          <FilterBar
+            hasActiveFilters={hasActiveFilters}
+            onClear={() =>
+              patch({
+                drv: null,
+                job: null,
+                branch: null,
+                phone: null,
+                gov: null,
+                spec: null,
+                lic: null,
+                img: null,
+              })
+            }
+          >
+            {mayFilterByHr && (
+              <FilterWithIcon
+                icon={FILTER_ICON.person}
+                tone="text-emerald-600 dark:text-emerald-400"
+              >
+                <DriverPickerFilter
+                  value={pickedDrivers}
+                  onChange={(next) => patch({ drv: next.length === 0 ? null : next.join(',') })}
+                  density={TIGHT}
+                  fullWidth
+                  className="w-full"
+                />
+              </FilterWithIcon>
+            )}
+            <FilterWithIcon icon={FILTER_ICON.operation} tone="text-slate-600 dark:text-slate-300">
+              <CatalogMultiSelect
+                kind="driverJob"
+                value={jobs}
+                onChange={(ids) => patch({ job: writeList(ids) })}
+                label={t('fleet.drivers.columns.jobTitle')}
+                className="w-full"
+                fullWidth
+                density={TIGHT}
+              />
+            </FilterWithIcon>
+            {can('branch.view') && (
+              <FilterWithIcon icon={FILTER_ICON.branch} tone="text-violet-600 dark:text-violet-300">
+                <MultiSelect
+                  clearable
+                  label={t('fleet.drivers.columns.branch')}
+                  options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
+                  value={branchIds}
+                  onChange={(ids) => patch({ branch: writeList(ids) })}
+                  showSelectedValues
+                  chips
+                  density={TIGHT}
+                  fullWidth
+                  className="w-full"
+                />
+              </FilterWithIcon>
+            )}
+            {mayFilterByHr && (
+              <FilterWithIcon icon={FILTER_ICON.phone} tone="text-slate-500 dark:text-slate-400">
+                <DebouncedInput
+                  aria-label={t('fleet.drivers.columns.phone')}
+                  placeholder={t('fleet.drivers.columns.phone')}
+                  density={TIGHT}
+                  value={hrFilter.phone}
+                  onValueChange={(next) => patch({ phone: next || null })}
+                  rule="phone"
+                />
+              </FilterWithIcon>
+            )}
+            {mayFilterByHr && (
+              <FilterWithIcon icon={FILTER_ICON.map} tone="text-cyan-600 dark:text-cyan-400">
+                <DebouncedInput
+                  aria-label={t('fleet.drivers.columns.governorate')}
+                  placeholder={t('fleet.drivers.columns.governorate')}
+                  density={TIGHT}
+                  value={hrFilter.governorate}
+                  onValueChange={(next) => patch({ gov: next || null })}
+                  rule="arabic"
+                />
+              </FilterWithIcon>
+            )}
+            <FilterWithIcon icon={FILTER_ICON.make} tone="text-slate-600 dark:text-slate-300">
+              <CatalogMultiSelect
+                kind="driverSpecialization"
+                value={specializations}
+                onChange={(ids) => patch({ spec: writeList(ids) })}
+                label={t('fleet.drivers.columns.specialization')}
+                className="w-full"
+                fullWidth
+                density={TIGHT}
+              />
+            </FilterWithIcon>
+            <FilterWithIcon icon={FILTER_ICON.licence} tone="text-amber-700 dark:text-amber-300">
+              <CatalogMultiSelect
+                kind="driverLicenseType"
+                value={licenseTypes}
+                onChange={(ids) => patch({ lic: writeList(ids) })}
+                label={t('fleet.drivers.columns.licenseType')}
+                className="w-full"
+                fullWidth
+                density={TIGHT}
+              />
+            </FilterWithIcon>
+            {/* TWO ANSWERS, so ticking one replaces the other — «بصورة» and «بدون» together are
+                the unfiltered registry. */}
+            <FilterWithIcon icon={FILTER_ICON.image} tone="text-emerald-600 dark:text-emerald-400">
               <MultiSelect
                 clearable
-                label={t('fleet.drivers.columns.branch')}
-                placeholder={t('common.filters.all')}
-                options={branches.map((b) => ({ value: b.id, label: localized(b.name, locale) }))}
-                value={branchIds}
-                onChange={(ids) => patch({ branch: writeList(ids) })}
-                showSelectedValues
-                chips
-                density={TIGHT}
                 fullWidth
-                className="w-full"
-              />
-            </FilterField>
-          )}
-          {mayFilterByHr && (
-            <FilterField
-              label={t('fleet.drivers.columns.address')}
-              active={hrFilter.address !== ''}
-              className={CELL}
-              density={TIGHT}
-            >
-              <DebouncedInput
-                aria-label={t('fleet.drivers.columns.address')}
                 density={TIGHT}
-                value={hrFilter.address}
-                onValueChange={(next) => patch({ addr: next || null })}
-                rule="arabic"
+                showSelectedValues
+                label={t('fleet.drivers.columns.licenseImage')}
+                options={[
+                  { value: 'with', label: t('fleet.drivers.withLicenseImage') },
+                  { value: 'without', label: t('fleet.drivers.withoutLicenseImage') },
+                ]}
+                value={image === '' ? [] : [image]}
+                onChange={(next) => patch({ img: pickOne(image === '' ? [] : [image], next) })}
               />
-            </FilterField>
-          )}
-          {mayFilterByHr && (
-            <FilterField
-              label={t('fleet.drivers.columns.phone')}
-              active={hrFilter.phone !== ''}
-              className={CELL}
-              density={TIGHT}
-            >
-              <DebouncedInput
-                aria-label={t('fleet.drivers.columns.phone')}
-                density={TIGHT}
-                value={hrFilter.phone}
-                onValueChange={(next) => patch({ phone: next || null })}
-                rule="phone"
-              />
-            </FilterField>
-          )}
-          {mayFilterByHr && (
-            <FilterField
-              label={t('fleet.drivers.columns.governorate')}
-              active={hrFilter.governorate !== ''}
-              className={CELL}
-              density={TIGHT}
-            >
-              <DebouncedInput
-                aria-label={t('fleet.drivers.columns.governorate')}
-                density={TIGHT}
-                value={hrFilter.governorate}
-                onValueChange={(next) => patch({ gov: next || null })}
-                rule="arabic"
-              />
-            </FilterField>
-          )}
-          <FilterField
-            label={t('fleet.drivers.columns.specialization')}
-            active={specializations.length > 0}
-            className={CELL}
-            density={TIGHT}
-          >
-            <CatalogMultiSelect
-              kind="driverSpecialization"
-              value={specializations}
-              onChange={(ids) => patch({ spec: writeList(ids) })}
-              label={t('fleet.drivers.columns.specialization')}
-              placeholder={t('common.filters.all')}
-              className="w-full"
-              fullWidth
-              density={TIGHT}
-            />
-          </FilterField>
-          <FilterField
-            label={t('fleet.drivers.columns.licenseType')}
-            active={licenseTypes.length > 0}
-            className={CELL}
-            density={TIGHT}
-          >
-            <CatalogMultiSelect
-              kind="driverLicenseType"
-              value={licenseTypes}
-              onChange={(ids) => patch({ lic: writeList(ids) })}
-              label={t('fleet.drivers.columns.licenseType')}
-              placeholder={t('common.filters.all')}
-              className="w-full"
-              fullWidth
-              density={TIGHT}
-            />
-          </FilterField>
-          <FilterField
-            label={t('fleet.drivers.columns.licenseImage')}
-            active={image !== ''}
-            className={CELL}
-            density={TIGHT}
-          >
-            <Select
-              aria-label={t('fleet.drivers.columns.licenseImage')}
-              value={image}
-              onChange={(e) => patch({ img: e.target.value || null })}
-              density={TIGHT}
-            >
-              <option value="">{t('common.filters.all')}</option>
-              <option value="with">{t('fleet.drivers.withLicenseImage')}</option>
-              <option value="without">{t('fleet.drivers.withoutLicenseImage')}</option>
-            </Select>
-          </FilterField>
-        </FilterBar>
+            </FilterWithIcon>
+          </FilterBar>
+        </div>
 
         {/*
           THE UNSET FLAG, SAID OUT LOUD.
@@ -954,19 +1185,34 @@ export const DriversListPage = (): JSX.Element => {
             {t('fleet.drivers.hrFilterUnavailable')}
           </p>
         )}
-        <DataTable
-          columns={columns}
-          rows={rows}
-          // The PERSON is the row's identity now — a driver with no profile has no profile id.
-          rowKey={(d) => d.employeeId}
-          loading={hr.loading || (isLoading && !emptyMatch && !blocked)}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-        />
+        {/* The vehicles table — «زى السيارات». */}
+        <div
+          className={cn(
+            DARK_TABLE,
+            // Thirteen columns on a laptop: the cells take less room between them so the whole row
+            // stays on the screen.
+            'max-[1749px]:[&_tbody_td]:!px-[5px] max-[1749px]:[&_thead_th]:!px-[5px]',
+            // «شيل الخطوط اللى بين العواميد»: no line between the columns on this table.
+            '[&_td+td]:!border-s-0 [&_th+th]:!border-s-0',
+            // «خلى الكلام bold»: every value heavy, the Arabic in Cairo's own bold.
+            "[&_td]:[font-family:'Cairo',ui-sans-serif,sans-serif] [&_td_*]:!font-bold",
+          )}
+        >
+          <DataTable
+            columns={columns}
+            rows={rows}
+            // The PERSON is the row's identity now — a driver with no profile has no profile id.
+            rowKey={(d) => d.employeeId}
+            loading={hr.loading || (isLoading && !emptyMatch && !blocked)}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            minColumnWidth={4}
+          />
+        </div>
         {data !== undefined && !blocked && !emptyMatch && data.meta.totalItems > 0 && (
-          <Pagination
+          <FleetPager
             meta={data.meta}
             onPageChange={(p) => patch({ page: String(p) }, false)}
             onPageSizeChange={(size) => patch({ size: String(size), page: null }, false)}

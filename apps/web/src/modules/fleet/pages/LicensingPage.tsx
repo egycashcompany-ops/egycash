@@ -125,7 +125,7 @@ export const matchesPaper = (
  * HOW FAR THIS PAPER HAS GOT, which is the only thing the colour says.
  *
  * «لما اعمل صح على تسليم فى التأمينات يبقى العمودين بتوع تسليم واستلام بتوع التأمينات يتعمله الصف
- * اصفر ولما صح على تسليم واستلام الصف يبقى اخضر». Amber is «gone out and not back» — a paper
+ * اصفر ولما صح على تسليم واستلام الصف يبقى اخضر» — the yellow is violet now. Violet is «gone out and not back» — a paper
  * somebody is still holding — and green is «done». Both squares empty is not a state worth
  * colouring: it is the ordinary condition of most of the board.
  *
@@ -144,7 +144,8 @@ export const paperStage = (row: FleetLicensingRowDto, paper: Paper): 'none' | 'o
 
 const STAGE_TINT: Record<'none' | 'open' | 'done', string> = {
   none: '',
-  open: 'bg-amber-400/[0.14]',
+  // «اللون الاصفر دا مش ممكن نغيره»: the paper still out is violet now; done stays green.
+  open: 'bg-violet-400/[0.16]',
   done: 'bg-emerald-400/[0.14]',
 };
 
@@ -356,8 +357,6 @@ export const LicensingPage = (): JSX.Element => {
     }
   };
 
-  // TEMPORARY — the two samples of the square: a round badge (a), a check box (b).
-  const tickLook = sp.get('tick') === 'b' ? 'b' : 'a';
   const square = (
     row: FleetLicensingRowDto,
     field: FleetLicensingMark,
@@ -379,15 +378,14 @@ export const LicensingPage = (): JSX.Element => {
       onClick={() => void toggle(row, field)}
       className={cn(
         'mx-auto flex items-center justify-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 disabled:cursor-not-allowed active:scale-90',
-        tickLook === 'a' ? 'h-7 w-7 rounded-full' : 'h-6 w-6 rounded-md',
+        // A round badge: green and ticked once done, an empty dashed ring until then.
+        'h-7 w-7 rounded-full',
         row[field]
           ? 'bg-emerald-500 text-white shadow-md shadow-emerald-700/30 hover:bg-emerald-400'
-          : tickLook === 'a'
-            ? 'border-2 border-dashed border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-slate-600'
-            : 'border-2 border-slate-300 bg-white text-transparent hover:border-emerald-500 hover:text-emerald-500/60 dark:border-slate-600 dark:bg-[#0b1220]',
+          : 'border-2 border-dashed border-slate-300 text-transparent hover:border-emerald-500 hover:text-emerald-500 dark:border-slate-600',
       )}
     >
-      <CheckIcon className={cn(tickLook === 'a' ? 'h-4 w-4' : 'h-3.5 w-3.5', 'stroke-[3]')} />
+      <CheckIcon className="h-4 w-4 stroke-[3]" />
     </button>
   );
 
@@ -645,17 +643,7 @@ export const LicensingPage = (): JSX.Element => {
                     </td>
                     {PAPERS.map((paper) => {
                       // ONE READING PER PAPER, used by both its squares — the pair is one errand.
-                      const stage = paperStage(row, paper);
-                      // TEMPORARY — samples for the «open» colour.
-                      const openTone = sp.get('open');
-                      const tint =
-                        stage === 'open' && openTone === 'sky'
-                          ? 'bg-sky-400/[0.14]'
-                          : stage === 'open' && openTone === 'orange'
-                            ? 'bg-orange-500/[0.16]'
-                            : stage === 'open' && openTone === 'violet'
-                              ? 'bg-violet-400/[0.16]'
-                              : STAGE_TINT[stage];
+                      const tint = STAGE_TINT[paperStage(row, paper)];
                       return [
                         <td
                           key={`${paper.key}-out`}

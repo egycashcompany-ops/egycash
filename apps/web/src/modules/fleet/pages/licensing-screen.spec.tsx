@@ -21,8 +21,9 @@ import { uiSlice } from '../../../store/uiSlice';
 import { LicensingPage, inMonth, matchesPaper, paperStage } from './LicensingPage';
 
 /** The two tints the board paints, as the cell writes them — never the bare shade. */
-const AMBER = 'bg-amber-50 dark:bg-amber-950/40';
-const GREEN = 'bg-emerald-50 dark:bg-emerald-950/40';
+// «اللون الاصفر دا مش ممكن نغيره»: a paper still out is violet now.
+const OPEN = 'bg-violet-400/[0.16]';
+const GREEN = 'bg-emerald-400/[0.14]';
 
 const row = (over: Partial<FleetLicensingRowDto> = {}): FleetLicensingRowDto => ({
   vehicleId: 'v-1',
@@ -130,12 +131,12 @@ describe('the licensing board has the shape of the form', () => {
 });
 
 describe('a paper colours as a PAIR', () => {
-  it('«تسليم» alone turns the paper YELLOW — both of its squares', () => {
+  it('«تسليم» alone turns the paper VIOLET (it was yellow) — both of its squares', () => {
     // «لما اعمل صح على تسليم فى التأمينات يبقى العمودين بتوع تسليم واستلام بتوع التأمينات
     // يتعمله الصف اصفر».
     const html = render({ rows: [row({ insuranceHandover: true })] });
-    expect(cell(html, '150', 'insurance', 'handover'), 'the square ticked').toContain(AMBER);
-    expect(cell(html, '150', 'insurance', 'receipt'), 'and the one beside it').toContain(AMBER);
+    expect(cell(html, '150', 'insurance', 'handover'), 'the square ticked').toContain(OPEN);
+    expect(cell(html, '150', 'insurance', 'receipt'), 'and the one beside it').toContain(OPEN);
     expect(cell(html, '150', 'insurance', 'handover')).not.toContain(GREEN);
   });
 
@@ -145,7 +146,7 @@ describe('a paper colours as a PAIR', () => {
     });
     expect(cell(html, '150', 'insurance', 'handover')).toContain(GREEN);
     expect(cell(html, '150', 'insurance', 'receipt')).toContain(GREEN);
-    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(AMBER);
+    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(OPEN);
   });
 
   it('and the OTHER paper is untouched by it — «ونفس الكلام دا فى حاله عمود الضرايب»', () => {
@@ -157,14 +158,14 @@ describe('a paper colours as a PAIR', () => {
     });
     const tax = cell(html, '150', 'tax', 'handover');
     expect(tax).not.toContain(GREEN);
-    expect(tax).not.toContain(AMBER);
+    expect(tax).not.toContain(OPEN);
   });
 
   it('the tax pair colours by its OWN ticks', () => {
     const html = render({ rows: [row({ taxHandover: true })] });
-    expect(cell(html, '150', 'tax', 'handover')).toContain(AMBER);
-    expect(cell(html, '150', 'tax', 'receipt')).toContain(AMBER);
-    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(AMBER);
+    expect(cell(html, '150', 'tax', 'handover')).toContain(OPEN);
+    expect(cell(html, '150', 'tax', 'receipt')).toContain(OPEN);
+    expect(cell(html, '150', 'insurance', 'handover')).not.toContain(OPEN);
   });
 
   it('nothing ticked is not a colour — most of the board is in that state', () => {
@@ -172,7 +173,7 @@ describe('a paper colours as a PAIR', () => {
     for (const paper of ['insurance', 'tax']) {
       for (const step of ['handover', 'receipt']) {
         const td = cell(html, '150', paper, step);
-        expect(td, `${paper} ${step}`).not.toContain(AMBER);
+        expect(td, `${paper} ${step}`).not.toContain(OPEN);
         expect(td).not.toContain(GREEN);
       }
     }

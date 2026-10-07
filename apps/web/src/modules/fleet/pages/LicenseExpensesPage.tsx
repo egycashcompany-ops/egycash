@@ -17,10 +17,12 @@ import { FigureChip } from '../components/FleetFigures';
 import { FleetPager } from '../components/FleetPager';
 import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import {
+  type LicenseExpenseItemLine,
   type LicenseExpenseMemoRow,
   memoTitle,
+  memosOf,
   money,
-  printMemo,
+  printMemos,
   sumOf,
 } from '../lib/license-expense-memo';
 
@@ -52,15 +54,20 @@ export const LicenseExpensesPage = (): JSX.Element => {
   );
   const { data, isLoading, isError, error, refetch } = useLicenseExpenses(params);
   const rows = data?.items ?? [];
+  // A record is a renewal, an extension, or both: its figures are both halves together.
+  const itemsOf = (row: LicenseExpenseMemoRow): LicenseExpenseItemLine[] =>
+    memosOf(row).flatMap((memo) => memo.items);
+  const carsOf = (row: LicenseExpenseMemoRow): string[] =>
+    memosOf(row).flatMap((memo) => memo.vehicles.map((v) => v.code ?? v.plate));
   const visaOf = (row: LicenseExpenseMemoRow): number =>
-    sumOf(row.items.filter((item) => item.paidBy === 'visa'));
+    sumOf(itemsOf(row).filter((item) => item.paidBy === 'visa'));
   const cashOf = (row: LicenseExpenseMemoRow): number =>
-    sumOf(row.items.filter((item) => item.paidBy === 'cash'));
+    sumOf(itemsOf(row).filter((item) => item.paidBy === 'cash'));
   const totals = rows.reduce(
     (acc, row) => ({
       visa: acc.visa + visaOf(row),
       cash: acc.cash + cashOf(row),
-      cars: acc.cars + row.vehicles.length,
+      cars: acc.cars + carsOf(row).length,
     }),
     { visa: 0, cash: 0, cars: 0 },
   );
@@ -75,21 +82,26 @@ export const LicenseExpensesPage = (): JSX.Element => {
       key: 'kind',
       header: t('fleet.licenseExpenses.kind'),
       render: (row) => (
-        <span
-          className={cn(
-            'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold',
-            row.kind === 'renewal'
-              ? 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
-              : 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300',
-          )}
-        >
-          <i
-            className={cn(
-              'h-1.5 w-1.5 rounded-full',
-              row.kind === 'renewal' ? 'bg-sky-400' : 'bg-violet-400',
-            )}
-          />
-          {t(`fleet.licenseExpenses.kinds.${row.kind}`)}
+        <span className="inline-flex items-center gap-1">
+          {memosOf(row).map((memo) => (
+            <span
+              key={memo.kind}
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-bold',
+                memo.kind === 'renewal'
+                  ? 'border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+                  : 'border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300',
+              )}
+            >
+              <i
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  memo.kind === 'renewal' ? 'bg-sky-400' : 'bg-violet-400',
+                )}
+              />
+              {t(`fleet.licenseExpenses.kinds.${memo.kind}`)}
+            </span>
+          ))}
         </span>
       ),
     },
@@ -99,10 +111,10 @@ export const LicenseExpensesPage = (): JSX.Element => {
       render: (row) => (
         <span className="inline-flex items-center gap-2">
           <span className="rounded-md border border-slate-300 px-1.5 text-xs dark:border-slate-600">
-            {row.vehicles.length}
+            {carsOf(row).length}
           </span>
           <span className="max-w-[16rem] truncate text-slate-500 dark:text-slate-400">
-            {row.vehicles.map((v) => v.code ?? v.plate).join('، ')}
+            {carsOf(row).join('، ')}
           </span>
         </span>
       ),
@@ -125,7 +137,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
       align: 'end',
       render: (row) => (
         <span className="font-mono font-black text-slate-900 dark:text-white">
-          {money(sumOf(row.items))}
+          {money(sumOf(itemsOf(row)))}
         </span>
       ),
     },
@@ -137,7 +149,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
         <span className="inline-flex items-center gap-1">
           <Link
             to={`/fleet/license-expenses/${row.id}`}
-            title={memoTitle(row)}
+            title={memosOf(row).map(memoTitle).join(' — ')}
             className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <BoardIcon d={PATH.edit} className="h-4 w-4" />
@@ -147,7 +159,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
             title={t('fleet.licenseExpenses.print')}
             onClick={() => {
               try {
-                printMemo(row);
+                printMemos(memosOf(row));
               } catch {
                 toast.error(t('fleet.vehicles.print.failed'));
               }

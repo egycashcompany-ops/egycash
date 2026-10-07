@@ -176,16 +176,23 @@ export const memoHtml = (doc: LicenseExpenseMemoDoc): string => {
   </div>`;
 };
 
-/** Print the memo on its own page. Throws when the browser blocks the window. */
-export const printMemo = (doc: LicenseExpenseMemoDoc): void => {
+/**
+ * Print the memos, one to a page — «مد مده لوحده او تجديد ترخيص لوحده او الاتنين»: a renewal and an
+ * extension written together print as the department's two sheets. Throws when the browser blocks
+ * the window.
+ */
+export const printMemos = (docs: readonly LicenseExpenseMemoDoc[]): void => {
+  if (docs.length === 0) return;
   const win = window.open('', '_blank');
   if (win === null) throw new Error('popup blocked');
   win.document.write(
     `<!doctype html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>${escape(
-      memoTitle(doc),
-    )}</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&display=swap"></head><body style="margin:0">${memoHtml(
-      doc,
-    )}<script>document.fonts.ready.then(function(){setTimeout(function(){window.print()},150)})</script></body></html>`,
+      docs.map(memoTitle).join(' — '),
+    )}</title><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;800&display=swap"><style>@media print{.lx-sheet{page-break-after:always}.lx-sheet:last-of-type{page-break-after:auto}}</style></head><body style="margin:0">${docs
+      .map(memoHtml)
+      .join(
+        '',
+      )}<script>document.fonts.ready.then(function(){setTimeout(function(){window.print()},150)})</script></body></html>`,
   );
   win.document.close();
 };
@@ -198,9 +205,31 @@ export const DEFAULT_SIGNATURES: LicenseExpenseSignatures = {
     'لواء أ ح / جمال أحمد أبو إسماعيل\nالمدير العام التنفيذي\nشركة النيل لنقل الأموال (إيجي كاش)',
 };
 
-/** One saved memo, as the list reads it. */
-export interface LicenseExpenseMemoRow extends LicenseExpenseMemoDoc {
+/** One kind's half of a saved record: its cars and its expenses. */
+export interface LicenseExpensePart {
+  vehicles: LicenseExpenseVehicleLine[];
+  items: LicenseExpenseItemLine[];
+}
+
+/**
+ * One saved record — a renewal, an extension, or both written on the same day. Each kind present
+ * is its own memo on paper.
+ */
+export interface LicenseExpenseMemoRow {
   id: string;
+  date: string;
+  renewal: LicenseExpensePart | null;
+  extension: LicenseExpensePart | null;
+  signatures: LicenseExpenseSignatures;
   createdAt: string;
   updatedAt: string;
 }
+
+/** The memos a record prints as — the renewal first, as the department files them. */
+export const memosOf = (
+  row: Pick<LicenseExpenseMemoRow, 'date' | 'renewal' | 'extension' | 'signatures'>,
+): LicenseExpenseMemoDoc[] =>
+  (['renewal', 'extension'] as const).flatMap((kind) => {
+    const part = row[kind];
+    return part === null ? [] : [{ kind, date: row.date, signatures: row.signatures, ...part }];
+  });

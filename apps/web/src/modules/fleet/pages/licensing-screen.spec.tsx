@@ -15,7 +15,6 @@ import { configureStore } from '@reduxjs/toolkit';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { type FleetLicensingRowDto, type Locale, type MeDto } from '@ecms/contracts';
-import { formatDate } from '../../../shared/lib/format';
 import { localeSlice } from '../../../store/localeSlice';
 import { authSlice } from '../../../store/authSlice';
 import { uiSlice } from '../../../store/uiSlice';
@@ -342,8 +341,9 @@ describe('the licence expiry', () => {
   it('is a column on the board — the date the whole errand is about', () => {
     const html = render({ rows: [row({ licenseExpiresAt: '2027-03-15T00:00:00.000Z' })] });
     expect(html, 'the heading').toContain('تاريخ انتهاء الترخيص');
-    // `formatDate`'s own rendering, not a hand-built string: Arabic-Indic digits, medium style.
-    expect(html, 'and the date itself').toContain(formatDate('2027-03-15T00:00:00.000Z', 'ar'));
+    // Written the way the vehicles board writes a licence — «2027/03/15» — with its state beside it.
+    expect(html, 'and the date itself').toContain('2027/03/15');
+    expect(html, 'and the word for its state').toMatch(/data-licensing-expiry="(valid|soon|expired)"/u);
   });
 
   it('narrows by the MONTH it expires in', () => {
@@ -455,7 +455,9 @@ describe('the count beside the filters', () => {
     const html = render({ rows: fleet });
     expect(counter(html)).toContain('٣');
     expect(html, 'the vehicles screen’s own phrasing').toContain('سيارة');
-    expect(html, 'and its own weight').toContain('text-xs font-medium text-slate-500');
+    expect(html, 'and its own weight — the boards’ toolbar count').toContain(
+      'text-sm font-bold text-slate-600',
+    );
     expect(html, 'nothing is labelled any more').not.toContain('المعروض');
     expect(html).not.toContain('الإجمالي');
   });

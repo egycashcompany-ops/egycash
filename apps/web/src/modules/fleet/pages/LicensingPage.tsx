@@ -154,10 +154,9 @@ const BRAND_BUTTON =
   'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-lg border border-brand-500/50 bg-brand-500/15 px-2 py-1.5 text-[11px] font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs dark:text-brand-200';
 /** The licence's state as the vehicles board words it — ساري / ينتهي قريبًا / منتهي. */
 const EXPIRY_TAG: Record<'valid' | 'soon' | 'expired', string> = {
-  valid:
-    'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 [&>i]:bg-emerald-400',
-  soon: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400 [&>i]:bg-amber-400',
-  expired: 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400 [&>i]:bg-red-500',
+  valid: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  soon: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  expired: 'border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400',
 };
 const EXPIRY_TEXT: Record<'valid' | 'soon' | 'expired', string> = {
   valid: 'text-slate-900 dark:text-slate-100',
@@ -175,18 +174,10 @@ export const LicensingPage = (): JSX.Element => {
   const mark = useSetLicensingMark();
   const mayMark = can('fleetLicensing.mark');
   const [statsOpen, setStatsOpen] = useState(false);
-  // TEMPORARY — the two samples: «زى شاشة السيارات» and «شبه التوكيل».
-  const look = sp.get('look') === 'deal' ? 'deal' : 'veh';
-  const veh = look === 'veh';
-  const head = cn(
-    'px-3 py-2.5 text-center text-[13px] font-bold text-slate-500 dark:text-slate-400',
-    veh && 'border-s border-slate-200/70 first:border-s-0 dark:border-slate-700/40',
-  );
-  const cell = cn(
-    'px-3 py-2.5 text-sm font-bold text-slate-800 dark:text-slate-200',
-    veh &&
-      "border-s border-slate-200/70 first:border-s-0 dark:border-slate-700/40 [font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,'Cairo',monospace]",
-  );
+  // «عاوز تبقى زى اتنين فى كل حاجة ماعدا التاريخ يبقى زى السيارات»: the dealership board's
+  // table — no lines between the columns — with the vehicles board's expiry date.
+  const head = 'px-3 py-2.5 text-center text-[13px] font-bold text-slate-500 dark:text-slate-400';
+  const cell = 'px-3 py-2.5 text-sm font-bold text-slate-800 dark:text-slate-200';
 
   const vehicleCodes = readList(sp, 'vehicleCodes');
   const plate = sp.get('plate') ?? '';
@@ -272,7 +263,10 @@ export const LicensingPage = (): JSX.Element => {
    * would empty the board with nothing to say why.
    */
   const monthOptions = useMemo(() => licenceMonthOptions(all, locale), [all, locale]);
-  const carOptions = useMemo(() => boardVehicleOptions(all, vehicleCodes), [all, vehicleCodes.join(',')]);
+  const carOptions = useMemo(
+    () => boardVehicleOptions(all, vehicleCodes),
+    [all, vehicleCodes.join(',')],
+  );
 
   /**
    * The board, in the reader's order.
@@ -351,10 +345,7 @@ export const LicensingPage = (): JSX.Element => {
     });
   };
 
-  const toggle = async (
-    row: FleetLicensingRowDto,
-    field: FleetLicensingMark,
-  ): Promise<void> => {
+  const toggle = async (row: FleetLicensingRowDto, field: FleetLicensingMark): Promise<void> => {
     if (!mayMark) return;
     try {
       await mark.mutateAsync({ vehicleId: row.vehicleId, mark: field, value: !row[field] });
@@ -365,7 +356,12 @@ export const LicensingPage = (): JSX.Element => {
     }
   };
 
-  const square = (row: FleetLicensingRowDto, field: FleetLicensingMark, paper: Paper, step: string) => (
+  const square = (
+    row: FleetLicensingRowDto,
+    field: FleetLicensingMark,
+    paper: Paper,
+    step: string,
+  ) => (
     <button
       type="button"
       data-licensing-mark={`${row.code}:${field}`}
@@ -390,11 +386,12 @@ export const LicensingPage = (): JSX.Element => {
     </button>
   );
 
+  /** The expiry as the vehicles board writes it: the date in its state's colour, and the word. */
   const expiryCell = (iso: string): JSX.Element => {
     const state = expiryState(iso, 30);
     const known = state === 'unknown' ? 'valid' : state;
-    return veh ? (
-      <span className="inline-flex items-center gap-1.5">
+    return (
+      <span className="inline-flex items-center gap-1.5" data-licensing-expiry={known}>
         <span dir="ltr" className={cn('tabular-nums', EXPIRY_TEXT[known])}>
           {day(iso)}
         </span>
@@ -407,16 +404,6 @@ export const LicensingPage = (): JSX.Element => {
           {t(`fleet.fuelCards.expiry.${known}`)}
         </span>
       </span>
-    ) : (
-      <span
-        className={cn(
-          'inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-bold tabular-nums',
-          EXPIRY_TAG[known],
-        )}
-      >
-        <i className="h-1.5 w-1.5 rounded-full" />
-        <span dir="ltr">{day(iso)}</span>
-      </span>
     );
   };
 
@@ -424,7 +411,10 @@ export const LicensingPage = (): JSX.Element => {
     <PageContainer fullHeight>
       <div className="flex min-h-0 flex-1 flex-col gap-4">
         <div className="flex items-center justify-between gap-2" data-licensing-toolbar="true">
-          <span data-licensing-count className="text-sm font-bold text-slate-600 dark:text-slate-300">
+          <span
+            data-licensing-count
+            className="text-sm font-bold text-slate-600 dark:text-slate-300"
+          >
             {t('fleet.licensing.count', { count: formatNumber(rows.length, locale) })}
           </span>
           <span className="flex items-center gap-1.5 sm:gap-2">
@@ -435,7 +425,9 @@ export const LicensingPage = (): JSX.Element => {
               onClick={() => setStatsOpen((open) => !open)}
               className={BRAND_BUTTON}
             >
-              {statsOpen ? t('fleet.vehicles.board.breakdownHide') : t('fleet.vehicles.board.breakdown')}
+              {statsOpen
+                ? t('fleet.vehicles.board.breakdownHide')
+                : t('fleet.vehicles.board.breakdown')}
             </button>
             {!board.isError && (
               <button
@@ -444,7 +436,10 @@ export const LicensingPage = (): JSX.Element => {
                 onClick={() => void exportSheet()}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-800 transition hover:bg-emerald-50 hover:text-emerald-700 active:scale-95 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-200 dark:hover:bg-emerald-950/60 dark:hover:text-emerald-300"
               >
-                <BoardIcon d={PATH.excel} className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                <BoardIcon
+                  d={PATH.excel}
+                  className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400"
+                />
                 {t('fleet.fuelCards.board.excel')}
               </button>
             )}
@@ -600,7 +595,10 @@ export const LicensingPage = (): JSX.Element => {
                     >
                       {t('fleet.vehicles.fields.licenseExpiresAt')}
                       <ChevronIcon
-                        className={cn('h-3.5 w-3.5 transition-transform', expiryDir === 'asc' && 'rotate-180')}
+                        className={cn(
+                          'h-3.5 w-3.5 transition-transform',
+                          expiryDir === 'asc' && 'rotate-180',
+                        )}
                       />
                     </button>
                   </th>

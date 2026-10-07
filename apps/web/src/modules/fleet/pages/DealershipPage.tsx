@@ -14,6 +14,7 @@ import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Badge } from '../../../shared/ui/Badge';
@@ -439,8 +440,8 @@ export const DealershipPage = (): JSX.Element => {
   };
 
   return (
-    <PageContainer>
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      <div className={BOARD_FRAME}>
         <div className="flex items-center justify-between gap-2" data-dealership-toolbar="true">
           <span
             data-filtered-count
@@ -642,7 +643,7 @@ export const DealershipPage = (): JSX.Element => {
           </section>
         )}
 
-        <div className={BOARD_TABLE}>
+        <div className={cn(BOARD_TABLE, BOARD_TABLE_FILL)}>
           <DataTable
             columns={columns}
             rows={rows}
@@ -655,6 +656,7 @@ export const DealershipPage = (): JSX.Element => {
             // The yellow row: left the workshop, no invoice yet. A second signal only — the side
             // column is empty and the actions say «تسجيل الفاتورة».
             rowProps={(row) => ({ 'data-pending': row.pending ? 'true' : 'false' }) as never}
+            stickyHead
           />
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (

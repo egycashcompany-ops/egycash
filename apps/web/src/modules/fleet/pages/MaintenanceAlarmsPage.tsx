@@ -18,6 +18,7 @@ import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FilteredCount } from '../components/FilteredCount';
 import { FilterBar } from '../../../shared/ui/FilterBar';
 import { MultiSelect, type MultiSelectOption } from '../../../shared/ui/MultiSelect';
@@ -286,7 +287,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.maintenanceAlarms')}
         breadcrumbs={[
@@ -312,7 +313,7 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
         }
       />
 
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         <FilterBar
           hasActiveFilters={levels.length > 0 || vehicleCodes.length > 0}
           onClear={() => patch({ level: null, vehicleCodes: null })}
@@ -341,19 +342,22 @@ export const MaintenanceAlarmsPage = (): JSX.Element => {
           />
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(alarm) => alarm.vehicleId}
-          // One row IS one vehicle here, so the level belongs to the whole row — this is the one
-          // screen where that is true, and the triage sort already puts the red ones on top.
-          rowClassName={(alarm) => alarmRowTint(alarm.level)}
-          loading={alarmsQuery.isPending}
-          error={alarmsQuery.isError ? alarmsQuery.error : undefined}
-          onRetry={() => void alarmsQuery.refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(alarm) => alarm.vehicleId}
+            // One row IS one vehicle here, so the level belongs to the whole row — this is the one
+            // screen where that is true, and the triage sort already puts the red ones on top.
+            rowClassName={(alarm) => alarmRowTint(alarm.level)}
+            loading={alarmsQuery.isPending}
+            error={alarmsQuery.isError ? alarmsQuery.error : undefined}
+            onRetry={() => void alarmsQuery.refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
       </div>
     </PageContainer>
   );

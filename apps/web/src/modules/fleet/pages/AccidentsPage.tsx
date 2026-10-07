@@ -33,6 +33,7 @@ import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { FleetPager } from '../components/FleetPager';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
@@ -511,7 +512,7 @@ export const AccidentsPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.accidents')}
         breadcrumbs={[
@@ -538,7 +539,7 @@ export const AccidentsPage = (): JSX.Element => {
         }
       />
 
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         {/*
           ONE row on desktop — and the two dates are why it was not one before.
 
@@ -664,33 +665,36 @@ export const AccidentsPage = (): JSX.Element => {
           <StatStrip columns={5} labelFirst items={totals} />
         </div>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(r) => r.id}
-          // A register somebody works through for an hour, not a panel they glance at: one step up
-          // the type scale for the headers and every cell.
-          textScale="comfortable"
-          // Eleven columns since «السجل» joined them: at the comfortable gutters the table was
-          // 1360px in a 1246px box at 1600, and in RTL the excess clips «إجراءات». The side gutter
-          // is trimmed instead of the text — measured, it then fits with room to spare.
-          dense
-          tightGutter
-          minColumnWidth={6}
-          rowClassName={(r) =>
-            // Read from the PERSISTED status on every render, and from nothing else. A file the
-            // server says is closed is green after a refresh, in another tab, and for the next
-            // reader; a flip that fails leaves the row exactly as the server still has it.
-            r.status === 'closed'
-              ? 'bg-emerald-50 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60'
-              : undefined
-          }
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(r) => r.id}
+            // A register somebody works through for an hour, not a panel they glance at: one step up
+            // the type scale for the headers and every cell.
+            textScale="comfortable"
+            // Eleven columns since «السجل» joined them: at the comfortable gutters the table was
+            // 1360px in a 1246px box at 1600, and in RTL the excess clips «إجراءات». The side gutter
+            // is trimmed instead of the text — measured, it then fits with room to spare.
+            dense
+            tightGutter
+            minColumnWidth={6}
+            rowClassName={(r) =>
+              // Read from the PERSISTED status on every render, and from nothing else. A file the
+              // server says is closed is green after a refresh, in another tab, and for the next
+              // reader; a flip that fails leaves the row exactly as the server still has it.
+              r.status === 'closed'
+                ? 'bg-emerald-50 hover:bg-emerald-100/70 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60'
+                : undefined
+            }
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <FleetPager
             meta={data.meta}

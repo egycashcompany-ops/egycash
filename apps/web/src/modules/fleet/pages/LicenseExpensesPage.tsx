@@ -17,6 +17,7 @@ import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { useRememberedFilters } from '../../../shared/lib/useRememberedFilters';
 import { useDeleteLicenseExpense, useLicenseExpenses } from '../api/fleet-queries';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
@@ -242,8 +243,8 @@ export const LicenseExpensesPage = (): JSX.Element => {
   ];
 
   return (
-    <PageContainer>
-      <div className="space-y-4">
+    <PageContainer fullHeight>
+      <div className={BOARD_FRAME}>
         <div className="flex items-center justify-between gap-2">
           <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
             {data === undefined
@@ -340,7 +341,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
           </FilterBar>
         </div>
 
-        <div className={BOARD_TABLE}>
+        <div className={cn(BOARD_TABLE, BOARD_TABLE_FILL)}>
           <DataTable
             columns={columns}
             rows={rows}
@@ -348,6 +349,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
             loading={isLoading}
             error={isError ? error : undefined}
             onRetry={() => void refetch()}
+            stickyHead
           />
         </div>
         {data !== undefined && data.meta.totalItems > 0 && (

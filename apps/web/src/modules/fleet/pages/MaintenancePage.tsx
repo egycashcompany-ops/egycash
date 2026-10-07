@@ -27,6 +27,7 @@ import { useAppSelector } from '../../../store';
 import { Can, useCan } from '../../../platform/rbac/Can';
 import { PageContainer, PageHeader } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
+import { BOARD_FRAME, BOARD_TABLE_FILL } from '../components/board-scroll';
 import { ExportSheetButton } from '../components/ExportSheetButton';
 import { fetchFilteredRows, filtersOnly, saveSheet } from '../lib/fleet-sheet';
 import { fetchEmployeeNames } from '../lib/fleet-people';
@@ -579,7 +580,7 @@ export const MaintenancePage = (): JSX.Element => {
   );
 
   return (
-    <PageContainer>
+    <PageContainer fullHeight>
       <PageHeader
         title={t('fleet.nav.maintenance')}
         breadcrumbs={[
@@ -606,7 +607,7 @@ export const MaintenancePage = (): JSX.Element => {
         }
       />
 
-      <div className="space-y-4">
+      <div className={BOARD_FRAME}>
         {/* Ten filters, in the order the question is asked, each sized to what it holds so the row
             packs as tightly as it honestly can: the two date ranges and the counter range are ONE
             caption apiece rather than two, and nothing takes the leftover space.
@@ -717,22 +718,25 @@ export const MaintenancePage = (): JSX.Element => {
           </Select>
         </FilterBar>
 
-        <DataTable
-          columns={columns}
-          rows={rows}
-          rowKey={(visit) => visit.id}
-          loading={isLoading}
-          error={isError ? error : undefined}
-          onRetry={() => void refetch()}
-          sort={sorts}
-          onSortChange={changeSort}
-          // A closed visit reads green across the whole row. The colour is a SECOND signal only:
-          // the exit cell says «خرجت من الورشة» in words, so the state survives a reader who
-          // cannot separate the two tints.
-          rowClassName={(visit) =>
-            visit.outDate === null ? undefined : 'bg-emerald-50/70 dark:bg-emerald-950/30'
-          }
-        />
+        <div className={BOARD_TABLE_FILL}>
+          <DataTable
+            columns={columns}
+            rows={rows}
+            rowKey={(visit) => visit.id}
+            loading={isLoading}
+            error={isError ? error : undefined}
+            onRetry={() => void refetch()}
+            sort={sorts}
+            onSortChange={changeSort}
+            // A closed visit reads green across the whole row. The colour is a SECOND signal only:
+            // the exit cell says «خرجت من الورشة» in words, so the state survives a reader who
+            // cannot separate the two tints.
+            rowClassName={(visit) =>
+              visit.outDate === null ? undefined : 'bg-emerald-50/70 dark:bg-emerald-950/30'
+            }
+            stickyHead
+          />
+        </div>
         {data !== undefined && data.meta.totalItems > 0 && (
           <FleetPager
             meta={data.meta}

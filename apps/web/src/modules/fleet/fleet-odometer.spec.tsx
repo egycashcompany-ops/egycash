@@ -38,6 +38,7 @@ import { OdometerPage } from './pages/OdometerPage';
 import { currentMonthRange } from './lib/odometer-range';
 import { RecordOdometerDialog } from './components/RecordOdometerDialog';
 import { CorrectOdometerDialog } from './components/CorrectOdometerDialog';
+import { BOARD_TABLE_FILL } from './components/board-scroll';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM. Rendering the portal's
 // tree in place is enough to read what the dialog produces.
@@ -174,10 +175,12 @@ const thead = (markup: string): string =>
 const tbody = (markup: string): string =>
   markup.slice(markup.indexOf('<tbody'), markup.indexOf('</tbody>'));
 /** Just the filter bar: everything the `FilterBar` container opens, up to the table. */
+// Up to the table's wrapper, not the table: the wrapper is what hands the table the screen's
+// leftover height (`board-scroll`), and its `flex-1` is not a filter's.
 const filterBar = (markup: string): string =>
   markup.slice(
     markup.indexOf('<div class="flex flex-wrap items-center gap-2'),
-    markup.indexOf('<table'),
+    markup.lastIndexOf('<div', markup.indexOf(BOARD_TABLE_FILL.split(' ')[1]!)),
   );
 
 /**

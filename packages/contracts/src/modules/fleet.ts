@@ -73,6 +73,9 @@ export const FLEET_CATALOG_KINDS = [
   'driverJob',
   'driverSpecialization',
   'driverLicenseType',
+  // «مصروفات التراخيص»: the items a licensing-expenses memo lists — «براءة ذمة», «تأمين إجباري»,
+  // «ضرائب»… The department's own vocabulary, so the screen picks from a list an admin keeps.
+  'licenseExpenseItem',
 ] as const;
 export const FleetCatalogKindSchema = z.enum(FLEET_CATALOG_KINDS);
 export type FleetCatalogKind = z.infer<typeof FleetCatalogKindSchema>;
@@ -3658,3 +3661,141 @@ export interface FleetCustodyMovementDto {
   detail: string | null;
   amount: number;
 }
+
+// ── Licensing expenses (مصروفات التراخيص) ──────────────────────────────────────
+//
+// «عاوز اضيف شاشه اسمها مصروفات التراخيص»: the department's memo of what renewing licences
+// («تجديد تراخيص») or extending their term («مد مدة») cost — the cars by plate, what was paid by the
+// traffic department's card and what in cash, and who signs. One record holds a renewal, an
+// extension, or both: «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين». Nothing in it is
+// required — «ومش عاوز اى داتا اجبارى» — beyond saying which of the two it is.
+
+export const FLEET_LICENSE_EXPENSE_KINDS = ['renewal', 'extension'] as const;
+export const FleetLicenseExpenseKindSchema = z.enum(FLEET_LICENSE_EXPENSE_KINDS);
+export type FleetLicenseExpenseKind = z.infer<typeof FleetLicenseExpenseKindSchema>;
+
+/** By the traffic department's card («فيزا»), or in cash («نقدي»). */
+export const FLEET_LICENSE_EXPENSE_PAYMENTS = ['visa', 'cash'] as const;
+export const FleetLicenseExpensePaidBySchema = z.enum(FLEET_LICENSE_EXPENSE_PAYMENTS);
+export type FleetLicenseExpensePaidBy = z.infer<typeof FleetLicenseExpensePaidBySchema>;
+
+const LicenseExpenseVehicleSchema = z
+  .object({
+    /** The registry's car, when it is one — `null` for a plate typed by hand. */
+    vehicleId: objectId().nullable(),
+    plate: z.string().trim().max(40),
+  })
+  .strict();
+
+const LicenseExpenseItemSchema = z
+  .object({
+    /** The `licenseExpenseItem` it was picked from — `null` for one written by hand. */
+    itemId: objectId().nullable(),
+    label: z.string().trim().max(120),
+    amount: egp().max(100_000_000).nullable(),
+    count: z.number().int().min(1).max(10_000),
+    paidBy: FleetLicenseExpensePaidBySchema,
+    /** «متوافر إيصال» when true, «لا يوجد» when false. */
+    receipt: z.boolean(),
+  })
+  .strict();
+
+const LicenseExpensePartSchema = z
+  .object({
+    vehicles: z.array(LicenseExpenseVehicleSchema).max(500),
+    items: z.array(LicenseExpenseItemSchema).max(500),
+  })
+  .strict();
+export type FleetLicenseExpensePart = z.infer<typeof LicenseExpensePartSchema>;
+
+export const FleetLicenseExpenseSignaturesSchema = z
+  .object({
+    /** مندوب التراخيص */
+    agent: z.string().trim().max(200),
+    /** مدير إدارة الحركة */
+    director: z.string().trim().max(200),
+    /** The general manager's block, several lines. */
+    generalManager: z.string().trim().max(1000),
+  })
+  .strict();
+export type FleetLicenseExpenseSignatures = z.infer<typeof FleetLicenseExpenseSignaturesSchema>;
+
+const licenseExpenseBody = {
+  /** The memo's date — its title is written from it. */
+  date: z.coerce.date(),
+  renewal: LicenseExpensePartSchema.nullable(),
+  extension: LicenseExpensePartSchema.nullable(),
+  signatures: FleetLicenseExpenseSignaturesSchema,
+};
+const eitherKind = (body: { renewal: unknown; extension: unknown }): boolean =>
+  body.renewal !== null || body.extension !== null;
+
+export const CreateFleetLicenseExpenseSchema = z
+  .object(licenseExpenseBody)
+  .strict()
+  .refine(eitherKind, { message: 'a renewal, an extension, or both', path: ['renewal'] });
+export type CreateFleetLicenseExpense = z.infer<typeof CreateFleetLicenseExpenseSchema>;
+
+export const UpdateFleetLicenseExpenseSchema = z
+  .object({ ...licenseExpenseBody, version: z.number().int().min(0) })
+  .strict()
+  .refine(eitherKind, { message: 'a renewal, an extension, or both', path: ['renewal'] });
+export type UpdateFleetLicenseExpense = z.infer<typeof UpdateFleetLicenseExpenseSchema>;
+
+export const ListFleetLicenseExpensesQuerySchema = PaginationQuerySchema.extend({
+  /** Records carrying any of these cars, in either memo. */
+  vehicleCodes: vehicleCodesQuery(),
+  /** Records carrying this memo. */
+  kind: FleetLicenseExpenseKindSchema.optional(),
+  /** The memo's date, from and to, both days included. */
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+}).strict();
+export type ListFleetLicenseExpensesQuery = z.infer<typeof ListFleetLicenseExpensesQuerySchema>;
+
+export interface FleetLicenseExpenseVehicleDto {
+  vehicleId: string | null;
+  /** The registry's code, resolved server-side — `null` for a plate typed by hand. */
+  code: string | null;
+  plate: string;
+}
+
+export interface FleetLicenseExpenseItemDto {
+  itemId: string | null;
+  label: string;
+  amount: number | null;
+  count: number;
+  paidBy: FleetLicenseExpensePaidBy;
+  receipt: boolean;
+}
+
+export interface FleetLicenseExpensePartDto {
+  vehicles: FleetLicenseExpenseVehicleDto[];
+  items: FleetLicenseExpenseItemDto[];
+}
+
+export interface FleetLicenseExpenseDto {
+  id: string;
+  date: string;
+  renewal: FleetLicenseExpensePartDto | null;
+  extension: FleetLicenseExpensePartDto | null;
+  signatures: FleetLicenseExpenseSignatures;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: the names every new memo starts with. */
+export interface FleetLicenseExpenseSettingsDto {
+  signatures: FleetLicenseExpenseSignatures;
+  /** `null` before anybody saved the set-up — the defaults are then the department's own. */
+  version: number | null;
+}
+
+export const SaveFleetLicenseExpenseSettingsSchema = z
+  .object({
+    signatures: FleetLicenseExpenseSignaturesSchema,
+    version: z.number().int().min(0).optional(),
+  })
+  .strict();
+export type SaveFleetLicenseExpenseSettings = z.infer<typeof SaveFleetLicenseExpenseSettingsSchema>;

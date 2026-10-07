@@ -8,17 +8,33 @@
 //
 // «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين»: a renewal, an extension, or both —
 // each in its own block with its own cars and expenses, and each its own memo on paper.
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { type Locale } from '@ecms/contracts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import {
+  type CreateFleetLicenseExpense,
+  type FleetLicenseExpenseDto,
+  type FleetLicenseExpensePartDto,
+  type Locale,
+} from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
+import { useCan } from '../../../platform/rbac/Can';
 import { Field, Input, Textarea } from '../../../shared/ui/form';
 import { MoneyInput } from '../../../shared/ui/MoneyInput';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
+import { errorMessage } from '../../../shared/lib/errors';
 import { localized } from '../../../shared/lib/format';
-import { useAllVehicles, useFleetCatalog } from '../api/fleet-queries';
+import {
+  useAllVehicles,
+  useCreateCatalogItem,
+  useCreateLicenseExpense,
+  useFleetCatalog,
+  useLicenseExpense,
+  useLicenseExpenseSettings,
+  useSaveLicenseExpenseSettings,
+  useUpdateLicenseExpense,
+} from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import { violationTypeColour } from '../lib/violation-type-colour';
@@ -57,6 +73,22 @@ interface Draft {
   items: LicenseExpenseItemLine[];
 }
 const emptyDraft = (): Draft => ({ codes: [], plates: {}, manual: [], items: [] });
+
+/** A saved half, back into the form: registry cars by code, hand-typed plates as they were. */
+const draftOf = (part: FleetLicenseExpensePartDto | null): Draft => {
+  if (part === null) return emptyDraft();
+  const draft = emptyDraft();
+  for (const v of part.vehicles) {
+    if (v.code !== null && !draft.codes.includes(v.code)) {
+      draft.codes.push(v.code);
+      draft.plates[v.code] = v.plate;
+    } else {
+      draft.manual.push({ key: newKey(), plate: v.plate });
+    }
+  }
+  draft.items = part.items.map((item) => ({ ...item, key: newKey() }));
+  return draft;
+};
 
 interface CatalogEntry {
   id: string;
@@ -104,12 +136,15 @@ const MemoBlock = ({
   setDraft,
   byCode,
   catalogItems,
+  onAddToCatalog,
 }: {
   kind: LicenseExpenseKind;
   draft: Draft;
   setDraft: (update: (held: Draft) => Draft) => void;
   byCode: ReadonlyMap<string, { id: string; plateNumber: string }>;
   catalogItems: readonly CatalogEntry[];
+  /** «البيان … قائمة + نص حر»: a hand-written item kept for next time; absent without the grant. */
+  onAddToCatalog?: (label: string) => Promise<string | null>;
 }): JSX.Element => {
   const t = useT();
   // The renewal is paid by the card first; an extension in cash — as the department's sheets are.
@@ -304,6 +339,21 @@ const MemoBlock = ({
                   ) : (
                     <span className="text-xs font-bold">{item.label}</span>
                   )}
+                  {item.itemId === null && onAddToCatalog !== undefined && (
+                    <button
+                      type="button"
+                      data-license-expense-add-to-list={item.key}
+                      disabled={item.label.trim() === ''}
+                      onClick={() =>
+                        void onAddToCatalog(item.label.trim()).then((itemId) => {
+                          if (itemId !== null) patchItem(item.key, { itemId });
+                        })
+                      }
+                      className="shrink-0 whitespace-nowrap rounded-md border border-brand-500/50 bg-brand-500/10 px-2 py-1 text-[11px] font-bold text-brand-700 hover:bg-brand-500/20 disabled:opacity-40 dark:text-brand-200"
+                    >
+                      + {t('fleet.licenseExpenses.addToList')}
+                    </button>
+                  )}
                   <button
                     type="button"
                     aria-label={t('common.delete')}
@@ -385,7 +435,17 @@ const MemoBlock = ({
 
 export const LicenseExpenseEditorPage = (): JSX.Element => {
   const t = useT();
+  const can = useCan();
+  const navigate = useNavigate();
   const locale = useAppSelector((state): Locale => state.locale.locale);
+  const { id: routeId = 'new' } = useParams();
+  const editingId = routeId === 'new' ? '' : routeId;
+  const saved = useLicenseExpense(editingId);
+  const settings = useLicenseExpenseSettings();
+  const create = useCreateLicenseExpense();
+  const update = useUpdateLicenseExpense();
+  const saveSettings = useSaveLicenseExpenseSettings();
+  const createCatalogItem = useCreateCatalogItem();
 
   // «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين» — one, the other, or both.
   const [kinds, setKinds] = useState<LicenseExpenseKind[]>(['renewal']);
@@ -395,6 +455,28 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     extension: emptyDraft(),
   });
   const [signatures, setSignatures] = useState<LicenseExpenseSignatures>(DEFAULT_SIGNATURES);
+
+  // A saved memo fills the form once; a new one starts from the set-up's signatures, until the
+  // writer changes them.
+  const loaded = useRef<FleetLicenseExpenseDto | null>(null);
+  const signaturesTouched = useRef(false);
+  useEffect(() => {
+    const row = saved.data;
+    if (row === undefined || loaded.current?.id === row.id) return;
+    loaded.current = row;
+    setKinds(KINDS.filter((kind) => row[kind] !== null));
+    setDate(row.date);
+    setDrafts({ renewal: draftOf(row.renewal), extension: draftOf(row.extension) });
+    setSignatures(row.signatures);
+  }, [saved.data]);
+  useEffect(() => {
+    if (editingId !== '' || signaturesTouched.current || settings.data === undefined) return;
+    setSignatures(settings.data.signatures);
+  }, [editingId, settings.data]);
+  const editSignatures = (patch: Partial<LicenseExpenseSignatures>): void => {
+    signaturesTouched.current = true;
+    setSignatures((held) => ({ ...held, ...patch }));
+  };
 
   const registry = useAllVehicles({ anyStatus: true });
   const byCode = useMemo(
@@ -442,6 +524,74 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     };
   });
 
+  const body = (): CreateFleetLicenseExpense => {
+    const partOf = (kind: LicenseExpenseKind) => {
+      const doc = docs.find((d) => d.kind === kind);
+      return doc === undefined
+        ? null
+        : {
+            vehicles: doc.vehicles.map((v) => ({ vehicleId: v.vehicleId, plate: v.plate })),
+            items: doc.items.map((item) => ({
+              itemId: item.itemId,
+              label: item.label.trim(),
+              amount: item.amount,
+              count: item.count,
+              paidBy: item.paidBy,
+              receipt: item.receipt,
+            })),
+          };
+    };
+    return {
+      // An emptied date box writes today's, as a new memo starts with.
+      date: new Date(date === '' ? today() : date),
+      renewal: partOf('renewal'),
+      extension: partOf('extension'),
+      signatures,
+    };
+  };
+  const pending = create.isPending || update.isPending;
+  const onSave = async (): Promise<void> => {
+    try {
+      if (editingId === '') {
+        await create.mutateAsync(body());
+      } else {
+        await update.mutateAsync({
+          id: editingId,
+          body: { ...body(), version: saved.data?.version ?? 0 },
+        });
+      }
+      toast.success(t('fleet.licenseExpenses.savedToast'));
+      navigate('/fleet/license-expenses');
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
+  };
+  const onSaveDefaults = async (): Promise<void> => {
+    try {
+      await saveSettings.mutateAsync({
+        signatures,
+        ...(settings.data?.version == null ? {} : { version: settings.data.version }),
+      });
+      toast.success(t('fleet.licenseExpenses.defaultsSavedToast'));
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
+  };
+  const addToCatalog = async (label: string): Promise<string | null> => {
+    try {
+      const item = await createCatalogItem.mutateAsync({
+        kind: 'licenseExpenseItem',
+        name: { ar: label, en: label },
+        countsForAlarm: false,
+      });
+      toast.success(t('fleet.licenseExpenses.addedToListToast'));
+      return item.id;
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+      return null;
+    }
+  };
+
   const onPrint = (): void => {
     try {
       printMemos(docs);
@@ -467,12 +617,16 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
           {t('fleet.licenseExpenses.back')}
         </Link>
         <h1 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-          {t('fleet.licenseExpenses.newTitle')}
+          {editingId === ''
+            ? t('fleet.licenseExpenses.newTitle')
+            : t('fleet.licenseExpenses.editTitle')}
         </h1>
         <span className="flex-1" />
         <button
           type="button"
           data-license-expense-save="true"
+          disabled={pending || (editingId !== '' && saved.data === undefined)}
+          onClick={() => void onSave()}
           className="inline-flex items-center gap-1.5 rounded-lg border border-brand-500/50 bg-brand-500/15 px-4 py-2 text-sm font-bold text-brand-700 transition hover:bg-brand-500/25 active:scale-95 dark:text-brand-200"
         >
           {t('fleet.licenseExpenses.save')}
@@ -545,6 +699,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
               setDraft={(update) => setDrafts((held) => ({ ...held, [kind]: update(held[kind]) }))}
               byCode={byCode}
               catalogItems={catalogItems}
+              {...(can('fleetCatalog.manage') ? { onAddToCatalog: addToCatalog } : {})}
             />
           ))}
 
@@ -554,13 +709,13 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
               <Field label={t('fleet.licenseExpenses.signatures.agent')}>
                 <Input
                   value={signatures.agent}
-                  onChange={(e) => setSignatures((s) => ({ ...s, agent: e.target.value }))}
+                  onChange={(e) => editSignatures({ agent: e.target.value })}
                 />
               </Field>
               <Field label={t('fleet.licenseExpenses.signatures.director')}>
                 <Input
                   value={signatures.director}
-                  onChange={(e) => setSignatures((s) => ({ ...s, director: e.target.value }))}
+                  onChange={(e) => editSignatures({ director: e.target.value })}
                 />
               </Field>
               <Field
@@ -570,10 +725,22 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
                 <Textarea
                   rows={3}
                   value={signatures.generalManager}
-                  onChange={(e) => setSignatures((s) => ({ ...s, generalManager: e.target.value }))}
+                  onChange={(e) => editSignatures({ generalManager: e.target.value })}
                 />
               </Field>
             </div>
+            {/* «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: these names become every new memo's. */}
+            {can('fleetLicenseExpense.edit') && (
+              <button
+                type="button"
+                data-license-expense-save-defaults="true"
+                disabled={saveSettings.isPending}
+                onClick={() => void onSaveDefaults()}
+                className="mt-3 text-xs font-bold text-brand-600 hover:underline disabled:opacity-50 dark:text-brand-300"
+              >
+                {t('fleet.licenseExpenses.saveDefaults')}
+              </button>
+            )}
           </div>
         </section>
 

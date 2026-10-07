@@ -2,7 +2,10 @@
 // the count, «الإحصائيات», the dark filters, the table, and «+ مذكرة جديدة» into the editor.
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { type FleetLicenseExpenseDto, type Locale } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
+import { useAppSelector } from '../../../store';
+import { useCan } from '../../../platform/rbac/Can';
 import { PageContainer } from '../../../platform/layout/PageContainer';
 import { DataTable, type Column } from '../../../shared/ui/DataTable';
 import { FilterBar } from '../../../shared/ui/FilterBar';
@@ -11,7 +14,8 @@ import { Dialog } from '../../../shared/ui/Dialog';
 import { Button } from '../../../shared/ui/Button';
 import { toast } from '../../../shared/ui/toast/toast-store';
 import { cn } from '../../../shared/lib/cn';
-import { useLicenseExpenses } from '../api/fleet-queries';
+import { errorMessage } from '../../../shared/lib/errors';
+import { useDeleteLicenseExpense, useLicenseExpenses } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
 import { DARK_FILTER_BAR, pickOne } from '../components/dark-filter-bar';
 import { FILTER_ICON, FilterWithIcon } from '../components/FilterWithIcon';
@@ -19,8 +23,7 @@ import { FigureChip } from '../components/FleetFigures';
 import { FleetPager } from '../components/FleetPager';
 import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import {
-  type LicenseExpenseItemLine,
-  type LicenseExpenseMemoRow,
+  type LicenseExpenseItemFields,
   memoHtml,
   memoTitle,
   memosOf,
@@ -41,10 +44,24 @@ const day = (iso: string): string => iso.slice(0, 10).replace(/-/gu, '/');
 
 export const LicenseExpensesPage = (): JSX.Element => {
   const t = useT();
+  const can = useCan();
+  const locale = useAppSelector((state): Locale => state.locale.locale);
   const [statsOpen, setStatsOpen] = useState(false);
   // «عاوز من الاجرات عين اعمل معينه»: the record's memos, read before they are printed.
-  const [viewing, setViewing] = useState<LicenseExpenseMemoRow | null>(null);
-  const print = (row: LicenseExpenseMemoRow): void => {
+  const [viewing, setViewing] = useState<FleetLicenseExpenseDto | null>(null);
+  const [deleting, setDeleting] = useState<FleetLicenseExpenseDto | null>(null);
+  const remove = useDeleteLicenseExpense();
+  const confirmDelete = async (): Promise<void> => {
+    if (deleting === null) return;
+    try {
+      await remove.mutateAsync(deleting.id);
+      toast.success(t('fleet.licenseExpenses.deletedToast'));
+      setDeleting(null);
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+    }
+  };
+  const print = (row: FleetLicenseExpenseDto): void => {
     try {
       printMemos(memosOf(row));
     } catch {
@@ -67,13 +84,13 @@ export const LicenseExpensesPage = (): JSX.Element => {
   const { data, isLoading, isError, error, refetch } = useLicenseExpenses(params);
   const rows = data?.items ?? [];
   // A record is a renewal, an extension, or both: its figures are both halves together.
-  const itemsOf = (row: LicenseExpenseMemoRow): LicenseExpenseItemLine[] =>
+  const itemsOf = (row: FleetLicenseExpenseDto): LicenseExpenseItemFields[] =>
     memosOf(row).flatMap((memo) => memo.items);
-  const carsOf = (row: LicenseExpenseMemoRow): string[] =>
+  const carsOf = (row: FleetLicenseExpenseDto): string[] =>
     memosOf(row).flatMap((memo) => memo.vehicles.map((v) => v.code ?? v.plate));
-  const visaOf = (row: LicenseExpenseMemoRow): number =>
+  const visaOf = (row: FleetLicenseExpenseDto): number =>
     sumOf(itemsOf(row).filter((item) => item.paidBy === 'visa'));
-  const cashOf = (row: LicenseExpenseMemoRow): number =>
+  const cashOf = (row: FleetLicenseExpenseDto): number =>
     sumOf(itemsOf(row).filter((item) => item.paidBy === 'cash'));
   const totals = rows.reduce(
     (acc, row) => ({
@@ -84,7 +101,7 @@ export const LicenseExpensesPage = (): JSX.Element => {
     { visa: 0, cash: 0, cars: 0 },
   );
 
-  const columns: Column<LicenseExpenseMemoRow>[] = [
+  const columns: Column<FleetLicenseExpenseDto>[] = [
     {
       key: 'date',
       header: t('fleet.licenseExpenses.date'),
@@ -169,28 +186,39 @@ export const LicenseExpensesPage = (): JSX.Element => {
           >
             <BoardIcon d={PATH.eye} className="h-4 w-4" />
           </button>
-          <Link
-            to={`/fleet/license-expenses/${row.id}`}
-            title={memosOf(row).map(memoTitle).join(' — ')}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
-          >
-            <BoardIcon d={PATH.edit} className="h-4 w-4" />
-          </Link>
+          {can('fleetLicenseExpense.edit') && (
+            <Link
+              to={`/fleet/license-expenses/${row.id}`}
+              data-license-expense-edit={row.id}
+              title={t('common.edit')}
+              aria-label={t('common.edit')}
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              <BoardIcon d={PATH.edit} className="h-4 w-4" />
+            </Link>
+          )}
           <button
             type="button"
+            data-license-expense-print={row.id}
             title={t('fleet.licenseExpenses.print')}
+            aria-label={t('fleet.licenseExpenses.print')}
             onClick={() => print(row)}
             className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
           >
             <BoardIcon d={PATH.pdf} className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            title={t('common.delete')}
-            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-slate-800"
-          >
-            <BoardIcon d={PATH.trash} className="h-4 w-4" />
-          </button>
+          {can('fleetLicenseExpense.delete') && (
+            <button
+              type="button"
+              data-license-expense-delete={row.id}
+              title={t('common.delete')}
+              aria-label={t('common.delete')}
+              onClick={() => setDeleting(row)}
+              className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-slate-800"
+            >
+              <BoardIcon d={PATH.trash} className="h-4 w-4" />
+            </button>
+          )}
         </span>
       ),
     },
@@ -216,14 +244,16 @@ export const LicenseExpensesPage = (): JSX.Element => {
                 ? t('fleet.vehicles.board.breakdownHide')
                 : t('fleet.vehicles.board.breakdown')}
             </button>
-            <Link
-              to="/fleet/license-expenses/new"
-              data-license-expense-new="true"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 active:scale-95"
-            >
-              <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
-              {t('fleet.licenseExpenses.newMemo')}
-            </Link>
+            {can('fleetLicenseExpense.create') && (
+              <Link
+                to="/fleet/license-expenses/new"
+                data-license-expense-new="true"
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-brand-700 to-brand-500 px-3.5 py-2 text-xs font-black text-white shadow-md shadow-brand-700/30 transition hover:from-brand-600 hover:to-brand-400 active:scale-95"
+              >
+                <BoardIcon d={PATH.plus} className="h-3.5 w-3.5" width={2.5} />
+                {t('fleet.licenseExpenses.newMemo')}
+              </Link>
+            )}
           </span>
         </div>
 
@@ -355,6 +385,33 @@ export const LicenseExpensesPage = (): JSX.Element => {
               </div>
             ))}
         </div>
+      </Dialog>
+
+      <Dialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        title={t('fleet.licenseExpenses.deleteTitle')}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setDeleting(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              variant="danger"
+              loading={remove.isPending}
+              onClick={() => void confirmDelete()}
+            >
+              {t('common.delete')}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {deleting === null ? '' : memosOf(deleting).map(memoTitle).join(' — ')}
+        </p>
+        <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+          {t('fleet.licenseExpenses.deleteBody')}
+        </p>
       </Dialog>
     </PageContainer>
   );

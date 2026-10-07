@@ -26,6 +26,7 @@ import {
   OfferIcon,
   PinIcon,
   QrIcon,
+  ReceiptIcon,
   ShieldIcon,
   SitemapIcon,
   TagIcon,
@@ -78,6 +79,8 @@ const REGISTRY: Record<string, NavIcon> = {
   monitor: MonitorIcon,
   // IT (ITW-1) — the scan surface; `monitor` and `folder` above already cover its other rows.
   qr: QrIcon,
+  // مصروفات التراخيص — the department's memo of what licences cost: money written on paper.
+  receipt: ReceiptIcon,
   // P10 — the notification-templates row. Registered with the row that uses it: an unregistered
   // name falls back silently, which looks like a design choice rather than a missing entry.
   bell: BellIcon,

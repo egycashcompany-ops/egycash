@@ -2,6 +2,7 @@
 // live preview and the printed page are the same document — the owner's Excel memo, line for
 // line: the title, the plates, what was paid by the traffic department's card, what was paid in
 // cash, the totals, and the signatures.
+import { type FleetLicenseExpenseDto } from '@ecms/contracts';
 
 /** Which memo: a licence renewal, or an extension of a licence's term. */
 export type LicenseExpenseKind = 'renewal' | 'extension';
@@ -15,8 +16,7 @@ export interface LicenseExpenseVehicleLine {
   plate: string;
 }
 
-export interface LicenseExpenseItemLine {
-  key: string;
+export interface LicenseExpenseItemFields {
   /** The catalog entry it was picked from, when it was — `null` for a hand-written one. */
   itemId: string | null;
   label: string;
@@ -25,6 +25,11 @@ export interface LicenseExpenseItemLine {
   paidBy: LicenseExpensePaidBy;
   /** «متوافر إيصال» when true, «لا يوجد» when false. */
   receipt: boolean;
+}
+
+/** One line on the editor's cards — the saved fields, and a key for React. */
+export interface LicenseExpenseItemLine extends LicenseExpenseItemFields {
+  key: string;
 }
 
 export interface LicenseExpenseSignatures {
@@ -41,7 +46,7 @@ export interface LicenseExpenseMemoDoc {
   /** `yyyy-mm-dd` */
   date: string;
   vehicles: readonly LicenseExpenseVehicleLine[];
-  items: readonly LicenseExpenseItemLine[];
+  items: readonly LicenseExpenseItemFields[];
   signatures: LicenseExpenseSignatures;
 }
 
@@ -79,9 +84,9 @@ export const memoTitle = (
   return `مذكرة بمصروفات ${what} ${carsPhrase(doc.vehicles.length)} شهر ${month} ${when}`.trim();
 };
 
-export const lineTotal = (item: LicenseExpenseItemLine): number => (item.amount ?? 0) * item.count;
+export const lineTotal = (item: LicenseExpenseItemFields): number => (item.amount ?? 0) * item.count;
 
-export const sumOf = (items: readonly LicenseExpenseItemLine[]): number =>
+export const sumOf = (items: readonly LicenseExpenseItemFields[]): number =>
   items.reduce((sum, item) => sum + lineTotal(item), 0);
 
 export const money = (value: number): string =>
@@ -96,7 +101,7 @@ const escape = (text: string): string =>
 
 const table = (
   heading: string,
-  items: readonly LicenseExpenseItemLine[],
+  items: readonly LicenseExpenseItemFields[],
   minRows: number,
 ): string => {
   const rows = items
@@ -205,29 +210,9 @@ export const DEFAULT_SIGNATURES: LicenseExpenseSignatures = {
     'لواء أ ح / جمال أحمد أبو إسماعيل\nالمدير العام التنفيذي\nشركة النيل لنقل الأموال (إيجي كاش)',
 };
 
-/** One kind's half of a saved record: its cars and its expenses. */
-export interface LicenseExpensePart {
-  vehicles: LicenseExpenseVehicleLine[];
-  items: LicenseExpenseItemLine[];
-}
-
-/**
- * One saved record — a renewal, an extension, or both written on the same day. Each kind present
- * is its own memo on paper.
- */
-export interface LicenseExpenseMemoRow {
-  id: string;
-  date: string;
-  renewal: LicenseExpensePart | null;
-  extension: LicenseExpensePart | null;
-  signatures: LicenseExpenseSignatures;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** The memos a record prints as — the renewal first, as the department files them. */
+/** The memos a saved record prints as — the renewal first, as the department files them. */
 export const memosOf = (
-  row: Pick<LicenseExpenseMemoRow, 'date' | 'renewal' | 'extension' | 'signatures'>,
+  row: Pick<FleetLicenseExpenseDto, 'date' | 'renewal' | 'extension' | 'signatures'>,
 ): LicenseExpenseMemoDoc[] =>
   (['renewal', 'extension'] as const).flatMap((kind) => {
     const part = row[kind];

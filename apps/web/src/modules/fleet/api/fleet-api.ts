@@ -11,6 +11,11 @@ import {
   type ApproveFleetFuelCharge,
   type CreateFleetFuelCard,
   type CreateFleetNotice,
+  type CreateFleetLicenseExpense,
+  type FleetLicenseExpenseDto,
+  type FleetLicenseExpenseSettingsDto,
+  type SaveFleetLicenseExpenseSettings,
+  type UpdateFleetLicenseExpense,
   type FleetDealershipInvoiceDto,
   type FleetFuelCardDto,
   type FleetFuelCardMovementDto,
@@ -588,5 +593,23 @@ export const listCustodyMovements = (
 // ── Licensing expenses (مصروفات التراخيص) ─────────────────────────────────────
 export const listLicenseExpenses = (
   params: FleetListParams,
-): Promise<Paginated<import('../lib/license-expense-memo').LicenseExpenseMemoRow>> =>
-  getPage(`/fleet/license-expenses${buildQuery(params)}`);
+): Promise<Paginated<FleetLicenseExpenseDto>> =>
+  getPage<FleetLicenseExpenseDto>(`/fleet/license-expenses${buildQuery(params)}`);
+export const getLicenseExpense = (id: string): Promise<FleetLicenseExpenseDto> =>
+  get<FleetLicenseExpenseDto>(`/fleet/license-expenses/${id}`);
+export const createLicenseExpense = (
+  body: CreateFleetLicenseExpense,
+): Promise<FleetLicenseExpenseDto> => post<FleetLicenseExpenseDto>('/fleet/license-expenses', body);
+export const updateLicenseExpense = (
+  id: string,
+  body: UpdateFleetLicenseExpense,
+): Promise<FleetLicenseExpenseDto> =>
+  patch<FleetLicenseExpenseDto>(`/fleet/license-expenses/${id}`, body);
+export const deleteLicenseExpense = (id: string): Promise<void> =>
+  del<void>(`/fleet/license-expenses/${id}`);
+export const getLicenseExpenseSettings = (): Promise<FleetLicenseExpenseSettingsDto> =>
+  get<FleetLicenseExpenseSettingsDto>('/fleet/license-expenses/settings');
+export const saveLicenseExpenseSettings = (
+  body: SaveFleetLicenseExpenseSettings,
+): Promise<FleetLicenseExpenseSettingsDto> =>
+  put<FleetLicenseExpenseSettingsDto>('/fleet/license-expenses/settings', body);

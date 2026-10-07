@@ -20,6 +20,7 @@ import { buildFleetRosterRouter } from './roster/roster.routes';
 import { buildFleetFixedRosterRouter } from './fixed-roster/fixed-roster.routes';
 import { buildFleetLicensingRouter } from './licensing/licensing.routes';
 import { buildFleetNoticesRouter } from './notices/notice.routes';
+import { buildFleetLicenseExpensesRouter } from './license-expenses/license-expense.routes';
 import { buildFleetDealershipRouter } from './dealership/dealership.routes';
 import { buildFleetFuelCardsRouter } from './fuel-cards/fuel-card.routes';
 import { buildFleetReceiptsRouter } from './receipts/receipt.routes';
@@ -301,6 +302,19 @@ const noticePermissions = declarePermissions(
   'fleet.notices',
 );
 
+/**
+ * Licensing expenses (مصروفات التراخيص) — the department's memo of what renewing or extending
+ * licences cost. Its own grants: the memo is money, and the licensing screen's are about papers.
+ */
+const licenseExpensePermissions = declarePermissions(
+  'fleet',
+  'fleetLicenseExpense',
+  { en: 'licensing expenses', ar: 'مصروفات التراخيص' },
+  ['view', 'create', 'edit', 'delete'],
+  [],
+  'fleet.license-expenses',
+);
+
 export const fleetPermissions: PermissionDef[] = [
   ...vehiclePermissions,
   ...catalogPermissions,
@@ -314,6 +328,7 @@ export const fleetPermissions: PermissionDef[] = [
   ...violationPermissions,
   ...licensingPermissions,
   ...noticePermissions,
+  ...licenseExpensePermissions,
   ...dealershipPermissions,
   ...fuelCardPermissions,
   ...fuelChargePermissions,
@@ -390,6 +405,13 @@ export const fleetPages: PageDef[] = [
     name: { en: 'Licensing', ar: 'التراخيص' },
     route: '/fleet/licensing',
     sortOrder: 85,
+  },
+  {
+    id: 'fleet.license-expenses',
+    moduleId: 'fleet',
+    name: { en: 'Licensing expenses', ar: 'مصروفات التراخيص' },
+    route: '/fleet/license-expenses',
+    sortOrder: 86,
   },
   {
     id: 'fleet.notices',
@@ -472,6 +494,7 @@ export const fleetModule: ModuleManifest = {
     { prefix: '/fleet/violations', router: buildFleetViolationsRouter() },
     { prefix: '/fleet/licensing', router: buildFleetLicensingRouter() },
     { prefix: '/fleet/notices', router: buildFleetNoticesRouter() },
+    { prefix: '/fleet/license-expenses', router: buildFleetLicenseExpensesRouter() },
     { prefix: '/fleet/dealership', router: buildFleetDealershipRouter() },
     { prefix: '/fleet/fuel-cards', router: buildFleetFuelCardsRouter() },
     { prefix: '/fleet/receipts', router: buildFleetReceiptsRouter() },
@@ -495,6 +518,8 @@ export const fleetModule: ModuleManifest = {
     'fleet_vehicle_licensing',
     'fleet_notices',
     'fleet_notice_settings',
+    'fleet_license_expenses',
+    'fleet_license_expense_settings',
     'fleet_dealership_invoices',
     'fleet_fuel_cards',
     'fleet_fuel_card_movements',

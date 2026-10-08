@@ -21,6 +21,7 @@ import { listKey } from '../../../shared/lib/query-keys';
 import { translate } from '../../../platform/localization/i18n';
 import { LicenseExpensesPage } from './LicenseExpensesPage';
 import { LicenseExpenseEditorPage } from './LicenseExpenseEditorPage';
+import { LicenseExpenseItemChoiceDialog } from '../components/LicenseExpenseItemChoiceDialog';
 import { carsPhrase, memoHtml, memosOf, memoTitle, sumOf } from '../lib/license-expense-memo';
 
 // `Dialog` portals into `document.body`; the suite runs without a DOM.
@@ -126,7 +127,12 @@ const catalogItem = (id: string, name: string): FleetCatalogItemDto =>
     isActive: true,
   }) as unknown as FleetCatalogItemDto;
 
-const renderEditor = (): string => {
+const renderEditor = (
+  options: {
+    items?: { renewal: string[] | null; extension: string[] | null };
+    permissions?: string[];
+  } = {},
+): string => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity, refetchOnMount: false } },
   });
@@ -141,10 +147,11 @@ const renderEditor = (): string => {
   qc.setQueryData(['fleet', 'licenseExpenses', 'settings'], {
     signatures: SIGNATURES,
     templates: { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } },
+    ...(options.items === undefined ? {} : { items: options.items }),
     version: 0,
   });
   return renderToStaticMarkup(
-    <Provider store={store(ALL)}>
+    <Provider store={store(options.permissions ?? ALL)}>
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={['/fleet/license-expenses/new']}>
           <Routes>
@@ -266,5 +273,76 @@ describe('a new licensing-expenses memo', () => {
     expect(html).toContain('طلعت جابر بحيري');
     expect(html).toContain('data-license-expense-save="true"');
     expect(html).toContain('data-license-expense-save-defaults="true"');
+  });
+});
+
+describe("each memo's items, as the owner chooses them", () => {
+  it('offers every item while nobody has chosen, as before', () => {
+    const html = renderEditor({ items: { renewal: null, extension: null } });
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-2"');
+    expect(html).toContain(ar('fleet.licenseExpenses.itemChoice.button', { n: 2, total: 2 }));
+  });
+
+  it("offers only the memo's chosen items as counters, in the card's group and the cash group", () => {
+    // «انا اللى احدد يبقى فى كل واحده».
+    const html = renderEditor({ items: { renewal: ['i-2'], extension: null } });
+    expect(html).toContain('data-license-expense-count="renewal:visa:i-2"');
+    expect(html).toContain('data-license-expense-count="renewal:cash:i-2"');
+    expect(html).not.toContain('data-license-expense-count="renewal:visa:i-1"');
+    expect(html).not.toContain('data-license-expense-count="renewal:cash:i-1"');
+    expect(html).toContain('data-license-expense-choose-items="renewal"');
+    expect(html).toContain(ar('fleet.licenseExpenses.itemChoice.button', { n: 1, total: 2 }));
+  });
+
+  it('keeps the choosing to a writer who may keep the set-up', () => {
+    const html = renderEditor({
+      items: { renewal: ['i-2'], extension: null },
+      permissions: ['fleetLicenseExpense.view', 'fleetLicenseExpense.create'],
+    });
+    expect(html).not.toContain('data-license-expense-choose-items=');
+    // The choice still applies to them.
+    expect(html).not.toContain('data-license-expense-count="renewal:visa:i-1"');
+  });
+});
+
+describe("the list the owner ticks a memo's items in", () => {
+  const ITEMS = [
+    { id: 'i-1', name: 'براءة ذمة' },
+    { id: 'i-2', name: 'ضرائب' },
+    { id: 'i-3', name: 'دمغة' },
+  ];
+  const dialog = (chosen: ReadonlySet<string> | null, items = ITEMS): string =>
+    renderToStaticMarkup(
+      <Provider store={store(ALL)}>
+        <LicenseExpenseItemChoiceDialog
+          open
+          onClose={() => undefined}
+          kind="extension"
+          items={items}
+          chosen={chosen}
+          saving={false}
+          onSave={() => undefined}
+        />
+      </Provider>,
+    );
+
+  it("lists every item, the memo's own pressed", () => {
+    const html = dialog(new Set(['i-2']));
+    expect(html).toContain(ar('fleet.licenseExpenses.itemChoice.title.extension'));
+    expect(html).toMatch(
+      /aria-pressed="false"[^>]*data-license-expense-item-choice="extension:i-1"/u,
+    );
+    expect(html).toMatch(
+      /aria-pressed="true"[^>]*data-license-expense-item-choice="extension:i-2"/u,
+    );
+    expect(html).toMatch(
+      /aria-pressed="false"[^>]*data-license-expense-item-choice="extension:i-3"/u,
+    );
+  });
+
+  it('cannot be saved before the list has loaded — an empty list would erase the choice', () => {
+    const html = dialog(new Set(['i-2']), []);
+    expect(html).toMatch(/disabled=""[^>]*data-license-expense-item-choice-save="extension"/u);
   });
 });

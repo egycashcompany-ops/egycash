@@ -1,22 +1,13 @@
 // «عاوز البيان اللى فى تجديد التراخيص و مد المده انا اللى احدد يبقى فى كل واحده»: the owner ticks
 // which of the department's items one memo — the renewal or the extension — offers as counters.
 // Every item is listed, in the catalog's order and colour; a pressed one is in the memo.
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useT } from '../../../platform/localization/useT';
 import { Button } from '../../../shared/ui/Button';
 import { Dialog } from '../../../shared/ui/Dialog';
 import { cn } from '../../../shared/lib/cn';
 
-export const LicenseExpenseItemChoiceDialog = ({
-  open,
-  onClose,
-  kind,
-  items,
-  chosen,
-  saving,
-  onSave,
-}: {
-  open: boolean;
+interface ChoiceProps {
   onClose: () => void;
   kind: 'renewal' | 'extension';
   /** Every item of the department's list, in its order. */
@@ -26,13 +17,31 @@ export const LicenseExpenseItemChoiceDialog = ({
   saving: boolean;
   /** The ticked items' ids, in the list's order. */
   onSave: (ids: string[]) => void;
-}): JSX.Element => {
+}
+
+/**
+ * Mounted only while open, so each OPENING starts from what is saved — not from a choice abandoned
+ * last time — and only the opening does: a refetch while the list is open (somebody else saving a
+ * template) does not undo the ticks being made.
+ */
+export const LicenseExpenseItemChoiceDialog = ({
+  open,
+  ...props
+}: ChoiceProps & { open: boolean }): JSX.Element | null =>
+  open ? <ItemChoice {...props} /> : null;
+
+const ItemChoice = ({ onClose, kind, items, chosen, saving, onSave }: ChoiceProps): JSX.Element => {
   const t = useT();
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
-  // Each opening starts from what is saved, not from a choice abandoned last time.
-  useEffect(() => {
-    if (open) setPicked(chosen ?? new Set(items.map((item) => item.id)));
-  }, [open, chosen, items]);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(
+    () => chosen ?? new Set(items.map((item) => item.id)),
+  );
+  // The ticked items in the list's order, and any saved one the list no longer shows (archived)
+  // kept as it was — a choice is never narrowed by what this screen happened not to load.
+  const listed = new Set(items.map((item) => item.id));
+  const toSave = (): string[] => [
+    ...items.filter((item) => picked.has(item.id)).map((item) => item.id),
+    ...[...(chosen ?? [])].filter((id) => !listed.has(id)),
+  ];
 
   const toggle = (id: string): void =>
     setPicked((held) => {
@@ -44,7 +53,7 @@ export const LicenseExpenseItemChoiceDialog = ({
 
   return (
     <Dialog
-      open={open}
+      open
       onClose={onClose}
       size="lg"
       dismissOnOutsideClick={false}
@@ -57,8 +66,9 @@ export const LicenseExpenseItemChoiceDialog = ({
           </Button>
           <Button
             loading={saving}
+            disabled={items.length === 0}
             data-license-expense-item-choice-save={kind}
-            onClick={() => onSave(items.filter((item) => picked.has(item.id)).map((i) => i.id))}
+            onClick={() => onSave(toSave())}
           >
             {t('common.save')}
           </Button>

@@ -15,6 +15,14 @@ const read = (path: string): string => readFileSync(resolve(HERE, path), 'utf8')
 
 const GUARD = read('IdleSessionGuard.tsx');
 const REQUIRE_AUTH = read('../router/RequireAuth.tsx');
+const GOLD_PORTAL_GUARD = read('../../modules/gold/portal/RequirePortal.tsx');
+const GOLD_PORTAL_LOGIN = read('../../modules/gold/portal/PortalLoginPage.tsx');
+const APPLICANT_PORTAL_GUARD = read(
+  '../../modules/hr/recruitment/applicant-portal/RequireApplicantPortal.tsx',
+);
+const APPLICANT_PORTAL_LOGIN = read(
+  '../../modules/hr/recruitment/applicant-portal/ApplicantPortalLoginPage.tsx',
+);
 const API_CLIENT = read('../../shared/lib/api-client.ts');
 const AUTH_API = read('api.ts');
 
@@ -62,6 +70,62 @@ describe('the guard is wired where a session exists', () => {
 
   it('sends the person to the sign-in screen with a reason, not a bare form', () => {
     expect(GUARD).toContain("'/login?reason=idle'");
+  });
+
+  it('lands where the caller says, so a portal can send its own people to its own sign-in', () => {
+    expect(GUARD).toContain('navigate(signedOutPath');
+    expect(GUARD).not.toContain("navigate('/login?reason=idle'");
+  });
+
+  it('signs out and navigates in one synchronous update, so the reason survives the gates', () => {
+    // Two separate updates let the route gate render first on the old location and redirect to
+    // a bare sign-in path AFTER this one, which dropped `?reason=idle` on every surface. A DOM-less
+    // suite cannot replay that ordering, so the shape that prevents it is what is held here.
+    const flush = GUARD.indexOf('flushSync(() => {');
+    expect(flush).toBeGreaterThan(-1);
+    const body = GUARD.slice(flush, GUARD.indexOf('});', GUARD.indexOf('navigate(signedOutPath')));
+    expect(body).toContain('dispatch(signedOut())');
+    expect(body).toContain('navigate(signedOutPath');
+    // …and nowhere outside it.
+    expect(GUARD.split('dispatch(signedOut())').length - 1).toBe(1);
+    expect(GUARD.split('navigate(signedOutPath').length - 1).toBe(1);
+  });
+});
+
+// A portal session renews through the same rule as a staff one. Without the guard nothing renewed
+// it while the person worked, so it was renewed only when the 15-minute access token ran out —
+// later than the 10-minute window — and the server closed it as abandoned in the middle of use.
+describe.each([
+  {
+    portal: 'the gold customer portal',
+    guard: GOLD_PORTAL_GUARD,
+    login: GOLD_PORTAL_LOGIN,
+    signIn: '/portal/login',
+    lastGate: "t('gold.portal.notACustomer')",
+  },
+  {
+    portal: 'the applicant portal',
+    guard: APPLICANT_PORTAL_GUARD,
+    login: APPLICANT_PORTAL_LOGIN,
+    signIn: '/applicant-portal/login',
+    lastGate: "t('hr.applicantPortal.notACandidate')",
+  },
+])('$portal keeps a working session open', ({ guard, login, signIn, lastGate }) => {
+  it('mounts the inactivity guard', () => {
+    expect(guard).toContain(`<IdleSessionGuard signedOutPath="${signIn}?reason=idle">`);
+  });
+
+  it('mounts it only on the signed-in branch, after every gate that turns a visitor away', () => {
+    const mount = guard.indexOf('<IdleSessionGuard');
+    expect(mount).toBeGreaterThan(guard.indexOf(`Navigate to="${signIn}"`));
+    expect(mount).toBeGreaterThan(guard.indexOf(lastGate));
+    // Exactly once: a second mount would double every renewal and race the single-use token.
+    expect(guard.split('<IdleSessionGuard').length - 1).toBe(1);
+  });
+
+  it('tells the person why they are on the sign-in screen again', () => {
+    expect(login).toContain("searchParams.get('reason') === 'idle'");
+    expect(login).toContain("t('auth.idle.signedOutNotice')");
   });
 });
 

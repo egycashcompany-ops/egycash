@@ -16,7 +16,7 @@
 // against a specific customer record — there is no self sign-up to link to, and no Google identity
 // that could be mapped to a vault customer. A button that cannot work is worse than no button.
 import { useState } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { type MeDto } from '@ecms/contracts';
 import { useAppDispatch, useAppSelector } from '../../../store';
 import { signedIn } from '../../../store/authSlice';
@@ -68,6 +68,9 @@ export const PortalLoginPage = (): JSX.Element => {
   const navigate = useNavigate();
   const status = useAppSelector((state) => state.auth.status);
   const external = useAppSelector((state) => state.auth.me?.external ?? null);
+  // `?reason=idle` is set by the portal's `IdleSessionGuard` when it closed the session.
+  const [searchParams] = useSearchParams();
+  const idleNotice = searchParams.get('reason') === 'idle';
 
   const [step, setStep] = useState<Step>({ kind: 'credentials' });
   const [identifier, setIdentifier] = useState('');
@@ -183,6 +186,16 @@ export const PortalLoginPage = (): JSX.Element => {
                 {onCredentials ? t('gold.portal.login.subtitle') : t('gold.portal.login.totpHint')}
               </p>
             </header>
+
+            {error === null && idleNotice && (
+              <div
+                role="status"
+                className="mb-5 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{t('auth.idle.signedOutNotice')}</span>
+              </div>
+            )}
 
             {error !== null && (
               <div

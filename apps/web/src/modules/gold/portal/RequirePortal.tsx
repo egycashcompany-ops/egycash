@@ -12,6 +12,7 @@ import { useAppSelector } from '../../../store';
 import { useT } from '../../../platform/localization/useT';
 import { EmptyState } from '../../../shared/ui/states/EmptyState';
 import { ForcePasswordChangePage } from '../../../platform/auth/ForcePasswordChangePage';
+import { IdleSessionGuard } from '../../../platform/auth/IdleSessionGuard';
 
 export const RequirePortal = ({ children }: { children: ReactNode }): ReactNode => {
   const t = useT();
@@ -32,5 +33,8 @@ export const RequirePortal = ({ children }: { children: ReactNode }): ReactNode 
       </div>
     );
   }
-  return children;
+  // The same inactivity guard as the staff app. Without it nothing here renewed the session while
+  // the customer worked, so the server's idle rule read every portal session as abandoned once its
+  // 15-minute token ran out and closed it mid-use.
+  return <IdleSessionGuard signedOutPath="/portal/login?reason=idle">{children}</IdleSessionGuard>;
 };

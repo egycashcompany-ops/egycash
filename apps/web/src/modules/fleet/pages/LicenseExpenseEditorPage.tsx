@@ -10,11 +10,14 @@
 // each in its own block with its own cars and expenses, and each its own memo on paper.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   type CreateFleetLicenseExpense,
   type FleetLicenseExpenseDto,
   type FleetLicenseExpensePartDto,
+  type FleetLicenseExpenseSettingsDto,
   type Locale,
+  type SaveFleetLicenseExpenseSettings,
 } from '@ecms/contracts';
 import { useT } from '../../../platform/localization/useT';
 import { useAppSelector } from '../../../store';
@@ -26,6 +29,7 @@ import { cn } from '../../../shared/lib/cn';
 import { errorMessage } from '../../../shared/lib/errors';
 import { localized } from '../../../shared/lib/format';
 import {
+  licenseExpenseSettingsKey,
   useAllVehicles,
   useCreateCatalogItem,
   useCreateLicenseExpense,
@@ -157,10 +161,18 @@ const PaidGroup = ({
   const t = useT();
   const indexOf = new Map(catalogItems.map((item) => [item.id, item.index]));
   const countOf = (itemId: string): number => items.filter((item) => item.itemId === itemId).length;
-  // The memo's own items — and any other this group already counts, so a line from an older memo
-  // or a template keeps the counter that changes it.
+  // The memo's own items — and any other this group has counted, so a line from an older memo or
+  // a template keeps the counter that changes it. KEPT once seen: a counter brought down to 0 stays
+  // where it was, or the item could not be counted back in.
+  const [kept, setKept] = useState<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const counted = items.flatMap((item) =>
+      item.itemId === null || kept.has(item.itemId) ? [] : [item.itemId],
+    );
+    if (counted.length > 0) setKept((held) => new Set([...held, ...counted]));
+  }, [items, kept]);
   const counters = catalogItems.filter(
-    (item) => chosen === null || chosen.has(item.id) || countOf(item.id) > 0,
+    (item) => chosen === null || chosen.has(item.id) || kept.has(item.id) || countOf(item.id) > 0,
   );
   const newLine = (itemId: string | null, label: string): LicenseExpenseItemLine => ({
     key: newKey(),
@@ -422,7 +434,8 @@ const MemoBlock = ({
           {t(`fleet.licenseExpenses.kinds.${kind}`)}
         </span>
         <span className="flex-1" />
-        {onChooseItems !== undefined && (
+        {/* Offered once the department's list is loaded: a list chosen from nothing is empty. */}
+        {onChooseItems !== undefined && catalogItems.length > 0 && (
           <button
             type="button"
             data-license-expense-choose-items={kind}
@@ -587,6 +600,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
   const update = useUpdateLicenseExpense();
   const saveSettings = useSaveLicenseExpenseSettings();
   const createCatalogItem = useCreateCatalogItem();
+  const qc = useQueryClient();
 
   // «ممكن اعمل مد مده لوحده او تجديد ترخيص لوحده او الاتنين» — one, the other, or both.
   const [kinds, setKinds] = useState<LicenseExpenseKind[]>(['renewal']);
@@ -644,12 +658,37 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
     });
     // `templateOf` reads `settings.data`, which is a dependency.
   }, [editingId, settings.data, kinds]);
+  // ONE SET-UP WRITE AT A TIME, each reading the set-up when its turn comes — from the cache the
+  // last save wrote into, not from the render it was clicked in. A template saved while a choice of
+  // items is still on its way would otherwise carry the version the choice is about to replace,
+  // and be refused as stale; or worse, put back what the choice had just changed.
+  const latestSettings = (): FleetLicenseExpenseSettingsDto | undefined =>
+    qc.getQueryData<FleetLicenseExpenseSettingsDto>(licenseExpenseSettingsKey) ?? settings.data;
+  const writes = useRef<Promise<unknown>>(Promise.resolve());
+  /** Resolves `false` when there was nothing to write; rejects with the server's refusal. */
+  const writeSettings = (
+    change: (
+      held: FleetLicenseExpenseSettingsDto | undefined,
+    ) => Omit<SaveFleetLicenseExpenseSettings, 'version'> | null,
+  ): Promise<boolean> => {
+    const run = writes.current.then(async () => {
+      const held = latestSettings();
+      const body = change(held);
+      if (body === null) return false;
+      await saveSettings.mutateAsync({
+        ...body,
+        ...(held?.version == null ? {} : { version: held.version }),
+      });
+      return true;
+    });
+    writes.current = run.catch(() => undefined);
+    return run;
+  };
   const onSaveTemplate = async (
     kind: LicenseExpenseKind,
     paid: LicenseExpensePaidBy,
     items: LicenseExpenseItemLine[],
   ): Promise<void> => {
-    if (settings.data === undefined) return;
     const lines = items.map((item) => ({
       itemId: item.itemId,
       label: item.label.trim(),
@@ -657,17 +696,16 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       count: item.count,
       receipt: item.receipt,
     }));
-    const templates = {
-      ...settings.data.templates,
-      [kind]: { ...settings.data.templates[kind], [paid]: lines },
-    };
     try {
-      await saveSettings.mutateAsync({
-        signatures: settings.data.signatures,
-        templates,
-        ...(settings.data.version == null ? {} : { version: settings.data.version }),
-      });
-      toast.success(t('fleet.licenseExpenses.template.savedToast'));
+      const saved = await writeSettings((held) =>
+        held === undefined
+          ? null
+          : {
+              signatures: held.signatures,
+              templates: { ...held.templates, [kind]: { ...held.templates[kind], [paid]: lines } },
+            },
+      );
+      if (saved) toast.success(t('fleet.licenseExpenses.template.savedToast'));
     } catch (failure) {
       toast.error(errorMessage(failure, locale));
     }
@@ -681,20 +719,27 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       extension: side(settings.data?.items?.extension),
     };
   }, [settings.data]);
+  /** One memo's items replaced — or, given a function, worked out from the ones saved now. */
+  const writeChoice = (
+    kind: LicenseExpenseKind,
+    ids: (held: string[] | null) => string[] | null,
+  ): Promise<boolean> =>
+    writeSettings((held) => {
+      if (held === undefined) return null;
+      const side = {
+        renewal: held.items?.renewal ?? null,
+        extension: held.items?.extension ?? null,
+      };
+      const next = ids(side[kind]);
+      return next === null
+        ? null
+        : { signatures: held.signatures, items: { ...side, [kind]: next } };
+    });
   const saveChoice = async (kind: LicenseExpenseKind, ids: string[]): Promise<boolean> => {
-    if (settings.data === undefined) return false;
     try {
-      await saveSettings.mutateAsync({
-        signatures: settings.data.signatures,
-        items: {
-          renewal: settings.data.items?.renewal ?? null,
-          extension: settings.data.items?.extension ?? null,
-          [kind]: ids,
-        },
-        ...(settings.data.version == null ? {} : { version: settings.data.version }),
-      });
-      toast.success(t('fleet.licenseExpenses.itemChoice.savedToast'));
-      return true;
+      const saved = await writeChoice(kind, () => ids);
+      if (saved) toast.success(t('fleet.licenseExpenses.itemChoice.savedToast'));
+      return saved;
     } catch (failure) {
       toast.error(errorMessage(failure, locale));
       return false;
@@ -795,11 +840,8 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
   };
   const onSaveDefaults = async (): Promise<void> => {
     try {
-      await saveSettings.mutateAsync({
-        signatures,
-        ...(settings.data?.version == null ? {} : { version: settings.data.version }),
-      });
-      toast.success(t('fleet.licenseExpenses.defaultsSavedToast'));
+      const saved = await writeSettings(() => ({ signatures }));
+      if (saved) toast.success(t('fleet.licenseExpenses.defaultsSavedToast'));
     } catch (failure) {
       toast.error(errorMessage(failure, locale));
     }
@@ -812,10 +854,15 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
         countsForAlarm: false,
       });
       toast.success(t('fleet.licenseExpenses.addedToListToast'));
-      // Added from this memo, it is one of this memo's items from now on — the other memo's
-      // choice is left to its owner.
-      const chosen = chosenByKind[kind];
-      if (chosen !== null) await saveChoice(kind, [...chosen, item.id]);
+      // Added from this memo, it is one of this memo's items from now on — the other memo's choice
+      // is left to its owner. Only for a writer who may keep a choice at all, and only when this
+      // memo has one: with none, every item is offered already. The line takes its item at once;
+      // the choice follows in the background.
+      if (can('fleetLicenseExpense.edit')) {
+        writeChoice(kind, (held) =>
+          held === null || held.includes(item.id) ? null : [...held, item.id],
+        ).catch((failure: unknown) => toast.error(errorMessage(failure, locale)));
+      }
       return item.id;
     } catch (failure) {
       toast.error(errorMessage(failure, locale));

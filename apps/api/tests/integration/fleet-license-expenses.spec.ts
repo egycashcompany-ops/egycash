@@ -176,13 +176,21 @@ describe('a licensing-expenses memo', () => {
 
   it('starts the set-up from the department names, then keeps what is saved', async () => {
     const empty = { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } };
+    // Nobody has chosen either memo's items yet: every item, as before.
+    const unchosen = { renewal: null, extension: null };
     expect(await fleetLicenseExpenseService.getSettings()).toEqual({
       signatures: DEFAULT_LICENSE_EXPENSE_SIGNATURES,
       templates: empty,
+      items: unchosen,
       version: null,
     });
     const saved = await fleetLicenseExpenseService.saveSettings({ signatures: SIGNATURES }, ACTOR);
-    expect(saved).toEqual({ signatures: SIGNATURES, templates: empty, version: 0 });
+    expect(saved).toEqual({
+      signatures: SIGNATURES,
+      templates: empty,
+      items: unchosen,
+      version: 0,
+    });
     const again = await fleetLicenseExpenseService.saveSettings(
       { signatures: { ...SIGNATURES, agent: 'هـ' }, version: 0 },
       ACTOR,
@@ -207,6 +215,53 @@ describe('a licensing-expenses memo', () => {
       ACTOR,
     );
     expect(signaturesOnly.templates, 'untouched by a save without them').toEqual(templates);
+  });
+
+  it("keeps each memo's choice of items, and leaves it alone when a save does not name it", async () => {
+    const before = await fleetLicenseExpenseService.getSettings();
+    const [a, b, c] = [
+      '6600000000000000000000a1',
+      '6600000000000000000000a2',
+      '6600000000000000000000a3',
+    ];
+    // «انا اللى احدد يبقى فى كل واحده»: the renewal and the extension each their own; a side left
+    // null still means every item.
+    const items = { renewal: [a, b], extension: null };
+    const saved = await fleetLicenseExpenseService.saveSettings(
+      { signatures: SIGNATURES, items, version: before.version ?? 0 },
+      ACTOR,
+    );
+    expect(saved.items).toEqual(items);
+    const both = await fleetLicenseExpenseService.saveSettings(
+      {
+        signatures: SIGNATURES,
+        items: { renewal: [a, b], extension: [c] },
+        version: saved.version ?? 0,
+      },
+      ACTOR,
+    );
+    expect(both.items).toEqual({ renewal: [a, b], extension: [c] });
+    // A template or the signatures saved afterwards do not undo it.
+    const templatesOnly = await fleetLicenseExpenseService.saveSettings(
+      {
+        signatures: SIGNATURES,
+        templates: { renewal: { visa: [], cash: [] }, extension: { visa: [], cash: [] } },
+        version: both.version ?? 0,
+      },
+      ACTOR,
+    );
+    expect(templatesOnly.items, 'untouched by a save without them').toEqual(both.items);
+    expect((await fleetLicenseExpenseService.getSettings()).items).toEqual(both.items);
+    // Nothing chosen is a choice too: an empty memo list is kept as empty, not read as «every».
+    const none = await fleetLicenseExpenseService.saveSettings(
+      {
+        signatures: SIGNATURES,
+        items: { renewal: [], extension: [c] },
+        version: templatesOnly.version ?? 0,
+      },
+      ACTOR,
+    );
+    expect(none.items).toEqual({ renewal: [], extension: [c] });
   });
 
   it('seeds the memo items the department lists', async () => {

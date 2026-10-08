@@ -36,6 +36,7 @@ import {
   useUpdateLicenseExpense,
 } from '../api/fleet-queries';
 import { VehicleCodeFilter } from '../components/VehicleCodeFilter';
+import { LicenseExpenseItemChoiceDialog } from '../components/LicenseExpenseItemChoiceDialog';
 import { BoardIcon, PATH } from '../components/FuelCardBoard';
 import { violationTypeColour } from '../lib/violation-type-colour';
 import {
@@ -137,6 +138,7 @@ const PaidGroup = ({
   items,
   setDraft,
   catalogItems,
+  chosen,
   template,
   onAddToCatalog,
   onSaveTemplate,
@@ -146,6 +148,8 @@ const PaidGroup = ({
   items: LicenseExpenseItemLine[];
   setDraft: (update: (held: Draft) => Draft) => void;
   catalogItems: readonly CatalogEntry[];
+  /** The items this memo offers — `null` is every item. */
+  chosen: ReadonlySet<string> | null;
   template: LicenseExpenseItemLine[];
   onAddToCatalog?: (label: string) => Promise<string | null>;
   onSaveTemplate?: (items: LicenseExpenseItemLine[]) => void;
@@ -153,6 +157,11 @@ const PaidGroup = ({
   const t = useT();
   const indexOf = new Map(catalogItems.map((item) => [item.id, item.index]));
   const countOf = (itemId: string): number => items.filter((item) => item.itemId === itemId).length;
+  // The memo's own items — and any other this group already counts, so a line from an older memo
+  // or a template keeps the counter that changes it.
+  const counters = catalogItems.filter(
+    (item) => chosen === null || chosen.has(item.id) || countOf(item.id) > 0,
+  );
   const newLine = (itemId: string | null, label: string): LicenseExpenseItemLine => ({
     key: newKey(),
     itemId,
@@ -240,7 +249,7 @@ const PaidGroup = ({
       </div>
       {/* «عاوز اختار … زى مخالفات السواقين»: a counter for each item, in its own colour. */}
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {catalogItems.map((item) => (
+        {counters.map((item) => (
           <Field key={item.id} label={item.name}>
             <Input
               data-license-expense-count={`${kind}:${paid}:${item.id}`}
@@ -357,6 +366,9 @@ const MemoBlock = ({
   setDraft,
   byCode,
   catalogItems,
+  chosen,
+  onChooseItems,
+  choosing,
   onAddToCatalog,
   templateOf,
   onSaveTemplate,
@@ -366,6 +378,11 @@ const MemoBlock = ({
   setDraft: (update: (held: Draft) => Draft) => void;
   byCode: ReadonlyMap<string, { id: string; plateNumber: string }>;
   catalogItems: readonly CatalogEntry[];
+  /** «انا اللى احدد يبقى فى كل واحده»: the items this memo offers — `null` is every item. */
+  chosen: ReadonlySet<string> | null;
+  /** Keep this memo's choice of items; absent without the grant. Resolves once it is saved. */
+  onChooseItems?: (ids: string[]) => Promise<boolean>;
+  choosing: boolean;
   /** «البيان … قائمة + نص حر»: a hand-written item kept for next time; absent without the grant. */
   onAddToCatalog?: (label: string) => Promise<string | null>;
   /** The saved template's lines for one group, ready to drop in. */
@@ -374,7 +391,9 @@ const MemoBlock = ({
   onSaveTemplate?: (paid: LicenseExpensePaidBy, items: LicenseExpenseItemLine[]) => void;
 }): JSX.Element => {
   const t = useT();
+  const [choiceOpen, setChoiceOpen] = useState(false);
   const items = draft.items;
+  const offered = catalogItems.filter((item) => chosen === null || chosen.has(item.id)).length;
   const visaTotal = sumOf(items.filter((item) => item.paidBy === 'visa'));
   const cashTotal = sumOf(items.filter((item) => item.paidBy === 'cash'));
   const subTitle = (text: string): JSX.Element => (
@@ -402,7 +421,37 @@ const MemoBlock = ({
         >
           {t(`fleet.licenseExpenses.kinds.${kind}`)}
         </span>
+        <span className="flex-1" />
+        {onChooseItems !== undefined && (
+          <button
+            type="button"
+            data-license-expense-choose-items={kind}
+            onClick={() => setChoiceOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-brand-500/50 bg-brand-500/10 px-2.5 py-1 text-xs font-bold text-brand-700 hover:bg-brand-500/20 dark:text-brand-200"
+          >
+            <span aria-hidden>⚙</span>
+            {t('fleet.licenseExpenses.itemChoice.button', {
+              n: offered,
+              total: catalogItems.length,
+            })}
+          </button>
+        )}
       </div>
+      {onChooseItems !== undefined && (
+        <LicenseExpenseItemChoiceDialog
+          open={choiceOpen}
+          onClose={() => setChoiceOpen(false)}
+          kind={kind}
+          items={catalogItems}
+          chosen={chosen}
+          saving={choosing}
+          onSave={(ids) =>
+            void onChooseItems(ids).then((done) => {
+              if (done) setChoiceOpen(false);
+            })
+          }
+        />
+      )}
 
       <div>
         {subTitle(t('fleet.licenseExpenses.carsSection'))}
@@ -491,6 +540,7 @@ const MemoBlock = ({
           items={items.filter((item) => item.paidBy === paid)}
           setDraft={setDraft}
           catalogItems={catalogItems}
+          chosen={chosen}
           template={templateOf(paid)}
           {...(onAddToCatalog === undefined ? {} : { onAddToCatalog })}
           {...(onSaveTemplate === undefined
@@ -622,6 +672,34 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       toast.error(errorMessage(failure, locale));
     }
   };
+  /** «انا اللى احدد يبقى فى كل واحده»: the items one memo offers — `null` is every item. */
+  const chosenByKind = useMemo(() => {
+    const side = (ids: string[] | null | undefined): ReadonlySet<string> | null =>
+      ids === null || ids === undefined ? null : new Set(ids);
+    return {
+      renewal: side(settings.data?.items?.renewal),
+      extension: side(settings.data?.items?.extension),
+    };
+  }, [settings.data]);
+  const saveChoice = async (kind: LicenseExpenseKind, ids: string[]): Promise<boolean> => {
+    if (settings.data === undefined) return false;
+    try {
+      await saveSettings.mutateAsync({
+        signatures: settings.data.signatures,
+        items: {
+          renewal: settings.data.items?.renewal ?? null,
+          extension: settings.data.items?.extension ?? null,
+          [kind]: ids,
+        },
+        ...(settings.data.version == null ? {} : { version: settings.data.version }),
+      });
+      toast.success(t('fleet.licenseExpenses.itemChoice.savedToast'));
+      return true;
+    } catch (failure) {
+      toast.error(errorMessage(failure, locale));
+      return false;
+    }
+  };
   const editSignatures = (patch: Partial<LicenseExpenseSignatures>): void => {
     signaturesTouched.current = true;
     setSignatures((held) => ({ ...held, ...patch }));
@@ -726,7 +804,7 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
       toast.error(errorMessage(failure, locale));
     }
   };
-  const addToCatalog = async (label: string): Promise<string | null> => {
+  const addToCatalog = async (kind: LicenseExpenseKind, label: string): Promise<string | null> => {
     try {
       const item = await createCatalogItem.mutateAsync({
         kind: 'licenseExpenseItem',
@@ -734,6 +812,10 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
         countsForAlarm: false,
       });
       toast.success(t('fleet.licenseExpenses.addedToListToast'));
+      // Added from this memo, it is one of this memo's items from now on — the other memo's
+      // choice is left to its owner.
+      const chosen = chosenByKind[kind];
+      if (chosen !== null) await saveChoice(kind, [...chosen, item.id]);
       return item.id;
     } catch (failure) {
       toast.error(errorMessage(failure, locale));
@@ -848,7 +930,14 @@ export const LicenseExpenseEditorPage = (): JSX.Element => {
               setDraft={(update) => setDrafts((held) => ({ ...held, [kind]: update(held[kind]) }))}
               byCode={byCode}
               catalogItems={catalogItems}
-              {...(can('fleetCatalog.manage') ? { onAddToCatalog: addToCatalog } : {})}
+              chosen={chosenByKind[kind]}
+              choosing={saveSettings.isPending}
+              {...(can('fleetLicenseExpense.edit')
+                ? { onChooseItems: (ids: string[]) => saveChoice(kind, ids) }
+                : {})}
+              {...(can('fleetCatalog.manage')
+                ? { onAddToCatalog: (label: string) => addToCatalog(kind, label) }
+                : {})}
               templateOf={(paid) => templateOf(kind, paid)}
               {...(can('fleetLicenseExpense.edit')
                 ? {

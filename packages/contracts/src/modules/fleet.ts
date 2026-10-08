@@ -3816,11 +3816,26 @@ export const FleetLicenseExpenseTemplatesSchema = z
   .strict();
 export type FleetLicenseExpenseTemplates = z.infer<typeof FleetLicenseExpenseTemplatesSchema>;
 
+/**
+ * «عاوز البيان اللى فى تجديد التراخيص و مد المده انا اللى احدد يبقى فى كل واحده»: which of the
+ * department's items (`licenseExpenseItem`) each memo's counters offer, renewal and extension
+ * apart. `null` until somebody chooses — every item then, as it always was.
+ */
+export const FleetLicenseExpenseItemChoiceSchema = z
+  .object({
+    renewal: z.array(objectId()).max(500).nullable(),
+    extension: z.array(objectId()).max(500).nullable(),
+  })
+  .strict();
+export type FleetLicenseExpenseItemChoice = z.infer<typeof FleetLicenseExpenseItemChoiceSchema>;
+
 /** «تتظبط مرة في الإعداد وتتعدل في كل مذكرة»: the names every new memo starts with. */
 export interface FleetLicenseExpenseSettingsDto {
   signatures: FleetLicenseExpenseSignatures;
   /** The four templates; each empty until somebody saves one. */
   templates: FleetLicenseExpenseTemplates;
+  /** The items each memo offers; each `null` until somebody chooses. */
+  items: FleetLicenseExpenseItemChoice;
   /** `null` before anybody saved the set-up — the defaults are then the department's own. */
   version: number | null;
 }
@@ -3830,6 +3845,8 @@ export const SaveFleetLicenseExpenseSettingsSchema = z
     signatures: FleetLicenseExpenseSignaturesSchema,
     /** Left out, the saved templates stay as they are. */
     templates: FleetLicenseExpenseTemplatesSchema.optional(),
+    /** Left out, the saved choice of items stays as it is. */
+    items: FleetLicenseExpenseItemChoiceSchema.optional(),
     version: z.number().int().min(0).optional(),
   })
   .strict();

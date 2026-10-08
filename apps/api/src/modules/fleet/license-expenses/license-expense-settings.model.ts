@@ -2,6 +2,7 @@
 // starts with. One row for the whole screen.
 import { Schema, model } from 'mongoose';
 import {
+  type FleetLicenseExpenseItemChoice,
   type FleetLicenseExpenseSignatures,
   type FleetLicenseExpenseTemplates,
 } from '@ecms/contracts';
@@ -14,6 +15,8 @@ export interface FleetLicenseExpenseSettingsDoc extends BaseDocFields {
   signatures: FleetLicenseExpenseSignatures;
   /** The four templates — renewal/extension × card/cash. Lines are kept as given. */
   templates: FleetLicenseExpenseTemplates | null;
+  /** The items each memo offers — `null` (or a `null` side) until somebody chooses. */
+  items: FleetLicenseExpenseItemChoice | null;
 }
 
 const licenseExpenseSettingsSchema = new Schema<FleetLicenseExpenseSettingsDoc>(
@@ -22,6 +25,7 @@ const licenseExpenseSettingsSchema = new Schema<FleetLicenseExpenseSettingsDoc>(
     signatures: { type: signaturesSchema, required: true },
     // A plain map, as a notice's answers are: the lines are the screen's, kept as written.
     templates: { type: Schema.Types.Mixed, default: null },
+    items: { type: Schema.Types.Mixed, default: null },
     ...baseFields,
   },
   { ...baseSchemaOptions, minimize: false },

@@ -15,6 +15,7 @@
 // Every decision is `idle-session.ts`, which is tested on its own; this file is the wiring —
 // listeners, one interval, a dialog.
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../../shared/ui/Button';
 import { Dialog } from '../../shared/ui/Dialog';
@@ -38,7 +39,17 @@ import {
 /** How often the countdown is recomputed. One second, because it is shown as seconds. */
 const TICK_MS = 1_000;
 
-export const IdleSessionGuard = ({ children }: { children: ReactNode }): JSX.Element => {
+export const IdleSessionGuard = ({
+  children,
+  signedOutPath = '/login?reason=idle',
+}: {
+  children: ReactNode;
+  /**
+   * Where an expired session lands. The staff sign-in by default; each portal passes its own, so
+   * a customer or a candidate is never dropped on a sign-in screen that is not theirs.
+   */
+  signedOutPath?: string;
+}): JSX.Element => {
   const t = useT();
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -67,13 +78,20 @@ export const IdleSessionGuard = ({ children }: { children: ReactNode }): JSX.Ele
         // Already closed server-side, or unreachable. Nothing here depends on the answer.
       })
       .finally(() => {
-        dispatch(signedOut());
-        queryClient.clear();
-        // `reason` is what lets the sign-in screen say WHY, instead of the bare form that reads
-        // as "you were thrown out" to somebody who only stepped away for coffee.
-        navigate('/login?reason=idle', { replace: true });
+        // ONE synchronous update, not two. Every route gate (`RequireAuth`, `RequirePortal`,
+        // `RequireApplicantPortal`) answers a signed-out visitor with its own redirect to a bare
+        // sign-in path. Scheduled normally, the store change renders first — on the OLD location —
+        // the gate's redirect lands after the navigation below, and the reason is lost. Flushed
+        // together, the sign-in route is the one that renders, so no gate is there to redirect.
+        flushSync(() => {
+          dispatch(signedOut());
+          queryClient.clear();
+          // `reason` is what lets the sign-in screen say WHY, instead of the bare form that reads
+          // as "you were thrown out" to somebody who only stepped away for coffee.
+          navigate(signedOutPath, { replace: true });
+        });
       });
-  }, [dispatch, navigate]);
+  }, [dispatch, navigate, signedOutPath]);
 
   /** Somebody is here: reset the count, and take the warning down if it was up. */
   const noteActivity = useCallback((): void => {

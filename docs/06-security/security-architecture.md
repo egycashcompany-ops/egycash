@@ -62,6 +62,13 @@ the refresh response, so the countdown on screen and the rule on the server are 
 and changing the variable is obeyed within one renewal cycle. The last minute is a warning with a
 countdown, which is also what protects unsaved work from vanishing without notice.
 
+The guard (`platform/auth/IdleSessionGuard.tsx`) is mounted on **every** signed-in surface: the
+staff app (`RequireAuth`) and both portals (`RequirePortal` for gold customers,
+`RequireApplicantPortal` for candidates), each sending an expired session back to its own sign-in
+with `?reason=idle`. A surface without it renews only when its 15-minute access token runs out —
+later than the 10-minute window — so the server would read a working portal session as abandoned
+and close it mid-use.
+
 ## 2. Authorization
 
 Model per [ADR-004](../03-decisions/ADR-004-permission-based-authorization.md); enforcement is
